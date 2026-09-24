@@ -33,7 +33,7 @@
     <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
     <link rel="stylesheet" type="text/css" href="../_static/jupyter-sphinx.css" />
     <link rel="stylesheet" type="text/css" href="../_static/thebelab.css" />
-    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=f8ac5af1" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=5f08cb77" />
   
   <!-- So that users can add custom icons -->
   <script defer src="../_static/scripts/fontawesome.js?digest=cb8930eaaf36d9849b67"></script>
@@ -159,8 +159,8 @@
 
 
 <li class="nav-item current active">
-  <a class="nav-link nav-internal" href="modules.html">
-    openghg_inversions
+  <a class="nav-link nav-internal" href="index.html">
+    API reference
   </a>
 </li>
 
@@ -266,8 +266,8 @@
 
 
 <li class="nav-item current active">
-  <a class="nav-link nav-internal" href="modules.html">
-    openghg_inversions
+  <a class="nav-link nav-internal" href="index.html">
+    API reference
   </a>
 </li>
 
@@ -464,7 +464,7 @@
       </a>
     </li>
     
-    <li class="breadcrumb-item"><a href="modules.html" class="nav-link">openghg_inversions</a></li>
+    <li class="breadcrumb-item"><a href="index.html" class="nav-link">API reference</a></li>
     
     
     <li class="breadcrumb-item"><a href="openghg_inversions.html" class="nav-link">openghg_inversions</a></li>
@@ -508,8 +508,124 @@ real self-adjoint positive-definite semantics and compatible inverse rather
 than globally certifying a matrix-free operator. Durable artifact identity and
 persistence are intentionally deferred to the artifact-I/O layer.</p>
 <dl class="py class">
+<dt class="sig sig-object py" id="openghg_inversions.basis.covariance_products.RetainedProjection">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">RetainedProjection</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">restriction</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">strategy</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.covariance_products.RetainedProjection" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>A labelled retained restriction selected by one strategy.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Variables<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>restriction</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>xarray.core.dataarray.DataArray</em></a>) – Dimensionless <code class="docutils literal notranslate"><span class="pre">Pi</span></code> with dimensions
+<code class="docutils literal notranslate"><span class="pre">(state_dim,</span> <span class="pre">*native_dims)</span></code>. The frozen dataclass does not freeze
+this mutable DataArray.</p></li>
+<li><p><strong>strategy</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Stable identifier for the scientific projection choice.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="openghg_inversions.basis.covariance_products.RetainedProjectionStrategy">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">RetainedProjectionStrategy</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.covariance_products.RetainedProjectionStrategy" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Protocol" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Protocol</span></code></a></p>
+<p>Extension seam for choosing authoritative retained coefficients.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.basis.covariance_products.RetainedProjectionStrategy.projection">
+<span class="sig-name descname"><span class="pre">projection</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">covariance</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">basis_prolongation</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">native_dims</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">state_dim</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.covariance_products.RetainedProjectionStrategy.projection" title="Link to this definition">#</a></dt>
+<dd><p>Return the authoritative labelled retained restriction <code class="docutils literal notranslate"><span class="pre">Pi</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>covariance</strong> (<a class="reference internal" href="openghg_inversions.native_covariance.html#openghg_inversions.native_covariance.InvertibleNativeCovarianceAction" title="openghg_inversions.native_covariance.InvertibleNativeCovarianceAction"><em>InvertibleNativeCovarianceAction</em></a>) – Labelled native covariance action.</p></li>
+<li><p><strong>basis_prolongation</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – Dimensionless basis <code class="docutils literal notranslate"><span class="pre">U</span></code> with dimensions
+<code class="docutils literal notranslate"><span class="pre">(*native_dims,</span> <span class="pre">state_dim)</span></code>.</p></li>
+<li><p><strong>native_dims</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><em>tuple</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><em>...</em><em>]</em>) – Ordered native covariance dimensions.</p></li>
+<li><p><strong>state_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Retained-state dimension.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A dimensionless restriction with dimensions
+<code class="docutils literal notranslate"><span class="pre">(state_dim,</span> <span class="pre">*native_dims)</span></code>. The kernel derives <code class="docutils literal notranslate"><span class="pre">B</span> <span class="pre">Pi.T</span></code>,
+<code class="docutils literal notranslate"><span class="pre">C_alpha</span></code>, and <code class="docutils literal notranslate"><span class="pre">U_*</span></code> from it.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#openghg_inversions.basis.covariance_products.RetainedProjection" title="openghg_inversions.basis.covariance_products.RetainedProjection"><em>RetainedProjection</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="openghg_inversions.basis.covariance_products.PreserveBucketProlongation">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">PreserveBucketProlongation</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'preserve_bucket_prolongation'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.covariance_products.PreserveBucketProlongation" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>Derive <code class="docutils literal notranslate"><span class="pre">Pi_U</span></code> so covariance-weighted prolongation equals <code class="docutils literal notranslate"><span class="pre">U_bucket</span></code>.</p>
+<dl class="field-list simple">
+</dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.basis.covariance_products.PreserveBucketProlongation.projection">
+<span class="sig-name descname"><span class="pre">projection</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">covariance</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">basis_prolongation</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">native_dims</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">state_dim</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.covariance_products.PreserveBucketProlongation.projection" title="Link to this definition">#</a></dt>
+<dd><p>Construct the prior-precision-compatible restriction.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>covariance</strong> (<a class="reference internal" href="openghg_inversions.native_covariance.html#openghg_inversions.native_covariance.InvertibleNativeCovarianceAction" title="openghg_inversions.native_covariance.InvertibleNativeCovarianceAction"><em>InvertibleNativeCovarianceAction</em></a>) – Invertible labelled action for native covariance <code class="docutils literal notranslate"><span class="pre">B</span></code>.</p></li>
+<li><p><strong>basis_prolongation</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – Eager canonical bucket prolongation <code class="docutils literal notranslate"><span class="pre">U</span></code>.</p></li>
+<li><p><strong>native_dims</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><em>tuple</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><em>...</em><em>]</em>) – Ordered native dimensions.</p></li>
+<li><p><strong>state_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Retained-state dimension.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The authoritative bucket-compatible restriction <code class="docutils literal notranslate"><span class="pre">Pi_U</span></code>.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If <code class="docutils literal notranslate"><span class="pre">U</span></code> is invalid or lacks full column rank.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="#openghg_inversions.basis.covariance_products.RetainedProjection" title="openghg_inversions.basis.covariance_products.RetainedProjection"><em>RetainedProjection</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.basis.covariance_products.NativeCovarianceProducts">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">openghg_inversions.basis.covariance_products.</span></span><span class="sig-name descname"><span class="pre">NativeCovarianceProducts</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">restriction</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">prolongation</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">state_covariance</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">effective_observation_operator</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">observation_state_cross_covariance</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">native_observation_covariance</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">strategy</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">observation_covariance_view</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><span class="pre">Literal</span></a><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'dense'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'diagonal'</span></span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.covariance_products.NativeCovarianceProducts" title="Link to this definition">#</a></dt>
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">NativeCovarianceProducts</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">restriction</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">prolongation</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">state_covariance</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">effective_observation_operator</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">observation_state_cross_covariance</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">native_observation_covariance</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">strategy</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">observation_covariance_view</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.covariance_products.NativeCovarianceProducts" title="Link to this definition">#</a></dt>
 <dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
 <p>Labelled in-memory product blocks induced by one retained restriction.</p>
 <dl class="field-list simple">
@@ -539,155 +655,39 @@ contains the dense matrix or its diagonal.</p></li>
 <p>Freezing the dataclass prevents field reassignment, but the contained
 DataArrays remain mutable. Product attributes are construction-time
 snapshots, not live views of input attribute mappings.</p>
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.basis.covariance_products.NativeCovarianceProducts.effective_observation_operator">
-<span class="sig-name descname"><span class="pre">effective_observation_operator</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span><a class="headerlink" href="#openghg_inversions.basis.covariance_products.NativeCovarianceProducts.effective_observation_operator" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.basis.covariance_products.NativeCovarianceProducts.native_observation_covariance">
-<span class="sig-name descname"><span class="pre">native_observation_covariance</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span><a class="headerlink" href="#openghg_inversions.basis.covariance_products.NativeCovarianceProducts.native_observation_covariance" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.basis.covariance_products.NativeCovarianceProducts.observation_covariance_view">
-<span class="sig-name descname"><span class="pre">observation_covariance_view</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><span class="pre">Literal</span></a><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'dense'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'diagonal'</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.basis.covariance_products.NativeCovarianceProducts.observation_covariance_view" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.basis.covariance_products.NativeCovarianceProducts.observation_state_cross_covariance">
-<span class="sig-name descname"><span class="pre">observation_state_cross_covariance</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span><a class="headerlink" href="#openghg_inversions.basis.covariance_products.NativeCovarianceProducts.observation_state_cross_covariance" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.basis.covariance_products.NativeCovarianceProducts.prolongation">
-<span class="sig-name descname"><span class="pre">prolongation</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span><a class="headerlink" href="#openghg_inversions.basis.covariance_products.NativeCovarianceProducts.prolongation" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.basis.covariance_products.NativeCovarianceProducts.restriction">
-<span class="sig-name descname"><span class="pre">restriction</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span><a class="headerlink" href="#openghg_inversions.basis.covariance_products.NativeCovarianceProducts.restriction" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.basis.covariance_products.NativeCovarianceProducts.state_covariance">
-<span class="sig-name descname"><span class="pre">state_covariance</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span><a class="headerlink" href="#openghg_inversions.basis.covariance_products.NativeCovarianceProducts.state_covariance" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.basis.covariance_products.NativeCovarianceProducts.strategy">
-<span class="sig-name descname"><span class="pre">strategy</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><a class="headerlink" href="#openghg_inversions.basis.covariance_products.NativeCovarianceProducts.strategy" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-</dd></dl>
-
-<dl class="py class">
-<dt class="sig sig-object py" id="openghg_inversions.basis.covariance_products.PreserveBucketProlongation">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">openghg_inversions.basis.covariance_products.</span></span><span class="sig-name descname"><span class="pre">PreserveBucketProlongation</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'preserve_bucket_prolongation'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.covariance_products.PreserveBucketProlongation" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
-<p>Derive <code class="docutils literal notranslate"><span class="pre">Pi_U</span></code> so covariance-weighted prolongation equals <code class="docutils literal notranslate"><span class="pre">U_bucket</span></code>.</p>
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.basis.covariance_products.PreserveBucketProlongation.name">
-<span class="sig-name descname"><span class="pre">name</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><a class="headerlink" href="#openghg_inversions.basis.covariance_products.PreserveBucketProlongation.name" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="openghg_inversions.basis.covariance_products.PreserveBucketProlongation.projection">
-<span class="sig-name descname"><span class="pre">projection</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">covariance</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.native_covariance.html#openghg_inversions.native_covariance.InvertibleNativeCovarianceAction" title="openghg_inversions.native_covariance.InvertibleNativeCovarianceAction"><span class="pre">InvertibleNativeCovarianceAction</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">basis_prolongation</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">native_dims</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">state_dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#openghg_inversions.basis.covariance_products.RetainedProjection" title="openghg_inversions.basis.covariance_products.RetainedProjection"><span class="pre">RetainedProjection</span></a></span></span><a class="headerlink" href="#openghg_inversions.basis.covariance_products.PreserveBucketProlongation.projection" title="Link to this definition">#</a></dt>
-<dd><p>Construct the prior-precision-compatible restriction.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>covariance</strong> – Invertible labelled action for native covariance <code class="docutils literal notranslate"><span class="pre">B</span></code>.</p></li>
-<li><p><strong>basis_prolongation</strong> – Eager canonical bucket prolongation <code class="docutils literal notranslate"><span class="pre">U</span></code>.</p></li>
-<li><p><strong>native_dims</strong> – Ordered native dimensions.</p></li>
-<li><p><strong>state_dim</strong> – Retained-state dimension.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>The authoritative bucket-compatible restriction <code class="docutils literal notranslate"><span class="pre">Pi_U</span></code>.</p>
-</dd>
-<dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If <code class="docutils literal notranslate"><span class="pre">U</span></code> is invalid or lacks full column rank.</p>
-</dd>
-</dl>
-</dd></dl>
-
-</dd></dl>
-
-<dl class="py class">
-<dt class="sig sig-object py" id="openghg_inversions.basis.covariance_products.RetainedProjection">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">openghg_inversions.basis.covariance_products.</span></span><span class="sig-name descname"><span class="pre">RetainedProjection</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">restriction</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">strategy</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.covariance_products.RetainedProjection" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
-<p>A labelled retained restriction selected by one strategy.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Variables<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>restriction</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>xarray.core.dataarray.DataArray</em></a>) – Dimensionless <code class="docutils literal notranslate"><span class="pre">Pi</span></code> with dimensions
-<code class="docutils literal notranslate"><span class="pre">(state_dim,</span> <span class="pre">*native_dims)</span></code>. The frozen dataclass does not freeze
-this mutable DataArray.</p></li>
-<li><p><strong>strategy</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Stable identifier for the scientific projection choice.</p></li>
-</ul>
-</dd>
-</dl>
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.basis.covariance_products.RetainedProjection.restriction">
-<span class="sig-name descname"><span class="pre">restriction</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span><a class="headerlink" href="#openghg_inversions.basis.covariance_products.RetainedProjection.restriction" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.basis.covariance_products.RetainedProjection.strategy">
-<span class="sig-name descname"><span class="pre">strategy</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><a class="headerlink" href="#openghg_inversions.basis.covariance_products.RetainedProjection.strategy" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-</dd></dl>
-
-<dl class="py class">
-<dt class="sig sig-object py" id="openghg_inversions.basis.covariance_products.RetainedProjectionStrategy">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">openghg_inversions.basis.covariance_products.</span></span><span class="sig-name descname"><span class="pre">RetainedProjectionStrategy</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.covariance_products.RetainedProjectionStrategy" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Protocol" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Protocol</span></code></a></p>
-<p>Extension seam for choosing authoritative retained coefficients.</p>
-<dl class="py method">
-<dt class="sig sig-object py" id="openghg_inversions.basis.covariance_products.RetainedProjectionStrategy.projection">
-<span class="sig-name descname"><span class="pre">projection</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">covariance</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.native_covariance.html#openghg_inversions.native_covariance.InvertibleNativeCovarianceAction" title="openghg_inversions.native_covariance.InvertibleNativeCovarianceAction"><span class="pre">InvertibleNativeCovarianceAction</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">basis_prolongation</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">native_dims</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">state_dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#openghg_inversions.basis.covariance_products.RetainedProjection" title="openghg_inversions.basis.covariance_products.RetainedProjection"><span class="pre">RetainedProjection</span></a></span></span><a class="headerlink" href="#openghg_inversions.basis.covariance_products.RetainedProjectionStrategy.projection" title="Link to this definition">#</a></dt>
-<dd><p>Return the authoritative labelled retained restriction <code class="docutils literal notranslate"><span class="pre">Pi</span></code>.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>covariance</strong> – Labelled native covariance action.</p></li>
-<li><p><strong>basis_prolongation</strong> – Dimensionless basis <code class="docutils literal notranslate"><span class="pre">U</span></code> with dimensions
-<code class="docutils literal notranslate"><span class="pre">(*native_dims,</span> <span class="pre">state_dim)</span></code>.</p></li>
-<li><p><strong>native_dims</strong> – Ordered native covariance dimensions.</p></li>
-<li><p><strong>state_dim</strong> – Retained-state dimension.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>A dimensionless restriction with dimensions
-<code class="docutils literal notranslate"><span class="pre">(state_dim,</span> <span class="pre">*native_dims)</span></code>. The kernel derives <code class="docutils literal notranslate"><span class="pre">B</span> <span class="pre">Pi.T</span></code>,
-<code class="docutils literal notranslate"><span class="pre">C_alpha</span></code>, and <code class="docutils literal notranslate"><span class="pre">U_*</span></code> from it.</p>
-</dd>
-</dl>
-</dd></dl>
-
 </dd></dl>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.basis.covariance_products.project_native_covariance">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.basis.covariance_products.</span></span><span class="sig-name descname"><span class="pre">project_native_covariance</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">covariance</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.native_covariance.html#openghg_inversions.native_covariance.InvertibleNativeCovarianceAction" title="openghg_inversions.native_covariance.InvertibleNativeCovarianceAction"><span class="pre">InvertibleNativeCovarianceAction</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">basis_prolongation</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">state_dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">native_sensitivity</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">observation_dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">observation_covariance</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><span class="pre">Literal</span></a><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'dense'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'diagonal'</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'dense'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">observation_batch_size</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">64</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">strategy</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#openghg_inversions.basis.covariance_products.RetainedProjectionStrategy" title="openghg_inversions.basis.covariance_products.RetainedProjectionStrategy"><span class="pre">RetainedProjectionStrategy</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#openghg_inversions.basis.covariance_products.NativeCovarianceProducts" title="openghg_inversions.basis.covariance_products.NativeCovarianceProducts"><span class="pre">NativeCovarianceProducts</span></a></span></span><a class="headerlink" href="#openghg_inversions.basis.covariance_products.project_native_covariance" title="Link to this definition">#</a></dt>
+<span class="sig-name descname"><span class="pre">project_native_covariance</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">covariance</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">basis_prolongation</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">state_dim</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">native_sensitivity</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">observation_dim</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">observation_covariance</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'dense'</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">observation_batch_size</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">64</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">strategy</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.covariance_products.project_native_covariance" title="Link to this definition">#</a></dt>
 <dd><p>Compute coherent labelled native-covariance products eagerly.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>covariance</strong> – Labelled native covariance action with a compatible solve.</p></li>
-<li><p><strong>basis_prolongation</strong> – Canonical labelled <code class="docutils literal notranslate"><span class="pre">U</span></code> from the basis-side native
+<li><p><strong>covariance</strong> (<a class="reference internal" href="openghg_inversions.native_covariance.html#openghg_inversions.native_covariance.InvertibleNativeCovarianceAction" title="openghg_inversions.native_covariance.InvertibleNativeCovarianceAction"><em>InvertibleNativeCovarianceAction</em></a>) – Labelled native covariance action with a compatible solve.</p></li>
+<li><p><strong>basis_prolongation</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – Canonical labelled <code class="docutils literal notranslate"><span class="pre">U</span></code> from the basis-side native
 expansion boundary.</p></li>
-<li><p><strong>state_dim</strong> – Retained-state dimension shared by <code class="docutils literal notranslate"><span class="pre">U</span></code> and <code class="docutils literal notranslate"><span class="pre">Pi</span></code>.</p></li>
-<li><p><strong>native_sensitivity</strong> – Canonical labelled native sensitivity <code class="docutils literal notranslate"><span class="pre">H</span></code>.</p></li>
-<li><p><strong>observation_dim</strong> – Observation dimension in <code class="docutils literal notranslate"><span class="pre">H</span></code>.</p></li>
-<li><p><strong>observation_covariance</strong> – Return dense <code class="docutils literal notranslate"><span class="pre">H</span> <span class="pre">B</span> <span class="pre">H.T</span></code> or its diagonal.</p></li>
-<li><p><strong>observation_batch_size</strong> – Positive integral number of covariance
+<li><p><strong>state_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Retained-state dimension shared by <code class="docutils literal notranslate"><span class="pre">U</span></code> and <code class="docutils literal notranslate"><span class="pre">Pi</span></code>.</p></li>
+<li><p><strong>native_sensitivity</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – Canonical labelled native sensitivity <code class="docutils literal notranslate"><span class="pre">H</span></code>.</p></li>
+<li><p><strong>observation_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Observation dimension in <code class="docutils literal notranslate"><span class="pre">H</span></code>.</p></li>
+<li><p><strong>observation_covariance</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><em>Literal</em></a><em>[</em><em>'dense'</em><em>, </em><em>'diagonal'</em><em>]</em>) – Return dense <code class="docutils literal notranslate"><span class="pre">H</span> <span class="pre">B</span> <span class="pre">H.T</span></code> or its diagonal.</p></li>
+<li><p><strong>observation_batch_size</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a>) – Positive integral number of covariance
 right-hand sides per eager block.</p></li>
-<li><p><strong>strategy</strong> – Authoritative restriction choice; defaults to the
+<li><p><strong>strategy</strong> (<a class="reference internal" href="#openghg_inversions.basis.covariance_products.RetainedProjectionStrategy" title="openghg_inversions.basis.covariance_products.RetainedProjectionStrategy"><em>RetainedProjectionStrategy</em></a><em> | </em><em>None</em>) – Authoritative restriction choice; defaults to the
 bucket-preserving restriction.</p></li>
 </ul>
 </dd>
@@ -704,6 +704,9 @@ certify a matrix-free <code class="docutils literal notranslate"><span class="pr
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If labelled inputs cannot be exactly aligned, the batch
     size is not positive, or a required Cholesky factorization fails.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="#openghg_inversions.basis.covariance_products.NativeCovarianceProducts" title="openghg_inversions.basis.covariance_products.NativeCovarianceProducts"><em>NativeCovarianceProducts</em></a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -757,31 +760,16 @@ certify a matrix-free <code class="docutils literal notranslate"><span class="pr
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.covariance_products.NativeCovarianceProducts"><code class="docutils literal notranslate"><span class="pre">NativeCovarianceProducts</span></code></a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.covariance_products.NativeCovarianceProducts.effective_observation_operator"><code class="docutils literal notranslate"><span class="pre">NativeCovarianceProducts.effective_observation_operator</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.covariance_products.NativeCovarianceProducts.native_observation_covariance"><code class="docutils literal notranslate"><span class="pre">NativeCovarianceProducts.native_observation_covariance</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.covariance_products.NativeCovarianceProducts.observation_covariance_view"><code class="docutils literal notranslate"><span class="pre">NativeCovarianceProducts.observation_covariance_view</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.covariance_products.NativeCovarianceProducts.observation_state_cross_covariance"><code class="docutils literal notranslate"><span class="pre">NativeCovarianceProducts.observation_state_cross_covariance</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.covariance_products.NativeCovarianceProducts.prolongation"><code class="docutils literal notranslate"><span class="pre">NativeCovarianceProducts.prolongation</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.covariance_products.NativeCovarianceProducts.restriction"><code class="docutils literal notranslate"><span class="pre">NativeCovarianceProducts.restriction</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.covariance_products.NativeCovarianceProducts.state_covariance"><code class="docutils literal notranslate"><span class="pre">NativeCovarianceProducts.state_covariance</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.covariance_products.NativeCovarianceProducts.strategy"><code class="docutils literal notranslate"><span class="pre">NativeCovarianceProducts.strategy</span></code></a></li>
-</ul>
-</li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.covariance_products.PreserveBucketProlongation"><code class="docutils literal notranslate"><span class="pre">PreserveBucketProlongation</span></code></a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.covariance_products.PreserveBucketProlongation.name"><code class="docutils literal notranslate"><span class="pre">PreserveBucketProlongation.name</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.covariance_products.PreserveBucketProlongation.projection"><code class="docutils literal notranslate"><span class="pre">PreserveBucketProlongation.projection()</span></code></a></li>
-</ul>
-</li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.covariance_products.RetainedProjection"><code class="docutils literal notranslate"><span class="pre">RetainedProjection</span></code></a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.covariance_products.RetainedProjection.restriction"><code class="docutils literal notranslate"><span class="pre">RetainedProjection.restriction</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.covariance_products.RetainedProjection.strategy"><code class="docutils literal notranslate"><span class="pre">RetainedProjection.strategy</span></code></a></li>
-</ul>
-</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.covariance_products.RetainedProjection"><code class="docutils literal notranslate"><span class="pre">RetainedProjection</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.covariance_products.RetainedProjectionStrategy"><code class="docutils literal notranslate"><span class="pre">RetainedProjectionStrategy</span></code></a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.covariance_products.RetainedProjectionStrategy.projection"><code class="docutils literal notranslate"><span class="pre">RetainedProjectionStrategy.projection()</span></code></a></li>
 </ul>
 </li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.covariance_products.PreserveBucketProlongation"><code class="docutils literal notranslate"><span class="pre">PreserveBucketProlongation</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.covariance_products.PreserveBucketProlongation.projection"><code class="docutils literal notranslate"><span class="pre">PreserveBucketProlongation.projection()</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.covariance_products.NativeCovarianceProducts"><code class="docutils literal notranslate"><span class="pre">NativeCovarianceProducts</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.covariance_products.project_native_covariance"><code class="docutils literal notranslate"><span class="pre">project_native_covariance()</span></code></a></li>
 </ul>
   </nav></div>

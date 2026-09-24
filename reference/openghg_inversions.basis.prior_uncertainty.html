@@ -33,7 +33,7 @@
     <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
     <link rel="stylesheet" type="text/css" href="../_static/jupyter-sphinx.css" />
     <link rel="stylesheet" type="text/css" href="../_static/thebelab.css" />
-    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=f8ac5af1" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=5f08cb77" />
   
   <!-- So that users can add custom icons -->
   <script defer src="../_static/scripts/fontawesome.js?digest=cb8930eaaf36d9849b67"></script>
@@ -159,8 +159,8 @@
 
 
 <li class="nav-item current active">
-  <a class="nav-link nav-internal" href="modules.html">
-    openghg_inversions
+  <a class="nav-link nav-internal" href="index.html">
+    API reference
   </a>
 </li>
 
@@ -266,8 +266,8 @@
 
 
 <li class="nav-item current active">
-  <a class="nav-link nav-internal" href="modules.html">
-    openghg_inversions
+  <a class="nav-link nav-internal" href="index.html">
+    API reference
   </a>
 </li>
 
@@ -464,7 +464,7 @@
       </a>
     </li>
     
-    <li class="breadcrumb-item"><a href="modules.html" class="nav-link">openghg_inversions</a></li>
+    <li class="breadcrumb-item"><a href="index.html" class="nav-link">API reference</a></li>
     
     
     <li class="breadcrumb-item"><a href="openghg_inversions.html" class="nav-link">openghg_inversions</a></li>
@@ -496,8 +496,61 @@
 objects.  They treat grid-cell scale perturbations as independent and project
 their standard deviations onto the operator’s labelled state coordinate.</p>
 <dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.basis.prior_uncertainty.project_basis_prior_stdev">
+<span class="sig-name descname"><span class="pre">project_basis_prior_stdev</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">basis_functions</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">area_grid</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">grid_cell_prior_stdev</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">flux</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.prior_uncertainty.project_basis_prior_stdev" title="Link to this definition">#</a></dt>
+<dd><p>Project independent grid-cell scale uncertainty onto basis states.</p>
+<p>For membership matrix <code class="docutils literal notranslate"><span class="pre">A</span></code> and cell-total weights <code class="docutils literal notranslate"><span class="pre">w</span> <span class="pre">=</span> <span class="pre">flux</span> <span class="pre">*</span> <span class="pre">area</span></code>,
+the projected standard deviation is</p>
+<p><code class="docutils literal notranslate"><span class="pre">sqrt(sum(A</span> <span class="pre">*</span> <span class="pre">(w</span> <span class="pre">*</span> <span class="pre">s)**2))</span> <span class="pre">/</span> <span class="pre">abs(sum(A</span> <span class="pre">*</span> <span class="pre">w))</span></code>.</p>
+<p><code class="docutils literal notranslate"><span class="pre">s</span></code> may be scalar, source-labelled, or gridded.  A state with no weighted
+flux receives zero standard deviation.  A state whose signed total cancels
+to zero while its numerator is nonzero receives <code class="docutils literal notranslate"><span class="pre">NaN</span></code> because its
+multiplicative scale uncertainty is undefined.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>basis_functions</strong> (<a class="reference internal" href="openghg_inversions.basis.basis_functions.html#openghg_inversions.basis.basis_functions.FluxWeightedBasis" title="openghg_inversions.basis.basis_functions.FluxWeightedBasis"><em>FluxWeightedBasis</em></a>) – Retained basis artifact and operator.</p></li>
+<li><p><strong>area_grid</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – Grid-cell areas on the operator grid.</p></li>
+<li><p><strong>grid_cell_prior_stdev</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a>) – Independent grid-cell scale-factor standard
+deviation.</p></li>
+<li><p><strong>flux</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a><em> | </em><em>None</em>) – Optional replacement flux.  The retained flux is used by default.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Labelled state standard deviations named <code class="docutils literal notranslate"><span class="pre">x_prior_stdev</span></code>.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.basis.prior_uncertainty.calibrate_basis_prior_stdev">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.basis.prior_uncertainty.</span></span><span class="sig-name descname"><span class="pre">calibrate_basis_prior_stdev</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">basis_functions</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.basis.basis_functions.html#openghg_inversions.basis.basis_functions.FluxWeightedBasis" title="openghg_inversions.basis.basis_functions.FluxWeightedBasis"><span class="pre">FluxWeightedBasis</span></a></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">area_grid</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_matrix</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_relative_stdev</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_statistic</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><span class="pre">Literal</span></a><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'median-relative'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'mean-total'</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'median-relative'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">state_is_active</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">flux</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></span><a class="headerlink" href="#openghg_inversions.basis.prior_uncertainty.calibrate_basis_prior_stdev" title="Link to this definition">#</a></dt>
+<span class="sig-name descname"><span class="pre">calibrate_basis_prior_stdev</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">basis_functions</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">area_grid</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">target_matrix</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">target_relative_stdev</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">target_statistic</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'median-relative'</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">state_is_active</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">flux</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.prior_uncertainty.calibrate_basis_prior_stdev" title="Link to this definition">#</a></dt>
 <dd><p>Calibrate grid-cell and basis-state prior widths to aggregate targets.</p>
 <p>Calibration first projects a unit grid-cell standard deviation. For each
 source, linearity then gives the cell standard deviation required to match
@@ -518,48 +571,24 @@ signed total cancels to zero.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>basis_functions</strong> – Retained basis artifact and operator.</p></li>
-<li><p><strong>area_grid</strong> – Grid-cell areas on the operator grid.</p></li>
-<li><p><strong>target_matrix</strong> – Caller-defined target masks or weights.</p></li>
-<li><p><strong>target_relative_stdev</strong> – Requested relative standard deviation, scalar or
+<li><p><strong>basis_functions</strong> (<a class="reference internal" href="openghg_inversions.basis.basis_functions.html#openghg_inversions.basis.basis_functions.FluxWeightedBasis" title="openghg_inversions.basis.basis_functions.FluxWeightedBasis"><em>FluxWeightedBasis</em></a>) – Retained basis artifact and operator.</p></li>
+<li><p><strong>area_grid</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – Grid-cell areas on the operator grid.</p></li>
+<li><p><strong>target_matrix</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – Caller-defined target masks or weights.</p></li>
+<li><p><strong>target_relative_stdev</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a>) – Requested relative standard deviation, scalar or
 source-labelled.</p></li>
-<li><p><strong>target_statistic</strong> – Aggregate calibration statistic, either
+<li><p><strong>target_statistic</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><em>Literal</em></a><em>[</em><em>'median-relative'</em><em>, </em><em>'mean-total'</em><em>]</em>) – Aggregate calibration statistic, either
 <code class="docutils literal notranslate"><span class="pre">&quot;median-relative&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;mean-total&quot;</span></code>.</p></li>
-<li><p><strong>state_is_active</strong> – Optional labelled Boolean state mask. Inactive state
+<li><p><strong>state_is_active</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a><em> | </em><em>None</em>) – Optional labelled Boolean state mask. Inactive state
 widths are set to zero and omitted from target uncertainty, matching
 active-state model sampling.</p></li>
-<li><p><strong>flux</strong> – Optional replacement flux.  The retained flux is used by default.</p></li>
+<li><p><strong>flux</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a><em> | </em><em>None</em>) – Optional replacement flux.  The retained flux is used by default.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>Dataset containing calibrated widths and projection diagnostics.</p>
 </dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.basis.prior_uncertainty.project_basis_prior_stdev">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.basis.prior_uncertainty.</span></span><span class="sig-name descname"><span class="pre">project_basis_prior_stdev</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">basis_functions</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.basis.basis_functions.html#openghg_inversions.basis.basis_functions.FluxWeightedBasis" title="openghg_inversions.basis.basis_functions.FluxWeightedBasis"><span class="pre">FluxWeightedBasis</span></a></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">area_grid</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">grid_cell_prior_stdev</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">flux</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></span><a class="headerlink" href="#openghg_inversions.basis.prior_uncertainty.project_basis_prior_stdev" title="Link to this definition">#</a></dt>
-<dd><p>Project independent grid-cell scale uncertainty onto basis states.</p>
-<p>For membership matrix <code class="docutils literal notranslate"><span class="pre">A</span></code> and cell-total weights <code class="docutils literal notranslate"><span class="pre">w</span> <span class="pre">=</span> <span class="pre">flux</span> <span class="pre">*</span> <span class="pre">area</span></code>,
-the projected standard deviation is</p>
-<p><code class="docutils literal notranslate"><span class="pre">sqrt(sum(A</span> <span class="pre">*</span> <span class="pre">(w</span> <span class="pre">*</span> <span class="pre">s)**2))</span> <span class="pre">/</span> <span class="pre">abs(sum(A</span> <span class="pre">*</span> <span class="pre">w))</span></code>.</p>
-<p><code class="docutils literal notranslate"><span class="pre">s</span></code> may be scalar, source-labelled, or gridded.  A state with no weighted
-flux receives zero standard deviation.  A state whose signed total cancels
-to zero while its numerator is nonzero receives <code class="docutils literal notranslate"><span class="pre">NaN</span></code> because its
-multiplicative scale uncertainty is undefined.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>basis_functions</strong> – Retained basis artifact and operator.</p></li>
-<li><p><strong>area_grid</strong> – Grid-cell areas on the operator grid.</p></li>
-<li><p><strong>grid_cell_prior_stdev</strong> – Independent grid-cell scale-factor standard
-deviation.</p></li>
-<li><p><strong>flux</strong> – Optional replacement flux.  The retained flux is used by default.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Labelled state standard deviations named <code class="docutils literal notranslate"><span class="pre">x_prior_stdev</span></code>.</p>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><em>Dataset</em></a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -613,8 +642,8 @@ deviation.</p></li>
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.prior_uncertainty.calibrate_basis_prior_stdev"><code class="docutils literal notranslate"><span class="pre">calibrate_basis_prior_stdev()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.prior_uncertainty.project_basis_prior_stdev"><code class="docutils literal notranslate"><span class="pre">project_basis_prior_stdev()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.prior_uncertainty.calibrate_basis_prior_stdev"><code class="docutils literal notranslate"><span class="pre">calibrate_basis_prior_stdev()</span></code></a></li>
 </ul>
   </nav></div>
 

@@ -33,7 +33,7 @@
     <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
     <link rel="stylesheet" type="text/css" href="../_static/jupyter-sphinx.css" />
     <link rel="stylesheet" type="text/css" href="../_static/thebelab.css" />
-    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=f8ac5af1" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=5f08cb77" />
   
   <!-- So that users can add custom icons -->
   <script defer src="../_static/scripts/fontawesome.js?digest=cb8930eaaf36d9849b67"></script>
@@ -159,8 +159,8 @@
 
 
 <li class="nav-item current active">
-  <a class="nav-link nav-internal" href="modules.html">
-    openghg_inversions
+  <a class="nav-link nav-internal" href="index.html">
+    API reference
   </a>
 </li>
 
@@ -266,8 +266,8 @@
 
 
 <li class="nav-item current active">
-  <a class="nav-link nav-internal" href="modules.html">
-    openghg_inversions
+  <a class="nav-link nav-internal" href="index.html">
+    API reference
   </a>
 </li>
 
@@ -464,7 +464,7 @@
       </a>
     </li>
     
-    <li class="breadcrumb-item"><a href="modules.html" class="nav-link">openghg_inversions</a></li>
+    <li class="breadcrumb-item"><a href="index.html" class="nav-link">API reference</a></li>
     
     
     <li class="breadcrumb-item"><a href="openghg_inversions.html" class="nav-link">openghg_inversions</a></li>
@@ -497,7 +497,17 @@
 <p>Advanced replay seam for prepared CO2/O2 scientific inputs.</p>
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.co2.co2_o2_runner.run_rhime_co2_o2_from_prepared_inputs">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.rhime.co2.co2_o2_runner.</span></span><span class="sig-name descname"><span class="pre">run_rhime_co2_o2_from_prepared_inputs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">prepared_inputs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_preparation.html#openghg_inversions.rhime.co2.co2_o2_preparation.Co2O2PreparedInputs" title="openghg_inversions.rhime.co2.co2_o2_preparation.Co2O2PreparedInputs"><span class="pre">Co2O2PreparedInputs</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">independent_error_sd</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">state_activity</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.StateActivity" title="openghg_inversions.models.state_activity.StateActivity"><span class="pre">StateActivity</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sampler</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.rhime.sampling.html#openghg_inversions.rhime.sampling.RhimeSampler" title="openghg_inversions.rhime.sampling.RhimeSampler"><span class="pre">RhimeSampler</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">InferenceData</span></span></span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_o2_runner.run_rhime_co2_o2_from_prepared_inputs" title="Link to this definition">#</a></dt>
+<span class="sig-name descname"><span class="pre">run_rhime_co2_o2_from_prepared_inputs</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">prepared_inputs</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">independent_error_sd</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">state_activity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">sampler</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_o2_runner.run_rhime_co2_o2_from_prepared_inputs" title="Link to this definition">#</a></dt>
 <dd><p>Build and sample the CO2/O2 model from prepared scientific inputs.</p>
 <p>This advanced replay seam begins after channel preparation. The public
 <code class="docutils literal notranslate"><span class="pre">run_rhime_co2_o2</span></code> name is reserved for the future complete production
@@ -508,19 +518,19 @@ to the caller rather than the model API.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>prepared_inputs</strong> – Validated preparation handoff containing joint
+<li><p><strong>prepared_inputs</strong> (<a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_preparation.html#openghg_inversions.rhime.co2.co2_o2_preparation.Co2O2PreparedInputs" title="openghg_inversions.rhime.co2.co2_o2_preparation.Co2O2PreparedInputs"><em>Co2O2PreparedInputs</em></a>) – Validated preparation handoff containing joint
 observations and affine intercept on <code class="docutils literal notranslate"><span class="pre">(&quot;observation&quot;,)</span></code>, separate
 channel sensitivities on their native observation axes and the retained
 state axis, a dense joint aggregation covariance, retained prior,
 ratio provenance, units, labels, and scientific provenance.</p></li>
-<li><p><strong>independent_error_sd</strong> – Positive finite fixed standard deviations on
+<li><p><strong>independent_error_sd</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – Positive finite fixed standard deviations on
 <code class="docutils literal notranslate"><span class="pre">(&quot;observation&quot;,)</span></code>. Labels and <code class="docutils literal notranslate"><span class="pre">observation_units</span></code> must match
 <code class="docutils literal notranslate"><span class="pre">prepared_inputs.observations</span></code> exactly. These values remain fixed
 data and are not an inferred mismatch amplitude.</p></li>
-<li><p><strong>state_activity</strong> – Optional labelled active/fixed policy on the retained
+<li><p><strong>state_activity</strong> (<a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.StateActivity" title="openghg_inversions.models.state_activity.StateActivity"><em>StateActivity</em></a><em> | </em><em>None</em>) – Optional labelled active/fixed policy on the retained
 state dimension. Omitted states use the model’s structural activity
 policy.</p></li>
-<li><p><strong>sampler</strong> – Optional RHIME sampler configuration. The accepted CO2/O2
+<li><p><strong>sampler</strong> (<a class="reference internal" href="openghg_inversions.rhime.sampling.html#openghg_inversions.rhime.sampling.RhimeSampler" title="openghg_inversions.rhime.sampling.RhimeSampler"><em>RhimeSampler</em></a><em> | </em><em>None</em>) – Optional RHIME sampler configuration. The accepted CO2/O2
 NumPyro defaults are used when omitted.</p></li>
 </ul>
 </dd>
@@ -536,6 +546,9 @@ JSON model metadata.</p>
     positive real numeric vector or fails the model’s
     observation-label/unit contract. Label, state, covariance, and
     activity errors from model construction are also propagated.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>InferenceData</em></p>
 </dd>
 </dl>
 </dd></dl>

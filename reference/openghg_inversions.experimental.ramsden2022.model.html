@@ -33,7 +33,7 @@
     <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
     <link rel="stylesheet" type="text/css" href="../_static/jupyter-sphinx.css" />
     <link rel="stylesheet" type="text/css" href="../_static/thebelab.css" />
-    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=f8ac5af1" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=5f08cb77" />
   
   <!-- So that users can add custom icons -->
   <script defer src="../_static/scripts/fontawesome.js?digest=cb8930eaaf36d9849b67"></script>
@@ -159,8 +159,8 @@
 
 
 <li class="nav-item current active">
-  <a class="nav-link nav-internal" href="modules.html">
-    openghg_inversions
+  <a class="nav-link nav-internal" href="index.html">
+    API reference
   </a>
 </li>
 
@@ -266,8 +266,8 @@
 
 
 <li class="nav-item current active">
-  <a class="nav-link nav-internal" href="modules.html">
-    openghg_inversions
+  <a class="nav-link nav-internal" href="index.html">
+    API reference
   </a>
 </li>
 
@@ -464,7 +464,7 @@
       </a>
     </li>
     
-    <li class="breadcrumb-item"><a href="modules.html" class="nav-link">openghg_inversions</a></li>
+    <li class="breadcrumb-item"><a href="index.html" class="nav-link">API reference</a></li>
     
     
     <li class="breadcrumb-item"><a href="openghg_inversions.html" class="nav-link">openghg_inversions</a></li>
@@ -514,110 +514,18 @@ multiplier when the sensitivity already includes an explicit reference ratio. Bo
 are optional and independent by gas. The caller is responsible for consistent
 units; this module performs no retrieval, conversion, or postprocessing.</p>
 <dl class="py class">
-<dt class="sig sig-object py" id="openghg_inversions.experimental.ramsden2022.model.RamsdenChannelSpec">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">openghg_inversions.experimental.ramsden2022.model.</span></span><span class="sig-name descname"><span class="pre">RamsdenChannelSpec</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">species</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">observation_units</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">sigma_prior</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><span class="pre">Any</span></a><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sigma_per_site</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sigma_frequency</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sigma_frequency_anchor</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/datetime.html#datetime.datetime" title="(in Python v3.14)"><span class="pre">datetime</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://numpy.org/doc/stable/reference/arrays.scalars.html#numpy.datetime64" title="(in NumPy v2.5)"><span class="pre">datetime64</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Timestamp</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_bc</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bc_prior</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><span class="pre">Any</span></a><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenChannelSpec" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
-<p>Likelihood and boundary settings for one observed gas.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>species</strong> – Gas name used to namespace model variables.</p></li>
-<li><p><strong>observation_units</strong> – Units shared by observations, measurement errors,
-minimum errors, forward-model outputs, and the model-error prior.
-Supported dataset unit attributes are checked by mol/mol scale;
-values are not converted.</p></li>
-<li><p><strong>sigma_prior</strong> – PyMC prior mapping accepted by
-<a class="reference internal" href="openghg_inversions.models.priors.html#openghg_inversions.models.priors.parse_prior" title="openghg_inversions.models.priors.parse_prior"><code class="xref py py-func docutils literal notranslate"><span class="pre">parse_prior()</span></code></a> for absolute
-model error. The prior is expanded by site and period, not
-multiplied by the modelled enhancement.</p></li>
-<li><p><strong>sigma_per_site</strong> – Whether model error is independent by observation site.</p></li>
-<li><p><strong>sigma_frequency</strong> – Optional pandas-compatible frequency for model-error
-periods.</p></li>
-<li><p><strong>sigma_frequency_anchor</strong> – Optional anchor for fixed-duration periods.</p></li>
-<li><p><strong>use_bc</strong> – Whether this channel has an independent boundary component.</p></li>
-<li><p><strong>bc_prior</strong> – Prior mapping for the state that scales this channel’s
-<code class="docutils literal notranslate"><span class="pre">H_bc</span></code> design.</p></li>
-</ul>
-</dd>
-</dl>
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.experimental.ramsden2022.model.RamsdenChannelSpec.bc_prior">
-<span class="sig-name descname"><span class="pre">bc_prior</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><span class="pre">Any</span></a><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenChannelSpec.bc_prior" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.experimental.ramsden2022.model.RamsdenChannelSpec.observation_units">
-<span class="sig-name descname"><span class="pre">observation_units</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><a class="headerlink" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenChannelSpec.observation_units" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.experimental.ramsden2022.model.RamsdenChannelSpec.sigma_frequency">
-<span class="sig-name descname"><span class="pre">sigma_frequency</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenChannelSpec.sigma_frequency" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.experimental.ramsden2022.model.RamsdenChannelSpec.sigma_frequency_anchor">
-<span class="sig-name descname"><span class="pre">sigma_frequency_anchor</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/datetime.html#datetime.datetime" title="(in Python v3.14)"><span class="pre">datetime</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://numpy.org/doc/stable/reference/arrays.scalars.html#numpy.datetime64" title="(in NumPy v2.5)"><span class="pre">datetime64</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Timestamp</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenChannelSpec.sigma_frequency_anchor" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.experimental.ramsden2022.model.RamsdenChannelSpec.sigma_per_site">
-<span class="sig-name descname"><span class="pre">sigma_per_site</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">True</span></span><a class="headerlink" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenChannelSpec.sigma_per_site" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.experimental.ramsden2022.model.RamsdenChannelSpec.sigma_prior">
-<span class="sig-name descname"><span class="pre">sigma_prior</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><span class="pre">Any</span></a><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenChannelSpec.sigma_prior" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.experimental.ramsden2022.model.RamsdenChannelSpec.species">
-<span class="sig-name descname"><span class="pre">species</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><a class="headerlink" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenChannelSpec.species" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.experimental.ramsden2022.model.RamsdenChannelSpec.use_bc">
-<span class="sig-name descname"><span class="pre">use_bc</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></span><a class="headerlink" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenChannelSpec.use_bc" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-</dd></dl>
-
-<dl class="py class">
-<dt class="sig sig-object py" id="openghg_inversions.experimental.ramsden2022.model.RamsdenModelSpec">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">openghg_inversions.experimental.ramsden2022.model.</span></span><span class="sig-name descname"><span class="pre">RamsdenModelSpec</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">primary</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenChannelSpec" title="openghg_inversions.experimental.ramsden2022.model.RamsdenChannelSpec"><span class="pre">RamsdenChannelSpec</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">tracer</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenChannelSpec" title="openghg_inversions.experimental.ramsden2022.model.RamsdenChannelSpec"><span class="pre">RamsdenChannelSpec</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">sectors</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenSectorSpec" title="openghg_inversions.experimental.ramsden2022.model.RamsdenSectorSpec"><span class="pre">RamsdenSectorSpec</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenModelSpec" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
-<p>Complete specification for the historical two-gas model.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>primary</strong> – Primary-gas likelihood settings.</p></li>
-<li><p><strong>tracer</strong> – Tracer-gas likelihood settings.</p></li>
-<li><p><strong>sectors</strong> – Ordered primary sectors. At least one sector must also emit
-the tracer. Sanitized channel names must be distinct, and sanitized
-sector names must be non-empty and unique.</p></li>
-</ul>
-</dd>
-</dl>
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.experimental.ramsden2022.model.RamsdenModelSpec.primary">
-<span class="sig-name descname"><span class="pre">primary</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenChannelSpec" title="openghg_inversions.experimental.ramsden2022.model.RamsdenChannelSpec"><span class="pre">RamsdenChannelSpec</span></a></span><a class="headerlink" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenModelSpec.primary" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.experimental.ramsden2022.model.RamsdenModelSpec.sectors">
-<span class="sig-name descname"><span class="pre">sectors</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenSectorSpec" title="openghg_inversions.experimental.ramsden2022.model.RamsdenSectorSpec"><span class="pre">RamsdenSectorSpec</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenModelSpec.sectors" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.experimental.ramsden2022.model.RamsdenModelSpec.tracer">
-<span class="sig-name descname"><span class="pre">tracer</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenChannelSpec" title="openghg_inversions.experimental.ramsden2022.model.RamsdenChannelSpec"><span class="pre">RamsdenChannelSpec</span></a></span><a class="headerlink" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenModelSpec.tracer" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-</dd></dl>
-
-<dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.experimental.ramsden2022.model.RamsdenPreparedInputs">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">openghg_inversions.experimental.ramsden2022.model.</span></span><span class="sig-name descname"><span class="pre">RamsdenPreparedInputs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">primary</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">tracer</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">tracer_design_reference_ratios</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.14)"><span class="pre">Mapping</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">primary_basis_functions</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.basis.basis_functions.html#openghg_inversions.basis.basis_functions.FluxWeightedBasis" title="openghg_inversions.basis.basis_functions.FluxWeightedBasis"><span class="pre">FluxWeightedBasis</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tracer_basis_functions</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.basis.basis_functions.html#openghg_inversions.basis.basis_functions.FluxWeightedBasis" title="openghg_inversions.basis.basis_functions.FluxWeightedBasis"><span class="pre">FluxWeightedBasis</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenPreparedInputs" title="Link to this definition">#</a></dt>
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">RamsdenPreparedInputs</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">primary</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">tracer</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">tracer_design_reference_ratios</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">primary_basis_functions</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">tracer_basis_functions</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenPreparedInputs" title="Link to this definition">#</a></dt>
 <dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
 <p>Canonical primary-gas and tracer inputs for one joint inversion.</p>
 <p>Each dataset requires <code class="docutils literal notranslate"><span class="pre">H</span></code>, <code class="docutils literal notranslate"><span class="pre">mf</span></code>, <code class="docutils literal notranslate"><span class="pre">mf_error</span></code>, <code class="docutils literal notranslate"><span class="pre">min_error</span></code>, and
@@ -628,119 +536,105 @@ coordinates and, for positional numeric labels, retained basis objects.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>primary</strong> – Canonical RHIME-style dataset for the primary gas.</p></li>
-<li><p><strong>tracer</strong> – Canonical RHIME-style dataset for the tracer gas. Its <code class="docutils literal notranslate"><span class="pre">H</span></code>
+<li><p><strong>primary</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><em>Dataset</em></a>) – Canonical RHIME-style dataset for the primary gas.</p></li>
+<li><p><strong>tracer</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><em>Dataset</em></a>) – Canonical RHIME-style dataset for the tracer gas. Its <code class="docutils literal notranslate"><span class="pre">H</span></code>
 matrix must use the same labelled state layout as <code class="docutils literal notranslate"><span class="pre">primary.H</span></code>.</p></li>
-<li><p><strong>tracer_design_reference_ratios</strong> – Reference ratio already included in
+<li><p><strong>tracer_design_reference_ratios</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.14)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a><em> | </em><em>None</em><em>]</em>) – Reference ratio already included in
 each tracer <code class="docutils literal notranslate"><span class="pre">H</span></code> source, keyed by tracer source label. Use
 <code class="docutils literal notranslate"><span class="pre">None</span></code> for a ratio-free design. These declarations are checked
 against each sector specification to prevent applying a ratio
 twice or omitting it.</p></li>
-<li><p><strong>primary_basis_functions</strong> – Retained basis used to construct <code class="docutils literal notranslate"><span class="pre">primary.H</span></code>.
+<li><p><strong>primary_basis_functions</strong> (<a class="reference internal" href="openghg_inversions.basis.basis_functions.html#openghg_inversions.basis.basis_functions.FluxWeightedBasis" title="openghg_inversions.basis.basis_functions.FluxWeightedBasis"><em>FluxWeightedBasis</em></a><em> | </em><em>None</em>) – Retained basis used to construct <code class="docutils literal notranslate"><span class="pre">primary.H</span></code>.
 Required together with <code class="docutils literal notranslate"><span class="pre">tracer_basis_functions</span></code> when state
 labels are positional numbers.</p></li>
-<li><p><strong>tracer_basis_functions</strong> – Retained basis used to construct <code class="docutils literal notranslate"><span class="pre">tracer.H</span></code>.
+<li><p><strong>tracer_basis_functions</strong> (<a class="reference internal" href="openghg_inversions.basis.basis_functions.html#openghg_inversions.basis.basis_functions.FluxWeightedBasis" title="openghg_inversions.basis.basis_functions.FluxWeightedBasis"><em>FluxWeightedBasis</em></a><em> | </em><em>None</em>) – Retained basis used to construct <code class="docutils literal notranslate"><span class="pre">tracer.H</span></code>.
 Its source-specific spatial map must equal the primary map for
 every coupled sector.</p></li>
 </ul>
 </dd>
 </dl>
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.experimental.ramsden2022.model.RamsdenPreparedInputs.primary">
-<span class="sig-name descname"><span class="pre">primary</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span><a class="headerlink" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenPreparedInputs.primary" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.experimental.ramsden2022.model.RamsdenPreparedInputs.primary_basis_functions">
-<span class="sig-name descname"><span class="pre">primary_basis_functions</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="openghg_inversions.basis.basis_functions.html#openghg_inversions.basis.basis_functions.FluxWeightedBasis" title="openghg_inversions.basis.basis_functions.FluxWeightedBasis"><span class="pre">FluxWeightedBasis</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenPreparedInputs.primary_basis_functions" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.experimental.ramsden2022.model.RamsdenPreparedInputs.tracer">
-<span class="sig-name descname"><span class="pre">tracer</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span><a class="headerlink" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenPreparedInputs.tracer" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.experimental.ramsden2022.model.RamsdenPreparedInputs.tracer_basis_functions">
-<span class="sig-name descname"><span class="pre">tracer_basis_functions</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="openghg_inversions.basis.basis_functions.html#openghg_inversions.basis.basis_functions.FluxWeightedBasis" title="openghg_inversions.basis.basis_functions.FluxWeightedBasis"><span class="pre">FluxWeightedBasis</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenPreparedInputs.tracer_basis_functions" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.experimental.ramsden2022.model.RamsdenPreparedInputs.tracer_design_reference_ratios">
-<span class="sig-name descname"><span class="pre">tracer_design_reference_ratios</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.14)"><span class="pre">Mapping</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenPreparedInputs.tracer_design_reference_ratios" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
 </dd></dl>
 
 <dl class="py class">
-<dt class="sig sig-object py" id="openghg_inversions.experimental.ramsden2022.model.RamsdenResult">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">openghg_inversions.experimental.ramsden2022.model.</span></span><span class="sig-name descname"><span class="pre">RamsdenResult</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">prepared_inputs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenPreparedInputs" title="openghg_inversions.experimental.ramsden2022.model.RamsdenPreparedInputs"><span class="pre">RamsdenPreparedInputs</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">model_spec</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenModelSpec" title="openghg_inversions.experimental.ramsden2022.model.RamsdenModelSpec"><span class="pre">RamsdenModelSpec</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://www.pymc.io/projects/docs/en/stable/api/model/generated/pymc.model.core.Model.html#pymc.model.core.Model" title="(in PyMC v6.3.2)"><span class="pre">Model</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">idata</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">InferenceData</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sampler</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.rhime.sampling.html#openghg_inversions.rhime.sampling.RhimeSampler" title="openghg_inversions.rhime.sampling.RhimeSampler"><span class="pre">RhimeSampler</span></a></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenResult" title="Link to this definition">#</a></dt>
+<dt class="sig sig-object py" id="openghg_inversions.experimental.ramsden2022.model.RamsdenChannelSpec">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">RamsdenChannelSpec</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">species</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">observation_units</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">sigma_prior</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">sigma_per_site</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">sigma_frequency</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">sigma_frequency_anchor</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">use_bc</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">bc_prior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenChannelSpec" title="Link to this definition">#</a></dt>
 <dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
-<p>Result returned by <a class="reference internal" href="#openghg_inversions.experimental.ramsden2022.model.run_ramsden_from_prepared_inputs" title="openghg_inversions.experimental.ramsden2022.model.run_ramsden_from_prepared_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">run_ramsden_from_prepared_inputs()</span></code></a>.</p>
+<p>Likelihood and boundary settings for one observed gas.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>prepared_inputs</strong> – Labelled inputs consumed by the model.</p></li>
-<li><p><strong>model_spec</strong> – Historical model specification.</p></li>
-<li><p><strong>model</strong> – Built PyMC model.</p></li>
-<li><p><strong>idata</strong> – Joint inference data preserving shared-state/ratio covariance
-and the two namespaced likelihood and predictive variables.</p></li>
-<li><p><strong>sampler</strong> – Modern RHIME sampler used for the run.</p></li>
+<li><p><strong>species</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Gas name used to namespace model variables.</p></li>
+<li><p><strong>observation_units</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Units shared by observations, measurement errors,
+minimum errors, forward-model outputs, and the model-error prior.
+Supported dataset unit attributes are checked by mol/mol scale;
+values are not converted.</p></li>
+<li><p><strong>sigma_prior</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><em>Any</em></a><em>]</em>) – PyMC prior mapping accepted by
+<a class="reference internal" href="openghg_inversions.models.priors.html#openghg_inversions.models.priors.parse_prior" title="openghg_inversions.models.priors.parse_prior"><code class="xref py py-func docutils literal notranslate"><span class="pre">parse_prior()</span></code></a> for absolute
+model error. The prior is expanded by site and period, not
+multiplied by the modelled enhancement.</p></li>
+<li><p><strong>sigma_per_site</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – Whether model error is independent by observation site.</p></li>
+<li><p><strong>sigma_frequency</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Optional pandas-compatible frequency for model-error
+periods.</p></li>
+<li><p><strong>sigma_frequency_anchor</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/datetime.html#datetime.datetime" title="(in Python v3.14)"><em>datetime</em></a><em> | </em><a class="reference external" href="https://numpy.org/doc/stable/reference/arrays.scalars.html#numpy.datetime64" title="(in NumPy v2.5)"><em>datetime64</em></a><em> | </em><em>Timestamp</em><em> | </em><em>None</em>) – Optional anchor for fixed-duration periods.</p></li>
+<li><p><strong>use_bc</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – Whether this channel has an independent boundary component.</p></li>
+<li><p><strong>bc_prior</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Prior mapping for the state that scales this channel’s
+<code class="docutils literal notranslate"><span class="pre">H_bc</span></code> design.</p></li>
 </ul>
 </dd>
 </dl>
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.experimental.ramsden2022.model.RamsdenResult.idata">
-<span class="sig-name descname"><span class="pre">idata</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">InferenceData</span></span><a class="headerlink" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenResult.idata" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.experimental.ramsden2022.model.RamsdenResult.model">
-<span class="sig-name descname"><span class="pre">model</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://www.pymc.io/projects/docs/en/stable/api/model/generated/pymc.model.core.Model.html#pymc.model.core.Model" title="(in PyMC v6.3.2)"><span class="pre">Model</span></a></span><a class="headerlink" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenResult.model" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.experimental.ramsden2022.model.RamsdenResult.model_spec">
-<span class="sig-name descname"><span class="pre">model_spec</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenModelSpec" title="openghg_inversions.experimental.ramsden2022.model.RamsdenModelSpec"><span class="pre">RamsdenModelSpec</span></a></span><a class="headerlink" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenResult.model_spec" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.experimental.ramsden2022.model.RamsdenResult.prepared_inputs">
-<span class="sig-name descname"><span class="pre">prepared_inputs</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenPreparedInputs" title="openghg_inversions.experimental.ramsden2022.model.RamsdenPreparedInputs"><span class="pre">RamsdenPreparedInputs</span></a></span><a class="headerlink" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenResult.prepared_inputs" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.experimental.ramsden2022.model.RamsdenResult.sampler">
-<span class="sig-name descname"><span class="pre">sampler</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="openghg_inversions.rhime.sampling.html#openghg_inversions.rhime.sampling.RhimeSampler" title="openghg_inversions.rhime.sampling.RhimeSampler"><span class="pre">RhimeSampler</span></a></span><a class="headerlink" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenResult.sampler" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
 </dd></dl>
 
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.experimental.ramsden2022.model.RamsdenSectorSpec">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">openghg_inversions.experimental.ramsden2022.model.</span></span><span class="sig-name descname"><span class="pre">RamsdenSectorSpec</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">primary_flux_source</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">x_prior</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><span class="pre">Any</span></a><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tracer_flux_source</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ratio_prior</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><span class="pre">Any</span></a><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fixed_ratio</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ratio_resolution</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><span class="pre">Literal</span></a><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'scalar'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'spatial'</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'spatial'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">reference_ratio</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenSectorSpec" title="Link to this definition">#</a></dt>
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">RamsdenSectorSpec</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">primary_flux_source</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">x_prior</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">tracer_flux_source</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">ratio_prior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">fixed_ratio</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">ratio_resolution</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'spatial'</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">reference_ratio</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenSectorSpec" title="Link to this definition">#</a></dt>
 <dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
 <p>Shared primary-gas state and optional tracer coupling for one sector.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>name</strong> – Semantic sector name.</p></li>
-<li><p><strong>primary_flux_source</strong> – Source-provenance label selected from
+<li><p><strong>name</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Semantic sector name.</p></li>
+<li><p><strong>primary_flux_source</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Source-provenance label selected from
 <code class="docutils literal notranslate"><span class="pre">primary.H</span></code>.</p></li>
-<li><p><strong>x_prior</strong> – Prior mapping for the primary-gas scaling state. It must
+<li><p><strong>x_prior</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><em>Any</em></a><em>]</em>) – Prior mapping for the primary-gas scaling state. It must
 broadcast to the selected state dimension.</p></li>
-<li><p><strong>tracer_flux_source</strong> – Source-provenance label selected from <code class="docutils literal notranslate"><span class="pre">tracer.H</span></code>.
+<li><p><strong>tracer_flux_source</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Source-provenance label selected from <code class="docutils literal notranslate"><span class="pre">tracer.H</span></code>.
 <code class="docutils literal notranslate"><span class="pre">None</span></code> means this sector contributes no tracer, as for the
 non-fossil methane sector in Ramsden et al. (2022).</p></li>
-<li><p><strong>ratio_prior</strong> – Prior for a sampled direct emission ratio or historical
+<li><p><strong>ratio_prior</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Prior for a sampled direct emission ratio or historical
 ratio multiplier. Exactly one of <code class="docutils literal notranslate"><span class="pre">ratio_prior</span></code> and
 <code class="docutils literal notranslate"><span class="pre">fixed_ratio</span></code> is required for a tracer-emitting sector. The
 distribution must have non-negative support.</p></li>
-<li><p><strong>fixed_ratio</strong> – Fixed direct emission ratio or historical multiplier.</p></li>
-<li><p><strong>ratio_resolution</strong> – <code class="docutils literal notranslate"><span class="pre">&quot;spatial&quot;</span></code> creates one sampled/fixed ratio value
+<li><p><strong>fixed_ratio</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a><em> | </em><em>None</em>) – Fixed direct emission ratio or historical multiplier.</p></li>
+<li><p><strong>ratio_resolution</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><em>Literal</em></a><em>[</em><em>'scalar'</em><em>, </em><em>'spatial'</em><em>]</em>) – <code class="docutils literal notranslate"><span class="pre">&quot;spatial&quot;</span></code> creates one sampled/fixed ratio value
 per state element, so its prior must broadcast to that state;
 <code class="docutils literal notranslate"><span class="pre">&quot;scalar&quot;</span></code> shares one value across the sector.</p></li>
-<li><p><strong>reference_ratio</strong> – <code class="docutils literal notranslate"><span class="pre">None</span></code> selects the paper’s direct-ratio contract:
+<li><p><strong>reference_ratio</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a><em> | </em><em>None</em>) – <code class="docutils literal notranslate"><span class="pre">None</span></code> selects the paper’s direct-ratio contract:
 <code class="docutils literal notranslate"><span class="pre">tracer.H</span></code> must be ratio-free and the ratio parameter is applied
 directly. A positive value selects historical compatibility:
 <code class="docutils literal notranslate"><span class="pre">tracer.H</span></code> must already include this reference ratio, the sampled
@@ -751,61 +645,58 @@ molar ratios (moles tracer per mole primary).</p></li>
 </ul>
 </dd>
 </dl>
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.experimental.ramsden2022.model.RamsdenSectorSpec.fixed_ratio">
-<span class="sig-name descname"><span class="pre">fixed_ratio</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenSectorSpec.fixed_ratio" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
+</dd></dl>
 
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.experimental.ramsden2022.model.RamsdenSectorSpec.name">
-<span class="sig-name descname"><span class="pre">name</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><a class="headerlink" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenSectorSpec.name" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
+<dl class="py class">
+<dt class="sig sig-object py" id="openghg_inversions.experimental.ramsden2022.model.RamsdenModelSpec">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">RamsdenModelSpec</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">primary</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tracer</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sectors</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenModelSpec" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>Complete specification for the historical two-gas model.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>primary</strong> (<a class="reference internal" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenChannelSpec" title="openghg_inversions.experimental.ramsden2022.model.RamsdenChannelSpec"><em>RamsdenChannelSpec</em></a>) – Primary-gas likelihood settings.</p></li>
+<li><p><strong>tracer</strong> (<a class="reference internal" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenChannelSpec" title="openghg_inversions.experimental.ramsden2022.model.RamsdenChannelSpec"><em>RamsdenChannelSpec</em></a>) – Tracer-gas likelihood settings.</p></li>
+<li><p><strong>sectors</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><em>tuple</em></a><em>[</em><a class="reference internal" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenSectorSpec" title="openghg_inversions.experimental.ramsden2022.model.RamsdenSectorSpec"><em>RamsdenSectorSpec</em></a><em>, </em><em>...</em><em>]</em>) – Ordered primary sectors. At least one sector must also emit
+the tracer. Sanitized channel names must be distinct, and sanitized
+sector names must be non-empty and unique.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
 
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.experimental.ramsden2022.model.RamsdenSectorSpec.primary_flux_source">
-<span class="sig-name descname"><span class="pre">primary_flux_source</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><a class="headerlink" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenSectorSpec.primary_flux_source" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.experimental.ramsden2022.model.RamsdenSectorSpec.ratio_prior">
-<span class="sig-name descname"><span class="pre">ratio_prior</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><span class="pre">Any</span></a><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenSectorSpec.ratio_prior" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.experimental.ramsden2022.model.RamsdenSectorSpec.ratio_resolution">
-<span class="sig-name descname"><span class="pre">ratio_resolution</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><span class="pre">Literal</span></a><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'scalar'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'spatial'</span></span><span class="p"><span class="pre">]</span></span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'spatial'</span></span><a class="headerlink" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenSectorSpec.ratio_resolution" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.experimental.ramsden2022.model.RamsdenSectorSpec.reference_ratio">
-<span class="sig-name descname"><span class="pre">reference_ratio</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenSectorSpec.reference_ratio" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.experimental.ramsden2022.model.RamsdenSectorSpec.tracer_flux_source">
-<span class="sig-name descname"><span class="pre">tracer_flux_source</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenSectorSpec.tracer_flux_source" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.experimental.ramsden2022.model.RamsdenSectorSpec.x_prior">
-<span class="sig-name descname"><span class="pre">x_prior</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><span class="pre">Any</span></a><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenSectorSpec.x_prior" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
+<dl class="py class">
+<dt class="sig sig-object py" id="openghg_inversions.experimental.ramsden2022.model.RamsdenResult">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">RamsdenResult</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">prepared_inputs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model_spec</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">idata</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sampler</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenResult" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>Result returned by <a class="reference internal" href="#openghg_inversions.experimental.ramsden2022.model.run_ramsden_from_prepared_inputs" title="openghg_inversions.experimental.ramsden2022.model.run_ramsden_from_prepared_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">run_ramsden_from_prepared_inputs()</span></code></a>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>prepared_inputs</strong> (<a class="reference internal" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenPreparedInputs" title="openghg_inversions.experimental.ramsden2022.model.RamsdenPreparedInputs"><em>RamsdenPreparedInputs</em></a>) – Labelled inputs consumed by the model.</p></li>
+<li><p><strong>model_spec</strong> (<a class="reference internal" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenModelSpec" title="openghg_inversions.experimental.ramsden2022.model.RamsdenModelSpec"><em>RamsdenModelSpec</em></a>) – Historical model specification.</p></li>
+<li><p><strong>model</strong> (<a class="reference external" href="https://www.pymc.io/projects/docs/en/stable/api/model/generated/pymc.model.core.Model.html#pymc.model.core.Model" title="(in PyMC v6.3.2)"><em>Model</em></a>) – Built PyMC model.</p></li>
+<li><p><strong>idata</strong> (<em>InferenceData</em>) – Joint inference data preserving shared-state/ratio covariance
+and the two namespaced likelihood and predictive variables.</p></li>
+<li><p><strong>sampler</strong> (<a class="reference internal" href="openghg_inversions.rhime.sampling.html#openghg_inversions.rhime.sampling.RhimeSampler" title="openghg_inversions.rhime.sampling.RhimeSampler"><em>RhimeSampler</em></a>) – Modern RHIME sampler used for the run.</p></li>
+</ul>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.experimental.ramsden2022.model.build_ramsden_model">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.experimental.ramsden2022.model.</span></span><span class="sig-name descname"><span class="pre">build_ramsden_model</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">prepared_inputs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenPreparedInputs" title="openghg_inversions.experimental.ramsden2022.model.RamsdenPreparedInputs"><span class="pre">RamsdenPreparedInputs</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">model_spec</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenModelSpec" title="openghg_inversions.experimental.ramsden2022.model.RamsdenModelSpec"><span class="pre">RamsdenModelSpec</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://www.pymc.io/projects/docs/en/stable/api/model/generated/pymc.model.core.Model.html#pymc.model.core.Model" title="(in PyMC v6.3.2)"><span class="pre">Model</span></a></span></span><a class="headerlink" href="#openghg_inversions.experimental.ramsden2022.model.build_ramsden_model" title="Link to this definition">#</a></dt>
+<span class="sig-name descname"><span class="pre">build_ramsden_model</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">prepared_inputs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model_spec</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.experimental.ramsden2022.model.build_ramsden_model" title="Link to this definition">#</a></dt>
 <dd><p>Build the historical Ramsden methane/ethane model with modern PyMC.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>prepared_inputs</strong> – Two canonical gas datasets. Each requires <code class="docutils literal notranslate"><span class="pre">H</span></code>,
+<li><p><strong>prepared_inputs</strong> (<a class="reference internal" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenPreparedInputs" title="openghg_inversions.experimental.ramsden2022.model.RamsdenPreparedInputs"><em>RamsdenPreparedInputs</em></a>) – Two canonical gas datasets. Each requires <code class="docutils literal notranslate"><span class="pre">H</span></code>,
 <code class="docutils literal notranslate"><span class="pre">mf</span></code>, <code class="docutils literal notranslate"><span class="pre">mf_error</span></code>, <code class="docutils literal notranslate"><span class="pre">min_error</span></code>, and <code class="docutils literal notranslate"><span class="pre">site_indicator</span></code> on
 <code class="docutils literal notranslate"><span class="pre">nmeasure</span></code>; <code class="docutils literal notranslate"><span class="pre">H_bc</span></code> is required for enabled boundary states.
 Observation coordinates may differ, but coupled sector state
 coordinates must match exactly.</p></li>
-<li><p><strong>model_spec</strong> – Shared-state, ratio, likelihood, unit, and boundary
+<li><p><strong>model_spec</strong> (<a class="reference internal" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenModelSpec" title="openghg_inversions.experimental.ramsden2022.model.RamsdenModelSpec"><em>RamsdenModelSpec</em></a>) – Shared-state, ratio, likelihood, unit, and boundary
 metadata. Direct ratios require ratio-free tracer sensitivities;
 reference-ratio mode requires tracer sensitivities that already include
 the declared reference ratio.</p></li>
@@ -819,6 +710,9 @@ the declared reference ratio.</p></li>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If model metadata, required input variables, source labels,
     or shared state coordinates are invalid.</p>
 </dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://www.pymc.io/projects/docs/en/stable/api/model/generated/pymc.model.core.Model.html#pymc.model.core.Model" title="(in PyMC v6.3.2)"><em>Model</em></a></p>
+</dd>
 </dl>
 <p class="rubric">Notes</p>
 <p>This function builds a PyMC graph only. It performs no data retrieval,
@@ -829,14 +723,14 @@ declared <code class="docutils literal notranslate"><span class="pre">observatio
 
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.experimental.ramsden2022.model.run_ramsden_from_prepared_inputs">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.experimental.ramsden2022.model.</span></span><span class="sig-name descname"><span class="pre">run_ramsden_from_prepared_inputs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">prepared_inputs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenPreparedInputs" title="openghg_inversions.experimental.ramsden2022.model.RamsdenPreparedInputs"><span class="pre">RamsdenPreparedInputs</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">model_spec</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenModelSpec" title="openghg_inversions.experimental.ramsden2022.model.RamsdenModelSpec"><span class="pre">RamsdenModelSpec</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">sampler</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.rhime.sampling.html#openghg_inversions.rhime.sampling.RhimeSampler" title="openghg_inversions.rhime.sampling.RhimeSampler"><span class="pre">RhimeSampler</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenResult" title="openghg_inversions.experimental.ramsden2022.model.RamsdenResult"><span class="pre">RamsdenResult</span></a></span></span><a class="headerlink" href="#openghg_inversions.experimental.ramsden2022.model.run_ramsden_from_prepared_inputs" title="Link to this definition">#</a></dt>
+<span class="sig-name descname"><span class="pre">run_ramsden_from_prepared_inputs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">prepared_inputs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model_spec</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sampler</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.experimental.ramsden2022.model.run_ramsden_from_prepared_inputs" title="Link to this definition">#</a></dt>
 <dd><p>Build and sample a historical two-gas model from canonical inputs.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>prepared_inputs</strong> – Canonical primary and tracer datasets.</p></li>
-<li><p><strong>model_spec</strong> – Historical model specification.</p></li>
-<li><p><strong>sampler</strong> – Modern RHIME sampling configuration controlling seeds,
+<li><p><strong>prepared_inputs</strong> (<a class="reference internal" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenPreparedInputs" title="openghg_inversions.experimental.ramsden2022.model.RamsdenPreparedInputs"><em>RamsdenPreparedInputs</em></a>) – Canonical primary and tracer datasets.</p></li>
+<li><p><strong>model_spec</strong> (<a class="reference internal" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenModelSpec" title="openghg_inversions.experimental.ramsden2022.model.RamsdenModelSpec"><em>RamsdenModelSpec</em></a>) – Historical model specification.</p></li>
+<li><p><strong>sampler</strong> (<a class="reference internal" href="openghg_inversions.rhime.sampling.html#openghg_inversions.rhime.sampling.RhimeSampler" title="openghg_inversions.rhime.sampling.RhimeSampler"><em>RhimeSampler</em></a><em> | </em><em>None</em>) – Modern RHIME sampling configuration controlling seeds,
 chains, draws, and predictive output. When omitted, the standard
 sampler is used with both namespaced gas observations included in
 posterior predictive sampling.</p></li>
@@ -847,6 +741,9 @@ posterior predictive sampling.</p></li>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If model metadata or prepared inputs are invalid.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenResult" title="openghg_inversions.experimental.ramsden2022.model.RamsdenResult"><em>RamsdenResult</em></a></p>
 </dd>
 </dl>
 <p class="rubric">Notes</p>
@@ -906,50 +803,11 @@ propagated.</p>
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenChannelSpec"><code class="docutils literal notranslate"><span class="pre">RamsdenChannelSpec</span></code></a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenChannelSpec.bc_prior"><code class="docutils literal notranslate"><span class="pre">RamsdenChannelSpec.bc_prior</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenChannelSpec.observation_units"><code class="docutils literal notranslate"><span class="pre">RamsdenChannelSpec.observation_units</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenChannelSpec.sigma_frequency"><code class="docutils literal notranslate"><span class="pre">RamsdenChannelSpec.sigma_frequency</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenChannelSpec.sigma_frequency_anchor"><code class="docutils literal notranslate"><span class="pre">RamsdenChannelSpec.sigma_frequency_anchor</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenChannelSpec.sigma_per_site"><code class="docutils literal notranslate"><span class="pre">RamsdenChannelSpec.sigma_per_site</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenChannelSpec.sigma_prior"><code class="docutils literal notranslate"><span class="pre">RamsdenChannelSpec.sigma_prior</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenChannelSpec.species"><code class="docutils literal notranslate"><span class="pre">RamsdenChannelSpec.species</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenChannelSpec.use_bc"><code class="docutils literal notranslate"><span class="pre">RamsdenChannelSpec.use_bc</span></code></a></li>
-</ul>
-</li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenModelSpec"><code class="docutils literal notranslate"><span class="pre">RamsdenModelSpec</span></code></a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenModelSpec.primary"><code class="docutils literal notranslate"><span class="pre">RamsdenModelSpec.primary</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenModelSpec.sectors"><code class="docutils literal notranslate"><span class="pre">RamsdenModelSpec.sectors</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenModelSpec.tracer"><code class="docutils literal notranslate"><span class="pre">RamsdenModelSpec.tracer</span></code></a></li>
-</ul>
-</li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenPreparedInputs"><code class="docutils literal notranslate"><span class="pre">RamsdenPreparedInputs</span></code></a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenPreparedInputs.primary"><code class="docutils literal notranslate"><span class="pre">RamsdenPreparedInputs.primary</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenPreparedInputs.primary_basis_functions"><code class="docutils literal notranslate"><span class="pre">RamsdenPreparedInputs.primary_basis_functions</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenPreparedInputs.tracer"><code class="docutils literal notranslate"><span class="pre">RamsdenPreparedInputs.tracer</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenPreparedInputs.tracer_basis_functions"><code class="docutils literal notranslate"><span class="pre">RamsdenPreparedInputs.tracer_basis_functions</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenPreparedInputs.tracer_design_reference_ratios"><code class="docutils literal notranslate"><span class="pre">RamsdenPreparedInputs.tracer_design_reference_ratios</span></code></a></li>
-</ul>
-</li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenResult"><code class="docutils literal notranslate"><span class="pre">RamsdenResult</span></code></a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenResult.idata"><code class="docutils literal notranslate"><span class="pre">RamsdenResult.idata</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenResult.model"><code class="docutils literal notranslate"><span class="pre">RamsdenResult.model</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenResult.model_spec"><code class="docutils literal notranslate"><span class="pre">RamsdenResult.model_spec</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenResult.prepared_inputs"><code class="docutils literal notranslate"><span class="pre">RamsdenResult.prepared_inputs</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenResult.sampler"><code class="docutils literal notranslate"><span class="pre">RamsdenResult.sampler</span></code></a></li>
-</ul>
-</li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenSectorSpec"><code class="docutils literal notranslate"><span class="pre">RamsdenSectorSpec</span></code></a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenSectorSpec.fixed_ratio"><code class="docutils literal notranslate"><span class="pre">RamsdenSectorSpec.fixed_ratio</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenSectorSpec.name"><code class="docutils literal notranslate"><span class="pre">RamsdenSectorSpec.name</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenSectorSpec.primary_flux_source"><code class="docutils literal notranslate"><span class="pre">RamsdenSectorSpec.primary_flux_source</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenSectorSpec.ratio_prior"><code class="docutils literal notranslate"><span class="pre">RamsdenSectorSpec.ratio_prior</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenSectorSpec.ratio_resolution"><code class="docutils literal notranslate"><span class="pre">RamsdenSectorSpec.ratio_resolution</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenSectorSpec.reference_ratio"><code class="docutils literal notranslate"><span class="pre">RamsdenSectorSpec.reference_ratio</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenSectorSpec.tracer_flux_source"><code class="docutils literal notranslate"><span class="pre">RamsdenSectorSpec.tracer_flux_source</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenSectorSpec.x_prior"><code class="docutils literal notranslate"><span class="pre">RamsdenSectorSpec.x_prior</span></code></a></li>
-</ul>
-</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenPreparedInputs"><code class="docutils literal notranslate"><span class="pre">RamsdenPreparedInputs</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenChannelSpec"><code class="docutils literal notranslate"><span class="pre">RamsdenChannelSpec</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenSectorSpec"><code class="docutils literal notranslate"><span class="pre">RamsdenSectorSpec</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenModelSpec"><code class="docutils literal notranslate"><span class="pre">RamsdenModelSpec</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.experimental.ramsden2022.model.RamsdenResult"><code class="docutils literal notranslate"><span class="pre">RamsdenResult</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.experimental.ramsden2022.model.build_ramsden_model"><code class="docutils literal notranslate"><span class="pre">build_ramsden_model()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.experimental.ramsden2022.model.run_ramsden_from_prepared_inputs"><code class="docutils literal notranslate"><span class="pre">run_ramsden_from_prepared_inputs()</span></code></a></li>
 </ul>

@@ -33,7 +33,7 @@
     <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
     <link rel="stylesheet" type="text/css" href="../_static/jupyter-sphinx.css" />
     <link rel="stylesheet" type="text/css" href="../_static/thebelab.css" />
-    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=f8ac5af1" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=5f08cb77" />
   
   <!-- So that users can add custom icons -->
   <script defer src="../_static/scripts/fontawesome.js?digest=cb8930eaaf36d9849b67"></script>
@@ -159,8 +159,8 @@
 
 
 <li class="nav-item current active">
-  <a class="nav-link nav-internal" href="modules.html">
-    openghg_inversions
+  <a class="nav-link nav-internal" href="index.html">
+    API reference
   </a>
 </li>
 
@@ -266,8 +266,8 @@
 
 
 <li class="nav-item current active">
-  <a class="nav-link nav-internal" href="modules.html">
-    openghg_inversions
+  <a class="nav-link nav-internal" href="index.html">
+    API reference
   </a>
 </li>
 
@@ -464,7 +464,7 @@
       </a>
     </li>
     
-    <li class="breadcrumb-item"><a href="modules.html" class="nav-link">openghg_inversions</a></li>
+    <li class="breadcrumb-item"><a href="index.html" class="nav-link">API reference</a></li>
     
     
     <li class="breadcrumb-item"><a href="openghg_inversions.html" class="nav-link">openghg_inversions</a></li>
@@ -500,37 +500,11 @@ following stock state NUTS step holds that quadratic fixed, so its leapfrog
 evaluations do not refactor the observation covariance.</p>
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">openghg_inversions.rhime.cached_sigma.</span></span><span class="sig-name descname"><span class="pre">PymcCachedSigmaNutsStep</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep" title="Link to this definition">#</a></dt>
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">PymcCachedSigmaNutsStep</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep" title="Link to this definition">#</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">BlockedStep</span></code></p>
 <p>Sample site amplitudes conditional on the current completed model mean.</p>
-<dl class="py method">
-<dt class="sig sig-object py" id="openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.competence">
-<span class="property"><span class="k"><span class="pre">static</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">competence</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">var</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><span class="pre">Any</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">has_grad</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><span class="pre">Literal</span></a><span class="p"><span class="pre">[</span></span><span class="pre">Competence.INCOMPATIBLE</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.competence" title="Link to this definition">#</a></dt>
-<dd><p>Never claim variables through PyMC’s automatic assignment.</p>
-</dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.default_blocked">
-<span class="sig-name descname"><span class="pre">default_blocked</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">True</span></span><a class="headerlink" href="#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.default_blocked" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.name">
-<span class="sig-name descname"><span class="pre">name</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'cached_sigma_nuts'</span></span><a class="headerlink" href="#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.name" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.reset_tuning">
-<span class="sig-name descname"><span class="pre">reset_tuning</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span></span><a class="headerlink" href="#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.reset_tuning" title="Link to this definition">#</a></dt>
-<dd><p>Reset delegated NUTS adaptation for a fresh chain.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.set_rng">
-<span class="sig-name descname"><span class="pre">set_rng</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">rng</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.14)"><span class="pre">Sequence</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><span class="pre">ndarray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://numpy.org/doc/stable/reference/random/generator.html#numpy.random.Generator" title="(in NumPy v2.5)"><span class="pre">Generator</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://numpy.org/doc/stable/reference/random/bit_generators/generated/numpy.random.BitGenerator.html#numpy.random.BitGenerator" title="(in NumPy v2.5)"><span class="pre">BitGenerator</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span></span><a class="headerlink" href="#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.set_rng" title="Link to this definition">#</a></dt>
-<dd><p>Propagate PyMC’s per-chain RNG into the delegated stock NUTS step.</p>
-</dd></dl>
-
+<dl class="field-list simple">
+</dl>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.stats_dtypes_shapes">
 <span class="sig-name descname"><span class="pre">stats_dtypes_shapes</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#type" title="(in Python v3.14)"><span class="pre">type</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.dtype.html#numpy.dtype" title="(in NumPy v2.5)"><span class="pre">dtype</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.14)"><span class="pre">Sequence</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">{'cache_refreshes':</span> <span class="pre">(&lt;class</span> <span class="pre">'int'&gt;,</span> <span class="pre">[]),</span> <span class="pre">'sigma_accept_probability':</span> <span class="pre">(&lt;class</span> <span class="pre">'float'&gt;,</span> <span class="pre">[]),</span> <span class="pre">'sigma_nuts_divergences':</span> <span class="pre">(&lt;class</span> <span class="pre">'int'&gt;,</span> <span class="pre">[]),</span> <span class="pre">'sigma_nuts_diverging':</span> <span class="pre">(&lt;class</span> <span class="pre">'bool'&gt;,</span> <span class="pre">[]),</span> <span class="pre">'sigma_nuts_energy_error':</span> <span class="pre">(&lt;class</span> <span class="pre">'float'&gt;,</span> <span class="pre">[]),</span> <span class="pre">'sigma_nuts_index_in_trajectory':</span> <span class="pre">(&lt;class</span> <span class="pre">'int'&gt;,</span> <span class="pre">[]),</span> <span class="pre">'sigma_nuts_max_energy_error':</span> <span class="pre">(&lt;class</span> <span class="pre">'float'&gt;,</span> <span class="pre">[]),</span> <span class="pre">'sigma_nuts_reached_max_treedepth':</span> <span class="pre">(&lt;class</span> <span class="pre">'bool'&gt;,</span> <span class="pre">[]),</span> <span class="pre">'sigma_nuts_tree_depth':</span> <span class="pre">(&lt;class</span> <span class="pre">'int'&gt;,</span> <span class="pre">[]),</span> <span class="pre">'sigma_nuts_tree_steps':</span> <span class="pre">(&lt;class</span> <span class="pre">'int'&gt;,</span> <span class="pre">[]),</span> <span class="pre">'sigma_proposal_scale':</span> <span class="pre">(&lt;class</span> <span class="pre">'float'&gt;,</span> <span class="pre">[]),</span> <span class="pre">'tune':</span> <span class="pre">(&lt;class</span> <span class="pre">'bool'&gt;,</span> <span class="pre">[])}</span></span><a class="headerlink" href="#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.stats_dtypes_shapes" title="Link to this definition">#</a></dt>
@@ -544,29 +518,59 @@ evaluations do not refactor the observation covariance.</p>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.step">
-<span class="sig-name descname"><span class="pre">step</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">point</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><span class="pre">ndarray</span></a><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><span class="pre">ndarray</span></a><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.14)"><span class="pre">list</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><span class="pre">Any</span></a><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.step" title="Link to this definition">#</a></dt>
+<span class="sig-name descname"><span class="pre">step</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">point</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.step" title="Link to this definition">#</a></dt>
 <dd><p>Delegate the conditional trajectory and refresh only when changed.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)">tuple</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)">str</a>, <a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a>], <a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.14)">list</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)">str</a>, <a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><em>Any</em></a>]]]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.set_rng">
+<span class="sig-name descname"><span class="pre">set_rng</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">rng</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.set_rng" title="Link to this definition">#</a></dt>
+<dd><p>Propagate PyMC’s per-chain RNG into the delegated stock NUTS step.</p>
+<dl class="field-list simple">
+</dl>
 </dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.stop_tuning">
-<span class="sig-name descname"><span class="pre">stop_tuning</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span></span><a class="headerlink" href="#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.stop_tuning" title="Link to this definition">#</a></dt>
+<span class="sig-name descname"><span class="pre">stop_tuning</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.stop_tuning" title="Link to this definition">#</a></dt>
 <dd><p>Freeze delegated step-size and mass-matrix adaptation.</p>
+<dl class="field-list simple">
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.reset_tuning">
+<span class="sig-name descname"><span class="pre">reset_tuning</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.reset_tuning" title="Link to this definition">#</a></dt>
+<dd><p>Reset delegated NUTS adaptation for a fresh chain.</p>
+<dl class="field-list simple">
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.competence">
+<span class="property"><span class="k"><span class="pre">static</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">competence</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">var</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">has_grad</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.competence" title="Link to this definition">#</a></dt>
+<dd><p>Never claim variables through PyMC’s automatic assignment.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><em>Literal</em></a>[Competence.INCOMPATIBLE]</p>
+</dd>
+</dl>
 </dd></dl>
 
 </dd></dl>
 
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.cached_sigma.PytensorMarginalQuadraticCache">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">openghg_inversions.rhime.cached_sigma.</span></span><span class="sig-name descname"><span class="pre">PytensorMarginalQuadraticCache</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">initial</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.models.cached_sigma.html#openghg_inversions.models.cached_sigma.MarginalQuadraticCache" title="openghg_inversions.models.cached_sigma.MarginalQuadraticCache"><span class="pre">MarginalQuadraticCache</span></a></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.cached_sigma.PytensorMarginalQuadraticCache" title="Link to this definition">#</a></dt>
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">PytensorMarginalQuadraticCache</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">initial</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.cached_sigma.PytensorMarginalQuadraticCache" title="Link to this definition">#</a></dt>
 <dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
 <p>Mutable coefficients read by the state-only PyTensor graph.</p>
-<dl class="py method">
-<dt class="sig sig-object py" id="openghg_inversions.rhime.cached_sigma.PytensorMarginalQuadraticCache.log_likelihood">
-<span class="sig-name descname"><span class="pre">log_likelihood</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">coefficients</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">TensorVariable</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">TensorVariable</span></span></span><a class="headerlink" href="#openghg_inversions.rhime.cached_sigma.PytensorMarginalQuadraticCache.log_likelihood" title="Link to this definition">#</a></dt>
-<dd><p>Return the normalized cached quadratic as a PyTensor scalar.</p>
-</dd></dl>
-
+<dl class="field-list simple">
+</dl>
 <dl class="py property">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.cached_sigma.PytensorMarginalQuadraticCache.n_state">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">n_state</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><a class="headerlink" href="#openghg_inversions.rhime.cached_sigma.PytensorMarginalQuadraticCache.n_state" title="Link to this definition">#</a></dt>
@@ -574,21 +578,57 @@ evaluations do not refactor the observation covariance.</p>
 </dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.cached_sigma.PytensorMarginalQuadraticCache.log_likelihood">
+<span class="sig-name descname"><span class="pre">log_likelihood</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">coefficients</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.cached_sigma.PytensorMarginalQuadraticCache.log_likelihood" title="Link to this definition">#</a></dt>
+<dd><p>Return the normalized cached quadratic as a PyTensor scalar.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><em>TensorVariable</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.cached_sigma.PytensorMarginalQuadraticCache.update">
-<span class="sig-name descname"><span class="pre">update</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cache</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.models.cached_sigma.html#openghg_inversions.models.cached_sigma.MarginalQuadraticCache" title="openghg_inversions.models.cached_sigma.MarginalQuadraticCache"><span class="pre">MarginalQuadraticCache</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span></span><a class="headerlink" href="#openghg_inversions.rhime.cached_sigma.PytensorMarginalQuadraticCache.update" title="Link to this definition">#</a></dt>
+<span class="sig-name descname"><span class="pre">update</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cache</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.cached_sigma.PytensorMarginalQuadraticCache.update" title="Link to this definition">#</a></dt>
 <dd><p>Install the supplied state-likelihood quadratic between compound steps.</p>
+<dl class="field-list simple">
+</dl>
 </dd></dl>
 
 </dd></dl>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.cached_sigma.make_cached_sigma_compound_step">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.rhime.cached_sigma.</span></span><span class="sig-name descname"><span class="pre">make_cached_sigma_compound_step</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://www.pymc.io/projects/docs/en/stable/api/model/generated/pymc.model.core.Model.html#pymc.model.core.Model" title="(in PyMC v6.3.2)"><span class="pre">Model</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">sigma</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">TensorVariable</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">states</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.14)"><span class="pre">Sequence</span></a><span class="p"><span class="pre">[</span></span><span class="pre">TensorVariable</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">modelled_mean</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">TensorVariable</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.models.cached_sigma.html#openghg_inversions.models.cached_sigma.FixedOuCachedSigmaTarget" title="openghg_inversions.models.cached_sigma.FixedOuCachedSigmaTarget"><span class="pre">FixedOuCachedSigmaTarget</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">shared_cache</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#openghg_inversions.rhime.cached_sigma.PytensorMarginalQuadraticCache" title="openghg_inversions.rhime.cached_sigma.PytensorMarginalQuadraticCache"><span class="pre">PytensorMarginalQuadraticCache</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">initial_cache</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.models.cached_sigma.html#openghg_inversions.models.cached_sigma.MarginalQuadraticCache" title="openghg_inversions.models.cached_sigma.MarginalQuadraticCache"><span class="pre">MarginalQuadraticCache</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">prior_scale</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">initial_point</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><span class="pre">ndarray</span></a><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sigma_target_accept</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.8</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">state_target_accept</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.9</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rng</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.14)"><span class="pre">Sequence</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><span class="pre">ndarray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://numpy.org/doc/stable/reference/random/generator.html#numpy.random.Generator" title="(in NumPy v2.5)"><span class="pre">Generator</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://numpy.org/doc/stable/reference/random/bit_generators/generated/numpy.random.BitGenerator.html#numpy.random.BitGenerator" title="(in NumPy v2.5)"><span class="pre">BitGenerator</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://www.pymc.io/projects/docs/en/stable/api/generated/pymc.step_methods.CompoundStep.html#pymc.step_methods.CompoundStep" title="(in PyMC v6.3.2)"><span class="pre">CompoundStep</span></a></span></span><a class="headerlink" href="#openghg_inversions.rhime.cached_sigma.make_cached_sigma_compound_step" title="Link to this definition">#</a></dt>
+<span class="sig-name descname"><span class="pre">make_cached_sigma_compound_step</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">sigma</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">states</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">modelled_mean</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">target</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">shared_cache</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">initial_cache</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">prior_scale</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">initial_point</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">sigma_target_accept</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.8</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">state_target_accept</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.9</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">rng</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.cached_sigma.make_cached_sigma_compound_step" title="Link to this definition">#</a></dt>
 <dd><p>Construct the required sigma-then-state stock PyMC compound sweep.</p>
 <p>At the start of each sweep, the sigma step evaluates <code class="docutils literal notranslate"><span class="pre">modelled_mean</span></code> at
 the current state point. It then updates sigma and refreshes the quadratic
 for the value returned by that transition before the following stock NUTS
 step jointly updates <code class="docutils literal notranslate"><span class="pre">states</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://www.pymc.io/projects/docs/en/stable/api/generated/pymc.step_methods.CompoundStep.html#pymc.step_methods.CompoundStep" title="(in PyMC v6.3.2)"><em>CompoundStep</em></a></p>
+</dd>
+</dl>
 </dd></dl>
 
 </section>
@@ -641,19 +681,17 @@ step jointly updates <code class="docutils literal notranslate"><span class="pre
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep"><code class="docutils literal notranslate"><span class="pre">PymcCachedSigmaNutsStep</span></code></a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.competence"><code class="docutils literal notranslate"><span class="pre">PymcCachedSigmaNutsStep.competence()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.default_blocked"><code class="docutils literal notranslate"><span class="pre">PymcCachedSigmaNutsStep.default_blocked</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.name"><code class="docutils literal notranslate"><span class="pre">PymcCachedSigmaNutsStep.name</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.reset_tuning"><code class="docutils literal notranslate"><span class="pre">PymcCachedSigmaNutsStep.reset_tuning()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.set_rng"><code class="docutils literal notranslate"><span class="pre">PymcCachedSigmaNutsStep.set_rng()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.stats_dtypes_shapes"><code class="docutils literal notranslate"><span class="pre">PymcCachedSigmaNutsStep.stats_dtypes_shapes</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.step"><code class="docutils literal notranslate"><span class="pre">PymcCachedSigmaNutsStep.step()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.set_rng"><code class="docutils literal notranslate"><span class="pre">PymcCachedSigmaNutsStep.set_rng()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.stop_tuning"><code class="docutils literal notranslate"><span class="pre">PymcCachedSigmaNutsStep.stop_tuning()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.reset_tuning"><code class="docutils literal notranslate"><span class="pre">PymcCachedSigmaNutsStep.reset_tuning()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.competence"><code class="docutils literal notranslate"><span class="pre">PymcCachedSigmaNutsStep.competence()</span></code></a></li>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.cached_sigma.PytensorMarginalQuadraticCache"><code class="docutils literal notranslate"><span class="pre">PytensorMarginalQuadraticCache</span></code></a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.cached_sigma.PytensorMarginalQuadraticCache.log_likelihood"><code class="docutils literal notranslate"><span class="pre">PytensorMarginalQuadraticCache.log_likelihood()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.cached_sigma.PytensorMarginalQuadraticCache.n_state"><code class="docutils literal notranslate"><span class="pre">PytensorMarginalQuadraticCache.n_state</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.cached_sigma.PytensorMarginalQuadraticCache.log_likelihood"><code class="docutils literal notranslate"><span class="pre">PytensorMarginalQuadraticCache.log_likelihood()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.cached_sigma.PytensorMarginalQuadraticCache.update"><code class="docutils literal notranslate"><span class="pre">PytensorMarginalQuadraticCache.update()</span></code></a></li>
 </ul>
 </li>

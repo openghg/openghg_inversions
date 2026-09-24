@@ -33,7 +33,7 @@
     <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
     <link rel="stylesheet" type="text/css" href="../_static/jupyter-sphinx.css" />
     <link rel="stylesheet" type="text/css" href="../_static/thebelab.css" />
-    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=f8ac5af1" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=5f08cb77" />
   
   <!-- So that users can add custom icons -->
   <script defer src="../_static/scripts/fontawesome.js?digest=cb8930eaaf36d9849b67"></script>
@@ -159,8 +159,8 @@
 
 
 <li class="nav-item current active">
-  <a class="nav-link nav-internal" href="modules.html">
-    openghg_inversions
+  <a class="nav-link nav-internal" href="index.html">
+    API reference
   </a>
 </li>
 
@@ -266,8 +266,8 @@
 
 
 <li class="nav-item current active">
-  <a class="nav-link nav-internal" href="modules.html">
-    openghg_inversions
+  <a class="nav-link nav-internal" href="index.html">
+    API reference
   </a>
 </li>
 
@@ -464,7 +464,7 @@
       </a>
     </li>
     
-    <li class="breadcrumb-item"><a href="modules.html" class="nav-link">openghg_inversions</a></li>
+    <li class="breadcrumb-item"><a href="index.html" class="nav-link">API reference</a></li>
     
     
     <li class="breadcrumb-item"><a href="openghg_inversions.html" class="nav-link">openghg_inversions</a></li>
@@ -530,9 +530,53 @@ labels the multisource operator aligns to the state MultiIndex.</p>
 <p>Basis geometry cannot currently vary through time. A singleton time
 dimension is dropped; a longer time dimension raises <a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">ValueError</span></code></a>.</p>
 </div>
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.basis.operators.register_basis_operator">
+<span class="sig-name descname"><span class="pre">register_basis_operator</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">kind</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.operators.register_basis_operator" title="Link to this definition">#</a></dt>
+<dd><p>Registers a <cite>BasisOperator</cite> subclass for DataTree deserialisation.</p>
+<p>This decorator builds a small module-level registry mapping a stable <cite>kind</cite>
+string (stored in <cite>dt.attrs[“kind”]</cite>) to a concrete <cite>BasisOperator</cite> subclass.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>kind</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Stable key identifying the operator type on disk. This is written to
+<cite>dt.attrs[“kind”]</cite> by <cite>BasisOperator.to_datatree()</cite> and used by
+<cite>BasisOperator.decode_datatree()</cite>.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A class decorator that registers the decorated class under <cite>kind</cite>.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If <cite>kind</cite> is already registered to a different class.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Callable" title="(in Python v3.14)"><em>Callable</em></a>[[<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#type" title="(in Python v3.14)">type</a>[<em>BasisOperatorT</em>]], <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#type" title="(in Python v3.14)">type</a>[<em>BasisOperatorT</em>]]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.basis.operators.get_basis_operator_class">
+<span class="sig-name descname"><span class="pre">get_basis_operator_class</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">kind</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.operators.get_basis_operator_class" title="Link to this definition">#</a></dt>
+<dd><p>Looks up a registered <cite>BasisOperator</cite> subclass.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>kind</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Registry key for the operator type (e.g. <cite>“bucket”</cite>).</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The registered <cite>BasisOperator</cite> subclass.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#KeyError" title="(in Python v3.14)"><strong>KeyError</strong></a> – If <cite>kind</cite> is not registered.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#type" title="(in Python v3.14)">type</a>[<a class="reference internal" href="#openghg_inversions.basis.operators.BasisOperator" title="openghg_inversions.basis.operators.BasisOperator"><em>BasisOperator</em></a>]</p>
+</dd>
+</dl>
+</dd></dl>
+
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.basis.operators.BasisMeta">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">openghg_inversions.basis.operators.</span></span><span class="sig-name descname"><span class="pre">BasisMeta</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">grid_dims</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">('lat',</span> <span class="pre">'lon')</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">state_dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'state'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.operators.BasisMeta" title="Link to this definition">#</a></dt>
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">BasisMeta</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">grid_dims</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">('lat',</span> <span class="pre">'lon')</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">state_dim</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'state'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.operators.BasisMeta" title="Link to this definition">#</a></dt>
 <dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
 <p>Metadata describing how to apply a basis operator.</p>
 <p>The intent is to keep this minimal: we only store what is needed for the
@@ -547,21 +591,11 @@ reduced state (typically <cite>(“lat”, “lon”)</cite>).</p></li>
 </ul>
 </dd>
 </dl>
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.basis.operators.BasisMeta.grid_dims">
-<span class="sig-name descname"><span class="pre">grid_dims</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">('lat',</span> <span class="pre">'lon')</span></span><a class="headerlink" href="#openghg_inversions.basis.operators.BasisMeta.grid_dims" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.basis.operators.BasisMeta.state_dim">
-<span class="sig-name descname"><span class="pre">state_dim</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'state'</span></span><a class="headerlink" href="#openghg_inversions.basis.operators.BasisMeta.state_dim" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
 </dd></dl>
 
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.basis.operators.BasisOperator">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">openghg_inversions.basis.operators.</span></span><span class="sig-name descname"><span class="pre">BasisOperator</span></span><a class="headerlink" href="#openghg_inversions.basis.operators.BasisOperator" title="Link to this definition">#</a></dt>
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">BasisOperator</span></span><a class="headerlink" href="#openghg_inversions.basis.operators.BasisOperator" title="Link to this definition">#</a></dt>
 <dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/abc.html#abc.ABC" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">ABC</span></code></a></p>
 <p>Abstract basis operator.</p>
 <p>Concrete subclasses provide operator metadata, a bucket prolongation
@@ -569,6 +603,12 @@ reduced state (typically <cite>(“lat”, “lon”)</cite>).</p></li>
 the state dimension, and DataTree serialization methods.</p>
 <p>The default sensitivity implementation requires <code class="docutils literal notranslate"><span class="pre">fp_x_flux</span></code> to contain
 the grid dimensions and preserves extra dimensions such as time or source.</p>
+<dl class="py property">
+<dt class="sig sig-object py" id="openghg_inversions.basis.operators.BasisOperator.meta">
+<span class="property"><span class="k"><span class="pre">abstract</span></span><span class="w"> </span><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">meta</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#openghg_inversions.basis.operators.BasisMeta" title="openghg_inversions.basis.operators.BasisMeta"><span class="pre">BasisMeta</span></a></span><a class="headerlink" href="#openghg_inversions.basis.operators.BasisOperator.meta" title="Link to this definition">#</a></dt>
+<dd><p>Operator metadata (must be provided by subclasses).</p>
+</dd></dl>
+
 <dl class="py property">
 <dt class="sig sig-object py" id="openghg_inversions.basis.operators.BasisOperator.basis_matrix">
 <span class="property"><span class="k"><span class="pre">abstract</span></span><span class="w"> </span><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">basis_matrix</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span><a class="headerlink" href="#openghg_inversions.basis.operators.BasisOperator.basis_matrix" title="Link to this definition">#</a></dt>
@@ -581,119 +621,8 @@ generally the covariance-compatible retained restriction <code class="docutils l
 </dd></dl>
 
 <dl class="py method">
-<dt class="sig sig-object py" id="openghg_inversions.basis.operators.BasisOperator.decode_datatree">
-<span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">decode_datatree</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dt</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><span class="pre">DataTree</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#openghg_inversions.basis.operators.BasisOperator" title="openghg_inversions.basis.operators.BasisOperator"><span class="pre">BasisOperator</span></a></span></span><a class="headerlink" href="#openghg_inversions.basis.operators.BasisOperator.decode_datatree" title="Link to this definition">#</a></dt>
-<dd><p>Dispatches a DataTree to the correct registered operator subclass.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>dt</strong> – DataTree representation of a basis operator.</p>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>A concrete <cite>BasisOperator</cite> instance.</p>
-</dd>
-<dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If the schema or schema version is unsupported.</p></li>
-<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#KeyError" title="(in Python v3.14)"><strong>KeyError</strong></a> – If the <cite>kind</cite> is not registered.</p></li>
-</ul>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="openghg_inversions.basis.operators.BasisOperator.from_datatree">
-<span class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">from_datatree</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dt</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><span class="pre">DataTree</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Self" title="(in Python v3.14)"><span class="pre">Self</span></a></span></span><a class="headerlink" href="#openghg_inversions.basis.operators.BasisOperator.from_datatree" title="Link to this definition">#</a></dt>
-<dd><p>Constructs an operator instance from an <cite>xarray.DataTree</cite>.</p>
-<p>Concrete subclasses implement this to load whatever canonical representation
-they write in <cite>to_datatree()</cite>.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>dt</strong> – DataTree created by <cite>to_datatree()</cite>.</p>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>An instance of the operator.</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="openghg_inversions.basis.operators.BasisOperator.interpolate">
-<span class="sig-name descname"><span class="pre">interpolate</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">weights</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></span><a class="headerlink" href="#openghg_inversions.basis.operators.BasisOperator.interpolate" title="Link to this definition">#</a></dt>
-<dd><p>Interpolates/reconstructs a gridded field from a state vector.</p>
-<p>This maps from the reduced basis space back to the grid by multiplying the
-basis dummy matrix by a state vector.</p>
-<p>If <cite>weights</cite> is provided (e.g. a flux field on the grid), it is multiplied
-elementwise with the basis matrix before interpolation. This corresponds to
-using a flux-weighted interpolation operator.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>state</strong> – State vector with dimension <cite>meta.state_dim</cite>.</p></li>
-<li><p><strong>weights</strong> – Optional gridded weights with dimensions matching <cite>meta.grid_dims</cite>
-(and broadcastable to <cite>basis_matrix</cite>).</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Reconstructed gridded field with dimensions including <cite>meta.grid_dims</cite>.</p>
-</dd>
-<dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If <cite>meta.state_dim</cite> is not a dimension of <cite>state</cite>.</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.basis.operators.BasisOperator.kind">
-<span class="sig-name descname"><span class="pre">kind</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.ClassVar" title="(in Python v3.14)"><span class="pre">ClassVar</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.basis.operators.BasisOperator.kind" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py property">
-<dt class="sig sig-object py" id="openghg_inversions.basis.operators.BasisOperator.meta">
-<span class="property"><span class="k"><span class="pre">abstract</span></span><span class="w"> </span><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">meta</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#openghg_inversions.basis.operators.BasisMeta" title="openghg_inversions.basis.operators.BasisMeta"><span class="pre">BasisMeta</span></a></span><a class="headerlink" href="#openghg_inversions.basis.operators.BasisOperator.meta" title="Link to this definition">#</a></dt>
-<dd><p>Operator metadata (must be provided by subclasses).</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="openghg_inversions.basis.operators.BasisOperator.native_prolongation">
-<span class="sig-name descname"><span class="pre">native_prolongation</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">native_layout</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">native_dims</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></span><a class="headerlink" href="#openghg_inversions.basis.operators.BasisOperator.native_prolongation" title="Link to this definition">#</a></dt>
-<dd><p>Return the bucket prolongation on a canonical labelled native grid.</p>
-<p>This basis-side operation aligns geometry only. It preserves the
-basis matrix’s lazy or sparse storage and does not choose an execution
-or covariance materialization policy.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>native_layout</strong> – Array carrying the canonical native coordinates and
-compatible auxiliary coordinates. It may contain additional
-non-native dimensions.</p></li>
-<li><p><strong>native_dims</strong> – Ordered native dimensions required by the covariance
-action.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Potentially lazy <code class="docutils literal notranslate"><span class="pre">U_bucket</span></code> with dimensions
-<code class="docutils literal notranslate"><span class="pre">(*native_dims,</span> <span class="pre">meta.state_dim)</span></code>.</p>
-</dd>
-<dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If this single-source basis does not span exactly the
-    requested native dimensions or their indexes do not match.</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.basis.operators.BasisOperator.schema">
-<span class="sig-name descname"><span class="pre">schema</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.ClassVar" title="(in Python v3.14)"><span class="pre">ClassVar</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">]</span></span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'openghg_inversions.basis_operator'</span></span><a class="headerlink" href="#openghg_inversions.basis.operators.BasisOperator.schema" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.basis.operators.BasisOperator.schema_version">
-<span class="sig-name descname"><span class="pre">schema_version</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.ClassVar" title="(in Python v3.14)"><span class="pre">ClassVar</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a><span class="p"><span class="pre">]</span></span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">1</span></span><a class="headerlink" href="#openghg_inversions.basis.operators.BasisOperator.schema_version" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py method">
 <dt class="sig sig-object py" id="openghg_inversions.basis.operators.BasisOperator.sensitivity">
-<span class="sig-name descname"><span class="pre">sensitivity</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fp_x_flux</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">fillna</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></span><a class="headerlink" href="#openghg_inversions.basis.operators.BasisOperator.sensitivity" title="Link to this definition">#</a></dt>
+<span class="sig-name descname"><span class="pre">sensitivity</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fp_x_flux</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fillna</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.operators.BasisOperator.sensitivity" title="Link to this definition">#</a></dt>
 <dd><p>Computes the sensitivity matrix (“H”) by dotting over the grid.</p>
 <p>This implements the common bucket-basis forward operator <code class="docutils literal notranslate"><span class="pre">H</span> <span class="pre">U_bucket</span></code>:</p>
 <ul class="simple">
@@ -707,21 +636,84 @@ the reduced state dimension <cite>meta.state_dim</cite>.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>fp_x_flux</strong> – Footprint x flux array to reduce. Must contain all
+<li><p><strong>fp_x_flux</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – Footprint x flux array to reduce. Must contain all
 <cite>meta.grid_dims</cite>.</p></li>
-<li><p><strong>fillna</strong> – if True, fill NaNs in fp_x_flux with 0.0.</p></li>
+<li><p><strong>fillna</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – if True, fill NaNs in fp_x_flux with 0.0.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>Sensitivity matrix with dimension <cite>meta.state_dim</cite> and any remaining
 non-grid dimensions (e.g. <cite>time</cite>).</p>
 </dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.basis.operators.BasisOperator.native_prolongation">
+<span class="sig-name descname"><span class="pre">native_prolongation</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">native_layout</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">native_dims</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.operators.BasisOperator.native_prolongation" title="Link to this definition">#</a></dt>
+<dd><p>Return the bucket prolongation on a canonical labelled native grid.</p>
+<p>This basis-side operation aligns geometry only. It preserves the
+basis matrix’s lazy or sparse storage and does not choose an execution
+or covariance materialization policy.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>native_layout</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – Array carrying the canonical native coordinates and
+compatible auxiliary coordinates. It may contain additional
+non-native dimensions.</p></li>
+<li><p><strong>native_dims</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><em>tuple</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><em>...</em><em>]</em>) – Ordered native dimensions required by the covariance
+action.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Potentially lazy <code class="docutils literal notranslate"><span class="pre">U_bucket</span></code> with dimensions
+<code class="docutils literal notranslate"><span class="pre">(*native_dims,</span> <span class="pre">meta.state_dim)</span></code>.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If this single-source basis does not span exactly the
+    requested native dimensions or their indexes do not match.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.basis.operators.BasisOperator.interpolate">
+<span class="sig-name descname"><span class="pre">interpolate</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">weights</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.operators.BasisOperator.interpolate" title="Link to this definition">#</a></dt>
+<dd><p>Interpolates/reconstructs a gridded field from a state vector.</p>
+<p>This maps from the reduced basis space back to the grid by multiplying the
+basis dummy matrix by a state vector.</p>
+<p>If <cite>weights</cite> is provided (e.g. a flux field on the grid), it is multiplied
+elementwise with the basis matrix before interpolation. This corresponds to
+using a flux-weighted interpolation operator.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>state</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – State vector with dimension <cite>meta.state_dim</cite>.</p></li>
+<li><p><strong>weights</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a><em> | </em><em>None</em>) – Optional gridded weights with dimensions matching <cite>meta.grid_dims</cite>
+(and broadcastable to <cite>basis_matrix</cite>).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Reconstructed gridded field with dimensions including <cite>meta.grid_dims</cite>.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If <cite>meta.state_dim</cite> is not a dimension of <cite>state</cite>.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a></p>
+</dd>
 </dl>
 </dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="openghg_inversions.basis.operators.BasisOperator.to_datatree">
-<span class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">to_datatree</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><span class="pre">DataTree</span></a></span></span><a class="headerlink" href="#openghg_inversions.basis.operators.BasisOperator.to_datatree" title="Link to this definition">#</a></dt>
+<span class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">to_datatree</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.operators.BasisOperator.to_datatree" title="Link to this definition">#</a></dt>
 <dd><p>Serialises this operator to an <cite>xarray.DataTree</cite>.</p>
 <p>The returned DataTree is intended to be self-describing. It must include enough
 information to allow round-tripping via <cite>BasisOperator.decode_datatree()</cite>.</p>
@@ -729,55 +721,173 @@ information to allow round-tripping via <cite>BasisOperator.decode_datatree()</c
 <dt class="field-odd">Returns<span class="colon">:</span></dt>
 <dd class="field-odd"><p>DataTree representation of the operator.</p>
 </dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><em>DataTree</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.basis.operators.BasisOperator.from_datatree">
+<span class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">from_datatree</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dt</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.operators.BasisOperator.from_datatree" title="Link to this definition">#</a></dt>
+<dd><p>Constructs an operator instance from an <cite>xarray.DataTree</cite>.</p>
+<p>Concrete subclasses implement this to load whatever canonical representation
+they write in <cite>to_datatree()</cite>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>dt</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><em>DataTree</em></a>) – DataTree created by <cite>to_datatree()</cite>.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>An instance of the operator.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Self" title="(in Python v3.14)"><em>Self</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.basis.operators.BasisOperator.decode_datatree">
+<span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">decode_datatree</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dt</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.operators.BasisOperator.decode_datatree" title="Link to this definition">#</a></dt>
+<dd><p>Dispatches a DataTree to the correct registered operator subclass.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>dt</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><em>DataTree</em></a>) – DataTree representation of a basis operator.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A concrete <cite>BasisOperator</cite> instance.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If the schema or schema version is unsupported.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#KeyError" title="(in Python v3.14)"><strong>KeyError</strong></a> – If the <cite>kind</cite> is not registered.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="#openghg_inversions.basis.operators.BasisOperator" title="openghg_inversions.basis.operators.BasisOperator"><em>BasisOperator</em></a></p>
+</dd>
 </dl>
 </dd></dl>
 
 </dd></dl>
 
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.basis.operators.drop_singleton_time">
+<span class="sig-name descname"><span class="pre">drop_singleton_time</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">da</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'basis_flat'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.operators.drop_singleton_time" title="Link to this definition">#</a></dt>
+<dd><p>Drop a singleton <code class="docutils literal notranslate"><span class="pre">time</span></code> dimension if present; otherwise raise.</p>
+<p>This is a strict helper intended for basis operators that assume a 2D basis over
+the grid dims. It avoids silently discarding time-varying basis information.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>da</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – Input DataArray which may or may not have a <code class="docutils literal notranslate"><span class="pre">time</span></code> dimension.</p></li>
+<li><p><strong>name</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Label used in error messages to identify what is being checked.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">da</span></code> with <code class="docutils literal notranslate"><span class="pre">time</span></code> removed if it exists and has length 1, otherwise <code class="docutils literal notranslate"><span class="pre">da</span></code>
+unchanged.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If <code class="docutils literal notranslate"><span class="pre">time</span></code> exists and has length not equal to 1.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.basis.operators.BucketBasisOperator">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">openghg_inversions.basis.operators.</span></span><span class="sig-name descname"><span class="pre">BucketBasisOperator</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">basis_flat</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">meta</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#openghg_inversions.basis.operators.BasisMeta" title="openghg_inversions.basis.operators.BasisMeta"><span class="pre">BasisMeta</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">state_dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">region_labels</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><span class="pre">Literal</span></a><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'range0'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'range1'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'basis_values'</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'range0'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">state_metadata</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference internal" href="openghg_inversions.basis.layout.html#openghg_inversions.basis.layout.BasisStateMetadata" title="openghg_inversions.basis.layout.BasisStateMetadata"><span class="pre">BasisStateMetadata</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">chunks</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.operators.BucketBasisOperator" title="Link to this definition">#</a></dt>
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">BucketBasisOperator</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">basis_flat</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">meta</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">state_dim</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">region_labels</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'range0'</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">state_metadata</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">chunks</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.operators.BucketBasisOperator" title="Link to this definition">#</a></dt>
 <dd><p>Bases: <a class="reference internal" href="#openghg_inversions.basis.operators.BasisOperator" title="openghg_inversions.basis.operators.BasisOperator"><code class="xref py py-class docutils literal notranslate"><span class="pre">BasisOperator</span></code></a></p>
-<p>Single flat bucket basis: basis_flat(lat, lon) with integer region labels.</p>
-<p>Stores basis_flat and constructs basis_matrix via get_xr_dummies.</p>
+<p>Map one integer-labelled grid basis onto a retained state.</p>
+<p>Use this operator for a single source, or when several sources share the
+same spatial basis. Each distinct non-negative value in <code class="docutils literal notranslate"><span class="pre">basis_flat</span></code> is a
+bucket. The operator converts those buckets into a sparse one-hot
+<a class="reference internal" href="#openghg_inversions.basis.operators.BucketBasisOperator.basis_matrix" title="openghg_inversions.basis.operators.BucketBasisOperator.basis_matrix"><code class="xref py py-attr docutils literal notranslate"><span class="pre">basis_matrix</span></code></a> with dimensions
+<code class="docutils literal notranslate"><span class="pre">(*meta.grid_dims,</span> <span class="pre">meta.state_dim)</span></code>. Grid coordinates are retained, and a
+singleton <code class="docutils literal notranslate"><span class="pre">time</span></code> dimension is removed.</p>
+<p><code class="docutils literal notranslate"><span class="pre">region_labels</span></code> controls the coordinate on the retained state dimension:
+<code class="docutils literal notranslate"><span class="pre">&quot;range0&quot;</span></code> produces <code class="docutils literal notranslate"><span class="pre">0..N-1</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;range1&quot;</span></code> produces <code class="docutils literal notranslate"><span class="pre">1..N</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">&quot;basis_values&quot;</span></code> preserves the sorted labels from <code class="docutils literal notranslate"><span class="pre">basis_flat</span></code>.
+Optional state metadata follows the states through this relabelling.</p>
+<p>The inherited <a class="reference internal" href="#openghg_inversions.basis.operators.BasisOperator.sensitivity" title="openghg_inversions.basis.operators.BasisOperator.sensitivity"><code class="xref py py-meth docutils literal notranslate"><span class="pre">BasisOperator.sensitivity()</span></code></a> method reduces a gridded
+footprint-times-flux array to the retained state, while
+<a class="reference internal" href="#openghg_inversions.basis.operators.BasisOperator.interpolate" title="openghg_inversions.basis.operators.BasisOperator.interpolate"><code class="xref py py-meth docutils literal notranslate"><span class="pre">BasisOperator.interpolate()</span></code></a> reconstructs a gridded field.
+<a class="reference internal" href="#openghg_inversions.basis.operators.BasisOperator.native_prolongation" title="openghg_inversions.basis.operators.BasisOperator.native_prolongation"><code class="xref py py-meth docutils literal notranslate"><span class="pre">BasisOperator.native_prolongation()</span></code></a> exposes the labelled bucket
+prolongation for covariance calculations. Use
+<a class="reference internal" href="openghg_inversions.basis.basis_functions.html#openghg_inversions.basis.basis_functions.FluxWeightedBasis" title="openghg_inversions.basis.basis_functions.FluxWeightedBasis"><code class="xref py py-class docutils literal notranslate"><span class="pre">FluxWeightedBasis</span></code></a> when
+the basis geometry must be paired with a flux field.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>basis_flat</strong> (<em>xr.DataArray</em>) – Integer-labelled basis array on the configured grid,
+typically with dimensions <code class="docutils literal notranslate"><span class="pre">(&quot;lat&quot;,</span> <span class="pre">&quot;lon&quot;)</span></code>. A singleton
+<code class="docutils literal notranslate"><span class="pre">time</span></code> dimension is allowed and removed.</p></li>
+<li><p><strong>meta</strong> (<a class="reference internal" href="#openghg_inversions.basis.operators.BasisMeta" title="openghg_inversions.basis.operators.BasisMeta"><em>BasisMeta</em></a><em> | </em><em>None</em>) – Grid dimensions and retained-state dimension name. Defaults to
+<a class="reference internal" href="#openghg_inversions.basis.operators.BasisMeta" title="openghg_inversions.basis.operators.BasisMeta"><code class="xref py py-class docutils literal notranslate"><span class="pre">BasisMeta</span></code></a>.</p></li>
+<li><p><strong>state_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Optional override for <code class="docutils literal notranslate"><span class="pre">meta.state_dim</span></code>.</p></li>
+<li><p><strong>region_labels</strong> (<em>RegionLabels</em>) – Policy for the retained-state coordinate labels.</p></li>
+<li><p><strong>state_metadata</strong> (<em>xr.Dataset</em><em> | </em><a class="reference internal" href="openghg_inversions.basis.layout.html#openghg_inversions.basis.layout.BasisStateMetadata" title="openghg_inversions.basis.layout.BasisStateMetadata"><em>BasisStateMetadata</em></a><em> | </em><em>None</em>) – Optional state-axis metadata indexed either by raw
+<code class="docutils literal notranslate"><span class="pre">basis_label</span></code> values or by the final state dimension.</p></li>
+<li><p><strong>chunks</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em>] </em><em>| </em><em>None</em>) – Optional chunk sizes for the generated basis matrix.</p></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<p>Build a two-region operator whose retained coordinate uses the labels
+from the flat basis:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">basis</span> <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">(</span>
+    <span class="p">[[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span> <span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">]],</span>
+    <span class="n">dims</span><span class="o">=</span><span class="p">(</span><span class="s2">"lat"</span><span class="p">,</span> <span class="s2">"lon"</span><span class="p">),</span>
+    <span class="n">coords</span><span class="o">=</span><span class="p">{</span><span class="s2">"lat"</span><span class="p">:</span> <span class="p">[</span><span class="mf">50.0</span><span class="p">,</span> <span class="mf">51.0</span><span class="p">],</span> <span class="s2">"lon"</span><span class="p">:</span> <span class="p">[</span><span class="o">-</span><span class="mf">2.0</span><span class="p">,</span> <span class="o">-</span><span class="mf">1.0</span><span class="p">]},</span>
+<span class="p">)</span>
+<span class="n">operator</span> <span class="o">=</span> <span class="n">BucketBasisOperator</span><span class="p">(</span>
+    <span class="n">basis</span><span class="p">,</span> <span class="n">state_dim</span><span class="o">=</span><span class="s2">"region"</span><span class="p">,</span> <span class="n">region_labels</span><span class="o">=</span><span class="s2">"basis_values"</span>
+<span class="p">)</span>
+<span class="k">assert</span> <span class="n">operator</span><span class="o">.</span><span class="n">basis_matrix</span><span class="o">.</span><span class="n">dims</span> <span class="o">==</span> <span class="p">(</span><span class="s2">"lat"</span><span class="p">,</span> <span class="s2">"lon"</span><span class="p">,</span> <span class="s2">"region"</span><span class="p">)</span>
+</pre></div>
+</div>
+<div class="admonition seealso">
+<p class="admonition-title">See also</p>
+<ul class="simple">
+<li><dl class="simple">
+<dt><a class="reference internal" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator" title="openghg_inversions.basis.operators.MultiSourceBucketBasisOperator"><code class="xref py py-class docutils literal notranslate"><span class="pre">MultiSourceBucketBasisOperator</span></code></a>: Source-specific, potentially</dt><dd><p>ragged basis geometries.</p>
+</dd>
+</dl>
+</li>
+<li><dl class="simple">
+<dt><a class="reference internal" href="openghg_inversions.basis.basis_functions.html#openghg_inversions.basis.basis_functions.FluxWeightedBasis" title="openghg_inversions.basis.basis_functions.FluxWeightedBasis"><code class="xref py py-class docutils literal notranslate"><span class="pre">FluxWeightedBasis</span></code></a>:</dt><dd><p>A basis operator paired with its flux field.</p>
+</dd>
+</dl>
+</li>
+</ul>
+</div>
+<dl class="py property">
+<dt class="sig sig-object py" id="openghg_inversions.basis.operators.BucketBasisOperator.meta">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">meta</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#openghg_inversions.basis.operators.BasisMeta" title="openghg_inversions.basis.operators.BasisMeta"><span class="pre">BasisMeta</span></a></span><a class="headerlink" href="#openghg_inversions.basis.operators.BucketBasisOperator.meta" title="Link to this definition">#</a></dt>
+<dd><p>Basis metadata.</p>
+</dd></dl>
+
 <dl class="py property">
 <dt class="sig sig-object py" id="openghg_inversions.basis.operators.BucketBasisOperator.basis_matrix">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">basis_matrix</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span><a class="headerlink" href="#openghg_inversions.basis.operators.BucketBasisOperator.basis_matrix" title="Link to this definition">#</a></dt>
 <dd><p>Return <code class="docutils literal notranslate"><span class="pre">U_bucket</span></code>, mapping retained scalings to native scalings.</p>
 <p>The dimensions are native grid by retained state. Its transpose is not
 generally the compatible retained restriction <code class="docutils literal notranslate"><span class="pre">Pi</span></code>.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="openghg_inversions.basis.operators.BucketBasisOperator.from_datatree">
-<span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">from_datatree</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dt</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><span class="pre">DataTree</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Self" title="(in Python v3.14)"><span class="pre">Self</span></a></span></span><a class="headerlink" href="#openghg_inversions.basis.operators.BucketBasisOperator.from_datatree" title="Link to this definition">#</a></dt>
-<dd><p>Deserialises a <cite>BucketBasisOperator</cite> from a DataTree.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>dt</strong> – DataTree produced by <cite>BucketBasisOperator.to_datatree()</cite>.</p>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>A reconstructed <cite>BucketBasisOperator</cite>.</p>
-</dd>
-<dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#KeyError" title="(in Python v3.14)"><strong>KeyError</strong></a> – If the serialized <code class="docutils literal notranslate"><span class="pre">basis_flat</span></code> variable is missing.</p></li>
-<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If serialized labels, metadata, or state coordinates
-    are invalid.</p></li>
-</ul>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.basis.operators.BucketBasisOperator.kind">
-<span class="sig-name descname"><span class="pre">kind</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.ClassVar" title="(in Python v3.14)"><span class="pre">ClassVar</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">]</span></span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'bucket'</span></span><a class="headerlink" href="#openghg_inversions.basis.operators.BucketBasisOperator.kind" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py property">
-<dt class="sig sig-object py" id="openghg_inversions.basis.operators.BucketBasisOperator.meta">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">meta</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#openghg_inversions.basis.operators.BasisMeta" title="openghg_inversions.basis.operators.BasisMeta"><span class="pre">BasisMeta</span></a></span><a class="headerlink" href="#openghg_inversions.basis.operators.BucketBasisOperator.meta" title="Link to this definition">#</a></dt>
-<dd><p>Basis metadata.</p>
 </dd></dl>
 
 <dl class="py property">
@@ -795,12 +905,39 @@ when no grouped metadata was supplied.</p>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="openghg_inversions.basis.operators.BucketBasisOperator.to_datatree">
-<span class="sig-name descname"><span class="pre">to_datatree</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><span class="pre">DataTree</span></a></span></span><a class="headerlink" href="#openghg_inversions.basis.operators.BucketBasisOperator.to_datatree" title="Link to this definition">#</a></dt>
+<span class="sig-name descname"><span class="pre">to_datatree</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.operators.BucketBasisOperator.to_datatree" title="Link to this definition">#</a></dt>
 <dd><p>Serialises the operator to a DataTree.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Returns<span class="colon">:</span></dt>
 <dd class="field-odd"><p>A DataTree with a dataset containing <cite>basis_flat</cite> and attributes sufficient
 to reconstruct the operator.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><em>DataTree</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.basis.operators.BucketBasisOperator.from_datatree">
+<span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">from_datatree</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dt</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.operators.BucketBasisOperator.from_datatree" title="Link to this definition">#</a></dt>
+<dd><p>Deserialises a <cite>BucketBasisOperator</cite> from a DataTree.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>dt</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><em>DataTree</em></a>) – DataTree produced by <cite>BucketBasisOperator.to_datatree()</cite>.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A reconstructed <cite>BucketBasisOperator</cite>.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#KeyError" title="(in Python v3.14)"><strong>KeyError</strong></a> – If the serialized <code class="docutils literal notranslate"><span class="pre">basis_flat</span></code> variable is missing.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If serialized labels, metadata, or state coordinates
+    are invalid.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Self" title="(in Python v3.14)"><em>Self</em></a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -809,11 +946,90 @@ to reconstruct the operator.</p>
 
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.basis.operators.MultiSourceBucketBasisOperator">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">openghg_inversions.basis.operators.</span></span><span class="sig-name descname"><span class="pre">MultiSourceBucketBasisOperator</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">basis_flat</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">meta</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#openghg_inversions.basis.operators.BasisMeta" title="openghg_inversions.basis.operators.BasisMeta"><span class="pre">BasisMeta</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">source_dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'source'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">region_in_source_dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'region_in_source'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">state_dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">chunks</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator" title="Link to this definition">#</a></dt>
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">MultiSourceBucketBasisOperator</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">basis_flat</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">meta</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">source_dim</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'source'</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">region_in_source_dim</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'region_in_source'</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">state_dim</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">chunks</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator" title="Link to this definition">#</a></dt>
 <dd><p>Bases: <a class="reference internal" href="#openghg_inversions.basis.operators.BasisOperator" title="openghg_inversions.basis.operators.BasisOperator"><code class="xref py py-class docutils literal notranslate"><span class="pre">BasisOperator</span></code></a></p>
-<p>Multiple flat bases keyed by source, with potentially ragged region counts.</p>
-<p>The canonical state dimension is a ragged MultiIndex over
-<code class="docutils literal notranslate"><span class="pre">(source,</span> <span class="pre">region_in_source)</span></code>.</p>
+<p>Combine source-specific flat bases into one ragged retained state.</p>
+<p>Use this operator when sources have different spatial bases or different
+numbers of regions. If all sources share one basis, use
+<a class="reference internal" href="#openghg_inversions.basis.operators.BucketBasisOperator" title="openghg_inversions.basis.operators.BucketBasisOperator"><code class="xref py py-class docutils literal notranslate"><span class="pre">BucketBasisOperator</span></code></a> and carry source on the flux instead.</p>
+<p><code class="docutils literal notranslate"><span class="pre">basis_flat</span></code> preserves mapping insertion order as the canonical source
+order. Every source array must describe the same labelled grid; equivalent
+coordinate orders are aligned to the first source. A singleton <code class="docutils literal notranslate"><span class="pre">time</span></code>
+dimension is removed. The resulting <a class="reference internal" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.basis_matrix" title="openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.basis_matrix"><code class="xref py py-attr docutils literal notranslate"><span class="pre">basis_matrix</span></code></a> has dimensions
+<code class="docutils literal notranslate"><span class="pre">(*meta.grid_dims,</span> <span class="pre">meta.state_dim)</span></code>. Its state coordinate is a ragged
+<a class="reference external" href="https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.MultiIndex.html#pandas.MultiIndex" title="(in pandas v3.0.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">pandas.MultiIndex</span></code></a> with levels named by <code class="docutils literal notranslate"><span class="pre">source_dim</span></code> and
+<code class="docutils literal notranslate"><span class="pre">region_in_source_dim</span></code>, so each source can contribute a different number
+of regions without padding.</p>
+<p><a class="reference internal" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.sensitivity" title="openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.sensitivity"><code class="xref py py-meth docutils literal notranslate"><span class="pre">sensitivity()</span></code></a> aligns a source dimension in the input to the state
+MultiIndex. <a class="reference internal" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.interpolate" title="openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.interpolate"><code class="xref py py-meth docutils literal notranslate"><span class="pre">interpolate()</span></code></a> likewise accepts optional source-specific
+weights. <a class="reference internal" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.native_prolongation" title="openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.native_prolongation"><code class="xref py py-meth docutils literal notranslate"><span class="pre">native_prolongation()</span></code></a> expands the gathered spatial template
+onto an explicit native source dimension, and <a class="reference internal" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.operator_for_source" title="openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.operator_for_source"><code class="xref py py-meth docutils literal notranslate"><span class="pre">operator_for_source()</span></code></a>
+returns a single-source operator. DataTree serialization preserves source
+order through the stored source coordinate.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>basis_flat</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><em>xr.DataArray</em><em>]</em>) – Non-empty mapping from source name to an integer-labelled
+basis array on the configured grid, typically with dimensions
+<code class="docutils literal notranslate"><span class="pre">(&quot;lat&quot;,</span> <span class="pre">&quot;lon&quot;)</span></code>.</p></li>
+<li><p><strong>meta</strong> (<a class="reference internal" href="#openghg_inversions.basis.operators.BasisMeta" title="openghg_inversions.basis.operators.BasisMeta"><em>BasisMeta</em></a><em> | </em><em>None</em>) – Grid dimensions and retained-state dimension name. Defaults to
+<a class="reference internal" href="#openghg_inversions.basis.operators.BasisMeta" title="openghg_inversions.basis.operators.BasisMeta"><code class="xref py py-class docutils literal notranslate"><span class="pre">BasisMeta</span></code></a>.</p></li>
+<li><p><strong>source_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Name of the source MultiIndex level.</p></li>
+<li><p><strong>region_in_source_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Name of the per-source region MultiIndex level.</p></li>
+<li><p><strong>state_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Optional override for <code class="docutils literal notranslate"><span class="pre">meta.state_dim</span></code>.</p></li>
+<li><p><strong>chunks</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em>] </em><em>| </em><em>None</em>) – Optional chunk sizes for the gathered basis matrix.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If <code class="docutils literal notranslate"><span class="pre">basis_flat</span></code> is empty, a source label is not a string,
+    or source arrays have incompatible dimensions, non-unique grid
+    labels, or different grid labels.</p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<p>Gather source bases with two and one regions, respectively:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">anthropogenic</span> <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">(</span>
+    <span class="p">[[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">]],</span> <span class="n">dims</span><span class="o">=</span><span class="p">(</span><span class="s2">"lat"</span><span class="p">,</span> <span class="s2">"lon"</span><span class="p">),</span> <span class="n">coords</span><span class="o">=</span><span class="p">{</span><span class="s2">"lat"</span><span class="p">:</span> <span class="p">[</span><span class="mf">50.0</span><span class="p">],</span> <span class="s2">"lon"</span><span class="p">:</span> <span class="p">[</span><span class="o">-</span><span class="mf">2.0</span><span class="p">,</span> <span class="o">-</span><span class="mf">1.0</span><span class="p">]}</span>
+<span class="p">)</span>
+<span class="n">biospheric</span> <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">(</span>
+    <span class="p">[[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">]],</span> <span class="n">dims</span><span class="o">=</span><span class="p">(</span><span class="s2">"lat"</span><span class="p">,</span> <span class="s2">"lon"</span><span class="p">),</span> <span class="n">coords</span><span class="o">=</span><span class="p">{</span><span class="s2">"lat"</span><span class="p">:</span> <span class="p">[</span><span class="mf">50.0</span><span class="p">],</span> <span class="s2">"lon"</span><span class="p">:</span> <span class="p">[</span><span class="o">-</span><span class="mf">2.0</span><span class="p">,</span> <span class="o">-</span><span class="mf">1.0</span><span class="p">]}</span>
+<span class="p">)</span>
+<span class="n">operator</span> <span class="o">=</span> <span class="n">MultiSourceBucketBasisOperator</span><span class="p">(</span>
+    <span class="p">{</span><span class="s2">"anthropogenic"</span><span class="p">:</span> <span class="n">anthropogenic</span><span class="p">,</span> <span class="s2">"biospheric"</span><span class="p">:</span> <span class="n">biospheric</span><span class="p">},</span>
+    <span class="n">state_dim</span><span class="o">=</span><span class="s2">"region"</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="k">assert</span> <span class="n">operator</span><span class="o">.</span><span class="n">source_labels</span> <span class="o">==</span> <span class="p">(</span><span class="s2">"anthropogenic"</span><span class="p">,</span> <span class="s2">"biospheric"</span><span class="p">)</span>
+</pre></div>
+</div>
+<div class="admonition seealso">
+<p class="admonition-title">See also</p>
+<ul class="simple">
+<li><p><a class="reference internal" href="#openghg_inversions.basis.operators.BucketBasisOperator" title="openghg_inversions.basis.operators.BucketBasisOperator"><code class="xref py py-class docutils literal notranslate"><span class="pre">BucketBasisOperator</span></code></a>: One basis geometry shared by all sources.</p></li>
+<li><dl class="simple">
+<dt><a class="reference internal" href="openghg_inversions.basis.basis_functions.html#openghg_inversions.basis.basis_functions.FluxWeightedBasis" title="openghg_inversions.basis.basis_functions.FluxWeightedBasis"><code class="xref py py-class docutils literal notranslate"><span class="pre">FluxWeightedBasis</span></code></a>:</dt><dd><p>A basis operator paired with source-aware flux.</p>
+</dd>
+</dl>
+</li>
+</ul>
+</div>
+<dl class="py property">
+<dt class="sig sig-object py" id="openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.meta">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">meta</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#openghg_inversions.basis.operators.BasisMeta" title="openghg_inversions.basis.operators.BasisMeta"><span class="pre">BasisMeta</span></a></span><a class="headerlink" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.meta" title="Link to this definition">#</a></dt>
+<dd><p>Basis metadata.</p>
+</dd></dl>
+
 <dl class="py property">
 <dt class="sig sig-object py" id="openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.basis_matrix">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">basis_matrix</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span><a class="headerlink" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.basis_matrix" title="Link to this definition">#</a></dt>
@@ -823,122 +1039,6 @@ carried by the ragged state coordinate. <a class="reference internal" href="#ope
 expands an explicit source-native dimension and zeros cross-source
 columns. This template’s transpose is not the compatible retained
 restriction <code class="docutils literal notranslate"><span class="pre">Pi</span></code>.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.from_datatree">
-<span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">from_datatree</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dt</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><span class="pre">DataTree</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Self" title="(in Python v3.14)"><span class="pre">Self</span></a></span></span><a class="headerlink" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.from_datatree" title="Link to this definition">#</a></dt>
-<dd><p>Deserialises a <cite>MultiSourceBucketBasisOperator</cite> from a DataTree.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>dt</strong> – DataTree produced by <cite>MultiSourceBucketBasisOperator.to_datatree()</cite>.</p>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>A reconstructed <cite>MultiSourceBucketBasisOperator</cite>. The canonical
-representation obtains order from the <code class="docutils literal notranslate"><span class="pre">source</span></code> coordinate.
-Earlier per-source child artifacts remain readable; for those,
-legacy <code class="docutils literal notranslate"><span class="pre">source_order</span></code> metadata controls insertion/state order
-when present.</p>
-</dd>
-<dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If required basis data or source coordinates are
-    missing, or legacy source-order metadata is malformed or
-    inconsistent with stored source children.</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.interpolate">
-<span class="sig-name descname"><span class="pre">interpolate</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">weights</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></span><a class="headerlink" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.interpolate" title="Link to this definition">#</a></dt>
-<dd><p>Interpolate/reconstruct a gridded field from a state vector.</p>
-<p>For MultiSourceBucketBasisOperator, <cite>weights</cite> may include a <cite>source_dim</cite> that is also a
-level name in the gathered MultiIndex on <cite>meta.state_dim</cite>. In that case we broadcast
-weights along the gathered state axis (repeating per-source weights across all regions
-within that source) by replacing <cite>source_dim</cite> with <cite>meta.state_dim</cite>.</p>
-<p>The state vector itself is expected to be defined on <cite>meta.state_dim</cite> and should not
-include a separate coordinate named like a MultiIndex level (e.g. <cite>source_dim</cite>).</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>state</strong> – State vector defined on <cite>meta.state_dim</cite>.</p></li>
-<li><p><strong>weights</strong> – Optional gridded weights (e.g. prior fluxes) on <cite>meta.grid_dims</cite>. May
-optionally include <cite>source_dim</cite> for per-source weights.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Gridded reconstructed field on <cite>meta.grid_dims</cite>.</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.kind">
-<span class="sig-name descname"><span class="pre">kind</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.ClassVar" title="(in Python v3.14)"><span class="pre">ClassVar</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">]</span></span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'multisource_bucket'</span></span><a class="headerlink" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.kind" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py property">
-<dt class="sig sig-object py" id="openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.meta">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">meta</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#openghg_inversions.basis.operators.BasisMeta" title="openghg_inversions.basis.operators.BasisMeta"><span class="pre">BasisMeta</span></a></span><a class="headerlink" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.meta" title="Link to this definition">#</a></dt>
-<dd><p>Basis metadata.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.native_prolongation">
-<span class="sig-name descname"><span class="pre">native_prolongation</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">native_layout</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">native_dims</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></span><a class="headerlink" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.native_prolongation" title="Link to this definition">#</a></dt>
-<dd><p>Expand the gathered basis to a labelled source-native prolongation.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>native_layout</strong> – Canonical native layout carrying an explicit source
-dimension and native-compatible auxiliary coordinates.</p></li>
-<li><p><strong>native_dims</strong> – Ordered native dimensions. The first must be this
-operator’s source dimension and the remainder its grid dims.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Potentially lazy <code class="docutils literal notranslate"><span class="pre">U_bucket</span></code> with zero cross-source columns and
-dimensions <code class="docutils literal notranslate"><span class="pre">(*native_dims,</span> <span class="pre">meta.state_dim)</span></code>.</p>
-</dd>
-<dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If dimensions, source labels, or native indexes are
-    incompatible with this multisource basis.</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.operator_for_source">
-<span class="sig-name descname"><span class="pre">operator_for_source</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">source</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">state_dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#openghg_inversions.basis.operators.BucketBasisOperator" title="openghg_inversions.basis.operators.BucketBasisOperator"><span class="pre">BucketBasisOperator</span></a></span></span><a class="headerlink" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.operator_for_source" title="Link to this definition">#</a></dt>
-<dd><p>Return a single-source bucket operator for one source.</p>
-<p>This keeps source-specific basis selection at the operator boundary,
-avoiding direct use of the legacy flat-basis compatibility view in
-modern postprocessing code.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>source</strong> – Source label to select from the source-specific basis
-mapping.</p></li>
-<li><p><strong>state_dim</strong> – Optional state dimension for the returned single-source
-operator. If omitted, the per-source region dimension is used.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>A single-source bucket operator for <code class="docutils literal notranslate"><span class="pre">source</span></code>.</p>
-</dd>
-<dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If <code class="docutils literal notranslate"><span class="pre">source</span></code> is not present in this operator.</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.sensitivity">
-<span class="sig-name descname"><span class="pre">sensitivity</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fp_x_flux</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">fillna</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></span><a class="headerlink" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.sensitivity" title="Link to this definition">#</a></dt>
-<dd><p>Compute sensitivity for multisource fp_x_flux.</p>
-<p>Fuse source selection with the sparse spatial prolongation before
-contracting. This avoids broadcasting the full spatial cache across
-every retained state while keeping the source pairing sparse.</p>
 </dd></dl>
 
 <dl class="py property">
@@ -954,8 +1054,104 @@ ragged state MultiIndex.</p>
 </dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.native_prolongation">
+<span class="sig-name descname"><span class="pre">native_prolongation</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">native_layout</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">native_dims</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.native_prolongation" title="Link to this definition">#</a></dt>
+<dd><p>Expand the gathered basis to a labelled source-native prolongation.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>native_layout</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – Canonical native layout carrying an explicit source
+dimension and native-compatible auxiliary coordinates.</p></li>
+<li><p><strong>native_dims</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><em>tuple</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><em>...</em><em>]</em>) – Ordered native dimensions. The first must be this
+operator’s source dimension and the remainder its grid dims.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Potentially lazy <code class="docutils literal notranslate"><span class="pre">U_bucket</span></code> with zero cross-source columns and
+dimensions <code class="docutils literal notranslate"><span class="pre">(*native_dims,</span> <span class="pre">meta.state_dim)</span></code>.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If dimensions, source labels, or native indexes are
+    incompatible with this multisource basis.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.operator_for_source">
+<span class="sig-name descname"><span class="pre">operator_for_source</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">source</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">state_dim</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.operator_for_source" title="Link to this definition">#</a></dt>
+<dd><p>Return a single-source bucket operator for one source.</p>
+<p>This keeps source-specific basis selection at the operator boundary,
+avoiding direct use of the legacy flat-basis compatibility view in
+modern postprocessing code.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>source</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Source label to select from the source-specific basis
+mapping.</p></li>
+<li><p><strong>state_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Optional state dimension for the returned single-source
+operator. If omitted, the per-source region dimension is used.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A single-source bucket operator for <code class="docutils literal notranslate"><span class="pre">source</span></code>.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If <code class="docutils literal notranslate"><span class="pre">source</span></code> is not present in this operator.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="#openghg_inversions.basis.operators.BucketBasisOperator" title="openghg_inversions.basis.operators.BucketBasisOperator"><em>BucketBasisOperator</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.sensitivity">
+<span class="sig-name descname"><span class="pre">sensitivity</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fp_x_flux</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fillna</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.sensitivity" title="Link to this definition">#</a></dt>
+<dd><p>Compute sensitivity for multisource fp_x_flux.</p>
+<p>Fuse source selection with the sparse spatial prolongation before
+contracting. This avoids broadcasting the full spatial cache across
+every retained state while keeping the source pairing sparse.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.interpolate">
+<span class="sig-name descname"><span class="pre">interpolate</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">weights</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.interpolate" title="Link to this definition">#</a></dt>
+<dd><p>Interpolate/reconstruct a gridded field from a state vector.</p>
+<p>For MultiSourceBucketBasisOperator, <cite>weights</cite> may include a <cite>source_dim</cite> that is also a
+level name in the gathered MultiIndex on <cite>meta.state_dim</cite>. In that case we broadcast
+weights along the gathered state axis (repeating per-source weights across all regions
+within that source) by replacing <cite>source_dim</cite> with <cite>meta.state_dim</cite>.</p>
+<p>The state vector itself is expected to be defined on <cite>meta.state_dim</cite> and should not
+include a separate coordinate named like a MultiIndex level (e.g. <cite>source_dim</cite>).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>state</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – State vector defined on <cite>meta.state_dim</cite>.</p></li>
+<li><p><strong>weights</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a><em> | </em><em>None</em>) – Optional gridded weights (e.g. prior fluxes) on <cite>meta.grid_dims</cite>. May
+optionally include <cite>source_dim</cite> for per-source weights.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Gridded reconstructed field on <cite>meta.grid_dims</cite>.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.to_datatree">
-<span class="sig-name descname"><span class="pre">to_datatree</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><span class="pre">DataTree</span></a></span></span><a class="headerlink" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.to_datatree" title="Link to this definition">#</a></dt>
+<span class="sig-name descname"><span class="pre">to_datatree</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.to_datatree" title="Link to this definition">#</a></dt>
 <dd><p>Serialises the multisource operator to a DataTree.</p>
 <p>The returned DataTree stores one source-labelled <code class="docutils literal notranslate"><span class="pre">basis_flat</span></code> array.
 Its source coordinate is the sole source-order representation, avoiding
@@ -967,70 +1163,38 @@ source names in storage paths and redundant JSON metadata.</p>
 <dt class="field-even">Raises<span class="colon">:</span></dt>
 <dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If source bases do not have compatible labeled grids.</p>
 </dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><em>DataTree</em></a></p>
+</dd>
 </dl>
 </dd></dl>
 
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.basis.operators.drop_singleton_time">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.basis.operators.</span></span><span class="sig-name descname"><span class="pre">drop_singleton_time</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">da</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'basis_flat'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></span><a class="headerlink" href="#openghg_inversions.basis.operators.drop_singleton_time" title="Link to this definition">#</a></dt>
-<dd><p>Drop a singleton <code class="docutils literal notranslate"><span class="pre">time</span></code> dimension if present; otherwise raise.</p>
-<p>This is a strict helper intended for basis operators that assume a 2D basis over
-the grid dims. It avoids silently discarding time-varying basis information.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.from_datatree">
+<span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">from_datatree</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dt</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.from_datatree" title="Link to this definition">#</a></dt>
+<dd><p>Deserialises a <cite>MultiSourceBucketBasisOperator</cite> from a DataTree.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>da</strong> – Input DataArray which may or may not have a <code class="docutils literal notranslate"><span class="pre">time</span></code> dimension.</p></li>
-<li><p><strong>name</strong> – Label used in error messages to identify what is being checked.</p></li>
-</ul>
+<dd class="field-odd"><p><strong>dt</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><em>DataTree</em></a>) – DataTree produced by <cite>MultiSourceBucketBasisOperator.to_datatree()</cite>.</p>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">da</span></code> with <code class="docutils literal notranslate"><span class="pre">time</span></code> removed if it exists and has length 1, otherwise <code class="docutils literal notranslate"><span class="pre">da</span></code>
-unchanged.</p>
+<dd class="field-even"><p>A reconstructed <cite>MultiSourceBucketBasisOperator</cite>. The canonical
+representation obtains order from the <code class="docutils literal notranslate"><span class="pre">source</span></code> coordinate.
+Earlier per-source child artifacts remain readable; for those,
+legacy <code class="docutils literal notranslate"><span class="pre">source_order</span></code> metadata controls insertion/state order
+when present.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If <code class="docutils literal notranslate"><span class="pre">time</span></code> exists and has length not equal to 1.</p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If required basis data or source coordinates are
+    missing, or legacy source-order metadata is malformed or
+    inconsistent with stored source children.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Self" title="(in Python v3.14)"><em>Self</em></a></p>
 </dd>
 </dl>
 </dd></dl>
 
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.basis.operators.get_basis_operator_class">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.basis.operators.</span></span><span class="sig-name descname"><span class="pre">get_basis_operator_class</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">kind</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#type" title="(in Python v3.14)"><span class="pre">type</span></a><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#openghg_inversions.basis.operators.BasisOperator" title="openghg_inversions.basis.operators.BasisOperator"><span class="pre">BasisOperator</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#openghg_inversions.basis.operators.get_basis_operator_class" title="Link to this definition">#</a></dt>
-<dd><p>Looks up a registered <cite>BasisOperator</cite> subclass.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>kind</strong> – Registry key for the operator type (e.g. <cite>“bucket”</cite>).</p>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>The registered <cite>BasisOperator</cite> subclass.</p>
-</dd>
-<dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#KeyError" title="(in Python v3.14)"><strong>KeyError</strong></a> – If <cite>kind</cite> is not registered.</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.basis.operators.register_basis_operator">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.basis.operators.</span></span><span class="sig-name descname"><span class="pre">register_basis_operator</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">kind</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Callable" title="(in Python v3.14)"><span class="pre">Callable</span></a><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#type" title="(in Python v3.14)"><span class="pre">type</span></a><span class="p"><span class="pre">[</span></span><span class="pre">BasisOperatorT</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#type" title="(in Python v3.14)"><span class="pre">type</span></a><span class="p"><span class="pre">[</span></span><span class="pre">BasisOperatorT</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#openghg_inversions.basis.operators.register_basis_operator" title="Link to this definition">#</a></dt>
-<dd><p>Registers a <cite>BasisOperator</cite> subclass for DataTree deserialisation.</p>
-<p>This decorator builds a small module-level registry mapping a stable <cite>kind</cite>
-string (stored in <cite>dt.attrs[“kind”]</cite>) to a concrete <cite>BasisOperator</cite> subclass.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>kind</strong> – Stable key identifying the operator type on disk. This is written to
-<cite>dt.attrs[“kind”]</cite> by <cite>BasisOperator.to_datatree()</cite> and used by
-<cite>BasisOperator.decode_datatree()</cite>.</p>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>A class decorator that registers the decorated class under <cite>kind</cite>.</p>
-</dd>
-<dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If <cite>kind</cite> is already registered to a different class.</p>
-</dd>
-</dl>
 </dd></dl>
 
 </section>
@@ -1082,50 +1246,41 @@ string (stored in <cite>dt.attrs[“kind”]</cite>) to a concrete <cite>BasisOp
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.BasisMeta"><code class="docutils literal notranslate"><span class="pre">BasisMeta</span></code></a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.BasisMeta.grid_dims"><code class="docutils literal notranslate"><span class="pre">BasisMeta.grid_dims</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.BasisMeta.state_dim"><code class="docutils literal notranslate"><span class="pre">BasisMeta.state_dim</span></code></a></li>
-</ul>
-</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.register_basis_operator"><code class="docutils literal notranslate"><span class="pre">register_basis_operator()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.get_basis_operator_class"><code class="docutils literal notranslate"><span class="pre">get_basis_operator_class()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.BasisMeta"><code class="docutils literal notranslate"><span class="pre">BasisMeta</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.BasisOperator"><code class="docutils literal notranslate"><span class="pre">BasisOperator</span></code></a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.BasisOperator.basis_matrix"><code class="docutils literal notranslate"><span class="pre">BasisOperator.basis_matrix</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.BasisOperator.decode_datatree"><code class="docutils literal notranslate"><span class="pre">BasisOperator.decode_datatree()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.BasisOperator.from_datatree"><code class="docutils literal notranslate"><span class="pre">BasisOperator.from_datatree()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.BasisOperator.interpolate"><code class="docutils literal notranslate"><span class="pre">BasisOperator.interpolate()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.BasisOperator.kind"><code class="docutils literal notranslate"><span class="pre">BasisOperator.kind</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.BasisOperator.meta"><code class="docutils literal notranslate"><span class="pre">BasisOperator.meta</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.BasisOperator.native_prolongation"><code class="docutils literal notranslate"><span class="pre">BasisOperator.native_prolongation()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.BasisOperator.schema"><code class="docutils literal notranslate"><span class="pre">BasisOperator.schema</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.BasisOperator.schema_version"><code class="docutils literal notranslate"><span class="pre">BasisOperator.schema_version</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.BasisOperator.basis_matrix"><code class="docutils literal notranslate"><span class="pre">BasisOperator.basis_matrix</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.BasisOperator.sensitivity"><code class="docutils literal notranslate"><span class="pre">BasisOperator.sensitivity()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.BasisOperator.native_prolongation"><code class="docutils literal notranslate"><span class="pre">BasisOperator.native_prolongation()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.BasisOperator.interpolate"><code class="docutils literal notranslate"><span class="pre">BasisOperator.interpolate()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.BasisOperator.to_datatree"><code class="docutils literal notranslate"><span class="pre">BasisOperator.to_datatree()</span></code></a></li>
-</ul>
-</li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.BucketBasisOperator"><code class="docutils literal notranslate"><span class="pre">BucketBasisOperator</span></code></a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.BucketBasisOperator.basis_matrix"><code class="docutils literal notranslate"><span class="pre">BucketBasisOperator.basis_matrix</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.BucketBasisOperator.from_datatree"><code class="docutils literal notranslate"><span class="pre">BucketBasisOperator.from_datatree()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.BucketBasisOperator.kind"><code class="docutils literal notranslate"><span class="pre">BucketBasisOperator.kind</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.BucketBasisOperator.meta"><code class="docutils literal notranslate"><span class="pre">BucketBasisOperator.meta</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.BucketBasisOperator.state_metadata"><code class="docutils literal notranslate"><span class="pre">BucketBasisOperator.state_metadata</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.BucketBasisOperator.to_datatree"><code class="docutils literal notranslate"><span class="pre">BucketBasisOperator.to_datatree()</span></code></a></li>
-</ul>
-</li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator"><code class="docutils literal notranslate"><span class="pre">MultiSourceBucketBasisOperator</span></code></a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.basis_matrix"><code class="docutils literal notranslate"><span class="pre">MultiSourceBucketBasisOperator.basis_matrix</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.from_datatree"><code class="docutils literal notranslate"><span class="pre">MultiSourceBucketBasisOperator.from_datatree()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.interpolate"><code class="docutils literal notranslate"><span class="pre">MultiSourceBucketBasisOperator.interpolate()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.kind"><code class="docutils literal notranslate"><span class="pre">MultiSourceBucketBasisOperator.kind</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.meta"><code class="docutils literal notranslate"><span class="pre">MultiSourceBucketBasisOperator.meta</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.native_prolongation"><code class="docutils literal notranslate"><span class="pre">MultiSourceBucketBasisOperator.native_prolongation()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.operator_for_source"><code class="docutils literal notranslate"><span class="pre">MultiSourceBucketBasisOperator.operator_for_source()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.sensitivity"><code class="docutils literal notranslate"><span class="pre">MultiSourceBucketBasisOperator.sensitivity()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.source_labels"><code class="docutils literal notranslate"><span class="pre">MultiSourceBucketBasisOperator.source_labels</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.to_datatree"><code class="docutils literal notranslate"><span class="pre">MultiSourceBucketBasisOperator.to_datatree()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.BasisOperator.from_datatree"><code class="docutils literal notranslate"><span class="pre">BasisOperator.from_datatree()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.BasisOperator.decode_datatree"><code class="docutils literal notranslate"><span class="pre">BasisOperator.decode_datatree()</span></code></a></li>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.drop_singleton_time"><code class="docutils literal notranslate"><span class="pre">drop_singleton_time()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.get_basis_operator_class"><code class="docutils literal notranslate"><span class="pre">get_basis_operator_class()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.register_basis_operator"><code class="docutils literal notranslate"><span class="pre">register_basis_operator()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.BucketBasisOperator"><code class="docutils literal notranslate"><span class="pre">BucketBasisOperator</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.BucketBasisOperator.meta"><code class="docutils literal notranslate"><span class="pre">BucketBasisOperator.meta</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.BucketBasisOperator.basis_matrix"><code class="docutils literal notranslate"><span class="pre">BucketBasisOperator.basis_matrix</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.BucketBasisOperator.state_metadata"><code class="docutils literal notranslate"><span class="pre">BucketBasisOperator.state_metadata</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.BucketBasisOperator.to_datatree"><code class="docutils literal notranslate"><span class="pre">BucketBasisOperator.to_datatree()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.BucketBasisOperator.from_datatree"><code class="docutils literal notranslate"><span class="pre">BucketBasisOperator.from_datatree()</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator"><code class="docutils literal notranslate"><span class="pre">MultiSourceBucketBasisOperator</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.meta"><code class="docutils literal notranslate"><span class="pre">MultiSourceBucketBasisOperator.meta</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.basis_matrix"><code class="docutils literal notranslate"><span class="pre">MultiSourceBucketBasisOperator.basis_matrix</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.source_labels"><code class="docutils literal notranslate"><span class="pre">MultiSourceBucketBasisOperator.source_labels</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.native_prolongation"><code class="docutils literal notranslate"><span class="pre">MultiSourceBucketBasisOperator.native_prolongation()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.operator_for_source"><code class="docutils literal notranslate"><span class="pre">MultiSourceBucketBasisOperator.operator_for_source()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.sensitivity"><code class="docutils literal notranslate"><span class="pre">MultiSourceBucketBasisOperator.sensitivity()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.interpolate"><code class="docutils literal notranslate"><span class="pre">MultiSourceBucketBasisOperator.interpolate()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.to_datatree"><code class="docutils literal notranslate"><span class="pre">MultiSourceBucketBasisOperator.to_datatree()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.from_datatree"><code class="docutils literal notranslate"><span class="pre">MultiSourceBucketBasisOperator.from_datatree()</span></code></a></li>
+</ul>
+</li>
 </ul>
   </nav></div>
 

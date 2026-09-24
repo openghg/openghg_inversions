@@ -4,7 +4,6 @@ openghg\_inversions.postprocessing
 .. automodule:: openghg_inversions.postprocessing
    :members:
    :show-inheritance:
-   :undoc-members:
 
 
 

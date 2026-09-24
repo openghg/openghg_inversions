@@ -33,7 +33,7 @@
     <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
     <link rel="stylesheet" type="text/css" href="../_static/jupyter-sphinx.css" />
     <link rel="stylesheet" type="text/css" href="../_static/thebelab.css" />
-    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=f8ac5af1" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=5f08cb77" />
   
   <!-- So that users can add custom icons -->
   <script defer src="../_static/scripts/fontawesome.js?digest=cb8930eaaf36d9849b67"></script>
@@ -159,8 +159,8 @@
 
 
 <li class="nav-item current active">
-  <a class="nav-link nav-internal" href="modules.html">
-    openghg_inversions
+  <a class="nav-link nav-internal" href="index.html">
+    API reference
   </a>
 </li>
 
@@ -266,8 +266,8 @@
 
 
 <li class="nav-item current active">
-  <a class="nav-link nav-internal" href="modules.html">
-    openghg_inversions
+  <a class="nav-link nav-internal" href="index.html">
+    API reference
   </a>
 </li>
 
@@ -464,7 +464,7 @@
       </a>
     </li>
     
-    <li class="breadcrumb-item"><a href="modules.html" class="nav-link">openghg_inversions</a></li>
+    <li class="breadcrumb-item"><a href="index.html" class="nav-link">API reference</a></li>
     
     
     <li class="breadcrumb-item"><a href="openghg_inversions.html" class="nav-link">openghg_inversions</a></li>
@@ -502,34 +502,23 @@ loadable without reintroducing invalid indexes. Versioned schemas may request
 strict restoration, which rejects missing, malformed, empty, or inapplicable
 restoration metadata.</p>
 <dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.serialization.decode_cf_multiindexes">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.serialization.</span></span><span class="sig-name descname"><span class="pre">decode_cf_multiindexes</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ds</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">index_names</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Iterable" title="(in Python v3.14)"><span class="pre">Iterable</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></span><a class="headerlink" href="#openghg_inversions.serialization.decode_cf_multiindexes" title="Link to this definition">#</a></dt>
-<dd><p>Decode named CF gathering coordinates into pandas MultiIndexes.</p>
-<p>The requested coordinates and their <code class="docutils literal notranslate"><span class="pre">compress</span></code> metadata are validated
-before calling <code class="docutils literal notranslate"><span class="pre">cf_xarray</span></code>. Names are always explicit: this deliberately
-avoids <code class="docutils literal notranslate"><span class="pre">cf_xarray</span></code>’s auto-detection path, which can drop unrelated
-coordinates when no compressed indexes are present.</p>
+<dt class="sig sig-object py" id="openghg_inversions.serialization.normalise_declared_multiindex">
+<span class="sig-name descname"><span class="pre">normalise_declared_multiindex</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ds</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dim</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">level_names</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.serialization.normalise_declared_multiindex" title="Link to this definition">#</a></dt>
+<dd><p>Normalize a MultiIndex or its declared expanded form.</p>
+<p>The owning dimension and ordered semantic level names are explicit.  An
+already-indexed dataset is validated in place; an expanded representation
+is reconstructed only when every level is one-dimensional on <code class="docutils literal notranslate"><span class="pre">dim</span></code> and
+the resulting labels are unique.</p>
 <dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>ds</strong> – Dataset containing CF compression-by-gathering coordinates.</p></li>
-<li><p><strong>index_names</strong> – Explicit gathered-coordinate name or names to decode.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>A new Dataset with the requested coordinates decoded as MultiIndexes.</p>
-</dd>
-<dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If no names are supplied or a requested coordinate has
-    missing, malformed, ambiguous, or inapplicable CF <code class="docutils literal notranslate"><span class="pre">compress</span></code>
-    metadata.</p>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><em>Dataset</em></a></p>
 </dd>
 </dl>
 </dd></dl>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.serialization.encode_cf_multiindexes">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.serialization.</span></span><span class="sig-name descname"><span class="pre">encode_cf_multiindexes</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ds</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">index_names</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Iterable" title="(in Python v3.14)"><span class="pre">Iterable</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></span><a class="headerlink" href="#openghg_inversions.serialization.encode_cf_multiindexes" title="Link to this definition">#</a></dt>
+<span class="sig-name descname"><span class="pre">encode_cf_multiindexes</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ds</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">index_names</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.serialization.encode_cf_multiindexes" title="Link to this definition">#</a></dt>
 <dd><p>Encode named MultiIndexes using CF compression by gathering.</p>
 <p>This codec is intended for versioned prepared-input artifacts. Unlike
 <a class="reference internal" href="#openghg_inversions.serialization.reset_serialisation_multiindexes" title="openghg_inversions.serialization.reset_serialisation_multiindexes"><code class="xref py py-func docutils literal notranslate"><span class="pre">reset_serialisation_multiindexes()</span></code></a>, it emits the interoperable CF
@@ -538,8 +527,8 @@ to encode.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>ds</strong> – Dataset containing the MultiIndex dimensions.</p></li>
-<li><p><strong>index_names</strong> – Explicit dimension name or names to encode.</p></li>
+<li><p><strong>ds</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><em>Dataset</em></a>) – Dataset containing the MultiIndex dimensions.</p></li>
+<li><p><strong>index_names</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Iterable" title="(in Python v3.14)"><em>Iterable</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>]</em>) – Explicit dimension name or names to encode.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -551,90 +540,68 @@ gathering coordinates.</p>
     named MultiIndex, level names are invalid or ambiguous, or existing
     <code class="docutils literal notranslate"><span class="pre">compress</span></code> metadata would be overwritten.</p>
 </dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><em>Dataset</em></a></p>
+</dd>
 </dl>
 </dd></dl>
 
 <dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.serialization.encode_multiindexes_for_storage">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.serialization.</span></span><span class="sig-name descname"><span class="pre">encode_multiindexes_for_storage</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ds</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></span><a class="headerlink" href="#openghg_inversions.serialization.encode_multiindexes_for_storage" title="Link to this definition">#</a></dt>
-<dd><p>Expand all semantic MultiIndexes and attach versioned schema metadata.</p>
+<dt class="sig sig-object py" id="openghg_inversions.serialization.decode_cf_multiindexes">
+<span class="sig-name descname"><span class="pre">decode_cf_multiindexes</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ds</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">index_names</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.serialization.decode_cf_multiindexes" title="Link to this definition">#</a></dt>
+<dd><p>Decode named CF gathering coordinates into pandas MultiIndexes.</p>
+<p>The requested coordinates and their <code class="docutils literal notranslate"><span class="pre">compress</span></code> metadata are validated
+before calling <code class="docutils literal notranslate"><span class="pre">cf_xarray</span></code>. Names are always explicit: this deliberately
+avoids <code class="docutils literal notranslate"><span class="pre">cf_xarray</span></code>’s auto-detection path, which can drop unrelated
+coordinates when no compressed indexes are present.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>ds</strong> – Dataset containing zero or more pandas MultiIndex dimensions.</p>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ds</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><em>Dataset</em></a>) – Dataset containing CF compression-by-gathering coordinates.</p></li>
+<li><p><strong>index_names</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Iterable" title="(in Python v3.14)"><em>Iterable</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>]</em>) – Explicit gathered-coordinate name or names to decode.</p></li>
+</ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>A serialization copy with ordinary level coordinates and declarations
-of their owner, order, uniqueness, and reconstruction policy.</p>
+<dd class="field-even"><p>A new Dataset with the requested coordinates decoded as MultiIndexes.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If an index has missing, repeated, or duplicate semantic
-    labels.</p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If no names are supplied or a requested coordinate has
+    missing, malformed, ambiguous, or inapplicable CF <code class="docutils literal notranslate"><span class="pre">compress</span></code>
+    metadata.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><em>Dataset</em></a></p>
 </dd>
 </dl>
 </dd></dl>
 
 <dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.serialization.inferencedata_from_datatree">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.serialization.</span></span><span class="sig-name descname"><span class="pre">inferencedata_from_datatree</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dt</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><span class="pre">DataTree</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">InferenceData</span></span></span><a class="headerlink" href="#openghg_inversions.serialization.inferencedata_from_datatree" title="Link to this definition">#</a></dt>
-<dd><p>Reconstruct ArviZ InferenceData from a group DataTree.</p>
+<dt class="sig sig-object py" id="openghg_inversions.serialization.save_datatree">
+<span class="sig-name descname"><span class="pre">save_datatree</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dt</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_file</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_format</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.serialization.save_datatree" title="Link to this definition">#</a></dt>
+<dd><p>Save a DataTree to NetCDF or Zarr.</p>
+<p>This writes the tree, replacing an existing destination artifact. NetCDF
+uses xarray’s default engine so callers that already loaded NetCDF inputs
+do not switch HDF5 bindings at the serialization boundary.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>dt</strong> – DataTree containing root attributes and one child dataset per
-InferenceData group.</p>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>dt</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><em>DataTree</em></a>) – DataTree to persist.</p></li>
+<li><p><strong>output_file</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><em>Path</em></a>) – Requested artifact path. When <code class="docutils literal notranslate"><span class="pre">output_format</span></code> is
+supplied, the matching <code class="docutils literal notranslate"><span class="pre">.nc</span></code> or <code class="docutils literal notranslate"><span class="pre">.zarr</span></code> suffix is added or
+replaces an existing suffix as needed.</p></li>
+<li><p><strong>output_format</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><em>Literal</em></a><em>[</em><em>'netcdf'</em><em>, </em><em>'zarr'</em><em>] </em><em>| </em><em>None</em>) – Storage format. When omitted, infer the format from an
+existing <code class="docutils literal notranslate"><span class="pre">.nc</span></code> or <code class="docutils literal notranslate"><span class="pre">.zarr</span></code> suffix.</p></li>
+</ul>
 </dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Reconstructed InferenceData with root attributes and valid serialized
-MultiIndexes restored.</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.serialization.inferencedata_to_datatree">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.serialization.</span></span><span class="sig-name descname"><span class="pre">inferencedata_to_datatree</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">idata</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">InferenceData</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><span class="pre">DataTree</span></a></span></span><a class="headerlink" href="#openghg_inversions.serialization.inferencedata_to_datatree" title="Link to this definition">#</a></dt>
-<dd><p>Convert ArviZ InferenceData groups to a serializable DataTree.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>idata</strong> – InferenceData whose root attributes and groups should become
-the tree root and child nodes.</p>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>DataTree containing the InferenceData root attributes and one child
-dataset per group.</p>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If the format cannot be inferred or is unsupported.</p>
 </dd>
 </dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.serialization.load_inferencedata">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.serialization.</span></span><span class="sig-name descname"><span class="pre">load_inferencedata</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">file_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><span class="pre">Path</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">InferenceData</span></span></span><a class="headerlink" href="#openghg_inversions.serialization.load_inferencedata" title="Link to this definition">#</a></dt>
-<dd><p>Load InferenceData and restore every valid declared MultiIndex.</p>
-<p>Malformed declarations are removed and left expanded rather than guessed,
-matching <a class="reference internal" href="#openghg_inversions.serialization.restore_declared_multiindexes" title="openghg_inversions.serialization.restore_declared_multiindexes"><code class="xref py py-func docutils literal notranslate"><span class="pre">restore_declared_multiindexes()</span></code></a>’ forgiving default.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>file_path</strong> – NetCDF file or Zarr store written by
-<a class="reference internal" href="#openghg_inversions.serialization.save_inferencedata" title="openghg_inversions.serialization.save_inferencedata"><code class="xref py py-func docutils literal notranslate"><span class="pre">save_inferencedata()</span></code></a>.</p>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Fully loaded InferenceData with valid semantic indexes reconstructed.</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.serialization.normalise_declared_multiindex">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.serialization.</span></span><span class="sig-name descname"><span class="pre">normalise_declared_multiindex</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ds</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">level_names</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Iterable" title="(in Python v3.14)"><span class="pre">Iterable</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></span><a class="headerlink" href="#openghg_inversions.serialization.normalise_declared_multiindex" title="Link to this definition">#</a></dt>
-<dd><p>Normalize a MultiIndex or its declared expanded form.</p>
-<p>The owning dimension and ordered semantic level names are explicit.  An
-already-indexed dataset is validated in place; an expanded representation
-is reconstructed only when every level is one-dimensional on <code class="docutils literal notranslate"><span class="pre">dim</span></code> and
-the resulting labels are unique.</p>
 </dd></dl>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.serialization.open_datatree_loaded">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.serialization.</span></span><span class="sig-name descname"><span class="pre">open_datatree_loaded</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">file_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><span class="pre">Path</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><span class="pre">DataTree</span></a></span></span><a class="headerlink" href="#openghg_inversions.serialization.open_datatree_loaded" title="Link to this definition">#</a></dt>
+<span class="sig-name descname"><span class="pre">open_datatree_loaded</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">file_path</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.serialization.open_datatree_loaded" title="Link to this definition">#</a></dt>
 <dd><p>Open and eagerly load a DataTree artifact.</p>
 <p>NetCDF uses xarray’s default engine, matching <a class="reference internal" href="#openghg_inversions.serialization.save_datatree" title="openghg_inversions.serialization.save_datatree"><code class="xref py py-func docutils literal notranslate"><span class="pre">save_datatree()</span></code></a> and the
 rest of the default data-loading path. Loading happens while the file
@@ -642,7 +609,7 @@ context is open, so the returned tree owns its data and does not retain
 references to closed file handles.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>file_path</strong> – NetCDF or Zarr DataTree artifact to load.</p>
+<dd class="field-odd"><p><strong>file_path</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><em>Path</em></a>) – NetCDF or Zarr DataTree artifact to load.</p>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>Fully loaded DataTree.</p>
@@ -654,16 +621,114 @@ references to closed file handles.</p>
 <li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If no backend can interpret the artifact.</p></li>
 </ul>
 </dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><em>DataTree</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.serialization.inferencedata_to_datatree">
+<span class="sig-name descname"><span class="pre">inferencedata_to_datatree</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">idata</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.serialization.inferencedata_to_datatree" title="Link to this definition">#</a></dt>
+<dd><p>Convert ArviZ InferenceData groups to a serializable DataTree.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>idata</strong> (<em>InferenceData</em>) – InferenceData whose root attributes and groups should become
+the tree root and child nodes.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>DataTree containing the InferenceData root attributes and one child
+dataset per group.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><em>DataTree</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.serialization.inferencedata_from_datatree">
+<span class="sig-name descname"><span class="pre">inferencedata_from_datatree</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dt</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.serialization.inferencedata_from_datatree" title="Link to this definition">#</a></dt>
+<dd><p>Reconstruct ArviZ InferenceData from a group DataTree.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>dt</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><em>DataTree</em></a>) – DataTree containing root attributes and one child dataset per
+InferenceData group.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Reconstructed InferenceData with root attributes and valid serialized
+MultiIndexes restored.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><em>InferenceData</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.serialization.save_inferencedata">
+<span class="sig-name descname"><span class="pre">save_inferencedata</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">idata</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_file</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_format</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.serialization.save_inferencedata" title="Link to this definition">#</a></dt>
+<dd><p>Save InferenceData through the declared MultiIndex boundary.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>idata</strong> (<em>InferenceData</em>) – InferenceData whose groups and root attributes should be saved.</p></li>
+<li><p><strong>output_file</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><em>Path</em></a>) – Destination NetCDF file or Zarr store.</p></li>
+<li><p><strong>output_format</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><em>Literal</em></a><em>[</em><em>'netcdf'</em><em>, </em><em>'zarr'</em><em>] </em><em>| </em><em>None</em>) – Explicit backend, or <code class="docutils literal notranslate"><span class="pre">None</span></code> to infer it from the path.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.serialization.load_inferencedata">
+<span class="sig-name descname"><span class="pre">load_inferencedata</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">file_path</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.serialization.load_inferencedata" title="Link to this definition">#</a></dt>
+<dd><p>Load InferenceData and restore every valid declared MultiIndex.</p>
+<p>Malformed declarations are removed and left expanded rather than guessed,
+matching <a class="reference internal" href="#openghg_inversions.serialization.restore_declared_multiindexes" title="openghg_inversions.serialization.restore_declared_multiindexes"><code class="xref py py-func docutils literal notranslate"><span class="pre">restore_declared_multiindexes()</span></code></a>’ forgiving default.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>file_path</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><em>Path</em></a>) – NetCDF file or Zarr store written by
+<a class="reference internal" href="#openghg_inversions.serialization.save_inferencedata" title="openghg_inversions.serialization.save_inferencedata"><code class="xref py py-func docutils literal notranslate"><span class="pre">save_inferencedata()</span></code></a>.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Fully loaded InferenceData with valid semantic indexes reconstructed.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><em>InferenceData</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.serialization.encode_multiindexes_for_storage">
+<span class="sig-name descname"><span class="pre">encode_multiindexes_for_storage</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ds</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.serialization.encode_multiindexes_for_storage" title="Link to this definition">#</a></dt>
+<dd><p>Expand all semantic MultiIndexes and attach versioned schema metadata.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>ds</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><em>Dataset</em></a>) – Dataset containing zero or more pandas MultiIndex dimensions.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A serialization copy with ordinary level coordinates and declarations
+of their owner, order, uniqueness, and reconstruction policy.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If an index has missing, repeated, or duplicate semantic
+    labels.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><em>Dataset</em></a></p>
+</dd>
 </dl>
 </dd></dl>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.serialization.reset_serialisation_multiindexes">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.serialization.</span></span><span class="sig-name descname"><span class="pre">reset_serialisation_multiindexes</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ds</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></span><a class="headerlink" href="#openghg_inversions.serialization.reset_serialisation_multiindexes" title="Link to this definition">#</a></dt>
+<span class="sig-name descname"><span class="pre">reset_serialisation_multiindexes</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ds</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.serialization.reset_serialisation_multiindexes" title="Link to this definition">#</a></dt>
 <dd><p>Expand xarray MultiIndexes before DataTree serialization.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>ds</strong> – Dataset that may contain pandas MultiIndex dimensions.</p>
+<dd class="field-odd"><p><strong>ds</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><em>Dataset</em></a>) – Dataset that may contain pandas MultiIndex dimensions.</p>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>Dataset with MultiIndexes reset and restoration metadata stored in an
@@ -673,32 +738,15 @@ attribute. The input dataset is not modified.</p>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If a MultiIndex level is unnamed and cannot be restored
     unambiguously.</p>
 </dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.serialization.restore_declared_multiindexes">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.serialization.</span></span><span class="sig-name descname"><span class="pre">restore_declared_multiindexes</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ds</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">strict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></span><a class="headerlink" href="#openghg_inversions.serialization.restore_declared_multiindexes" title="Link to this definition">#</a></dt>
-<dd><p>Restore MultiIndexes from explicit storage declarations.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>ds</strong> – Dataset carrying expanded coordinates and
-<code class="xref py py-data docutils literal notranslate"><span class="pre">MULTIINDEX_DIMS_ATTR</span></code> metadata.</p></li>
-<li><p><strong>strict</strong> – Raise a focused error for invalid metadata or semantic labels.
-By default, invalid declarations are removed and their coordinates
-remain expanded.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Dataset with every valid declared MultiIndex restored explicitly.</p>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><em>Dataset</em></a></p>
 </dd>
 </dl>
 </dd></dl>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.serialization.restore_serialisation_multiindexes">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.serialization.</span></span><span class="sig-name descname"><span class="pre">restore_serialisation_multiindexes</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ds</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">strict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></span><a class="headerlink" href="#openghg_inversions.serialization.restore_serialisation_multiindexes" title="Link to this definition">#</a></dt>
+<span class="sig-name descname"><span class="pre">restore_serialisation_multiindexes</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ds</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">strict</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.serialization.restore_serialisation_multiindexes" title="Link to this definition">#</a></dt>
 <dd><p>Restore valid MultiIndexes expanded during DataTree serialization.</p>
 <p>In the default non-strict mode, malformed restoration metadata is discarded
 instead of raising. This is a compatibility guarantee for existing
@@ -708,8 +756,8 @@ for missing, empty, malformed, or inapplicable records.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>ds</strong> – Dataset that may carry <code class="docutils literal notranslate"><span class="pre">MULTIINDEX_DIMS_ATTR</span></code> metadata.</p></li>
-<li><p><strong>strict</strong> – Raise for malformed restoration metadata instead of leaving
+<li><p><strong>ds</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><em>Dataset</em></a>) – Dataset that may carry <code class="docutils literal notranslate"><span class="pre">MULTIINDEX_DIMS_ATTR</span></code> metadata.</p></li>
+<li><p><strong>strict</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – Raise for malformed restoration metadata instead of leaving
 index levels expanded. Strict restoration also requires at least
 one recorded MultiIndex dimension. The default preserves forgiving
 historical inversion-output loading.</p></li>
@@ -723,44 +771,31 @@ serialization attribute removed. The input dataset is not modified.</p>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If <code class="docutils literal notranslate"><span class="pre">strict</span></code> is true and restoration metadata is malformed
     or cannot be applied to the dataset.</p>
 </dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.serialization.save_datatree">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.serialization.</span></span><span class="sig-name descname"><span class="pre">save_datatree</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dt</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><span class="pre">DataTree</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_file</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><span class="pre">Path</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_format</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><span class="pre">Literal</span></a><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'netcdf'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'zarr'</span></span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span></span><a class="headerlink" href="#openghg_inversions.serialization.save_datatree" title="Link to this definition">#</a></dt>
-<dd><p>Save a DataTree to NetCDF or Zarr.</p>
-<p>This writes the tree, replacing an existing destination artifact. NetCDF
-uses xarray’s default engine so callers that already loaded NetCDF inputs
-do not switch HDF5 bindings at the serialization boundary.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>dt</strong> – DataTree to persist.</p></li>
-<li><p><strong>output_file</strong> – Requested artifact path. When <code class="docutils literal notranslate"><span class="pre">output_format</span></code> is
-supplied, the matching <code class="docutils literal notranslate"><span class="pre">.nc</span></code> or <code class="docutils literal notranslate"><span class="pre">.zarr</span></code> suffix is added or
-replaces an existing suffix as needed.</p></li>
-<li><p><strong>output_format</strong> – Storage format. When omitted, infer the format from an
-existing <code class="docutils literal notranslate"><span class="pre">.nc</span></code> or <code class="docutils literal notranslate"><span class="pre">.zarr</span></code> suffix.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Raises<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If the format cannot be inferred or is unsupported.</p>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><em>Dataset</em></a></p>
 </dd>
 </dl>
 </dd></dl>
 
 <dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.serialization.save_inferencedata">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.serialization.</span></span><span class="sig-name descname"><span class="pre">save_inferencedata</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">idata</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">InferenceData</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_file</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><span class="pre">Path</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_format</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><span class="pre">Literal</span></a><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'netcdf'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'zarr'</span></span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span></span><a class="headerlink" href="#openghg_inversions.serialization.save_inferencedata" title="Link to this definition">#</a></dt>
-<dd><p>Save InferenceData through the declared MultiIndex boundary.</p>
+<dt class="sig sig-object py" id="openghg_inversions.serialization.restore_declared_multiindexes">
+<span class="sig-name descname"><span class="pre">restore_declared_multiindexes</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ds</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">strict</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.serialization.restore_declared_multiindexes" title="Link to this definition">#</a></dt>
+<dd><p>Restore MultiIndexes from explicit storage declarations.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>idata</strong> – InferenceData whose groups and root attributes should be saved.</p></li>
-<li><p><strong>output_file</strong> – Destination NetCDF file or Zarr store.</p></li>
-<li><p><strong>output_format</strong> – Explicit backend, or <code class="docutils literal notranslate"><span class="pre">None</span></code> to infer it from the path.</p></li>
+<li><p><strong>ds</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><em>Dataset</em></a>) – Dataset carrying expanded coordinates and
+<code class="xref py py-data docutils literal notranslate"><span class="pre">MULTIINDEX_DIMS_ATTR</span></code> metadata.</p></li>
+<li><p><strong>strict</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – Raise a focused error for invalid metadata or semantic labels.
+By default, invalid declarations are removed and their coordinates
+remain expanded.</p></li>
 </ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Dataset with every valid declared MultiIndex restored explicitly.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><em>Dataset</em></a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -814,19 +849,19 @@ existing <code class="docutils literal notranslate"><span class="pre">.nc</span>
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.serialization.decode_cf_multiindexes"><code class="docutils literal notranslate"><span class="pre">decode_cf_multiindexes()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.serialization.encode_cf_multiindexes"><code class="docutils literal notranslate"><span class="pre">encode_cf_multiindexes()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.serialization.encode_multiindexes_for_storage"><code class="docutils literal notranslate"><span class="pre">encode_multiindexes_for_storage()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.serialization.inferencedata_from_datatree"><code class="docutils literal notranslate"><span class="pre">inferencedata_from_datatree()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.serialization.inferencedata_to_datatree"><code class="docutils literal notranslate"><span class="pre">inferencedata_to_datatree()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.serialization.load_inferencedata"><code class="docutils literal notranslate"><span class="pre">load_inferencedata()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.serialization.normalise_declared_multiindex"><code class="docutils literal notranslate"><span class="pre">normalise_declared_multiindex()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.serialization.open_datatree_loaded"><code class="docutils literal notranslate"><span class="pre">open_datatree_loaded()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.serialization.reset_serialisation_multiindexes"><code class="docutils literal notranslate"><span class="pre">reset_serialisation_multiindexes()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.serialization.restore_declared_multiindexes"><code class="docutils literal notranslate"><span class="pre">restore_declared_multiindexes()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.serialization.restore_serialisation_multiindexes"><code class="docutils literal notranslate"><span class="pre">restore_serialisation_multiindexes()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.serialization.encode_cf_multiindexes"><code class="docutils literal notranslate"><span class="pre">encode_cf_multiindexes()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.serialization.decode_cf_multiindexes"><code class="docutils literal notranslate"><span class="pre">decode_cf_multiindexes()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.serialization.save_datatree"><code class="docutils literal notranslate"><span class="pre">save_datatree()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.serialization.open_datatree_loaded"><code class="docutils literal notranslate"><span class="pre">open_datatree_loaded()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.serialization.inferencedata_to_datatree"><code class="docutils literal notranslate"><span class="pre">inferencedata_to_datatree()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.serialization.inferencedata_from_datatree"><code class="docutils literal notranslate"><span class="pre">inferencedata_from_datatree()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.serialization.save_inferencedata"><code class="docutils literal notranslate"><span class="pre">save_inferencedata()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.serialization.load_inferencedata"><code class="docutils literal notranslate"><span class="pre">load_inferencedata()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.serialization.encode_multiindexes_for_storage"><code class="docutils literal notranslate"><span class="pre">encode_multiindexes_for_storage()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.serialization.reset_serialisation_multiindexes"><code class="docutils literal notranslate"><span class="pre">reset_serialisation_multiindexes()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.serialization.restore_serialisation_multiindexes"><code class="docutils literal notranslate"><span class="pre">restore_serialisation_multiindexes()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.serialization.restore_declared_multiindexes"><code class="docutils literal notranslate"><span class="pre">restore_declared_multiindexes()</span></code></a></li>
 </ul>
   </nav></div>
 

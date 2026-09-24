@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>CO₂ model family &#8212; openghg_inversions  documentation</title>
+    <title>Maintain the documentation &#8212; openghg_inversions  documentation</title>
   
   
   
@@ -47,12 +47,12 @@
     <script src="../_static/thebelab-helper.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
-    <script>DOCUMENTATION_OPTIONS.pagename = 'usage/co2_model_family';</script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'development/documentation';</script>
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="CO₂ model recipes" href="co2_models.html" />
-    <link rel="prev" title="Run a nested-domain RHIME inversion" href="nested_domains.html" />
+    <link rel="next" title="Releases and branch maintenance" href="releasing.html" />
+    <link rel="prev" title="Validation and labelled-array patterns" href="validation_and_xarray.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="" />
@@ -137,15 +137,15 @@
 <nav>
   <ul class="bd-navbar-elements navbar-nav">
     
-<li class="nav-item current active">
-  <a class="nav-link nav-internal" href="usage.html">
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../usage/usage.html">
     Using OpenGHG Inversions
   </a>
 </li>
 
 
-<li class="nav-item ">
-  <a class="nav-link nav-internal" href="../development/index.html">
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="index.html">
     Developing OpenGHG Inversions
   </a>
 </li>
@@ -244,15 +244,15 @@
 <nav>
   <ul class="bd-navbar-elements navbar-nav">
     
-<li class="nav-item current active">
-  <a class="nav-link nav-internal" href="usage.html">
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../usage/usage.html">
     Using OpenGHG Inversions
   </a>
 </li>
 
 
-<li class="nav-item ">
-  <a class="nav-link nav-internal" href="../development/index.html">
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="index.html">
     Developing OpenGHG Inversions
   </a>
 </li>
@@ -313,41 +313,11 @@
 <nav class="bd-docs-nav bd-links"
      aria-label="Section Navigation">
   <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
-  <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">Contents:</span></p>
-<ul class="current nav bd-sidenav">
-<li class="toctree-l1"><a class="reference internal" href="installation.html">Install and set up OpenGHG Inversions</a></li>
-<li class="toctree-l1"><a class="reference internal" href="getting_started.html">Getting started with OpenGHG Inversions</a></li>
-<li class="toctree-l1"><a class="reference internal" href="conceptual_inversion.html">How an Atmospheric Inversion Works</a></li>
-<li class="toctree-l1"><a class="reference internal" href="model_recipes.html">Choose a RHIME model recipe</a></li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="standard_model_family.html">Standard RHIME model family</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l2"><a class="reference internal" href="rhime_standard_tutorial.html">Standard RHIME tutorial</a></li>
-<li class="toctree-l2"><a class="reference internal" href="rhime_multisector_tutorial.html">Multisector RHIME tutorial</a></li>
-<li class="toctree-l2"><a class="reference internal" href="concrete_rhime_model.html">Standard and multisector RHIME models</a></li>
-<li class="toctree-l2"><a class="reference internal" href="rhime.html">RHIME configuration and prepared-input reference</a></li>
-<li class="toctree-l2"><a class="reference internal" href="cli.html">Running RHIME from the command line</a></li>
-<li class="toctree-l2"><a class="reference internal" href="customising_rhime.html">Customising RHIME</a></li>
-</ul>
-</details></li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="nested_domain_model_family.html">Nested-domain model family</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l2"><a class="reference internal" href="nested_domains.html">Run a nested-domain RHIME inversion</a></li>
-</ul>
-</details></li>
-<li class="toctree-l1 current active has-children"><a class="current reference internal" href="#">CO₂ model family</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l2"><a class="reference internal" href="co2_models.html">CO₂ model recipes</a></li>
-</ul>
-</details></li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="running_and_validating.html">Running and validating inversions</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l2"><a class="reference internal" href="staged_workflow.html">Staged RHIME workflows</a></li>
-</ul>
-</details></li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="shared_scientific_concepts.html">Shared scientific concepts</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l2"><a class="reference internal" href="grouped_basis_layout.html">Grouped basis and state metadata</a></li>
-<li class="toctree-l2"><a class="reference internal" href="native_covariance.html">Native Covariance Projection</a></li>
-<li class="toctree-l2"><a class="reference internal" href="affine_flux_map.html">Affine native-flux reconstruction</a></li>
-<li class="toctree-l2"><a class="reference internal" href="coherent_reduction.html">Coherent Gaussian Reduction</a></li>
-</ul>
-</details></li>
-<li class="toctree-l1"><a class="reference internal" href="legacy_and_migration.html">Migrate from HBMCMC to RHIME</a></li>
+  <div class="bd-toc-item navbar-nav"><ul class="current nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="rhime_model_development.html">Developing RHIME models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="validation_and_xarray.html">Validation and labelled-array patterns</a></li>
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">Maintain the documentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="releasing.html">Releases and branch maintenance</a></li>
 </ul>
 </div>
 </nav></div>
@@ -389,9 +359,9 @@
       </a>
     </li>
     
-    <li class="breadcrumb-item"><a href="usage.html" class="nav-link">Using OpenGHG Inversions</a></li>
+    <li class="breadcrumb-item"><a href="index.html" class="nav-link">Developing OpenGHG Inversions</a></li>
     
-    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">CO₂ model family</span></li>
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Maintain the documentation</span></li>
   </ul>
 </nav>
 </div>
@@ -408,104 +378,69 @@
 <div id="searchbox"></div>
                 <article class="bd-article">
                   
-  <section id="co2-model-family">
-<h1>CO₂ model family<a class="headerlink" href="#co2-model-family" title="Link to this heading">#</a></h1>
-<p>The advanced CO₂ model family contains the <strong>CO₂-only</strong> and <strong>linked CO₂/O₂</strong>
-recipes. O₂ is a tracer in the linked recipe, not a standalone supported model.
-Both recipes begin from scientific arrays that have already been prepared; they
-are not alternative species settings for the complete standard runner.</p>
-<section id="current-support">
-<h2>Current support<a class="headerlink" href="#current-support" title="Link to this heading">#</a></h2>
-<div class="pst-scrollable-table-container"><table class="table">
-<colgroup>
-<col style="width: 22.0%" />
-<col style="width: 39.0%" />
-<col style="width: 39.0%" />
-</colgroup>
-<thead>
-<tr class="row-odd"><th class="head"><p>Capability</p></th>
-<th class="head"><p>CO₂-only</p></th>
-<th class="head"><p>Linked CO₂/O₂</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p>Intended use</p></td>
-<td><p>One CO₂ channel with a correlated positive retained state and coherent
-aggregation covariance.</p></td>
-<td><p>CO₂ and O₂ channels with shared and tracer-specific retained states and
-cross-channel covariance.</p></td>
-</tr>
-<tr class="row-odd"><td><p>Public entry point</p></td>
-<td><p><a class="reference internal" href="../reference/openghg_inversions.rhime.html#openghg_inversions.rhime.run_rhime_co2" title="openghg_inversions.rhime.run_rhime_co2"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.run_rhime_co2()</span></code></a>; see the
-<a class="reference internal" href="co2_models.html#co2-cached-sigma-recipe"><span class="std std-ref">package-supported cached-sigma specialization</span></a> for its prepared-input runner.</p></td>
-<td><p><a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs" title="openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs()</span></code></a>.
-A complete <code class="docutils literal notranslate"><span class="pre">run_rhime_co2_o2</span></code> entry point is not available.</p></td>
-</tr>
-<tr class="row-even"><td><p>Acquisition and preparation</p></td>
-<td><p><a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.prepare_co2_inputs" title="openghg_inversions.rhime.co2.prepare_co2_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.prepare_co2_inputs()</span></code></a> combines
-canonical RHIME observations and metadata with one coherent reduction
-in a dedicated
-<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2PreparedInputs" title="openghg_inversions.rhime.co2.Co2PreparedInputs"><code class="xref py py-class docutils literal notranslate"><span class="pre">Co2PreparedInputs</span></code></a> artifact.</p></td>
-<td><p><a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.prepare_co2_o2_inputs" title="openghg_inversions.rhime.co2.prepare_co2_o2_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.prepare_co2_o2_inputs()</span></code></a> gathers
-caller-supplied, channel-native prepared arrays; it does not acquire
-OpenGHG data.</p></td>
-</tr>
-<tr class="row-odd"><td><p>Configuration</p></td>
-<td><p>A packaged TOML template and strict resolver produce explicit arguments
-for the ordinary or cached fixed-OU prepared-input Python runner.</p></td>
-<td><p>A packaged TOML template and strict resolver produce explicit arguments
-for the linked prepared-input Python runner.</p></td>
-</tr>
-<tr class="row-even"><td><p>Boundary conditions and offsets</p></td>
-<td><p>The ordinary and cached-sigma runners can select prepared <code class="docutils literal notranslate"><span class="pre">H_bc</span></code>
-boundary sensitivity and add global, site, or site-by-period offsets.</p></td>
-<td><p>Not exposed by the linked prepared-input runner.</p></td>
-</tr>
-<tr class="row-odd"><td><p>Staged workflow</p></td>
-<td><p>Not supported by the staged CLI.</p></td>
-<td><p>Not supported by the staged CLI.</p></td>
-</tr>
-<tr class="row-even"><td><p>Outputs and postprocessing</p></td>
-<td><p>Returns annotated <code class="docutils literal notranslate"><span class="pre">InferenceData</span></code>. Use the documented serialization
-boundary; the complete RHIME output pipeline is not integrated.</p></td>
-<td><p>Returns annotated <code class="docutils literal notranslate"><span class="pre">InferenceData</span></code>. Use the documented serialization
-boundary; family-specific output and postprocessing are not integrated.</p></td>
-</tr>
-<tr class="row-odd"><td><p>Validation and acceptance</p></td>
-<td><p>Coherent preparation, dedicated serialization, model construction,
-configuration resolution, replay, provenance, and cached-sampler
-behavior have automated regression tests. Complete outputs, staged
-integration, and scientist acceptance remain future work.</p></td>
-<td><p>Preparation, graph construction, mixed-unit metadata, replay, and
-provenance have automated regression tests. Configuration currently
-limits linked replay to one shared concentration-unit label. Production
-scientist acceptance remains future work.</p></td>
-</tr>
-</tbody>
-</table>
-</div>
+  <section id="maintain-the-documentation">
+<h1>Maintain the documentation<a class="headerlink" href="#maintain-the-documentation" title="Link to this heading">#</a></h1>
+<p>The API reference combines a hand-maintained landing page with generated
+module pages. Keeping these two parts separate makes the public API easier to
+navigate without requiring maintainers to duplicate detailed signatures and
+docstrings.</p>
+<section id="update-the-hand-maintained-api-reference">
+<h2>Update the hand-maintained API reference<a class="headerlink" href="#update-the-hand-maintained-api-reference" title="Link to this heading">#</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">docs/reference/index.rst</span></code> is the API landing page. Its introductory text,
+section headings, and autosummary tables are maintained by hand. Update it
+when a public object is added, removed, renamed, or moved, or when an object
+belongs under a different reader-facing heading. Adding a module does not add
+its public objects to the landing page automatically.</p>
+<p>The autosummary entries must use fully qualified import paths. Sphinx reads
+the current signatures and summaries from the implementation, so do not copy
+those details into the landing page. Update the relevant docstring instead.</p>
+<p>Generated signatures keep annotations beside documented parameter
+descriptions, rather than crowding them into the signature itself. They also
+omit module prefixes from displayed object names; the fully qualified import
+path remains available in the page URL, module heading, and cross-reference
+target. These are site-wide presentation choices controlled by
+<code class="docutils literal notranslate"><span class="pre">autodoc_typehints</span></code>, <code class="docutils literal notranslate"><span class="pre">autodoc_typehints_description_target</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">add_module_names</span></code> in <code class="docutils literal notranslate"><span class="pre">docs/conf.py</span></code>. Change those settings only when the
+whole API reference should adopt a different style.</p>
 </section>
-<section id="prerequisites">
-<h2>Prerequisites<a class="headerlink" href="#prerequisites" title="Link to this heading">#</a></h2>
-<p>Readers should already understand labelled xarray state and observation
-dimensions, the distinction between native and retained state, and covariance
-in the observation likelihood. The shared pages on <a class="reference internal" href="grouped_basis_layout.html"><span class="doc">grouped basis layouts</span></a>, <a class="reference internal" href="native_covariance.html"><span class="doc">native covariance</span></a>, and
-<a class="reference internal" href="coherent_reduction.html"><span class="doc">coherent reduction</span></a> provide that background without
-making those concepts specific to CO₂.</p>
-<p>The family page records present software support, not evidence that a selected
-recipe is scientifically suitable for a particular inversion. Complete
-outputs, staged integration, and scientist acceptance are tracked in <a class="reference external" href="https://linear.app/openghg-inversions/issue/OPE-79">OPE-79</a>. The TOML resolver is a
-configuration boundary for the existing Python runners; it does not add a
-CO₂ command to the staged CLI.</p>
-<p>The CO2-only handoff is intentionally separate from both the generic
-<code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code> boundary and the linked CO2/O2 preparation contract.
-It does not add coherent-reduction or aggregation-error options to the
-standard and multisector runners or to <code class="docutils literal notranslate"><span class="pre">run_hbmcmc.py</span></code>.</p>
-<div class="toctree-wrapper compound">
-<ul>
-<li class="toctree-l1"><a class="reference internal" href="co2_models.html">CO₂ model recipes</a></li>
-</ul>
+<section id="regenerate-module-pages">
+<h2>Regenerate module pages<a class="headerlink" href="#regenerate-module-pages" title="Link to this heading">#</a></h2>
+<p>The detailed module pages in <code class="docutils literal notranslate"><span class="pre">docs/reference/openghg_inversions.*.rst</span></code> are
+generated from the package layout. Regenerate them after adding, removing, or
+moving a Python module:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>dev<span class="w"> </span>tox<span class="w"> </span>-e<span class="w"> </span>docs-api
+</pre></div>
 </div>
+<p>This command uses the templates in <code class="docutils literal notranslate"><span class="pre">docs/_templates</span></code> and does not generate
+or overwrite <code class="docutils literal notranslate"><span class="pre">docs/reference/index.rst</span></code>. Review and commit the resulting
+changes. Do not edit generated module pages by hand; change a template, the
+Sphinx configuration, or the source docstring and regenerate instead.</p>
+</section>
+<section id="build-and-check-the-documentation">
+<h2>Build and check the documentation<a class="headerlink" href="#build-and-check-the-documentation" title="Link to this heading">#</a></h2>
+<p>For an incremental local build and browser preview, run:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>dev<span class="w"> </span>docs-preview<span class="w"> </span>--no-open
+</pre></div>
+</div>
+<p>The preview command runs <code class="docutils literal notranslate"><span class="pre">tox</span> <span class="pre">-e</span> <span class="pre">docs</span></code>. It does not regenerate API module
+pages, so it is safe to use while editing the hand-maintained landing page.
+Stop and rerun it after changing a source file. Add <code class="docutils literal notranslate"><span class="pre">--fresh</span></code> if cached
+Sphinx output obscures a change.</p>
+<p>Before opening a pull request, regenerate API pages when required and run the
+full build:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>dev<span class="w"> </span>tox<span class="w"> </span>-e<span class="w"> </span>docs-full
+git<span class="w"> </span>diff<span class="w"> </span>--check
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">docs-full</span></code> regenerates the module pages before building them. Use
+<code class="docutils literal notranslate"><span class="pre">docs-api</span></code> on its own when you only need to refresh and review those pages.</p>
+<p><code class="docutils literal notranslate"><span class="pre">docs-strict</span></code> is available as a diagnostic build that treats Sphinx warnings
+and missing cross-references as errors. The existing documentation has a
+warning backlog, so this environment does not yet provide a clean pass/fail
+check for a pull request. Review its output for new warnings in changed pages.</p>
+<p>Inspect the rendered API landing and affected module pages as well as the
+command output. A successful build cannot by itself confirm that the grouping
+and descriptions are useful to readers.</p>
 </section>
 </section>
 
@@ -520,20 +455,20 @@ standard and multisector runners or to <code class="docutils literal notranslate
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="nested_domains.html"
+       href="validation_and_xarray.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">Run a nested-domain RHIME inversion</p>
+        <p class="prev-next-title">Validation and labelled-array patterns</p>
       </div>
     </a>
     <a class="right-next"
-       href="co2_models.html"
+       href="releasing.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">CO₂ model recipes</p>
+        <p class="prev-next-title">Releases and branch maintenance</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -556,15 +491,16 @@ standard and multisector runners or to <code class="docutils literal notranslate
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#current-support">Current support</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#prerequisites">Prerequisites</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#update-the-hand-maintained-api-reference">Update the hand-maintained API reference</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#regenerate-module-pages">Regenerate module pages</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#build-and-check-the-documentation">Build and check the documentation</a></li>
 </ul>
   </nav></div>
 
   <div class="sidebar-secondary-item">
 
   <div class="tocsection sourcelink">
-    <a href="../_sources/usage/co2_model_family.rst.txt">
+    <a href="../_sources/development/documentation.rst.txt">
       <i class="fa-solid fa-file-lines"></i> Show Source
     </a>
   </div>

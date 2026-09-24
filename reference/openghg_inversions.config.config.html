@@ -33,7 +33,7 @@
     <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
     <link rel="stylesheet" type="text/css" href="../_static/jupyter-sphinx.css" />
     <link rel="stylesheet" type="text/css" href="../_static/thebelab.css" />
-    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=f8ac5af1" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=5f08cb77" />
   
   <!-- So that users can add custom icons -->
   <script defer src="../_static/scripts/fontawesome.js?digest=cb8930eaaf36d9849b67"></script>
@@ -159,8 +159,8 @@
 
 
 <li class="nav-item current active">
-  <a class="nav-link nav-internal" href="modules.html">
-    openghg_inversions
+  <a class="nav-link nav-internal" href="index.html">
+    API reference
   </a>
 </li>
 
@@ -266,8 +266,8 @@
 
 
 <li class="nav-item current active">
-  <a class="nav-link nav-internal" href="modules.html">
-    openghg_inversions
+  <a class="nav-link nav-internal" href="index.html">
+    API reference
   </a>
 </li>
 
@@ -464,7 +464,7 @@
       </a>
     </li>
     
-    <li class="breadcrumb-item"><a href="modules.html" class="nav-link">openghg_inversions</a></li>
+    <li class="breadcrumb-item"><a href="index.html" class="nav-link">API reference</a></li>
     
     
     <li class="breadcrumb-item"><a href="openghg_inversions.html" class="nav-link">openghg_inversions</a></li>
@@ -546,76 +546,85 @@ This also means the the set of input parameters will not be checked for any miss
 specify the parameter types.</p>
 <p>&#64;author: rt17603</p>
 <dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.config.config.all_param">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.config.config.</span></span><span class="sig-name descname"><span class="pre">all_param</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config_file</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">expected_param</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[]</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">param_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">exclude_not_found</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">allow_new</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.config.config.all_param" title="Link to this definition">#</a></dt>
-<dd><p>Extract all parameters from a config file.</p>
-<p>If param_type specified will cast to the specified types, otherwise will attempt
-to discern the parameter types from the form of the values.</p>
+<dt class="sig sig-object py" id="openghg_inversions.config.config.open_config">
+<span class="sig-name descname"><span class="pre">open_config</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config_file</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.config.config.open_config" title="Link to this definition">#</a></dt>
+<dd><p>Open configuration files in the ini format.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>config_file</strong> – Filename for input configuration file.</p></li>
-<li><p><strong>expected_param</strong> – Parameters within the configuration file which must be returned.
-An error will be raised if these parameters are not present.</p></li>
-<li><p><strong>param_type</strong> – Nested dictionary of sections or groups and expected parameter names and types.
-See module header for expected formats of param_type dictionary.</p></li>
-<li><p><strong>exclude_not_found</strong> – Whether to remove parameters which are not found in the input
-file or include them as None.</p></li>
-<li><p><strong>allow_new</strong> – If a param_type is specified, whether to allow unrecognised parameters
-to be added without printing a warning. Default = False (i.e. Warning will be printed).</p></li>
-</ul>
+<dd class="field-odd"><p><strong>config_file</strong> – Filename for input configuration file.</p>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Parameter names and values.</p>
+<dd class="field-even"><p>Parsed configuration object.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>OrderedDict</p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/configparser.html#configparser.ConfigParser" title="(in Python v3.14)">configparser.ConfigParser</a></p>
 </dd>
 </dl>
 </dd></dl>
 
 <dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.config.config.all_parameters_in_param_type">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.config.config.</span></span><span class="sig-name descname"><span class="pre">all_parameters_in_param_type</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">param_type</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.config.config.all_parameters_in_param_type" title="Link to this definition">#</a></dt>
-<dd><p>The all_parameters_in_param_type function extracts all parameters (regardless of section/section_group) for a given
-param_type nested dictionary.</p>
+<dt class="sig sig-object py" id="openghg_inversions.config.config.generate_param_dict">
+<span class="sig-name descname"><span class="pre">generate_param_dict</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config_file</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.config.config.generate_param_dict" title="Link to this definition">#</a></dt>
+<dd><p>The generate_param_dict function creates a param_type nested dictionary from an input configuration
+file.
+This could be used on some fixed template config file to generate the parameter type dictionary which
+can then be applied to other configuration files of the same type.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>param_type</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a>) – Nested dictionary of expected parameter names and types.
-Key for each parameter dictionary can be the section heading or the overall group (e.g. for [MCMC.MEASUREMENTS], section group should be ‘MCMC’).
-See module header for expected formats of param_type dictionary.</p>
+<dd class="field-odd"><p><strong>config_file</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Filename for template configuration file (str).</p>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>list of all parameters in param_type dictionary</p>
+<dd class="field-even"><p>Parameter type dictionary from configuration file input with sections as keys for parameters
+and value types.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.14)">list</a></p>
+<dd class="field-odd"><p>nested OrderedDict</p>
 </dd>
 </dl>
 </dd></dl>
 
 <dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.config.config.convert">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.config.config.</span></span><span class="sig-name descname"><span class="pre">convert</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">string</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">value_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.config.config.convert" title="Link to this definition">#</a></dt>
-<dd><p>Convert the input string to the specified value_type.</p>
-<p>If no value_type is stated, the function attempts to discern the appropriate type.</p>
+<dt class="sig sig-object py" id="openghg_inversions.config.config.generate_from_template">
+<span class="sig-name descname"><span class="pre">generate_from_template</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">template_file</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_file</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.config.config.generate_from_template" title="Link to this definition">#</a></dt>
+<dd><p>Generate an example configuration file based on a template file.</p>
+<p>Template files are normally used to inform the expected format of any input configuration file.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>string</strong> – Value input from config file.</p></li>
-<li><p><strong>value_type</strong> – Object type. Values accepted: “str”, “list”. Optional.</p></li>
+<li><p><strong>template_file</strong> – Input template file in expected .ini format.</p></li>
+<li><p><strong>output_file</strong> – Name of output file including path information.</p></li>
+</ul>
+</dd>
+</dl>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Writes output file. If output file is already present, the user will be asked whether
+the file should be overwritten. If the response is ‘N’ or ‘no’ or an unrecognised
+input an exception will be raised.</p>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.config.config.str_check">
+<span class="sig-name descname"><span class="pre">str_check</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">string</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">error</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.config.config.str_check" title="Link to this definition">#</a></dt>
+<dd><p>The str_check function is used as part of checking the input from a configuration file.
+This function ensures the input remains as a string and removes any “ or ‘ characters.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>string</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Value input from config file</p></li>
+<li><p><strong>error</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em>, </em><em>optional</em>) – Print error message if unable to evaluate (bool).</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Python object of specified type, or None if unable to convert to value_type
-or find a suitable type when value_type is not specified.</p>
+<dd class="field-even"><p>string (formatted)</p>
 </dd>
 </dl>
 </dd></dl>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.config.config.eval_check">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.config.config.</span></span><span class="sig-name descname"><span class="pre">eval_check</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">string</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">error</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.config.config.eval_check" title="Link to this definition">#</a></dt>
+<span class="sig-name descname"><span class="pre">eval_check</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">string</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">error</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.config.config.eval_check" title="Link to this definition">#</a></dt>
 <dd><p>Evaluate the input string from a configuration file to a python object.</p>
 <p class="rubric">Examples</p>
 <ul class="simple">
@@ -646,8 +655,145 @@ or find a suitable type when value_type is not specified.</p>
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.config.config.list_check">
+<span class="sig-name descname"><span class="pre">list_check</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">string</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">force_convert</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">error</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.config.config.list_check" title="Link to this definition">#</a></dt>
+<dd><p>Convert input string to a list.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>string</strong> – Value input from config file.</p></li>
+<li><p><strong>force_convert</strong> – Specifies whether conversion to a list should be forced
+(i.e. out = [out] if unable to evaluate any other way). Default = True.</p></li>
+<li><p><strong>error</strong> – Print error message if unable to evaluate.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>List if conversion successful, None if unable to convert to list.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.14)">list</a> or None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.config.config.convert">
+<span class="sig-name descname"><span class="pre">convert</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">string</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">value_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.config.config.convert" title="Link to this definition">#</a></dt>
+<dd><p>Convert the input string to the specified value_type.</p>
+<p>If no value_type is stated, the function attempts to discern the appropriate type.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>string</strong> – Value input from config file.</p></li>
+<li><p><strong>value_type</strong> – Object type. Values accepted: “str”, “list”. Optional.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Python object of specified type, or None if unable to convert to value_type
+or find a suitable type when value_type is not specified.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.config.config.all_parameters_in_param_type">
+<span class="sig-name descname"><span class="pre">all_parameters_in_param_type</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">param_type</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.config.config.all_parameters_in_param_type" title="Link to this definition">#</a></dt>
+<dd><p>The all_parameters_in_param_type function extracts all parameters (regardless of section/section_group) for a given
+param_type nested dictionary.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>param_type</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a>) – Nested dictionary of expected parameter names and types.
+Key for each parameter dictionary can be the section heading or the overall group (e.g. for [MCMC.MEASUREMENTS], section group should be ‘MCMC’).
+See module header for expected formats of param_type dictionary.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>list of all parameters in param_type dictionary</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.14)">list</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.config.config.find_param_key">
+<span class="sig-name descname"><span class="pre">find_param_key</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">param_type</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">section</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">section_group</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.config.config.find_param_key" title="Link to this definition">#</a></dt>
+<dd><p>The find_param_key function checks whether the keys within the param_type dictionary are for sections
+(e.g. ‘MCMC.MEASUREMENTS’) or groups (e.g. ‘MCMC’) and returns the relevant key(s).
+One of section or section_group should be specified.
+Returned key_type is one of ‘section’ or ‘section_group’.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>param_type</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a>) – Nested dictionary of expected parameter names and types.
+Key for each parameter dictionary can be the section heading or the overall group (e.g. for [MCMC.MEASUREMENTS], section group should be ‘MCMC’).
+See module header for expected formats of param_type dictionary.</p></li>
+<li><p><strong>section</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><em>optional</em>) – Name of section in config file for the parameter</p></li>
+<li><p><strong>section_group</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><em>optional</em>) – Name of group in config file for the parameter</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>keys, key_type</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.14)">list</a>,<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)">str</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.config.config.get_value">
+<span class="sig-name descname"><span class="pre">get_value</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">section</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">param_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.config.config.get_value" title="Link to this definition">#</a></dt>
+<dd><p>The get_value function extracts the value of a parameter from the configuration file.
+This value is then converted to the type specified within param_type (default from mcmc_param_type()
+function).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>name</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Name of the parameter to extract</p></li>
+<li><p><strong>config</strong> (<em>ConfigParser</em>) – ConfigParser object created using the configparser class. Data from config file should have
+been read in.</p></li>
+<li><p><strong>section</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Name of section in config file for the parameter</p></li>
+<li><p><strong>param_type</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>, </em><em>optional</em>) – nested dictionary of parameter classes and expected parameter names and types.
+Key for each parameter dictionary can be the section heading or the overall classification
+(e.g. for [MCMC.MEASUREMENTS], classification should be ‘MCMC’).
+See module header for expected formats of param_type dictionary.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><p>value</p>
+<dl class="simple">
+<dt>If param_type is specified</dt><dd><dl class="simple">
+<dt>If neither section nor section_group can be identified within param_type dictionary:</dt><dd><p>Exception raised and program exited</p>
+</dd>
+<dt>If parameter name cannot be identified within param_type dictionary:</dt><dd><p>Exception raised and program exited</p>
+</dd>
+</dl>
+</dd>
+</dl>
+</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.config.config.extract_params">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.config.config.</span></span><span class="sig-name descname"><span class="pre">extract_params</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config_file</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">expected_param</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[]</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">section</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">section_group</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">names</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[]</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ignore_sections</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[]</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ignore_section_groups</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[]</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">exclude_not_found</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">allow_new</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">param_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.config.config.extract_params" title="Link to this definition">#</a></dt>
+<span class="sig-name descname"><span class="pre">extract_params</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">config_file</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">expected_param</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[]</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">section</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">section_group</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">names</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[]</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">ignore_sections</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[]</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">ignore_section_groups</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[]</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">exclude_not_found</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">allow_new</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">param_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.config.config.extract_params" title="Link to this definition">#</a></dt>
 <dd><p>Extract parameter names and values from a configuration file.</p>
 <p>The parameters which are extracted is dependent on whether the section, section_group
 and/or names variables are specified. A param_type dictionary can be defined to ensure
@@ -684,161 +830,40 @@ See module header for expected formats of param_type dictionary.</p></li>
 </dd></dl>
 
 <dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.config.config.find_param_key">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.config.config.</span></span><span class="sig-name descname"><span class="pre">find_param_key</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">param_type</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">section</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">section_group</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.config.config.find_param_key" title="Link to this definition">#</a></dt>
-<dd><p>The find_param_key function checks whether the keys within the param_type dictionary are for sections
-(e.g. ‘MCMC.MEASUREMENTS’) or groups (e.g. ‘MCMC’) and returns the relevant key(s).
-One of section or section_group should be specified.
-Returned key_type is one of ‘section’ or ‘section_group’.</p>
+<dt class="sig sig-object py" id="openghg_inversions.config.config.all_param">
+<span class="sig-name descname"><span class="pre">all_param</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">config_file</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">expected_param</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[]</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">param_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">exclude_not_found</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">allow_new</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.config.config.all_param" title="Link to this definition">#</a></dt>
+<dd><p>Extract all parameters from a config file.</p>
+<p>If param_type specified will cast to the specified types, otherwise will attempt
+to discern the parameter types from the form of the values.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>param_type</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a>) – Nested dictionary of expected parameter names and types.
-Key for each parameter dictionary can be the section heading or the overall group (e.g. for [MCMC.MEASUREMENTS], section group should be ‘MCMC’).
+<li><p><strong>config_file</strong> – Filename for input configuration file.</p></li>
+<li><p><strong>expected_param</strong> – Parameters within the configuration file which must be returned.
+An error will be raised if these parameters are not present.</p></li>
+<li><p><strong>param_type</strong> – Nested dictionary of sections or groups and expected parameter names and types.
 See module header for expected formats of param_type dictionary.</p></li>
-<li><p><strong>section</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><em>optional</em>) – Name of section in config file for the parameter</p></li>
-<li><p><strong>section_group</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><em>optional</em>) – Name of group in config file for the parameter</p></li>
+<li><p><strong>exclude_not_found</strong> – Whether to remove parameters which are not found in the input
+file or include them as None.</p></li>
+<li><p><strong>allow_new</strong> – If a param_type is specified, whether to allow unrecognised parameters
+to be added without printing a warning. Default = False (i.e. Warning will be printed).</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>keys, key_type</p>
+<dd class="field-even"><p>Parameter names and values.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.14)">list</a>,<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)">str</a></p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.config.config.generate_from_template">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.config.config.</span></span><span class="sig-name descname"><span class="pre">generate_from_template</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">template_file</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_file</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.config.config.generate_from_template" title="Link to this definition">#</a></dt>
-<dd><p>Generate an example configuration file based on a template file.</p>
-<p>Template files are normally used to inform the expected format of any input configuration file.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>template_file</strong> – Input template file in expected .ini format.</p></li>
-<li><p><strong>output_file</strong> – Name of output file including path information.</p></li>
-</ul>
-</dd>
-</dl>
-<div class="admonition note">
-<p class="admonition-title">Note</p>
-<p>Writes output file. If output file is already present, the user will be asked whether
-the file should be overwritten. If the response is ‘N’ or ‘no’ or an unrecognised
-input an exception will be raised.</p>
-</div>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.config.config.generate_param_dict">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.config.config.</span></span><span class="sig-name descname"><span class="pre">generate_param_dict</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config_file</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.config.config.generate_param_dict" title="Link to this definition">#</a></dt>
-<dd><p>The generate_param_dict function creates a param_type nested dictionary from an input configuration
-file.
-This could be used on some fixed template config file to generate the parameter type dictionary which
-can then be applied to other configuration files of the same type.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>config_file</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Filename for template configuration file (str).</p>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Parameter type dictionary from configuration file input with sections as keys for parameters
-and value types.</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>nested OrderedDict</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.config.config.get_value">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.config.config.</span></span><span class="sig-name descname"><span class="pre">get_value</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">section</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">param_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.config.config.get_value" title="Link to this definition">#</a></dt>
-<dd><p>The get_value function extracts the value of a parameter from the configuration file.
-This value is then converted to the type specified within param_type (default from mcmc_param_type()
-function).</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>name</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Name of the parameter to extract</p></li>
-<li><p><strong>config</strong> (<em>ConfigParser</em>) – ConfigParser object created using the configparser class. Data from config file should have
-been read in.</p></li>
-<li><p><strong>section</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Name of section in config file for the parameter</p></li>
-<li><p><strong>param_type</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>, </em><em>optional</em>) – nested dictionary of parameter classes and expected parameter names and types.
-Key for each parameter dictionary can be the section heading or the overall classification
-(e.g. for [MCMC.MEASUREMENTS], classification should be ‘MCMC’).
-See module header for expected formats of param_type dictionary.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p><p>value</p>
-<dl class="simple">
-<dt>If param_type is specified</dt><dd><dl class="simple">
-<dt>If neither section nor section_group can be identified within param_type dictionary:</dt><dd><p>Exception raised and program exited</p>
-</dd>
-<dt>If parameter name cannot be identified within param_type dictionary:</dt><dd><p>Exception raised and program exited</p>
-</dd>
-</dl>
-</dd>
-</dl>
-</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.config.config.list_check">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.config.config.</span></span><span class="sig-name descname"><span class="pre">list_check</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">string</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">force_convert</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">error</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.config.config.list_check" title="Link to this definition">#</a></dt>
-<dd><p>Convert input string to a list.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>string</strong> – Value input from config file.</p></li>
-<li><p><strong>force_convert</strong> – Specifies whether conversion to a list should be forced
-(i.e. out = [out] if unable to evaluate any other way). Default = True.</p></li>
-<li><p><strong>error</strong> – Print error message if unable to evaluate.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>List if conversion successful, None if unable to convert to list.</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.14)">list</a> or None</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.config.config.open_config">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.config.config.</span></span><span class="sig-name descname"><span class="pre">open_config</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config_file</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.config.config.open_config" title="Link to this definition">#</a></dt>
-<dd><p>Open configuration files in the ini format.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>config_file</strong> – Filename for input configuration file.</p>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Parsed configuration object.</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/configparser.html#configparser.ConfigParser" title="(in Python v3.14)">configparser.ConfigParser</a></p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.config.config.str_check">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.config.config.</span></span><span class="sig-name descname"><span class="pre">str_check</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">string</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">error</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.config.config.str_check" title="Link to this definition">#</a></dt>
-<dd><p>The str_check function is used as part of checking the input from a configuration file.
-This function ensures the input remains as a string and removes any “ or ‘ characters.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>string</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Value input from config file</p></li>
-<li><p><strong>error</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em>, </em><em>optional</em>) – Print error message if unable to evaluate (bool).</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>string (formatted)</p>
+<dd class="field-odd"><p>OrderedDict</p>
 </dd>
 </dl>
 </dd></dl>
@@ -892,18 +917,18 @@ This function ensures the input remains as a string and removes any “ or ‘ c
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.config.config.all_param"><code class="docutils literal notranslate"><span class="pre">all_param()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.config.config.all_parameters_in_param_type"><code class="docutils literal notranslate"><span class="pre">all_parameters_in_param_type()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.config.config.convert"><code class="docutils literal notranslate"><span class="pre">convert()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.config.config.eval_check"><code class="docutils literal notranslate"><span class="pre">eval_check()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.config.config.extract_params"><code class="docutils literal notranslate"><span class="pre">extract_params()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.config.config.find_param_key"><code class="docutils literal notranslate"><span class="pre">find_param_key()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.config.config.generate_from_template"><code class="docutils literal notranslate"><span class="pre">generate_from_template()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.config.config.generate_param_dict"><code class="docutils literal notranslate"><span class="pre">generate_param_dict()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.config.config.get_value"><code class="docutils literal notranslate"><span class="pre">get_value()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.config.config.list_check"><code class="docutils literal notranslate"><span class="pre">list_check()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.config.config.open_config"><code class="docutils literal notranslate"><span class="pre">open_config()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.config.config.generate_param_dict"><code class="docutils literal notranslate"><span class="pre">generate_param_dict()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.config.config.generate_from_template"><code class="docutils literal notranslate"><span class="pre">generate_from_template()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.config.config.str_check"><code class="docutils literal notranslate"><span class="pre">str_check()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.config.config.eval_check"><code class="docutils literal notranslate"><span class="pre">eval_check()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.config.config.list_check"><code class="docutils literal notranslate"><span class="pre">list_check()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.config.config.convert"><code class="docutils literal notranslate"><span class="pre">convert()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.config.config.all_parameters_in_param_type"><code class="docutils literal notranslate"><span class="pre">all_parameters_in_param_type()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.config.config.find_param_key"><code class="docutils literal notranslate"><span class="pre">find_param_key()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.config.config.get_value"><code class="docutils literal notranslate"><span class="pre">get_value()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.config.config.extract_params"><code class="docutils literal notranslate"><span class="pre">extract_params()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.config.config.all_param"><code class="docutils literal notranslate"><span class="pre">all_param()</span></code></a></li>
 </ul>
   </nav></div>
 

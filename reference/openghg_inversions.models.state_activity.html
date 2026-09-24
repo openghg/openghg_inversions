@@ -33,7 +33,7 @@
     <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
     <link rel="stylesheet" type="text/css" href="../_static/jupyter-sphinx.css" />
     <link rel="stylesheet" type="text/css" href="../_static/thebelab.css" />
-    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=f8ac5af1" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=5f08cb77" />
   
   <!-- So that users can add custom icons -->
   <script defer src="../_static/scripts/fontawesome.js?digest=cb8930eaaf36d9849b67"></script>
@@ -159,8 +159,8 @@
 
 
 <li class="nav-item current active">
-  <a class="nav-link nav-internal" href="modules.html">
-    openghg_inversions
+  <a class="nav-link nav-internal" href="index.html">
+    API reference
   </a>
 </li>
 
@@ -266,8 +266,8 @@
 
 
 <li class="nav-item current active">
-  <a class="nav-link nav-internal" href="modules.html">
-    openghg_inversions
+  <a class="nav-link nav-internal" href="index.html">
+    API reference
   </a>
 </li>
 
@@ -464,7 +464,7 @@
       </a>
     </li>
     
-    <li class="breadcrumb-item"><a href="modules.html" class="nav-link">openghg_inversions</a></li>
+    <li class="breadcrumb-item"><a href="index.html" class="nav-link">API reference</a></li>
     
     
     <li class="breadcrumb-item"><a href="openghg_inversions.html" class="nav-link">openghg_inversions</a></li>
@@ -510,53 +510,82 @@ Finite checks, exact-zero reductions, and state-vector alignment are explicit
 eager-compute boundaries for lazy or Dask-backed inputs during model building.</p>
 <dl class="py data">
 <dt class="sig sig-object py" id="openghg_inversions.models.state_activity.ActivityValue">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.models.state_activity.</span></span><span class="sig-name descname"><span class="pre">ActivityValue</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">bool</span> <span class="pre">|</span> <span class="pre">numpy.ndarray</span> <span class="pre">|</span> <span class="pre">xarray.core.dataarray.DataArray</span></span><a class="headerlink" href="#openghg_inversions.models.state_activity.ActivityValue" title="Link to this definition">#</a></dt>
+<span class="sig-name descname"><span class="pre">ActivityValue</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">bool</span> <span class="pre">|</span> <span class="pre">numpy.ndarray</span> <span class="pre">|</span> <span class="pre">xarray.core.dataarray.DataArray</span></span><a class="headerlink" href="#openghg_inversions.models.state_activity.ActivityValue" title="Link to this definition">#</a></dt>
 <dd><p>Strictly boolean scalar, positional mask, or labelled mask.</p>
 </dd></dl>
 
 <dl class="py data">
 <dt class="sig sig-object py" id="openghg_inversions.models.state_activity.FixedValue">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.models.state_activity.</span></span><span class="sig-name descname"><span class="pre">FixedValue</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">float</span> <span class="pre">|</span> <span class="pre">int</span> <span class="pre">|</span> <span class="pre">numpy.ndarray</span> <span class="pre">|</span> <span class="pre">xarray.core.dataarray.DataArray</span></span><a class="headerlink" href="#openghg_inversions.models.state_activity.FixedValue" title="Link to this definition">#</a></dt>
+<span class="sig-name descname"><span class="pre">FixedValue</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">float</span> <span class="pre">|</span> <span class="pre">int</span> <span class="pre">|</span> <span class="pre">numpy.ndarray</span> <span class="pre">|</span> <span class="pre">xarray.core.dataarray.DataArray</span></span><a class="headerlink" href="#openghg_inversions.models.state_activity.FixedValue" title="Link to this definition">#</a></dt>
 <dd><p>Numeric scalar, positional vector, or labelled vector for inactive states.</p>
 </dd></dl>
 
 <dl class="py class">
-<dt class="sig sig-object py" id="openghg_inversions.models.state_activity.PreparedLinearSensitivity">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">openghg_inversions.models.state_activity.</span></span><span class="sig-name descname"><span class="pre">PreparedLinearSensitivity</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sensitivity</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">removed</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.state_activity.PreparedLinearSensitivity" title="Link to this definition">#</a></dt>
+<dt class="sig sig-object py" id="openghg_inversions.models.state_activity.StateActivity">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">StateActivity</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">active</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fixed_value</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fixed_groups</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">()</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">group_coord</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'basis_group'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.state_activity.StateActivity" title="Link to this definition">#</a></dt>
 <dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
-<p>A retained sensitivity matrix and its lossless full-state mapping.</p>
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.models.state_activity.PreparedLinearSensitivity.output_dim">
-<span class="sig-name descname"><span class="pre">output_dim</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><a class="headerlink" href="#openghg_inversions.models.state_activity.PreparedLinearSensitivity.output_dim" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.models.state_activity.PreparedLinearSensitivity.removed">
-<span class="sig-name descname"><span class="pre">removed</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span><a class="headerlink" href="#openghg_inversions.models.state_activity.PreparedLinearSensitivity.removed" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py property">
-<dt class="sig sig-object py" id="openghg_inversions.models.state_activity.PreparedLinearSensitivity.retained_indices">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">retained_indices</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><span class="pre">ndarray</span></a></span><a class="headerlink" href="#openghg_inversions.models.state_activity.PreparedLinearSensitivity.retained_indices" title="Link to this definition">#</a></dt>
-<dd><p>Return full-state positions retained by <a class="reference internal" href="#openghg_inversions.models.state_activity.PreparedLinearSensitivity.sensitivity" title="openghg_inversions.models.state_activity.PreparedLinearSensitivity.sensitivity"><code class="xref py py-attr docutils literal notranslate"><span class="pre">sensitivity</span></code></a>.</p>
+<p>Describe which states are sampled and how inactive states are fixed.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>active</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> | </em><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a><em> | </em><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – Boolean scalar, positional one-dimensional mask in canonical
+state order, or labelled one-dimensional mask. A labelled mask is
+aligned to the canonical state coordinate carried by the
+zero-sensitivity mask, so its input order need not match the
+canonical order. Set this to <code class="docutils literal notranslate"><span class="pre">False</span></code> to freeze a whole component
+or sector.</p></li>
+<li><p><strong>fixed_value</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em> | </em><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a><em> | </em><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – Scalar or one-dimensional state-aligned values used for
+inactive states. Multiplicative scaling states default to one.</p></li>
+<li><p><strong>fixed_groups</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><em>tuple</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><em>...</em><em>]</em>) – <code class="docutils literal notranslate"><span class="pre">basis_group</span></code> labels to freeze. Group selection is by
+coordinate value, never by state-number ranges.</p></li>
+<li><p><strong>group_coord</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Name of the state coordinate containing group labels.</p></li>
+</ul>
+</dd>
+</dl>
+<p>Explicit <code class="docutils literal notranslate"><span class="pre">active</span></code> masks and fixed groups are combined with structural
+zero-column removal using logical AND. Structural removal is owned by
+sensitivity preparation and cannot be disabled as an activity policy.</p>
 </dd></dl>
 
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.models.state_activity.PreparedLinearSensitivity.sensitivity">
-<span class="sig-name descname"><span class="pre">sensitivity</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span><a class="headerlink" href="#openghg_inversions.models.state_activity.PreparedLinearSensitivity.sensitivity" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
+<dl class="py class">
+<dt class="sig sig-object py" id="openghg_inversions.models.state_activity.PreparedLinearSensitivity">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">PreparedLinearSensitivity</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sensitivity</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">removed</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_dim</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.state_activity.PreparedLinearSensitivity" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>A retained sensitivity matrix and its lossless full-state mapping.</p>
+<dl class="field-list simple">
+</dl>
 <dl class="py property">
 <dt class="sig sig-object py" id="openghg_inversions.models.state_activity.PreparedLinearSensitivity.state_dim">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">state_dim</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><a class="headerlink" href="#openghg_inversions.models.state_activity.PreparedLinearSensitivity.state_dim" title="Link to this definition">#</a></dt>
 <dd><p>Return the sole state dimension.</p>
 </dd></dl>
 
+<dl class="py property">
+<dt class="sig sig-object py" id="openghg_inversions.models.state_activity.PreparedLinearSensitivity.retained_indices">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">retained_indices</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><span class="pre">ndarray</span></a></span><a class="headerlink" href="#openghg_inversions.models.state_activity.PreparedLinearSensitivity.retained_indices" title="Link to this definition">#</a></dt>
+<dd><p>Return full-state positions retained by <code class="xref py py-attr docutils literal notranslate"><span class="pre">sensitivity</span></code>.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.models.state_activity.prepare_linear_sensitivity">
+<span class="sig-name descname"><span class="pre">prepare_linear_sensitivity</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sensitivity</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_dim</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'nmeasure'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.state_activity.prepare_linear_sensitivity" title="Link to this definition">#</a></dt>
+<dd><p>Remove exact-zero columns once and retain their full-state mapping.</p>
+<p>This is the eager inspection boundary for a labelled sensitivity matrix. The
+returned sensitivity keeps borrowed array data and contains only nonzero
+columns; <code class="docutils literal notranslate"><span class="pre">removed</span></code> retains the complete scientific state coordinate and
+auxiliary state metadata for reconstruction and provenance.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#openghg_inversions.models.state_activity.PreparedLinearSensitivity" title="openghg_inversions.models.state_activity.PreparedLinearSensitivity"><em>PreparedLinearSensitivity</em></a></p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.models.state_activity.ResolvedStateActivity">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">openghg_inversions.models.state_activity.</span></span><span class="sig-name descname"><span class="pre">ResolvedStateActivity</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state_dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">active</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">fixed_value</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">zero_sensitivity</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.state_activity.ResolvedStateActivity" title="Link to this definition">#</a></dt>
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">ResolvedStateActivity</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state_dim</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">active</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fixed_value</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">zero_sensitivity</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.state_activity.ResolvedStateActivity" title="Link to this definition">#</a></dt>
 <dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
 <p>A state-activity policy aligned to one detected sensitivity matrix.</p>
 <dl class="field-list simple">
@@ -571,10 +600,17 @@ construction.</p></li>
 </ul>
 </dd>
 </dl>
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.models.state_activity.ResolvedStateActivity.active">
-<span class="sig-name descname"><span class="pre">active</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span><a class="headerlink" href="#openghg_inversions.models.state_activity.ResolvedStateActivity.active" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
+<dl class="py property">
+<dt class="sig sig-object py" id="openghg_inversions.models.state_activity.ResolvedStateActivity.n_state">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">n_state</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><a class="headerlink" href="#openghg_inversions.models.state_activity.ResolvedStateActivity.n_state" title="Link to this definition">#</a></dt>
+<dd><p>Return the full state-vector length.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="openghg_inversions.models.state_activity.ResolvedStateActivity.n_active">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">n_active</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><a class="headerlink" href="#openghg_inversions.models.state_activity.ResolvedStateActivity.n_active" title="Link to this definition">#</a></dt>
+<dd><p>Return the number of sampled states.</p>
+</dd></dl>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="openghg_inversions.models.state_activity.ResolvedStateActivity.active_indices">
@@ -588,120 +624,18 @@ construction.</p></li>
 <dd><p>Return positional indices of inactive states in canonical order.</p>
 </dd></dl>
 
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.models.state_activity.ResolvedStateActivity.fixed_value">
-<span class="sig-name descname"><span class="pre">fixed_value</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span><a class="headerlink" href="#openghg_inversions.models.state_activity.ResolvedStateActivity.fixed_value" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py property">
-<dt class="sig sig-object py" id="openghg_inversions.models.state_activity.ResolvedStateActivity.n_active">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">n_active</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><a class="headerlink" href="#openghg_inversions.models.state_activity.ResolvedStateActivity.n_active" title="Link to this definition">#</a></dt>
-<dd><p>Return the number of sampled states.</p>
-</dd></dl>
-
-<dl class="py property">
-<dt class="sig sig-object py" id="openghg_inversions.models.state_activity.ResolvedStateActivity.n_state">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">n_state</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><a class="headerlink" href="#openghg_inversions.models.state_activity.ResolvedStateActivity.n_state" title="Link to this definition">#</a></dt>
-<dd><p>Return the full state-vector length.</p>
-</dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.models.state_activity.ResolvedStateActivity.state_dim">
-<span class="sig-name descname"><span class="pre">state_dim</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><a class="headerlink" href="#openghg_inversions.models.state_activity.ResolvedStateActivity.state_dim" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.models.state_activity.ResolvedStateActivity.zero_sensitivity">
-<span class="sig-name descname"><span class="pre">zero_sensitivity</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span><a class="headerlink" href="#openghg_inversions.models.state_activity.ResolvedStateActivity.zero_sensitivity" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-</dd></dl>
-
-<dl class="py class">
-<dt class="sig sig-object py" id="openghg_inversions.models.state_activity.StateActivity">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">openghg_inversions.models.state_activity.</span></span><span class="sig-name descname"><span class="pre">StateActivity</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">active</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><span class="pre">ndarray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fixed_value</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><span class="pre">ndarray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fixed_groups</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">()</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">group_coord</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'basis_group'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.state_activity.StateActivity" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
-<p>Describe which states are sampled and how inactive states are fixed.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>active</strong> – Boolean scalar, positional one-dimensional mask in canonical
-state order, or labelled one-dimensional mask. A labelled mask is
-aligned to the canonical state coordinate carried by the
-zero-sensitivity mask, so its input order need not match the
-canonical order. Set this to <code class="docutils literal notranslate"><span class="pre">False</span></code> to freeze a whole component
-or sector.</p></li>
-<li><p><strong>fixed_value</strong> – Scalar or one-dimensional state-aligned values used for
-inactive states. Multiplicative scaling states default to one.</p></li>
-<li><p><strong>fixed_groups</strong> – <code class="docutils literal notranslate"><span class="pre">basis_group</span></code> labels to freeze. Group selection is by
-coordinate value, never by state-number ranges.</p></li>
-<li><p><strong>group_coord</strong> – Name of the state coordinate containing group labels.</p></li>
-</ul>
-</dd>
-</dl>
-<p>Explicit <code class="docutils literal notranslate"><span class="pre">active</span></code> masks and fixed groups are combined with structural
-zero-column removal using logical AND. Structural removal is owned by
-sensitivity preparation and cannot be disabled as an activity policy.</p>
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.models.state_activity.StateActivity.active">
-<span class="sig-name descname"><span class="pre">active</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><span class="pre">ndarray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">True</span></span><a class="headerlink" href="#openghg_inversions.models.state_activity.StateActivity.active" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.models.state_activity.StateActivity.fixed_groups">
-<span class="sig-name descname"><span class="pre">fixed_groups</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">()</span></span><a class="headerlink" href="#openghg_inversions.models.state_activity.StateActivity.fixed_groups" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.models.state_activity.StateActivity.fixed_value">
-<span class="sig-name descname"><span class="pre">fixed_value</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><span class="pre">ndarray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">1.0</span></span><a class="headerlink" href="#openghg_inversions.models.state_activity.StateActivity.fixed_value" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.models.state_activity.StateActivity.group_coord">
-<span class="sig-name descname"><span class="pre">group_coord</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'basis_group'</span></span><a class="headerlink" href="#openghg_inversions.models.state_activity.StateActivity.group_coord" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.models.state_activity.active_prior_args">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.models.state_activity.</span></span><span class="sig-name descname"><span class="pre">active_prior_args</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">prior_args</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><span class="pre">Any</span></a><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">activity</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#openghg_inversions.models.state_activity.ResolvedStateActivity" title="openghg_inversions.models.state_activity.ResolvedStateActivity"><span class="pre">ResolvedStateActivity</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><span class="pre">Any</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#openghg_inversions.models.state_activity.active_prior_args" title="Link to this definition">#</a></dt>
-<dd><p>Return prior arguments sliced to active states in canonical order.</p>
-<p>Scalar parameters are retained. One-dimensional NumPy state parameters are
-interpreted in canonical order and must describe the full state vector.
-Labelled xarray parameters are first aligned by the canonical state
-coordinate and then subset, allowing input label order to differ safely.
-Array-backed parameters are materialized at this model-building boundary.
-The support arrays of an <code class="docutils literal notranslate"><span class="pre">Interpolated</span></code> prior are preserved rather than
-interpreted as state-valued parameters.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>prior_args</strong> – PyMC prior specification.</p></li>
-<li><p><strong>activity</strong> – Resolved activity contract in canonical state order.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>A copy of <code class="docutils literal notranslate"><span class="pre">prior_args</span></code> containing scalar or active-state parameters.</p>
-</dd>
-<dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If an array-valued distribution parameter is not scalar or
-    full-state one-dimensional data.</p>
-</dd>
-</dl>
 </dd></dl>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.models.state_activity.detect_zero_sensitivity">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.models.state_activity.</span></span><span class="sig-name descname"><span class="pre">detect_zero_sensitivity</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sensitivity</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'nmeasure'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></span><a class="headerlink" href="#openghg_inversions.models.state_activity.detect_zero_sensitivity" title="Link to this definition">#</a></dt>
+<span class="sig-name descname"><span class="pre">detect_zero_sensitivity</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sensitivity</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_dim</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'nmeasure'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.state_activity.detect_zero_sensitivity" title="Link to this definition">#</a></dt>
 <dd><p>Return the labelled mask of exactly-zero sensitivity columns.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>sensitivity</strong> – Finite two-dimensional sensitivity matrix containing
+<li><p><strong>sensitivity</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – Finite two-dimensional sensitivity matrix containing
 <code class="docutils literal notranslate"><span class="pre">output_dim</span></code> and one uniquely labelled state dimension.</p></li>
-<li><p><strong>output_dim</strong> – Name of the observation/output dimension.</p></li>
+<li><p><strong>output_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Name of the observation/output dimension.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -712,6 +646,9 @@ auxiliary state coordinates are retained from <code class="docutils literal notr
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If <code class="docutils literal notranslate"><span class="pre">sensitivity</span></code> is not a finite two-dimensional design
     with the required output dimension and unique state labels.</p>
 </dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a></p>
+</dd>
 </dl>
 <p class="rubric">Notes</p>
 <p>Finite validation and exact-zero reduction materialize lazy design data
@@ -719,27 +656,17 @@ during model construction.</p>
 </dd></dl>
 
 <dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.models.state_activity.prepare_linear_sensitivity">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.models.state_activity.</span></span><span class="sig-name descname"><span class="pre">prepare_linear_sensitivity</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sensitivity</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'nmeasure'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#openghg_inversions.models.state_activity.PreparedLinearSensitivity" title="openghg_inversions.models.state_activity.PreparedLinearSensitivity"><span class="pre">PreparedLinearSensitivity</span></a></span></span><a class="headerlink" href="#openghg_inversions.models.state_activity.prepare_linear_sensitivity" title="Link to this definition">#</a></dt>
-<dd><p>Remove exact-zero columns once and retain their full-state mapping.</p>
-<p>This is the eager inspection boundary for a labelled sensitivity matrix. The
-returned sensitivity keeps borrowed array data and contains only nonzero
-columns; <code class="docutils literal notranslate"><span class="pre">removed</span></code> retains the complete scientific state coordinate and
-auxiliary state metadata for reconstruction and provenance.</p>
-</dd></dl>
-
-<dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.models.state_activity.resolve_state_activity">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.models.state_activity.</span></span><span class="sig-name descname"><span class="pre">resolve_state_activity</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">zero_sensitivity</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">policy</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#openghg_inversions.models.state_activity.StateActivity" title="openghg_inversions.models.state_activity.StateActivity"><span class="pre">StateActivity</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#openghg_inversions.models.state_activity.ResolvedStateActivity" title="openghg_inversions.models.state_activity.ResolvedStateActivity"><span class="pre">ResolvedStateActivity</span></a></span></span><a class="headerlink" href="#openghg_inversions.models.state_activity.resolve_state_activity" title="Link to this definition">#</a></dt>
+<span class="sig-name descname"><span class="pre">resolve_state_activity</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">zero_sensitivity</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">policy</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.state_activity.resolve_state_activity" title="Link to this definition">#</a></dt>
 <dd><p>Resolve an active/fixed policy against a labelled zero-state mask.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>zero_sensitivity</strong> – One-dimensional, strictly boolean mask identifying
+<li><p><strong>zero_sensitivity</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – One-dimensional, strictly boolean mask identifying
 exactly-zero design columns. It must have a unique labelled state
 coordinate and may carry auxiliary state coordinates used by the
 policy.</p></li>
-<li><p><strong>policy</strong> – Optional activity policy. When omitted, every retained column
+<li><p><strong>policy</strong> (<a class="reference internal" href="#openghg_inversions.models.state_activity.StateActivity" title="openghg_inversions.models.state_activity.StateActivity"><em>StateActivity</em></a><em> | </em><em>None</em>) – Optional activity policy. When omitted, every retained column
 is active and structurally removed states use inactive value one.</p></li>
 </ul>
 </dd>
@@ -751,11 +678,45 @@ is active and structurally removed states use inactive value one.</p></li>
     uniquely labelled; supplied arrays cannot be aligned; or requested
     group metadata is absent or not state-aligned.</p>
 </dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="#openghg_inversions.models.state_activity.ResolvedStateActivity" title="openghg_inversions.models.state_activity.ResolvedStateActivity"><em>ResolvedStateActivity</em></a></p>
+</dd>
 </dl>
 <p class="rubric">Notes</p>
 <p>Policy vectors are materialized during model construction. Use
 <code class="docutils literal notranslate"><span class="pre">detect_zero_sensitivity</span></code> to validate and reduce a sensitivity matrix
 before calling this function.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.models.state_activity.active_prior_args">
+<span class="sig-name descname"><span class="pre">active_prior_args</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">prior_args</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">activity</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.state_activity.active_prior_args" title="Link to this definition">#</a></dt>
+<dd><p>Return prior arguments sliced to active states in canonical order.</p>
+<p>Scalar parameters are retained. One-dimensional NumPy state parameters are
+interpreted in canonical order and must describe the full state vector.
+Labelled xarray parameters are first aligned by the canonical state
+coordinate and then subset, allowing input label order to differ safely.
+Array-backed parameters are materialized at this model-building boundary.
+The support arrays of an <code class="docutils literal notranslate"><span class="pre">Interpolated</span></code> prior are preserved rather than
+interpreted as state-valued parameters.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>prior_args</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><em>Any</em></a><em>]</em>) – PyMC prior specification.</p></li>
+<li><p><strong>activity</strong> (<a class="reference internal" href="#openghg_inversions.models.state_activity.ResolvedStateActivity" title="openghg_inversions.models.state_activity.ResolvedStateActivity"><em>ResolvedStateActivity</em></a>) – Resolved activity contract in canonical state order.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A copy of <code class="docutils literal notranslate"><span class="pre">prior_args</span></code> containing scalar or active-state parameters.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If an array-valued distribution parameter is not scalar or
+    full-state one-dimensional data.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)">str</a>, <a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><em>Any</em></a>]</p>
+</dd>
+</dl>
 </dd></dl>
 
 </section>
@@ -809,36 +770,23 @@ before calling this function.</p>
     <ul class="pst-show_toc_level nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.state_activity.ActivityValue"><code class="docutils literal notranslate"><span class="pre">ActivityValue</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.state_activity.FixedValue"><code class="docutils literal notranslate"><span class="pre">FixedValue</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.state_activity.StateActivity"><code class="docutils literal notranslate"><span class="pre">StateActivity</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.state_activity.PreparedLinearSensitivity"><code class="docutils literal notranslate"><span class="pre">PreparedLinearSensitivity</span></code></a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.state_activity.PreparedLinearSensitivity.output_dim"><code class="docutils literal notranslate"><span class="pre">PreparedLinearSensitivity.output_dim</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.state_activity.PreparedLinearSensitivity.removed"><code class="docutils literal notranslate"><span class="pre">PreparedLinearSensitivity.removed</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.state_activity.PreparedLinearSensitivity.retained_indices"><code class="docutils literal notranslate"><span class="pre">PreparedLinearSensitivity.retained_indices</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.state_activity.PreparedLinearSensitivity.sensitivity"><code class="docutils literal notranslate"><span class="pre">PreparedLinearSensitivity.sensitivity</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.state_activity.PreparedLinearSensitivity.state_dim"><code class="docutils literal notranslate"><span class="pre">PreparedLinearSensitivity.state_dim</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.state_activity.PreparedLinearSensitivity.retained_indices"><code class="docutils literal notranslate"><span class="pre">PreparedLinearSensitivity.retained_indices</span></code></a></li>
 </ul>
 </li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.state_activity.prepare_linear_sensitivity"><code class="docutils literal notranslate"><span class="pre">prepare_linear_sensitivity()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.state_activity.ResolvedStateActivity"><code class="docutils literal notranslate"><span class="pre">ResolvedStateActivity</span></code></a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.state_activity.ResolvedStateActivity.active"><code class="docutils literal notranslate"><span class="pre">ResolvedStateActivity.active</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.state_activity.ResolvedStateActivity.n_state"><code class="docutils literal notranslate"><span class="pre">ResolvedStateActivity.n_state</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.state_activity.ResolvedStateActivity.n_active"><code class="docutils literal notranslate"><span class="pre">ResolvedStateActivity.n_active</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.state_activity.ResolvedStateActivity.active_indices"><code class="docutils literal notranslate"><span class="pre">ResolvedStateActivity.active_indices</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.state_activity.ResolvedStateActivity.fixed_indices"><code class="docutils literal notranslate"><span class="pre">ResolvedStateActivity.fixed_indices</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.state_activity.ResolvedStateActivity.fixed_value"><code class="docutils literal notranslate"><span class="pre">ResolvedStateActivity.fixed_value</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.state_activity.ResolvedStateActivity.n_active"><code class="docutils literal notranslate"><span class="pre">ResolvedStateActivity.n_active</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.state_activity.ResolvedStateActivity.n_state"><code class="docutils literal notranslate"><span class="pre">ResolvedStateActivity.n_state</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.state_activity.ResolvedStateActivity.state_dim"><code class="docutils literal notranslate"><span class="pre">ResolvedStateActivity.state_dim</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.state_activity.ResolvedStateActivity.zero_sensitivity"><code class="docutils literal notranslate"><span class="pre">ResolvedStateActivity.zero_sensitivity</span></code></a></li>
 </ul>
 </li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.state_activity.StateActivity"><code class="docutils literal notranslate"><span class="pre">StateActivity</span></code></a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.state_activity.StateActivity.active"><code class="docutils literal notranslate"><span class="pre">StateActivity.active</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.state_activity.StateActivity.fixed_groups"><code class="docutils literal notranslate"><span class="pre">StateActivity.fixed_groups</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.state_activity.StateActivity.fixed_value"><code class="docutils literal notranslate"><span class="pre">StateActivity.fixed_value</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.state_activity.StateActivity.group_coord"><code class="docutils literal notranslate"><span class="pre">StateActivity.group_coord</span></code></a></li>
-</ul>
-</li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.state_activity.active_prior_args"><code class="docutils literal notranslate"><span class="pre">active_prior_args()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.state_activity.detect_zero_sensitivity"><code class="docutils literal notranslate"><span class="pre">detect_zero_sensitivity()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.state_activity.prepare_linear_sensitivity"><code class="docutils literal notranslate"><span class="pre">prepare_linear_sensitivity()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.state_activity.resolve_state_activity"><code class="docutils literal notranslate"><span class="pre">resolve_state_activity()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.state_activity.active_prior_args"><code class="docutils literal notranslate"><span class="pre">active_prior_args()</span></code></a></li>
 </ul>
   </nav></div>
 

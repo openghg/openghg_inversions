@@ -33,7 +33,7 @@
     <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
     <link rel="stylesheet" type="text/css" href="../_static/jupyter-sphinx.css" />
     <link rel="stylesheet" type="text/css" href="../_static/thebelab.css" />
-    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=f8ac5af1" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=5f08cb77" />
   
   <!-- So that users can add custom icons -->
   <script defer src="../_static/scripts/fontawesome.js?digest=cb8930eaaf36d9849b67"></script>
@@ -159,8 +159,8 @@
 
 
 <li class="nav-item current active">
-  <a class="nav-link nav-internal" href="modules.html">
-    openghg_inversions
+  <a class="nav-link nav-internal" href="index.html">
+    API reference
   </a>
 </li>
 
@@ -266,8 +266,8 @@
 
 
 <li class="nav-item current active">
-  <a class="nav-link nav-internal" href="modules.html">
-    openghg_inversions
+  <a class="nav-link nav-internal" href="index.html">
+    API reference
   </a>
 </li>
 
@@ -464,7 +464,7 @@
       </a>
     </li>
     
-    <li class="breadcrumb-item"><a href="modules.html" class="nav-link">openghg_inversions</a></li>
+    <li class="breadcrumb-item"><a href="index.html" class="nav-link">API reference</a></li>
     
     
     <li class="breadcrumb-item"><a href="openghg_inversions.html" class="nav-link">openghg_inversions</a></li>
@@ -493,7 +493,7 @@
 <span id="openghg-inversions-postprocessing-diagnostics"></span><h1>openghg_inversions.postprocessing.diagnostics<a class="headerlink" href="#module-openghg_inversions.postprocessing.diagnostics" title="Link to this heading">#</a></h1>
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.postprocessing.diagnostics.Diagnostic">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">openghg_inversions.postprocessing.diagnostics.</span></span><span class="sig-name descname"><span class="pre">Diagnostic</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">func</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">params</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.postprocessing.diagnostics.Diagnostic" title="Link to this definition">#</a></dt>
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">Diagnostic</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">func</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">params</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.postprocessing.diagnostics.Diagnostic" title="Link to this definition">#</a></dt>
 <dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">tuple</span></code></a></p>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="openghg_inversions.postprocessing.diagnostics.Diagnostic.func">
@@ -510,72 +510,12 @@
 </dd></dl>
 
 <dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.postprocessing.diagnostics.bayes_r2_by_site">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.postprocessing.diagnostics.</span></span><span class="sig-name descname"><span class="pre">bayes_r2_by_site</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">inv_out</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.postprocessing.inversion_output.html#openghg_inversions.postprocessing.inversion_output.InversionOutput" title="openghg_inversions.postprocessing.inversion_output.InversionOutput"><span class="pre">InversionOutput</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">report_prior</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></span><a class="headerlink" href="#openghg_inversions.postprocessing.diagnostics.bayes_r2_by_site" title="Link to this definition">#</a></dt>
-<dd><p>Compute Bayesian R2 scores grouped by site.</p>
-<p>Scores are computed for posterior predictive traces (compared
-against true obs).</p>
-<p>Prior R2 scores also be computed, but they can not necessarily be
-compared with the posterior scores, since Bayesian R2 scores are
-normalised to always fall between 0 and 1.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>inv_out</strong> – Inversion output containing obs and trace</p></li>
-<li><p><strong>report_prior</strong> – if True, return prior R2 in addition to posterior R2</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p><dl class="simple">
-<dt>containing posterior (and optionally, prior) Bayesian R2 values,</dt><dd><p>with uncertainties.</p>
-</dd>
-</dl>
-</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>xr.Dataset</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.postprocessing.diagnostics.bayes_r2_by_site_resample">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.postprocessing.diagnostics.</span></span><span class="sig-name descname"><span class="pre">bayes_r2_by_site_resample</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">inv_out</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.postprocessing.inversion_output.html#openghg_inversions.postprocessing.inversion_output.InversionOutput" title="openghg_inversions.postprocessing.inversion_output.InversionOutput"><span class="pre">InversionOutput</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">freq</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'MS'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">report_prior</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></span><a class="headerlink" href="#openghg_inversions.postprocessing.diagnostics.bayes_r2_by_site_resample" title="Link to this definition">#</a></dt>
-<dd><p>Compute Bayesian R2 scores grouped by site and time.</p>
-<p>Scores are computed for posterior predictive traces (compared
-against true obs).</p>
-<p>Prior R2 scores also be computed, but they can not necessarily be
-compared with the posterior scores, since Bayesian R2 scores are
-normalised to always fall between 0 and 1.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>inv_out</strong> – Inversion output containing obs and trace</p></li>
-<li><p><strong>freq</strong> – frequency to resample to (should be a pandas freq. str that
-can be passed to <cite>xr.Dataset.resample</cite>)</p></li>
-<li><p><strong>report_prior</strong> – if True, return prior R2 in addition to posterior R2</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p><dl class="simple">
-<dt>containing posterior (and optionally, prior) Bayesian R2 values,</dt><dd><p>with uncertainties.</p>
-</dd>
-</dl>
-</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>xr.Dataset</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.postprocessing.diagnostics.register_diagnostic">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.postprocessing.diagnostics.</span></span><span class="sig-name descname"><span class="pre">register_diagnostic</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">diagnostic</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Callable" title="(in Python v3.14)"><span class="pre">Callable</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Callable" title="(in Python v3.14)"><span class="pre">Callable</span></a></span></span><a class="headerlink" href="#openghg_inversions.postprocessing.diagnostics.register_diagnostic" title="Link to this definition">#</a></dt>
+<span class="sig-name descname"><span class="pre">register_diagnostic</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">diagnostic</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.postprocessing.diagnostics.register_diagnostic" title="Link to this definition">#</a></dt>
 <dd><p>Decorator function to register diagnostics functions.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>diagnostic</strong> – diagnostics function to register</p>
+<dd class="field-odd"><p><strong>diagnostic</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Callable" title="(in Python v3.14)"><em>Callable</em></a>) – diagnostics function to register</p>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>diagnostic, the input function (no modifications made)</p>
@@ -588,7 +528,7 @@ can be passed to <cite>xr.Dataset.resample</cite>)</p></li>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.postprocessing.diagnostics.summary">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.postprocessing.diagnostics.</span></span><span class="sig-name descname"><span class="pre">summary</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">inv_out</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.postprocessing.inversion_output.html#openghg_inversions.postprocessing.inversion_output.InversionOutput" title="openghg_inversions.postprocessing.inversion_output.InversionOutput"><span class="pre">InversionOutput</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></span><a class="headerlink" href="#openghg_inversions.postprocessing.diagnostics.summary" title="Link to this definition">#</a></dt>
+<span class="sig-name descname"><span class="pre">summary</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">inv_out</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.postprocessing.diagnostics.summary" title="Link to this definition">#</a></dt>
 <dd><p>Return diagnostics summary computed by arviz.</p>
 <dl class="simple">
 <dt>Diagnostics reported:</dt><dd><ul class="simple">
@@ -606,10 +546,70 @@ greater than 1. Ideally, all r_hat values should be below 1.01</p></li>
 </dl>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>inv_out</strong> – Inversion output to summarise.</p>
+<dd class="field-odd"><p><strong>inv_out</strong> (<a class="reference internal" href="openghg_inversions.postprocessing.inversion_output.html#openghg_inversions.postprocessing.inversion_output.InversionOutput" title="openghg_inversions.postprocessing.inversion_output.InversionOutput"><em>InversionOutput</em></a>) – Inversion output to summarise.</p>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>Dataset with diagnostic summary.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>xr.Dataset</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.postprocessing.diagnostics.bayes_r2_by_site">
+<span class="sig-name descname"><span class="pre">bayes_r2_by_site</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">inv_out</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">report_prior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.postprocessing.diagnostics.bayes_r2_by_site" title="Link to this definition">#</a></dt>
+<dd><p>Compute Bayesian R2 scores grouped by site.</p>
+<p>Scores are computed for posterior predictive traces (compared
+against true obs).</p>
+<p>Prior R2 scores also be computed, but they can not necessarily be
+compared with the posterior scores, since Bayesian R2 scores are
+normalised to always fall between 0 and 1.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>inv_out</strong> (<a class="reference internal" href="openghg_inversions.postprocessing.inversion_output.html#openghg_inversions.postprocessing.inversion_output.InversionOutput" title="openghg_inversions.postprocessing.inversion_output.InversionOutput"><em>InversionOutput</em></a>) – Inversion output containing obs and trace</p></li>
+<li><p><strong>report_prior</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – if True, return prior R2 in addition to posterior R2</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>containing posterior (and optionally, prior) Bayesian R2 values,</dt><dd><p>with uncertainties.</p>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>xr.Dataset</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.postprocessing.diagnostics.bayes_r2_by_site_resample">
+<span class="sig-name descname"><span class="pre">bayes_r2_by_site_resample</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">inv_out</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">freq</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'MS'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">report_prior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.postprocessing.diagnostics.bayes_r2_by_site_resample" title="Link to this definition">#</a></dt>
+<dd><p>Compute Bayesian R2 scores grouped by site and time.</p>
+<p>Scores are computed for posterior predictive traces (compared
+against true obs).</p>
+<p>Prior R2 scores also be computed, but they can not necessarily be
+compared with the posterior scores, since Bayesian R2 scores are
+normalised to always fall between 0 and 1.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>inv_out</strong> (<a class="reference internal" href="openghg_inversions.postprocessing.inversion_output.html#openghg_inversions.postprocessing.inversion_output.InversionOutput" title="openghg_inversions.postprocessing.inversion_output.InversionOutput"><em>InversionOutput</em></a>) – Inversion output containing obs and trace</p></li>
+<li><p><strong>freq</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – frequency to resample to (should be a pandas freq. str that
+can be passed to <cite>xr.Dataset.resample</cite>)</p></li>
+<li><p><strong>report_prior</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – if True, return prior R2 in addition to posterior R2</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>containing posterior (and optionally, prior) Bayesian R2 values,</dt><dd><p>with uncertainties.</p>
+</dd>
+</dl>
+</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p>xr.Dataset</p>
@@ -671,10 +671,10 @@ greater than 1. Ideally, all r_hat values should be below 1.01</p></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.postprocessing.diagnostics.Diagnostic.params"><code class="docutils literal notranslate"><span class="pre">Diagnostic.params</span></code></a></li>
 </ul>
 </li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.postprocessing.diagnostics.bayes_r2_by_site"><code class="docutils literal notranslate"><span class="pre">bayes_r2_by_site()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.postprocessing.diagnostics.bayes_r2_by_site_resample"><code class="docutils literal notranslate"><span class="pre">bayes_r2_by_site_resample()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.postprocessing.diagnostics.register_diagnostic"><code class="docutils literal notranslate"><span class="pre">register_diagnostic()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.postprocessing.diagnostics.summary"><code class="docutils literal notranslate"><span class="pre">summary()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.postprocessing.diagnostics.bayes_r2_by_site"><code class="docutils literal notranslate"><span class="pre">bayes_r2_by_site()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.postprocessing.diagnostics.bayes_r2_by_site_resample"><code class="docutils literal notranslate"><span class="pre">bayes_r2_by_site_resample()</span></code></a></li>
 </ul>
   </nav></div>
 

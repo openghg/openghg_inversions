@@ -33,7 +33,7 @@
     <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
     <link rel="stylesheet" type="text/css" href="../_static/jupyter-sphinx.css" />
     <link rel="stylesheet" type="text/css" href="../_static/thebelab.css" />
-    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=f8ac5af1" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=5f08cb77" />
   
   <!-- So that users can add custom icons -->
   <script defer src="../_static/scripts/fontawesome.js?digest=cb8930eaaf36d9849b67"></script>
@@ -159,8 +159,8 @@
 
 
 <li class="nav-item current active">
-  <a class="nav-link nav-internal" href="modules.html">
-    openghg_inversions
+  <a class="nav-link nav-internal" href="index.html">
+    API reference
   </a>
 </li>
 
@@ -266,8 +266,8 @@
 
 
 <li class="nav-item current active">
-  <a class="nav-link nav-internal" href="modules.html">
-    openghg_inversions
+  <a class="nav-link nav-internal" href="index.html">
+    API reference
   </a>
 </li>
 
@@ -464,7 +464,7 @@
       </a>
     </li>
     
-    <li class="breadcrumb-item"><a href="modules.html" class="nav-link">openghg_inversions</a></li>
+    <li class="breadcrumb-item"><a href="index.html" class="nav-link">API reference</a></li>
     
     
     <li class="breadcrumb-item"><a href="openghg_inversions.html" class="nav-link">openghg_inversions</a></li>
@@ -502,111 +502,19 @@ to disk (either as a pickle file, netCDF, or zarr)</p></li>
 <code class="docutils literal notranslate"><span class="pre">fp_all_from_dataset</span></code> derives the numeric scale from the combined dataset’s
 common <code class="docutils literal notranslate"><span class="pre">mf</span></code> units.</p>
 <dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.inversion_data.serialise.clear_datatree_encoding">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.inversion_data.serialise.</span></span><span class="sig-name descname"><span class="pre">clear_datatree_encoding</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dt</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><span class="pre">DataTree</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><span class="pre">DataTree</span></a></span></span><a class="headerlink" href="#openghg_inversions.inversion_data.serialise.clear_datatree_encoding" title="Link to this definition">#</a></dt>
-<dd><p>Clean encoding attribute of variables to avoid issues when writing.</p>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.inversion_data.serialise.clear_datatree_time_attrs">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.inversion_data.serialise.</span></span><span class="sig-name descname"><span class="pre">clear_datatree_time_attrs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dt</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><span class="pre">DataTree</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><span class="pre">DataTree</span></a></span></span><a class="headerlink" href="#openghg_inversions.inversion_data.serialise.clear_datatree_time_attrs" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.inversion_data.serialise.combine_scenario_attrs">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.inversion_data.serialise.</span></span><span class="sig-name descname"><span class="pre">combine_scenario_attrs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">attrs_list</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.14)"><span class="pre">list</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><span class="pre">Any</span></a><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">context</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><span class="pre">Any</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#openghg_inversions.inversion_data.serialise.combine_scenario_attrs" title="Link to this definition">#</a></dt>
-<dd><p>Combine attributes when concatenating scenarios from different sites.</p>
-<p>The <cite>ModelScenario.scenario`s in `get_combined_scenario</cite> have the key “scenario” added
-to their attributes as a flag so this function can process the dataset attributes and
-the data variable attributes differently.</p>
-<dl class="simple">
-<dt>TODO: add ‘time_period’, ‘high_time/spatial_resolution’, ‘short_lifetime’, ‘heights’?</dt><dd><p>Is ‘time_period’ from the footprint? Need to check model scenario…</p>
-</dd>
-</dl>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>attrs_list</strong> – list of attributes from datasets being concatenated</p></li>
-<li><p><strong>context</strong> – additional parameter supplied by concatenate (this is required/supplied by xarray)</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>dict that will be used as attributes for concatenated dataset</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.inversion_data.serialise.dataset_to_bc_data">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.inversion_data.serialise.</span></span><span class="sig-name descname"><span class="pre">dataset_to_bc_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ds</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.openghg.org/api/api_dataobjects.html#openghg.dataobjects.BoundaryConditionsData" title="(in OpenGHG v0.19.0)"><span class="pre">BoundaryConditionsData</span></a></span></span><a class="headerlink" href="#openghg_inversions.inversion_data.serialise.dataset_to_bc_data" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.inversion_data.serialise.dataset_to_flux_data">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.inversion_data.serialise.</span></span><span class="sig-name descname"><span class="pre">dataset_to_flux_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ds</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.openghg.org/api/devapi_dataobjects.html#openghg.dataobjects.FluxData" title="(in OpenGHG v0.19.0)"><span class="pre">FluxData</span></a></span></span><a class="headerlink" href="#openghg_inversions.inversion_data.serialise.dataset_to_flux_data" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.inversion_data.serialise.datatree_compression_encoding">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.inversion_data.serialise.</span></span><span class="sig-name descname"><span class="pre">datatree_compression_encoding</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dt</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><span class="pre">DataTree</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">compressor</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Blosc</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a></span></span><a class="headerlink" href="#openghg_inversions.inversion_data.serialise.datatree_compression_encoding" title="Link to this definition">#</a></dt>
-<dd><p>Creating encoding dictionary for saving DataTree to zarr.</p>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.inversion_data.serialise.datatree_to_flux_dict">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.inversion_data.serialise.</span></span><span class="sig-name descname"><span class="pre">datatree_to_flux_dict</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dt</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><span class="pre">DataTree</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.openghg.org/api/devapi_dataobjects.html#openghg.dataobjects.FluxData" title="(in OpenGHG v0.19.0)"><span class="pre">FluxData</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#openghg_inversions.inversion_data.serialise.datatree_to_flux_dict" title="Link to this definition">#</a></dt>
-<dd><p>Convert an xarray DataTree to a dict of FluxData objects.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>dt</strong> – DataTree whose child nodes are converted to datasets and then to FluxData.</p>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Mapping from node keys (as strings) to FluxData instances.</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.inversion_data.serialise.datatree_to_fp_all">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.inversion_data.serialise.</span></span><span class="sig-name descname"><span class="pre">datatree_to_fp_all</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dt</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><span class="pre">DataTree</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a></span></span><a class="headerlink" href="#openghg_inversions.inversion_data.serialise.datatree_to_fp_all" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.inversion_data.serialise.flux_dict_to_datatree">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.inversion_data.serialise.</span></span><span class="sig-name descname"><span class="pre">flux_dict_to_datatree</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">flux_dict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.openghg.org/api/devapi_dataobjects.html#openghg.dataobjects.FluxData" title="(in OpenGHG v0.19.0)"><span class="pre">FluxData</span></a><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">netcdf_safe_attrs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><span class="pre">DataTree</span></a></span></span><a class="headerlink" href="#openghg_inversions.inversion_data.serialise.flux_dict_to_datatree" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.inversion_data.serialise.fp_all_from_dataset">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.inversion_data.serialise.</span></span><span class="sig-name descname"><span class="pre">fp_all_from_dataset</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ds</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a></span></span><a class="headerlink" href="#openghg_inversions.inversion_data.serialise.fp_all_from_dataset" title="Link to this definition">#</a></dt>
-<dd><p>Recover “fp_all” dictionary from “combined scenario” dataset.</p>
-<p>This is the inverse of <cite>make_combined_scenario</cite>, except that the attributes of the
-scenarios, fluxes, and boundary conditions may be different. New datasets
-retain source timestamps on <code class="docutils literal notranslate"><span class="pre">flux_time</span></code> with explicit source presence;
-older datasets without that metadata use value-based padding removal or
-fall back to the first observation time for compatibility.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>ds</strong> – dataset created by <cite>make_combined_scenario</cite></p>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>dictionary containing model scenarios keyed by site, as well as flux and boundary conditions.</p>
-</dd>
-<dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If serialized <code class="docutils literal notranslate"><span class="pre">mf</span></code> units are invalid or are not a molar
-    mixing ratio. Missing units default to <code class="docutils literal notranslate"><span class="pre">mol/mol</span></code>.</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.inversion_data.serialise.fp_all_to_datatree">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.inversion_data.serialise.</span></span><span class="sig-name descname"><span class="pre">fp_all_to_datatree</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fp_all</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">netcdf_safe_attrs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><span class="pre">DataTree</span></a></span></span><a class="headerlink" href="#openghg_inversions.inversion_data.serialise.fp_all_to_datatree" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.inversion_data.serialise.load_merged_data">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.inversion_data.serialise.</span></span><span class="sig-name descname"><span class="pre">load_merged_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">merged_data_dir</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><span class="pre">Path</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">species</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">start_date</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">merged_data_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_format</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><span class="pre">Literal</span></a><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'pickle'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'netcdf'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'zarr'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'zarr.zip'</span></span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a></span></span><a class="headerlink" href="#openghg_inversions.inversion_data.serialise.load_merged_data" title="Link to this definition">#</a></dt>
+<span class="sig-name descname"><span class="pre">load_merged_data</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">merged_data_dir</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">species</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">start_date</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">output_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">merged_data_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">output_format</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inversion_data.serialise.load_merged_data" title="Link to this definition">#</a></dt>
 <dd><p>Load <cite>fp_all</cite> dictionary from a file in <cite>merged_data_dir</cite>.</p>
 <p>The name of the pickle file can be specified using <cite>merged_data_name</cite>, or
 a standard name will be created given <cite>species</cite>, <cite>start_date</cite>, and <cite>output_name</cite>.</p>
@@ -618,23 +526,53 @@ loaded before the zip file is closed.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>merged_data_dir</strong> – path to directory where merged data will be saved</p></li>
-<li><p><strong>species</strong> – species of inversion</p></li>
-<li><p><strong>start_date</strong> – start date of inversion period</p></li>
-<li><p><strong>output_name</strong> – output name parameter used for inversion run</p></li>
-<li><p><strong>merged_data_name</strong> – name to use for saved data.</p></li>
-<li><p><strong>output_format</strong> – format of data to load (if not specified, this will be inferred).</p></li>
+<li><p><strong>merged_data_dir</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><em>Path</em></a>) – path to directory where merged data will be saved</p></li>
+<li><p><strong>species</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – species of inversion</p></li>
+<li><p><strong>start_date</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – start date of inversion period</p></li>
+<li><p><strong>output_name</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – output name parameter used for inversion run</p></li>
+<li><p><strong>merged_data_name</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – name to use for saved data.</p></li>
+<li><p><strong>output_format</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><em>Literal</em></a><em>[</em><em>'pickle'</em><em>, </em><em>'netcdf'</em><em>, </em><em>'zarr'</em><em>, </em><em>'zarr.zip'</em><em>] </em><em>| </em><em>None</em>) – format of data to load (if not specified, this will be inferred).</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p><cite>fp_all</cite> dictionary</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)">dict</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.inversion_data.serialise.combine_scenario_attrs">
+<span class="sig-name descname"><span class="pre">combine_scenario_attrs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">attrs_list</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">context</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inversion_data.serialise.combine_scenario_attrs" title="Link to this definition">#</a></dt>
+<dd><p>Combine attributes when concatenating scenarios from different sites.</p>
+<p>The <cite>ModelScenario.scenario`s in `get_combined_scenario</cite> have the key “scenario” added
+to their attributes as a flag so this function can process the dataset attributes and
+the data variable attributes differently.</p>
+<dl class="simple">
+<dt>TODO: add ‘time_period’, ‘high_time/spatial_resolution’, ‘short_lifetime’, ‘heights’?</dt><dd><p>Is ‘time_period’ from the footprint? Need to check model scenario…</p>
+</dd>
+</dl>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>attrs_list</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.14)"><em>list</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><em>Any</em></a><em>]</em><em>]</em>) – list of attributes from datasets being concatenated</p></li>
+<li><p><strong>context</strong> – additional parameter supplied by concatenate (this is required/supplied by xarray)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>dict that will be used as attributes for concatenated dataset</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)">str</a>, <a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><em>Any</em></a>]</p>
 </dd>
 </dl>
 </dd></dl>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.inversion_data.serialise.make_combined_scenario">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.inversion_data.serialise.</span></span><span class="sig-name descname"><span class="pre">make_combined_scenario</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fp_all</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></span><a class="headerlink" href="#openghg_inversions.inversion_data.serialise.make_combined_scenario" title="Link to this definition">#</a></dt>
+<span class="sig-name descname"><span class="pre">make_combined_scenario</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fp_all</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inversion_data.serialise.make_combined_scenario" title="Link to this definition">#</a></dt>
 <dd><p>Combine scenarios and merge in fluxes and boundary conditions.</p>
 <p>Flux time coordinates are stored on a separate <code class="docutils literal notranslate"><span class="pre">flux_time</span></code> dimension,
 with explicit per-source timestamp presence, so that source periods
@@ -642,20 +580,83 @@ beginning before the observations and all-NaN slices are preserved.
 Singleton boundary-condition time dimensions are still dropped.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>fp_all</strong> – Inversion data keyed by site, with flux sources under
+<dd class="field-odd"><p><strong>fp_all</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a>) – Inversion data keyed by site, with flux sources under
 <code class="docutils literal notranslate"><span class="pre">&quot;.flux&quot;</span></code> and optional boundary conditions under <code class="docutils literal notranslate"><span class="pre">&quot;.bc&quot;</span></code>.</p>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>A combined dataset containing site scenarios, source-specific flux
 periods, and optional boundary conditions.</p>
 </dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><em>Dataset</em></a></p>
+</dd>
 </dl>
 </dd></dl>
 
 <dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.inversion_data.serialise.openghg_data_to_dataset">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.inversion_data.serialise.</span></span><span class="sig-name descname"><span class="pre">openghg_data_to_dataset</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">openghg_data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">_BaseData</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">netcdf_safe_attrs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></span><a class="headerlink" href="#openghg_inversions.inversion_data.serialise.openghg_data_to_dataset" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
+<dt class="sig sig-object py" id="openghg_inversions.inversion_data.serialise.fp_all_from_dataset">
+<span class="sig-name descname"><span class="pre">fp_all_from_dataset</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ds</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inversion_data.serialise.fp_all_from_dataset" title="Link to this definition">#</a></dt>
+<dd><p>Recover “fp_all” dictionary from “combined scenario” dataset.</p>
+<p>This is the inverse of <cite>make_combined_scenario</cite>, except that the attributes of the
+scenarios, fluxes, and boundary conditions may be different. New datasets
+retain source timestamps on <code class="docutils literal notranslate"><span class="pre">flux_time</span></code> with explicit source presence;
+older datasets without that metadata use value-based padding removal or
+fall back to the first observation time for compatibility.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>ds</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><em>Dataset</em></a>) – dataset created by <cite>make_combined_scenario</cite></p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>dictionary containing model scenarios keyed by site, as well as flux and boundary conditions.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If serialized <code class="docutils literal notranslate"><span class="pre">mf</span></code> units are invalid or are not a molar
+    mixing ratio. Missing units default to <code class="docutils literal notranslate"><span class="pre">mol/mol</span></code>.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)">dict</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.inversion_data.serialise.datatree_to_flux_dict">
+<span class="sig-name descname"><span class="pre">datatree_to_flux_dict</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dt</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inversion_data.serialise.datatree_to_flux_dict" title="Link to this definition">#</a></dt>
+<dd><p>Convert an xarray DataTree to a dict of FluxData objects.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>dt</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><em>DataTree</em></a>) – DataTree whose child nodes are converted to datasets and then to FluxData.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Mapping from node keys (as strings) to FluxData instances.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)">str</a>, <a class="reference external" href="https://docs.openghg.org/api/devapi_dataobjects.html#openghg.dataobjects.FluxData" title="(in OpenGHG v0.19.0)"><em>FluxData</em></a>]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.inversion_data.serialise.datatree_compression_encoding">
+<span class="sig-name descname"><span class="pre">datatree_compression_encoding</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dt</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">compressor</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inversion_data.serialise.datatree_compression_encoding" title="Link to this definition">#</a></dt>
+<dd><p>Creating encoding dictionary for saving DataTree to zarr.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)">dict</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.inversion_data.serialise.clear_datatree_encoding">
+<span class="sig-name descname"><span class="pre">clear_datatree_encoding</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dt</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inversion_data.serialise.clear_datatree_encoding" title="Link to this definition">#</a></dt>
+<dd><p>Clean encoding attribute of variables to avoid issues when writing.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><em>DataTree</em></a></p>
+</dd>
+</dl>
+</dd></dl>
 
 </section>
 
@@ -706,20 +707,13 @@ periods, and optional boundary conditions.</p>
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.serialise.clear_datatree_encoding"><code class="docutils literal notranslate"><span class="pre">clear_datatree_encoding()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.serialise.clear_datatree_time_attrs"><code class="docutils literal notranslate"><span class="pre">clear_datatree_time_attrs()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.serialise.combine_scenario_attrs"><code class="docutils literal notranslate"><span class="pre">combine_scenario_attrs()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.serialise.dataset_to_bc_data"><code class="docutils literal notranslate"><span class="pre">dataset_to_bc_data()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.serialise.dataset_to_flux_data"><code class="docutils literal notranslate"><span class="pre">dataset_to_flux_data()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.serialise.datatree_compression_encoding"><code class="docutils literal notranslate"><span class="pre">datatree_compression_encoding()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.serialise.datatree_to_flux_dict"><code class="docutils literal notranslate"><span class="pre">datatree_to_flux_dict()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.serialise.datatree_to_fp_all"><code class="docutils literal notranslate"><span class="pre">datatree_to_fp_all()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.serialise.flux_dict_to_datatree"><code class="docutils literal notranslate"><span class="pre">flux_dict_to_datatree()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.serialise.fp_all_from_dataset"><code class="docutils literal notranslate"><span class="pre">fp_all_from_dataset()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.serialise.fp_all_to_datatree"><code class="docutils literal notranslate"><span class="pre">fp_all_to_datatree()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.serialise.load_merged_data"><code class="docutils literal notranslate"><span class="pre">load_merged_data()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.serialise.combine_scenario_attrs"><code class="docutils literal notranslate"><span class="pre">combine_scenario_attrs()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.serialise.make_combined_scenario"><code class="docutils literal notranslate"><span class="pre">make_combined_scenario()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.serialise.openghg_data_to_dataset"><code class="docutils literal notranslate"><span class="pre">openghg_data_to_dataset()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.serialise.fp_all_from_dataset"><code class="docutils literal notranslate"><span class="pre">fp_all_from_dataset()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.serialise.datatree_to_flux_dict"><code class="docutils literal notranslate"><span class="pre">datatree_to_flux_dict()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.serialise.datatree_compression_encoding"><code class="docutils literal notranslate"><span class="pre">datatree_compression_encoding()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.serialise.clear_datatree_encoding"><code class="docutils literal notranslate"><span class="pre">clear_datatree_encoding()</span></code></a></li>
 </ul>
   </nav></div>
 

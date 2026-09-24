@@ -33,7 +33,7 @@
     <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
     <link rel="stylesheet" type="text/css" href="../_static/jupyter-sphinx.css" />
     <link rel="stylesheet" type="text/css" href="../_static/thebelab.css" />
-    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=f8ac5af1" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=5f08cb77" />
   
   <!-- So that users can add custom icons -->
   <script defer src="../_static/scripts/fontawesome.js?digest=cb8930eaaf36d9849b67"></script>
@@ -159,8 +159,8 @@
 
 
 <li class="nav-item current active">
-  <a class="nav-link nav-internal" href="modules.html">
-    openghg_inversions
+  <a class="nav-link nav-internal" href="index.html">
+    API reference
   </a>
 </li>
 
@@ -266,8 +266,8 @@
 
 
 <li class="nav-item current active">
-  <a class="nav-link nav-internal" href="modules.html">
-    openghg_inversions
+  <a class="nav-link nav-internal" href="index.html">
+    API reference
   </a>
 </li>
 
@@ -464,7 +464,7 @@
       </a>
     </li>
     
-    <li class="breadcrumb-item"><a href="modules.html" class="nav-link">openghg_inversions</a></li>
+    <li class="breadcrumb-item"><a href="index.html" class="nav-link">API reference</a></li>
     
     
     <li class="breadcrumb-item"><a href="openghg_inversions.html" class="nav-link">openghg_inversions</a></li>
@@ -493,38 +493,53 @@
 <span id="openghg-inversions-models-cached-sigma"></span><h1>openghg_inversions.models.cached_sigma<a class="headerlink" href="#module-openghg_inversions.models.cached_sigma" title="Link to this heading">#</a></h1>
 <p>State-likelihood quadratics for supplied site amplitudes in the fixed-OU likelihood.</p>
 <dl class="py class">
+<dt class="sig sig-object py" id="openghg_inversions.models.cached_sigma.MarginalQuadraticCache">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">MarginalQuadraticCache</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">constant</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">linear</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">precision</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sigma</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.cached_sigma.MarginalQuadraticCache" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>Normalized state-likelihood coefficients at one site-amplitude vector.</p>
+<dl class="field-list simple">
+</dl>
+<dl class="py property">
+<dt class="sig sig-object py" id="openghg_inversions.models.cached_sigma.MarginalQuadraticCache.n_state">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">n_state</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><a class="headerlink" href="#openghg_inversions.models.cached_sigma.MarginalQuadraticCache.n_state" title="Link to this definition">#</a></dt>
+<dd><p>Number of state variables represented by the quadratic.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.models.cached_sigma.MarginalQuadraticCache.log_likelihood">
+<span class="sig-name descname"><span class="pre">log_likelihood</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.cached_sigma.MarginalQuadraticCache.log_likelihood" title="Link to this definition">#</a></dt>
+<dd><p>Evaluate the cached normalized likelihood without a factorization.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)">float</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.models.cached_sigma.MarginalQuadraticCache.gradient">
+<span class="sig-name descname"><span class="pre">gradient</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.cached_sigma.MarginalQuadraticCache.gradient" title="Link to this definition">#</a></dt>
+<dd><p>Evaluate the exact cached gradient with respect to state.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><em>NDArray</em>[<em>float64</em>]</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.models.cached_sigma.FixedOuCachedSigmaTarget">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">openghg_inversions.models.cached_sigma.</span></span><span class="sig-name descname"><span class="pre">FixedOuCachedSigmaTarget</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">prepared</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.models.fixed_ou.html#openghg_inversions.models.fixed_ou.FixedOuLowRank" title="openghg_inversions.models.fixed_ou.FixedOuLowRank"><span class="pre">FixedOuLowRank</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">observations</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fixed_contribution</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">design</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.cached_sigma.FixedOuCachedSigmaTarget" title="Link to this definition">#</a></dt>
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">FixedOuCachedSigmaTarget</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">prepared</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">observations</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fixed_contribution</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">design</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.cached_sigma.FixedOuCachedSigmaTarget" title="Link to this definition">#</a></dt>
 <dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
 <p>Build state quadratics from the OGI fixed-OU covariance preparation.</p>
 <p><code class="docutils literal notranslate"><span class="pre">refresh</span></code> performs one rank-space factorization for the supplied site
 amplitudes and solves the zero-state residual and all state-design columns
 together. State evaluations on the returned cache are then pure dense
 quadratic algebra.</p>
-<dl class="py method">
-<dt class="sig sig-object py" id="openghg_inversions.models.cached_sigma.FixedOuCachedSigmaTarget.evaluate_from_residual">
-<span class="sig-name descname"><span class="pre">evaluate_from_residual</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">residual</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sigma</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="openghg_inversions.models.fixed_ou.html#openghg_inversions.models.fixed_ou.FixedOuLikelihoodEvaluation" title="openghg_inversions.models.fixed_ou.FixedOuLikelihoodEvaluation"><span class="pre">FixedOuLikelihoodEvaluation</span></a></span></span><a class="headerlink" href="#openghg_inversions.models.cached_sigma.FixedOuCachedSigmaTarget.evaluate_from_residual" title="Link to this definition">#</a></dt>
-<dd><p>Evaluate the exact sigma conditional for a fixed state residual.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="openghg_inversions.models.cached_sigma.FixedOuCachedSigmaTarget.log_likelihood">
-<span class="sig-name descname"><span class="pre">log_likelihood</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sigma</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span></span><a class="headerlink" href="#openghg_inversions.models.cached_sigma.FixedOuCachedSigmaTarget.log_likelihood" title="Link to this definition">#</a></dt>
-<dd><p>Evaluate the uncached exact likelihood for output construction.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="openghg_inversions.models.cached_sigma.FixedOuCachedSigmaTarget.log_likelihood_from_mean">
-<span class="sig-name descname"><span class="pre">log_likelihood_from_mean</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mean</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sigma</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span></span><a class="headerlink" href="#openghg_inversions.models.cached_sigma.FixedOuCachedSigmaTarget.log_likelihood_from_mean" title="Link to this definition">#</a></dt>
-<dd><p>Evaluate the exact likelihood from a completed observation mean.</p>
-</dd></dl>
-
-<dl class="py property">
-<dt class="sig sig-object py" id="openghg_inversions.models.cached_sigma.FixedOuCachedSigmaTarget.n_group">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">n_group</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><a class="headerlink" href="#openghg_inversions.models.cached_sigma.FixedOuCachedSigmaTarget.n_group" title="Link to this definition">#</a></dt>
-<dd><p>Number of independently inferred site amplitudes.</p>
-</dd></dl>
-
+<dl class="field-list simple">
+</dl>
 <dl class="py property">
 <dt class="sig sig-object py" id="openghg_inversions.models.cached_sigma.FixedOuCachedSigmaTarget.n_obs">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">n_obs</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><a class="headerlink" href="#openghg_inversions.models.cached_sigma.FixedOuCachedSigmaTarget.n_obs" title="Link to this definition">#</a></dt>
@@ -537,68 +552,77 @@ quadratic algebra.</p>
 <dd><p>Number of state-design columns.</p>
 </dd></dl>
 
-<dl class="py method">
-<dt class="sig sig-object py" id="openghg_inversions.models.cached_sigma.FixedOuCachedSigmaTarget.random">
-<span class="sig-name descname"><span class="pre">random</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sigma</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">rng</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://numpy.org/doc/stable/reference/random/generator.html#numpy.random.Generator" title="(in NumPy v2.5)"><span class="pre">Generator</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">size</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><span class="pre">ndarray</span></a></span></span><a class="headerlink" href="#openghg_inversions.models.cached_sigma.FixedOuCachedSigmaTarget.random" title="Link to this definition">#</a></dt>
-<dd><p>Draw a joint observation vector at one state and sigma.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="openghg_inversions.models.cached_sigma.FixedOuCachedSigmaTarget.random_from_mean">
-<span class="sig-name descname"><span class="pre">random_from_mean</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mean</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sigma</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">rng</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://numpy.org/doc/stable/reference/random/generator.html#numpy.random.Generator" title="(in NumPy v2.5)"><span class="pre">Generator</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">size</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><span class="pre">ndarray</span></a></span></span><a class="headerlink" href="#openghg_inversions.models.cached_sigma.FixedOuCachedSigmaTarget.random_from_mean" title="Link to this definition">#</a></dt>
-<dd><p>Draw a joint observation vector from a completed observation mean.</p>
+<dl class="py property">
+<dt class="sig sig-object py" id="openghg_inversions.models.cached_sigma.FixedOuCachedSigmaTarget.n_group">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">n_group</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><a class="headerlink" href="#openghg_inversions.models.cached_sigma.FixedOuCachedSigmaTarget.n_group" title="Link to this definition">#</a></dt>
+<dd><p>Number of independently inferred site amplitudes.</p>
 </dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="openghg_inversions.models.cached_sigma.FixedOuCachedSigmaTarget.refresh">
-<span class="sig-name descname"><span class="pre">refresh</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sigma</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#openghg_inversions.models.cached_sigma.MarginalQuadraticCache" title="openghg_inversions.models.cached_sigma.MarginalQuadraticCache"><span class="pre">MarginalQuadraticCache</span></a></span></span><a class="headerlink" href="#openghg_inversions.models.cached_sigma.FixedOuCachedSigmaTarget.refresh" title="Link to this definition">#</a></dt>
+<span class="sig-name descname"><span class="pre">refresh</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sigma</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.cached_sigma.FixedOuCachedSigmaTarget.refresh" title="Link to this definition">#</a></dt>
 <dd><p>Build one exact float64 quadratic for the supplied site amplitudes.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#openghg_inversions.models.cached_sigma.MarginalQuadraticCache" title="openghg_inversions.models.cached_sigma.MarginalQuadraticCache"><em>MarginalQuadraticCache</em></a></p>
+</dd>
+</dl>
 </dd></dl>
-
-</dd></dl>
-
-<dl class="py class">
-<dt class="sig sig-object py" id="openghg_inversions.models.cached_sigma.MarginalQuadraticCache">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">openghg_inversions.models.cached_sigma.</span></span><span class="sig-name descname"><span class="pre">MarginalQuadraticCache</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">constant</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">linear</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">NDArray</span><span class="p"><span class="pre">[</span></span><span class="pre">float64</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">precision</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">NDArray</span><span class="p"><span class="pre">[</span></span><span class="pre">float64</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sigma</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">NDArray</span><span class="p"><span class="pre">[</span></span><span class="pre">float64</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.cached_sigma.MarginalQuadraticCache" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
-<p>Normalized state-likelihood coefficients at one site-amplitude vector.</p>
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.models.cached_sigma.MarginalQuadraticCache.constant">
-<span class="sig-name descname"><span class="pre">constant</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><a class="headerlink" href="#openghg_inversions.models.cached_sigma.MarginalQuadraticCache.constant" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
 
 <dl class="py method">
-<dt class="sig sig-object py" id="openghg_inversions.models.cached_sigma.MarginalQuadraticCache.gradient">
-<span class="sig-name descname"><span class="pre">gradient</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">NDArray</span><span class="p"><span class="pre">[</span></span><span class="pre">float64</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#openghg_inversions.models.cached_sigma.MarginalQuadraticCache.gradient" title="Link to this definition">#</a></dt>
-<dd><p>Evaluate the exact cached gradient with respect to state.</p>
+<dt class="sig sig-object py" id="openghg_inversions.models.cached_sigma.FixedOuCachedSigmaTarget.evaluate_from_residual">
+<span class="sig-name descname"><span class="pre">evaluate_from_residual</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">residual</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sigma</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.cached_sigma.FixedOuCachedSigmaTarget.evaluate_from_residual" title="Link to this definition">#</a></dt>
+<dd><p>Evaluate the exact sigma conditional for a fixed state residual.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="openghg_inversions.models.fixed_ou.html#openghg_inversions.models.fixed_ou.FixedOuLikelihoodEvaluation" title="openghg_inversions.models.fixed_ou.FixedOuLikelihoodEvaluation"><em>FixedOuLikelihoodEvaluation</em></a></p>
+</dd>
+</dl>
 </dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.models.cached_sigma.MarginalQuadraticCache.linear">
-<span class="sig-name descname"><span class="pre">linear</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">NDArray</span><span class="p"><span class="pre">[</span></span><span class="pre">float64</span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.models.cached_sigma.MarginalQuadraticCache.linear" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
 
 <dl class="py method">
-<dt class="sig sig-object py" id="openghg_inversions.models.cached_sigma.MarginalQuadraticCache.log_likelihood">
-<span class="sig-name descname"><span class="pre">log_likelihood</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span></span><a class="headerlink" href="#openghg_inversions.models.cached_sigma.MarginalQuadraticCache.log_likelihood" title="Link to this definition">#</a></dt>
-<dd><p>Evaluate the cached normalized likelihood without a factorization.</p>
+<dt class="sig sig-object py" id="openghg_inversions.models.cached_sigma.FixedOuCachedSigmaTarget.log_likelihood">
+<span class="sig-name descname"><span class="pre">log_likelihood</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sigma</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.cached_sigma.FixedOuCachedSigmaTarget.log_likelihood" title="Link to this definition">#</a></dt>
+<dd><p>Evaluate the uncached exact likelihood for output construction.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)">float</a></p>
+</dd>
+</dl>
 </dd></dl>
 
-<dl class="py property">
-<dt class="sig sig-object py" id="openghg_inversions.models.cached_sigma.MarginalQuadraticCache.n_state">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">n_state</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><a class="headerlink" href="#openghg_inversions.models.cached_sigma.MarginalQuadraticCache.n_state" title="Link to this definition">#</a></dt>
-<dd><p>Number of state variables represented by the quadratic.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.models.cached_sigma.FixedOuCachedSigmaTarget.log_likelihood_from_mean">
+<span class="sig-name descname"><span class="pre">log_likelihood_from_mean</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mean</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sigma</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.cached_sigma.FixedOuCachedSigmaTarget.log_likelihood_from_mean" title="Link to this definition">#</a></dt>
+<dd><p>Evaluate the exact likelihood from a completed observation mean.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)">float</a></p>
+</dd>
+</dl>
 </dd></dl>
 
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.models.cached_sigma.MarginalQuadraticCache.precision">
-<span class="sig-name descname"><span class="pre">precision</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">NDArray</span><span class="p"><span class="pre">[</span></span><span class="pre">float64</span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.models.cached_sigma.MarginalQuadraticCache.precision" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.models.cached_sigma.FixedOuCachedSigmaTarget.random">
+<span class="sig-name descname"><span class="pre">random</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sigma</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">rng</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">size</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.cached_sigma.FixedOuCachedSigmaTarget.random" title="Link to this definition">#</a></dt>
+<dd><p>Draw a joint observation vector at one state and sigma.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a></p>
+</dd>
+</dl>
+</dd></dl>
 
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.models.cached_sigma.MarginalQuadraticCache.sigma">
-<span class="sig-name descname"><span class="pre">sigma</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">NDArray</span><span class="p"><span class="pre">[</span></span><span class="pre">float64</span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.models.cached_sigma.MarginalQuadraticCache.sigma" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.models.cached_sigma.FixedOuCachedSigmaTarget.random_from_mean">
+<span class="sig-name descname"><span class="pre">random_from_mean</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mean</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sigma</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">rng</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">size</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.cached_sigma.FixedOuCachedSigmaTarget.random_from_mean" title="Link to this definition">#</a></dt>
+<dd><p>Draw a joint observation vector from a completed observation mean.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a></p>
+</dd>
+</dl>
+</dd></dl>
 
 </dd></dl>
 
@@ -651,26 +675,22 @@ quadratic algebra.</p>
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.cached_sigma.MarginalQuadraticCache"><code class="docutils literal notranslate"><span class="pre">MarginalQuadraticCache</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.cached_sigma.MarginalQuadraticCache.n_state"><code class="docutils literal notranslate"><span class="pre">MarginalQuadraticCache.n_state</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.cached_sigma.MarginalQuadraticCache.log_likelihood"><code class="docutils literal notranslate"><span class="pre">MarginalQuadraticCache.log_likelihood()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.cached_sigma.MarginalQuadraticCache.gradient"><code class="docutils literal notranslate"><span class="pre">MarginalQuadraticCache.gradient()</span></code></a></li>
+</ul>
+</li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.cached_sigma.FixedOuCachedSigmaTarget"><code class="docutils literal notranslate"><span class="pre">FixedOuCachedSigmaTarget</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.cached_sigma.FixedOuCachedSigmaTarget.n_obs"><code class="docutils literal notranslate"><span class="pre">FixedOuCachedSigmaTarget.n_obs</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.cached_sigma.FixedOuCachedSigmaTarget.n_state"><code class="docutils literal notranslate"><span class="pre">FixedOuCachedSigmaTarget.n_state</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.cached_sigma.FixedOuCachedSigmaTarget.n_group"><code class="docutils literal notranslate"><span class="pre">FixedOuCachedSigmaTarget.n_group</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.cached_sigma.FixedOuCachedSigmaTarget.refresh"><code class="docutils literal notranslate"><span class="pre">FixedOuCachedSigmaTarget.refresh()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.cached_sigma.FixedOuCachedSigmaTarget.evaluate_from_residual"><code class="docutils literal notranslate"><span class="pre">FixedOuCachedSigmaTarget.evaluate_from_residual()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.cached_sigma.FixedOuCachedSigmaTarget.log_likelihood"><code class="docutils literal notranslate"><span class="pre">FixedOuCachedSigmaTarget.log_likelihood()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.cached_sigma.FixedOuCachedSigmaTarget.log_likelihood_from_mean"><code class="docutils literal notranslate"><span class="pre">FixedOuCachedSigmaTarget.log_likelihood_from_mean()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.cached_sigma.FixedOuCachedSigmaTarget.n_group"><code class="docutils literal notranslate"><span class="pre">FixedOuCachedSigmaTarget.n_group</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.cached_sigma.FixedOuCachedSigmaTarget.n_obs"><code class="docutils literal notranslate"><span class="pre">FixedOuCachedSigmaTarget.n_obs</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.cached_sigma.FixedOuCachedSigmaTarget.n_state"><code class="docutils literal notranslate"><span class="pre">FixedOuCachedSigmaTarget.n_state</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.cached_sigma.FixedOuCachedSigmaTarget.random"><code class="docutils literal notranslate"><span class="pre">FixedOuCachedSigmaTarget.random()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.cached_sigma.FixedOuCachedSigmaTarget.random_from_mean"><code class="docutils literal notranslate"><span class="pre">FixedOuCachedSigmaTarget.random_from_mean()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.cached_sigma.FixedOuCachedSigmaTarget.refresh"><code class="docutils literal notranslate"><span class="pre">FixedOuCachedSigmaTarget.refresh()</span></code></a></li>
-</ul>
-</li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.cached_sigma.MarginalQuadraticCache"><code class="docutils literal notranslate"><span class="pre">MarginalQuadraticCache</span></code></a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.cached_sigma.MarginalQuadraticCache.constant"><code class="docutils literal notranslate"><span class="pre">MarginalQuadraticCache.constant</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.cached_sigma.MarginalQuadraticCache.gradient"><code class="docutils literal notranslate"><span class="pre">MarginalQuadraticCache.gradient()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.cached_sigma.MarginalQuadraticCache.linear"><code class="docutils literal notranslate"><span class="pre">MarginalQuadraticCache.linear</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.cached_sigma.MarginalQuadraticCache.log_likelihood"><code class="docutils literal notranslate"><span class="pre">MarginalQuadraticCache.log_likelihood()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.cached_sigma.MarginalQuadraticCache.n_state"><code class="docutils literal notranslate"><span class="pre">MarginalQuadraticCache.n_state</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.cached_sigma.MarginalQuadraticCache.precision"><code class="docutils literal notranslate"><span class="pre">MarginalQuadraticCache.precision</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.cached_sigma.MarginalQuadraticCache.sigma"><code class="docutils literal notranslate"><span class="pre">MarginalQuadraticCache.sigma</span></code></a></li>
 </ul>
 </li>
 </ul>

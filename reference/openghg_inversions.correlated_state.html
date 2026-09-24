@@ -33,7 +33,7 @@
     <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
     <link rel="stylesheet" type="text/css" href="../_static/jupyter-sphinx.css" />
     <link rel="stylesheet" type="text/css" href="../_static/thebelab.css" />
-    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=f8ac5af1" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=5f08cb77" />
   
   <!-- So that users can add custom icons -->
   <script defer src="../_static/scripts/fontawesome.js?digest=cb8930eaaf36d9849b67"></script>
@@ -159,8 +159,8 @@
 
 
 <li class="nav-item current active">
-  <a class="nav-link nav-internal" href="modules.html">
-    openghg_inversions
+  <a class="nav-link nav-internal" href="index.html">
+    API reference
   </a>
 </li>
 
@@ -266,8 +266,8 @@
 
 
 <li class="nav-item current active">
-  <a class="nav-link nav-internal" href="modules.html">
-    openghg_inversions
+  <a class="nav-link nav-internal" href="index.html">
+    API reference
   </a>
 </li>
 
@@ -464,7 +464,7 @@
       </a>
     </li>
     
-    <li class="breadcrumb-item"><a href="modules.html" class="nav-link">openghg_inversions</a></li>
+    <li class="breadcrumb-item"><a href="index.html" class="nav-link">API reference</a></li>
     
     
     <li class="breadcrumb-item"><a href="openghg_inversions.html" class="nav-link">openghg_inversions</a></li>
@@ -514,7 +514,7 @@ dense covariance materialization when the reduced state exceeds 1,000
 components.</p>
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.correlated_state.CorrelatedLognormalPrior">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">openghg_inversions.correlated_state.</span></span><span class="sig-name descname"><span class="pre">CorrelatedLognormalPrior</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mean</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">arithmetic_covariance</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><span class="pre">ndarray</span></a></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">covariance_dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.correlated_state.CorrelatedLognormalPrior" title="Link to this definition">#</a></dt>
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">CorrelatedLognormalPrior</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mean</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">arithmetic_covariance</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">covariance_dim</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.correlated_state.CorrelatedLognormalPrior" title="Link to this definition">#</a></dt>
 <dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
 <p>Validated labelled moments for one correlated positive state vector.</p>
 <p>The arithmetic covariance is an already-reduced dense matrix. It uses a
@@ -548,66 +548,23 @@ copy.</p></li>
 copies so callers cannot mutate the cached validated moments through
 the public API.</p>
 <dl class="py property">
+<dt class="sig sig-object py" id="openghg_inversions.correlated_state.CorrelatedLognormalPrior.mean">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">mean</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span><a class="headerlink" href="#openghg_inversions.correlated_state.CorrelatedLognormalPrior.mean" title="Link to this definition">#</a></dt>
+<dd><p>Return the validated arithmetic mean.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>An independent deep copy of the labelled arithmetic mean.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
 <dt class="sig sig-object py" id="openghg_inversions.correlated_state.CorrelatedLognormalPrior.arithmetic_covariance">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">arithmetic_covariance</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span><a class="headerlink" href="#openghg_inversions.correlated_state.CorrelatedLognormalPrior.arithmetic_covariance" title="Link to this definition">#</a></dt>
 <dd><p>Return the validated arithmetic covariance.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Returns<span class="colon">:</span></dt>
 <dd class="field-odd"><p>An independent deep copy of the dense labelled covariance.</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.correlated_state.CorrelatedLognormalPrior.covariance_dim">
-<span class="sig-name descname"><span class="pre">covariance_dim</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><a class="headerlink" href="#openghg_inversions.correlated_state.CorrelatedLognormalPrior.covariance_dim" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="openghg_inversions.correlated_state.CorrelatedLognormalPrior.from_dataset">
-<span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">from_dataset</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dataset</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#openghg_inversions.correlated_state.CorrelatedLognormalPrior" title="openghg_inversions.correlated_state.CorrelatedLognormalPrior"><span class="pre">CorrelatedLognormalPrior</span></a></span></span><a class="headerlink" href="#openghg_inversions.correlated_state.CorrelatedLognormalPrior.from_dataset" title="Link to this definition">#</a></dt>
-<dd><p>Reload and revalidate a serialized correlated-state contract.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>dataset</strong> – Dataset produced by <a class="reference internal" href="#openghg_inversions.correlated_state.CorrelatedLognormalPrior.to_dataset" title="openghg_inversions.correlated_state.CorrelatedLognormalPrior.to_dataset"><code class="xref py py-meth docutils literal notranslate"><span class="pre">to_dataset()</span></code></a>.</p>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>A newly validated prior derived from the stored arithmetic moments.</p>
-</dd>
-<dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If schema metadata, variables, dimensions, labels, or
-    cached latent moments are missing or inconsistent.</p>
-</dd>
-<dt class="field-even">Warns<span class="colon">:</span></dt>
-<dd class="field-even"><p><strong>UserWarning</strong> – If the stored reduced state contains more than 1000
-components. This is an operational threshold, not a
-mathematical limit.</p>
-</dd>
-</dl>
-<p class="rubric">Notes</p>
-<p>Stored latent values are checked against moments recomputed from
-the eagerly materialized arithmetic inputs; they are never trusted
-as an alternative construction path.</p>
-</dd></dl>
-
-<dl class="py property">
-<dt class="sig sig-object py" id="openghg_inversions.correlated_state.CorrelatedLognormalPrior.latent_cholesky">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">latent_cholesky</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span><a class="headerlink" href="#openghg_inversions.correlated_state.CorrelatedLognormalPrior.latent_cholesky" title="Link to this definition">#</a></dt>
-<dd><p>Return the Cholesky factor of the latent covariance.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Returns<span class="colon">:</span></dt>
-<dd class="field-odd"><p>An independent deep copy of the dense lower-triangular factor.</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py property">
-<dt class="sig sig-object py" id="openghg_inversions.correlated_state.CorrelatedLognormalPrior.latent_covariance">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">latent_covariance</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span><a class="headerlink" href="#openghg_inversions.correlated_state.CorrelatedLognormalPrior.latent_covariance" title="Link to this definition">#</a></dt>
-<dd><p>Return the derived latent Gaussian covariance.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Returns<span class="colon">:</span></dt>
-<dd class="field-odd"><p>An independent deep copy of the dense latent covariance.</p>
 </dd>
 </dl>
 </dd></dl>
@@ -624,31 +581,70 @@ as an alternative construction path.</p>
 </dd></dl>
 
 <dl class="py property">
-<dt class="sig sig-object py" id="openghg_inversions.correlated_state.CorrelatedLognormalPrior.mean">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">mean</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span><a class="headerlink" href="#openghg_inversions.correlated_state.CorrelatedLognormalPrior.mean" title="Link to this definition">#</a></dt>
-<dd><p>Return the validated arithmetic mean.</p>
+<dt class="sig sig-object py" id="openghg_inversions.correlated_state.CorrelatedLognormalPrior.latent_covariance">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">latent_covariance</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span><a class="headerlink" href="#openghg_inversions.correlated_state.CorrelatedLognormalPrior.latent_covariance" title="Link to this definition">#</a></dt>
+<dd><p>Return the derived latent Gaussian covariance.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Returns<span class="colon">:</span></dt>
-<dd class="field-odd"><p>An independent deep copy of the labelled arithmetic mean.</p>
+<dd class="field-odd"><p>An independent deep copy of the dense latent covariance.</p>
 </dd>
 </dl>
 </dd></dl>
 
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.correlated_state.CorrelatedLognormalPrior.state_dim">
-<span class="sig-name descname"><span class="pre">state_dim</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><a class="headerlink" href="#openghg_inversions.correlated_state.CorrelatedLognormalPrior.state_dim" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
+<dl class="py property">
+<dt class="sig sig-object py" id="openghg_inversions.correlated_state.CorrelatedLognormalPrior.latent_cholesky">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">latent_cholesky</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span><a class="headerlink" href="#openghg_inversions.correlated_state.CorrelatedLognormalPrior.latent_cholesky" title="Link to this definition">#</a></dt>
+<dd><p>Return the Cholesky factor of the latent covariance.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>An independent deep copy of the dense lower-triangular factor.</p>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="openghg_inversions.correlated_state.CorrelatedLognormalPrior.to_dataset">
-<span class="sig-name descname"><span class="pre">to_dataset</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></span><a class="headerlink" href="#openghg_inversions.correlated_state.CorrelatedLognormalPrior.to_dataset" title="Link to this definition">#</a></dt>
+<span class="sig-name descname"><span class="pre">to_dataset</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.correlated_state.CorrelatedLognormalPrior.to_dataset" title="Link to this definition">#</a></dt>
 <dd><p>Serialize the validated arithmetic and latent moments.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Returns<span class="colon">:</span></dt>
 <dd class="field-odd"><p>A new labelled dataset containing deep copies of both moment
 parameterizations and the correlated-state schema metadata.</p>
 </dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><em>Dataset</em></a></p>
+</dd>
 </dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.correlated_state.CorrelatedLognormalPrior.from_dataset">
+<span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">from_dataset</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dataset</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.correlated_state.CorrelatedLognormalPrior.from_dataset" title="Link to this definition">#</a></dt>
+<dd><p>Reload and revalidate a serialized correlated-state contract.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>dataset</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><em>Dataset</em></a>) – Dataset produced by <a class="reference internal" href="#openghg_inversions.correlated_state.CorrelatedLognormalPrior.to_dataset" title="openghg_inversions.correlated_state.CorrelatedLognormalPrior.to_dataset"><code class="xref py py-meth docutils literal notranslate"><span class="pre">to_dataset()</span></code></a>.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A newly validated prior derived from the stored arithmetic moments.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If schema metadata, variables, dimensions, labels, or
+    cached latent moments are missing or inconsistent.</p>
+</dd>
+<dt class="field-even">Warns<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>UserWarning</strong> – If the stored reduced state contains more than 1000
+components. This is an operational threshold, not a
+mathematical limit.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#openghg_inversions.correlated_state.CorrelatedLognormalPrior" title="openghg_inversions.correlated_state.CorrelatedLognormalPrior"><em>CorrelatedLognormalPrior</em></a></p>
+</dd>
+</dl>
+<p class="rubric">Notes</p>
+<p>Stored latent values are checked against moments recomputed from
+the eagerly materialized arithmetic inputs; they are never trusted
+as an alternative construction path.</p>
 </dd></dl>
 
 </dd></dl>
@@ -703,15 +699,13 @@ parameterizations and the correlated-state schema metadata.</p>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.correlated_state.CorrelatedLognormalPrior"><code class="docutils literal notranslate"><span class="pre">CorrelatedLognormalPrior</span></code></a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.correlated_state.CorrelatedLognormalPrior.arithmetic_covariance"><code class="docutils literal notranslate"><span class="pre">CorrelatedLognormalPrior.arithmetic_covariance</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.correlated_state.CorrelatedLognormalPrior.covariance_dim"><code class="docutils literal notranslate"><span class="pre">CorrelatedLognormalPrior.covariance_dim</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.correlated_state.CorrelatedLognormalPrior.from_dataset"><code class="docutils literal notranslate"><span class="pre">CorrelatedLognormalPrior.from_dataset()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.correlated_state.CorrelatedLognormalPrior.latent_cholesky"><code class="docutils literal notranslate"><span class="pre">CorrelatedLognormalPrior.latent_cholesky</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.correlated_state.CorrelatedLognormalPrior.latent_covariance"><code class="docutils literal notranslate"><span class="pre">CorrelatedLognormalPrior.latent_covariance</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.correlated_state.CorrelatedLognormalPrior.latent_mean"><code class="docutils literal notranslate"><span class="pre">CorrelatedLognormalPrior.latent_mean</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.correlated_state.CorrelatedLognormalPrior.mean"><code class="docutils literal notranslate"><span class="pre">CorrelatedLognormalPrior.mean</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.correlated_state.CorrelatedLognormalPrior.state_dim"><code class="docutils literal notranslate"><span class="pre">CorrelatedLognormalPrior.state_dim</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.correlated_state.CorrelatedLognormalPrior.arithmetic_covariance"><code class="docutils literal notranslate"><span class="pre">CorrelatedLognormalPrior.arithmetic_covariance</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.correlated_state.CorrelatedLognormalPrior.latent_mean"><code class="docutils literal notranslate"><span class="pre">CorrelatedLognormalPrior.latent_mean</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.correlated_state.CorrelatedLognormalPrior.latent_covariance"><code class="docutils literal notranslate"><span class="pre">CorrelatedLognormalPrior.latent_covariance</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.correlated_state.CorrelatedLognormalPrior.latent_cholesky"><code class="docutils literal notranslate"><span class="pre">CorrelatedLognormalPrior.latent_cholesky</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.correlated_state.CorrelatedLognormalPrior.to_dataset"><code class="docutils literal notranslate"><span class="pre">CorrelatedLognormalPrior.to_dataset()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.correlated_state.CorrelatedLognormalPrior.from_dataset"><code class="docutils literal notranslate"><span class="pre">CorrelatedLognormalPrior.from_dataset()</span></code></a></li>
 </ul>
 </li>
 </ul>
