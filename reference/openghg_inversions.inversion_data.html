@@ -864,8 +864,7 @@ correctly for any sites, drop these from the rest of the inversion.</p></li>
 <p class="rubric">Notes</p>
 <p>This function reads OpenGHG stores, emits progress messages and
 warnings, and may save a merged-data artifact. The first retained
-scenario defines the unit target requested for later sites;
-<code class="docutils literal notranslate"><span class="pre">fp_all[&quot;.units&quot;]</span></code> stores that unit’s scale against <code class="docutils literal notranslate"><span class="pre">mol/mol</span></code>.</p>
+scenario defines the unit target requested for later sites.</p>
 </dd></dl>
 
 <dl class="py function">
@@ -883,11 +882,13 @@ scenario defines the unit target requested for later sites;
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inversion_data.load_merged_data" title="Link to this definition">#</a></dt>
 <dd><p>Load <cite>fp_all</cite> dictionary from a file in <cite>merged_data_dir</cite>.</p>
-<p>The name of the pickle file can be specified using <cite>merged_data_name</cite>, or
-a standard name will be created given <cite>species</cite>, <cite>start_date</cite>, and <cite>output_name</cite>.</p>
+<p>The file name can be specified using <cite>merged_data_name</cite>, or a standard name
+will be created given <cite>species</cite>, <cite>start_date</cite>, and <cite>output_name</cite>.</p>
 <p>If <cite>merged_data_name</cite> is not given, then <cite>species</cite>, <cite>start_date</cite>, and <cite>output_name</cite> must be provided.</p>
 <p>This function tries to automatically find a compatible format of merged data, if a format is not specified.
-First, it checks for data in “zarr” (or zipped zarr) format, then in netCDF, and finally in pickle.</p>
+It checks for zipped zarr, zarr, then netCDF data. Pickle files are not supported.</p>
+<p>Obsolete <code class="docutils literal notranslate"><span class="pre">.species</span></code>, <code class="docutils literal notranslate"><span class="pre">.units</span></code>, and <code class="docutils literal notranslate"><span class="pre">.scales</span></code> entries stored in older
+netCDF or Zarr artifacts are omitted from the returned mapping.</p>
 <p>Note: if data is stored in a zarr ZipStore, then the data is eagerly loaded, since the data needs to
 loaded before the zip file is closed.</p>
 <dl class="field-list simple">
@@ -898,11 +899,11 @@ loaded before the zip file is closed.</p>
 <li><p><strong>start_date</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – start date of inversion period</p></li>
 <li><p><strong>output_name</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – output name parameter used for inversion run</p></li>
 <li><p><strong>merged_data_name</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – name to use for saved data.</p></li>
-<li><p><strong>output_format</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><em>Literal</em></a><em>[</em><em>'pickle'</em><em>, </em><em>'netcdf'</em><em>, </em><em>'zarr'</em><em>, </em><em>'zarr.zip'</em><em>] </em><em>| </em><em>None</em>) – format of data to load (if not specified, this will be inferred).</p></li>
+<li><p><strong>output_format</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><em>Literal</em></a><em>[</em><em>'netcdf'</em><em>, </em><em>'zarr'</em><em>, </em><em>'zarr.zip'</em><em>] </em><em>| </em><em>None</em>) – format of data to load (if not specified, this will be inferred).</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p><cite>fp_all</cite> dictionary</p>
+<dd class="field-even"><p><cite>fp_all</cite> dictionary.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)">dict</a></p>

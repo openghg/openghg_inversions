@@ -622,6 +622,18 @@ custom Python model; there is no direct inferpymc-component replacement</p></td>
 <p>See <a class="reference internal" href="rhime.html"><span class="doc">RHIME configuration and prepared-input reference</span></a> for preparation and recipe APIs and
 <a class="reference internal" href="customising_rhime.html"><span class="doc">Customising RHIME</span></a> for the custom-likelihood boundary.</p>
 </section>
+<section id="legacy-merged-data-metadata">
+<h2>Legacy merged-data metadata<a class="headerlink" href="#legacy-merged-data-metadata" title="Link to this heading">#</a></h2>
+<p>The merged-data mapping returned by <code class="docutils literal notranslate"><span class="pre">data_processing_surface_notracer</span></code> and
+<code class="docutils literal notranslate"><span class="pre">load_merged_data</span></code> no longer includes the unused <code class="docutils literal notranslate"><span class="pre">.species</span></code>, <code class="docutils literal notranslate"><span class="pre">.units</span></code>,
+or <code class="docutils literal notranslate"><span class="pre">.scales</span></code> entries.  The species remains an explicit run option,
+observation units remain on each site’s <code class="docutils literal notranslate"><span class="pre">mf.attrs[&quot;units&quot;]</span></code>, and each
+site’s calibration scale remains on its dataset <code class="docutils literal notranslate"><span class="pre">attrs[&quot;scale&quot;]</span></code>.  Existing
+netCDF and Zarr artifacts containing the old entries remain loadable; the loader
+discards those redundant copies. Pickle merged-data files can no longer be
+saved or loaded. To migrate one, use an older environment to reload it and
+save it as Zarr before upgrading.</p>
+</section>
 <section id="removed-interfaces">
 <h2>Removed interfaces<a class="headerlink" href="#removed-interfaces" title="Link to this heading">#</a></h2>
 <p>The following interfaces have no supported current equivalent:</p>
@@ -705,6 +717,7 @@ that scientific changes remain reviewable.</p>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#parameter-mapping">Parameter mapping</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#legacy-format-output">Legacy-format output</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#removed-python-helper-apis">Removed Python helper APIs</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#legacy-merged-data-metadata">Legacy merged-data metadata</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#removed-interfaces">Removed interfaces</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#scientific-compatibility">Scientific compatibility</a></li>
 </ul>

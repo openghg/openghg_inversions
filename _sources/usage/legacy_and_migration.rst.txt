@@ -188,6 +188,19 @@ the retained RHIME abstractions:
 See :doc:`rhime` for preparation and recipe APIs and
 :doc:`customising_rhime` for the custom-likelihood boundary.
 
+Legacy merged-data metadata
+---------------------------
+
+The merged-data mapping returned by ``data_processing_surface_notracer`` and
+``load_merged_data`` no longer includes the unused ``.species``, ``.units``,
+or ``.scales`` entries.  The species remains an explicit run option,
+observation units remain on each site's ``mf.attrs["units"]``, and each
+site's calibration scale remains on its dataset ``attrs["scale"]``.  Existing
+netCDF and Zarr artifacts containing the old entries remain loadable; the loader
+discards those redundant copies. Pickle merged-data files can no longer be
+saved or loaded. To migrate one, use an older environment to reload it and
+save it as Zarr before upgrading.
+
 Removed interfaces
 ------------------
 
