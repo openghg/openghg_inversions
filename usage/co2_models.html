@@ -1151,6 +1151,65 @@ model-variable vocabulary,</p>
 <a class="reference internal" href="../reference/openghg_inversions.serialization.html#openghg_inversions.serialization.save_trace" title="openghg_inversions.serialization.save_trace"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.serialization.save_trace()</span></code></a> and restore them
 with <a class="reference internal" href="../reference/openghg_inversions.serialization.html#openghg_inversions.serialization.load_trace" title="openghg_inversions.serialization.load_trace"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.serialization.load_trace()</span></code></a>; this is the
 declared boundary for preserving gathered MultiIndex coordinates.</p>
+<p><a class="reference internal" href="../reference/openghg_inversions.postprocessing.linked_paris_outputs.html#openghg_inversions.postprocessing.linked_paris_outputs.make_co2_o2_paris_outputs" title="openghg_inversions.postprocessing.linked_paris_outputs.make_co2_o2_paris_outputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">make_co2_o2_paris_outputs()</span></code></a>
+projects one linked posterior into separate CO2 and O2 products. It supports
+<code class="docutils literal notranslate"><span class="pre">template_version=&quot;latest&quot;</span></code>: concentration v04 and native flux v03. The
+adapter operates after sampling, using the prepared inputs and restored trace;
+it does not add a staged model route:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.postprocessing.linked_paris_outputs</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">make_co2_o2_paris_outputs</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">products</span> <span class="o">=</span> <span class="n">make_co2_o2_paris_outputs</span><span class="p">(</span>
+    <span class="n">idata</span><span class="p">,</span> <span class="n">prepared</span><span class="p">,</span> <span class="n">obs_avg_period</span><span class="o">=</span><span class="s2">"4h"</span><span class="p">,</span> <span class="n">output_path</span><span class="o">=</span><span class="s2">"paris"</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">co2_concentration</span> <span class="o">=</span> <span class="n">products</span><span class="p">[</span><span class="s2">"co2"</span><span class="p">][</span><span class="s2">"concentration"</span><span class="p">]</span>
+<span class="n">o2_concentration</span> <span class="o">=</span> <span class="n">products</span><span class="p">[</span><span class="s2">"o2"</span><span class="p">][</span><span class="s2">"concentration"</span><span class="p">]</span>
+</pre></div>
+</div>
+<p>Observations require site labels and datetime coordinates marking interval
+starts. Both channels must represent dry-air mole fractions convertible to
+<code class="docutils literal notranslate"><span class="pre">mol</span> <span class="pre">mol-1</span></code>. Delta(O2/N2) per-meg observations cannot faithfully use this
+variable meaning and raise an explicit error. Prior flux-scale draws and
+prior draws for selected boundary/offset terms are required; keep the sampler’s
+prior-predictive sampling enabled. Prior and posterior may have different
+numbers of draws or chains. Fixed states use their actual prior draws rather
+than replacing them with the unconstrained prior mean.</p>
+<p>Each concentration file contains posterior predictions, observed-minus-modelled
+residuals, selected source contributions, the coherent affine contribution,
+and the boundary/offset contribution. Shared GPP, TER, and fossil-fuel states
+are reused; each ocean term selects only its tracer’s state. The v04
+<code class="docutils literal notranslate"><span class="pre">mf_bc_*</span></code> fields include boundary plus bias, while <code class="docutils literal notranslate"><span class="pre">mf_bias_*</span></code> reports the
+bias subset. The affine term is separately named <code class="docutils literal notranslate"><span class="pre">mf_coherent_prior</span></code> and is
+not silently classified as boundary. Thus the total closes as the sum of
+source terms, affine contribution, and <code class="docutils literal notranslate"><span class="pre">mf_bc_*</span></code>; do not add <code class="docutils literal notranslate"><span class="pre">mf_bias_*</span></code>
+again. Residual and affine variables are explicitly named extensions to the
+existing template.</p>
+<p>For draw-level diagnostics,
+<a class="reference internal" href="../reference/openghg_inversions.postprocessing.linked_paris_outputs.html#openghg_inversions.postprocessing.linked_paris_outputs.reconstruct_co2_o2_concentrations" title="openghg_inversions.postprocessing.linked_paris_outputs.reconstruct_co2_o2_concentrations"><code class="xref py py-func docutils literal notranslate"><span class="pre">reconstruct_co2_o2_concentrations()</span></code></a>
+returns channel-labelled components in their original concentration units.
+Posterior chain/draw labels remain shared across both channels; prior sample
+axes are named <code class="docutils literal notranslate"><span class="pre">prior_chain</span></code> and <code class="docutils literal notranslate"><span class="pre">prior_draw</span></code>. Separate files contain
+marginal summaries, not independently fitted posteriors. Keep the original
+linked trace to retain cross-channel posterior covariance and the joint
+likelihood. Both products record the template version, selected species,
+scientific roles, preparation provenance, and signed-ratio provenance.</p>
+<p>Native flux products are optional. Supply <code class="docutils literal notranslate"><span class="pre">native_flux_bases={&quot;co2&quot;:</span> <span class="pre">co2_basis,</span>
+<span class="pre">&quot;o2&quot;:</span> <span class="pre">o2_basis}</span></code> with <code class="docutils literal notranslate"><span class="pre">start_date</span></code>, <code class="docutils literal notranslate"><span class="pre">end_date</span></code>, and the usual country-file
+arguments. Each supported single-source total-flux <code class="docutils literal notranslate"><span class="pre">BasisFunctions</span></code> uses a bucket
+operator and must
+use exactly the full retained state labels and a prior flux convertible to
+<code class="docutils literal notranslate"><span class="pre">mol</span> <span class="pre">m-2</span> <span class="pre">s-1</span></code>. Its response to the other tracer’s private states must be zero.
+O2 signs and any spatial oxidation ratios must already be present in its
+native prior flux. The adapter passes the same joint trace to the existing
+PARIS flux/country writer; it never reconstructs native flux from a
+concentration sensitivity or invents scalar oxidation ratios.</p>
+<p>This native path reports uncertainty conditional on the retained state,
+recorded in the product metadata. It does not reconstruct unresolved native
+conditional covariance, overlapping source grids, or a coherent conditional
+native map. Those representations require an explicit native reconstruction
+contract and are outside this bounded adapter. No combined two-tracer PARIS
+schema is emitted.</p>
 <p>The signed oxidation ratio is fixed in this recipe and already folded into the
 shared-state O2 sensitivity. When it is representable by retained-state or
 source-resolved values <span class="math notranslate nohighlight">\(R\)</span>,</p>

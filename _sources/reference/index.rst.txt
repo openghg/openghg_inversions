@@ -171,6 +171,8 @@ prepared inputs and inference data.
    :nosignatures:
 
    openghg_inversions.postprocessing.inversion_output.InversionOutput
+   openghg_inversions.postprocessing.linked_paris_outputs.make_co2_o2_paris_outputs
+   openghg_inversions.postprocessing.linked_paris_outputs.reconstruct_co2_o2_concentrations
    openghg_inversions.postprocessing.countries.Countries
    openghg_inversions.postprocessing.make_outputs.basic_output
    openghg_inversions.postprocessing.make_outputs.make_flux_outputs

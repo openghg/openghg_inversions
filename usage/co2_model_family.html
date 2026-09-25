@@ -479,8 +479,9 @@ independent global, site, or site-by-period offsets (same-unit channels).</p></t
 <tr class="row-odd"><td><p>Outputs and postprocessing</p></td>
 <td><p>Returns an annotated xarray <code class="docutils literal notranslate"><span class="pre">DataTree</span></code>. Use the documented serialization
 boundary; the complete RHIME output pipeline is not integrated.</p></td>
-<td><p>Returns an annotated xarray <code class="docutils literal notranslate"><span class="pre">DataTree</span></code>. Use the documented serialization
-boundary; family-specific output and postprocessing are not integrated.</p></td>
+<td><p>Returns an annotated xarray <code class="docutils literal notranslate"><span class="pre">DataTree</span></code>. A bounded Python adapter produces
+separate CO2/O2 PARIS concentration products and supported native flux
+products; staged output integration remains future work.</p></td>
 </tr>
 <tr class="row-even"><td><p>Validation and acceptance</p></td>
 <td><p>Coherent preparation, dedicated serialization, model construction,
