@@ -1828,7 +1828,7 @@ def test_assemble_rhime_inputs_preserves_borrowed_site_datasets(
     supplied = xr.Dataset(
         {"mf": ("time", lazy_mf)},
         coords={"time": np.array(["2019-01-01"], dtype="datetime64[ns]")},
-        attrs={"source": "caller"},
+        attrs={"source": "caller", "footprint_transport_model": "FLEXPART"},
     )
     site_data = {"TAC": supplied}
     merged = prep_module.RhimeMergedData(
@@ -1865,18 +1865,24 @@ def test_assemble_rhime_inputs_preserves_borrowed_site_datasets(
         },
         multisector=False,
     )
-    rhime_public.assemble_rhime_inputs(
+    prepared = rhime_public.assemble_rhime_inputs(
         merged,
         _fake_basis_functions(),
         site_data,
         setup.data_args,
     )
 
-    assert supplied.attrs == {"source": "caller"}
+    assert supplied.attrs == {"source": "caller", "footprint_transport_model": "FLEXPART"}
     assert "Domain" not in supplied.attrs
     assert captured["TAC"] is not supplied
-    assert captured["TAC"].attrs == {"source": "caller", "Domain": "EUROPE"}
+    assert captured["TAC"].attrs == {
+        "source": "caller",
+        "footprint_transport_model": "FLEXPART",
+        "Domain": "EUROPE",
+    }
     assert captured["TAC"]["mf"].data is lazy_mf
+    assert prepared.site_metadata["transport_model"].sel(site="TAC").item() == "FLEXPART"
+    assert prepared.site_metadata["transport_model_version"].sel(site="TAC").item() == ""
 
 
 def test_prepared_replay_computes_selected_error_only_at_pymc_boundary(
@@ -8158,8 +8164,10 @@ def test_paris_output_processes_modern_output(europe_country_file: Path) -> None
     """Real PARIS postprocessing accepts modern output directly."""
     from openghg_inversions.postprocessing.make_paris_outputs import make_paris_outputs
 
+    inv_out = _modern_postprocessing_inv_out(europe_country_file)
+    inv_out.model_metadata["domain"] = "EUROPE-6km"
     flux_outputs, conc_outputs = make_paris_outputs(
-        _modern_postprocessing_inv_out(europe_country_file),
+        inv_out,
         country_file=europe_country_file,
         obs_avg_period="1h",
         domain="europe",
@@ -8174,6 +8182,9 @@ def test_paris_output_processes_modern_output(europe_country_file: Path) -> None
         assert conc_outputs[name].dtype == np.dtype("float32")
     for name in ("flux_total_posterior", "country_flux_total_posterior"):
         assert flux_outputs[name].dtype == np.dtype("float32")
+    for output in (conc_outputs, flux_outputs):
+        assert output.attrs["species"] == "ch4"
+        assert output.attrs["domain"] == "EUROPE-6km"
 
 
 def test_paris_concentration_without_column_prior_factors_leaves_bc_unchanged(
@@ -8445,10 +8456,15 @@ def test_run_hbmcmc_chain_selection_does_not_truncate_archived_trace(monkeypatch
 def test_standard_paris_output_uses_modern_postprocessing_without_legacy_adapter(monkeypatch) -> None:
     """RHIME PARIS postprocessing consumes modern output without legacy adapters."""
     model_spec, output_spec, run_spec = _minimal_output_specs(output_format="paris")
+    site_metadata = _prepared_site_metadata().assign(
+        transport_model=("site", ["FLEXPART"]),
+        transport_model_version=("site", [""]),
+        met_model=("site", ["ECMWF IFS HRES"]),
+    )
     prepared = RhimePreparedInputs(
         inv_inputs=_minimal_output_inv_inputs(),
         basis_functions=_fake_basis_functions(),
-        site_metadata=_prepared_site_metadata(),
+        site_metadata=site_metadata,
     )
     captured: dict[str, Any] = {}
 
@@ -8483,10 +8499,54 @@ def test_standard_paris_output_uses_modern_postprocessing_without_legacy_adapter
     assert captured["country_file"] == "countries.json"
     assert captured["domain"] == "EUROPE"
     assert captured["obs_avg_period"] == "1h"
+    assert bundle.inv_out.model_metadata["footprint_provenance"]["TAC"] == {
+        "transport_model": "FLEXPART",
+        "transport_model_version": "",
+        "met_model": "ECMWF IFS HRES",
+    }
     assert bundle.output_metadata["inversion_output_contract"] == "modern"
     assert bundle.output_metadata["postprocessing_input_contract"] == "modern_inversion_output"
     assert "paris_flux" in bundle.outputs
     assert "paris_concentration" in bundle.outputs
+
+
+def test_standard_latest_paris_output_writes_index_as_unlimited_dimension(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The latest concentration schema stores time on its index dimension."""
+    model_spec, _, run_spec = _minimal_output_specs(output_format="paris")
+    run_spec = replace(
+        run_spec,
+        output=replace(
+            run_spec.output,
+            output_path=str(tmp_path),
+            paris_postprocessing_kwargs={"template_version": "latest"},
+        ),
+    )
+    prepared = RhimePreparedInputs(
+        inv_inputs=_minimal_output_inv_inputs(),
+        basis_functions=_fake_basis_functions(),
+        site_metadata=_prepared_site_metadata(),
+    )
+    concentration = xr.Dataset(
+        {"mf_observed": ("index", [1.0])},
+        coords={"time": ("index", pd.to_datetime(["2019-01-01"]))},
+    )
+    flux = xr.Dataset({"flux_total_prior": ("time", [1.0])}, coords={"time": ["2019-01-01"]})
+    monkeypatch.setattr(
+        "openghg_inversions.postprocessing.make_paris_outputs.make_paris_outputs",
+        lambda *args, **kwargs: (flux, concentration),
+    )
+
+    bundle = _result_for_outputs(run_spec, _minimal_output_idata(), model_spec=model_spec)
+    rhime_outputs.make_standard_rhime_outputs(result=bundle, prepared=prepared)
+
+    with xr.open_dataset(bundle.output_metadata["paris_concentration_path"]) as saved_concentration:
+        assert saved_concentration.encoding["unlimited_dims"] == {"index"}
+        assert saved_concentration.time.dims == ("index",)
+    with xr.open_dataset(bundle.output_metadata["paris_flux_path"]) as saved_flux:
+        assert saved_flux.encoding["unlimited_dims"] == {"time"}
 
 
 @pytest.mark.rhime_contract

@@ -897,6 +897,16 @@ Standard single-sector RHIME supports ``inv_out``, ``basic``, ``paris``, and
 product from the modern ``InversionOutput``. The deprecated names ``hbmcmc``
 and ``hbmcmc_postprocessing`` are accepted as aliases for ``legacy``.
 
+Single-sector ``paris`` keeps the legacy template by default. Pass
+``paris_postprocessing_kwargs={"template_version": "latest"}`` to write the
+PARIS concentration v04 and flux v03 templates.
+
+PARIS global attributes automatically use the selected prior flux sources and
+metadata read from the footprint files; scripts do not need to pass these
+attributes to ``make_paris_outputs``. A missing footprint model version is
+recorded as an empty attribute; distinct values across sites are separated by
+semicolons.
+
 Modern RHIME preparation, ``InversionOutput`` artifacts, and postprocessing use
 retained ``BasisFunctions`` / ``BasisOperator`` objects as the primary basis
 representation. Derived flux, country, PARIS, and legacy-format products record
