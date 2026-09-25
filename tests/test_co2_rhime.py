@@ -210,6 +210,8 @@ def test_public_co2_runner_rejects_default_model_error_with_selected_likelihood(
             "Unsupported offset_args",
         ),
         ({"per_site": 1}, TypeError, "must be booleans"),
+        ({"anchor_site": "MHD"}, ValueError, "requires per_site=False"),
+        ({"per_site": False, "anchor_site": ""}, TypeError, "non-empty"),
     ],
 )
 def test_co2_offset_args_are_normalised_explicitly(
@@ -238,6 +240,18 @@ def test_build_co2_model_preserves_offset_args_compatibility() -> None:
     assert "offset" in model.named_vars
     assert "offset_design" not in model.named_vars
     assert "site_indicator" not in model.named_vars
+
+
+def test_build_co2_model_uses_named_anchor_design() -> None:
+    inputs = _production_boundary_inputs()
+    model = _build_model(
+        inputs,
+        offset_prior={"pdf": "normal", "mu": 0.2, "sigma": 0.1},
+        offset_args={"per_site": False, "anchor_site": "TAC"},
+    )
+    np.testing.assert_array_equal(model["offset_design"].eval()[:, 0], [1.0, 0.0])
+    draw, latent = pm.draw([model["offset"], model["offset_latent"]], random_seed=19)
+    np.testing.assert_allclose(draw, [latent, 0.0])
 
 
 def test_co2_structural_zero_is_fixed_at_one_and_pruned_only_from_operator() -> None:

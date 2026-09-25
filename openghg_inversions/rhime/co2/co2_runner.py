@@ -304,7 +304,8 @@ def run_rhime_co2(
         offset_prior: Optional prior for an offset component. When omitted, no
             offset is added.
         offset_args: Optional offset settings: ``offset_freq``, ``drop_first``,
-            and ``per_site``.
+            ``per_site``, and ``anchor_site`` for one shared scalar except at
+            the named site.
 
     Returns:
         Sampled inference data annotated with the CO2 variable-role and model

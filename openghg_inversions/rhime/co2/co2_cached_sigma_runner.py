@@ -348,7 +348,8 @@ def run_rhime_co2_cached_sigma(
         offset_prior: Optional prior for an offset component. When omitted, no
             offset is added.
         offset_args: Optional offset settings: ``offset_freq``, ``drop_first``,
-            and ``per_site``.
+            ``per_site``, and ``anchor_site`` for one shared scalar except at
+            the named site.
 
     Returns:
         Sampled inference data with the normalized joint log likelihood as one
@@ -365,7 +366,9 @@ def run_rhime_co2_cached_sigma(
         raise ValueError("bc_prior and bc_state_activity require use_bc=True.")
     if offset_prior is None and offset_args:
         raise ValueError("offset_args require offset_prior.")
-    offset_freq, offset_drop_first, offset_per_site = _normalise_offset_args(offset_args)
+    offset_freq, offset_drop_first, offset_per_site, offset_anchor_site = _normalise_offset_args(
+        offset_args
+    )
     prepared = prepared_inputs.validated()
     names = co2_cached_sigma_input_names(
         prepared,
@@ -400,6 +403,7 @@ def run_rhime_co2_cached_sigma(
         offset_freq=offset_freq,
         offset_drop_first=offset_drop_first,
         offset_per_site=offset_per_site,
+        offset_anchor_site=offset_anchor_site,
     )
     requested_sampler = RhimeSampler() if sampler is None else sampler
     metadata = {

@@ -385,6 +385,94 @@ def test_add_offset_component_supports_one_global_scalar() -> None:
     assert "site_indicator" not in model.named_vars
 
 
+@pytest.mark.parametrize("order", [[0, 1, 2, 3], [2, 0, 3, 1]])
+def test_named_anchor_uses_one_shared_scalar_after_row_reordering(order: list[int]) -> None:
+    observations = xr.DataArray(
+        np.ones(4),
+        dims="nmeasure",
+        coords={"nmeasure": np.arange(4), "site": ("nmeasure", np.array(["MHD", "TAC", "MHD", "TAC"])[order])},
+    )
+    with pm.Model(coords={"nmeasure": np.arange(4)}) as model:
+        attach_coord_registry(model, CoordRegistry())
+        offset = add_offset_component(
+            observations,
+            prior_args={"pdf": "normal", "mu": 0.0, "sigma": 1.0},
+            per_site=False,
+            anchor_site="TAC",
+        )
+
+    expected = (observations.site.values != "TAC").astype(float)
+    np.testing.assert_array_equal(model["offset_design"].eval()[:, 0], expected)
+    registry = get_coord_registry(model)
+    assert registry is not None
+    assert registry.original_coords["offset_term"].tolist() == ["shared_except:TAC"]
+    assert model["offset_latent"].ndim == 0
+    draw, latent = pm.draw([offset, model["offset_latent"]], random_seed=19)
+    np.testing.assert_allclose(draw, expected * latent)
+
+
+@pytest.mark.parametrize(
+    ("sites", "anchor", "message"),
+    [
+        (["MHD", "TAC"], "BIR", "absent"),
+        (["MHD", "MHD"], "MHD", "at least two sites"),
+        (["MHD", None], "MHD", "complete site labels"),
+    ],
+)
+def test_named_anchor_rejects_invalid_sites(
+    sites: list[str | None], anchor: str, message: str
+) -> None:
+    observations = xr.DataArray(
+        np.ones(2), dims="nmeasure", coords={"nmeasure": [0, 1], "site": ("nmeasure", sites)}
+    )
+    with pm.Model(coords={"nmeasure": [0, 1]}) as model:
+        attach_coord_registry(model, CoordRegistry())
+        with pytest.raises(ValueError, match=message):
+            add_offset_component(
+                observations,
+                prior_args={"pdf": "normal", "mu": 0.0, "sigma": 1.0},
+                per_site=False,
+                anchor_site=anchor,
+            )
+
+
+def test_named_anchor_requires_observation_site_coordinate() -> None:
+    observations = xr.DataArray(np.ones(2), dims="nmeasure", coords={"nmeasure": [0, 1]})
+    with pm.Model(coords={"nmeasure": [0, 1]}) as model:
+        attach_coord_registry(model, CoordRegistry())
+        with pytest.raises(ValueError, match="observation-aligned `site`"):
+            add_offset_component(
+                observations,
+                prior_args={"pdf": "normal", "mu": 0.0, "sigma": 1.0},
+                per_site=False,
+                anchor_site="TAC",
+            )
+
+
+@pytest.mark.parametrize(
+    ("options", "message"),
+    [
+        ({"per_site": True, "anchor_site": "TAC"}, "requires per_site=False"),
+        ({"per_site": False, "anchor_site": "TAC", "drop_first": True}, "drop_first"),
+        ({"per_site": False, "anchor_site": "TAC", "offset_freq": "monthly"}, "offset frequency"),
+    ],
+)
+def test_named_anchor_rejects_incompatible_options(options: dict[str, object], message: str) -> None:
+    observations = xr.DataArray(
+        np.ones(2),
+        dims="nmeasure",
+        coords={"nmeasure": [0, 1], "site": ("nmeasure", ["MHD", "TAC"])},
+    )
+    with pm.Model(coords={"nmeasure": [0, 1]}) as model:
+        attach_coord_registry(model, CoordRegistry())
+        with pytest.raises(ValueError, match=message):
+            add_offset_component(
+                observations,
+                prior_args={"pdf": "normal", "mu": 0.0, "sigma": 1.0},
+                **options,
+            )
+
+
 @pytest.mark.parametrize("invalid_args", [{"offset_freq": "monthly"}, {"drop_first": True}])
 def test_global_offset_rejects_site_period_options(invalid_args: dict[str, object]) -> None:
     """Global offsets reject options that only have site-design semantics."""

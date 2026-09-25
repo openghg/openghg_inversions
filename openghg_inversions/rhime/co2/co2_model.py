@@ -64,10 +64,10 @@ def _fixed_mismatch_array(
 
 def _normalise_offset_args(
     offset_args: Mapping[str, Any] | None,
-) -> tuple[str | None, bool, bool]:
+) -> tuple[str | None, bool, bool, str | None]:
     """Validate the small offset option set used by the CO2 runners."""
     options = dict(offset_args or {})
-    supported = {"offset_freq", "drop_first", "per_site"}
+    supported = {"offset_freq", "drop_first", "per_site", "anchor_site"}
     unknown = sorted(options.keys() - supported)
     if unknown:
         raise ValueError(f"Unsupported offset_args option(s): {unknown!r}.")
@@ -80,7 +80,13 @@ def _normalise_offset_args(
     per_site = options.get("per_site", True)
     if not isinstance(drop_first, bool) or not isinstance(per_site, bool):
         raise TypeError("drop_first and per_site must be booleans.")
-    return frequency, drop_first, per_site
+    anchor_site = options.get("anchor_site")
+    if anchor_site is not None:
+        if not isinstance(anchor_site, str) or not anchor_site:
+            raise TypeError("anchor_site must be a non-empty site label string.")
+        if per_site:
+            raise ValueError("anchor_site requires per_site=False.")
+    return frequency, drop_first, per_site, anchor_site
 
 
 def build_co2_model(
@@ -163,7 +169,8 @@ def build_co2_model(
             offset is added. Site codes are derived from the ``site`` coordinate
             on ``observations``.
         offset_args: Optional offset settings: ``offset_freq``, ``drop_first``,
-            and ``per_site``.
+            ``per_site``, and ``anchor_site`` for one shared scalar except at
+            the named site.
 
     Returns:
         A registered PyMC model containing the complete affine concentration
@@ -190,7 +197,9 @@ def build_co2_model(
     bc_prior = dict(DEFAULT_BC_PRIOR if bc_prior is None else bc_prior)
     if offset_prior is not None:
         offset_prior = dict(offset_prior)
-    offset_freq, offset_drop_first, offset_per_site = _normalise_offset_args(offset_args)
+    offset_freq, offset_drop_first, offset_per_site, anchor_site = _normalise_offset_args(
+        offset_args
+    )
     fixed_mismatch = _fixed_mismatch_array(observations, fixed_model_mismatch)
     prepared_flux = prepare_linear_sensitivity(flux_sensitivity, output_dim="nmeasure")
     activity = resolve_state_activity(prepared_flux.removed, state_activity)
@@ -236,6 +245,7 @@ def build_co2_model(
                 output_dim="nmeasure",
                 drop_first=offset_drop_first,
                 per_site=offset_per_site,
+                anchor_site=anchor_site,
             )
 
         mean_expression = co2_flux_contribution
