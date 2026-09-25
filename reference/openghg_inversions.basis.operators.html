@@ -496,8 +496,8 @@
 native covariance. For one source, <a class="reference internal" href="#openghg_inversions.basis.operators.BasisOperator.basis_matrix" title="openghg_inversions.basis.operators.BasisOperator.basis_matrix"><code class="xref py py-attr docutils literal notranslate"><span class="pre">BasisOperator.basis_matrix</span></code></a> is the
 bucket prolongation <code class="docutils literal notranslate"><span class="pre">U_bucket</span></code> with native-grid rows and retained-state
 columns. A gathered multisource matrix is the spatial membership template from
-which <a class="reference internal" href="#openghg_inversions.basis.operators.BasisOperator.native_prolongation" title="openghg_inversions.basis.operators.BasisOperator.native_prolongation"><code class="xref py py-meth docutils literal notranslate"><span class="pre">BasisOperator.native_prolongation()</span></code></a> expands a canonical
-source-native <code class="docutils literal notranslate"><span class="pre">U_bucket</span></code>. Its transpose is not automatically the retained
+which an internal adapter expands a canonical source-native <code class="docutils literal notranslate"><span class="pre">U_bucket</span></code> for
+covariance work. Its transpose is not automatically the retained
 restriction <code class="docutils literal notranslate"><span class="pre">Pi</span></code>.</p>
 <p><code class="docutils literal notranslate"><span class="pre">FluxWeightedBasis</span></code> handles flux weighting for sensitivity projection and
 flux reconstruction. Native covariance actions, retained restrictions, and
@@ -581,7 +581,7 @@ string (stored in <cite>dt.attrs[“kind”]</cite>) to a concrete <cite>BasisOp
 <p>Metadata describing how to apply a basis operator.</p>
 <p>The intent is to keep this minimal: we only store what is needed for the
 default implementations of <cite>BasisOperator.sensitivity</cite> and
-<cite>BasisOperator.interpolate</cite>.</p>
+<cite>BasisOperator.state_to_native</cite>.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Variables<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -612,7 +612,7 @@ the grid dimensions and preserves extra dimensions such as time or source.</p>
 <dl class="py property">
 <dt class="sig sig-object py" id="openghg_inversions.basis.operators.BasisOperator.basis_matrix">
 <span class="property"><span class="k"><span class="pre">abstract</span></span><span class="w"> </span><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">basis_matrix</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span><a class="headerlink" href="#openghg_inversions.basis.operators.BasisOperator.basis_matrix" title="Link to this definition">#</a></dt>
-<dd><p>Return the bucket prolongation <code class="docutils literal notranslate"><span class="pre">U_bucket</span></code> from state to grid.</p>
+<dd><p>Return the coarse-to-fine map (prolongation) <code class="docutils literal notranslate"><span class="pre">U_bucket</span></code>.</p>
 <p>Its ordered dimensions are the configured grid dimensions followed by
 the state dimension, which may carry a MultiIndex coordinate.</p>
 <p>Multiplying this matrix by a state vector reconstructs a native scaling
@@ -652,32 +652,14 @@ non-grid dimensions (e.g. <cite>time</cite>).</p>
 </dd></dl>
 
 <dl class="py method">
-<dt class="sig sig-object py" id="openghg_inversions.basis.operators.BasisOperator.native_prolongation">
-<span class="sig-name descname"><span class="pre">native_prolongation</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">native_layout</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">native_dims</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.operators.BasisOperator.native_prolongation" title="Link to this definition">#</a></dt>
-<dd><p>Return the bucket prolongation on a canonical labelled native grid.</p>
-<p>This basis-side operation aligns geometry only. It preserves the
-basis matrix’s lazy or sparse storage and does not choose an execution
-or covariance materialization policy.</p>
+<dt class="sig sig-object py" id="openghg_inversions.basis.operators.BasisOperator.state_to_native">
+<span class="sig-name descname"><span class="pre">state_to_native</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.operators.BasisOperator.state_to_native" title="Link to this definition">#</a></dt>
+<dd><p>Reconstruct linear native scaling <code class="docutils literal notranslate"><span class="pre">U_bucket</span> <span class="pre">alpha</span></code>.</p>
+<p><code class="docutils literal notranslate"><span class="pre">U_bucket</span></code> is the retained-to-native coarse-to-fine map
+(prolongation). The input is borrowed and Dask data remains lazy.</p>
 <dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>native_layout</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – Array carrying the canonical native coordinates and
-compatible auxiliary coordinates. It may contain additional
-non-native dimensions.</p></li>
-<li><p><strong>native_dims</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><em>tuple</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><em>...</em><em>]</em>) – Ordered native dimensions required by the covariance
-action.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Potentially lazy <code class="docutils literal notranslate"><span class="pre">U_bucket</span></code> with dimensions
-<code class="docutils literal notranslate"><span class="pre">(*native_dims,</span> <span class="pre">meta.state_dim)</span></code>.</p>
-</dd>
-<dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If this single-source basis does not span exactly the
-    requested native dimensions or their indexes do not match.</p>
-</dd>
-<dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a></p>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -826,9 +808,9 @@ singleton <code class="docutils literal notranslate"><span class="pre">time</spa
 Optional state metadata follows the states through this relabelling.</p>
 <p>The inherited <a class="reference internal" href="#openghg_inversions.basis.operators.BasisOperator.sensitivity" title="openghg_inversions.basis.operators.BasisOperator.sensitivity"><code class="xref py py-meth docutils literal notranslate"><span class="pre">BasisOperator.sensitivity()</span></code></a> method reduces a gridded
 footprint-times-flux array to the retained state, while
-<a class="reference internal" href="#openghg_inversions.basis.operators.BasisOperator.interpolate" title="openghg_inversions.basis.operators.BasisOperator.interpolate"><code class="xref py py-meth docutils literal notranslate"><span class="pre">BasisOperator.interpolate()</span></code></a> reconstructs a gridded field.
-<a class="reference internal" href="#openghg_inversions.basis.operators.BasisOperator.native_prolongation" title="openghg_inversions.basis.operators.BasisOperator.native_prolongation"><code class="xref py py-meth docutils literal notranslate"><span class="pre">BasisOperator.native_prolongation()</span></code></a> exposes the labelled bucket
-prolongation for covariance calculations. Use
+<a class="reference internal" href="#openghg_inversions.basis.operators.BasisOperator.state_to_native" title="openghg_inversions.basis.operators.BasisOperator.state_to_native"><code class="xref py py-meth docutils literal notranslate"><span class="pre">BasisOperator.state_to_native()</span></code></a> reconstructs a gridded field.
+An internal adapter expands the labelled bucket map for covariance
+calculations. Use
 <a class="reference internal" href="openghg_inversions.basis.basis_functions.html#openghg_inversions.basis.basis_functions.FluxWeightedBasis" title="openghg_inversions.basis.basis_functions.FluxWeightedBasis"><code class="xref py py-class docutils literal notranslate"><span class="pre">FluxWeightedBasis</span></code></a> when
 the basis geometry must be paired with a flux field.</p>
 <dl class="field-list simple">
@@ -974,7 +956,7 @@ dimension is removed. The resulting <a class="reference internal" href="#openghg
 of regions without padding.</p>
 <p><a class="reference internal" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.sensitivity" title="openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.sensitivity"><code class="xref py py-meth docutils literal notranslate"><span class="pre">sensitivity()</span></code></a> aligns a source dimension in the input to the state
 MultiIndex. <a class="reference internal" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.interpolate" title="openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.interpolate"><code class="xref py py-meth docutils literal notranslate"><span class="pre">interpolate()</span></code></a> likewise accepts optional source-specific
-weights. <a class="reference internal" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.native_prolongation" title="openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.native_prolongation"><code class="xref py py-meth docutils literal notranslate"><span class="pre">native_prolongation()</span></code></a> expands the gathered spatial template
+weights. <code class="xref py py-meth docutils literal notranslate"><span class="pre">_native_prolongation()</span></code> expands the gathered spatial template
 onto an explicit native source dimension, and <a class="reference internal" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.operator_for_source" title="openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.operator_for_source"><code class="xref py py-meth docutils literal notranslate"><span class="pre">operator_for_source()</span></code></a>
 returns a single-source operator. DataTree serialization preserves source
 order through the stored source coordinate.</p>
@@ -1035,7 +1017,7 @@ basis array on the configured grid, typically with dimensions
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">basis_matrix</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span><a class="headerlink" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.basis_matrix" title="Link to this definition">#</a></dt>
 <dd><p>Return the gathered spatial template for multisource <code class="docutils literal notranslate"><span class="pre">U_bucket</span></code>.</p>
 <p>The dimensions are spatial grid by retained state; source identity is
-carried by the ragged state coordinate. <a class="reference internal" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.native_prolongation" title="openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.native_prolongation"><code class="xref py py-meth docutils literal notranslate"><span class="pre">native_prolongation()</span></code></a>
+carried by the ragged state coordinate. <code class="xref py py-meth docutils literal notranslate"><span class="pre">_native_prolongation()</span></code>
 expands an explicit source-native dimension and zeros cross-source
 columns. This template’s transpose is not the compatible retained
 restriction <code class="docutils literal notranslate"><span class="pre">Pi</span></code>.</p>
@@ -1049,33 +1031,6 @@ restriction <code class="docutils literal notranslate"><span class="pre">Pi</spa
 <dt class="field-odd">Returns<span class="colon">:</span></dt>
 <dd class="field-odd"><p>Source labels in the same order used by <code class="docutils literal notranslate"><span class="pre">basis_flat</span></code> and the
 ragged state MultiIndex.</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.native_prolongation">
-<span class="sig-name descname"><span class="pre">native_prolongation</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">native_layout</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">native_dims</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.native_prolongation" title="Link to this definition">#</a></dt>
-<dd><p>Expand the gathered basis to a labelled source-native prolongation.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>native_layout</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – Canonical native layout carrying an explicit source
-dimension and native-compatible auxiliary coordinates.</p></li>
-<li><p><strong>native_dims</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><em>tuple</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><em>...</em><em>]</em>) – Ordered native dimensions. The first must be this
-operator’s source dimension and the remainder its grid dims.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Potentially lazy <code class="docutils literal notranslate"><span class="pre">U_bucket</span></code> with zero cross-source columns and
-dimensions <code class="docutils literal notranslate"><span class="pre">(*native_dims,</span> <span class="pre">meta.state_dim)</span></code>.</p>
-</dd>
-<dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If dimensions, source labels, or native indexes are
-    incompatible with this multisource basis.</p>
-</dd>
-<dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -1115,6 +1070,19 @@ operator. If omitted, the per-source region dimension is used.</p></li>
 <p>Fuse source selection with the sparse spatial prolongation before
 contracting. This avoids broadcasting the full spatial cache across
 every retained state while keeping the source pairing sparse.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.state_to_native">
+<span class="sig-name descname"><span class="pre">state_to_native</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.state_to_native" title="Link to this definition">#</a></dt>
+<dd><p>Reconstruct each source’s linear native scaling without summing it.</p>
+<p>The gathered matrix represents a coarse-to-fine map (prolongation).
+Each source contracts only its own ragged retained-state slice.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a></p>
@@ -1253,7 +1221,7 @@ when present.</p>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.BasisOperator.meta"><code class="docutils literal notranslate"><span class="pre">BasisOperator.meta</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.BasisOperator.basis_matrix"><code class="docutils literal notranslate"><span class="pre">BasisOperator.basis_matrix</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.BasisOperator.sensitivity"><code class="docutils literal notranslate"><span class="pre">BasisOperator.sensitivity()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.BasisOperator.native_prolongation"><code class="docutils literal notranslate"><span class="pre">BasisOperator.native_prolongation()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.BasisOperator.state_to_native"><code class="docutils literal notranslate"><span class="pre">BasisOperator.state_to_native()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.BasisOperator.interpolate"><code class="docutils literal notranslate"><span class="pre">BasisOperator.interpolate()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.BasisOperator.to_datatree"><code class="docutils literal notranslate"><span class="pre">BasisOperator.to_datatree()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.BasisOperator.from_datatree"><code class="docutils literal notranslate"><span class="pre">BasisOperator.from_datatree()</span></code></a></li>
@@ -1273,9 +1241,9 @@ when present.</p>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.meta"><code class="docutils literal notranslate"><span class="pre">MultiSourceBucketBasisOperator.meta</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.basis_matrix"><code class="docutils literal notranslate"><span class="pre">MultiSourceBucketBasisOperator.basis_matrix</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.source_labels"><code class="docutils literal notranslate"><span class="pre">MultiSourceBucketBasisOperator.source_labels</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.native_prolongation"><code class="docutils literal notranslate"><span class="pre">MultiSourceBucketBasisOperator.native_prolongation()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.operator_for_source"><code class="docutils literal notranslate"><span class="pre">MultiSourceBucketBasisOperator.operator_for_source()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.sensitivity"><code class="docutils literal notranslate"><span class="pre">MultiSourceBucketBasisOperator.sensitivity()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.state_to_native"><code class="docutils literal notranslate"><span class="pre">MultiSourceBucketBasisOperator.state_to_native()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.interpolate"><code class="docutils literal notranslate"><span class="pre">MultiSourceBucketBasisOperator.interpolate()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.to_datatree"><code class="docutils literal notranslate"><span class="pre">MultiSourceBucketBasisOperator.to_datatree()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.from_datatree"><code class="docutils literal notranslate"><span class="pre">MultiSourceBucketBasisOperator.from_datatree()</span></code></a></li>

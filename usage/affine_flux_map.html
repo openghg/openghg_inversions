@@ -53,7 +53,7 @@
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
     <link rel="next" title="Coherent Gaussian Reduction" href="coherent_reduction.html" />
-    <link rel="prev" title="Native Covariance Projection" href="native_covariance.html" />
+    <link rel="prev" title="Linear retained-state reconstruction" href="retained_state_reconstruction.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="" />
@@ -344,6 +344,7 @@
 <li class="toctree-l1 current active has-children"><a class="reference internal" href="shared_scientific_concepts.html">Shared scientific concepts</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
 <li class="toctree-l2"><a class="reference internal" href="grouped_basis_layout.html">Grouped basis and state metadata</a></li>
 <li class="toctree-l2"><a class="reference internal" href="native_covariance.html">Native Covariance Projection</a></li>
+<li class="toctree-l2"><a class="reference internal" href="retained_state_reconstruction.html">Linear retained-state reconstruction</a></li>
 <li class="toctree-l2 current active"><a class="current reference internal" href="#">Affine native-flux reconstruction</a></li>
 <li class="toctree-l2"><a class="reference internal" href="coherent_reduction.html">Coherent Gaussian Reduction</a></li>
 </ul>
@@ -414,6 +415,10 @@
                   
   <section id="affine-native-flux-reconstruction">
 <h1>Affine native-flux reconstruction<a class="headerlink" href="#affine-native-flux-reconstruction" title="Link to this heading">#</a></h1>
+<p>For the linear bucket-basis equation and source summation, see
+<a class="reference internal" href="retained_state_reconstruction.html"><span class="doc">Linear retained-state reconstruction</span></a>. The affine map’s public <code class="docutils literal notranslate"><span class="pre">prolongation</span></code>
+ingredient is a coarse-to-fine map (prolongation); its centred reconstruction
+equation remains distinct from the bucket-basis action.</p>
 <p><code class="docutils literal notranslate"><span class="pre">AffineFluxMap</span></code> reconstructs the retained-state-conditional mean of a
 native scaling field and its signed flux field.  For native mean <span class="math notranslate nohighlight">\(m\)</span>,
 covariance-natural prolongation <span class="math notranslate nohighlight">\(U_*\)</span>, retained state <span class="math notranslate nohighlight">\(\alpha\)</span>,
@@ -466,12 +471,12 @@ samples rather than first constructing native-grid values for every draw.</p>
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="native_covariance.html"
+       href="retained_state_reconstruction.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">Native Covariance Projection</p>
+        <p class="prev-next-title">Linear retained-state reconstruction</p>
       </div>
     </a>
     <a class="right-next"

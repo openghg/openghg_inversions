@@ -857,6 +857,35 @@ file handles.</p>
 </dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.basis.basis_functions.FluxWeightedBasis.state_to_native">
+<span class="sig-name descname"><span class="pre">state_to_native</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.basis_functions.FluxWeightedBasis.state_to_native" title="Link to this definition">#</a></dt>
+<dd><p>Reconstruct linear native scaling with the coarse-to-fine map (prolongation).</p>
+<p>A source-specific basis retains an ordered <code class="docutils literal notranslate"><span class="pre">native_source</span></code> dimension
+(or <code class="docutils literal notranslate"><span class="pre">native_{source_dim}</span></code> when its source dimension has another name).
+Sum that dimension explicitly when a total scaling grid is needed.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.basis.basis_functions.FluxWeightedBasis.state_to_flux">
+<span class="sig-name descname"><span class="pre">state_to_flux</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.basis_functions.FluxWeightedBasis.state_to_flux" title="Link to this definition">#</a></dt>
+<dd><p>Reconstruct signed flux from the retained state and this basis’s flux.</p>
+<p>A source-specific basis retains an ordered <code class="docutils literal notranslate"><span class="pre">native_source</span></code> dimension
+(or <code class="docutils literal notranslate"><span class="pre">native_{source_dim}</span></code> when renamed). A shared basis with
+source-resolved retained flux instead returns a <code class="docutils literal notranslate"><span class="pre">source</span></code> dimension.
+Sum the source dimension explicitly when a total flux grid is needed.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="openghg_inversions.basis.basis_functions.FluxWeightedBasis.interpolate">
 <span class="sig-name descname"><span class="pre">interpolate</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">flux</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.basis_functions.FluxWeightedBasis.interpolate" title="Link to this definition">#</a></dt>
 <dd><p>Interpolate from state vector to the grid.</p>
@@ -1047,6 +1076,8 @@ insertion order of <code class="docutils literal notranslate"><span class="pre">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.basis_functions.FluxWeightedBasis.sensitivity"><code class="docutils literal notranslate"><span class="pre">FluxWeightedBasis.sensitivity()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.basis_functions.FluxWeightedBasis.save"><code class="docutils literal notranslate"><span class="pre">FluxWeightedBasis.save()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.basis_functions.FluxWeightedBasis.load"><code class="docutils literal notranslate"><span class="pre">FluxWeightedBasis.load()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.basis_functions.FluxWeightedBasis.state_to_native"><code class="docutils literal notranslate"><span class="pre">FluxWeightedBasis.state_to_native()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.basis_functions.FluxWeightedBasis.state_to_flux"><code class="docutils literal notranslate"><span class="pre">FluxWeightedBasis.state_to_flux()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.basis_functions.FluxWeightedBasis.interpolate"><code class="docutils literal notranslate"><span class="pre">FluxWeightedBasis.interpolate()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.basis_functions.FluxWeightedBasis.plot"><code class="docutils literal notranslate"><span class="pre">FluxWeightedBasis.plot()</span></code></a></li>
 </ul>

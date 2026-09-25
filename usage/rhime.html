@@ -344,6 +344,7 @@
 <li class="toctree-l1 has-children"><a class="reference internal" href="shared_scientific_concepts.html">Shared scientific concepts</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l2"><a class="reference internal" href="grouped_basis_layout.html">Grouped basis and state metadata</a></li>
 <li class="toctree-l2"><a class="reference internal" href="native_covariance.html">Native Covariance Projection</a></li>
+<li class="toctree-l2"><a class="reference internal" href="retained_state_reconstruction.html">Linear retained-state reconstruction</a></li>
 <li class="toctree-l2"><a class="reference internal" href="affine_flux_map.html">Affine native-flux reconstruction</a></li>
 <li class="toctree-l2"><a class="reference internal" href="coherent_reduction.html">Coherent Gaussian Reduction</a></li>
 </ul>
@@ -1249,7 +1250,13 @@ representation. Derived flux, country, PARIS, and legacy-format products record
 source/path when known. Legacy flat basis NetCDF files remain readable as an
 explicit compatibility fallback, and flat basis maps may still be emitted by
 compatibility output formats, but new workflows should save and load DataTree
-<code class="docutils literal notranslate"><span class="pre">BasisFunctions</span></code> artifacts instead of relying on flat-basis reconstruction.</p>
+<code class="docutils literal notranslate"><span class="pre">BasisFunctions</span></code> artifacts instead of relying on flat-basis reconstruction.
+The basis-backed output helpers reconstruct signed flux with retained
+<code class="docutils literal notranslate"><span class="pre">BasisFunctions.state_to_flux</span></code>, sum source-resolved results for total-grid
+products, and convert completed products to dense data before serialization.
+Derived flux products keep their existing <code class="docutils literal notranslate"><span class="pre">flux_time</span></code> coordinate label;
+see <a class="reference internal" href="retained_state_reconstruction.html"><span class="doc">Linear retained-state reconstruction</span></a> for the linear reconstruction and
+source-axis contract.</p>
 <p><code class="docutils literal notranslate"><span class="pre">run_hbmcmc.py</span></code> is a transitional compatibility wrapper for supported old
 fixedbasis-style INI files. It translates legacy option names to the modern
 <code class="docutils literal notranslate"><span class="pre">run_rhime</span></code> API and uses the legacy filename convention. It always executes

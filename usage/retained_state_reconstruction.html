@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>Standard RHIME model family &#8212; openghg_inversions  documentation</title>
+    <title>Linear retained-state reconstruction &#8212; openghg_inversions  documentation</title>
   
   
   
@@ -47,12 +47,13 @@
     <script src="../_static/thebelab-helper.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
-    <script>DOCUMENTATION_OPTIONS.pagename = 'usage/standard_model_family';</script>
+    <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@4/tex-mml-chtml.js"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'usage/retained_state_reconstruction';</script>
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="Standard RHIME tutorial" href="rhime_standard_tutorial.html" />
-    <link rel="prev" title="Choose a RHIME model recipe" href="model_recipes.html" />
+    <link rel="next" title="Affine native-flux reconstruction" href="affine_flux_map.html" />
+    <link rel="prev" title="Native Covariance Projection" href="native_covariance.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="" />
@@ -319,7 +320,7 @@
 <li class="toctree-l1"><a class="reference internal" href="getting_started.html">Getting started with OpenGHG Inversions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="conceptual_inversion.html">How an Atmospheric Inversion Works</a></li>
 <li class="toctree-l1"><a class="reference internal" href="model_recipes.html">Choose a RHIME model recipe</a></li>
-<li class="toctree-l1 current active has-children"><a class="current reference internal" href="#">Standard RHIME model family</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="standard_model_family.html">Standard RHIME model family</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l2"><a class="reference internal" href="rhime_standard_tutorial.html">Standard RHIME tutorial</a></li>
 <li class="toctree-l2"><a class="reference internal" href="rhime_multisector_tutorial.html">Multisector RHIME tutorial</a></li>
 <li class="toctree-l2"><a class="reference internal" href="concrete_rhime_model.html">Standard and multisector RHIME models</a></li>
@@ -340,10 +341,10 @@
 <li class="toctree-l2"><a class="reference internal" href="staged_workflow.html">Staged RHIME workflows</a></li>
 </ul>
 </details></li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="shared_scientific_concepts.html">Shared scientific concepts</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l1 current active has-children"><a class="reference internal" href="shared_scientific_concepts.html">Shared scientific concepts</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
 <li class="toctree-l2"><a class="reference internal" href="grouped_basis_layout.html">Grouped basis and state metadata</a></li>
 <li class="toctree-l2"><a class="reference internal" href="native_covariance.html">Native Covariance Projection</a></li>
-<li class="toctree-l2"><a class="reference internal" href="retained_state_reconstruction.html">Linear retained-state reconstruction</a></li>
+<li class="toctree-l2 current active"><a class="current reference internal" href="#">Linear retained-state reconstruction</a></li>
 <li class="toctree-l2"><a class="reference internal" href="affine_flux_map.html">Affine native-flux reconstruction</a></li>
 <li class="toctree-l2"><a class="reference internal" href="coherent_reduction.html">Coherent Gaussian Reduction</a></li>
 </ul>
@@ -392,7 +393,10 @@
     
     <li class="breadcrumb-item"><a href="usage.html" class="nav-link">Using OpenGHG Inversions</a></li>
     
-    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Standard RHIME model family</span></li>
+    
+    <li class="breadcrumb-item"><a href="shared_scientific_concepts.html" class="nav-link">Shared scientific concepts</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Linear retained-state reconstruction</span></li>
   </ul>
 </nav>
 </div>
@@ -409,26 +413,55 @@
 <div id="searchbox"></div>
                 <article class="bd-article">
                   
-  <section id="standard-rhime-model-family">
-<h1>Standard RHIME model family<a class="headerlink" href="#standard-rhime-model-family" title="Link to this heading">#</a></h1>
-<p>The standard RHIME family contains the complete one-component and multisector
-recipes. Both acquire OpenGHG data, prepare labelled inversion inputs, build and
-sample a PyMC model, and construct supported outputs. They can also run through
-the <a class="reference internal" href="staged_workflow.html"><span class="doc">staged command-line workflow</span></a>.</p>
-<p>Start with the standard tutorial when one flux component and one scaling state
-fit the scientific question. Use the multisector tutorial when named sources
-must retain separate states and diagnostics. Species selection does not choose
-between these recipes.</p>
-<div class="toctree-wrapper compound">
-<ul>
-<li class="toctree-l1"><a class="reference internal" href="rhime_standard_tutorial.html">Standard RHIME tutorial</a></li>
-<li class="toctree-l1"><a class="reference internal" href="rhime_multisector_tutorial.html">Multisector RHIME tutorial</a></li>
-<li class="toctree-l1"><a class="reference internal" href="concrete_rhime_model.html">Standard and multisector RHIME models</a></li>
-<li class="toctree-l1"><a class="reference internal" href="rhime.html">RHIME configuration and prepared-input reference</a></li>
-<li class="toctree-l1"><a class="reference internal" href="cli.html">Running RHIME from the command line</a></li>
-<li class="toctree-l1"><a class="reference internal" href="customising_rhime.html">Customising RHIME</a></li>
-</ul>
+  <section id="linear-retained-state-reconstruction">
+<h1>Linear retained-state reconstruction<a class="headerlink" href="#linear-retained-state-reconstruction" title="Link to this heading">#</a></h1>
+<p><code class="docutils literal notranslate"><span class="pre">BasisFunctions</span></code> pairs a retained basis operator with its signed reference
+flux. Its bucket basis defines a coarse-to-fine map (prolongation)
+<span class="math notranslate nohighlight">\(U_{\mathrm{bucket}}\)</span> from retained state <span class="math notranslate nohighlight">\(\alpha\)</span> to native-grid
+scaling <span class="math notranslate nohighlight">\(x\)</span>. The directional operations reconstruct</p>
+<div class="math notranslate nohighlight">
+\[x = U_{\mathrm{bucket}}\alpha, \qquad f = F x,\]</div>
+<p>where <span class="math notranslate nohighlight">\(F\)</span> is the flux retained with <code class="docutils literal notranslate"><span class="pre">BasisFunctions</span></code>. Call
+<code class="docutils literal notranslate"><span class="pre">basis_functions.state_to_native(state)</span></code> for scaling or
+<code class="docutils literal notranslate"><span class="pre">basis_functions.state_to_flux(state)</span></code> for signed flux. The operator itself
+owns only <code class="docutils literal notranslate"><span class="pre">state_to_native</span></code>. Both actions require the exact ordered retained
+state labels; flux reconstruction also requires exact native-grid labels.</p>
+<p>For a source-specific basis, the retained <code class="docutils literal notranslate"><span class="pre">state</span></code> coordinate is a ragged
+MultiIndex with a <code class="docutils literal notranslate"><span class="pre">source</span></code> level. Reconstructed scaling and flux carry one
+ordered <code class="docutils literal notranslate"><span class="pre">native_source</span></code> dimension. A shared basis instead yields one scaling
+field; source-resolved retained flux adds a <code class="docutils literal notranslate"><span class="pre">source</span></code> dimension to its flux
+result. Sum the result’s source dimension explicitly when a total grid is
+required:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.basis.operators</span><span class="w"> </span><span class="kn">import</span> <span class="n">MultiSourceBucketBasisOperator</span>
+
+<span class="n">flux</span> <span class="o">=</span> <span class="n">basis_functions</span><span class="o">.</span><span class="n">state_to_flux</span><span class="p">(</span><span class="n">state</span><span class="p">)</span>
+<span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">basis_functions</span><span class="o">.</span><span class="n">operator</span><span class="p">,</span> <span class="n">MultiSourceBucketBasisOperator</span><span class="p">):</span>
+    <span class="n">total_flux</span> <span class="o">=</span> <span class="n">flux</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="sa">f</span><span class="s2">"native_</span><span class="si">{</span><span class="n">basis_functions</span><span class="o">.</span><span class="n">operator</span><span class="o">.</span><span class="n">source_dim</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<span class="k">elif</span> <span class="s2">"source"</span> <span class="ow">in</span> <span class="n">basis_functions</span><span class="o">.</span><span class="n">flux</span><span class="o">.</span><span class="n">dims</span><span class="p">:</span>
+    <span class="n">total_flux</span> <span class="o">=</span> <span class="n">flux</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="s2">"source"</span><span class="p">)</span>
+<span class="k">else</span><span class="p">:</span>
+    <span class="n">total_flux</span> <span class="o">=</span> <span class="n">flux</span>
+</pre></div>
 </div>
+<p>Non-state chain, draw, and other sample axes remain labelled. A state sample
+axis that shares a native or flux dimension name receives a <code class="docutils literal notranslate"><span class="pre">state_</span></code> prefix
+so independent coordinates are not aligned. Source summation follows the basis
+and retained flux, not a coincidentally named sample axis. Inputs are borrowed
+and Dask application remains lazy. Completed postprocessing products are
+converted to dense NumPy data at their materialization boundary; the NetCDF
+writer also converts sparse payloads before serialization.</p>
+<p><code class="docutils literal notranslate"><span class="pre">interpolate</span></code> is deprecated. Use <code class="docutils literal notranslate"><span class="pre">state_to_native</span></code> for unweighted scaling
+and <code class="docutils literal notranslate"><span class="pre">state_to_flux</span></code> for the retained-flux product. During deprecation,
+multisource <code class="docutils literal notranslate"><span class="pre">interpolate</span></code> still returns a source-summed eager result. The
+native-map adapter is internal; <code class="docutils literal notranslate"><span class="pre">basis_matrix</span></code> remains the public basis map
+ingredient, and <a class="reference internal" href="../reference/openghg_inversions.basis.affine_flux_map.html#openghg_inversions.basis.affine_flux_map.AffineFluxMap" title="openghg_inversions.basis.affine_flux_map.AffineFluxMap"><code class="xref py py-class docutils literal notranslate"><span class="pre">AffineFluxMap</span></code></a>
+retains its public <code class="docutils literal notranslate"><span class="pre">prolongation</span></code> ingredient.</p>
+<p>This linear operation is distinct from <a class="reference internal" href="affine_flux_map.html"><span class="doc">Affine native-flux reconstruction</span></a>, whose centred
+equation uses native mean <span class="math notranslate nohighlight">\(m\)</span>, covariance-natural map <span class="math notranslate nohighlight">\(U_*\)</span>, and an
+explicit reference state <span class="math notranslate nohighlight">\(\alpha_{ref}\)</span>. Current postprocessing products
+keep their historical <code class="docutils literal notranslate"><span class="pre">flux_time</span></code> coordinate label. The retained flux keeps
+its own native time coordinate until that output boundary; a state sample
+<code class="docutils literal notranslate"><span class="pre">time</span></code> axis remains independent.</p>
 </section>
 
 
@@ -442,20 +475,20 @@ between these recipes.</p>
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="model_recipes.html"
+       href="native_covariance.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">Choose a RHIME model recipe</p>
+        <p class="prev-next-title">Native Covariance Projection</p>
       </div>
     </a>
     <a class="right-next"
-       href="rhime_standard_tutorial.html"
+       href="affine_flux_map.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">Standard RHIME tutorial</p>
+        <p class="prev-next-title">Affine native-flux reconstruction</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -473,7 +506,7 @@ between these recipes.</p>
   <div class="sidebar-secondary-item">
 
   <div class="tocsection sourcelink">
-    <a href="../_sources/usage/standard_model_family.rst.txt">
+    <a href="../_sources/usage/retained_state_reconstruction.rst.txt">
       <i class="fa-solid fa-file-lines"></i> Show Source
     </a>
   </div>

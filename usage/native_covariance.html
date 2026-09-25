@@ -52,7 +52,7 @@
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="Affine native-flux reconstruction" href="affine_flux_map.html" />
+    <link rel="next" title="Linear retained-state reconstruction" href="retained_state_reconstruction.html" />
     <link rel="prev" title="Grouped basis and state metadata" href="grouped_basis_layout.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
@@ -344,6 +344,7 @@
 <li class="toctree-l1 current active has-children"><a class="reference internal" href="shared_scientific_concepts.html">Shared scientific concepts</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
 <li class="toctree-l2"><a class="reference internal" href="grouped_basis_layout.html">Grouped basis and state metadata</a></li>
 <li class="toctree-l2 current active"><a class="current reference internal" href="#">Native Covariance Projection</a></li>
+<li class="toctree-l2"><a class="reference internal" href="retained_state_reconstruction.html">Linear retained-state reconstruction</a></li>
 <li class="toctree-l2"><a class="reference internal" href="affine_flux_map.html">Affine native-flux reconstruction</a></li>
 <li class="toctree-l2"><a class="reference internal" href="coherent_reduction.html">Coherent Gaussian Reduction</a></li>
 </ul>
@@ -437,11 +438,12 @@ operation rather than a complete coherent-reduction result by themselves.</p>
 <tbody>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">BasisOperator</span></code></p></td>
 <td><p>Owns basis geometry and retained-state labels. For a single source,
-<code class="docutils literal notranslate"><span class="pre">basis_matrix</span></code> is the bucket prolongation <span class="math notranslate nohighlight">\(U_{\mathrm{bucket}}\)</span>.
-A gathered multisource matrix is a spatial template; the basis-side
-<code class="docutils literal notranslate"><span class="pre">native_prolongation</span></code> adapter expands it onto a canonical explicit
-native source dimension. In both cases, the transpose does not define
-the retained restriction <span class="math notranslate nohighlight">\(\Pi\)</span>.</p></td>
+<code class="docutils literal notranslate"><span class="pre">basis_matrix</span></code> is the bucket coarse-to-fine map (prolongation)
+<span class="math notranslate nohighlight">\(U_{\mathrm{bucket}}\)</span>.
+A gathered multisource matrix is a spatial template; covariance
+projection expands it onto a canonical explicit native source
+dimension through an internal adapter. In both cases, the transpose
+does not define the retained restriction <span class="math notranslate nohighlight">\(\Pi\)</span>.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">InvertibleNativeCovarianceAction</span></code></p></td>
 <td><p>Structural interface for a labelled, self-adjoint positive-definite
@@ -704,11 +706,11 @@ the presence of covariance product blocks.</p></td>
       </div>
     </a>
     <a class="right-next"
-       href="affine_flux_map.html"
+       href="retained_state_reconstruction.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">Affine native-flux reconstruction</p>
+        <p class="prev-next-title">Linear retained-state reconstruction</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
