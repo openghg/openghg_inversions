@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import replace
 import json
 from pathlib import Path
 
-import arviz as az
 from dask import compute as dask_compute
 import numpy as np
 import xarray as xr
@@ -20,7 +18,7 @@ from openghg_inversions.rhime.co2.co2_o2_model import _gather_co2_o2_sensitivity
 from openghg_inversions.rhime.co2.co2_o2_preparation import Co2O2PreparedInputs
 from openghg_inversions.utils import write_netcdf_preserving_bounds_attrs
 
-from .inversion_output import InversionOutput
+from .inversion_output import InversionOutput, trace_group
 from .make_paris_outputs import (
     PARIS_LATEST_COUNTRIES,
     _add_observation_time_bounds,
@@ -38,11 +36,11 @@ from .make_paris_outputs import (
 __all__ = ["make_co2_o2_paris_outputs", "reconstruct_co2_o2_concentrations"]
 
 
-def _role(trace: az.InferenceData, role: str, group: str) -> xr.DataArray:
+def _role(trace: xr.DataTree, role: str, group: str) -> xr.DataArray:
     """Select an explicitly declared scientific quantity."""
     roles = json.loads(trace.attrs.get("rhime_variable_roles", "{}"))
     name = roles.get(role)
-    dataset = getattr(trace, group, xr.Dataset())
+    dataset = trace_group(trace, group) if group in trace.children else xr.Dataset()
     if name not in dataset:
         raise ValueError(f"Linked output requires scientific role {role!r} in {group}.")
     value = dataset[name]
@@ -52,13 +50,13 @@ def _role(trace: az.InferenceData, role: str, group: str) -> xr.DataArray:
 
 
 def reconstruct_co2_o2_concentrations(
-    trace: az.InferenceData,
+    trace: xr.DataTree,
     prepared: Co2O2PreparedInputs,
 ) -> dict[str, xr.Dataset]:
     """Reconstruct channel components while preserving joint sample axes.
 
     Args:
-        trace: Joint inference data with scientific roles and restored indexes.
+        trace: Joint DataTree with scientific roles and restored indexes.
             Prior/posterior flux scaling and posterior modelled concentration are required.
             A selected boundary/offset also requires prior draws for that term.
         prepared: Labelled inputs used for this posterior.
@@ -215,7 +213,7 @@ def _concentration_product(
 
 
 def make_co2_o2_paris_outputs(
-    trace: az.InferenceData,
+    trace: xr.DataTree,
     prepared: Co2O2PreparedInputs,
     *,
     domain: str = "EUROPE",
@@ -232,7 +230,7 @@ def make_co2_o2_paris_outputs(
     """Create separate CO2/O2 products using existing PARIS templates.
 
     Args:
-        trace: Joint posterior with scientific roles and restored indexes. It
+        trace: Joint posterior DataTree with scientific roles and restored indexes. It
             is never split or modified; covariance remains in this artifact.
         prepared: Inputs used to build the posterior.
         domain: Domain label for both products.
@@ -323,7 +321,7 @@ def make_co2_o2_paris_outputs(
                 inv_inputs=values.observed.assign_attrs(units=values.attrs["units"])
                 .rename(roles.get("observation", "mf"))
                 .to_dataset(),
-                basis_functions=replace(basis, flux=flux),
+                basis_functions=basis.with_flux(flux),
                 run_metadata={"start_date": start_date, "end_date": end_date},
                 model_metadata={
                     "species": species,

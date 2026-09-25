@@ -2,7 +2,6 @@
 
 import json
 
-import arviz as az
 import numpy as np
 import pytest
 import xarray as xr
@@ -85,14 +84,18 @@ def _joint_fixture(
         posterior["prediction"] = modelled + boundary + offset
         prior["bc"] = boundary
         prior["bias"] = offset
-    trace = az.InferenceData(
-        posterior=posterior,
-        prior=prior,
-        attrs={
-            "rhime_recipe": "co2_o2",
-            "rhime_variable_roles": json.dumps(roles),
-            "rhime_model_metadata": json.dumps({"provenance": "joint fixture"}),
-        },
+    trace = xr.DataTree.from_dict(
+        {
+            "/": xr.Dataset(
+                attrs={
+                    "rhime_recipe": "co2_o2",
+                    "rhime_variable_roles": json.dumps(roles),
+                    "rhime_model_metadata": json.dumps({"provenance": "joint fixture"}),
+                }
+            ),
+            "posterior": posterior,
+            "prior": prior,
+        }
     )
     return prepared, trace
 
@@ -123,14 +126,14 @@ def test_separate_products_close_and_roundtrip(tmp_path, tracer_scopes):
         )
         np.testing.assert_allclose(dataset.mf_bc_posterior, (400 if species == "co2" else 0.25) * 1e-6)
         expected_ocean = prepared.co2_sensitivity[:, 3] if species == "co2" else prepared.o2_sensitivity[:, 4]
-        scale = trace.posterior.scales[:, :, 3 if species == "co2" else 4].mean()
+        scale = trace["posterior"].scales[:, :, 3 if species == "co2" else 4].mean()
         np.testing.assert_allclose(dataset.mf_ocean_posterior, expected_ocean.values * scale.values * 1e-6)
         with xr.open_dataset(tmp_path / f"{species}_concentration.nc") as restored:
             assert restored.attrs["linked_ratio_provenance"] == dataset.attrs["linked_ratio_provenance"]
             assert restored.attrs["rhime_model_metadata"] == dataset.attrs["rhime_model_metadata"]
             assert restored.sizes["index"] == count
             np.testing.assert_allclose(restored.mf_posterior, dataset.mf_posterior)
-    xr.testing.assert_identical(trace.posterior, before.posterior)
+    xr.testing.assert_identical(trace["posterior"], before["posterior"])
     assert sorted(p.name for p in tmp_path.iterdir()) == ["co2_concentration.nc", "o2_concentration.nc"]
 
 
@@ -141,7 +144,7 @@ def test_no_baseline_and_no_prior_draws():
         assert (outputs["concentration"].mf_bc_posterior == 0).all()
         assert "mf_bias_posterior" not in outputs["concentration"]
         assert (outputs["concentration"].stdev_mf_prior == 0).all()
-    del trace.prior
+    del trace["prior"]
     with pytest.raises(ValueError, match="flux_scale.*prior"):
         make_co2_o2_paris_outputs(trace, prepared)
 
@@ -151,10 +154,10 @@ def test_unsupported_units_templates_and_missing_components():
     with pytest.raises(ValueError, match="template_version"):
         make_co2_o2_paris_outputs(trace, prepared, template_version="legacy")
     bad = trace.copy()
-    bad.posterior["prediction"] = bad.posterior.prediction + 1.0
+    bad["posterior"]["prediction"] = bad["posterior"].prediction + 1.0
     with pytest.raises(ValueError, match="does not close"):
         make_co2_o2_paris_outputs(bad, prepared)
-    del trace.prior["bc"]
+    del trace["prior"]["bc"]
     with pytest.raises(ValueError, match="boundary_concentration.*prior"):
         make_co2_o2_paris_outputs(trace, prepared)
     prepared, trace = _joint_fixture(baseline=False, o2_units="per meg")
@@ -164,7 +167,7 @@ def test_unsupported_units_templates_and_missing_components():
 
 def test_fixed_state_prior_draws_are_preserved():
     prepared, trace = _joint_fixture(baseline=False)
-    trace.prior["scales"] = xr.where(trace.prior.state == "gpp:1", 2.0, trace.prior.scales)
+    trace["prior"]["scales"] = xr.where(trace["prior"].state == "gpp:1", 2.0, trace["prior"].scales)
     values = reconstruct_co2_o2_concentrations(trace, prepared)
     np.testing.assert_allclose(values["co2"].gpp_prior.mean(("prior_chain", "prior_draw")), [2, 1])
     trace.attrs["rhime_recipe"] = "co2_o2_cached_sigma_fixed_ou"
@@ -179,8 +182,8 @@ def test_native_flux_reuses_joint_state_and_roundtrips(tmp_path, europe_country_
     from openghg_inversions.basis.basis_functions import BasisFunctions
 
     prepared, trace = _joint_fixture(baseline=False, numeric_state=True)
-    original_posterior = trace.posterior.copy(deep=True)
-    original_prior = trace.prior.copy(deep=True)
+    original_posterior = trace["posterior"].copy(deep=True)
+    original_prior = trace["prior"].copy(deep=True)
     country = xr.load_dataset(europe_country_file).isel(
         lat=slice(0, 2), lon=slice(0, 5), ncountries=slice(0, 1)
     )
@@ -209,14 +212,14 @@ def test_native_flux_reuses_joint_state_and_roundtrips(tmp_path, europe_country_
         assert flux.attrs["paris_flux_template_version"] == "v03"
         assert "excludes unresolved" in flux.attrs["native_uncertainty"]
         assert json.loads(flux.attrs["linked_native_flux_provenance"]) == {"native_source": species}
-        expected = bases[species].flux.values * trace.posterior.scales.mean(("chain", "draw")).values[None, :]
+        expected = bases[species].flux.values * trace["posterior"].scales.mean(("chain", "draw")).values[None, :]
         np.testing.assert_allclose(flux.flux_total_posterior.isel(time=0), expected, rtol=1e-6)
         assert (flux.stdev_flux_total_posterior >= 0).all()
         assert flux.stdev_flux_total_posterior.attrs["units"] == "mol m-2 s-1"
         assert flux.percentile_flux_total_posterior.attrs["units"] == "mol m-2 s-1"
         assert (flux.percentile_flux_total_posterior.diff("percentile") >= 0).all()
         for when in ("prior", "posterior"):
-            draws = getattr(trace, when).scales.values[..., None, :] * bases[species].flux.values
+            draws = trace[when].scales.values[..., None, :] * bases[species].flux.values
             np.testing.assert_allclose(
                 flux[f"stdev_flux_total_{when}"].isel(time=0), draws.std(axis=(0, 1)), atol=1e-12
             )
@@ -227,8 +230,8 @@ def test_native_flux_reuses_joint_state_and_roundtrips(tmp_path, europe_country_
             )
         with xr.open_dataset(tmp_path / "outputs" / f"{species}_flux.nc") as restored:
             assert restored.attrs["native_uncertainty"] == flux.attrs["native_uncertainty"]
-    xr.testing.assert_identical(trace.posterior, original_posterior)
-    xr.testing.assert_identical(trace.prior, original_prior)
+    xr.testing.assert_identical(trace["posterior"], original_posterior)
+    xr.testing.assert_identical(trace["prior"], original_prior)
     bad_bases = dict(bases)
     bad_bases["o2"] = replace(bases["o2"], flux=xr.ones_like(bases["o2"].flux))
     with pytest.raises(ValueError, match="other tracer"):
@@ -272,7 +275,7 @@ def test_native_flux_rejects_uppercase_private_states_without_concentration_sign
 def test_cached_joint_posterior_with_baseline_emits_paris(tmp_path, native_multiindex):
     from openghg_inversions.rhime.co2 import run_rhime_co2_o2_cached_sigma_from_prepared_inputs
     from openghg_inversions.rhime.sampling import RhimeSampler
-    from openghg_inversions.serialization import load_inferencedata, save_inferencedata
+    from openghg_inversions.serialization import load_trace, save_trace
     from test_rhime_co2_o2 import _independent_error
     from test_rhime_co2_o2_baselines import _native_multiindex_inputs, _prepared
 
@@ -312,17 +315,17 @@ def test_cached_joint_posterior_with_baseline_emits_paris(tmp_path, native_multi
             sample_prior_predictive=5,
         ),
     )
-    save_inferencedata(trace, tmp_path / "joint.nc")
-    restored = load_inferencedata(tmp_path / "joint.nc")
+    save_trace(trace, tmp_path / "joint.nc")
+    restored = load_trace(tmp_path / "joint.nc")
     products = make_co2_o2_paris_outputs(restored, prepared, output_path=tmp_path / "paris")
     roles = json.loads(restored.attrs["rhime_variable_roles"])
     for species, rows in (("co2", slice(0, 2)), ("o2", slice(2, 5))):
         dataset = products[species]["concentration"]
         expected = (
-            restored.posterior[roles["modelled_concentration"]].isel(observation=rows).mean(("chain", "draw"))
+            restored["posterior"][roles["modelled_concentration"]].isel(observation=rows).mean(("chain", "draw"))
         )
         np.testing.assert_allclose(dataset.mf_posterior, expected * 1e-6, rtol=1e-6)
         assert dataset.attrs["rhime_recipe"] == "co2_o2_cached_sigma_fixed_ou"
     assert "mf_bias_posterior" not in products["co2"]["concentration"]
     assert "mf_bias_posterior" in products["o2"]["concentration"]
-    assert restored.log_likelihood.y.dims == ("chain", "draw")
+    assert restored["log_likelihood"].y.dims == ("chain", "draw")
