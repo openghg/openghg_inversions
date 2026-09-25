@@ -19,3 +19,12 @@ chains = 4
 nuts_sampler = "numpyro"
 target_accept = 0.95
 random_seed = 12345
+
+# Optional channel-specific baseline settings (require matching prepared H_bc).
+# [channels.co2.boundary]
+# enabled = true
+# prior = {pdf = "normal", mu = 1.0, sigma = 0.1}
+#
+# [channels.o2.offset]
+# per_site = false
+# prior = {pdf = "normal", mu = 0.0, sigma = 1.0}

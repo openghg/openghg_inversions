@@ -14,6 +14,7 @@ import tomllib
 
 import numpy as np
 
+from openghg_inversions.models import StateActivity
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
 from openghg_inversions.models.priors import positive_prior_args
 from openghg_inversions.models.scalar_sigma import add_scalar_sigma_eigen_likelihood
@@ -104,16 +105,14 @@ class Co2O2RunSetup:
                 prepared unit labels differ.
         """
         observations = prepared_inputs.observations
-        if "species" not in observations.coords or observations["species"].dims != (
+        if "species" not in observations.coords or observations["species"].dims != ("observation",):
+            raise ValueError(
+                "Linked prepared observations require an observation-aligned species coordinate."
+            )
+        if "observation_units" not in observations.coords or observations["observation_units"].dims != (
             "observation",
         ):
-            raise ValueError("Linked prepared observations require an observation-aligned species coordinate.")
-        if "observation_units" not in observations.coords or observations[
-            "observation_units"
-        ].dims != ("observation",):
-            raise ValueError(
-                "Linked prepared observations require observation-aligned observation_units."
-            )
+            raise ValueError("Linked prepared observations require observation-aligned observation_units.")
         configured_errors = self.runner_kwargs["independent_error_sd"]
         assert isinstance(configured_errors, Mapping)
         species = np.asarray(observations["species"].values).astype(str)
@@ -123,18 +122,15 @@ class Co2O2RunSetup:
         error_values = np.empty(observations.size, dtype=np.float64)
         for name in ("co2", "o2"):
             selected = species == name
-            if not np.all(
-                observation_units[selected] == self.preparation_kwargs[f"{name}_units"]
-            ):
-                raise ValueError(
-                    f"Configured channels.{name}.units do not match prepared observation_units."
-                )
+            if not np.all(observation_units[selected] == self.preparation_kwargs[f"{name}_units"]):
+                raise ValueError(f"Configured channels.{name}.units do not match prepared observation_units.")
             error_values[selected] = configured_errors[name]
         independent_error = observations.copy(data=error_values).rename("independent_error_sd")
         independent_error.attrs = {"units": "mixed; see observation_units coordinate"}
         return _frozen(
             {
                 "prepared_inputs": prepared_inputs,
+                **self.runner_kwargs,
                 "independent_error_sd": independent_error,
                 "sampler": self.sampler,
             }
@@ -143,10 +139,7 @@ class Co2O2RunSetup:
 
 def _frozen(values: Mapping[str, object]) -> Mapping[str, object]:
     return MappingProxyType(
-        {
-            key: _frozen(value) if isinstance(value, Mapping) else value
-            for key, value in values.items()
-        }
+        {key: _frozen(value) if isinstance(value, Mapping) else value for key, value in values.items()}
     )
 
 
@@ -211,10 +204,7 @@ def _number_or_mapping(
         if not table:
             raise ValueError(f"{path} must not be empty.")
         return MappingProxyType(
-            {
-                _string(key, f"{path} key"): checked(item, f"{path}.{key}")
-                for key, item in table.items()
-            }
+            {_string(key, f"{path} key"): checked(item, f"{path}.{key}") for key, item in table.items()}
         )
     return checked(value, path)
 
@@ -236,9 +226,7 @@ def _prior(value: object, path: str, *, positive: bool = False) -> Mapping[str, 
         parameter_keys = {"mu", "sigma"}
         moment_keys = {"mean", "stdev"}
         if parameter_keys & prior.keys() and moment_keys & prior.keys():
-            raise ValueError(
-                f"{path} must use either mu/sigma or mean/stdev for a LogNormal prior."
-            )
+            raise ValueError(f"{path} must use either mu/sigma or mean/stdev for a LogNormal prior.")
         names = ("mean", "stdev") if moment_keys & prior.keys() else ("mu", "sigma")
         for name in names:
             result[name] = _number(
@@ -247,9 +235,7 @@ def _prior(value: object, path: str, *, positive: bool = False) -> Mapping[str, 
                 positive=name in {"mean", "stdev", "sigma"},
             )
         if "reparameterise" in prior:
-            result["reparameterise"] = _bool(
-                prior.pop("reparameterise"), f"{path}.reparameterise"
-            )
+            result["reparameterise"] = _bool(prior.pop("reparameterise"), f"{path}.reparameterise")
     elif pdf not in required:
         raise ValueError(f"{path}.pdf is not a supported configuration prior.")
     else:
@@ -361,11 +347,7 @@ def _model(value: object) -> dict[str, object]:
     if "boundary" in options:
         boundary = _table(options.pop("boundary"), "model.boundary")
         enabled = _bool(boundary.pop("enabled", True), "model.boundary.enabled")
-        prior = (
-            _prior(boundary.pop("prior"), "model.boundary.prior")
-            if "prior" in boundary
-            else None
-        )
+        prior = _prior(boundary.pop("prior"), "model.boundary.prior") if "prior" in boundary else None
         _reject_unknown(boundary, "model.boundary")
         if not enabled and prior is not None:
             raise ValueError("model.boundary.prior requires model.boundary.enabled=true.")
@@ -374,9 +356,7 @@ def _model(value: object) -> dict[str, object]:
             result["bc_prior"] = prior
     if "offset" in options:
         offset = _table(options.pop("offset"), "model.offset")
-        result["offset_prior"] = _prior(
-            _take(offset, "prior", "model.offset"), "model.offset.prior"
-        )
+        result["offset_prior"] = _prior(_take(offset, "prior", "model.offset"), "model.offset.prior")
         offset_args: dict[str, object] = {}
         if "frequency" in offset:
             frequency = offset.pop("frequency")
@@ -385,9 +365,7 @@ def _model(value: object) -> dict[str, object]:
             offset_args["offset_freq"] = frequency
         for config_name, runner_name in (("per_site", "per_site"), ("drop_first", "drop_first")):
             if config_name in offset:
-                offset_args[runner_name] = _bool(
-                    offset.pop(config_name), f"model.offset.{config_name}"
-                )
+                offset_args[runner_name] = _bool(offset.pop(config_name), f"model.offset.{config_name}")
         _reject_unknown(offset, "model.offset")
         if offset_args.get("per_site") is False:
             if offset_args.get("offset_freq") is not None:
@@ -496,8 +474,7 @@ def _ordinary_likelihood(value: object) -> dict[str, object]:
         )
     else:
         raise ValueError(
-            "likelihood.kind must be one of 'additive_sigma', 'site_sigma', "
-            "'fixed_ou', or 'scalar_sigma'."
+            "likelihood.kind must be one of 'additive_sigma', 'site_sigma', 'fixed_ou', or 'scalar_sigma'."
         )
     _reject_unknown(options, "likelihood")
     return result
@@ -561,25 +538,40 @@ def _resolve_linked(options: dict[str, object], variant: str) -> Co2O2RunSetup:
     channels = _table(_take(options, "channels", "config"), "channels")
     errors: dict[str, object] = {}
     units: dict[str, str] = {}
+    channel_model: dict[str, dict[str, object]] = {}
     for name in ("co2", "o2"):
         channel = _table(_take(channels, name, "channels"), f"channels.{name}")
-        channel_units = _string(
-            _take(channel, "units", f"channels.{name}"), f"channels.{name}.units"
-        )
+        channel_units = _string(_take(channel, "units", f"channels.{name}"), f"channels.{name}.units")
         mole_fraction_unit_scale(channel_units, context=f"channels.{name}.units")
         error = _number(
             _take(channel, "independent_error_sd", f"channels.{name}"),
             f"channels.{name}.independent_error_sd",
             positive=True,
         )
+        model_options = {key: channel.pop(key) for key in ("boundary", "offset") if key in channel}
+        if "boundary" in model_options:
+            boundary = _table(model_options["boundary"], f"channels.{name}.boundary")
+            if "activity" in boundary:
+                activity = _table(boundary.pop("activity"), f"channels.{name}.boundary.activity")
+                active = _bool(activity.pop("active", True), f"channels.{name}.boundary.activity.active")
+                fixed_value = _number(
+                    activity.pop("fixed_value", 1.0), f"channels.{name}.boundary.activity.fixed_value"
+                )
+                _reject_unknown(activity, f"channels.{name}.boundary.activity")
+                if boundary.get("enabled", True) is False:
+                    raise ValueError("Boundary activity requires enabled=true.")
+                channel_model.setdefault("bc_state_activity", {})[name] = StateActivity(
+                    active=active, fixed_value=fixed_value
+                )
+            model_options["boundary"] = boundary
+        for key, value in _model(model_options).items():
+            channel_model.setdefault(key, {})[name] = value
         _reject_unknown(channel, f"channels.{name}")
         units[name] = channel_units
         errors[name] = error
     _reject_unknown(channels, "channels")
     if units["co2"] != units["o2"]:
-        raise ValueError(
-            "The linked configuration currently requires identical CO2 and O2 channel units."
-        )
+        raise ValueError("The linked configuration currently requires identical CO2 and O2 channel units.")
     sampling = _table(options.pop("sampling", {}), "sampling")
     sampling.setdefault("nuts_sampler", "numpyro")
     sampling.setdefault("target_accept", 0.95)
@@ -592,7 +584,7 @@ def _resolve_linked(options: dict[str, object], variant: str) -> Co2O2RunSetup:
     return Co2O2RunSetup(
         _frozen(preparation_kwargs),
         run_rhime_co2_o2_from_prepared_inputs,
-        _frozen({"independent_error_sd": _frozen(errors)}),
+        _frozen({"independent_error_sd": _frozen(errors), **channel_model}),
         sampler,
     )
 
@@ -608,10 +600,7 @@ def co2_config_templates() -> Mapping[str, Traversable]:
     """Return installed CO2-family TOML templates keyed by file name."""
     directory = files("openghg_inversions.rhime").joinpath("config")
     return MappingProxyType(
-        {
-            name: directory.joinpath(name)
-            for name in ("co2.toml", "co2_cached_sigma.toml", "co2_o2.toml")
-        }
+        {name: directory.joinpath(name) for name in ("co2.toml", "co2_cached_sigma.toml", "co2_o2.toml")}
     )
 
 

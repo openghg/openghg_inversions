@@ -399,9 +399,47 @@ binding it expands each scalar over that channel's observation rows. The two
 ``units`` strings must currently be identical, although the two error values
 may differ.
 
+Boundary and offset options use the same equations and option names as the
+CO2 recipe, nested beneath each channel. For example::
+
+   [channels.co2.boundary]
+   enabled = true
+   prior = {pdf = "normal", mu = 1.0, sigma = 0.1}
+
+   [channels.co2.boundary.activity]
+   active = false
+   fixed_value = 1.0
+
+   [channels.o2.offset]
+   per_site = false
+   prior = {pdf = "normal", mu = 0.0, sigma = 1.0}
+
+Supply boundary sensitivities to ``prepare_co2_o2_inputs`` as
+``boundary_sensitivity={"co2": H_bc_co2, "o2": H_bc_o2}``. Each array uses its
+channel's native observation axis followed by one labelled boundary-state
+axis. The runner includes supplied boundaries by default; ``use_bc`` can
+select channels explicitly. Direct calls pass ``bc_prior``,
+``bc_state_activity``, ``offset_prior`` and ``offset_args`` as mappings keyed
+by ``"co2"`` and ``"o2"``. For example,
+``offset_prior={"o2": {"pdf": "normal", "mu": 0.0, "sigma": 1.0}}`` and
+``offset_args={"o2": {"per_site": False}}`` reproduce the offset above.
+Missing sensitivities, unconsumed options, unknown channels, and mixed units
+with baseline terms fail before sampling.
+
+Posterior ``co2_mu_bc`` and ``o2_mu_bc`` are boundary concentrations;
+``co2_offset`` and ``o2_offset`` are offset concentrations. Each is recorded on
+the joint observation axis with zero contribution to the opposite channel.
+``co2_bc`` and ``o2_bc`` retain independent labelled scaling states and activity.
+The optional ``baseline_concentration`` reporting sum contains only boundary
+and offset terms. The coherent affine intercept ``fixed_prior_contribution``
+and all flux contributions remain distinct. Thus ``modelled_concentration``
+equals ``co2_o2_flux_contribution + fixed_prior_contribution`` plus the
+baseline sum when present. Aggregation covariance and independent observation
+error still enter the single joint likelihood once.
+
 Standalone O2, arbitrary Python callables, and additional recipe or variant
-names are rejected. The linked configuration also rejects boundary conditions,
-offsets, ordinary likelihood selection, cached/scalar likelihoods, and unequal
+names are rejected. The linked configuration also rejects ordinary likelihood selection,
+cached/scalar likelihoods, and unequal
 CO2 and O2 unit labels. The lower-level linked prepared-input API continues to
 represent row-specific mixed units; configuring a heterogeneous ppm/per-meg
 run is deferred until the scaling contract tracked in `OPE-86

@@ -43,7 +43,8 @@ Current support
    * - Boundary conditions and offsets
      - The ordinary and cached-sigma runners can select prepared ``H_bc``
        boundary sensitivity and add global, site, or site-by-period offsets.
-     - Not exposed by the linked prepared-input runner.
+     - Channel-labelled boundary sensitivities, priors and activity, plus
+       independent global, site, or site-by-period offsets (same-unit channels).
    * - Staged workflow
      - Not supported by the staged CLI.
      - Not supported by the staged CLI.
