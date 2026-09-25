@@ -166,13 +166,14 @@ def _pad_channel_design(
     native_dim, state_dim = design.dims
     row_index = observations.indexes[observations.dims[0]]
     channel_index = row_index[row_index.get_level_values("species") == channel]
+    design = design.sel({native_dim: channel_index.get_level_values("channel_observation").to_numpy()})
     native = design.drop_vars(
         [name for name, coord in design.coords.items() if native_dim in coord.dims]
     ).rename({native_dim: observations.dims[0]})
     native = native.assign_coords(
         xr.Coordinates.from_pandas_multiindex(channel_index, str(observations.dims[0]))
     )
-    # Reindex to the already validated CO2-then-O2 gathered rows.
+    # Restore the joint row order after selecting the native labels above.
     return native.reindex_like(observations, fill_value=0).transpose(observations.dims[0], state_dim)
 
 

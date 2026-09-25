@@ -636,10 +636,9 @@ construction, and
 :func:`openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs` for
 materialization, sampling, and trace metadata.
 
-This joint recipe currently keeps its fixed, row-labelled independent error
-and does not expose the CO2 ``likelihood_builder`` seam. A cross-channel
-mismatch model must first define its CO2/O2 covariance, parameter sharing, and
-mixed-unit behavior explicitly.
+The default joint recipe uses fixed, row-labelled independent error. The
+same-unit fixed-OU option below adds independent species/site mismatch blocks
+while preserving the prepared cross-channel aggregation covariance.
 
 Partition that state as
 
@@ -922,3 +921,67 @@ through :func:`openghg_inversions.observation_error.resolve_aggregation_error`.
 A custom pipeline that constructs an ``AggregationError`` directly owns the
 completeness, coherence, and numerical covariance guarantees of that object;
 there is no separate public complete-covariance validator.
+
+
+Linked fixed-OU mismatch and cached sampling
+-------------------------------------------
+
+The linked prepared-input runner accepts ``tau_hours`` together with either
+``fixed_site_amplitudes`` or ``site_amplitude_prior``. It uses the same fixed-OU
+numerical component as the CO2 recipe, with groups defined by both species and
+site. The complete joint covariance is
+
+.. math::
+
+   R = A_{joint} + D_{obs}
+       + \operatorname{blockdiag}_{(species, site)}
+         \left(\sigma_{species,site}^{2} T_{species,site}\right),
+   \qquad T_{ij}=\exp(-|t_i-t_j|/\tau_{species,site}).
+
+``A_joint`` is the prepared aggregation covariance, including its nonzero
+cross-channel blocks. ``D_obs`` is the squared reported independent error.
+Each term enters exactly once. Rows may be irregular and interleaved; the
+OU groups preserve their original row positions. Different channels at the
+same site have separate amplitudes and no cross-channel OU contribution.
+Both channels must already use the same concentration units. Heterogeneous
+covariance units are not supported by this option.
+
+Tau is fixed in hours. A scalar tau or fixed amplitude applies independently
+to every observed group. Mappings must cover labels such as ``co2:MHD`` and
+``o2:MHD``. Amplitudes and their prior scales use the common concentration unit.
+For example, the ordinary linked configuration can include:
+
+.. code-block:: toml
+
+   recipe = "co2_o2"
+   variant = "linked"
+
+   [likelihood]
+   kind = "fixed_ou"
+   tau_hours = { "co2:MHD" = 6.0, "o2:MHD" = 8.0 }
+   fixed_site_amplitudes = { "co2:MHD" = 0.4, "o2:MHD" = 0.7 }
+
+Replace ``fixed_site_amplitudes`` with a ``site_amplitude_prior`` table to infer
+amplitudes with stock PyMC. The optimized runner
+:func:`openghg_inversions.rhime.co2.run_rhime_co2_o2_cached_sigma_from_prepared_inputs`
+uses independent HalfNormal amplitude priors and the existing CO2
+sigma-then-state ``CompoundStep``. It refreshes the exact state quadratic only
+when returned amplitude values change, then updates all active flux, boundary,
+and offset coefficients against that cache. Its builder is
+:func:`openghg_inversions.rhime.co2.build_co2_o2_cached_sigma_model`.
+
+Select ``variant = "cached_fixed_ou"`` and supply ``site_amplitude_prior_scale``
+in ``[likelihood]`` in place of fixed amplitudes. Optional
+``initial_site_amplitudes`` accepts the same scalar or species/site mapping.
+Sampler options match the CO2 cached recipe, including separate
+``sigma_target_accept`` and ``state_target_accept`` controls. Both linked OU
+routes require ``nuts_sampler = "pymc"`` and select it by default; the ordinary
+fixed-error linked default remains NumPyro.
+
+Both routes retain species and native channel identity in the trace. The
+``ou_site`` coordinate uses the species/site labels, with ``ou_species`` and
+``ou_station`` coordinates describing each group. Amplitudes retain
+concentration units and ``ou_tau_hours`` retains hours through serialization.
+The cached runner supplies one normalized joint log likelihood per posterior
+draw and optional correlated joint predictive vectors; these are not
+independent per-observation likelihoods.

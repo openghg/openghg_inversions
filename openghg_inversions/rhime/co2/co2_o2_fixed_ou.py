@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 import xarray as xr
 
 from openghg_inversions.sigma import SigmaAlignment
@@ -22,6 +23,8 @@ def linked_fixed_ou_alignment(observations: xr.DataArray) -> SigmaAlignment:
             raise ValueError(f"Linked fixed-OU requires observation-aligned {name!r} coordinates.")
     if np.unique(observations.observation_units.values.astype(str)).size != 1:
         raise ValueError("Linked fixed-OU requires the same units for CO2 and O2 (OPE-86).")
+    if np.any(pd.isna(observations.site.values)):
+        raise ValueError("Linked fixed-OU requires complete site labels.")
     species = observations.species.values.astype(str)
     if not set(species) <= {"co2", "o2"}:
         raise ValueError("Linked fixed-OU species must be 'co2' or 'o2'.")

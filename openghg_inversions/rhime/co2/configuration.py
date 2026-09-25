@@ -585,7 +585,7 @@ def _resolve_linked(options: dict[str, object], variant: str) -> Co2O2RunSetup:
     elif likelihood is not None:
         likelihood_options = _table(likelihood, "likelihood")
         if likelihood_options.get("kind") != "fixed_ou":
-            raise ValueError("The linked recipe supports likelihood.kind='fixed_ou'.")
+            raise ValueError("The linked recipe supports config.likelihood.kind='fixed_ou'.")
         likelihood_kwargs = dict(
             cast(Mapping[str, object], _ordinary_likelihood(likelihood_options)["likelihood_kwargs"])
         )

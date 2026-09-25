@@ -32,6 +32,7 @@ runner.
    openghg_inversions.rhime.run_rhime_co2
    openghg_inversions.rhime.co2.run_rhime_co2_cached_sigma
    openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs
+   openghg_inversions.rhime.co2.run_rhime_co2_o2_cached_sigma_from_prepared_inputs
 
 Run specifications and results
 ------------------------------

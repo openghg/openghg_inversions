@@ -39,6 +39,10 @@ def _config(*, cached: bool = False) -> dict:
 @pytest.mark.parametrize("cached", [False, True])
 def test_linked_ou_config_preserves_groups_and_binds_reported_error(cached: bool) -> None:
     config = _config(cached=cached)
+    config["channels"]["co2"]["boundary"] = {"enabled": True}
+    config["channels"]["o2"]["offset"] = {
+        "prior": {"pdf": "normal", "mu": 0.0, "sigma": 0.2}, "per_site": False,
+    }
     setup = cast(Co2O2RunSetup, resolve_co2_family_config(config))
     observations = xr.DataArray(
         [400.0, -120.0, 401.0],
@@ -66,6 +70,9 @@ def test_linked_ou_config_preserves_groups_and_binds_reported_error(cached: bool
         if name != "kind":
             assert arguments[name] == value
     assert arguments["prepared_inputs"] is prepared
+    assert arguments["use_bc"] == {"co2": True}
+    assert arguments["offset_prior"] == {"o2": {"pdf": "normal", "mu": 0.0, "sigma": 0.2}}
+    assert arguments["offset_args"] == {"o2": {"per_site": False}}
 
 
 def test_linked_ou_config_resolves_positive_amplitude_prior() -> None:

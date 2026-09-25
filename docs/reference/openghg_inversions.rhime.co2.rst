@@ -16,6 +16,8 @@ openghg\_inversions.rhime.co2
    openghg_inversions.rhime.co2.co2_o2_model
    openghg_inversions.rhime.co2.co2_o2_preparation
    openghg_inversions.rhime.co2.co2_o2_runner
+   openghg_inversions.rhime.co2.co2_o2_cached_sigma_model
+   openghg_inversions.rhime.co2.co2_o2_cached_sigma_runner
    openghg_inversions.rhime.co2.co2_preparation
    openghg_inversions.rhime.co2.co2_runner
    openghg_inversions.rhime.co2.configuration

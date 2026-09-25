@@ -246,13 +246,14 @@ def run_rhime_co2_o2_from_prepared_inputs(
             in concentration units, scalar or mapping using the same keys.
         site_amplitude_prior: Prior for inferred species/site amplitudes,
             mutually exclusive with fixed amplitudes.
-        sampler: Optional RHIME sampler configuration. The accepted CO2/O2
-            NumPyro defaults are used when omitted.
+        sampler: Optional RHIME sampler configuration. Fixed OU requires and
+            defaults to PyMC; the fixed-error default uses NumPyro.
 
     Returns:
         Restored inference data with observed concentrations in
         ``observed_data["y"]``, fixed independent standard deviations in
-        ``constant_data["fixed_independent_error_sd"]``, labelled coordinates,
+        ``constant_data["fixed_independent_error_sd"]`` (``error`` for fixed
+        OU), labelled coordinates,
         data-dependent concentration units, scientific-role annotations, and
         JSON model metadata.
 
@@ -386,6 +387,6 @@ def _annotate_linked_fixed_ou_trace(
             group.y.attrs.update(
                 rhime_scientific_roles=json.dumps(["joint_log_likelihood"]),
                 rhime_likelihood_scope="joint_observation_vector",
-                rhime_normalized_log_likelihood=True,
+                rhime_normalized_log_likelihood=1,
             )
     return trace

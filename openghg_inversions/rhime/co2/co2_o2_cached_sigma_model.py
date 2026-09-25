@@ -78,8 +78,11 @@ def build_co2_o2_cached_sigma_model(
     if not np.isfinite(site_amplitude_prior_scale) or site_amplitude_prior_scale <= 0:
         raise ValueError("site_amplitude_prior_scale must be finite and strictly positive.")
     validate_observation_error_arrays(
-        observations, independent_error_sd, None,
-        owner="Linked cached fixed-OU", output_dim=output_dim,
+        observations,
+        independent_error_sd,
+        None,
+        owner="Linked cached fixed-OU",
+        output_dim=output_dim,
     )
     alignment = linked_fixed_ou_alignment(observations)
     site_coord = alignment.site_labels.rename({"nsigma_site": "ou_site"}).rename("ou_site")
@@ -94,10 +97,14 @@ def build_co2_o2_cached_sigma_model(
     prepared_flux = prepare_linear_sensitivity(joint, output_dim=output_dim)
     activity = resolve_state_activity(prepared_flux.removed, state_activity)
     prepared_flux, active_design, fixed_flux = _materialize_cached_linear_projection(
-        prepared_flux, activity, output_dim=output_dim,
+        prepared_flux,
+        activity,
+        output_dim=output_dim,
     )
     active_prior = prepare_active_correlated_lognormal_prior(
-        activity, retained_prior, var_name="flux_scaling",
+        activity,
+        retained_prior,
+        var_name="flux_scaling",
     )
     factor, diagonal = aggregation_error_as_low_rank(aggregation_error)
     covariance = prepare_fixed_ou_low_rank(
@@ -110,27 +117,39 @@ def build_co2_o2_cached_sigma_model(
     )
     with registered_model() as model:
         state = _add_prepared_correlated_lognormal_state_with_activity(
-            activity, active_prior, var_name="flux_scaling",
+            activity,
+            active_prior,
+            var_name="flux_scaling",
         )
         flux = apply_linear_sensitivity(
-            prepared_flux, state.state,
-            data_name="co2_o2_sensitivity", output_name="co2_o2_flux_contribution",
+            prepared_flux,
+            state.state,
+            data_name="co2_o2_sensitivity",
+            output_name="co2_o2_flux_contribution",
         )
         affine = add_coherent_affine_component(
-            fixed_prior_contribution, flux, output_name="co2_o2_affine_contribution",
+            fixed_prior_contribution,
+            flux,
+            output_name="co2_o2_affine_contribution",
         )
-        terms = [_CachedAffineTerm(
-            fixed_contribution=np.asarray(fixed_prior_contribution.values) + fixed_flux,
-            active_design=active_design,
-            coefficients=state.state[activity.active_indices] if activity.n_active else None,
-            sampled_rvs=(state.latent,) if state.latent is not None else (),
-            output=affine,
-        )]
+        terms = [
+            _CachedAffineTerm(
+                fixed_contribution=np.asarray(fixed_prior_contribution.values) + fixed_flux,
+                active_design=active_design,
+                coefficients=state.state[activity.active_indices] if activity.n_active else None,
+                sampled_rvs=(state.latent,) if state.latent is not None else (),
+                output=affine,
+            )
+        ]
         baselines = _add_co2_o2_baseline_components(
-            observations=observations, co2_sensitivity=co2_sensitivity,
-            o2_sensitivity=o2_sensitivity, boundary_sensitivity=boundary_sensitivity,
-            bc_prior=bc_prior, bc_state_activity=bc_state_activity,
-            offset_prior=offset_prior, offset_args=offset_args,
+            observations=observations,
+            co2_sensitivity=co2_sensitivity,
+            o2_sensitivity=o2_sensitivity,
+            boundary_sensitivity=boundary_sensitivity,
+            bc_prior=bc_prior,
+            bc_state_activity=bc_state_activity,
+            offset_prior=offset_prior,
+            offset_args=offset_args,
         )
         for _, result, design in baselines:
             matrix = np.asarray(design.values, dtype=np.float64)
@@ -143,24 +162,38 @@ def build_co2_o2_cached_sigma_model(
                 fixed = np.zeros(observations.size)
                 coefficients = result.coefficients
                 active_matrix = matrix
-            terms.append(_CachedAffineTerm(
-                fixed_contribution=fixed, active_design=active_matrix,
-                coefficients=coefficients,
-                sampled_rvs=(result.latent,) if result.latent is not None else (),
-                output=result.output,
-            ))
+            terms.append(
+                _CachedAffineTerm(
+                    fixed_contribution=fixed,
+                    active_design=active_matrix,
+                    coefficients=coefficients,
+                    sampled_rvs=(result.latent,) if result.latent is not None else (),
+                    output=result.output,
+                )
+            )
         mean = pm.Deterministic(
-            "modelled_concentration", sum(term.output for term in terms), dims=output_dim,
+            "modelled_concentration",
+            sum(term.output for term in terms),
+            dims=output_dim,
         )
         cached = _add_cached_likelihood(
-            tuple(terms), covariance=covariance, observations=observations,
-            observation_error=independent_error_sd, site_coord=site_coord,
-            site_index=site_index, initial_amplitudes=initial_amplitudes,
-            site_amplitude_prior_scale=site_amplitude_prior_scale, output_dim=output_dim,
+            tuple(terms),
+            covariance=covariance,
+            observations=observations,
+            observation_error=independent_error_sd,
+            site_coord=site_coord,
+            site_index=site_index,
+            initial_amplitudes=initial_amplitudes,
+            site_amplitude_prior_scale=site_amplitude_prior_scale,
+            output_dim=output_dim,
         )
     return Co2CachedSigmaModel(
-        model=model, target=cached.target, shared_cache=cached.shared_cache,
-        initial_cache=cached.initial_cache, amplitude=cached.amplitude,
-        states=cached.states, modelled_mean=mean,
+        model=model,
+        target=cached.target,
+        shared_cache=cached.shared_cache,
+        initial_cache=cached.initial_cache,
+        amplitude=cached.amplitude,
+        states=cached.states,
+        modelled_mean=mean,
         site_amplitude_prior_scale=site_amplitude_prior_scale,
     )

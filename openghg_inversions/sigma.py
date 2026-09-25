@@ -177,7 +177,7 @@ class SigmaAlignment:
         """Derive sigma alignment from observation site and time coordinates.
 
         Args:
-            observations: Observation vector with an aligned ``site``
+            observations: Vector on ``nmeasure`` or ``observation`` with an aligned ``site``
                 coordinate and, when ``frequency`` is set, observation times.
             frequency: Sigma period frequency. ``None`` creates one period.
             per_site: Whether sigma varies by site.

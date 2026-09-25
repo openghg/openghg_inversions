@@ -71,8 +71,10 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
     _validate_independent_error_labels(prepared.observations, independent_error_sd)
     boundaries = dict(getattr(prepared, "boundary_sensitivity", {}))
     if use_bc is not None:
-        if not isinstance(use_bc, Mapping) or set(use_bc) - {"co2", "o2"} or any(
-            not isinstance(value, bool) for value in use_bc.values()
+        if (
+            not isinstance(use_bc, Mapping)
+            or set(use_bc) - {"co2", "o2"}
+            or any(not isinstance(value, bool) for value in use_bc.values())
         ):
             raise ValueError("use_bc must map co2/o2 to booleans.")
         for channel, enabled in use_bc.items():
@@ -81,8 +83,11 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
             if not enabled:
                 boundaries.pop(channel, None)
     materialized = _materialize_co2_o2_pymc_inputs(
-        prepared.observations, prepared.fixed_prior_contribution,
-        prepared.co2_sensitivity, prepared.o2_sensitivity, independent_error_sd,
+        prepared.observations,
+        prepared.fixed_prior_contribution,
+        prepared.co2_sensitivity,
+        prepared.o2_sensitivity,
+        independent_error_sd,
         *boundaries.values(),
     )
     observations, fixed, co2, o2, error = materialized[:5]
@@ -91,28 +96,44 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
         raise ValueError("independent_error_sd observation_units must match the prepared observations.")
     _validate_independent_error_values(error)
     cached = build_co2_o2_cached_sigma_model(
-        observations=observations, fixed_prior_contribution=fixed,
-        co2_sensitivity=co2, o2_sensitivity=o2,
-        aggregation_error=prepared.aggregation_error, retained_prior=prepared.retained_prior,
-        independent_error_sd=error, tau_hours=tau_hours,
+        observations=observations,
+        fixed_prior_contribution=fixed,
+        co2_sensitivity=co2,
+        o2_sensitivity=o2,
+        aggregation_error=prepared.aggregation_error,
+        retained_prior=prepared.retained_prior,
+        independent_error_sd=error,
+        tau_hours=tau_hours,
         site_amplitude_prior_scale=site_amplitude_prior_scale,
-        initial_site_amplitudes=initial_site_amplitudes, state_activity=state_activity,
-        boundary_sensitivity=boundaries, bc_prior=bc_prior,
-        bc_state_activity=bc_state_activity, offset_prior=offset_prior, offset_args=offset_args,
+        initial_site_amplitudes=initial_site_amplitudes,
+        state_activity=state_activity,
+        boundary_sensitivity=boundaries,
+        bc_prior=bc_prior,
+        bc_state_activity=bc_state_activity,
+        offset_prior=offset_prior,
+        offset_args=offset_args,
     )
     metadata = _co2_o2_metadata(prepared, observations=observations)
-    metadata.update(recipe="co2_o2_cached_sigma_fixed_ou",
-                    likelihood="joint Gaussian with fixed OU blocks by (species, site)")
+    metadata.update(
+        recipe="co2_o2_cached_sigma_fixed_ou",
+        likelihood="joint Gaussian with fixed OU blocks by (species, site)",
+    )
     roles = dict(_CO2_O2_VARIABLE_ROLES)
-    roles.update(independent_error="error", fixed_ou_site_amplitude="ou_site_amplitude",
-                 observation_to_fixed_ou_site_index="ou_site_index", fixed_ou_timescale="ou_tau_hours")
+    roles.update(
+        independent_error="error",
+        fixed_ou_site_amplitude="ou_site_amplitude",
+        observation_to_fixed_ou_site_index="ou_site_index",
+        fixed_ou_timescale="ou_tau_hours",
+    )
     for channel in ("co2", "o2"):
         if channel in boundaries:
-            roles.update({
-                f"{channel}_boundary_concentration": f"{channel}_mu_bc",
-                f"{channel}_boundary_scale": f"{channel}_bc",
-                f"{channel}_boundary_sensitivity": f"{channel}_hbc",
-            })
+            roles.update(
+                {
+                    f"{channel}_boundary_concentration": f"{channel}_mu_bc",
+                    f"{channel}_boundary_scale": f"{channel}_bc",
+                    f"{channel}_boundary_sensitivity": f"{channel}_hbc",
+                }
+            )
         if channel in (offset_prior or {}):
             roles[f"{channel}_offset_concentration"] = f"{channel}_offset"
     if boundaries:
@@ -123,12 +144,16 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
         roles["baseline_concentration"] = "baseline_concentration"
     built = RhimeModelBuildResult(model=cached.model, variable_roles=roles, metadata=metadata)
     sampling_sampler = _sampler_for_cached_graph(
-        requested_sampler, cached_model=cached,
-        sigma_target_accept=sigma_target_accept, state_target_accept=state_target_accept,
+        requested_sampler,
+        cached_model=cached,
+        sigma_target_accept=sigma_target_accept,
+        state_target_accept=state_target_accept,
     )
     trace = sample_rhime_model(built, sampling_sampler)
     trace = _append_joint_outputs(
-        trace, cached_model=cached, observations=observations,
+        trace,
+        cached_model=cached,
+        observations=observations,
         posterior_predictive=_posterior_predictive_requested(requested_sampler),
         random_seed=_predictive_seed(requested_sampler),
     )
