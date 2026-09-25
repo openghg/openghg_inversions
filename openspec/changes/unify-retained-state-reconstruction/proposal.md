@@ -6,11 +6,11 @@ Retained-state reconstruction has two overlapping public vocabularies: basis `in
 
 ## What Changes
 
-- Expose directional native-scaling and signed-flux reconstruction on the retained basis API, using `state_to_native` and `state_to_flux` alongside the existing affine names. Keep `prolongation` for the underlying retained-to-native linear map and use *reconstruction* for the user-facing operation.
+- Expose directional native-scaling and signed-flux reconstruction on the retained basis API, using `state_to_native` and `state_to_flux` alongside the existing affine names. Use *coarse-to-fine map (prolongation)* for the underlying retained-to-native map and *reconstruction* for the user-facing operation; avoid a second public map accessor name.
 - Preserve native sources when the basis or retained flux is source-resolved. Require an explicit source sum for total-grid products; retain support for different region counts per source and shared states with source-resolved flux.
-- Use the flux retained with `BasisFunctions` as the authoritative normal postprocessing flux. Keep time-axis adaptation and any dense conversion needed for serialization at a named output boundary.
+- Use the flux retained with `BasisFunctions` as the authoritative normal postprocessing flux. Preserve current output time labels while the separate postprocessing issue [#728](https://github.com/openghg/openghg_inversions/issues/728) reviews replacing `flux_time` with `time`. Put any required eager conversion at a named application or output boundary.
 - Migrate in-tree `interpolate` callers and deprecate the overlapping methods with a documented replacement. Check direct external use before choosing removal timing; do not keep a second permanent application API solely for speculative compatibility.
-- Compare gathered, sourcewise, and expanded-prolongation application before choosing the multisource reconstruction kernel. Keep observation sensitivity separate.
+- Profile alternative calculations of the same source-preserving multisource reconstruction on representative shapes, using the current gathered, source-summed calculation as a total-output baseline. Select the implementation from those profiles, independent of how a retained state was created. Keep observation sensitivity separate.
 
 ## Capabilities
 
