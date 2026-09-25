@@ -1,7 +1,8 @@
 # OPE-184 implementation evidence
 
-The approved OpenSpec artifacts remain unchanged. This note records the caller
-inventory and profile evidence requested by tasks 1.1–1.3.
+The owner-approved design addendum records the profile and strategy decision
+required by tasks 1.2–1.3. This note retains the caller inventory and raw
+profile runs for tasks 1.1–1.3.
 
 ## Direct-use inventory
 
