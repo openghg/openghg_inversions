@@ -10,8 +10,10 @@ import pytest
 import xarray as xr
 
 from openghg_inversions._labelled_matrices import renamed_column_coordinates
+from openghg_inversions.basis.affine_flux_map import AffineFluxMap
 from openghg_inversions.basis.affine_flux_map_io import save
 from openghg_inversions.basis.basis_functions import BasisFunctions
+from openghg_inversions.basis.operators import BucketBasisOperator, MultiSourceBucketBasisOperator
 from openghg_inversions.inversion_data import RhimePreparedInputs
 from openghg_inversions.rhime.co2.co2_affine_output import (
     _bind_affine_flux_map,
@@ -306,3 +308,28 @@ def test_public_load_and_bind_checks_saved_prepared_content(tmp_path, suffix: st
     changed.save(changed_path)
     with pytest.raises(ValueError, match="content identity"):
         load_and_bind_affine_flux_map(reconstruction_path, changed_path)
+
+
+@pytest.mark.parametrize("multisource", [False, True])
+def test_saved_bucket_assignments_must_match_prepared_basis(tmp_path, multisource: bool) -> None:
+    """Matching labels and prepared identity cannot hide different bucket cells."""
+    prepared, native_mean = _multisource_prepared() if multisource else _prepared()
+    prepared_path = tmp_path / "prepared.nc"
+    reconstruction_path = tmp_path / "affine.nc"
+    prepared.save(prepared_path)
+    identity = prepared_inputs_content_id(prepared_path)
+    artifact = produce_bucket_affine_flux_map(prepared, native_mean, prepared_inputs_id=identity)
+    original = prepared.basis_functions.operator
+    if multisource:
+        altered_bases = dict(original.basis_flat)
+        altered_bases["fossil"] = altered_bases["fossil"].copy(data=[[2, 1]])
+        altered = MultiSourceBucketBasisOperator(altered_bases, state_dim=original.meta.state_dim)
+    else:
+        altered = BucketBasisOperator(
+            original.basis_flat.copy(data=[[2, 1]]), state_dim=original.meta.state_dim
+        )
+    altered_map = AffineFluxMap(native_mean, artifact.affine_map.flux, altered, original.meta.state_dim)
+    save(replace(artifact, affine_map=altered_map), reconstruction_path)
+
+    with pytest.raises(ValueError, match="bucket assignments differ"):
+        load_and_bind_affine_flux_map(reconstruction_path, prepared_path)
