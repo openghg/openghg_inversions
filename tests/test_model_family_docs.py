@@ -126,7 +126,8 @@ def test_advanced_co2_reader_path_exposes_current_boundaries() -> None:
     assert "idata = run_rhime_co2(" in recipes
     assert "idata = run_rhime_co2_cached_sigma(" in recipes
     assert recipes.count("use_bc=True") >= 2
-    assert "Not exposed by the linked prepared-input runner" in family
+    assert "Channel-labelled boundary sensitivities, priors and activity" in family
+    assert "independent global, site, or site-by-period offsets" in family
     assert "= \\mathtt{co2\\_flux\\_contribution}" in recipes
     assert "validate_complete_observation_covariance" not in recipes
 
