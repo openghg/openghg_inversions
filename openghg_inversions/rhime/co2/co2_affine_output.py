@@ -169,6 +169,16 @@ def load_and_bind_affine_flux_map(
             xr.testing.assert_equal(operator.basis_flat, prepared_operator.basis_flat)
         except AssertionError as exc:
             raise ValueError("Affine bucket assignments differ from prepared basis.") from exc
+    if isinstance(operator, (BucketBasisOperator, MultiSourceBucketBasisOperator)):
+        prepared_flux = prepared.basis_functions.flux
+        if isinstance(prepared_operator, MultiSourceBucketBasisOperator):
+            source_dim = prepared_operator.source_dim
+            if source_dim in prepared_flux.dims:
+                prepared_flux = prepared_flux.rename({source_dim: artifact.affine_map.native_dims[0]})
+        try:
+            xr.testing.assert_equal(artifact.affine_map.flux, prepared_flux)
+        except AssertionError as exc:
+            raise ValueError("Affine bucket flux differs from prepared basis flux.") from exc
     return bound
 
 
