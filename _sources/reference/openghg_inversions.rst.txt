@@ -4,7 +4,6 @@ openghg\_inversions
 .. automodule:: openghg_inversions
    :members:
    :show-inheritance:
-   :undoc-members:
 
 
 .. toctree::

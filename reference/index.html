@@ -1,0 +1,961 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>API reference &#8212; openghg_inversions  documentation</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../_static/styles/theme.css?digest=cb8930eaaf36d9849b67" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=cb8930eaaf36d9849b67" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../_static/jupyter-sphinx.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/thebelab.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=5f08cb77" />
+  
+  <!-- So that users can add custom icons -->
+  <script defer src="../_static/scripts/fontawesome.js?digest=cb8930eaaf36d9849b67"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=cb8930eaaf36d9849b67" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=cb8930eaaf36d9849b67" />
+
+    <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../_static/thebelab-helper.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'reference/index';</script>
+    <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="openghg_inversions" href="openghg_inversions.html" />
+    <link rel="prev" title="Ramsden real-data validation" href="../experimental/ramsden2022_validation.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="" />
+  
+    
+    <script src="../_static/searchtools.js"></script>
+    <script src="../_static/language_data.js"></script>
+    <script src="../searchindex.js"></script>
+  
+  </head>
+  <body data-default-mode="">
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+  
+  
+  
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header id="pst-header" class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+  
+    <p class="title logo__title">openghg_inversions  documentation</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../usage/usage.html">
+    Using OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../development/index.html">
+    Developing OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../experimental/index.html">
+    Experimental code
+  </a>
+</li>
+
+
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="#">
+    API reference
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+    <button class="pst-navbar-icon sidebar-toggle secondary-toggle" aria-label="On this page">
+      <span class="fa-solid fa-outdent"></span>
+    </button>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          
+          
+            <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../usage/usage.html">
+    Using OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../development/index.html">
+    Developing OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../experimental/index.html">
+    Experimental code
+  </a>
+</li>
+
+
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="#">
+    API reference
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+          
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item pst-sidebar-collapse"><button id="pst-collapse-sidebar-button" aria-expanded="true" aria-controls="pst-primary-sidebar">
+  <svg class="pst-icon" role="img" aria-hidden="true" focusable="false" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+    <path fill="currentColor" d="M3 15.5C2.36232 15.5 1.74874 15.2564 1.28478 14.8189C0.820828 14.3815 0.541576 13.7832 0.504167 13.1467L0.5 13L0.5 3C0.499965 2.36232 0.743605 1.74874 1.18107 1.28478C1.61854 0.820828 2.21676 0.541576 2.85333 0.504167L3 0.5L13 0.5C13.6377 0.499965 14.2513 0.743605 14.7152 1.18107C15.1792 1.61854 15.4584 2.21676 15.4958 2.85333L15.5 3L15.5 13C15.5 13.6377 15.2564 14.2513 14.8189 14.7152C14.3815 15.1792 13.7832 15.4584 13.1467 15.4958L13 15.5L3 15.5ZM3 13.8333L10.5 13.8333L10.5 2.16667L3 2.16667C2.79589 2.16669 2.59889 2.24163 2.44636 2.37726C2.29383 2.5129 2.19638 2.69979 2.1725 2.9025L2.16667 3L2.16667 13C2.16669 13.2041 2.24163 13.4011 2.37726 13.5536C2.5129 13.7062 2.69979 13.8036 2.9025 13.8275L3 13.8333ZM6.65583 10.325L6.5775 10.2558L4.91083 8.58917C4.76735 8.44567 4.68116 8.25476 4.66843 8.05223C4.65569 7.84971 4.71729 7.6495 4.84167 7.48917L4.91083 7.41083L6.5775 5.74417C6.72747 5.59471 6.9287 5.50794 7.14032 5.50148C7.35194 5.49502 7.55809 5.56935 7.7169 5.70937C7.8757 5.8494 7.97525 6.04463 7.99533 6.25539C8.01541 6.46616 7.95451 6.67667 7.825 6.84417L7.75583 6.9225L6.67917 8L7.75583 9.0775C7.89931 9.22099 7.98551 9.41191 7.99824 9.61443C8.01097 9.81695 7.94938 10.0172 7.825 10.1775L7.75583 10.2558C7.61234 10.3993 7.42142 10.4855 7.2189 10.4982C7.01638 10.511 6.81617 10.4494 6.65583 10.325Z"/>
+  </svg>
+  <span class="pst-collapse-sidebar-label">Collapse Sidebar</span>
+  <span class="pst-expand-sidebar-label">Expand Sidebar</span>
+</button></div>
+        <div class="sidebar-primary-item">
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Section Navigation">
+  <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
+  <div class="bd-toc-item navbar-nav"><ul class="nav bd-sidenav">
+<li class="toctree-l1 has-children"><a class="reference internal" href="openghg_inversions.html">openghg_inversions</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.basis.html">openghg_inversions.basis</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.algorithms.html">openghg_inversions.basis.algorithms</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.affine_flux_map.html">openghg_inversions.basis.affine_flux_map</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.basis_functions.html">openghg_inversions.basis.basis_functions</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.covariance_products.html">openghg_inversions.basis.covariance_products</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.layout.html">openghg_inversions.basis.layout</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.operators.html">openghg_inversions.basis.operators</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.prior_uncertainty.html">openghg_inversions.basis.prior_uncertainty</a></li>
+</ul>
+</details></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.config.html">openghg_inversions.config</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.config.config.html">openghg_inversions.config.config</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.config.paths.html">openghg_inversions.config.paths</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.config.version.html">openghg_inversions.config.version</a></li>
+</ul>
+</details></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.experimental.html">openghg_inversions.experimental</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="openghg_inversions.experimental.ramsden2022.html">openghg_inversions.experimental.ramsden2022</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.experimental.ramsden2022.model.html">openghg_inversions.experimental.ramsden2022.model</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.html">openghg_inversions.hbmcmc</a></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.inversion_data.html">openghg_inversions.inversion_data</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.get_data.html">openghg_inversions.inversion_data.get_data</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.getters.html">openghg_inversions.inversion_data.getters</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.preparation.html">openghg_inversions.inversion_data.preparation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.scenario.html">openghg_inversions.inversion_data.scenario</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.serialise.html">openghg_inversions.inversion_data.serialise</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.xarray_adapter.html">openghg_inversions.inversion_data.xarray_adapter</a></li>
+</ul>
+</details></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.models.html">openghg_inversions.models</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.additive_sigma.html">openghg_inversions.models.additive_sigma</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.cached_sigma.html">openghg_inversions.models.cached_sigma</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.components.html">openghg_inversions.models.components</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.coords.html">openghg_inversions.models.coords</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.fixed_error.html">openghg_inversions.models.fixed_error</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.fixed_ou.html">openghg_inversions.models.fixed_ou</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.pollution_event.html">openghg_inversions.models.pollution_event</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.priors.html">openghg_inversions.models.priors</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.scalar_sigma.html">openghg_inversions.models.scalar_sigma</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.site_sigma.html">openghg_inversions.models.site_sigma</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.state_activity.html">openghg_inversions.models.state_activity</a></li>
+</ul>
+</details></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.postprocessing.html">openghg_inversions.postprocessing</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.countries.html">openghg_inversions.postprocessing.countries</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.diagnostics.html">openghg_inversions.postprocessing.diagnostics</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.inversion_output.html">openghg_inversions.postprocessing.inversion_output</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.legacy_outputs.html">openghg_inversions.postprocessing.legacy_outputs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.make_outputs.html">openghg_inversions.postprocessing.make_outputs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.make_paris_outputs.html">openghg_inversions.postprocessing.make_paris_outputs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.merge_paris_outputs.html">openghg_inversions.postprocessing.merge_paris_outputs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.nested_paris_outputs.html">openghg_inversions.postprocessing.nested_paris_outputs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.sigma.html">openghg_inversions.postprocessing.sigma</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.stats.html">openghg_inversions.postprocessing.stats</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.utils.html">openghg_inversions.postprocessing.utils</a></li>
+</ul>
+</details></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.rhime.html">openghg_inversions.rhime</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="openghg_inversions.rhime.co2.html">openghg_inversions.rhime.co2</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_cached_sigma_model.html">openghg_inversions.rhime.co2.co2_cached_sigma_model</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_cached_sigma_runner.html">openghg_inversions.rhime.co2.co2_cached_sigma_runner</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_model.html">openghg_inversions.rhime.co2.co2_model</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_model.html">openghg_inversions.rhime.co2.co2_o2_model</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_preparation.html">openghg_inversions.rhime.co2.co2_o2_preparation</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_runner.html">openghg_inversions.rhime.co2.co2_o2_runner</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_preparation.html">openghg_inversions.rhime.co2.co2_preparation</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_runner.html">openghg_inversions.rhime.co2.co2_runner</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.configuration.html">openghg_inversions.rhime.co2.configuration</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.builders.html">openghg_inversions.rhime.builders</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.cached_sigma.html">openghg_inversions.rhime.cached_sigma</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.materialization.html">openghg_inversions.rhime.materialization</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.multisector.html">openghg_inversions.rhime.multisector</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.nested.html">openghg_inversions.rhime.nested</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.outputs.html">openghg_inversions.rhime.outputs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.params.html">openghg_inversions.rhime.params</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.preparation.html">openghg_inversions.rhime.preparation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.prepared.html">openghg_inversions.rhime.prepared</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.sampling.html">openghg_inversions.rhime.sampling</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.specs.html">openghg_inversions.rhime.specs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.stages.html">openghg_inversions.rhime.stages</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.standard.html">openghg_inversions.rhime.standard</a></li>
+</ul>
+</details></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.array_ops.html">openghg_inversions.array_ops</a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.borrowed.html">openghg_inversions.borrowed</a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.boundary_sensitivity.html">openghg_inversions.boundary_sensitivity</a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.cli.html">openghg_inversions.cli</a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.coherent_reduction.html">openghg_inversions.coherent_reduction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.convert.html">openghg_inversions.convert</a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.correlated_state.html">openghg_inversions.correlated_state</a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.filters.html">openghg_inversions.filters</a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.flux_sanitization.html">openghg_inversions.flux_sanitization</a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.inversion_inputs.html">openghg_inversions.inversion_inputs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.model_error.html">openghg_inversions.model_error</a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.native_covariance.html">openghg_inversions.native_covariance</a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.observation_error.html">openghg_inversions.observation_error</a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.serialization.html">openghg_inversions.serialization</a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.sigma.html">openghg_inversions.sigma</a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.source_covariance.html">openghg_inversions.source_covariance</a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.utils.html">openghg_inversions.utils</a></li>
+</ul>
+</details></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+      <div class="sidebar-primary-item">
+<div id="ethical-ad-placement"
+      class="flat"
+      data-ea-publisher="readthedocs"
+      data-ea-type="readthedocs-sidebar"
+      data-ea-manual="true">
+</div></div>
+  </div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">API reference</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="api-reference">
+<h1>API reference<a class="headerlink" href="#api-reference" title="Link to this heading">#</a></h1>
+<p>This reference lists the public Python interfaces for running inversions and
+composing OpenGHG Inversions workflows. Start with the
+<a class="reference internal" href="../usage/model_recipes.html"><span class="doc">model recipe chooser</span></a> if you need to decide which
+workflow fits a scientific question. The tutorials and guides explain how the
+objects fit together; the tables below link to signatures and detailed API
+documentation.</p>
+<section id="run-an-inversion">
+<h2>Run an inversion<a class="headerlink" href="#run-an-inversion" title="Link to this heading">#</a></h2>
+<p>The standard, multisector, and nested-domain runners cover complete
+acquisition-to-output workflows. Prepared-input and CO₂-family runners are
+advanced entry points for workflows that already satisfy their input
+contracts. See the
+<a class="reference internal" href="../usage/rhime_standard_tutorial.html"><span class="doc">standard tutorial</span></a>,
+<a class="reference internal" href="../usage/rhime_multisector_tutorial.html"><span class="doc">multisector tutorial</span></a>, and
+<a class="reference internal" href="../usage/nested_domains.html"><span class="doc">nested-domain tutorial</span></a>, or the
+<a class="reference internal" href="../usage/co2_model_family.html"><span class="doc">CO₂ model family guide</span></a> before selecting a
+runner.</p>
+<div class="pst-scrollable-table-container"><table class="autosummary longtable table">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.run_rhime" title="openghg_inversions.rhime.run_rhime"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.run_rhime</span></code></a></p></td>
+<td><p>Run a standard single-sector RHIME inversion.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.run_rhime_multisector" title="openghg_inversions.rhime.run_rhime_multisector"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.run_rhime_multisector</span></code></a></p></td>
+<td><p>Run a shared-basis multi-sector RHIME inversion.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.run_rhime_nested" title="openghg_inversions.rhime.run_rhime_nested"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.run_rhime_nested</span></code></a></p></td>
+<td><p>Run a standard one-source RHIME inversion on nested native grids.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.run_rhime_from_prepared_inputs" title="openghg_inversions.rhime.run_rhime_from_prepared_inputs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.run_rhime_from_prepared_inputs</span></code></a></p></td>
+<td><p>Build, sample, construct a result, and output a prepared RHIME run.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.run_rhime_nested_from_prepared_inputs" title="openghg_inversions.rhime.run_rhime_nested_from_prepared_inputs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.run_rhime_nested_from_prepared_inputs</span></code></a></p></td>
+<td><p>Build and sample nested RHIME from independently prepared native grids.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.run_rhime_co2" title="openghg_inversions.rhime.run_rhime_co2"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.run_rhime_co2</span></code></a></p></td>
+<td><p>Materialize, build, and sample the CO2 coherent-reduction model.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.run_rhime_co2_cached_sigma" title="openghg_inversions.rhime.co2.run_rhime_co2_cached_sigma"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.run_rhime_co2_cached_sigma</span></code></a></p></td>
+<td><p>Run the package-supported CO2 fixed-OU cached-amplitude recipe.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs" title="openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs</span></code></a></p></td>
+<td><p>Build and sample the CO2/O2 model from prepared scientific inputs.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="run-specifications-and-results">
+<h2>Run specifications and results<a class="headerlink" href="#run-specifications-and-results" title="Link to this heading">#</a></h2>
+<p>These objects describe the model, sampling, and output settings accepted by
+the RHIME runners.</p>
+<div class="pst-scrollable-table-container"><table class="autosummary longtable table">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.RhimeRunSpec" title="openghg_inversions.rhime.RhimeRunSpec"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.RhimeRunSpec</span></code></a></p></td>
+<td><p>Top-level run metadata for a RHIME run.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.RhimeModelSpec" title="openghg_inversions.rhime.RhimeModelSpec"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.RhimeModelSpec</span></code></a></p></td>
+<td><p>Scientific options used by the concrete RHIME model recipes.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.RhimeOutputSpec" title="openghg_inversions.rhime.RhimeOutputSpec"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.RhimeOutputSpec</span></code></a></p></td>
+<td><p>Output settings for a RHIME run.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.RhimeSampler" title="openghg_inversions.rhime.RhimeSampler"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.RhimeSampler</span></code></a></p></td>
+<td><p>PyMC sampler configuration and execution for RHIME models.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.RhimeResult" title="openghg_inversions.rhime.RhimeResult"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.RhimeResult</span></code></a></p></td>
+<td><p>Complete result of a standard or multisector RHIME recipe.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.NestedRhimeResult" title="openghg_inversions.rhime.NestedRhimeResult"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.NestedRhimeResult</span></code></a></p></td>
+<td><p>A modern RHIME result with both native-domain preparation artifacts.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.SectorSpec" title="openghg_inversions.rhime.SectorSpec"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.SectorSpec</span></code></a></p></td>
+<td><p>Configuration for one separately optimised flux sector.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.AdditiveSigmaSettings" title="openghg_inversions.rhime.AdditiveSigmaSettings"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.AdditiveSigmaSettings</span></code></a></p></td>
+<td><p>Serializable settings for additive model-data-mismatch error.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.FixedErrorSettings" title="openghg_inversions.rhime.FixedErrorSettings"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.FixedErrorSettings</span></code></a></p></td>
+<td><p>Serializable selection of reported observation error only.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.PollutionEventSettings" title="openghg_inversions.rhime.PollutionEventSettings"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.PollutionEventSettings</span></code></a></p></td>
+<td><p>Serializable settings for pollution-event-scaled model error.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="prepared-inversion-data">
+<h2>Prepared inversion data<a class="headerlink" href="#prepared-inversion-data" title="Link to this heading">#</a></h2>
+<p>Use these interfaces to prepare, save, reload, or adapt canonical inputs
+before a separate model run. The
+<a class="reference internal" href="../usage/rhime.html"><span class="doc">RHIME configuration and prepared-input reference</span></a>
+documents the expected variables, dimensions, and coordinates.</p>
+<div class="pst-scrollable-table-container"><table class="autosummary longtable table">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.inversion_data.html#openghg_inversions.inversion_data.RhimeMergedData" title="openghg_inversions.inversion_data.RhimeMergedData"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.inversion_data.RhimeMergedData</span></code></a></p></td>
+<td><p>Merged RHIME data and complete site-aligned metadata between stages.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.inversion_data.html#openghg_inversions.inversion_data.RhimePreparedInputs" title="openghg_inversions.inversion_data.RhimePreparedInputs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.inversion_data.RhimePreparedInputs</span></code></a></p></td>
+<td><p>Modern RHIME preparation and durable serialization contract.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.inversion_data.html#openghg_inversions.inversion_data.prepare_rhime_inputs" title="openghg_inversions.inversion_data.prepare_rhime_inputs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.inversion_data.prepare_rhime_inputs</span></code></a></p></td>
+<td><p>Prepare modern RHIME inputs without exposing legacy fixedbasis containers.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.inversion_data.html#openghg_inversions.inversion_data.prepare_rhime_inputs_from_xarray" title="openghg_inversions.inversion_data.prepare_rhime_inputs_from_xarray"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.inversion_data.prepare_rhime_inputs_from_xarray</span></code></a></p></td>
+<td><p>Create canonical RHIME inputs from source-neutral xarray site data.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.inversion_data.html#openghg_inversions.inversion_data.load_merged_data" title="openghg_inversions.inversion_data.load_merged_data"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.inversion_data.load_merged_data</span></code></a></p></td>
+<td><p>Load <cite>fp_all</cite> dictionary from a file in <cite>merged_data_dir</cite>.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.NestedRhimePreparedInputs" title="openghg_inversions.rhime.NestedRhimePreparedInputs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.NestedRhimePreparedInputs</span></code></a></p></td>
+<td><p>Prepared outer, inner, and combined nested-domain inputs.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.combine_nested_rhime_inputs" title="openghg_inversions.rhime.combine_nested_rhime_inputs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.combine_nested_rhime_inputs</span></code></a></p></td>
+<td><p>Combine independently prepared native grids at the sensitivity boundary.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2PreparedInputs" title="openghg_inversions.rhime.co2.Co2PreparedInputs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.Co2PreparedInputs</span></code></a></p></td>
+<td><p>Durable coherent-reduction inputs for the CO2 model recipes.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2O2PreparedInputs" title="openghg_inversions.rhime.co2.Co2O2PreparedInputs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.Co2O2PreparedInputs</span></code></a></p></td>
+<td><p>Backend-neutral joint inputs with shared land and split-ocean states.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.prepare_co2_inputs" title="openghg_inversions.rhime.co2.prepare_co2_inputs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.prepare_co2_inputs</span></code></a></p></td>
+<td><p>Map one coherent Gaussian reduction into the CO2 replay contract.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.prepare_co2_o2_inputs" title="openghg_inversions.rhime.co2.prepare_co2_o2_inputs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.prepare_co2_o2_inputs</span></code></a></p></td>
+<td><p>Validate coherent-reduction channel products and form one joint likelihood.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="basis-construction-and-state-geometry">
+<h2>Basis construction and state geometry<a class="headerlink" href="#basis-construction-and-state-geometry" title="Link to this heading">#</a></h2>
+<p>The high-level basis interfaces generate, load, and apply basis functions.
+<code class="docutils literal notranslate"><span class="pre">AffineFluxMap</span></code> reconstructs retained-state-conditional native scaling and
+flux fields. The operator and layout classes expose the lower-level labelled
+state geometry used by custom preparation workflows. See
+<a class="reference internal" href="../usage/grouped_basis_layout.html"><span class="doc">grouped basis and state metadata</span></a> for an
+executed layout example and <a class="reference internal" href="../usage/affine_flux_map.html"><span class="doc">affine native-flux reconstruction</span></a> for the reconstruction contract.</p>
+<div class="pst-scrollable-table-container"><table class="autosummary longtable table">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.BasisFunctions" title="openghg_inversions.basis.BasisFunctions"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.basis.BasisFunctions</span></code></a></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.AffineFluxMap" title="openghg_inversions.basis.AffineFluxMap"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.basis.AffineFluxMap</span></code></a></p></td>
+<td><p>Reconstruct retained-state-conditional native scaling and flux means.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.make_basis_functions" title="openghg_inversions.basis.make_basis_functions"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.basis.make_basis_functions</span></code></a></p></td>
+<td><p>Create or load retained emissions basis functions.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.load_basis_functions" title="openghg_inversions.basis.load_basis_functions"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.basis.load_basis_functions</span></code></a></p></td>
+<td><p>Load a saved basis artifact as retained <code class="docutils literal notranslate"><span class="pre">BasisFunctions</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.basis_functions_from_fp_all_flat_basis" title="openghg_inversions.basis.basis_functions_from_fp_all_flat_basis"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.basis.basis_functions_from_fp_all_flat_basis</span></code></a></p></td>
+<td><p>Compatibility adapter that constructs a basis object from flat basis data.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.bucket_basis_from_weights" title="openghg_inversions.basis.bucket_basis_from_weights"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.basis.bucket_basis_from_weights</span></code></a></p></td>
+<td><p>Create a legacy weighted bucket basis field from precomputed 2D weights.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.quadtree_basis_from_weights" title="openghg_inversions.basis.quadtree_basis_from_weights"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.basis.quadtree_basis_from_weights</span></code></a></p></td>
+<td><p>Create a quadtree basis field from precomputed 2D weights.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.region_constrained_basis_from_weights" title="openghg_inversions.basis.region_constrained_basis_from_weights"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.basis.region_constrained_basis_from_weights</span></code></a></p></td>
+<td><p>Create constrained basis labels from weights and region classes.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.project_basis_prior_stdev" title="openghg_inversions.basis.project_basis_prior_stdev"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.basis.project_basis_prior_stdev</span></code></a></p></td>
+<td><p>Project independent grid-cell scale uncertainty onto basis states.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.calibrate_basis_prior_stdev" title="openghg_inversions.basis.calibrate_basis_prior_stdev"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.basis.calibrate_basis_prior_stdev</span></code></a></p></td>
+<td><p>Calibrate grid-cell and basis-state prior widths to aggregate targets.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.basis.operators.html#openghg_inversions.basis.operators.BasisOperator" title="openghg_inversions.basis.operators.BasisOperator"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.basis.operators.BasisOperator</span></code></a></p></td>
+<td><p>Abstract basis operator.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.basis.operators.html#openghg_inversions.basis.operators.BucketBasisOperator" title="openghg_inversions.basis.operators.BucketBasisOperator"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.basis.operators.BucketBasisOperator</span></code></a></p></td>
+<td><p>Map one integer-labelled grid basis onto a retained state.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.basis.operators.html#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator" title="openghg_inversions.basis.operators.MultiSourceBucketBasisOperator"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.basis.operators.MultiSourceBucketBasisOperator</span></code></a></p></td>
+<td><p>Combine source-specific flat bases into one ragged retained state.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.basis.layout.html#openghg_inversions.basis.layout.BasisPartition" title="openghg_inversions.basis.layout.BasisPartition"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.basis.layout.BasisPartition</span></code></a></p></td>
+<td><p>Partition-local basis labels and their semantic group name.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.basis.layout.html#openghg_inversions.basis.layout.BasisLayout" title="openghg_inversions.basis.layout.BasisLayout"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.basis.layout.BasisLayout</span></code></a></p></td>
+<td><p>Combine disjoint basis partitions into one flat label map.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.basis.layout.html#openghg_inversions.basis.layout.BasisLayoutResult" title="openghg_inversions.basis.layout.BasisLayoutResult"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.basis.layout.BasisLayoutResult</span></code></a></p></td>
+<td><p>Combined flat basis labels plus raw-label keyed state metadata.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="covariance-and-coherent-reduction">
+<h2>Covariance and coherent reduction<a class="headerlink" href="#covariance-and-coherent-reduction" title="Link to this heading">#</a></h2>
+<p>These lower-level interfaces construct labelled native covariance actions,
+project them into retained state space, and form coherent reduced Gaussian
+models. Read the <a class="reference internal" href="../usage/native_covariance.html"><span class="doc">native covariance guide</span></a> and
+<a class="reference internal" href="../usage/coherent_reduction.html"><span class="doc">coherent reduction guide</span></a> for their
+mathematical contracts and eager-computation boundaries.</p>
+<div class="pst-scrollable-table-container"><table class="autosummary longtable table">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.native_covariance.html#openghg_inversions.native_covariance.NativeCovarianceAction" title="openghg_inversions.native_covariance.NativeCovarianceAction"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.native_covariance.NativeCovarianceAction</span></code></a></p></td>
+<td><p>Structural interface for a labelled self-adjoint PSD covariance action.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.native_covariance.html#openghg_inversions.native_covariance.InvertibleNativeCovarianceAction" title="openghg_inversions.native_covariance.InvertibleNativeCovarianceAction"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.native_covariance.InvertibleNativeCovarianceAction</span></code></a></p></td>
+<td><p>Positive-definite native covariance action with a compatible inverse.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.native_covariance.html#openghg_inversions.native_covariance.SeparableExponentialCovariance" title="openghg_inversions.native_covariance.SeparableExponentialCovariance"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.native_covariance.SeparableExponentialCovariance</span></code></a></p></td>
+<td><p>Separable exponential covariance over labelled latitude and longitude.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.source_covariance.html#openghg_inversions.source_covariance.IndependentSourceCovariance" title="openghg_inversions.source_covariance.IndependentSourceCovariance"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.source_covariance.IndependentSourceCovariance</span></code></a></p></td>
+<td><p>Block-diagonal native covariance over an ordered source mapping.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.NativeCovarianceProducts" title="openghg_inversions.basis.NativeCovarianceProducts"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.basis.NativeCovarianceProducts</span></code></a></p></td>
+<td><p>Labelled in-memory product blocks induced by one retained restriction.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.RetainedProjection" title="openghg_inversions.basis.RetainedProjection"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.basis.RetainedProjection</span></code></a></p></td>
+<td><p>A labelled retained restriction selected by one strategy.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.PreserveBucketProlongation" title="openghg_inversions.basis.PreserveBucketProlongation"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.basis.PreserveBucketProlongation</span></code></a></p></td>
+<td><p>Derive <code class="docutils literal notranslate"><span class="pre">Pi_U</span></code> so covariance-weighted prolongation equals <code class="docutils literal notranslate"><span class="pre">U_bucket</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.project_native_covariance" title="openghg_inversions.basis.project_native_covariance"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.basis.project_native_covariance</span></code></a></p></td>
+<td><p>Compute coherent labelled native-covariance products eagerly.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.coherent_reduction.html#openghg_inversions.coherent_reduction.CoherentGaussianReduction" title="openghg_inversions.coherent_reduction.CoherentGaussianReduction"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.coherent_reduction.CoherentGaussianReduction</span></code></a></p></td>
+<td><p>One exact, labelled native-to-retained Gaussian reduction.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.coherent_reduction.html#openghg_inversions.coherent_reduction.reduce_native_gaussian" title="openghg_inversions.coherent_reduction.reduce_native_gaussian"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.coherent_reduction.reduce_native_gaussian</span></code></a></p></td>
+<td><p>Prepare the exact centred Gaussian model for one <code class="docutils literal notranslate"><span class="pre">B/H/Pi/m</span></code> set.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.AggregationError" title="openghg_inversions.observation_error.AggregationError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.observation_error.AggregationError</span></code></a></p></td>
+<td><p>Validated aggregation-error representation selected for a likelihood.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.prepare_low_rank_aggregation_error" title="openghg_inversions.observation_error.prepare_low_rank_aggregation_error"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.observation_error.prepare_low_rank_aggregation_error</span></code></a></p></td>
+<td><p>Approximate a labelled covariance by a low-rank-plus-diagonal form.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.resolve_aggregation_error" title="openghg_inversions.observation_error.resolve_aggregation_error"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.observation_error.resolve_aggregation_error</span></code></a></p></td>
+<td><p>Validate and select an aggregation-error covariance representation.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="compose-a-rhime-model">
+<h2>Compose a RHIME model<a class="headerlink" href="#compose-a-rhime-model" title="Link to this heading">#</a></h2>
+<p>These public components support model recipes that need a different
+combination of states, priors, coordinates, or likelihoods. The
+<a class="reference internal" href="../usage/concrete_rhime_model.html"><span class="doc">concrete RHIME model guide</span></a> explains the
+component boundary and when to copy a complete recipe instead.</p>
+<div class="pst-scrollable-table-container"><table class="autosummary longtable table">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.models.html#openghg_inversions.models.StateActivity" title="openghg_inversions.models.StateActivity"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.models.StateActivity</span></code></a></p></td>
+<td><p>Describe which states are sampled and how inactive states are fixed.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.models.html#openghg_inversions.models.PreparedLinearSensitivity" title="openghg_inversions.models.PreparedLinearSensitivity"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.models.PreparedLinearSensitivity</span></code></a></p></td>
+<td><p>A retained sensitivity matrix and its lossless full-state mapping.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.models.html#openghg_inversions.models.prepare_linear_sensitivity" title="openghg_inversions.models.prepare_linear_sensitivity"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.models.prepare_linear_sensitivity</span></code></a></p></td>
+<td><p>Remove exact-zero columns once and retain their full-state mapping.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.models.html#openghg_inversions.models.CorrelatedLognormalPrior" title="openghg_inversions.models.CorrelatedLognormalPrior"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.models.CorrelatedLognormalPrior</span></code></a></p></td>
+<td><p>Validated labelled moments for one correlated positive state vector.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.models.html#openghg_inversions.models.parse_prior" title="openghg_inversions.models.parse_prior"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.models.parse_prior</span></code></a></p></td>
+<td><p>Create a continuous PyMC prior from a prior-parameter dictionary.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.models.html#openghg_inversions.models.add_model_data" title="openghg_inversions.models.add_model_data"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.models.add_model_data</span></code></a></p></td>
+<td><p>Add labelled xarray data to the active PyMC model.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.models.html#openghg_inversions.models.add_linear_component" title="openghg_inversions.models.add_linear_component"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.models.add_linear_component</span></code></a></p></td>
+<td><p>Add one independent labelled linear component.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.models.html#openghg_inversions.models.add_linked_linear_component" title="openghg_inversions.models.add_linked_linear_component"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.models.add_linked_linear_component</span></code></a></p></td>
+<td><p>Apply a prepared sensitivity to an already constructed linked state.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.models.html#openghg_inversions.models.add_correlated_lognormal_state" title="openghg_inversions.models.add_correlated_lognormal_state"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.models.add_correlated_lognormal_state</span></code></a></p></td>
+<td><p>Add a whitened correlated LogNormal state to the active PyMC model.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.models.html#openghg_inversions.models.add_offset_component" title="openghg_inversions.models.add_offset_component"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.models.add_offset_component</span></code></a></p></td>
+<td><p>Add a global, site-only, or site-by-period offset component.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.models.html#openghg_inversions.models.add_sigma_component" title="openghg_inversions.models.add_sigma_component"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.models.add_sigma_component</span></code></a></p></td>
+<td><p>Register a latent sigma component and align it to observations.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.models.html#openghg_inversions.models.add_site_sigma_gaussian_likelihood" title="openghg_inversions.models.add_site_sigma_gaussian_likelihood"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.models.add_site_sigma_gaussian_likelihood</span></code></a></p></td>
+<td><p>Add a Gaussian likelihood with one additive mismatch scale per site.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="outputs-and-serialisation">
+<h2>Outputs and serialisation<a class="headerlink" href="#outputs-and-serialisation" title="Link to this heading">#</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">InversionOutput</span></code> is the canonical result container used by RHIME output
+helpers. Serialisation helpers preserve the labelled indexes required by
+prepared inputs and inference data.</p>
+<div class="pst-scrollable-table-container"><table class="autosummary longtable table">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.postprocessing.inversion_output.html#openghg_inversions.postprocessing.inversion_output.InversionOutput" title="openghg_inversions.postprocessing.inversion_output.InversionOutput"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.postprocessing.inversion_output.InversionOutput</span></code></a></p></td>
+<td><p>Modern RHIME inversion output contract.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.postprocessing.countries.html#openghg_inversions.postprocessing.countries.Countries" title="openghg_inversions.postprocessing.countries.Countries"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.postprocessing.countries.Countries</span></code></a></p></td>
+<td><p>Class to load country files and create country traces.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.postprocessing.make_outputs.html#openghg_inversions.postprocessing.make_outputs.basic_output" title="openghg_inversions.postprocessing.make_outputs.basic_output"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.postprocessing.make_outputs.basic_output</span></code></a></p></td>
+<td><p>Create basic output with concentrations, flux totals, and country totals.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.postprocessing.make_outputs.html#openghg_inversions.postprocessing.make_outputs.make_flux_outputs" title="openghg_inversions.postprocessing.make_outputs.make_flux_outputs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.postprocessing.make_outputs.make_flux_outputs</span></code></a></p></td>
+<td><p>Return dataset of stats for fluxes and scaling factors.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.postprocessing.make_outputs.html#openghg_inversions.postprocessing.make_outputs.make_country_outputs" title="openghg_inversions.postprocessing.make_outputs.make_country_outputs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.postprocessing.make_outputs.make_country_outputs</span></code></a></p></td>
+<td><p>Calculate country emission stats.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.serialization.html#openghg_inversions.serialization.save_datatree" title="openghg_inversions.serialization.save_datatree"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.serialization.save_datatree</span></code></a></p></td>
+<td><p>Save a DataTree to NetCDF or Zarr.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.serialization.html#openghg_inversions.serialization.open_datatree_loaded" title="openghg_inversions.serialization.open_datatree_loaded"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.serialization.open_datatree_loaded</span></code></a></p></td>
+<td><p>Open and eagerly load a DataTree artifact.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.serialization.html#openghg_inversions.serialization.save_inferencedata" title="openghg_inversions.serialization.save_inferencedata"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.serialization.save_inferencedata</span></code></a></p></td>
+<td><p>Save InferenceData through the declared MultiIndex boundary.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.serialization.html#openghg_inversions.serialization.load_inferencedata" title="openghg_inversions.serialization.load_inferencedata"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.serialization.load_inferencedata</span></code></a></p></td>
+<td><p>Load InferenceData and restore every valid declared MultiIndex.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="legacy-compatibility-apis">
+<h2>Legacy compatibility APIs<a class="headerlink" href="#legacy-compatibility-apis" title="Link to this heading">#</a></h2>
+<p>The direct fixed-basis and hierarchical Bayesian Markov chain Monte Carlo
+(HBMCMC) Python APIs were removed in 0.8. Existing fixedbasis-style INI files
+can use the transitional <a class="reference internal" href="openghg_inversions.hbmcmc.run_hbmcmc.html"><span class="doc">HBMCMC compatibility wrapper</span></a>, which translates supported options
+and calls RHIME. See <a class="reference internal" href="../usage/legacy_and_migration.html"><span class="doc">legacy interfaces and migration</span></a> for replacements and unsupported interfaces.</p>
+</section>
+<section id="detailed-module-reference">
+<h2>Detailed module reference<a class="headerlink" href="#detailed-module-reference" title="Link to this heading">#</a></h2>
+<p>The generated module pages contain the complete autodoc reference, including
+lower-level helpers and compatibility modules. Use the curated tables above
+for the supported workflow entry points, or
+<a class="reference internal" href="openghg_inversions.html"><span class="doc">browse the complete module index</span></a> when you need a
+module-level view.</p>
+<div class="toctree-wrapper compound">
+</div>
+</section>
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="../experimental/ramsden2022_validation.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">Ramsden real-data validation</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="openghg_inversions.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">openghg_inversions</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <dialog id="pst-secondary-sidebar-modal"></dialog>
+                <div id="pst-secondary-sidebar" class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#run-an-inversion">Run an inversion</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#run-specifications-and-results">Run specifications and results</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#prepared-inversion-data">Prepared inversion data</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#basis-construction-and-state-geometry">Basis construction and state geometry</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#covariance-and-coherent-reduction">Covariance and coherent reduction</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#compose-a-rhime-model">Compose a RHIME model</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#outputs-and-serialisation">Outputs and serialisation</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#legacy-compatibility-apis">Legacy compatibility APIs</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#detailed-module-reference">Detailed module reference</a></li>
+</ul>
+  </nav></div>
+
+  <div class="sidebar-secondary-item">
+
+  <div class="tocsection sourcelink">
+    <a href="../_sources/reference/index.rst.txt">
+      <i class="fa-solid fa-file-lines"></i> Show Source
+    </a>
+  </div>
+</div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../_static/scripts/bootstrap.js?digest=cb8930eaaf36d9849b67"></script>
+<script defer src="../_static/scripts/pydata-sphinx-theme.js?digest=cb8930eaaf36d9849b67"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 2025, Eric Saboya and Brendan Murphy.
+      <br/>
+    
+  </p>
+</div>
+      
+        <div class="footer-item">
+
+  <p class="sphinx-version">
+    Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 9.1.0.
+    <br/>
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  <!-- # L10n: Setting the PST URL as an argument as this does not need to be localized -->
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.21.0.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+  </body>
+</html>
