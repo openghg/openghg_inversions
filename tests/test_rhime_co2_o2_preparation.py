@@ -227,6 +227,30 @@ def test_canonicalizes_sensitivity_state_metadata_without_mutating_inputs() -> N
         xr.testing.assert_identical(inputs[name], originals[name])
 
 
+@pytest.mark.parametrize("gpp_sources", [("GPP", "GPP"), ("gpp", "gpp"), ("GPP", "gpp")])
+def test_source_spelling_is_consistent_across_retained_states(gpp_sources) -> None:
+    inputs = _inputs()
+    state = ["gpp:1", "gpp:2", "ter:1", "ff:1", "co2-ocean:1", "o2-ocean:1"]
+    sources = [*gpp_sources, "TER", "FF", "ocean", "ocean"]
+    prior = inputs["retained_prior"]
+    mean = prior.mean.isel(state=[0, 0, 1, 2, 3, 4]).assign_coords(
+        state=state, source=("state", sources)
+    )
+    inputs["retained_prior"] = CorrelatedLognormalPrior(mean, np.eye(6) * 0.01)
+    for name in ("co2_sensitivity", "o2_sensitivity"):
+        inputs[name] = inputs[name].isel(state=[0, 0, 1, 2, 3, 4]).assign_coords(state=state)
+    inputs["o2_co2_flux_ratio"] = inputs["o2_co2_flux_ratio"].isel(state=[0, 0, 1, 2]).assign_coords(
+        state=state[:4], source=("state", sources[:4])
+    )
+
+    if gpp_sources[0] != gpp_sources[1]:
+        with pytest.raises(ValueError, match="source labels.*consistent spelling"):
+            prepare_co2_o2_inputs(**inputs)
+    else:
+        prepared = prepare_co2_o2_inputs(**inputs)
+        xr.testing.assert_identical(prepared.retained_prior.mean, mean)
+
+
 def _with_state_index(array: xr.DataArray, index: pd.MultiIndex) -> xr.DataArray:
     """Return an array with one replacement state index for boundary tests."""
     result = array.reset_index("state")
