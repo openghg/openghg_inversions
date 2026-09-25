@@ -12,7 +12,7 @@ import pymc as pm
 import pytensor.tensor as pt
 import xarray as xr
 
-from openghg_inversions.array_ops import concat_gather_data_arrays
+from openghg_inversions.array_ops import concat_gather_data_arrays, select_gathered_data_array
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.models import (
     StateActivity,
@@ -32,7 +32,6 @@ from openghg_inversions.models.components import (
     add_linear_component,
     add_model_data,
 )
-from openghg_inversions.models.coords import add_coords
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR
 from .co2_model import _normalise_offset_args
@@ -262,12 +261,17 @@ def _add_co2_o2_baseline_components(
             boundaries.append(result.output)
         if channel in (offset_prior or {}):
             native_dim = str(sensitivity.dims[0])
-            selected = observations.sel(species=channel).rename({"channel_observation": native_dim})
+            selected = select_gathered_data_array(
+                observations,
+                key=channel,
+                key_dim="species",
+                ragged_dim="channel_observation",
+                stack_dim=output_dim,
+            ).rename({output_dim: native_dim})
             selected = selected.drop_vars(
                 [name for name in selected.coords if name not in (native_dim, "site", "time")]
             )
             # Native rows retain site/time metadata from channel preparation.
-            add_coords({native_dim: selected[native_dim]})
             frequency, drop_first, per_site = _normalise_offset_args((offset_args or {}).get(channel))
             result = _add_offset_component_result(
                 selected,

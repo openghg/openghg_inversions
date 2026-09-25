@@ -480,6 +480,7 @@ non-null::
        co2_o2_aggregation_covariance=co2_o2_aggregation_covariance,
        o2_aggregation_covariance=o2_aggregation_covariance,
        retained_prior=retained_prior,
+       boundary_sensitivity={"co2": H_bc_co2},
        co2_units=setup.preparation_kwargs["co2_units"],
        o2_units=setup.preparation_kwargs["o2_units"],
    )
@@ -654,7 +655,7 @@ Partition that state as
 
 where :math:`\alpha_{shared}` contains the gross primary production (GPP),
 terrestrial ecosystem respiration (TER), and fossil-fuel states.
-The joint affine model is
+The joint coherent flux contribution is
 
 .. math::
 
@@ -667,18 +668,32 @@ The joint affine model is
    b_{joint} =
    \begin{bmatrix} b_{CO_2} \\ b_{O_2} \end{bmatrix},
    \qquad
-   \mu_{joint} = b_{joint} + H_{joint}\alpha.
+   \mu_{flux} = b_{joint} + H_{joint}\alpha.
 
 Equivalently, coherent reduction may be written in centred or affine form,
 
 .. math::
 
-   \mu_{joint}
+   \mu_{flux}
    = \mu_{prior} + H_{joint}(\alpha - m_\alpha)
    = (\mu_{prior} - H_{joint}m_\alpha) + H_{joint}\alpha.
 
 The prepared ``fixed_prior_contribution`` is the parenthesized affine
-intercept, not the complete prior-forward concentration.
+intercept, not the complete prior-forward concentration. Each channel may
+add an independent boundary scaling state :math:`\beta_c` through its native
+boundary sensitivity :math:`H_{bc,c}`, and an observation-aligned offset
+:math:`o_c`. The complete likelihood mean is
+
+.. math::
+
+   \mu_{joint} = \mu_{flux}
+   + \begin{bmatrix} H_{bc,CO_2}\beta_{CO_2} \\ H_{bc,O_2}\beta_{O_2} \end{bmatrix}
+   + \begin{bmatrix} o_{CO_2} \\ o_{O_2} \end{bmatrix}.
+
+An omitted channel term is zero. These boundary and offset contributions form
+the optional reporting baseline; they remain distinct from the coherent affine
+intercept and shared or tracer-specific flux states. Baseline terms currently
+require identical channel units.
 
 Thus this is a row-stacked, block-sparse sensitivity acting on one state vector,
 not two independent block-diagonal models. Its fixed-error likelihood is
@@ -686,7 +701,7 @@ not two independent block-diagonal models. Its fixed-error likelihood is
 .. math::
 
    \begin{bmatrix} y_{CO_2} \\ y_{O_2} \end{bmatrix}
-   \mid \alpha
+   \mid \alpha, \beta_{CO_2}, \beta_{O_2}, o_{CO_2}, o_{O_2}
    \sim \mathcal N\!\left(
       \mu_{joint},
       \begin{bmatrix}

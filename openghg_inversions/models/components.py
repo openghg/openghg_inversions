@@ -653,6 +653,13 @@ def _add_offset_component_result(
     """Build one offset component and return its labelled design and graph terms."""
     output_dim = str(output_dim)
     output_coord = observations.coords[output_dim]
+    if namespace:
+        output_index = observations.indexes.get(output_dim)
+        if isinstance(output_index, pd.MultiIndex):
+            output_coord = xr.Coordinates.from_pandas_multiindex(
+                output_index.set_names([f"{namespace}{name}" for name in output_index.names]), output_dim
+            )[output_dim]
+        add_coords({output_dim: output_coord})
     term_dim = f"{namespace}offset_term"
     if not per_site:
         if offset_freq is not None:
@@ -742,13 +749,20 @@ def _add_offset_component_result(
         name="offset_design",
     )
     if namespace:
-        site_indicator = site_indicator.rename({
-            name: f"{namespace}{name}" for name in site_indicator.coords if name != output_dim
-        })
-        if indicator is not None:
-            indicator = indicator.rename({
-                name: f"{namespace}{name}" for name in indicator.coords if name != output_dim
+        if isinstance(observations.indexes.get(output_dim), pd.MultiIndex):
+            site_indicator = site_indicator.reset_index(output_dim, drop=True).assign_coords(
+                {output_dim: output_coord}
+            )
+            if indicator is not None:
+                indicator = indicator.reset_index(output_dim, drop=True).assign_coords({output_dim: output_coord})
+        else:
+            site_indicator = site_indicator.rename({
+                name: f"{namespace}{name}" for name in site_indicator.coords if name != output_dim
             })
+            if indicator is not None:
+                indicator = indicator.rename({
+                    name: f"{namespace}{name}" for name in indicator.coords if name != output_dim
+                })
     add_model_data(site_indicator, str(site_indicator.name))
     if indicator is not None:
         add_model_data(indicator.transpose(output_dim), str(indicator.name))
