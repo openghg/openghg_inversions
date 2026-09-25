@@ -76,6 +76,7 @@ documents the expected variables, dimensions, and coordinates.
    openghg_inversions.rhime.co2.produce_bucket_affine_flux_map
    openghg_inversions.rhime.co2.import_explicit_affine_flux_map
    openghg_inversions.rhime.co2.load_and_bind_affine_flux_map
+   openghg_inversions.rhime.co2.prepared_inputs_content_id
    openghg_inversions.rhime.co2.Co2O2PreparedInputs
    openghg_inversions.rhime.co2.prepare_co2_inputs
    openghg_inversions.rhime.co2.prepare_co2_o2_inputs

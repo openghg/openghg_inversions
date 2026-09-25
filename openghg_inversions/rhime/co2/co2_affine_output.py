@@ -153,7 +153,23 @@ def load_and_bind_affine_flux_map(
     prepared_inputs_id = prepared_inputs_content_id(prepared_inputs_path)
     prepared = Co2PreparedInputs.load(prepared_inputs_path)
     artifact = load(reconstruction_path)
-    return _bind_affine_flux_map(artifact, prepared, prepared_inputs_id=prepared_inputs_id)
+    bound = _bind_affine_flux_map(artifact, prepared, prepared_inputs_id=prepared_inputs_id)
+    operator = artifact.affine_map.prolongation
+    prepared_operator = prepared.basis_functions.operator
+    if isinstance(operator, MultiSourceBucketBasisOperator):
+        for source in operator.source_labels:
+            try:
+                xr.testing.assert_equal(operator.basis_flat[source], prepared_operator.basis_flat[source])
+            except AssertionError as exc:
+                raise ValueError(
+                    f"Affine bucket assignments differ from prepared source {source!r}."
+                ) from exc
+    elif isinstance(operator, BucketBasisOperator):
+        try:
+            xr.testing.assert_equal(operator.basis_flat, prepared_operator.basis_flat)
+        except AssertionError as exc:
+            raise ValueError("Affine bucket assignments differ from prepared basis.") from exc
+    return bound
 
 
 def _artifact(
