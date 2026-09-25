@@ -59,8 +59,9 @@ Current support
    * - Outputs and postprocessing
      - Returns annotated ``InferenceData``. Use the documented serialization
        boundary; the complete RHIME output pipeline is not integrated.
-     - Returns annotated ``InferenceData``. Use the documented serialization
-       boundary; family-specific output and postprocessing are not integrated.
+     - Returns annotated ``InferenceData``. A bounded Python adapter produces
+       separate CO2/O2 PARIS concentration products and supported native flux
+       products; staged output integration remains future work.
    * - Validation and acceptance
      - Coherent preparation, dedicated serialization, model construction,
        configuration resolution, replay, provenance, and cached-sampler

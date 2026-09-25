@@ -757,6 +757,76 @@ Persist sampled CO2/O2 results with
 with :func:`openghg_inversions.serialization.load_inferencedata`; this is the
 declared boundary for preserving gathered MultiIndex coordinates.
 
+Separate linked PARIS products
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+:func:`~openghg_inversions.postprocessing.linked_paris_outputs.make_co2_o2_paris_outputs`
+projects one linked posterior into separate CO2 and O2 products. It supports
+``template_version="latest"``: concentration v04 and native flux v03. The
+adapter operates after sampling, using the prepared inputs and restored trace;
+it does not add a staged model route::
+
+   from openghg_inversions.postprocessing.linked_paris_outputs import (
+       make_co2_o2_paris_outputs,
+   )
+
+   products = make_co2_o2_paris_outputs(
+       idata, prepared, obs_avg_period="4h", output_path="paris",
+   )
+   co2_concentration = products["co2"]["concentration"]
+   o2_concentration = products["o2"]["concentration"]
+
+Observations require site labels and datetime coordinates marking interval
+starts. Both channels must represent dry-air mole fractions convertible to
+``mol mol-1``. Delta(O2/N2) per-meg observations cannot faithfully use this
+variable meaning and raise an explicit error. Prior flux-scale draws and
+prior draws for selected boundary/offset terms are required; keep the sampler's
+prior-predictive sampling enabled. Prior and posterior may have different
+numbers of draws or chains. Fixed states use their actual prior draws rather
+than replacing them with the unconstrained prior mean.
+
+Each concentration file contains posterior predictions, observed-minus-modelled
+residuals, selected source contributions, the coherent affine contribution,
+and the boundary/offset contribution. Shared GPP, TER, and fossil-fuel states
+are reused; each ocean term selects only its tracer's state. The v04
+``mf_bc_*`` fields include boundary plus bias, while ``mf_bias_*`` reports the
+bias subset. The affine term is separately named ``mf_coherent_prior`` and is
+not silently classified as boundary. Thus the total closes as the sum of
+source terms, affine contribution, and ``mf_bc_*``; do not add ``mf_bias_*``
+again. Residual and affine variables are explicitly named extensions to the
+existing template.
+
+For draw-level diagnostics,
+:func:`~openghg_inversions.postprocessing.linked_paris_outputs.reconstruct_co2_o2_concentrations`
+returns channel-labelled components in their original concentration units.
+Posterior chain/draw labels remain shared across both channels; prior sample
+axes are named ``prior_chain`` and ``prior_draw``. Separate files contain
+marginal summaries, not independently fitted posteriors. Keep the original
+linked trace to retain cross-channel posterior covariance and the joint
+likelihood. Both products record the template version, selected species,
+scientific roles, preparation provenance, and signed-ratio provenance.
+
+Native flux products are optional. Supply ``native_flux_bases={"co2": co2_basis,
+"o2": o2_basis}`` with ``start_date``, ``end_date``, and the usual country-file
+arguments. Each supported single-source total-flux ``BasisFunctions`` uses a bucket
+operator and must
+use exactly the full retained state labels and a prior flux convertible to
+``mol m-2 s-1``. Its response to the other tracer's private states must be zero.
+O2 signs and any spatial oxidation ratios must already be present in its
+native prior flux. The adapter passes the same joint trace to the existing
+PARIS flux/country writer; it never reconstructs native flux from a
+concentration sensitivity or invents scalar oxidation ratios.
+
+This native path reports uncertainty conditional on the retained state,
+recorded in the product metadata. It does not reconstruct unresolved native
+conditional covariance, overlapping source grids, or a coherent conditional
+native map. Those representations require an explicit native reconstruction
+contract and are outside this bounded adapter. No combined two-tracer PARIS
+schema is emitted.
+
+Signed oxidation ratios
+~~~~~~~~~~~~~~~~~~~~~~~
+
 The signed oxidation ratio is fixed in this recipe and already folded into the
 shared-state O2 sensitivity. When it is representable by retained-state or
 source-resolved values :math:`R`,
