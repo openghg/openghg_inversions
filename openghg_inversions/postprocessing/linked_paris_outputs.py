@@ -108,7 +108,7 @@ def reconstruct_co2_o2_concentrations(
                 data[f"{component}_{when}"] = value
                 if when == "prior":
                     total_prior = total_prior + value
-            selected = prepared.retained_prior.mean.tracer_scope.isin(["shared", species])
+            selected = prepared.retained_prior.mean.tracer_scope.str.lower().isin(["shared", species])
             for source in np.unique(prepared.retained_prior.mean.source.values[selected.values]):
                 states = np.flatnonzero((selected & (prepared.retained_prior.mean.source == source)).values)
                 term = xr.dot(
@@ -310,7 +310,7 @@ def make_co2_o2_paris_outputs(
             basis_dim = basis.operator.meta.state_dim
             matrix = basis.operator.basis_matrix.rename({basis_dim: state_dim})
             matrix, state = xr.align(matrix, prepared.retained_prior.mean, join="exact", copy=False)
-            excluded = state.tracer_scope == ("o2" if species == "co2" else "co2")
+            excluded = state.tracer_scope.str.lower() == ("o2" if species == "co2" else "co2")
             other_flux = matrix.isel({state_dim: np.flatnonzero(excluded.values)}) * basis.flux
             if bool((other_flux != 0).any().compute()):
                 raise ValueError(f"Native {species} flux basis includes the other tracer's private states.")

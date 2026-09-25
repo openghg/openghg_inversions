@@ -16,9 +16,27 @@ from openghg_inversions.rhime.co2.co2_o2_model import _gather_co2_o2_sensitivity
 from test_rhime_co2_o2 import _inputs
 
 
-def _joint_fixture(*, baseline=True, o2_units="ppm", numeric_state=False):
+def _joint_fixture(
+    *,
+    baseline=True,
+    o2_units="ppm",
+    numeric_state=False,
+    tracer_scopes=None,
+    zero_ocean_sensitivities=False,
+):
     inputs = _inputs()
     inputs["o2_units"] = o2_units
+    if tracer_scopes is not None:
+        from openghg_inversions.correlated_state import CorrelatedLognormalPrior
+
+        prior = inputs["retained_prior"]
+        inputs["retained_prior"] = CorrelatedLognormalPrior(
+            prior.mean.assign_coords(tracer_scope=("state", tracer_scopes)),
+            prior.arithmetic_covariance.values,
+        )
+    if zero_ocean_sensitivities:
+        for name in ("co2_sensitivity", "o2_sensitivity"):
+            inputs[name] = inputs[name] * xr.DataArray([1, 1, 1, 0, 0], dims="state")
     if numeric_state:
         from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 
@@ -79,8 +97,9 @@ def _joint_fixture(*, baseline=True, o2_units="ppm", numeric_state=False):
     return prepared, trace
 
 
-def test_separate_products_close_and_roundtrip(tmp_path):
-    prepared, trace = _joint_fixture()
+@pytest.mark.parametrize("tracer_scopes", [None, ["SHARED", "Shared", "sHaReD", "CO2", "O2"]])
+def test_separate_products_close_and_roundtrip(tmp_path, tracer_scopes):
+    prepared, trace = _joint_fixture(tracer_scopes=tracer_scopes)
     before = trace.copy()
     components = reconstruct_co2_o2_concentrations(trace, prepared)
     products = make_co2_o2_paris_outputs(trace, prepared, output_path=tmp_path)
@@ -93,6 +112,9 @@ def test_separate_products_close_and_roundtrip(tmp_path):
         dataset = products[species]["concentration"]
         assert dataset.sizes["index"] == count
         assert dataset.attrs["species"] == species
+        if tracer_scopes is not None:
+            assert prepared.retained_prior.mean.tracer_scope.values.tolist() == tracer_scopes
+            assert json.loads(dataset.attrs["linked_state_provenance"])["tracer_scope"] == tracer_scopes
         assert dataset.attrs["paris_concentration_template_version"] == "v04"
         assert dataset.mf_posterior.attrs["units"] == "mol mol-1"
         assert "cross-channel covariance" in dataset.attrs["linked_posterior"]
@@ -214,6 +236,36 @@ def test_native_flux_reuses_joint_state_and_roundtrips(tmp_path, europe_country_
     bad_bases["o2"] = replace(bases["o2"], flux=bases["o2"].flux.assign_attrs(units="kg"))
     with pytest.raises(ValueError, match="flux units"):
         make_co2_o2_paris_outputs(trace, prepared, **{**kwargs, "native_flux_bases": bad_bases})
+
+
+@pytest.mark.parametrize("species", ["co2", "o2"])
+def test_native_flux_rejects_uppercase_private_states_without_concentration_signal(species):
+    from openghg_inversions.basis.basis_functions import BasisFunctions
+
+    prepared, trace = _joint_fixture(
+        baseline=False,
+        numeric_state=True,
+        tracer_scopes=["shared", "shared", "shared", "CO2", "O2"],
+        zero_ocean_sensitivities=True,
+    )
+    # Both private ocean states are invisible to concentration closure. They
+    # must still be excluded from the other tracer's native flux product.
+    make_co2_o2_paris_outputs(trace, prepared)
+    flat = xr.DataArray(
+        np.tile(np.arange(1, 6), (2, 1)),
+        dims=("lat", "lon"),
+        coords={"lat": [50.0, 51.0], "lon": np.arange(5.0)},
+    )
+    flux = xr.ones_like(flat, dtype=float).assign_attrs(units="mol / m^2 / s")
+    basis = BasisFunctions.from_flat_basis(flat, flux)
+    with pytest.raises(ValueError, match=f"Native {species} flux basis includes the other tracer"):
+        make_co2_o2_paris_outputs(
+            trace,
+            prepared,
+            native_flux_bases={species: basis},
+            start_date="2024-01-01",
+            end_date="2024-02-01",
+        )
 
 
 def test_cached_joint_posterior_with_baseline_emits_paris(tmp_path):
