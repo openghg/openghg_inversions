@@ -65,11 +65,11 @@ def main() -> None:
             if args.strategy == "slices":
                 part = xr.dot(matrix.isel(state=positions), state.isel(state=positions), dim="state")
             else:
-                local = op.operator_for_source(source, state_dim="state")
+                local_matrix = op._source_matrices[source].rename(region_in_source="state")
                 local_state = state.isel(state=positions).reset_index("state", drop=True).assign_coords(
-                    state=local.basis_matrix.state
+                    state=local_matrix.state
                 )
-                part = xr.dot(local.basis_matrix, local_state, dim="state")
+                part = xr.dot(local_matrix, local_state, dim="state")
             pieces.append(part * flux.sel(source=source, drop=True))
         return xr.concat(pieces, dim=xr.IndexVariable("native_source", list(labels)))
 

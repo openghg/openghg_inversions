@@ -45,8 +45,12 @@ therefore most useful for comparing runs in the same environment.
 | Ragged multisource | expanded | 3.482 | 389.2 | 213 | 1.406 / 0.079 |
 | Ragged multisource | legacy total | 0.903 | 357.5 | 637 | 0.469 / 0.035 |
 
-The single and shared cases use the same direct contraction for all strategy
-labels because no source-specific state map needs splitting or expansion.
+The initial per-source candidate rebuilt a bucket operator during each call.
+That construction computed chunked basis data before returning a lazy result,
+so it was replaced with per-source matrices retained from the operator's
+existing construction step. The single and shared cases use the same direct
+contraction for all strategy labels because no source-specific state map needs
+splitting or expansion.
 Separating graph construction from Dask execution in a second pass gave:
 
 | Case and strategy | Graph construction s | Execution s |
@@ -60,11 +64,22 @@ Separating graph construction from Dask execution in a second pass gave:
 
 The legacy ragged call computes eagerly within the method, so construction
 and execution cannot be timed separately at that API boundary.
-For ragged states, per-source contraction was fastest in this fixture. Its
-peak RSS was 1.4 MiB above the legacy total in the first pass and 9.0 MiB
-above it in the second pass. It also avoids the
-expanded `(native_source, grid, state)` map. This one strategy applies to all
-ragged states regardless of their provenance; shared and single states use
-the direct contraction. Existing total-grid products are summed at the
-postprocessing boundary. Their memory cost should be reassessed if production
-draw counts or grids greatly exceed this fixture.
+
+After retaining the already-built per-source matrices, the same ragged fixture
+was rerun in separate processes. These are one-run measurements, so the RSS
+figures are comparable within this pass, not with the earlier pass above.
+
+| Strategy | Graph s | Execution s | Peak RSS MiB | Dask tasks | Largest dense / sparse chunk MiB |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Gathered slices | 0.032 | 4.726 | 1748.6 | 197 | 1.406 / 0.035 |
+| Retained per-source matrices | 0.029 | 0.524 | 1690.4 | 193 | 1.406 / 0.012 |
+| Expanded map | 1.335 | 1.397 | 1741.4 | 213 | 1.406 / 0.079 |
+| Legacy total | included in eager call | 0.631 | 1741.5 | 637 | 0.469 / 0.035 |
+
+The retained per-source calculation remains the fastest source-preserving
+option in this fixture, avoids the expanded `(native_source, grid, state)` map,
+and did not execute Dask tasks while constructing the result. This strategy
+applies to all ragged states regardless of provenance; shared and single states
+use direct contraction. Existing total-grid products are summed at the
+postprocessing boundary. Memory cost should be reassessed if production draw
+counts or grids greatly exceed this fixture.

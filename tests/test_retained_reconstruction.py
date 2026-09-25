@@ -3,9 +3,11 @@
 import numpy as np
 import pytest
 import xarray as xr
+from dask.callbacks import Callback
 from dask.array import Array as DaskArray
 from sparse import COO
 
+from openghg_inversions.array_ops import to_dense
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.postprocessing._basis_products import reconstruct_flux_stats
 from openghg_inversions.utils import write_netcdf_preserving_bounds_attrs
@@ -76,6 +78,27 @@ def test_reconstruction_rejects_reordered_labels_and_remains_lazy() -> None:
         basis.state_to_native(state.isel(state=[1, 0, 2]))
     with pytest.raises(ValueError, match="exactly match"):
         basis.with_flux(basis.flux.isel(lat=[0], lon=[1, 0])).state_to_flux(state)
+
+
+def test_chunked_multisource_basis_does_not_compute_during_application() -> None:
+    basis = _ragged_basis()
+    chunked = BasisFunctions.from_multi_source_flat_basis(
+        {source: flat.chunk({"lon": 1}) for source, flat in basis.operator.basis_flat.items()},
+        basis.flux,
+    )
+    state = xr.DataArray(
+        [1.0, 2.0, 3.0],
+        dims="state",
+        coords={"state": chunked.operator.basis_matrix.state},
+    ).chunk()
+    executed: list[object] = []
+    with Callback(pretask=lambda key, *_: executed.append(key)):
+        result = chunked.state_to_native(state)
+        flux = chunked.state_to_flux(state)
+    assert not executed
+    assert isinstance(result.data, DaskArray)
+    assert isinstance(flux.data, DaskArray)
+    np.testing.assert_array_equal(to_dense(result).compute().values[:, 0, :], [[1.0, 2.0], [3.0, 3.0]])
 
 
 def test_sample_source_axis_is_distinct_from_flux_source() -> None:
@@ -170,4 +193,90 @@ def test_state_sample_time_does_not_align_with_flux_time() -> None:
     np.testing.assert_array_equal(
         output.transpose("time", "state_time", "lat", "lon").values[:, :, 0, 0],
         [[8, 10], [12, 15]],
+    )
+
+
+@pytest.mark.parametrize("sample_dim", ["source", "native_source"])
+@pytest.mark.parametrize("inversion_grid", [False, True])
+def test_total_grid_preserves_independent_sample_source_axes(
+    sample_dim: str, inversion_grid: bool
+) -> None:
+    grid = {"lat": [50.0], "lon": [-2.0]}
+    basis = BasisFunctions.from_flat_basis(
+        xr.DataArray([[1]], dims=("lat", "lon"), coords=grid),
+        xr.DataArray([[2.0]], dims=("lat", "lon"), coords=grid),
+    )
+    stats = xr.Dataset(
+        {"x_posterior_mean": (("state", sample_dim), [[3.0, 4.0]])},
+        coords={"state": basis.operator.basis_matrix.state, sample_dim: ["a", "b"]},
+    )
+    presentation = basis.flux.expand_dims(flux_time=[0])
+    result = reconstruct_flux_stats(
+        basis, presentation, stats, report_flux_on_inversion_grid=inversion_grid
+    ).map(to_dense).compute()
+    assert result.sizes[sample_dim] == 2
+    np.testing.assert_array_equal(
+        result.x_posterior_mean.sel({sample_dim: "a"}).values.ravel(), [6.0]
+    )
+    np.testing.assert_array_equal(
+        result.x_posterior_mean.sel({sample_dim: "b"}).values.ravel(), [8.0]
+    )
+
+
+@pytest.mark.parametrize("inversion_grid", [False, True])
+def test_total_grid_sums_flux_source_but_keeps_sample_source(inversion_grid: bool) -> None:
+    grid = {"lat": [50.0], "lon": [-2.0]}
+    basis = BasisFunctions.from_flat_basis(
+        xr.DataArray([[1]], dims=("lat", "lon"), coords=grid),
+        xr.DataArray(
+            [[[2.0]], [[3.0]]], dims=("source", "lat", "lon"),
+            coords={"source": ["zeta", "alpha"], **grid},
+        ),
+    )
+    stats = xr.Dataset(
+        {"x_posterior_mean": (("state", "source"), [[3.0, 4.0]])},
+        coords={"state": basis.operator.basis_matrix.state, "source": ["a", "b"]},
+    )
+    result = reconstruct_flux_stats(
+        basis, basis.flux.expand_dims(flux_time=[0]), stats,
+        report_flux_on_inversion_grid=inversion_grid,
+    ).map(to_dense).compute()
+    assert "source" not in result.dims
+    assert result.state_source.values.tolist() == ["a", "b"]
+    np.testing.assert_array_equal(result.x_posterior_mean.values.ravel(), [15.0, 20.0])
+
+
+@pytest.mark.parametrize("retained_time_dim", [None, "time", "flux_time"])
+@pytest.mark.parametrize("state_time_dim", ["time", "flux_time"])
+@pytest.mark.parametrize("inversion_grid", [False, True])
+def test_output_flux_time_is_distinct_from_state_sample_time(
+    retained_time_dim: str | None, state_time_dim: str, inversion_grid: bool
+) -> None:
+    grid = {"lat": [50.0], "lon": [-2.0]}
+    flat = xr.DataArray([[1]], dims=("lat", "lon"), coords=grid)
+    if retained_time_dim is None:
+        retained = xr.DataArray([[2.0]], dims=("lat", "lon"), coords=grid)
+    else:
+        retained = xr.DataArray(
+            [[[2.0]], [[3.0]]], dims=(retained_time_dim, "lat", "lon"),
+            coords={retained_time_dim: [0, 1], **grid},
+        )
+    basis = BasisFunctions.from_flat_basis(flat, retained)
+    stats = xr.Dataset(
+        {"x_posterior_mean": (("state", state_time_dim), [[3.0, 4.0]])},
+        coords={"state": basis.operator.basis_matrix.state, state_time_dim: [10, 11]},
+    )
+    presentation = retained.rename(time="flux_time") if retained_time_dim == "time" else retained
+    if retained_time_dim is None:
+        presentation = presentation.expand_dims(flux_time=[0])
+    result = reconstruct_flux_stats(
+        basis, presentation, stats, report_flux_on_inversion_grid=inversion_grid
+    ).map(to_dense).compute()
+    sample_dim = "time" if state_time_dim == "time" else "state_flux_time"
+    assert result[sample_dim].values.tolist() == [10, 11]
+    assert result.flux_time.values.tolist() == ([0] if retained_time_dim is None else [0, 1])
+    expected = [[6.0, 8.0]] if retained_time_dim is None else [[6.0, 8.0], [9.0, 12.0]]
+    np.testing.assert_array_equal(
+        result.x_posterior_mean.transpose("flux_time", sample_dim, "lat", "lon").values[:, :, 0, 0],
+        expected,
     )

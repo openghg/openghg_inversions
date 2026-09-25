@@ -6,6 +6,7 @@ import xarray as xr
 
 from openghg_inversions.array_ops import align_sparse_lat_lon, sparse_xr_dot
 from openghg_inversions.basis.basis_functions import BasisFunctions
+from openghg_inversions.basis.operators import MultiSourceBucketBasisOperator
 from openghg_inversions.flux_sanitization import copy_flux_nonfinite_attrs, sanitize_flux_nonfinite
 
 BASIS_RECONSTRUCTION_PATH_ATTR = "basis_reconstruction_path"
@@ -87,25 +88,23 @@ def _interpolate_dataset(
     basis_functions: BasisFunctions,
     *,
     flux_weighted: bool,
-    flux_time: xr.DataArray | None = None,
+    sum_flux_sources: bool = False,
 ) -> xr.Dataset:
     """Reconstruct completed total-grid products from retained state variables."""
     operator_state = _to_operator_state_dim(state, basis_functions)
     data_vars = {}
-    native_source_dim = f"native_{getattr(basis_functions.operator, 'source_dim', 'source')}"
+    source_dim = None
+    if isinstance(basis_functions.operator, MultiSourceBucketBasisOperator):
+        source_dim = f"native_{basis_functions.operator.source_dim}"
+    elif sum_flux_sources and "source" in basis_functions.flux.dims:
+        source_dim = "source"
     for name, data in operator_state.data_vars.items():
         interpolated = (
             basis_functions.state_to_flux(data)
             if flux_weighted else basis_functions.state_to_native(data)
         )
-        if native_source_dim in interpolated.dims:
-            interpolated = interpolated.sum(native_source_dim)
-        if flux_weighted and "source" in interpolated.dims:
-            interpolated = interpolated.sum("source")
-        if flux_weighted and "time" in interpolated.dims:
-            interpolated = interpolated.rename(time="flux_time")
-        elif flux_weighted and flux_time is not None and "flux_time" not in interpolated.dims:
-            interpolated = interpolated.expand_dims(flux_time=flux_time)
+        if source_dim is not None:
+            interpolated = interpolated.sum(source_dim)
         interpolated.attrs = state[name].attrs
         data_vars[name] = interpolated
     result = xr.Dataset(data_vars, attrs=state.attrs)
@@ -165,15 +164,32 @@ def reconstruct_flux_stats(
         context="operator-backed flux reconstruction",
         warn=True,
     )
-    basis_functions = basis_functions.with_flux(retained_flux)
+    output_flux = retained_flux
+    if "time" in output_flux.dims:
+        output_flux = output_flux.rename(time="flux_time")
+    elif "flux_time" not in output_flux.dims and "flux_time" in flux.dims:
+        output_flux = output_flux.expand_dims(flux_time=flux.flux_time)
+    basis_functions = basis_functions.with_flux(output_flux)
     if report_flux_on_inversion_grid:
-        region_flux = _operator_region_flux_mean(basis_functions, retained_flux)
-        state = _to_operator_state_dim(stats_ds, basis_functions) * region_flux
-        result = _interpolate_dataset(state, basis_functions, flux_weighted=False)
-        if "time" in result.dims:
-            result = result.rename(time="flux_time")
-        elif "flux_time" in flux.dims and "flux_time" not in result.dims:
-            result = result.expand_dims(flux_time=flux.flux_time)
+        region_flux = _operator_region_flux_mean(basis_functions, output_flux)
+        state = _to_operator_state_dim(stats_ds, basis_functions)
+        occupied = set(state.dims) | set(state.coords) | set(region_flux.dims) | set(region_flux.coords)
+        renames = {}
+        for dim in state.dims:
+            if dim == basis_functions.operator.meta.state_dim or dim not in region_flux.dims:
+                continue
+            base = f"state_{dim}"
+            candidate = base
+            suffix = 2
+            while candidate in occupied:
+                candidate = f"{base}_{suffix}"
+                suffix += 1
+            renames[dim] = candidate
+            occupied.add(candidate)
+        state = state.rename(renames) * region_flux
+        result = _interpolate_dataset(
+            state, basis_functions, flux_weighted=False, sum_flux_sources=True
+        )
         result = _transpose_inversion_grid_dataset(result)
         result = copy_flux_nonfinite_attrs(result, retained_flux)
         if "time_period" in retained_flux.attrs:
@@ -181,8 +197,7 @@ def reconstruct_flux_stats(
         return result
 
     result = copy_flux_nonfinite_attrs(
-        _interpolate_dataset(stats_ds, basis_functions, flux_weighted=True,
-                             flux_time=flux.coords.get("flux_time")),
+        _interpolate_dataset(stats_ds, basis_functions, flux_weighted=True, sum_flux_sources=True),
         retained_flux,
     )
     if "time_period" in retained_flux.attrs:

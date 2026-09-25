@@ -920,6 +920,10 @@ class MultiSourceBucketBasisOperator(BasisOperator):
         for src, bf in self.basis_flat.items():
             # use region_in_source_dim so we can gather it
             mats[src] = get_xr_dummies(bf, cat_dim=self.region_in_source_dim)
+        self._source_matrices = {
+            src: mat.chunk({dim: size for dim, size in (chunks or {}).items() if dim in mat.dims})
+            for src, mat in mats.items()
+        }
 
         # Gather concat over source + region_in_source_dim into state_dim
         # Result has dims (*grid_dims, state_dim) and state_dim is a MultiIndex
@@ -1210,11 +1214,13 @@ class MultiSourceBucketBasisOperator(BasisOperator):
         pieces = []
         for source in self.source_labels:
             positions = np.flatnonzero(state_sources == source)
-            local = self.operator_for_source(source, state_dim=self.meta.state_dim)
+            local_matrix = self._source_matrices[source].rename(
+                {self.region_in_source_dim: self.meta.state_dim}
+            )
             local_state = state.isel({self.meta.state_dim: positions}).reset_index(
                 self.meta.state_dim, drop=True
-            ).assign_coords({self.meta.state_dim: local.basis_matrix[self.meta.state_dim]})
-            pieces.append(local.state_to_native(local_state))
+            ).assign_coords({self.meta.state_dim: local_matrix[self.meta.state_dim]})
+            pieces.append(xr.dot(local_matrix, local_state, dim=self.meta.state_dim))
         result = xr.concat(
             pieces,
             dim=xr.IndexVariable(f"native_{self.source_dim}", list(self.source_labels)),

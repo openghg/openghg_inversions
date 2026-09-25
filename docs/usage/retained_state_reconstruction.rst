@@ -23,17 +23,23 @@ field; source-resolved retained flux adds a ``source`` dimension to its flux
 result. Sum the result's source dimension explicitly when a total grid is
 required::
 
+   from openghg_inversions.basis.operators import MultiSourceBucketBasisOperator
+
    flux = basis_functions.state_to_flux(state)
-   total_flux = flux.sum("native_source") if "native_source" in flux.dims else flux
-   if "source" in total_flux.dims:
-       total_flux = total_flux.sum("source")
+   if isinstance(basis_functions.operator, MultiSourceBucketBasisOperator):
+       total_flux = flux.sum(f"native_{basis_functions.operator.source_dim}")
+   elif "source" in basis_functions.flux.dims:
+       total_flux = flux.sum("source")
+   else:
+       total_flux = flux
 
 Non-state chain, draw, and other sample axes remain labelled. A state sample
 axis that shares a native or flux dimension name receives a ``state_`` prefix
-so independent coordinates are not aligned. Inputs are borrowed and Dask
-application remains lazy. Completed postprocessing products are converted to
-dense NumPy data at their materialization boundary; the NetCDF writer also
-converts sparse payloads before serialization.
+so independent coordinates are not aligned. Source summation follows the basis
+and retained flux, not a coincidentally named sample axis. Inputs are borrowed
+and Dask application remains lazy. Completed postprocessing products are
+converted to dense NumPy data at their materialization boundary; the NetCDF
+writer also converts sparse payloads before serialization.
 
 ``interpolate`` is deprecated. Use ``state_to_native`` for unweighted scaling
 and ``state_to_flux`` for the retained-flux product. During deprecation,
@@ -46,4 +52,5 @@ This linear operation is distinct from :doc:`affine_flux_map`, whose centred
 equation uses native mean :math:`m`, covariance-natural map :math:`U_*`, and an
 explicit reference state :math:`\alpha_{ref}`. Current postprocessing products
 keep their historical ``flux_time`` coordinate label. The retained flux keeps
-its own native time coordinate until that output boundary.
+its own native time coordinate until that output boundary; a state sample
+``time`` axis remains independent.
