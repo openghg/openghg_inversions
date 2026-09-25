@@ -8,12 +8,12 @@
 
 ## 2. PR 1 — Affine Native-Flux Value
 
-- [ ] 2.1 Add the small public `AffineFluxMap` value with labelled `native_mean`, `flux`, `prolongation`, state/native dimensions, and `retained_state_conditional` scope; verify construction tests cover arbitrary non-unit native and retained reference values
-- [ ] 2.2 Add the closed bucket-operator and explicit labelled prolongation representations; verify equivalent representations reconstruct the same native scaling and flux without precomputing \(FU^*\)
-- [ ] 2.3 Implement explicit-reference `state_to_native` and `state_to_flux` operations; verify every non-state sample dimension is preserved against an independent dense oracle
-- [ ] 2.4 Validate exact state/native/source alignment and compatible units, with targeted failures for missing, duplicated, reordered-incompatibly, or otherwise incompatible coordinates
-- [ ] 2.5 Preserve borrowed xarray/Dask ownership without hidden computation, densification, persistence, rechunking, or input mutation; verify the bucket representation is not silently flattened and sparse inputs stay sparse until a named boundary
-- [ ] 2.6 Document the public equations and prolongation/state-to-flux terminology, run focused pytest/Ruff and `git diff --check`, and merge PR 1 before stacking PR 2
+- [x] 2.1 Add the small public `AffineFluxMap` value with labelled `native_mean`, `flux`, `prolongation`, state/native dimensions, and `retained_state_conditional` scope; verify construction tests cover arbitrary non-unit native and retained reference values
+- [x] 2.2 Add the closed bucket-operator and explicit labelled prolongation representations; verify equivalent representations reconstruct the same native scaling and flux without precomputing \(FU^*\)
+- [x] 2.3 Implement explicit-reference `state_to_native` and `state_to_flux` operations; verify every non-state sample dimension is preserved against an independent dense oracle
+- [x] 2.4 Validate exact state/native/source alignment and compatible units, with targeted failures for missing, duplicated, reordered-incompatibly, or otherwise incompatible coordinates
+- [x] 2.5 Preserve borrowed xarray/Dask ownership without hidden computation, densification, persistence, rechunking, or input mutation; verify the bucket representation is not silently flattened and sparse inputs stay sparse until a named boundary
+- [x] 2.6 Document the public equations and prolongation/state-to-flux terminology, run focused pytest/Ruff and `git diff --check`, and merge PR 1 before stacking PR 2
 
 ## 3. PR 2 — Coherent-CO2 Persistence and Binding
 
