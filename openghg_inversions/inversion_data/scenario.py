@@ -126,6 +126,9 @@ def merged_scenario_data(
     # footprint extent separately so later compatibility transforms do not
     # mistake the observation level for footprint provenance.
     scenario_combined.attrs["footprint_max_level"] = footprint_max_level
+
+    # The merged scenario may inherit observation attrs; preserve these from
+    # the footprint object before the source metadata is lost.
     for output_name, source_names in {
         "transport_model": ("model", "transport_model"),
         "transport_model_version": ("transport_model_version", "model_version"),

@@ -428,6 +428,9 @@ def make_global_attrs(
 ) -> dict[str, str]:
     """Build global attributes shared by PARIS output products.
 
+    PARIS postprocessing fills the prior and footprint arguments from the
+    ``InversionOutput`` automatically; scripts normally call ``make_paris_outputs``.
+
     Args:
         output_type: PARIS product type, either flux or concentration.
         author: Output author. Defaults to the current user.
