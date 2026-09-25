@@ -1,0 +1,884 @@
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>openghg_inversions.hbmcmc.inversion_pymc &#8212; openghg_inversions  documentation</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../_static/styles/theme.css?digest=64cc4de3f052d77215f0" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=64cc4de3f052d77215f0" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../_static/jupyter-sphinx.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/thebelab.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=f8ac5af1" />
+  
+  <!-- So that users can add custom icons -->
+  <script defer src="../_static/scripts/fontawesome.js?digest=64cc4de3f052d77215f0"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=64cc4de3f052d77215f0" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=64cc4de3f052d77215f0" />
+
+    <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../_static/thebelab-helper.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'reference/openghg_inversions.hbmcmc.inversion_pymc';</script>
+    <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="openghg_inversions.hbmcmc.inversionsetup" href="openghg_inversions.hbmcmc.inversionsetup.html" />
+    <link rel="prev" title="openghg_inversions.hbmcmc.hbmcmc_post_process" href="openghg_inversions.hbmcmc.hbmcmc_post_process.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="" />
+  
+    
+    <script src="../_static/searchtools.js"></script>
+    <script src="../_static/language_data.js"></script>
+    <script src="../searchindex.js"></script>
+  
+  </head>
+  <body data-default-mode="">
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+  
+  
+  
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header id="pst-header" class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button type="button" class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+  
+    <p class="title logo__title">openghg_inversions  documentation</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../usage/usage.html">
+    Using OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../development/index.html">
+    Developing OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../experimental/index.html">
+    Experimental code
+  </a>
+</li>
+
+
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="modules.html">
+    openghg_inversions
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button type="button" class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button type="button" class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button type="button" class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button type="button" class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button type="button" class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button type="button" class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+    <button type="button" class="pst-navbar-icon sidebar-toggle secondary-toggle" aria-label="On this page">
+      <span class="fa-solid fa-outdent"></span>
+    </button>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          
+          
+            <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../usage/usage.html">
+    Using OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../development/index.html">
+    Developing OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../experimental/index.html">
+    Experimental code
+  </a>
+</li>
+
+
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="modules.html">
+    openghg_inversions
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+          
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button type="button" class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button type="button" class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button type="button" class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button type="button" class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item pst-sidebar-collapse"><button type="button" id="pst-collapse-sidebar-button" aria-expanded="true" aria-controls="pst-primary-sidebar">
+  <svg class="pst-icon" role="img" aria-hidden="true" focusable="false" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+    <path fill="currentColor" d="M3 15.5C2.36232 15.5 1.74874 15.2564 1.28478 14.8189C0.820828 14.3815 0.541576 13.7832 0.504167 13.1467L0.5 13L0.5 3C0.499965 2.36232 0.743605 1.74874 1.18107 1.28478C1.61854 0.820828 2.21676 0.541576 2.85333 0.504167L3 0.5L13 0.5C13.6377 0.499965 14.2513 0.743605 14.7152 1.18107C15.1792 1.61854 15.4584 2.21676 15.4958 2.85333L15.5 3L15.5 13C15.5 13.6377 15.2564 14.2513 14.8189 14.7152C14.3815 15.1792 13.7832 15.4584 13.1467 15.4958L13 15.5L3 15.5ZM3 13.8333L10.5 13.8333L10.5 2.16667L3 2.16667C2.79589 2.16669 2.59889 2.24163 2.44636 2.37726C2.29383 2.5129 2.19638 2.69979 2.1725 2.9025L2.16667 3L2.16667 13C2.16669 13.2041 2.24163 13.4011 2.37726 13.5536C2.5129 13.7062 2.69979 13.8036 2.9025 13.8275L3 13.8333ZM6.65583 10.325L6.5775 10.2558L4.91083 8.58917C4.76735 8.44567 4.68116 8.25476 4.66843 8.05223C4.65569 7.84971 4.71729 7.6495 4.84167 7.48917L4.91083 7.41083L6.5775 5.74417C6.72747 5.59471 6.9287 5.50794 7.14032 5.50148C7.35194 5.49502 7.55809 5.56935 7.7169 5.70937C7.8757 5.8494 7.97525 6.04463 7.99533 6.25539C8.01541 6.46616 7.95451 6.67667 7.825 6.84417L7.75583 6.9225L6.67917 8L7.75583 9.0775C7.89931 9.22099 7.98551 9.41191 7.99824 9.61443C8.01097 9.81695 7.94938 10.0172 7.825 10.1775L7.75583 10.2558C7.61234 10.3993 7.42142 10.4855 7.2189 10.4982C7.01638 10.511 6.81617 10.4494 6.65583 10.325Z"/>
+  </svg>
+  <span class="pst-collapse-sidebar-label">Collapse Sidebar</span>
+  <span class="pst-expand-sidebar-label">Expand Sidebar</span>
+</button></div>
+        <div class="sidebar-primary-item">
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Section Navigation">
+  <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
+  <div class="bd-toc-item navbar-nav"><ul class="current nav bd-sidenav">
+<li class="toctree-l1 current active has-children"><a class="reference internal" href="openghg_inversions.html">openghg_inversions</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
+<li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.basis.html">openghg_inversions.basis</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.algorithms.html">openghg_inversions.basis.algorithms</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.basis_functions.html">openghg_inversions.basis.basis_functions</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.covariance_products.html">openghg_inversions.basis.covariance_products</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.layout.html">openghg_inversions.basis.layout</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.operators.html">openghg_inversions.basis.operators</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.prior_uncertainty.html">openghg_inversions.basis.prior_uncertainty</a></li>
+</ul>
+</details></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.config.html">openghg_inversions.config</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.config.config.html">openghg_inversions.config.config</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.config.paths.html">openghg_inversions.config.paths</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.config.version.html">openghg_inversions.config.version</a></li>
+</ul>
+</details></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.experimental.html">openghg_inversions.experimental</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="openghg_inversions.experimental.ramsden2022.html">openghg_inversions.experimental.ramsden2022</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.experimental.ramsden2022.model.html">openghg_inversions.experimental.ramsden2022.model</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+<li class="toctree-l2 current active has-children"><a class="reference internal" href="openghg_inversions.hbmcmc.html">openghg_inversions.hbmcmc</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.components.html">openghg_inversions.hbmcmc.components</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.hbmcmc.html">openghg_inversions.hbmcmc.hbmcmc</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.hbmcmc_output.html">openghg_inversions.hbmcmc.hbmcmc_output</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.hbmcmc_post_process.html">openghg_inversions.hbmcmc.hbmcmc_post_process</a></li>
+<li class="toctree-l3 current active"><a aria-current="page" class="current reference internal" href="#">openghg_inversions.hbmcmc.inversion_pymc</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.inversionsetup.html">openghg_inversions.hbmcmc.inversionsetup</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.post_process_inputs.html">openghg_inversions.hbmcmc.post_process_inputs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.preparation.html">openghg_inversions.hbmcmc.preparation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.run_hbmcmc.html">openghg_inversions.hbmcmc.run_hbmcmc</a></li>
+</ul>
+</details></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.inversion_data.html">openghg_inversions.inversion_data</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.get_data.html">openghg_inversions.inversion_data.get_data</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.getters.html">openghg_inversions.inversion_data.getters</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.preparation.html">openghg_inversions.inversion_data.preparation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.scenario.html">openghg_inversions.inversion_data.scenario</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.serialise.html">openghg_inversions.inversion_data.serialise</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.xarray_adapter.html">openghg_inversions.inversion_data.xarray_adapter</a></li>
+</ul>
+</details></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.models.html">openghg_inversions.models</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.additive_sigma.html">openghg_inversions.models.additive_sigma</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.cached_sigma.html">openghg_inversions.models.cached_sigma</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.components.html">openghg_inversions.models.components</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.coords.html">openghg_inversions.models.coords</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.fixed_error.html">openghg_inversions.models.fixed_error</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.fixed_ou.html">openghg_inversions.models.fixed_ou</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.pollution_event.html">openghg_inversions.models.pollution_event</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.priors.html">openghg_inversions.models.priors</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.scalar_sigma.html">openghg_inversions.models.scalar_sigma</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.site_sigma.html">openghg_inversions.models.site_sigma</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.state_activity.html">openghg_inversions.models.state_activity</a></li>
+</ul>
+</details></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.postprocessing.html">openghg_inversions.postprocessing</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.countries.html">openghg_inversions.postprocessing.countries</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.diagnostics.html">openghg_inversions.postprocessing.diagnostics</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.inversion_output.html">openghg_inversions.postprocessing.inversion_output</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.legacy_outputs.html">openghg_inversions.postprocessing.legacy_outputs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.make_outputs.html">openghg_inversions.postprocessing.make_outputs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.make_paris_outputs.html">openghg_inversions.postprocessing.make_paris_outputs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.merge_paris_outputs.html">openghg_inversions.postprocessing.merge_paris_outputs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.sigma.html">openghg_inversions.postprocessing.sigma</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.stats.html">openghg_inversions.postprocessing.stats</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.utils.html">openghg_inversions.postprocessing.utils</a></li>
+</ul>
+</details></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.rhime.html">openghg_inversions.rhime</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="openghg_inversions.rhime.co2.html">openghg_inversions.rhime.co2</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_cached_sigma_model.html">openghg_inversions.rhime.co2.co2_cached_sigma_model</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_cached_sigma_runner.html">openghg_inversions.rhime.co2.co2_cached_sigma_runner</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_model.html">openghg_inversions.rhime.co2.co2_model</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_model.html">openghg_inversions.rhime.co2.co2_o2_model</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_preparation.html">openghg_inversions.rhime.co2.co2_o2_preparation</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_runner.html">openghg_inversions.rhime.co2.co2_o2_runner</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_preparation.html">openghg_inversions.rhime.co2.co2_preparation</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_runner.html">openghg_inversions.rhime.co2.co2_runner</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.configuration.html">openghg_inversions.rhime.co2.configuration</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.builders.html">openghg_inversions.rhime.builders</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.cached_sigma.html">openghg_inversions.rhime.cached_sigma</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.materialization.html">openghg_inversions.rhime.materialization</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.multisector.html">openghg_inversions.rhime.multisector</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.outputs.html">openghg_inversions.rhime.outputs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.params.html">openghg_inversions.rhime.params</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.preparation.html">openghg_inversions.rhime.preparation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.prepared.html">openghg_inversions.rhime.prepared</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.sampling.html">openghg_inversions.rhime.sampling</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.specs.html">openghg_inversions.rhime.specs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.stages.html">openghg_inversions.rhime.stages</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.standard.html">openghg_inversions.rhime.standard</a></li>
+</ul>
+</details></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.array_ops.html">openghg_inversions.array_ops</a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.borrowed.html">openghg_inversions.borrowed</a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.boundary_sensitivity.html">openghg_inversions.boundary_sensitivity</a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.cli.html">openghg_inversions.cli</a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.coherent_reduction.html">openghg_inversions.coherent_reduction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.convert.html">openghg_inversions.convert</a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.correlated_state.html">openghg_inversions.correlated_state</a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.filters.html">openghg_inversions.filters</a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.flux_sanitization.html">openghg_inversions.flux_sanitization</a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.inversion_inputs.html">openghg_inversions.inversion_inputs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.model_error.html">openghg_inversions.model_error</a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.native_covariance.html">openghg_inversions.native_covariance</a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.observation_error.html">openghg_inversions.observation_error</a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.serialization.html">openghg_inversions.serialization</a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.sigma.html">openghg_inversions.sigma</a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.source_covariance.html">openghg_inversions.source_covariance</a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.utils.html">openghg_inversions.utils</a></li>
+</ul>
+</details></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+      <div class="sidebar-primary-item">
+<div id="ethical-ad-placement"
+      class="flat"
+      data-ea-publisher="readthedocs"
+      data-ea-type="readthedocs-sidebar"
+      data-ea-manual="true">
+</div></div>
+  </div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="modules.html" class="nav-link">openghg_inversions</a></li>
+    
+    
+    <li class="breadcrumb-item"><a href="openghg_inversions.html" class="nav-link">openghg_inversions</a></li>
+    
+    
+    <li class="breadcrumb-item"><a href="openghg_inversions.hbmcmc.html" class="nav-link">openghg_inversions.hbmcmc</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">openghg_inversions.hbmcmc.inversion_pymc</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="module-openghg_inversions.hbmcmc.inversion_pymc">
+<span id="openghg-inversions-hbmcmc-inversion-pymc"></span><h1>openghg_inversions.hbmcmc.inversion_pymc<a class="headerlink" href="#module-openghg_inversions.hbmcmc.inversion_pymc" title="Link to this heading">#</a></h1>
+<p>Functions for performing MCMC inversion with the xarray-first PyMC builder.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.hbmcmc.inversion_pymc.build_inferpymc_model">
+<span class="sig-prename descclassname"><span class="pre">openghg_inversions.hbmcmc.inversion_pymc.</span></span><span class="sig-name descname"><span class="pre">build_inferpymc_model</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">inv_inputs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">xprior</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bcprior</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sigprior</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sigma_per_site</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">offsetprior</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">add_offset</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_bc</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">reparameterise_log_normal</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pollution_events_from_obs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">no_model_error</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">offset_args</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">power</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1.99</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://www.pymc.io/projects/docs/en/stable/api/model/generated/pymc.model.core.Model.html#pymc.model.core.Model" title="(in PyMC v6.3.2)"><span class="pre">Model</span></a></span></span><a class="headerlink" href="#openghg_inversions.hbmcmc.inversion_pymc.build_inferpymc_model" title="Link to this definition">#</a></dt>
+<dd><p>Compatibility adapter for the standard RHIME model builder.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>inv_inputs</strong> – Legacy dataset produced by
+<code class="docutils literal notranslate"><span class="pre">prepare_fixedbasis_inversion_data</span></code> or an equivalent adapter.
+It must contain the observation and model variables required by
+the component-based model, including at minimum <code class="docutils literal notranslate"><span class="pre">H</span></code>, <code class="docutils literal notranslate"><span class="pre">mf</span></code>,
+<code class="docutils literal notranslate"><span class="pre">mf_error</span></code>, <code class="docutils literal notranslate"><span class="pre">site_indicator</span></code>, <code class="docutils literal notranslate"><span class="pre">sigma_freq_index</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">min_error</span></code>. When <code class="docutils literal notranslate"><span class="pre">use_bc</span></code> is true, it must also contain
+<code class="docutils literal notranslate"><span class="pre">H_bc</span></code>.</p></li>
+<li><p><strong>xprior</strong> – Prior specification for emissions scaling factors.</p></li>
+<li><p><strong>bcprior</strong> – Prior specification for boundary-condition scaling factors.</p></li>
+<li><p><strong>sigprior</strong> – Prior specification for model-error terms.</p></li>
+<li><p><strong>sigma_per_site</strong> – Whether sigma should vary by site.</p></li>
+<li><p><strong>offsetprior</strong> – Prior specification for optional offsets.</p></li>
+<li><p><strong>add_offset</strong> – Whether to include an offset term in the model.</p></li>
+<li><p><strong>use_bc</strong> – Whether to include boundary-condition terms in the model.</p></li>
+<li><p><strong>reparameterise_log_normal</strong> – Deprecated compatibility flag for lognormal
+reparameterisation. Set <code class="docutils literal notranslate"><span class="pre">reparameterise=True</span></code> in the relevant
+prior mapping instead.</p></li>
+<li><p><strong>pollution_events_from_obs</strong> – Whether to derive pollution-event scaling
+from observations rather than modelled concentrations.</p></li>
+<li><p><strong>no_model_error</strong> – Whether to suppress the explicit model-error term.</p></li>
+<li><p><strong>offset_args</strong> – Extra keyword arguments forwarded to
+<code class="docutils literal notranslate"><span class="pre">add_offset_component</span></code>.</p></li>
+<li><p><strong>power</strong> – Exponent or prior specification used in the likelihood error
+scaling.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Built PyMC model for the current inferpymc compatibility path.</p>
+</dd>
+<dt class="field-odd">Warns<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>FutureWarning</strong> – If <code class="docutils literal notranslate"><span class="pre">reparameterise_log_normal</span></code> is enabled.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.hbmcmc.inversion_pymc.extend_inferencedata_predictive">
+<span class="sig-prename descclassname"><span class="pre">openghg_inversions.hbmcmc.inversion_pymc.</span></span><span class="sig-name descname"><span class="pre">extend_inferencedata_predictive</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">trace</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">InferenceData</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://www.pymc.io/projects/docs/en/stable/api/model/generated/pymc.model.core.Model.html#pymc.model.core.Model" title="(in PyMC v6.3.2)"><span class="pre">Model</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">sample_prior_predictive</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sample_posterior_predictive</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.14)"><span class="pre">list</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">InferenceData</span></span></span><a class="headerlink" href="#openghg_inversions.hbmcmc.inversion_pymc.extend_inferencedata_predictive" title="Link to this definition">#</a></dt>
+<dd><p>Extend an InferenceData trace with optional predictive groups.</p>
+<p>Updates InferenceData in-place with requested groups and returns the
+result for convenience.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>trace</strong> – Posterior trace to extend with predictive groups.</p></li>
+<li><p><strong>model</strong> – Built PyMC model used for predictive sampling.</p></li>
+<li><p><strong>sample_prior_predictive</strong> – If truthy, sample prior predictive draws and
+append <code class="docutils literal notranslate"><span class="pre">prior</span></code> and <code class="docutils literal notranslate"><span class="pre">prior_predictive</span></code> groups. If an integer,
+use that many draws; if <code class="docutils literal notranslate"><span class="pre">True</span></code>, reuse the posterior draw count.</p></li>
+<li><p><strong>sample_posterior_predictive</strong> – If truthy, sample posterior predictive
+draws and append <code class="docutils literal notranslate"><span class="pre">posterior_predictive</span></code>. If a list, restrict
+posterior predictive sampling to those variable names.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Input <code class="docutils literal notranslate"><span class="pre">trace</span></code> extended with the requested predictive groups.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.hbmcmc.inversion_pymc.inferpymc">
+<span class="sig-prename descclassname"><span class="pre">openghg_inversions.hbmcmc.inversion_pymc.</span></span><span class="sig-name descname"><span class="pre">inferpymc</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">inv_inputs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">xprior</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bcprior</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sigprior</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">nuts_sampler</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'pymc'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">nit</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">20000</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">burn</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">10000</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tune</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">10000</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">nchain</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">4</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sigma_per_site</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">offsetprior</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">add_offset</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">verbose</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_bc</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">reparameterise_log_normal</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pollution_events_from_obs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">no_model_error</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">offset_args</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">power</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1.99</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sampler_kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a></span></span><a class="headerlink" href="#openghg_inversions.hbmcmc.inversion_pymc.inferpymc" title="Link to this definition">#</a></dt>
+<dd><p>Perform Bayesian inference with PyMC for emissions, BCs, and model error.</p>
+<p>This routine is the compatibility entrypoint for the current PyMC path.
+It builds the component-based model from a legacy inversion-input dataset,
+runs sampling, and adapts the result into the return structure used by
+downstream fixedbasis postprocessing. The input must include
+<code class="docutils literal notranslate"><span class="pre">sigma_freq_index</span></code>; modern RHIME inputs intentionally do not.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>inv_inputs</strong> – Legacy fixedbasis inversion inputs including an
+observation-aligned <code class="docutils literal notranslate"><span class="pre">sigma_freq_index</span></code>.</p></li>
+<li><p><strong>xprior</strong> – Dictionary describing the prior PDF for emissions. The entry “pdf”
+is the name of the analytical PDF used; other entries are shape
+parameters (e.g., {‘pdf’: ‘lognormal’, ‘stdev’: 1.0}).</p></li>
+<li><p><strong>bcprior</strong> – Prior specification for boundary conditions. Only used if use_bc is True.
+A common choice is {‘pdf’: ‘truncatednormal’, ‘lower’: 0.0, ‘mu’: 1.0, ‘sigma’: 0.1}.</p></li>
+<li><p><strong>sigprior</strong> – Prior specification for the model-error parameter(s).</p></li>
+<li><p><strong>nuts_sampler</strong> – Name of the NUTS sampler used by pymc.sample (e.g., “pymc” or “numpyro”).</p></li>
+<li><p><strong>nit</strong> – Number of posterior draws to keep per chain. Tuning draws are
+controlled separately via <code class="docutils literal notranslate"><span class="pre">tune</span></code>.</p></li>
+<li><p><strong>burn</strong> – Number of samples to discard as burn-in.</p></li>
+<li><p><strong>tune</strong> – Number of tuning steps passed to the sampler.</p></li>
+<li><p><strong>nchain</strong> – Number of MCMC chains to run.</p></li>
+<li><p><strong>sigma_per_site</strong> – If True, estimate a separate sigma (model error) for each site.</p></li>
+<li><p><strong>offsetprior</strong> – Prior specification for offsets applied to sites or observations.</p></li>
+<li><p><strong>add_offset</strong> – If True, include an offset term in the model.</p></li>
+<li><p><strong>verbose</strong> – If True, print additional diagnostic information.</p></li>
+<li><p><strong>use_bc</strong> – If True, include boundary condition terms in the model.</p></li>
+<li><p><strong>reparameterise_log_normal</strong> – Deprecated compatibility flag for lognormal
+reparameterisation. Set <code class="docutils literal notranslate"><span class="pre">reparameterise=True</span></code> in the relevant
+prior mapping instead.</p></li>
+<li><p><strong>pollution_events_from_obs</strong> – If True, derive pollution event terms from observations.</p></li>
+<li><p><strong>no_model_error</strong> – If True, do not include an explicit model-error term.</p></li>
+<li><p><strong>offset_args</strong> – Additional arguments used when constructing offsets.</p></li>
+<li><p><strong>power</strong> – Exponent used in certain weighting or prior schemes; may be a dict or float.</p></li>
+<li><p><strong>sampler_kwargs</strong> – Extra keyword arguments passed to the sampler.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><p>Dictionary containing inference results, samples, and diagnostics in
+the legacy <code class="docutils literal notranslate"><span class="pre">inferpymc</span></code> key structure. Depending on the selected
+options, keys typically include:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">&quot;xouts&quot;</span></code>: posterior samples for emissions / fluxes</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">&quot;sigouts&quot;</span></code>: posterior samples for sigma terms</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">&quot;Ytrace&quot;</span></code>: modelled concentrations</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">&quot;bcouts&quot;</span></code> and <code class="docutils literal notranslate"><span class="pre">&quot;YBCtrace&quot;</span></code> when boundary conditions are used</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">&quot;OFFSETtrace&quot;</span></code> when offsets are enabled</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">&quot;trace&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;model&quot;</span></code>, and convergence metadata</p></li>
+</ul>
+</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If the model cannot be built from the supplied
+    <code class="docutils literal notranslate"><span class="pre">inv_inputs</span></code> and configuration.</p>
+</dd>
+<dt class="field-even">Warns<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>FutureWarning</strong> – If <code class="docutils literal notranslate"><span class="pre">reparameterise_log_normal</span></code> is enabled.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.hbmcmc.inversion_pymc.inferpymc_postprocessouts">
+<span class="sig-prename descclassname"><span class="pre">openghg_inversions.hbmcmc.inversion_pymc.</span></span><span class="sig-name descname"><span class="pre">inferpymc_postprocessouts</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">xouts</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><span class="pre">ndarray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">sigouts</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><span class="pre">ndarray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">convergence</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">Hx</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><span class="pre">ndarray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">Y</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><span class="pre">ndarray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">error</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><span class="pre">ndarray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">Ytrace</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><span class="pre">ndarray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">OFFSETtrace</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><span class="pre">ndarray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">step1</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">step2</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">xprior</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">sigprior</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">offsetprior</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">Ytime</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><span class="pre">ndarray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">siteindicator</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><span class="pre">ndarray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">sigma_freq_index</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><span class="pre">ndarray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">domain</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">species</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">sites</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.14)"><span class="pre">list</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">start_date</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">end_date</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">outputname</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">outputpath</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">country_unit_prefix</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">burn</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">tune</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">nchain</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">sigma_per_site</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">emissions_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.14)"><span class="pre">list</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">bcprior</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">YBCtrace</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><span class="pre">ndarray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bcouts</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><span class="pre">ndarray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Hbc</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><span class="pre">ndarray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">obs_repeatability</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><span class="pre">ndarray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">obs_variability</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><span class="pre">ndarray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fp_data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">country_file</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">add_offset</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rerun_file</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_bc</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_error</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><span class="pre">ndarray</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.0</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></span><a class="headerlink" href="#openghg_inversions.hbmcmc.inversion_pymc.inferpymc_postprocessouts" title="Link to this definition">#</a></dt>
+<dd><p>Take the output from inferpymc function along with other input information.</p>
+<p>Calculates statistics on them and places it all in a dataset.
+Also calculates statistics on posterior emissions for the countries in
+the inversion domain and saves all in netcdf.</p>
+<p>Note that the uncertainties are defined by the highest posterior
+density (HPD) region and NOT percentiles (as the tdMCMC code).
+The HPD region is defined, for probability content (1-a), as:</p>
+<blockquote>
+<div><ol class="arabic simple">
+<li><p>P(x ∈ R | y) = (1-a)</p></li>
+<li><p>for x1 ∈ R and x2 ∉ R, P(x1|y)&gt;=P(x2|y)</p></li>
+</ol>
+</div></blockquote>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>xouts</strong> – MCMC chain for emissions scaling factors for each basis function.</p></li>
+<li><p><strong>sigouts</strong> – MCMC chain for model error.</p></li>
+<li><p><strong>convergence</strong> – Passed/Failed convergence test as to whether multiple chains
+have a Gelman-Rubin diagnostic value &lt;1.05.</p></li>
+<li><p><strong>Hx</strong> – Transpose of the sensitivity matrix to map emissions to measurement.
+This is the same as what is given from fp_data[site].H.values, where
+fp_data is the output from e.g. footprint_data_merge, but where it
+has been stacked for all sites.</p></li>
+<li><p><strong>Y</strong> – Measurement vector containing all measurements.</p></li>
+<li><p><strong>error</strong> – Measurement error vector, containing a value for each element of Y.</p></li>
+<li><p><strong>Ytrace</strong> – Trace of modelled y values calculated from mcmc outputs and H matrices.</p></li>
+<li><p><strong>OFFSETtrace</strong> – Trace from offsets (if used).</p></li>
+<li><p><strong>step1</strong> – Type of MCMC sampler for emissions and boundary condition updates.</p></li>
+<li><p><strong>step2</strong> – Type of MCMC sampler for model error updates.</p></li>
+<li><p><strong>xprior</strong> – Dictionary containing information about the prior PDF for emissions.
+The entry “pdf” is the name of the analytical PDF used, see
+<a class="reference external" href="https://docs.pymc.io/api/distributions/continuous.html">https://docs.pymc.io/api/distributions/continuous.html</a> for PDFs
+built into pymc3, although they may have to be coded into the script.
+The other entries in the dictionary should correspond to the shape
+parameters describing that PDF as the online documentation,
+e.g. N(1,1**2) would be: xprior={pdf:”normal”, “mu”:1, “sigma”:1}.
+Note that the standard deviation should be used rather than the
+precision. Currently all variables are considered iid.</p></li>
+<li><p><strong>sigprior</strong> – Same as xprior but for model error.</p></li>
+<li><p><strong>offsetprior</strong> – Same as xprior but for bias offset. Only used is add_offset=True.</p></li>
+<li><p><strong>Ytime</strong> – Time stamp of measurements as used by the inversion.</p></li>
+<li><p><strong>siteindicator</strong> – Numerical indicator of which site the measurements belong to,
+same length at Y.</p></li>
+<li><p><strong>sigma_freq_index</strong> – Array of integer indexes that converts time into periods.</p></li>
+<li><p><strong>domain</strong> – Inversion spatial domain.</p></li>
+<li><p><strong>species</strong> – Species of interest.</p></li>
+<li><p><strong>sites</strong> – List of sites in inversion.</p></li>
+<li><p><strong>start_date</strong> – Start time of inversion “YYYY-mm-dd”.</p></li>
+<li><p><strong>end_date</strong> – End time of inversion “YYYY-mm-dd”.</p></li>
+<li><p><strong>outputname</strong> – Unique identifier for output/run name.</p></li>
+<li><p><strong>outputpath</strong> – Path to where output should be saved.</p></li>
+<li><p><strong>country_unit_prefix</strong> – A prefix for scaling the country emissions. Current options are:
+‘T’ will scale to Tg, ‘G’ to Gg, ‘M’ to Mg, ‘P’ to Pg.
+To add additional options add to acrg_convert.prefix
+Default is none and no scaling will be applied (output in g).</p></li>
+<li><p><strong>burn</strong> – Number of iterations burned in MCMC</p></li>
+<li><p><strong>tune</strong> – Number of iterations used to tune step size</p></li>
+<li><p><strong>nchain</strong> – Number of independent chains run</p></li>
+<li><p><strong>sigma_per_site</strong> – Whether a model sigma value will be calculated for each site independantly (True)
+or all sites together (False).</p></li>
+<li><p><strong>emissions_name</strong> – List with “source” values as used when adding emissions data to the OpenGHG object store.</p></li>
+<li><p><strong>bcprior</strong> – Same as xrpior but for boundary conditions.</p></li>
+<li><p><strong>YBCtrace</strong> – Trace of modelled boundary condition values calculated from mcmc outputs and Hbc matrices</p></li>
+<li><p><strong>bcouts</strong> – MCMC chain for boundary condition scaling factors.</p></li>
+<li><p><strong>Hbc</strong> – Same as Hx but for boundary conditions</p></li>
+<li><p><strong>obs_repeatability</strong> – Instrument error</p></li>
+<li><p><strong>obs_variability</strong> – Error from resampling observations</p></li>
+<li><p><strong>fp_data</strong> – Output from footprints_data_merge + sensitivies</p></li>
+<li><p><strong>country_file</strong> – Path of country definition file</p></li>
+<li><p><strong>add_offset</strong> – Add an offset (intercept) to all sites but the first in the site list. Default False.</p></li>
+<li><p><strong>rerun_file</strong> (<em>xarray dataset</em><em>, </em><em>optional</em>) – An xarray dataset containing the ncdf output from a previous run of the MCMC code.</p></li>
+<li><p><strong>use_bc</strong> – When True, use and infer boundary conditions.</p></li>
+<li><p><strong>min_error</strong> – Minimum error to use during inversion. Only used if no_model_error is False.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>xarray dataset containing results from inversion</p>
+</dd>
+</dl>
+<dl class="simple">
+<dt>TO DO:</dt><dd><ul class="simple">
+<li><p>Look at compressability options for netcdf output</p></li>
+<li><p>I’m sure the number of inputs can be cut down or found elsewhere.</p></li>
+<li><p>Currently it can only work out the country total emissions if
+the a priori emissions are constant over the inversion period
+or else monthly (and inversion is for less than one calendar year).</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.hbmcmc.inversion_pymc.sample">
+<span class="sig-prename descclassname"><span class="pre">openghg_inversions.hbmcmc.inversion_pymc.</span></span><span class="sig-name descname"><span class="pre">sample</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://www.pymc.io/projects/docs/en/stable/api/model/generated/pymc.model.core.Model.html#pymc.model.core.Model" title="(in PyMC v6.3.2)"><span class="pre">Model</span></a></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">draws</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1000</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tune</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1000</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">chains</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">4</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">burn</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sample_prior_predictive</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sample_posterior_predictive</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.14)"><span class="pre">list</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><span class="pre">Any</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">InferenceData</span></span></span><a class="headerlink" href="#openghg_inversions.hbmcmc.inversion_pymc.sample" title="Link to this definition">#</a></dt>
+<dd><p>Sample from a built inferpymc model.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> – Built PyMC model to sample from.</p></li>
+<li><p><strong>draws</strong> – Number of posterior draws requested per chain before burn
+slicing.</p></li>
+<li><p><strong>tune</strong> – Number of tuning draws passed to <code class="docutils literal notranslate"><span class="pre">pm.sample</span></code>.</p></li>
+<li><p><strong>chains</strong> – Number of MCMC chains to run.</p></li>
+<li><p><strong>burn</strong> – Number of posterior draws to discard from the returned
+<code class="docutils literal notranslate"><span class="pre">InferenceData</span></code>.</p></li>
+<li><p><strong>sample_prior_predictive</strong> – Optional prior predictive sampling request.
+If an integer, use that many draws; if <code class="docutils literal notranslate"><span class="pre">True</span></code>, reuse the
+posterior draw count.</p></li>
+<li><p><strong>sample_posterior_predictive</strong> – Optional posterior predictive sampling
+request. If a list, restrict sampling to those variable names.</p></li>
+<li><p><strong>**kwargs</strong> – Additional keyword arguments forwarded to <code class="docutils literal notranslate"><span class="pre">pm.sample</span></code>.
+<code class="docutils literal notranslate"><span class="pre">return_inferencedata</span></code> is always forced to <code class="docutils literal notranslate"><span class="pre">True</span></code> and
+<code class="docutils literal notranslate"><span class="pre">idata_kwargs[&quot;log_likelihood&quot;]</span></code> is always enabled.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Burn-sliced <code class="docutils literal notranslate"><span class="pre">InferenceData</span></code> for the requested model, optionally
+extended with predictive groups. Retained draw coordinates are reset
+to consecutive zero-based integers, and <code class="docutils literal notranslate"><span class="pre">burn</span></code> is stored on the root
+and draw-bearing group attributes.</p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="openghg_inversions.hbmcmc.hbmcmc_post_process.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">openghg_inversions.hbmcmc.hbmcmc_post_process</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="openghg_inversions.hbmcmc.inversionsetup.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">openghg_inversions.hbmcmc.inversionsetup</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <dialog id="pst-secondary-sidebar-modal"></dialog>
+                <div id="pst-secondary-sidebar" class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.hbmcmc.inversion_pymc.build_inferpymc_model"><code class="docutils literal notranslate"><span class="pre">build_inferpymc_model()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.hbmcmc.inversion_pymc.extend_inferencedata_predictive"><code class="docutils literal notranslate"><span class="pre">extend_inferencedata_predictive()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.hbmcmc.inversion_pymc.inferpymc"><code class="docutils literal notranslate"><span class="pre">inferpymc()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.hbmcmc.inversion_pymc.inferpymc_postprocessouts"><code class="docutils literal notranslate"><span class="pre">inferpymc_postprocessouts()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.hbmcmc.inversion_pymc.sample"><code class="docutils literal notranslate"><span class="pre">sample()</span></code></a></li>
+</ul>
+  </nav></div>
+
+  <div class="sidebar-secondary-item">
+
+  <div class="tocsection sourcelink">
+    <a href="../_sources/reference/openghg_inversions.hbmcmc.inversion_pymc.rst.txt">
+      <i class="fa-solid fa-file-lines"></i> Show Source
+    </a>
+  </div>
+</div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../_static/scripts/bootstrap.js?digest=64cc4de3f052d77215f0"></script>
+<script defer src="../_static/scripts/pydata-sphinx-theme.js?digest=64cc4de3f052d77215f0"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 2025, Eric Saboya and Brendan Murphy.
+      <br/>
+    
+  </p>
+</div>
+      
+        <div class="footer-item">
+
+  <p class="sphinx-version">
+    Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 9.0.4.
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  <!-- # L10n: Setting the PST URL as an argument as this does not need to be localized -->
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.22.0.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+  </body>
+</html>

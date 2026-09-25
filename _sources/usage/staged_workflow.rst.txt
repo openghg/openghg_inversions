@@ -131,11 +131,10 @@ directory.
   prepared-input digest and scientific configuration.  The sampler settings
   restored into result metadata come from that sample manifest; sampler values
   in the postprocessing configuration cannot relabel an existing posterior.
-  Modern derived ``basic`` and PARIS products use every retained posterior
-  chain. Derived trace quantities preserve their ``chain`` and ``draw``
-  identity until an explicitly requested statistic or covariance combines the
-  samples. ``postprocess-manifest.json`` is always written; the otherwise
-  in-memory ``basic`` product is written as ``basic.nc``.
+  Current all-chain limitations of derived basic and
+  PARIS products remain tracked separately; this stage does not change their
+  scientific calculation.  ``postprocess-manifest.json`` is always written;
+  the otherwise in-memory ``basic`` product is written as ``basic.nc``.
 
 CheckResult contract
 --------------------
