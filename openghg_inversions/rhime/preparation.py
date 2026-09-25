@@ -258,11 +258,21 @@ def assemble_rhime_inputs(
         sources=inv_inputs.sizes.get("source"),
         basis_source=basis_source,
     )
+    site_metadata = inversion_preparation._make_site_metadata(
+        sites=merged.sites,
+        averaging_period=merged.averaging_period,
+    )
+    def footprint_attr(site: str, name: str) -> str:
+        value = owned_site_data[site].attrs.get(f"footprint_{name}")
+        return value if isinstance(value, str) and value.strip().lower() not in {"", "none", "not_set"} else ""
+
+    for name in ("transport_model", "transport_model_version", "met_model"):
+        site_metadata[name] = (
+            "site",
+            [footprint_attr(site, name) for site in merged.sites],
+        )
     return RhimePreparedInputs(
         inv_inputs=inv_inputs,
         basis_functions=basis_functions,
-        site_metadata=inversion_preparation._make_site_metadata(
-            sites=merged.sites,
-            averaging_period=merged.averaging_period,
-        ),
+        site_metadata=site_metadata,
     )

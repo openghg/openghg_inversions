@@ -126,5 +126,23 @@ def merged_scenario_data(
     # footprint extent separately so later compatibility transforms do not
     # mistake the observation level for footprint provenance.
     scenario_combined.attrs["footprint_max_level"] = footprint_max_level
+    for output_name, source_names in {
+        "transport_model": ("model", "transport_model"),
+        "transport_model_version": ("transport_model_version", "model_version"),
+        "met_model": ("met_model", "metmodel"),
+    }.items():
+        value = next(
+            (
+                source[key]
+                for source in (getattr(footprint_data, "metadata", {}), footprint_data.data.attrs)
+                for key in source_names
+                if isinstance(source.get(key), str)
+                and source[key].strip()
+                and source[key].strip().lower() not in {"none", "not_set"}
+            ),
+            None,
+        )
+        if value is not None:
+            scenario_combined.attrs[f"footprint_{output_name}"] = value
 
     return scenario_combined

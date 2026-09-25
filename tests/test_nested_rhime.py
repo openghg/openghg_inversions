@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from types import SimpleNamespace
 
 import dask.array as da
 import numpy as np
@@ -792,3 +793,46 @@ def test_make_nested_inversion_outputs_builds_per_domain_views() -> None:
     reloaded_inner = InversionOutput.from_datatree(inner_inv_out.to_datatree())
     assert reloaded_inner.output_metadata["nested_domain"] == inner_nested
     assert reloaded_inner.state_dimension_mapping == {"trace": "inner_region", "basis": "region"}
+
+
+def test_nested_latest_paris_output_writes_index_as_unlimited_dimension(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Nested latest concentration files preserve their index-based time axis."""
+    run_spec = _run_spec()
+    output_spec = RhimeOutputSpec(
+        output_format="paris",
+        output_path=str(tmp_path),
+        output_name="nested-test",
+        save_inversion_output=False,
+        paris_postprocessing_kwargs={"template_version": "latest"},
+    )
+    result = SimpleNamespace(
+        run_spec=run_spec,
+        output_spec=output_spec,
+        model_spec=run_spec.model,
+        outputs={},
+        output_metadata={},
+    )
+    prepared = SimpleNamespace(
+        outer=SimpleNamespace(averaging_period=("1h",)),
+        inner_domain_label="EUROPE-6km",
+    )
+    nested_result = SimpleNamespace(rhime_result=result, prepared_inputs=prepared)
+    concentration = xr.Dataset(
+        {"mf_observed": ("index", [1.0])},
+        coords={"time": ("index", pd.to_datetime(["2019-01-01"]))},
+    )
+    flux = xr.Dataset({"flux_total_prior": ("time", [1.0])}, coords={"time": ["2019-01-01"]})
+    monkeypatch.setattr(nested_module, "make_nested_inversion_outputs", lambda _: (object(), object()))
+    monkeypatch.setattr(
+        "openghg_inversions.postprocessing.nested_paris_outputs.make_nested_paris_products",
+        lambda *args, **kwargs: (flux, flux, concentration),
+    )
+
+    nested_module._write_nested_paris_outputs(nested_result)
+
+    with xr.open_dataset(result.output_metadata["paris_concentration_path"]) as saved:
+        assert saved.encoding["unlimited_dims"] == {"index"}
+        assert saved.time.dims == ("index",)

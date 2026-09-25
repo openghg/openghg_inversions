@@ -419,9 +419,12 @@ def make_global_attrs(
     author: str | None = None,
     species: str = "inert",
     domain: str = "EUROPE",
-    apriori_description: str = "EDGAR 8.0",
+    apriori_description: str = "",
     history: str | None = None,
     comment: str | None = None,
+    transport_model: str = "",
+    transport_model_version: str = "",
+    met_model: str = "",
 ) -> dict[str, str]:
     """Build global attributes shared by PARIS output products.
 
@@ -435,6 +438,9 @@ def make_global_attrs(
             processing entry.
         comment: Optional dataset comment. A descriptive nonempty default is
             used when this is omitted or empty.
+        transport_model: Transport model recorded by the footprint source.
+        transport_model_version: Version recorded by the footprint source.
+        met_model: Meteorological model recorded by the footprint source.
 
     Returns:
         CF-oriented global attributes for a PARIS dataset.
@@ -457,9 +463,9 @@ def make_global_attrs(
         inversion_system="RHIME",
         inversion_system_version=code_version(),
         apriori_description=apriori_description,
-        transport_model="NAME",
-        transport_model_version="NAME III (version 8.0)",
-        met_model="UKV",
+        transport_model=transport_model,
+        transport_model_version=transport_model_version,
+        met_model=met_model,
         domain=domain,
         species=species,
         project="Process Attribution of Regional emISsions (PARIS)",
@@ -474,6 +480,30 @@ def make_global_attrs(
     global_attrs["license"] = "CC-BY-4.0"
 
     return global_attrs
+
+
+def _inversion_global_attr_provenance(inv_out: InversionOutput) -> dict[str, str]:
+    """Describe the actual flux sources and footprint metadata in an inversion."""
+    sectors = inv_out.model_metadata.get("sectors", ())
+    sources = {
+        sector["flux_source"]
+        for sector in sectors
+        if isinstance(sector, Mapping) and isinstance(sector.get("flux_source"), str)
+    }
+    if not sources and isinstance(inv_out.flux.attrs.get("source"), str):
+        sources = {inv_out.flux.attrs["source"]}
+
+    footprint_provenance = inv_out.model_metadata.get("footprint_provenance", {})
+    result = {"apriori_description": "; ".join(sorted(sources))}
+    for name in ("transport_model", "transport_model_version", "met_model"):
+        values = {
+            str(site_metadata.get(name, "")).strip()
+            for site_metadata in footprint_provenance.values()
+            if isinstance(site_metadata, Mapping)
+        }
+        values.discard("")
+        result[name] = "; ".join(sorted(values))
+    return result
 
 
 def add_variable_attrs(
@@ -668,7 +698,9 @@ def paris_concentration_outputs(
 
     result.sitenames.attrs["long_name"] = "identifier of site"
 
-    result.attrs = make_global_attrs("conc", species=species, domain=domain)
+    result.attrs = make_global_attrs(
+        "conc", species=species, domain=domain, **_inversion_global_attr_provenance(inv_out)
+    )
     result.attrs["paris_concentration_template_version"] = template_files.concentration_version
 
     return _cast_float_data_vars_to_float32(result)
@@ -792,7 +824,9 @@ def paris_concentration_outputs_latest(
         .transpose("index", "percentile", "platform", "nbnds", missing_dims="ignore")
     )
 
-    result.attrs = make_global_attrs("conc", species=species, domain=domain)
+    result.attrs = make_global_attrs(
+        "conc", species=species, domain=domain, **_inversion_global_attr_provenance(inv_out)
+    )
     result.attrs["paris_concentration_template_version"] = template_files.concentration_version
 
     result = _cast_data_vars_to_template_dtypes(result, template_files.concentration).as_numpy()
@@ -1495,7 +1529,9 @@ def paris_flux_output(
 
     result = result.transpose("time", "percentile", "country", "latitude", "longitude")
 
-    result.attrs = make_global_attrs("flux", species=species, domain=domain)
+    result.attrs = make_global_attrs(
+        "flux", species=species, domain=domain, **_inversion_global_attr_provenance(inv_out)
+    )
     result.attrs["paris_flux_template_version"] = template_files.flux_version
     result = copy_flux_nonfinite_attrs(result, flux_outs)
 
@@ -1747,7 +1783,9 @@ def paris_flux_output_latest(
         sector_cross_covariance,
         emissions_attrs,
     )
-    result.attrs = make_global_attrs("flux", species=species, domain=domain)
+    result.attrs = make_global_attrs(
+        "flux", species=species, domain=domain, **_inversion_global_attr_provenance(inv_out)
+    )
     result.attrs["paris_flux_template_version"] = template_files.flux_version
     result = copy_flux_nonfinite_attrs(
         result,

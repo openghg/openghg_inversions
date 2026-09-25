@@ -1199,7 +1199,9 @@ def _write_nested_paris_outputs(nested_result: NestedRhimeResult) -> None:
             start_date=run_spec.start_date,
             ext=".nc",
         )
-        write_netcdf_preserving_bounds_attrs(conc_outs, conc_file, unlimited_dims=["time"])
+        write_netcdf_preserving_bounds_attrs(
+            conc_outs, conc_file, unlimited_dims=["index" if "index" in conc_outs.dims else "time"]
+        )
         write_netcdf_preserving_bounds_attrs(flux_outer, flux_file, unlimited_dims=["time"])
         write_netcdf_preserving_bounds_attrs(flux_inner, flux_inner_file, unlimited_dims=["time"])
         result.output_metadata["paris_concentration_path"] = str(conc_file)
