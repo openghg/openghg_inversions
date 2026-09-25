@@ -532,10 +532,11 @@ def test_merged_scenario_preserves_footprint_max_level_provenance(
         data=xr.Dataset(
             attrs={
                 "max_level": 17,
+                "model": "NAME",
                 "transport_model_version": "FLEXPART IFS (version 9.1_Empa)",
             }
         ),
-        metadata={"model": "FLEXPART", "met_model": "ECMWF IFS HRES"},
+        metadata={"model": "name", "met_model": "ECMWF IFS HRES"},
     )
 
     result = scenario_module.merged_scenario_data(
@@ -547,7 +548,7 @@ def test_merged_scenario_preserves_footprint_max_level_provenance(
 
     assert result.attrs["max_level"] == 3
     assert result.attrs["footprint_max_level"] == 17
-    assert result.attrs["footprint_transport_model"] == "FLEXPART"
+    assert result.attrs["footprint_transport_model"] == "NAME"
     assert result.attrs["footprint_transport_model_version"] == "FLEXPART IFS (version 9.1_Empa)"
     assert result.attrs["footprint_met_model"] == "ECMWF IFS HRES"
 
