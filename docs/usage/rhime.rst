@@ -905,6 +905,12 @@ source/path when known. Legacy flat basis NetCDF files remain readable as an
 explicit compatibility fallback, and flat basis maps may still be emitted by
 compatibility output formats, but new workflows should save and load DataTree
 ``BasisFunctions`` artifacts instead of relying on flat-basis reconstruction.
+The basis-backed output helpers reconstruct signed flux with retained
+``BasisFunctions.state_to_flux``, sum source-resolved results for total-grid
+products, and convert completed products to dense data before serialization.
+Derived flux products keep their existing ``flux_time`` coordinate label;
+see :doc:`retained_state_reconstruction` for the linear reconstruction and
+source-axis contract.
 
 ``run_hbmcmc.py`` is a transitional compatibility wrapper for supported old
 fixedbasis-style INI files. It translates legacy option names to the modern

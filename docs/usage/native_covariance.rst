@@ -22,11 +22,12 @@ The classes have the following distinct roles.
      - Responsibility
    * - ``BasisOperator``
      - Owns basis geometry and retained-state labels. For a single source,
-       ``basis_matrix`` is the bucket prolongation :math:`U_{\mathrm{bucket}}`.
-       A gathered multisource matrix is a spatial template; the basis-side
-       ``native_prolongation`` adapter expands it onto a canonical explicit
-       native source dimension. In both cases, the transpose does not define
-       the retained restriction :math:`\Pi`.
+       ``basis_matrix`` is the bucket coarse-to-fine map (prolongation)
+       :math:`U_{\mathrm{bucket}}`.
+       A gathered multisource matrix is a spatial template; covariance
+       projection expands it onto a canonical explicit native source
+       dimension through an internal adapter. In both cases, the transpose
+       does not define the retained restriction :math:`\Pi`.
    * - ``InvertibleNativeCovarianceAction``
      - Structural interface for a labelled, self-adjoint positive-definite
        :math:`B`, including its compatible inverse solve, without constructing

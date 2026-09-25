@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+from openghg_inversions.array_ops import to_dense
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.flux_sanitization import copy_flux_nonfinite_attrs
 from openghg_inversions.postprocessing.countries import Countries, paris_regions_dict
@@ -44,6 +45,17 @@ TRACE_GROUP_SUFFIXES = (
     "_prior",
     "_posterior",
 )
+
+
+def _materialize_product(ds: xr.Dataset) -> xr.Dataset:
+    """Convert completed output variables to dense NumPy data for consumers and writers."""
+    return xr.Dataset(
+        {name: to_dense(data) for name, data in ds.data_vars.items()},
+        coords=ds.coords,
+        attrs=ds.attrs,
+    ).as_numpy()
+
+
 _PRODUCT_METADATA_FIELDS = Literal["species", "domain", "start_date", "end_date"]
 
 
@@ -423,7 +435,7 @@ def make_multisector_flux_trace_outputs(
     )
     result = xr.merge([total_flux_trace, *sector_flux_traces])
     if materialize:
-        result = result.as_numpy()
+        result = _materialize_product(result)
     result = _copy_first_flux_nonfinite_metadata(result, [total_flux_trace, *sector_flux_traces])
     return add_basis_reconstruction_metadata(result, inv_out.basis_functions)
 
@@ -531,7 +543,7 @@ def make_sector_flux_outputs(
                 )
             )
 
-    result = _set_multisector_flux_attrs(xr.merge(outputs), inv_out, sectors).as_numpy()
+    result = _materialize_product(_set_multisector_flux_attrs(xr.merge(outputs), inv_out, sectors))
     result = _copy_first_flux_nonfinite_metadata(result, [total_flux_trace, *sector_flux_traces])
     return add_basis_reconstruction_metadata(result, inv_out.basis_functions)
 
@@ -618,7 +630,7 @@ def make_flux_outputs(
 
         flux_stats = xr.merge([flux_stats, scale_factor_stats])
 
-    return add_basis_reconstruction_metadata(flux_stats.as_numpy(), inv_out.basis_functions)
+    return add_basis_reconstruction_metadata(_materialize_product(flux_stats), inv_out.basis_functions)
 
 
 def flatten_post_prior(ds: xr.Dataset) -> xr.Dataset:

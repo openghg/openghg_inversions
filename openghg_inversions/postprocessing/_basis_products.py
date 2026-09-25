@@ -86,21 +86,30 @@ def _interpolate_dataset(
     state: xr.Dataset,
     basis_functions: BasisFunctions,
     *,
-    weights: xr.DataArray | None,
+    flux_weighted: bool,
+    flux_time: xr.DataArray | None = None,
 ) -> xr.Dataset:
-    """Interpolate each data variable from basis state space to the grid."""
+    """Reconstruct completed total-grid products from retained state variables."""
     operator_state = _to_operator_state_dim(state, basis_functions)
     data_vars = {}
+    native_source_dim = f"native_{getattr(basis_functions.operator, 'source_dim', 'source')}"
     for name, data in operator_state.data_vars.items():
         interpolated = (
-            basis_functions.interpolate(data)
-            if weights is None
-            else basis_functions.operator.interpolate(data, weights=weights)
+            basis_functions.state_to_flux(data)
+            if flux_weighted else basis_functions.state_to_native(data)
         )
+        if native_source_dim in interpolated.dims:
+            interpolated = interpolated.sum(native_source_dim)
+        if flux_weighted and "source" in interpolated.dims:
+            interpolated = interpolated.sum("source")
+        if flux_weighted and "time" in interpolated.dims:
+            interpolated = interpolated.rename(time="flux_time")
+        elif flux_weighted and flux_time is not None and "flux_time" not in interpolated.dims:
+            interpolated = interpolated.expand_dims(flux_time=flux_time)
         interpolated.attrs = state[name].attrs
         data_vars[name] = interpolated
     result = xr.Dataset(data_vars, attrs=state.attrs)
-    if weights is not None:
+    if flux_weighted:
         return _transpose_flux_weighted_dataset(result)
     if "flux_time" in result.dims:
         return _transpose_inversion_grid_dataset(result)
@@ -151,17 +160,33 @@ def reconstruct_flux_stats(
         NonFiniteFluxWarning: If old retained flux has no sanitation metadata
             and the lazy zero-fill backstop is applied.
     """
-    flux = sanitize_flux_nonfinite(
-        flux,
+    retained_flux = sanitize_flux_nonfinite(
+        basis_functions.flux,
         context="operator-backed flux reconstruction",
         warn=True,
     )
+    basis_functions = basis_functions.with_flux(retained_flux)
     if report_flux_on_inversion_grid:
-        region_flux = _operator_region_flux_mean(basis_functions, flux)
+        region_flux = _operator_region_flux_mean(basis_functions, retained_flux)
         state = _to_operator_state_dim(stats_ds, basis_functions) * region_flux
-        return copy_flux_nonfinite_attrs(_interpolate_dataset(state, basis_functions, weights=None), flux)
+        result = _interpolate_dataset(state, basis_functions, flux_weighted=False)
+        if "time" in result.dims:
+            result = result.rename(time="flux_time")
+        elif "flux_time" in flux.dims and "flux_time" not in result.dims:
+            result = result.expand_dims(flux_time=flux.flux_time)
+        result = copy_flux_nonfinite_attrs(result, retained_flux)
+        if "time_period" in retained_flux.attrs:
+            result.attrs["time_period"] = retained_flux.attrs["time_period"]
+        return result
 
-    return copy_flux_nonfinite_attrs(_interpolate_dataset(stats_ds, basis_functions, weights=flux), flux)
+    result = copy_flux_nonfinite_attrs(
+        _interpolate_dataset(stats_ds, basis_functions, flux_weighted=True,
+                             flux_time=flux.coords.get("flux_time")),
+        retained_flux,
+    )
+    if "time_period" in retained_flux.attrs:
+        result.attrs["time_period"] = retained_flux.attrs["time_period"]
+    return result
 
 
 def reconstruct_scale_factor_stats(
@@ -169,7 +194,7 @@ def reconstruct_scale_factor_stats(
     stats_ds: xr.Dataset,
 ) -> xr.Dataset:
     """Reconstruct gridded scale-factor statistics with the retained operator."""
-    return _interpolate_dataset(stats_ds, basis_functions, weights=None)
+    return _interpolate_dataset(stats_ds, basis_functions, flux_weighted=False)
 
 
 def make_x_to_country_matrix(

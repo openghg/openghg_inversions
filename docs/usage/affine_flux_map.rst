@@ -1,6 +1,11 @@
 Affine native-flux reconstruction
 =================================
 
+For the linear bucket-basis equation and source summation, see
+:doc:`retained_state_reconstruction`. The affine map's public ``prolongation``
+ingredient is a coarse-to-fine map (prolongation); its centred reconstruction
+equation remains distinct from the bucket-basis action.
+
 ``AffineFluxMap`` reconstructs the retained-state-conditional mean of a
 native scaling field and its signed flux field.  For native mean :math:`m`,
 covariance-natural prolongation :math:`U_*`, retained state :math:`\alpha`,
