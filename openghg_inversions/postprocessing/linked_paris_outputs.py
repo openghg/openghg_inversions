@@ -8,9 +8,11 @@ import json
 from pathlib import Path
 
 import arviz as az
+from dask import compute as dask_compute
 import numpy as np
 import xarray as xr
 
+from openghg_inversions.array_ops import to_dense
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.basis.operators import BucketBasisOperator
 from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
@@ -123,7 +125,6 @@ def reconstruct_co2_o2_concentrations(
         dataset = xr.Dataset(data)
         dataset.attrs.update(
             species=species,
-            units=str(observed.observation_units.values[0]),
             has_offset=f"{species}_offset_concentration" in roles,
         )
         result[species] = dataset
@@ -149,11 +150,10 @@ def _concentration_product(
         raise ValueError("Linked PARIS concentration requires observation-aligned site and time coordinates.")
     if not np.issubdtype(components.time.dtype, np.datetime64):
         raise ValueError("Linked PARIS concentration requires datetime observation coordinates.")
-    components = components.compute()
     sampled_dims = [dim for dim in ("chain", "draw", "prior_chain", "prior_draw") if dim in components.dims]
     means = components.mean(sampled_dims).reset_index("observation").rename(observation="index")
     sources = [
-        name.removesuffix("_posterior")
+        str(name).removesuffix("_posterior")
         for name in means.data_vars
         if str(name).endswith("_posterior")
         and str(name).removesuffix("_posterior") not in {"modelled", "residual", "boundary", "offset"}
@@ -283,6 +283,16 @@ def make_co2_o2_paris_outputs(
         "linked_posterior": "Marginals of one joint CO2/O2 posterior; cross-channel covariance remains in the linked trace.",
     }
     components = reconstruct_co2_o2_concentrations(trace, prepared)
+    # Materialize both channels together at the eager PARIS product boundary.
+    components = dict(
+        zip(
+            components,
+            dask_compute(*(value.map(to_dense, keep_attrs=True) for value in components.values())),
+            strict=True,
+        )
+    )
+    for value in components.values():
+        value.attrs["units"] = str(value.observation_units.values[0])
     products = {}
     for species, values in components.items():
         products[species] = {
@@ -339,14 +349,15 @@ def make_co2_o2_paris_outputs(
             negative = native.flux_total_prior < 0
             for when in ("prior", "posterior"):
                 name = f"stdev_flux_total_{when}"
-                native[name] = abs(native[name])
+                native[name] = native[name].copy(data=np.abs(native[name].data))
                 name = f"percentile_flux_total_{when}"
                 quantiles = native[name]
                 reversed_quantiles = quantiles.isel(percentile=slice(None, None, -1)).assign_coords(
                     percentile=quantiles.percentile,
                 )
                 native[name] = xr.where(negative, reversed_quantiles, quantiles).transpose(*quantiles.dims)
-                native[name].attrs = quantiles.attrs
+                native[name].attrs = dict(quantiles.attrs)
+                native[name].encoding = dict(quantiles.encoding)
         for product, dataset in products[species].items():
             dataset.attrs.update(provenance)
             if product == "flux":
