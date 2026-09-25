@@ -5,6 +5,13 @@ recipes while reusing canonical RHIME inputs through explicit composition.
 """
 
 from .co2_model import build_co2_model
+from .co2_affine_output import (
+    BoundCo2AffineFluxMap,
+    import_explicit_affine_flux_map,
+    load_and_bind_affine_flux_map,
+    prepared_inputs_content_id,
+    produce_bucket_affine_flux_map,
+)
 from .co2_preparation import Co2PreparedInputs, prepare_co2_inputs
 from .co2_runner import (
     co2_model_input_names,
@@ -36,6 +43,7 @@ __all__ = [
     "Co2O2RunSetup",
     "Co2O2PreparedInputs",
     "Co2PreparedInputs",
+    "BoundCo2AffineFluxMap",
     "Co2CachedSigmaModel",
     "Co2RunSetup",
     "build_co2_cached_sigma_model",
@@ -50,6 +58,10 @@ __all__ = [
     "prepare_co2_o2_inputs",
     "prepare_co2_inputs",
     "load_co2_family_config",
+    "load_and_bind_affine_flux_map",
+    "import_explicit_affine_flux_map",
+    "prepared_inputs_content_id",
+    "produce_bucket_affine_flux_map",
     "resolve_co2_family_config",
     "run_rhime_co2",
     "run_rhime_co2_cached_sigma",
