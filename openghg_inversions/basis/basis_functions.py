@@ -453,11 +453,22 @@ class FluxWeightedBasis:
         return cast(Self, cls.from_datatree(open_datatree_loaded(file_path)))
 
     def state_to_native(self, state: xr.DataArray) -> xr.DataArray:
-        """Reconstruct linear native scaling with the coarse-to-fine map (prolongation)."""
+        """Reconstruct linear native scaling with the coarse-to-fine map (prolongation).
+
+        A source-specific basis retains an ordered ``native_source`` dimension
+        (or ``native_{source_dim}`` when its source dimension has another name).
+        Sum that dimension explicitly when a total scaling grid is needed.
+        """
         return self.operator.state_to_native(state)
 
     def state_to_flux(self, state: xr.DataArray) -> xr.DataArray:
-        """Reconstruct signed flux from the retained state and this basis's flux."""
+        """Reconstruct signed flux from the retained state and this basis's flux.
+
+        A source-specific basis retains an ordered ``native_source`` dimension
+        (or ``native_{source_dim}`` when renamed). A shared basis with
+        source-resolved retained flux instead returns a ``source`` dimension.
+        Sum the source dimension explicitly when a total flux grid is needed.
+        """
         flux = self.flux
         state_dim = self.operator.meta.state_dim
         for dim in self.operator.meta.grid_dims:

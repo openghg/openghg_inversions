@@ -143,14 +143,17 @@ def reconstruct_flux_stats(
     *,
     report_flux_on_inversion_grid: bool,
 ) -> xr.Dataset:
-    """Reconstruct gridded flux statistics with the retained basis operator.
+    """Reconstruct gridded flux statistics using flux retained with the basis.
 
     Args:
-        basis_functions: Retained basis operator and flux metadata.
-        flux: Prior flux used to weight or scale reconstructed statistics.
+        basis_functions: Retained basis operator and authoritative flux values.
+        flux: Supplies an output ``flux_time`` dimension only when the retained
+            flux has neither ``time`` nor ``flux_time``. Its values do not
+            override the retained flux.
         stats_ds: Statistics in basis-state space.
-        report_flux_on_inversion_grid: Report region-mean flux when ``True``;
-            otherwise interpolate with prior-flux weights.
+        report_flux_on_inversion_grid: Apply mean retained flux per basis region
+            on the inversion grid when ``True``; otherwise apply retained flux
+            on its native grid.
 
     Returns:
         Reconstructed gridded statistics carrying non-finite policy metadata.
