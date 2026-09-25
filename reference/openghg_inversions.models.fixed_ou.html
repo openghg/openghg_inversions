@@ -381,6 +381,9 @@
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_cached_sigma_model.html">openghg_inversions.rhime.co2.co2_cached_sigma_model</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_cached_sigma_runner.html">openghg_inversions.rhime.co2.co2_cached_sigma_runner</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_model.html">openghg_inversions.rhime.co2.co2_model</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_cached_sigma_model.html">openghg_inversions.rhime.co2.co2_o2_cached_sigma_model</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_cached_sigma_runner.html">openghg_inversions.rhime.co2.co2_o2_cached_sigma_runner</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_fixed_ou.html">openghg_inversions.rhime.co2.co2_o2_fixed_ou</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_model.html">openghg_inversions.rhime.co2.co2_o2_model</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_preparation.html">openghg_inversions.rhime.co2.co2_o2_preparation</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_runner.html">openghg_inversions.rhime.co2.co2_o2_runner</a></li>
@@ -680,6 +683,7 @@ of tau values is accepted only with matching, ordered <code class="docutils lite
 <dd><em class="sig-param"><span class="n"><span class="pre">fixed_site_amplitudes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">site_amplitude_prior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">output_dim</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'nmeasure'</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">sigma_alignment</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.fixed_ou.add_fixed_ou_gaussian_likelihood" title="Link to this definition">#</a></dt>
@@ -689,7 +693,8 @@ variance plus one labelled OU block per site. Inferred amplitudes require
 an explicit prior in the observations’ concentration units. A positive OU
 term may make a singular fixed base valid. Fixed amplitudes must produce
 strictly positive generalized base-plus-OU mode variances before the
-low-rank update.</p>
+low-rank update. <code class="docutils literal notranslate"><span class="pre">sigma_alignment</span></code> may explicitly map a labelled joint
+observation axis to species/site groups; by default groups are sites.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><em>TensorVariable</em></p>

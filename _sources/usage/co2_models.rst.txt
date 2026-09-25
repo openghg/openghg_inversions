@@ -265,7 +265,13 @@ callable imports:
    * - ``co2_o2``
      - ``linked``
      - ``run_rhime_co2_o2_from_prepared_inputs``
-     - Fixed independent error with one shared channel-unit label.
+     - Fixed independent error, or ``fixed_ou`` with fixed or inferred
+       species/site amplitudes; one shared channel-unit label.
+   * - ``co2_o2``
+     - ``cached_fixed_ou``
+     - ``run_rhime_co2_o2_cached_sigma_from_prepared_inputs``
+     - Fixed OU timescales and HalfNormal species/site amplitudes, using the
+       runner-owned PyMC sampler; one shared channel-unit label.
 
 For ``variant = "ordinary"``, the ``[likelihood]`` table accepts these closed
 forms. Scalar-or-site-map values use either one positive number or an inline
@@ -316,16 +322,17 @@ false). A global offset (``per_site = false``) cannot set a frequency or use
 ``drop_first = true``.
 
 For ``variant = "cached_fixed_ou"``, ``[likelihood]`` requires
-``kind = "fixed_ou"``, positive scalar-or-site-map ``tau_hours``, and positive
+``kind = "fixed_ou"``, positive scalar-or-site-map ``tau_hours`` (species/site
+keys such as ``"co2:MHD"`` for the linked recipe), and positive
 ``site_amplitude_prior_scale``. It optionally accepts positive
 ``initial_site_amplitudes`` and the zero-to-one controls
 ``sigma_target_accept`` and ``state_target_accept``. Its ``[sampling]`` table
 must use ``nuts_sampler = "pymc"``; posterior-predictive name lists may contain
 only ``y`` or ``concentration``.
 
-The optional ``[sampling]`` table is shared by all three supported setups.
-Defaults below apply when an option is omitted; the linked recipe overrides the
-two defaults shown in its column.
+The optional ``[sampling]`` table is shared by the supported setups.
+Defaults below apply when an option is omitted; linked fixed-error sampling
+uses NumPyro, while both linked OU routes default to and require PyMC.
 
 .. list-table:: Sampling configuration
    :header-rows: 1
@@ -353,9 +360,9 @@ two defaults shown in its column.
      - Positive integer.
    * - ``nuts_sampler``
      - ``"pymc"``
-     - ``"numpyro"``
+     - ``"numpyro"`` for fixed error; ``"pymc"`` for OU
      - One of ``"pymc"``, ``"nutpie"``, ``"numpyro"``, or ``"blackjax"``;
-       the cached variant requires ``"pymc"``.
+       cached variants and linked ``fixed_ou`` require ``"pymc"``.
    * - ``progressbar``
      - ``false``
      - ``false``
@@ -439,10 +446,12 @@ baseline sum when present. Aggregation covariance and independent observation
 error still enter the single joint likelihood once.
 
 Standalone O2, arbitrary Python callables, and additional recipe or variant
-names are rejected. The linked configuration also rejects ordinary likelihood selection,
-cached/scalar likelihoods, and unequal
-CO2 and O2 unit labels. The lower-level linked prepared-input API continues to
-represent row-specific mixed units; configuring a heterogeneous ppm/per-meg
+names are rejected. Linked likelihood selection supports the fixed-error
+default and ``fixed_ou``; it rejects ``additive_sigma``, ``site_sigma``,
+``scalar_sigma``, and unequal CO2 and O2 unit labels. The linked
+``cached_fixed_ou`` variant uses the matched cached sampler. The lower-level
+linked fixed-error API continues to represent row-specific mixed units;
+configuring a heterogeneous ppm/per-meg
 run is deferred until the scaling contract tracked in `OPE-86
 <https://linear.app/openghg-inversions/issue/OPE-86>`_ is available. Use the
 direct Python interfaces for experimental combinations outside this matrix.
@@ -638,10 +647,9 @@ construction, and
 :func:`openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs` for
 materialization, sampling, and trace metadata.
 
-This joint recipe currently keeps its fixed, row-labelled independent error
-and does not expose the CO2 ``likelihood_builder`` seam. A cross-channel
-mismatch model must first define its CO2/O2 covariance, parameter sharing, and
-mixed-unit behavior explicitly.
+The default joint recipe uses fixed, row-labelled independent error. The
+same-unit fixed-OU option below adds independent species/site mismatch blocks
+while preserving the prepared cross-channel aggregation covariance.
 
 Partition that state as
 
@@ -938,3 +946,67 @@ through :func:`openghg_inversions.observation_error.resolve_aggregation_error`.
 A custom pipeline that constructs an ``AggregationError`` directly owns the
 completeness, coherence, and numerical covariance guarantees of that object;
 there is no separate public complete-covariance validator.
+
+
+Linked fixed-OU mismatch and cached sampling
+-------------------------------------------
+
+The linked prepared-input runner accepts ``tau_hours`` together with either
+``fixed_site_amplitudes`` or ``site_amplitude_prior``. It uses the same fixed-OU
+numerical component as the CO2 recipe, with groups defined by both species and
+site. The complete joint covariance is
+
+.. math::
+
+   R = A_{joint} + D_{obs}
+       + \operatorname{blockdiag}_{(species, site)}
+         \left(\sigma_{species,site}^{2} T_{species,site}\right),
+   \qquad T_{ij}=\exp(-|t_i-t_j|/\tau_{species,site}).
+
+``A_joint`` is the prepared aggregation covariance, including its nonzero
+cross-channel blocks. ``D_obs`` is the squared reported independent error.
+Each term enters exactly once. Rows may be irregular and interleaved; the
+OU groups preserve their original row positions. Different channels at the
+same site have separate amplitudes and no cross-channel OU contribution.
+Both channels must already use the same concentration units. Heterogeneous
+covariance units are not supported by this option.
+
+Tau is fixed in hours. A scalar tau or fixed amplitude applies independently
+to every observed group. Mappings must cover labels such as ``co2:MHD`` and
+``o2:MHD``. Amplitudes and their prior scales use the common concentration unit.
+For example, the ordinary linked configuration can include:
+
+.. code-block:: toml
+
+   recipe = "co2_o2"
+   variant = "linked"
+
+   [likelihood]
+   kind = "fixed_ou"
+   tau_hours = { "co2:MHD" = 6.0, "o2:MHD" = 8.0 }
+   fixed_site_amplitudes = { "co2:MHD" = 0.4, "o2:MHD" = 0.7 }
+
+Replace ``fixed_site_amplitudes`` with a ``site_amplitude_prior`` table to infer
+amplitudes with stock PyMC. The optimized runner
+:func:`openghg_inversions.rhime.co2.run_rhime_co2_o2_cached_sigma_from_prepared_inputs`
+uses independent HalfNormal amplitude priors and the existing CO2
+sigma-then-state ``CompoundStep``. It refreshes the exact state quadratic only
+when returned amplitude values change, then updates all active flux, boundary,
+and offset coefficients against that cache. Its builder is
+:func:`openghg_inversions.rhime.co2.build_co2_o2_cached_sigma_model`.
+
+Select ``variant = "cached_fixed_ou"`` and supply ``site_amplitude_prior_scale``
+in ``[likelihood]`` in place of fixed amplitudes. Optional
+``initial_site_amplitudes`` accepts the same scalar or species/site mapping.
+Sampler options match the CO2 cached recipe, including separate
+``sigma_target_accept`` and ``state_target_accept`` controls. Both linked OU
+routes require ``nuts_sampler = "pymc"`` and select it by default; the ordinary
+fixed-error linked default remains NumPyro.
+
+Both routes retain species and native channel identity in the trace. The
+``ou_site`` coordinate uses the species/site labels, with ``ou_species`` and
+``ou_station`` coordinates describing each group. Amplitudes retain
+concentration units and ``ou_tau_hours`` retains hours through serialization.
+The cached runner supplies one normalized joint log likelihood per posterior
+draw and optional correlated joint predictive vectors; these are not
+independent per-observation likelihoods.

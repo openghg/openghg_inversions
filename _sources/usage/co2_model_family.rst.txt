@@ -25,7 +25,9 @@ Current support
      - :func:`openghg_inversions.rhime.run_rhime_co2`; see the
        :ref:`package-supported cached-sigma specialization
        <co2-cached-sigma-recipe>` for its prepared-input runner.
-     - :func:`openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs`.
+     - :func:`openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs`
+       and the matched fixed-OU
+       :func:`~openghg_inversions.rhime.co2.run_rhime_co2_o2_cached_sigma_from_prepared_inputs`.
        A complete ``run_rhime_co2_o2`` entry point is not available.
    * - Acquisition and preparation
      - :func:`openghg_inversions.rhime.co2.prepare_co2_inputs` combines
@@ -39,7 +41,13 @@ Current support
      - A packaged TOML template and strict resolver produce explicit arguments
        for the ordinary or cached fixed-OU prepared-input Python runner.
      - A packaged TOML template and strict resolver produce explicit arguments
-       for the linked prepared-input Python runner.
+       for the linked ordinary and cached fixed-OU prepared-input Python runners.
+   * - Fixed-OU mismatch
+     - Fixed tau and fixed or inferred site amplitudes; optional matched
+       cached quadratic sampler.
+     - Fixed tau and fixed or inferred amplitudes by species/site, preserving
+       cross-channel aggregation covariance. The matched cached sampler
+       updates all active affine coefficients. Requires the same channel units.
    * - Boundary conditions and offsets
      - The ordinary and cached-sigma runners can select prepared ``H_bc``
        boundary sensitivity and add global, site, or site-by-period offsets.

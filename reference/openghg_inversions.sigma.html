@@ -381,6 +381,9 @@
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_cached_sigma_model.html">openghg_inversions.rhime.co2.co2_cached_sigma_model</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_cached_sigma_runner.html">openghg_inversions.rhime.co2.co2_cached_sigma_runner</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_model.html">openghg_inversions.rhime.co2.co2_model</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_cached_sigma_model.html">openghg_inversions.rhime.co2.co2_o2_cached_sigma_model</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_cached_sigma_runner.html">openghg_inversions.rhime.co2.co2_o2_cached_sigma_runner</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_fixed_ou.html">openghg_inversions.rhime.co2.co2_o2_fixed_ou</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_model.html">openghg_inversions.rhime.co2.co2_o2_model</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_preparation.html">openghg_inversions.rhime.co2.co2_o2_preparation</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_runner.html">openghg_inversions.rhime.co2.co2_o2_runner</a></li>
@@ -490,7 +493,7 @@
 <span id="openghg-inversions-sigma"></span><h1>openghg_inversions.sigma<a class="headerlink" href="#module-openghg_inversions.sigma" title="Link to this heading">#</a></h1>
 <p>Represent observation-to-sigma alignment independently of model backends.</p>
 <p>The canonical site and period indexes are eager, non-negative integer vectors
-on <code class="docutils literal notranslate"><span class="pre">nmeasure</span></code>. They can be prepared once and consumed by PyMC or another
+on <code class="docutils literal notranslate"><span class="pre">nmeasure</span></code> or <code class="docutils literal notranslate"><span class="pre">observation</span></code>. They can be prepared once and consumed by PyMC or another
 inversion backend.</p>
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.sigma.SigmaAlignment">
@@ -566,7 +569,7 @@ inversion backend.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>observations</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – Observation vector with an aligned <code class="docutils literal notranslate"><span class="pre">site</span></code>
+<li><p><strong>observations</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – Vector on <code class="docutils literal notranslate"><span class="pre">nmeasure</span></code> or <code class="docutils literal notranslate"><span class="pre">observation</span></code> with an aligned <code class="docutils literal notranslate"><span class="pre">site</span></code>
 coordinate and, when <code class="docutils literal notranslate"><span class="pre">frequency</span></code> is set, observation times.</p></li>
 <li><p><strong>frequency</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Sigma period frequency. <code class="docutils literal notranslate"><span class="pre">None</span></code> creates one period.</p></li>
 <li><p><strong>per_site</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – Whether sigma varies by site.</p></li>
@@ -669,7 +672,7 @@ coordinate and, when <code class="docutils literal notranslate"><span class="pre
 <dd class="field-odd"><p><strong>sigma</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – Values with <code class="docutils literal notranslate"><span class="pre">nsigma_site</span></code> and <code class="docutils literal notranslate"><span class="pre">nsigma_time</span></code> dimensions.</p>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">sigma_aligned</span></code> with latent dimensions replaced by <code class="docutils literal notranslate"><span class="pre">nmeasure</span></code>.</p>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">sigma_aligned</span></code> with latent dimensions replaced by the observation axis.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">

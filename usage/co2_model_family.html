@@ -439,7 +439,9 @@ cross-channel covariance.</p></td>
 <tr class="row-odd"><td><p>Public entry point</p></td>
 <td><p><a class="reference internal" href="../reference/openghg_inversions.rhime.html#openghg_inversions.rhime.run_rhime_co2" title="openghg_inversions.rhime.run_rhime_co2"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.run_rhime_co2()</span></code></a>; see the
 <a class="reference internal" href="co2_models.html#co2-cached-sigma-recipe"><span class="std std-ref">package-supported cached-sigma specialization</span></a> for its prepared-input runner.</p></td>
-<td><p><a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs" title="openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs()</span></code></a>.
+<td><p><a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs" title="openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs()</span></code></a>
+and the matched fixed-OU
+<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.run_rhime_co2_o2_cached_sigma_from_prepared_inputs" title="openghg_inversions.rhime.co2.run_rhime_co2_o2_cached_sigma_from_prepared_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">run_rhime_co2_o2_cached_sigma_from_prepared_inputs()</span></code></a>.
 A complete <code class="docutils literal notranslate"><span class="pre">run_rhime_co2_o2</span></code> entry point is not available.</p></td>
 </tr>
 <tr class="row-even"><td><p>Acquisition and preparation</p></td>
@@ -455,25 +457,32 @@ OpenGHG data.</p></td>
 <td><p>A packaged TOML template and strict resolver produce explicit arguments
 for the ordinary or cached fixed-OU prepared-input Python runner.</p></td>
 <td><p>A packaged TOML template and strict resolver produce explicit arguments
-for the linked prepared-input Python runner.</p></td>
+for the linked ordinary and cached fixed-OU prepared-input Python runners.</p></td>
 </tr>
-<tr class="row-even"><td><p>Boundary conditions and offsets</p></td>
+<tr class="row-even"><td><p>Fixed-OU mismatch</p></td>
+<td><p>Fixed tau and fixed or inferred site amplitudes; optional matched
+cached quadratic sampler.</p></td>
+<td><p>Fixed tau and fixed or inferred amplitudes by species/site, preserving
+cross-channel aggregation covariance. The matched cached sampler
+updates all active affine coefficients. Requires the same channel units.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Boundary conditions and offsets</p></td>
 <td><p>The ordinary and cached-sigma runners can select prepared <code class="docutils literal notranslate"><span class="pre">H_bc</span></code>
 boundary sensitivity and add global, site, or site-by-period offsets.</p></td>
 <td><p>Channel-labelled boundary sensitivities, priors and activity, plus
 independent global, site, or site-by-period offsets (same-unit channels).</p></td>
 </tr>
-<tr class="row-odd"><td><p>Staged workflow</p></td>
+<tr class="row-even"><td><p>Staged workflow</p></td>
 <td><p>Not supported by the staged CLI.</p></td>
 <td><p>Not supported by the staged CLI.</p></td>
 </tr>
-<tr class="row-even"><td><p>Outputs and postprocessing</p></td>
+<tr class="row-odd"><td><p>Outputs and postprocessing</p></td>
 <td><p>Returns an annotated xarray <code class="docutils literal notranslate"><span class="pre">DataTree</span></code>. Use the documented serialization
 boundary; the complete RHIME output pipeline is not integrated.</p></td>
 <td><p>Returns an annotated xarray <code class="docutils literal notranslate"><span class="pre">DataTree</span></code>. Use the documented serialization
 boundary; family-specific output and postprocessing are not integrated.</p></td>
 </tr>
-<tr class="row-odd"><td><p>Validation and acceptance</p></td>
+<tr class="row-even"><td><p>Validation and acceptance</p></td>
 <td><p>Coherent preparation, dedicated serialization, model construction,
 configuration resolution, replay, provenance, and cached-sampler
 behavior have automated regression tests. Complete outputs, staged
