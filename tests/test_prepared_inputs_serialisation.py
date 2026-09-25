@@ -39,6 +39,7 @@ from openghg_inversions.serialization import (
     load_trace,
     normalise_declared_multiindex,
     restore_declared_multiindexes,
+    save_datatree,
     save_trace,
     trace_from_datatree,
     trace_to_datatree,
@@ -682,6 +683,35 @@ def test_load_trace_rejects_complete_inversion_output(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="complete InversionOutput artifact"):
         load_trace(path)
+
+
+def test_load_trace_rejects_schema_less_complete_inversion_output(tmp_path: Path) -> None:
+    """A complete artifact cannot masquerade as a trace when its schema is absent."""
+    trace = make_trace(posterior=xr.Dataset({"x": (("chain", "draw"), [[1.0]])}))
+    inv_out = InversionOutput(
+        trace=trace,
+        inv_inputs=xr.Dataset(),
+        basis_functions=_basis_functions(),
+    )
+    tree = inv_out.to_datatree()
+    del tree.attrs["schema"]
+    path = tmp_path / "schema-less-inversion-output.nc"
+    save_datatree(tree, path)
+
+    with pytest.raises(ValueError, match="complete InversionOutput artifact"):
+        load_trace(path)
+
+
+def test_save_trace_rejects_reserved_schema_attribute(tmp_path: Path) -> None:
+    """A trace with an artifact schema cannot be saved as an unloadable file."""
+    trace = make_trace(posterior=xr.Dataset({"x": (("chain", "draw"), [[1.0]])}))
+    trace.attrs["schema"] = "custom.schema"
+    path = tmp_path / "trace.nc"
+
+    with pytest.raises(ValueError, match="root 'schema' attribute is reserved"):
+        save_trace(trace, path)
+
+    assert not path.exists()
 
 
 def test_load_trace_rejects_prepared_inputs(tmp_path: Path) -> None:

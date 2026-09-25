@@ -376,7 +376,12 @@ def save_trace(
         trace: Trace whose groups and root dataset should be saved.
         output_file: Destination NetCDF file or Zarr store.
         output_format: Explicit backend, or ``None`` to infer it from the path.
+
+    Raises:
+        ValueError: If the trace uses the reserved root ``schema`` attribute.
     """
+    if "schema" in trace.attrs:
+        raise ValueError("The trace root 'schema' attribute is reserved for artifact identification.")
     save_datatree(trace_to_datatree(trace), output_file, output_format)
 
 
@@ -393,11 +398,12 @@ def load_trace(file_path: str | Path) -> xr.DataTree:
         Fully loaded trace with valid semantic indexes reconstructed.
 
     Raises:
-        ValueError: If the artifact declares an incompatible schema.
+        ValueError: If the artifact has an incompatible schema or complete-artifact structure.
     """
     dt = open_datatree_loaded(file_path)
     schema = dt.attrs.get("schema")
-    if schema == "openghg_inversions.inversion_output":
+    complete_artifact_groups = {"trace", "inv_inputs", "basis_functions"}
+    if schema == "openghg_inversions.inversion_output" or complete_artifact_groups.issubset(dt.children):
         raise ValueError(
             "Expected a standalone trace artifact, but received a complete "
             "InversionOutput artifact; use InversionOutput.load() instead."
