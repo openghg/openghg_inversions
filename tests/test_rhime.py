@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import json
 import subprocess
 import sys
 from dataclasses import replace
@@ -4728,6 +4729,16 @@ def test_rhime_sampler_preserves_disabled_log_likelihood(
         return trace
 
     monkeypatch.setattr("openghg_inversions.rhime.sampling.pm.sample", fake_sample)
+    convergence = {
+        "status": "unknown",
+        "message": "Between-chain convergence is not assessable with one chain.",
+        "measured_values": {"chains": 1, "draws_per_chain": 2},
+    }
+    monkeypatch.setattr(
+        rhime_sampling,
+        "posterior_convergence_check",
+        lambda idata, **kwargs: (xr.Dataset(), convergence),
+    )
     sampler = RhimeSampler(
         draws=2,
         tune=0,
@@ -4741,11 +4752,12 @@ def test_rhime_sampler_preserves_disabled_log_likelihood(
         sample_posterior_predictive=False,
     )
 
-    sampler.sample(pm.Model())
+    result = sampler.sample(pm.Model())
 
     assert seen["nuts_sampler"] == "pymc"
     assert seen["compute_convergence_checks"] is False
     assert seen["idata_kwargs"] == {"log_likelihood": False}
+    assert json.loads(result.attrs["sampler_convergence"]) == convergence
 
 
 def test_rhime_sampler_resets_retained_draws_before_extending_predictive_groups(
@@ -4925,6 +4937,47 @@ def test_rhime_sampler_restores_registered_coords_after_predictive_steps(
 
     assert result is fake_idata
     assert calls == [(fake_idata, registry, ["prior", "posterior"])]
+
+
+def test_rhime_sampler_diagnoses_free_variables_after_restoring_coords(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Automatic diagnostic labels use restored scientific coordinates."""
+    trace = az.InferenceData(
+        posterior=xr.Dataset(
+            {"x": (("chain", "draw", "region"), np.ones((2, 4, 2)))},
+            coords={"chain": range(2), "draw": range(4), "region": range(2)},
+        )
+    )
+    seen: dict[str, Any] = {}
+
+    def capture_diagnostics(idata: az.InferenceData, *, variable_names: list[str]):
+        seen["region"] = idata.posterior.region.values.tolist()
+        seen["variable_names"] = variable_names
+        return xr.Dataset(), {
+            "status": "pass",
+            "message": "healthy",
+            "measured_values": {},
+        }
+
+    monkeypatch.setattr("openghg_inversions.rhime.sampling.pm.sample", lambda **kwargs: trace)
+    monkeypatch.setattr(rhime_sampling, "posterior_convergence_check", capture_diagnostics)
+    with pm.Model(coords={"region": range(2)}) as model:
+        pm.Normal("x", dims="region")
+    models.attach_coord_registry(
+        model,
+        models.CoordRegistry(original_coords={"region": np.array(["north", "south"])}),
+    )
+
+    RhimeSampler(
+        draws=4,
+        chains=2,
+        tune=0,
+        sample_prior_predictive=False,
+        sample_posterior_predictive=False,
+    ).sample(model)
+
+    assert seen == {"region": ["north", "south"], "variable_names": ["x"]}
 
 
 def test_params_from_config_maps_legacy_emissions_name(tmp_path: Path) -> None:
