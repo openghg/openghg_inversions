@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Hashable, Mapping, Set
 from dataclasses import dataclass, field
 import json
 from pathlib import Path
@@ -110,9 +110,10 @@ class AffineFluxMapArtifact:
 def _array_node(array: xr.DataArray, name: str) -> xr.DataTree:
     # Ancillary input attrs are not reconstruction ingredients. Keep units,
     # while provenance belongs in the explicit versioned root metadata.
+    units = array.attrs["units"]
     array = to_dense(array) if name == "prolongation" else array
     array = array.copy(deep=False)
-    array.attrs = {"units": array.attrs["units"]}
+    array.attrs = {"units": units}
     return xr.DataTree(encode_multiindexes_for_storage(array.rename(name).to_dataset()))
 
 
@@ -157,11 +158,11 @@ def to_datatree(artifact: AffineFluxMapArtifact) -> xr.DataTree:
     return tree
 
 
-def _require_keys(actual: set[str], expected: set[str], context: str) -> None:
+def _require_keys(actual: Set[Hashable], expected: Set[str], context: str) -> None:
     extra = actual - expected
     missing = expected - actual
     if extra:
-        raise ValueError(f"Unexpected {context} element {sorted(extra)[0]!r}.")
+        raise ValueError(f"Unexpected {context} element {min(extra, key=repr)!r}.")
     if missing:
         raise ValueError(f"Missing {context} element {sorted(missing)[0]!r}.")
 
@@ -189,7 +190,7 @@ def _validate_coordinates(dataset: xr.Dataset, context: str) -> None:
             raise ValueError(f"Malformed MultiIndex metadata in {context}.") from exc
         extra -= levels
     if extra:
-        raise ValueError(f"Unexpected {context} coordinate {sorted(extra)[0]!r}.")
+        raise ValueError(f"Unexpected {context} coordinate {min(extra, key=repr)!r}.")
     for name, coordinate in dataset.coords.items():
         unexpected_attrs = set(coordinate.attrs) - {
             "units",
@@ -236,7 +237,7 @@ def _validate_operator_node(node: xr.DataTree) -> xr.DataTree:
     )
 
 
-def _decode_json_attr(attrs: Mapping[str, Any], name: str) -> Mapping[str, Any]:
+def _decode_json_attr(attrs: Mapping[Hashable, Any], name: str) -> Mapping[str, Any]:
     raw = attrs[name]
     if not isinstance(raw, str):
         raise ValueError(f"{name} must be a JSON object string.")
@@ -282,14 +283,16 @@ def from_datatree(tree: xr.DataTree) -> AffineFluxMapArtifact:
     projection = _decode_json_attr(tree.attrs, "projection_provenance")
     reconstruction = _decode_json_attr(tree.attrs, "reconstruction_provenance")
     source = _decode_json_attr(tree.attrs, "source_provenance")
-    native_mean = _validate_array_node(tree["native_mean"], "native_mean")
-    flux = _validate_array_node(tree["flux"], "flux")
+    native_mean = _validate_array_node(tree.children["native_mean"], "native_mean")
+    flux = _validate_array_node(tree.children["flux"], "flux")
     if tuple(native_dims) != native_mean.dims:
         raise ValueError("native_dims do not match native_mean dimensions.")
     if representation == "explicit":
-        prolongation = _validate_array_node(tree["prolongation"], "prolongation")
+        prolongation: xr.DataArray | BasisOperator = _validate_array_node(
+            tree.children["prolongation"], "prolongation"
+        )
     else:
-        prolongation = BasisOperator.decode_datatree(_validate_operator_node(tree["prolongation"]))
+        prolongation = BasisOperator.decode_datatree(_validate_operator_node(tree.children["prolongation"]))
     return AffineFluxMapArtifact(
         affine_map=AffineFluxMap(native_mean, flux, prolongation, state_dim=state_dim),
         prepared_inputs_id=prepared_inputs_id,
