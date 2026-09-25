@@ -817,9 +817,45 @@ and 2 ppm, respectively. The resolver does not convert these values. During
 binding it expands each scalar over that channel’s observation rows. The two
 <code class="docutils literal notranslate"><span class="pre">units</span></code> strings must currently be identical, although the two error values
 may differ.</p>
+<p>Boundary and offset options use the same equations and option names as the
+CO2 recipe, nested beneath each channel. For example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">[</span><span class="n">channels</span><span class="o">.</span><span class="n">co2</span><span class="o">.</span><span class="n">boundary</span><span class="p">]</span>
+<span class="n">enabled</span> <span class="o">=</span> <span class="n">true</span>
+<span class="n">prior</span> <span class="o">=</span> <span class="p">{</span><span class="n">pdf</span> <span class="o">=</span> <span class="s2">"normal"</span><span class="p">,</span> <span class="n">mu</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">,</span> <span class="n">sigma</span> <span class="o">=</span> <span class="mf">0.1</span><span class="p">}</span>
+
+<span class="p">[</span><span class="n">channels</span><span class="o">.</span><span class="n">co2</span><span class="o">.</span><span class="n">boundary</span><span class="o">.</span><span class="n">activity</span><span class="p">]</span>
+<span class="n">active</span> <span class="o">=</span> <span class="n">false</span>
+<span class="n">fixed_value</span> <span class="o">=</span> <span class="mf">1.0</span>
+
+<span class="p">[</span><span class="n">channels</span><span class="o">.</span><span class="n">o2</span><span class="o">.</span><span class="n">offset</span><span class="p">]</span>
+<span class="n">per_site</span> <span class="o">=</span> <span class="n">false</span>
+<span class="n">prior</span> <span class="o">=</span> <span class="p">{</span><span class="n">pdf</span> <span class="o">=</span> <span class="s2">"normal"</span><span class="p">,</span> <span class="n">mu</span> <span class="o">=</span> <span class="mf">0.0</span><span class="p">,</span> <span class="n">sigma</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">}</span>
+</pre></div>
+</div>
+<p>Supply boundary sensitivities to <code class="docutils literal notranslate"><span class="pre">prepare_co2_o2_inputs</span></code> as
+<code class="docutils literal notranslate"><span class="pre">boundary_sensitivity={&quot;co2&quot;:</span> <span class="pre">H_bc_co2,</span> <span class="pre">&quot;o2&quot;:</span> <span class="pre">H_bc_o2}</span></code>. Each array uses its
+channel’s native observation axis followed by one labelled boundary-state
+axis. The runner includes supplied boundaries by default; <code class="docutils literal notranslate"><span class="pre">use_bc</span></code> can
+select channels explicitly. Direct calls pass <code class="docutils literal notranslate"><span class="pre">bc_prior</span></code>,
+<code class="docutils literal notranslate"><span class="pre">bc_state_activity</span></code>, <code class="docutils literal notranslate"><span class="pre">offset_prior</span></code> and <code class="docutils literal notranslate"><span class="pre">offset_args</span></code> as mappings keyed
+by <code class="docutils literal notranslate"><span class="pre">&quot;co2&quot;</span></code> and <code class="docutils literal notranslate"><span class="pre">&quot;o2&quot;</span></code>. For example,
+<code class="docutils literal notranslate"><span class="pre">offset_prior={&quot;o2&quot;:</span> <span class="pre">{&quot;pdf&quot;:</span> <span class="pre">&quot;normal&quot;,</span> <span class="pre">&quot;mu&quot;:</span> <span class="pre">0.0,</span> <span class="pre">&quot;sigma&quot;:</span> <span class="pre">1.0}}</span></code> and
+<code class="docutils literal notranslate"><span class="pre">offset_args={&quot;o2&quot;:</span> <span class="pre">{&quot;per_site&quot;:</span> <span class="pre">False}}</span></code> reproduce the offset above.
+Missing sensitivities, unconsumed options, unknown channels, and mixed units
+with baseline terms fail before sampling.</p>
+<p>Posterior <code class="docutils literal notranslate"><span class="pre">co2_mu_bc</span></code> and <code class="docutils literal notranslate"><span class="pre">o2_mu_bc</span></code> are boundary concentrations;
+<code class="docutils literal notranslate"><span class="pre">co2_offset</span></code> and <code class="docutils literal notranslate"><span class="pre">o2_offset</span></code> are offset concentrations. Each is recorded on
+the joint observation axis with zero contribution to the opposite channel.
+<code class="docutils literal notranslate"><span class="pre">co2_bc</span></code> and <code class="docutils literal notranslate"><span class="pre">o2_bc</span></code> retain independent labelled scaling states and activity.
+The optional <code class="docutils literal notranslate"><span class="pre">baseline_concentration</span></code> reporting sum contains only boundary
+and offset terms. The coherent affine intercept <code class="docutils literal notranslate"><span class="pre">fixed_prior_contribution</span></code>
+and all flux contributions remain distinct. Thus <code class="docutils literal notranslate"><span class="pre">modelled_concentration</span></code>
+equals <code class="docutils literal notranslate"><span class="pre">co2_o2_flux_contribution</span> <span class="pre">+</span> <span class="pre">fixed_prior_contribution</span></code> plus the
+baseline sum when present. Aggregation covariance and independent observation
+error still enter the single joint likelihood once.</p>
 <p>Standalone O2, arbitrary Python callables, and additional recipe or variant
-names are rejected. The linked configuration also rejects boundary conditions,
-offsets, ordinary likelihood selection, cached/scalar likelihoods, and unequal
+names are rejected. The linked configuration also rejects ordinary likelihood selection,
+cached/scalar likelihoods, and unequal
 CO2 and O2 unit labels. The lower-level linked prepared-input API continues to
 represent row-specific mixed units; configuring a heterogeneous ppm/per-meg
 run is deferred until the scaling contract tracked in <a class="reference external" href="https://linear.app/openghg-inversions/issue/OPE-86">OPE-86</a> is available. Use the
@@ -856,6 +892,7 @@ non-null:</p>
     <span class="n">co2_o2_aggregation_covariance</span><span class="o">=</span><span class="n">co2_o2_aggregation_covariance</span><span class="p">,</span>
     <span class="n">o2_aggregation_covariance</span><span class="o">=</span><span class="n">o2_aggregation_covariance</span><span class="p">,</span>
     <span class="n">retained_prior</span><span class="o">=</span><span class="n">retained_prior</span><span class="p">,</span>
+    <span class="n">boundary_sensitivity</span><span class="o">=</span><span class="p">{</span><span class="s2">"co2"</span><span class="p">:</span> <span class="n">H_bc_co2</span><span class="p">},</span>
     <span class="n">co2_units</span><span class="o">=</span><span class="n">setup</span><span class="o">.</span><span class="n">preparation_kwargs</span><span class="p">[</span><span class="s2">"co2_units"</span><span class="p">],</span>
     <span class="n">o2_units</span><span class="o">=</span><span class="n">setup</span><span class="o">.</span><span class="n">preparation_kwargs</span><span class="p">[</span><span class="s2">"o2_units"</span><span class="p">],</span>
 <span class="p">)</span>
@@ -1011,7 +1048,7 @@ mixed-unit behavior explicitly.</p>
 \end{bmatrix},\end{split}\]</div>
 <p>where <span class="math notranslate nohighlight">\(\alpha_{shared}\)</span> contains the gross primary production (GPP),
 terrestrial ecosystem respiration (TER), and fossil-fuel states.
-The joint affine model is</p>
+The joint coherent flux contribution is</p>
 <div class="math notranslate nohighlight">
 \[\begin{split}H_{joint} =
 \begin{bmatrix}
@@ -1022,19 +1059,30 @@ The joint affine model is</p>
 b_{joint} =
 \begin{bmatrix} b_{CO_2} \\ b_{O_2} \end{bmatrix},
 \qquad
-\mu_{joint} = b_{joint} + H_{joint}\alpha.\end{split}\]</div>
+\mu_{flux} = b_{joint} + H_{joint}\alpha.\end{split}\]</div>
 <p>Equivalently, coherent reduction may be written in centred or affine form,</p>
 <div class="math notranslate nohighlight">
-\[\mu_{joint}
+\[\mu_{flux}
 = \mu_{prior} + H_{joint}(\alpha - m_\alpha)
 = (\mu_{prior} - H_{joint}m_\alpha) + H_{joint}\alpha.\]</div>
 <p>The prepared <code class="docutils literal notranslate"><span class="pre">fixed_prior_contribution</span></code> is the parenthesized affine
-intercept, not the complete prior-forward concentration.</p>
+intercept, not the complete prior-forward concentration. Each channel may
+add an independent boundary scaling state <span class="math notranslate nohighlight">\(\beta_c\)</span> through its native
+boundary sensitivity <span class="math notranslate nohighlight">\(H_{bc,c}\)</span>, and an observation-aligned offset
+<span class="math notranslate nohighlight">\(o_c\)</span>. The complete likelihood mean is</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}\mu_{joint} = \mu_{flux}
++ \begin{bmatrix} H_{bc,CO_2}\beta_{CO_2} \\ H_{bc,O_2}\beta_{O_2} \end{bmatrix}
++ \begin{bmatrix} o_{CO_2} \\ o_{O_2} \end{bmatrix}.\end{split}\]</div>
+<p>An omitted channel term is zero. These boundary and offset contributions form
+the optional reporting baseline; they remain distinct from the coherent affine
+intercept and shared or tracer-specific flux states. Baseline terms currently
+require identical channel units.</p>
 <p>Thus this is a row-stacked, block-sparse sensitivity acting on one state vector,
 not two independent block-diagonal models. Its fixed-error likelihood is</p>
 <div class="math notranslate nohighlight">
 \[\begin{split}\begin{bmatrix} y_{CO_2} \\ y_{O_2} \end{bmatrix}
-\mid \alpha
+\mid \alpha, \beta_{CO_2}, \beta_{O_2}, o_{CO_2}, o_{O_2}
 \sim \mathcal N\!\left(
    \mu_{joint},
    \begin{bmatrix}
