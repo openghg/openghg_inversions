@@ -3,6 +3,7 @@
 import json
 
 import numpy as np
+import pandas as pd
 import pymc as pm
 import pytest
 import xarray as xr
@@ -185,3 +186,54 @@ def test_configuration_and_runner_forward_same_channel_options(monkeypatch):
 def test_unused_or_unknown_channel_options_fail(options, match):
     with pytest.raises(ValueError, match=match):
         _model(_prepared(), **options)
+
+
+def _native_multiindex_inputs():
+    inputs = _inputs()
+    inputs["o2_units"] = "ppm"
+    for channel in ("co2", "o2"):
+        dim = f"{channel}_measure"
+        count = inputs[f"{channel}_observations"].size
+        index = pd.MultiIndex.from_arrays(
+            [[f"{channel}-{i % 2}" for i in range(count)], pd.date_range("2024-01-01", periods=count)],
+            names=("site", "time"),
+        )
+        for name, array in inputs.items():
+            if isinstance(array, xr.DataArray) and dim in array.dims:
+                inputs[name] = array.drop_vars(dim).assign_coords(
+                    xr.Coordinates.from_pandas_multiindex(
+                        index.set_names(("site_o2", "time_o2"))
+                        if name == "co2_o2_aggregation_covariance" and channel == "o2" else index, dim
+                    )
+                )
+        covariance = inputs[f"{channel}_aggregation_covariance"]
+        covariance_dim = f"{dim}_cov"
+        inputs[f"{channel}_aggregation_covariance"] = covariance.drop_vars(covariance_dim).assign_coords(
+            xr.Coordinates.from_pandas_multiindex(index.set_names(("site_cov", "time_cov")), covariance_dim)
+        )
+    return inputs
+
+
+@pytest.mark.parametrize("per_site,frequency", [(False, None), (True, None), (True, "1D")])
+def test_offsets_restore_native_site_time_multiindexes(per_site, frequency):
+    prepared = prepare_co2_o2_inputs(**_native_multiindex_inputs())
+    model = _model(
+        prepared,
+        offset_prior={channel: {"pdf": "normal", "mu": 0.0, "sigma": 2.0} for channel in ("co2", "o2")},
+        offset_args={channel: {"per_site": per_site, "offset_freq": frequency} for channel in ("co2", "o2")},
+    )
+    with model:
+        trace = pm.sample_prior_predictive(draws=3, random_seed=12)
+    trace = restore_inferencedata_coords(trace, get_coord_registry(model))
+    for channel in ("co2", "o2"):
+        design = trace.constant_data[f"{channel}_offset_design"]
+        coefficients = trace.prior[f"{channel}_offset_latent"].values
+        if not per_site:
+            coefficients = coefficients[..., None]
+        np.testing.assert_allclose(trace.prior[f"{channel}_offset"], coefficients @ design.values.T)
+        other_rows = prepared.observations.species.values != channel
+        np.testing.assert_array_equal(trace.prior[f"{channel}_offset"][..., other_rows], 0)
+    xr.testing.assert_allclose(
+        trace.prior.modelled_concentration,
+        trace.prior.co2_o2_flux_contribution + trace.constant_data.fixed_prior_contribution + trace.prior.baseline_concentration,
+    )
