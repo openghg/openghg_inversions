@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from dataclasses import replace
+from typing import Any
+
+import numpy as np
+import pandas as pd
 import pymc as pm
+import pytensor.tensor as pt
 import xarray as xr
 
-from openghg_inversions.array_ops import concat_gather_data_arrays
+from openghg_inversions.array_ops import concat_gather_data_arrays, select_gathered_data_array
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.models import (
     StateActivity,
@@ -18,6 +25,16 @@ from openghg_inversions.models import (
 )
 from openghg_inversions.models.additive_sigma import add_additive_sigma_likelihood
 from openghg_inversions.observation_error import AggregationError
+from openghg_inversions.models.components import (
+    LinearComponentResult,
+    OffsetComponentResult,
+    _add_offset_component_result,
+    add_linear_component,
+    add_model_data,
+)
+from openghg_inversions.models.priors import PriorArgs
+from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR
+from .co2_model import _normalise_offset_args
 
 
 def _gather_co2_o2_sensitivity(
@@ -106,9 +123,185 @@ def evaluate_co2_o2_prior_forward_mean(
         resolved_prior_state,
         dim=retained_prior.state_dim,
     )
-    return (fixed_prior_contribution + joint_contribution).rename(
-        "prior_forward_concentration"
+    return (fixed_prior_contribution + joint_contribution).rename("prior_forward_concentration")
+
+
+def _validate_channel_baseline_options(
+    boundary_sensitivity: Mapping[str, xr.DataArray] | None,
+    bc_prior: Mapping[str, PriorArgs] | None,
+    bc_state_activity: Mapping[str, StateActivity] | None,
+    offset_prior: Mapping[str, PriorArgs] | None,
+    offset_args: Mapping[str, Mapping[str, Any]] | None,
+) -> None:
+    """Reject unused channel options before constructing or sampling a model."""
+    for name, values in (
+        ("boundary_sensitivity", boundary_sensitivity),
+        ("bc_prior", bc_prior),
+        ("bc_state_activity", bc_state_activity),
+        ("offset_prior", offset_prior),
+        ("offset_args", offset_args),
+    ):
+        if values is not None and (not isinstance(values, Mapping) or set(values) - {"co2", "o2"}):
+            raise ValueError(f"{name} must be a mapping keyed only by 'co2' and 'o2'.")
+    for channel in ("co2", "o2"):
+        if channel not in (boundary_sensitivity or {}) and (
+            channel in (bc_prior or {}) or channel in (bc_state_activity or {})
+        ):
+            raise ValueError(f"{channel} boundary options require boundary_sensitivity.")
+        if channel in (offset_args or {}) and channel not in (offset_prior or {}):
+            raise ValueError(f"{channel} offset_args require offset_prior.")
+        _normalise_offset_args((offset_args or {}).get(channel))
+
+
+def _pad_channel_design(
+    design: xr.DataArray,
+    observations: xr.DataArray,
+    channel: str,
+) -> xr.DataArray:
+    """Place a native channel design on joint rows with exact zeros elsewhere."""
+    native_dim, state_dim = design.dims
+    row_index = observations.indexes[observations.dims[0]]
+    channel_index = row_index[row_index.get_level_values("species") == channel]
+    native = design.drop_vars(
+        [name for name, coord in design.coords.items() if native_dim in coord.dims]
+    ).rename({native_dim: observations.dims[0]})
+    native = native.assign_coords(
+        xr.Coordinates.from_pandas_multiindex(channel_index, str(observations.dims[0]))
     )
+    # Reindex to the already validated CO2-then-O2 gathered rows.
+    return native.reindex_like(observations, fill_value=0).transpose(observations.dims[0], state_dim)
+
+
+def _add_co2_o2_baseline_components(
+    *,
+    observations: xr.DataArray,
+    co2_sensitivity: xr.DataArray,
+    o2_sensitivity: xr.DataArray,
+    boundary_sensitivity: Mapping[str, xr.DataArray] | None = None,
+    bc_prior: Mapping[str, PriorArgs] | None = None,
+    bc_state_activity: Mapping[str, StateActivity] | None = None,
+    offset_prior: Mapping[str, PriorArgs] | None = None,
+    offset_args: Mapping[str, Mapping[str, Any]] | None = None,
+) -> list[tuple[str, LinearComponentResult | OffsetComponentResult, xr.DataArray]]:
+    """Build independent channel terms with padded joint designs and outputs.
+
+    Returned tuples retain the channel, ordinary CO2 component result, and
+    full joint design so the fixed-OU recipe can use the same affine terms.
+    """
+    _validate_channel_baseline_options(
+        boundary_sensitivity,
+        bc_prior,
+        bc_state_activity,
+        offset_prior,
+        offset_args,
+    )
+    if not boundary_sensitivity and not offset_prior:
+        return []
+    if len(np.unique(observations["observation_units"].values)) != 1:
+        raise ValueError("Linked boundary and offset components currently require identical channel units.")
+    output_dim = str(observations.dims[0])
+    components = []
+    boundaries = []
+    offsets = []
+    for channel, sensitivity in (("co2", co2_sensitivity), ("o2", o2_sensitivity)):
+        if channel in (boundary_sensitivity or {}):
+            native = boundary_sensitivity[channel]
+            native_dim = str(sensitivity.dims[0])
+            if native.ndim != 2 or native.dims[0] != native_dim:
+                raise ValueError(
+                    f"{channel} boundary sensitivity must have its native observation axis first."
+                )
+            native, _ = xr.align(native, sensitivity, join="exact", copy=False)
+            state_dim = str(native.dims[1])
+            rename = {
+                name: f"{channel}_{name}"
+                for name, coordinate in native.coords.items()
+                if state_dim in coordinate.dims
+            }
+            if isinstance(native.indexes[state_dim], pd.MultiIndex):
+                rename.update({name: f"{channel}_{name}" for name in native.indexes[state_dim].names})
+            native = native.rename(rename)
+            activity = (bc_state_activity or {}).get(channel)
+            if activity is not None:
+                activity = replace(
+                    activity,
+                    **{
+                        name: value.rename(
+                            {
+                                key: val
+                                for key, val in rename.items()
+                                if key in value.dims or key in value.coords
+                            }
+                        )
+                        for name in ("active", "fixed_value")
+                        if isinstance(value := getattr(activity, name), xr.DataArray)
+                    },
+                    group_coord=rename.get(activity.group_coord, activity.group_coord),
+                )
+            prior = dict((bc_prior or {}).get(channel, DEFAULT_BC_PRIOR))
+            prior = {
+                name: value.rename(
+                    {key: val for key, val in rename.items() if key in value.dims or key in value.coords}
+                )
+                if isinstance(value, xr.DataArray)
+                else value
+                for name, value in prior.items()
+            }
+            design = _pad_channel_design(native, observations, channel)
+            result = add_linear_component(
+                prepare_linear_sensitivity(design, output_dim=output_dim),
+                data_name=f"{channel}_hbc",
+                prior_args=prior,
+                var_name=f"{channel}_bc",
+                output_name=f"{channel}_mu_bc",
+                output_dim=output_dim,
+                state_activity=activity,
+            )
+            components.append((channel, result, design))
+            boundaries.append(result.output)
+        if channel in (offset_prior or {}):
+            native_dim = f"{channel}_offset_observation"
+            selected = select_gathered_data_array(
+                observations,
+                key=channel,
+                key_dim="species",
+                ragged_dim="channel_observation",
+                stack_dim=output_dim,
+            ).rename({output_dim: native_dim})
+            native_coords = {native_dim, "site", "time", *selected.indexes[native_dim].names}
+            selected = selected.drop_vars([name for name in selected.coords if name not in native_coords])
+            # Native rows retain site/time metadata from channel preparation.
+            frequency, drop_first, per_site = _normalise_offset_args((offset_args or {}).get(channel))
+            result = _add_offset_component_result(
+                selected,
+                prior_args=dict(offset_prior[channel]),
+                offset_freq=frequency,
+                var_name=f"{channel}_offset_latent",
+                output_name=f"{channel}_offset_native",
+                output_dim=native_dim,
+                drop_first=drop_first,
+                per_site=per_site,
+                namespace=f"{channel}_",
+            )
+            design = _pad_channel_design(result.design, observations, channel)
+            design_data = add_model_data(design, f"{channel}_offset_design")
+            result = replace(
+                result,
+                design=design,
+                output=pm.Deterministic(
+                    f"{channel}_offset",
+                    pt.dot(design_data, result.coefficients),
+                    dims=output_dim,
+                ),
+            )
+            components.append((channel, result, design))
+            offsets.append(result.output)
+    if boundaries:
+        pm.Deterministic("boundary_concentration", sum(boundaries), dims=output_dim)
+    if offsets:
+        pm.Deterministic("offset_concentration", sum(offsets), dims=output_dim)
+    pm.Deterministic("baseline_concentration", sum(boundaries + offsets), dims=output_dim)
+    return components
 
 
 def build_co2_o2_model(
@@ -121,6 +314,11 @@ def build_co2_o2_model(
     retained_prior: CorrelatedLognormalPrior,
     independent_error_sd: xr.DataArray,
     state_activity: StateActivity | None = None,
+    boundary_sensitivity: Mapping[str, xr.DataArray] | None = None,
+    bc_prior: Mapping[str, PriorArgs] | None = None,
+    bc_state_activity: Mapping[str, StateActivity] | None = None,
+    offset_prior: Mapping[str, PriorArgs] | None = None,
+    offset_args: Mapping[str, Mapping[str, Any]] | None = None,
     output_dim: str = "observation",
 ) -> pm.Model:
     """Build the shared-state CO2/O2 affine model and fixed-error likelihood.
@@ -164,6 +362,15 @@ def build_co2_o2_model(
             each observation row's native units.
         state_activity: Optional labelled policy fixing or activating retained
             states.
+        boundary_sensitivity: Optional co2/o2 mapping of H_bc on each
+            native observation axis and one labelled boundary-state axis.
+        bc_prior: Channel-keyed independent boundary-scale priors; the CO2
+            default is used for each enabled channel when omitted.
+        bc_state_activity: Channel-keyed labelled fixed/active boundary policies.
+        offset_prior: Channel-keyed offset priors. Omitted channels have no offset.
+        offset_args: Per-channel offset_freq, drop_first, and per_site options,
+            with the same meanings as the CO2 offset component. Baseline terms
+            require identical channel units and are zero on the other channel.
         output_dim: Joint observation dimension used by the likelihood.
 
     Returns:
@@ -200,9 +407,20 @@ def build_co2_o2_model(
             data_name="co2_o2_sensitivity",
             output_name="co2_o2_flux_contribution",
         )
+        baseline_components = _add_co2_o2_baseline_components(
+            observations=observations,
+            co2_sensitivity=co2_sensitivity,
+            o2_sensitivity=o2_sensitivity,
+            boundary_sensitivity=boundary_sensitivity,
+            bc_prior=bc_prior,
+            bc_state_activity=bc_state_activity,
+            offset_prior=offset_prior,
+            offset_args=offset_args,
+        )
+        mean_signal = joint_signal + sum(result.output for _, result, _ in baseline_components)
         modelled = add_coherent_affine_component(
             fixed_prior_contribution,
-            joint_signal,
+            mean_signal,
             output_name="modelled_concentration",
         )
 

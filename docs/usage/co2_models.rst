@@ -400,9 +400,47 @@ binding it expands each scalar over that channel's observation rows. The two
 ``units`` strings must currently be identical, although the two error values
 may differ.
 
+Boundary and offset options use the same equations and option names as the
+CO2 recipe, nested beneath each channel. For example::
+
+   [channels.co2.boundary]
+   enabled = true
+   prior = {pdf = "normal", mu = 1.0, sigma = 0.1}
+
+   [channels.co2.boundary.activity]
+   active = false
+   fixed_value = 1.0
+
+   [channels.o2.offset]
+   per_site = false
+   prior = {pdf = "normal", mu = 0.0, sigma = 1.0}
+
+Supply boundary sensitivities to ``prepare_co2_o2_inputs`` as
+``boundary_sensitivity={"co2": H_bc_co2, "o2": H_bc_o2}``. Each array uses its
+channel's native observation axis followed by one labelled boundary-state
+axis. The runner includes supplied boundaries by default; ``use_bc`` can
+select channels explicitly. Direct calls pass ``bc_prior``,
+``bc_state_activity``, ``offset_prior`` and ``offset_args`` as mappings keyed
+by ``"co2"`` and ``"o2"``. For example,
+``offset_prior={"o2": {"pdf": "normal", "mu": 0.0, "sigma": 1.0}}`` and
+``offset_args={"o2": {"per_site": False}}`` reproduce the offset above.
+Missing sensitivities, unconsumed options, unknown channels, and mixed units
+with baseline terms fail before sampling.
+
+Posterior ``co2_mu_bc`` and ``o2_mu_bc`` are boundary concentrations;
+``co2_offset`` and ``o2_offset`` are offset concentrations. Each is recorded on
+the joint observation axis with zero contribution to the opposite channel.
+``co2_bc`` and ``o2_bc`` retain independent labelled scaling states and activity.
+The optional ``baseline_concentration`` reporting sum contains only boundary
+and offset terms. The coherent affine intercept ``fixed_prior_contribution``
+and all flux contributions remain distinct. Thus ``modelled_concentration``
+equals ``co2_o2_flux_contribution + fixed_prior_contribution`` plus the
+baseline sum when present. Aggregation covariance and independent observation
+error still enter the single joint likelihood once.
+
 Standalone O2, arbitrary Python callables, and additional recipe or variant
-names are rejected. The linked configuration also rejects boundary conditions,
-offsets, ordinary likelihood selection, cached/scalar likelihoods, and unequal
+names are rejected. The linked configuration also rejects ordinary likelihood selection,
+cached/scalar likelihoods, and unequal
 CO2 and O2 unit labels. The lower-level linked prepared-input API continues to
 represent row-specific mixed units; configuring a heterogeneous ppm/per-meg
 run is deferred until the scaling contract tracked in `OPE-86
@@ -443,6 +481,7 @@ non-null::
        co2_o2_aggregation_covariance=co2_o2_aggregation_covariance,
        o2_aggregation_covariance=o2_aggregation_covariance,
        retained_prior=retained_prior,
+       boundary_sensitivity={"co2": H_bc_co2},
        co2_units=setup.preparation_kwargs["co2_units"],
        o2_units=setup.preparation_kwargs["o2_units"],
    )
@@ -617,7 +656,7 @@ Partition that state as
 
 where :math:`\alpha_{shared}` contains the gross primary production (GPP),
 terrestrial ecosystem respiration (TER), and fossil-fuel states.
-The joint affine model is
+The joint coherent flux contribution is
 
 .. math::
 
@@ -630,18 +669,32 @@ The joint affine model is
    b_{joint} =
    \begin{bmatrix} b_{CO_2} \\ b_{O_2} \end{bmatrix},
    \qquad
-   \mu_{joint} = b_{joint} + H_{joint}\alpha.
+   \mu_{flux} = b_{joint} + H_{joint}\alpha.
 
 Equivalently, coherent reduction may be written in centred or affine form,
 
 .. math::
 
-   \mu_{joint}
+   \mu_{flux}
    = \mu_{prior} + H_{joint}(\alpha - m_\alpha)
    = (\mu_{prior} - H_{joint}m_\alpha) + H_{joint}\alpha.
 
 The prepared ``fixed_prior_contribution`` is the parenthesized affine
-intercept, not the complete prior-forward concentration.
+intercept, not the complete prior-forward concentration. Each channel may
+add an independent boundary scaling state :math:`\beta_c` through its native
+boundary sensitivity :math:`H_{bc,c}`, and an observation-aligned offset
+:math:`o_c`. The complete likelihood mean is
+
+.. math::
+
+   \mu_{joint} = \mu_{flux}
+   + \begin{bmatrix} H_{bc,CO_2}\beta_{CO_2} \\ H_{bc,O_2}\beta_{O_2} \end{bmatrix}
+   + \begin{bmatrix} o_{CO_2} \\ o_{O_2} \end{bmatrix}.
+
+An omitted channel term is zero. These boundary and offset contributions form
+the optional reporting baseline; they remain distinct from the coherent affine
+intercept and shared or tracer-specific flux states. Baseline terms currently
+require identical channel units.
 
 Thus this is a row-stacked, block-sparse sensitivity acting on one state vector,
 not two independent block-diagonal models. Its fixed-error likelihood is
@@ -649,7 +702,7 @@ not two independent block-diagonal models. Its fixed-error likelihood is
 .. math::
 
    \begin{bmatrix} y_{CO_2} \\ y_{O_2} \end{bmatrix}
-   \mid \alpha
+   \mid \alpha, \beta_{CO_2}, \beta_{O_2}, o_{CO_2}, o_{O_2}
    \sim \mathcal N\!\left(
       \mu_{joint},
       \begin{bmatrix}

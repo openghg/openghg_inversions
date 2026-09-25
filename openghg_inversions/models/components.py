@@ -648,10 +648,19 @@ def _add_offset_component_result(
     output_dim: str = "nmeasure",
     drop_first: bool = False,
     per_site: bool = True,
+    namespace: str = "",
 ) -> OffsetComponentResult:
     """Build one offset component and return its labelled design and graph terms."""
     output_dim = str(output_dim)
     output_coord = observations.coords[output_dim]
+    if namespace:
+        output_index = observations.indexes.get(output_dim)
+        if isinstance(output_index, pd.MultiIndex):
+            output_coord = xr.Coordinates.from_pandas_multiindex(
+                output_index.set_names([f"{namespace}{name}" for name in output_index.names]), output_dim
+            )[output_dim]
+        add_coords({output_dim: output_coord})
+    term_dim = f"{namespace}offset_term"
     if not per_site:
         if offset_freq is not None:
             raise ValueError("Global offsets do not accept an offset frequency.")
@@ -659,8 +668,8 @@ def _add_offset_component_result(
             raise ValueError("Global offsets do not support `drop_first=True`.")
         design = xr.DataArray(
             np.ones((observations.sizes[output_dim], 1), dtype=np.float64),
-            dims=(output_dim, "offset_term"),
-            coords={output_dim: output_coord, "offset_term": ["global"]},
+            dims=(output_dim, term_dim),
+            coords={output_dim: output_coord, term_dim: ["global"]},
             name="offset_design",
         )
         coefficient = parse_prior(var_name, prior_args)
@@ -684,7 +693,7 @@ def _add_offset_component_result(
     if bool(pd.isna(observations.coords["site"].values).any()):
         raise ValueError("Offset observations must have non-missing site labels.")
     site_indicator = make_site_indicator(observations.coords["site"])
-    site_indicator = site_indicator.rename("site_indicator").transpose(output_dim)
+    site_indicator = site_indicator.rename(f"{namespace}site_indicator").transpose(output_dim)
     indicator = None
     if offset_freq is not None:
         time_coord = observations.coords.get("time")
@@ -696,7 +705,7 @@ def _add_offset_component_result(
         if bool(pd.isna(time_coord.values).any()):
             raise ValueError("Offset frequencies require complete observation timestamps.")
         indicator = make_freq_indicator(time_coord, offset_freq).rename(
-            "offset_freq_indicator"
+            f"{namespace}offset_freq_indicator"
         )
 
     site_codes = np.asarray(site_indicator.values, dtype=int)
@@ -716,34 +725,49 @@ def _add_offset_component_result(
         )
         term_index = pd.MultiIndex.from_product(
             [site_labels[selected_sites], period_labels],
-            names=("offset_site", "offset_period"),
+            names=(f"{namespace}offset_site", f"{namespace}offset_period"),
         )
         term_coords = xr.Coordinates.from_pandas_multiindex(
             term_index,
-            "offset_term",
+            term_dim,
         )
     else:
         design_matrix = site_matrix
         selected_labels = site_labels[selected_sites]
         term_coords = {
-            "offset_term": selected_labels,
-            "offset_site": ("offset_term", selected_labels),
+            term_dim: selected_labels,
+            f"{namespace}offset_site": (term_dim, selected_labels),
         }
 
     design = xr.DataArray(
         design_matrix,
-        dims=(output_dim, "offset_term"),
+        dims=(output_dim, term_dim),
         coords={
             output_dim: output_coord,
             **term_coords,
         },
         name="offset_design",
     )
+    if namespace:
+        if isinstance(observations.indexes.get(output_dim), pd.MultiIndex):
+            site_indicator = site_indicator.reset_index(output_dim, drop=True).assign_coords(
+                {output_dim: output_coord}
+            )
+            if indicator is not None:
+                indicator = indicator.reset_index(output_dim, drop=True).assign_coords({output_dim: output_coord})
+        else:
+            site_indicator = site_indicator.rename({
+                name: f"{namespace}{name}" for name in site_indicator.coords if name != output_dim
+            })
+            if indicator is not None:
+                indicator = indicator.rename({
+                    name: f"{namespace}{name}" for name in indicator.coords if name != output_dim
+                })
     add_model_data(site_indicator, str(site_indicator.name))
     if indicator is not None:
         add_model_data(indicator.transpose(output_dim), str(indicator.name))
     design_data = add_model_data(design, f"{output_name}_design")
-    coefficient = parse_prior(var_name, prior_args, dims="offset_term")
+    coefficient = parse_prior(var_name, prior_args, dims=term_dim)
     coefficients = pt.atleast_1d(coefficient)
     aligned = pt.dot(design_data, coefficients)
     output = pm.Deterministic(
@@ -769,6 +793,7 @@ def add_offset_component(
     output_dim: str = "nmeasure",
     drop_first: bool = False,
     per_site: bool = True,
+    namespace: str = "",
 ) -> TensorVariable:
     """Add a global, site-only, or site-by-period offset component.
 
@@ -784,6 +809,8 @@ def add_offset_component(
         drop_first: Whether to omit the first site indicator column.
         per_site: Whether to create site-specific terms. If false, create one
             global scalar latent offset and broadcast it over observations.
+        namespace: Optional prefix for component coordinates and indicator data
+            when several independent offset components share one model.
 
     Returns:
         The aligned offset deterministic variable.
@@ -801,4 +828,5 @@ def add_offset_component(
         output_dim=output_dim,
         drop_first=drop_first,
         per_site=per_site,
+        namespace=namespace,
     ).output
