@@ -3,6 +3,7 @@
 from dataclasses import replace
 
 import numpy as np
+import pandas as pd
 import xarray as xr
 from openghg_inversions.models import StateActivity
 import pytensor
@@ -39,7 +40,7 @@ def _prepared():
     return prepare_co2_o2_inputs(**inputs)
 
 
-def _kwargs(prepared, *, interleaved=False):
+def _kwargs(prepared, *, interleaved=False, native_multiindex=False):
     observations = prepared.observations
     fixed = prepared.fixed_prior_contribution
     error = _independent_error(prepared)
@@ -52,7 +53,7 @@ def _kwargs(prepared, *, interleaved=False):
         aggregation = replace(
             aggregation, covariance=covariance, marginal_variance=aggregation.marginal_variance[order]
         )
-    return dict(
+    result = dict(
         observations=observations,
         fixed_prior_contribution=fixed,
         co2_sensitivity=prepared.co2_sensitivity,
@@ -61,6 +62,38 @@ def _kwargs(prepared, *, interleaved=False):
         retained_prior=prepared.retained_prior,
         independent_error_sd=error,
     )
+    if native_multiindex:
+        for channel in ("co2", "o2"):
+            sensitivity = result[f"{channel}_sensitivity"]
+            native_dim = sensitivity.dims[0]
+            rows = prepared.observations.sel(species=channel)
+            index = pd.MultiIndex.from_arrays([rows.site.values, rows.time.values], names=["site", "time"])
+            result[f"{channel}_sensitivity"] = sensitivity.drop_vars(native_dim).assign_coords(
+                xr.Coordinates.from_pandas_multiindex(index, native_dim)
+            )
+        index = pd.MultiIndex.from_arrays(
+            [observations.species.values, observations.site.values, observations.time.values],
+            names=["species", "site", "time"],
+        )
+        coords = xr.Coordinates.from_pandas_multiindex(index, "observation")
+        for name in ("observations", "fixed_prior_contribution", "independent_error_sd"):
+            array = result[name]
+            result[name] = xr.DataArray(
+                array.values, dims="observation", coords=coords, attrs=array.attrs, name=array.name
+            ).assign_coords(observation_units=("observation", observations.observation_units.values))
+        covariance_dim = str(aggregation.covariance.dims[1])
+        covariance = xr.DataArray(
+            aggregation.covariance.values,
+            dims=("observation", covariance_dim),
+            coords={
+                **coords,
+                **xr.Coordinates.from_pandas_multiindex(
+                    index.set_names(["species_cov", "site_cov", "time_cov"]), covariance_dim
+                ),
+            },
+        )
+        result["aggregation_error"] = replace(aggregation, covariance=covariance)
+    return result
 
 
 def _dense(kwargs, amplitudes, tau):
@@ -78,8 +111,9 @@ def _dense(kwargs, amplitudes, tau):
 
 
 @pytest.mark.parametrize("interleaved", [False, True])
-def test_linked_stock_cached_covariance_logp_and_gradients_match_dense(interleaved):
-    kwargs = _kwargs(_prepared(), interleaved=interleaved)
+@pytest.mark.parametrize("native_multiindex", [False, True])
+def test_linked_stock_cached_covariance_logp_and_gradients_match_dense(interleaved, native_multiindex):
+    kwargs = _kwargs(_prepared(), interleaved=interleaved, native_multiindex=native_multiindex)
     alignment = linked_fixed_ou_alignment(kwargs["observations"])
     tau = {"co2:A": 6.0, "o2:A": 8.0, "o2:B": 2.0}
     sigma = np.array([0.4, 0.6, 0.8])
@@ -285,9 +319,10 @@ def test_padded_boundary_design_follows_reordered_native_labels():
         assert gathered.indexes["observation"].equals(observations.indexes["observation"])
 
 
-def test_cached_affine_design_includes_fixed_pruned_boundary_and_channel_offsets():
+@pytest.mark.parametrize("native_multiindex", [False, True])
+def test_cached_affine_design_includes_fixed_pruned_boundary_and_channel_offsets(native_multiindex):
     prepared = _prepared()
-    kwargs = _kwargs(prepared, interleaved=True)
+    kwargs = _kwargs(prepared, interleaved=True, native_multiindex=native_multiindex)
     boundaries = {}
     activities = {}
     for channel in ("co2", "o2"):
@@ -315,7 +350,7 @@ def test_cached_affine_design_includes_fixed_pruned_boundary_and_channel_offsets
         bc_state_activity=activities,
         bc_prior={channel: {"pdf": "normal", "mu": 1.0, "sigma": 0.1} for channel in boundaries},
         offset_prior={channel: {"pdf": "normal", "mu": 0.1, "sigma": 0.2} for channel in boundaries},
-        offset_args={channel: {"per_site": False} for channel in boundaries},
+        offset_args={channel: {"per_site": native_multiindex} for channel in boundaries},
     )
     cached = build_co2_o2_cached_sigma_model(**kwargs, tau_hours=6.0, site_amplitude_prior_scale=0.8)
     stock = build_co2_o2_model(

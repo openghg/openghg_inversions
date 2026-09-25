@@ -29,11 +29,11 @@ def linked_fixed_ou_alignment(observations: xr.DataArray) -> SigmaAlignment:
     if not set(species) <= {"co2", "o2"}:
         raise ValueError("Linked fixed-OU species must be 'co2' or 'o2'.")
     groups = np.char.add(np.char.add(species, ":"), observations.site.values.astype(str))
-    grouped = observations.assign_coords(site=(observations.dims, groups))
-    alignment = SigmaAlignment.from_observations(grouped)
-    # Preserve the original row labels in the shared coordinate registry.
+    positions, labels = pd.factorize(groups, sort=False)
+    # Keep native MultiIndex levels intact while grouping by species and site.
+    site_index = observations.copy(data=positions, deep=False)
     return SigmaAlignment.from_indices(
-        alignment.site_index.assign_coords(site=observations.site),
-        alignment.period_index.assign_coords(site=observations.site),
-        site_labels=alignment.site_labels,
+        site_index,
+        xr.zeros_like(site_index, dtype=int),
+        site_labels=labels,
     )
