@@ -166,7 +166,7 @@ def _pad_channel_design(
     native_dim, state_dim = design.dims
     row_index = observations.indexes[observations.dims[0]]
     channel_index = row_index[row_index.get_level_values("species") == channel]
-    design = design.sel({native_dim: channel_index.get_level_values("channel_observation").to_numpy()})
+    design = design.sel({native_dim: channel_index.droplevel("species")})
     native = design.drop_vars(
         [name for name, coord in design.coords.items() if native_dim in coord.dims]
     ).rename({native_dim: observations.dims[0]})
