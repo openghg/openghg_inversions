@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Callable, cast
 
+import arviz as az
 import numpy as np
 import pytest
 import xarray as xr
@@ -18,6 +19,7 @@ from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.postprocessing.make_paris_outputs import (
     PARIS_LATEST_COUNTRIES,
     _country_posterior_covariance_kg,
+    _inversion_global_attr_provenance,
     _latest_country_outputs,
     _latest_paris_countries,
     _multisector_country_trace_kg,
@@ -57,6 +59,133 @@ def _assert_latest_flux_dimension_order(ds: xr.Dataset) -> None:
             continue
         expected = tuple(sorted(variable.dims, key=_LATEST_FLUX_DIMENSION_ORDER.__getitem__))
         assert variable.dims == expected, name
+
+
+def _single_sector_paris_inv_out(country_file: Path) -> InversionOutput:
+    """Build a small single-sector output on the country-file grid."""
+    with xr.open_dataset(country_file) as country_grid:
+        lat = country_grid.lat.load()
+        lon = country_grid.lon.load()
+    basis = xr.DataArray(
+        np.ones((lat.size, lon.size), dtype=int),
+        dims=("lat", "lon"),
+        coords={"lat": lat, "lon": lon},
+        name="basis",
+    )
+    flux = xr.ones_like(basis, dtype=float).rename("flux")
+    flux.attrs["units"] = "mol/m2/s"
+    basis_functions = BasisFunctions.from_flat_basis(
+        basis_flat=basis,
+        flux=flux,
+        operator_kwargs={"state_dim": "region"},
+    )
+    inv_inputs = xr.Dataset(
+        {
+            "H": (("region", "nmeasure"), [[1.0]]),
+            "mf": ("nmeasure", [10.0], {"units": "ppm"}),
+            "mf_error": ("nmeasure", [1.0]),
+            "mf_repeatability": ("nmeasure", [0.5]),
+            "mf_variability": ("nmeasure", [0.25]),
+            "site_indicator": ("nmeasure", [0]),
+        },
+        coords={
+            "region": [0],
+            "nmeasure": [0],
+            "site": ("nmeasure", ["TAC"]),
+            "time": ("nmeasure", np.array(["2019-01-01T00:00:00"], dtype="datetime64[ns]")),
+        },
+    ).set_index(nmeasure=["site", "time"])
+    trace = az.from_dict(
+        posterior={
+            "x": np.array([[[1.0], [1.1]]]),
+            "y": np.array([[[10.0], [11.0]]]),
+            "epsilon": np.ones((1, 2, 1)),
+        },
+        prior={
+            "x": np.ones((1, 2, 1)),
+            "y": np.array([[[9.0], [10.0]]]),
+            "epsilon": np.ones((1, 2, 1)),
+        },
+        coords={"region": [0], "nmeasure": [0]},
+        dims={"x": ["region"], "y": ["nmeasure"], "epsilon": ["nmeasure"]},
+    )
+    nmeasure_index = inv_inputs.indexes["nmeasure"]
+    groups: dict[str, xr.Dataset] = {}
+    for group_name in trace.groups():
+        group = trace[group_name]
+        if "nmeasure" in group.dims:
+            group = group.assign_coords(
+                site=("nmeasure", nmeasure_index.get_level_values("site")),
+                time=("nmeasure", nmeasure_index.get_level_values("time")),
+            ).set_index(nmeasure=["site", "time"])
+        groups[group_name] = group
+    trace = az.InferenceData(**groups)
+    return InversionOutput(
+        trace=trace,
+        inv_inputs=inv_inputs,
+        basis_functions=basis_functions,
+        run_metadata={
+            "start_date": "2019-01-01",
+            "end_date": "2019-01-02",
+            "sites": ["TAC"],
+            "split_by_sectors": False,
+        },
+        model_metadata={"species": "ch4", "domain": "EUROPE-6km"},
+    )
+
+
+def test_legacy_paris_global_attrs_use_inversion_species_and_domain(europe_country_file: Path) -> None:
+    """Legacy concentration and flux products retain inversion metadata."""
+    inv_out = _single_sector_paris_inv_out(europe_country_file)
+
+    concentration = paris_concentration_outputs(inv_out)
+    flux = paris_flux_output(inv_out, country_file=europe_country_file, inversion_grid=False)
+
+    for output in (concentration, flux):
+        assert output.attrs["species"] == "ch4"
+        assert output.attrs["domain"] == "EUROPE-6km"
+
+
+def test_paris_global_attrs_use_footprint_and_prior_provenance(europe_country_file: Path) -> None:
+    """PARIS products describe the inversion inputs instead of assumed NAME/EDGAR defaults."""
+    inv_out = _single_sector_paris_inv_out(europe_country_file)
+    inv_out.model_metadata["sectors"] = [{"flux_source": "uniform"}]
+    inv_out.model_metadata["footprint_provenance"] = {
+        "TAC": {
+            "transport_model": "FLEXPART",
+            "transport_model_version": "FLEXPART IFS (version 9.1_Empa)",
+            "met_model": "ECMWF IFS HRES",
+        }
+    }
+
+    concentration = paris_concentration_outputs(inv_out, template_version="latest")
+    flux = paris_flux_output(inv_out, country_file=europe_country_file, inversion_grid=False)
+
+    for output in (concentration, flux):
+        assert output.attrs["apriori_description"] == "uniform"
+        assert output.attrs["transport_model"] == "FLEXPART"
+        assert output.attrs["transport_model_version"] == "FLEXPART IFS (version 9.1_Empa)"
+        assert output.attrs["met_model"] == "ECMWF IFS HRES"
+
+
+def test_paris_global_attrs_join_distinct_sites_and_leave_missing_version_blank(
+    europe_country_file: Path,
+) -> None:
+    inv_out = _single_sector_paris_inv_out(europe_country_file)
+    inv_out.model_metadata["sectors"] = [{"flux_source": "uniform"}]
+    inv_out.model_metadata["footprint_provenance"] = {
+        "TAC": {"transport_model": "FLEXPART", "met_model": "ECMWF IFS HRES"},
+        "MHD": {"transport_model": "NAME"},
+    }
+
+    attrs = _inversion_global_attr_provenance(inv_out)
+
+    assert attrs == {
+        "apriori_description": "uniform",
+        "transport_model": "FLEXPART; NAME",
+        "transport_model_version": "",
+        "met_model": "ECMWF IFS HRES",
+    }
 
 
 def _flux_nonfinite_metadata(data: xr.DataArray | xr.Dataset) -> FluxNonFiniteMetadata:

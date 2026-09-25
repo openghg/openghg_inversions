@@ -272,6 +272,14 @@ def _make_inversion_output(
     """
     model_build_result = cast(RhimeModelBuildResult, result.model_build_result)
     model_metadata = cast(dict[str, Any], _structured_metadata(asdict(result.model_spec)))
+    model_metadata["footprint_provenance"] = {
+        str(site): {
+            name: str(prepared.site_metadata[name].sel(site=site).item())
+            for name in ("transport_model", "transport_model_version", "met_model")
+            if name in prepared.site_metadata
+        }
+        for site in prepared.sites
+    }
     model_metadata["variable_roles"] = dict(model_build_result.variable_roles)
     builder_metadata = dict(model_build_result.metadata)
     for key in ("model_builder", "likelihood_builder", "likelihood_kwargs"):
@@ -396,7 +404,9 @@ def make_standard_rhime_outputs(
                 ext=".nc",
             )
             with timed("rhime.output.paris_concentration_netcdf_write", path=conc_file):
-                write_netcdf_preserving_bounds_attrs(conc_outs, conc_file, unlimited_dims=["time"])
+                write_netcdf_preserving_bounds_attrs(
+                    conc_outs, conc_file, unlimited_dims=["index" if "index" in conc_outs.dims else "time"]
+                )
             with timed("rhime.output.paris_flux_netcdf_write", path=flux_file):
                 write_netcdf_preserving_bounds_attrs(flux_outs, flux_file, unlimited_dims=["time"])
             output_metadata["paris_concentration_path"] = str(conc_file)

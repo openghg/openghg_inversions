@@ -528,7 +528,15 @@ def test_merged_scenario_preserves_footprint_max_level_provenance(
             return expected
 
     monkeypatch.setattr(scenario_module, "ModelScenario", FakeModelScenario)
-    footprint = SimpleNamespace(data=xr.Dataset(attrs={"max_level": 17}))
+    footprint = SimpleNamespace(
+        data=xr.Dataset(
+            attrs={
+                "max_level": 17,
+                "transport_model_version": "FLEXPART IFS (version 9.1_Empa)",
+            }
+        ),
+        metadata={"model": "FLEXPART", "met_model": "ECMWF IFS HRES"},
+    )
 
     result = scenario_module.merged_scenario_data(
         obs_data=object(),  # type: ignore[arg-type]
@@ -539,6 +547,9 @@ def test_merged_scenario_preserves_footprint_max_level_provenance(
 
     assert result.attrs["max_level"] == 3
     assert result.attrs["footprint_max_level"] == 17
+    assert result.attrs["footprint_transport_model"] == "FLEXPART"
+    assert result.attrs["footprint_transport_model_version"] == "FLEXPART IFS (version 9.1_Empa)"
+    assert result.attrs["footprint_met_model"] == "ECMWF IFS HRES"
 
 
 def test_missing_data_at_all_sites(openghg_test_store):
