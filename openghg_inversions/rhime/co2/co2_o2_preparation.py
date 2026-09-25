@@ -106,6 +106,11 @@ def _state(prior: CorrelatedLognormalPrior) -> xr.DataArray:
     mean = prior.mean
     if any(name not in mean.coords for name in ("source", "tracer_scope")):
         raise ValueError("Retained states require source and tracer_scope coordinates.")
+    sources = {str(source) for source in mean["source"].values}
+    if len(sources) != len({source.lower() for source in sources}):
+        raise ValueError(
+            f"Retained source labels must use consistent spelling; found case variants in {sorted(sources)}."
+        )
     pairs = {
         (str(source).lower(), str(scope).lower())
         for source, scope in zip(mean["source"].values, mean["tracer_scope"].values, strict=True)
@@ -373,7 +378,8 @@ def prepare_co2_o2_inputs(
             observation units.
         retained_prior: Retained correlated prior whose indexed state axis has
             ``source`` and ``tracer_scope`` coordinates for shared GPP/TER/FF,
-            CO2 ocean, and O2 ocean states.
+            CO2 ocean, and O2 ocean states. Repeated source labels must use
+            one consistent spelling, including case.
         co2_units: Non-empty units label for CO2 observations and sensitivity rows.
         o2_units: Non-empty units label for O2 observations and sensitivity rows.
         provenance: Optional JSON-serializable preparation provenance.
@@ -389,7 +395,8 @@ def prepare_co2_o2_inputs(
 
     Raises:
         ValueError: If units or provenance are invalid; observation, sensitivity,
-            state, ratio, or covariance dimensions/indexes disagree; the
+            state, ratio, or covariance dimensions/indexes disagree; source
+            labels contain inconsistent case variants; the
             ratio exactly-one, direction, sign, provenance, or numerical-value
             contract fails; cross-tracer ocean loadings are nonzero; or the
             assembled dense covariance is non-finite, asymmetric, or not
