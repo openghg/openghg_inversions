@@ -3820,50 +3820,6 @@ def test_likelihood_builder_provenance_is_saved_with_result_metadata(
     assert reloaded.model_metadata["builder"]["likelihood_kwargs"] == {"degrees_of_freedom": 7.0}
 
 
-def test_legacy_additive_provenance_is_saved_with_builtin_model() -> None:
-    """Compatibility provenance survives after model selection stops using a callback."""
-    model_spec, _, run_spec = _minimal_output_specs(output_format="inv_out")
-    model_spec = replace(model_spec, use_bc=False, likelihood=AdditiveSigmaSettings())
-    run_spec = replace(run_spec, model=model_spec)
-    inv_inputs = _minimal_output_inv_inputs()
-    inv_inputs["H"] = inv_inputs["H"].assign_coords(source=model_spec.sectors[0].flux_source)
-    prepared = RhimePreparedInputs(
-        inv_inputs=inv_inputs,
-        basis_functions=_fake_basis_functions(),
-        site_metadata=_prepared_site_metadata(),
-    )
-    build_result = rhime_standard.build_standard_rhime_model_result(
-        prepared=prepared,
-        model_inputs=prepared.inv_inputs,
-        run_spec=run_spec,
-    )
-    provenance = {
-        "likelihood_builder": {
-            "module": "openghg_inversions.rhime.likelihoods",
-            "qualname": "additive_sigma_likelihood_builder",
-        },
-        "likelihood_kwargs": {"sigma_prior": {"pdf": "halfnormal", "sigma": 5.0}},
-    }
-
-    result = rhime_standard.make_standard_rhime_result(
-        prepared=prepared,
-        run_spec=run_spec,
-        sampler=RhimeSampler(),
-        model_build_result=build_result,
-        idata=_minimal_output_idata(),
-        build_and_sample_seconds=0.0,
-        _compatibility_likelihood_provenance=provenance,
-    )
-    rhime_public.make_standard_rhime_outputs(result=result, prepared=prepared)
-
-    assert result.output_metadata["likelihood_builder"] == provenance["likelihood_builder"]
-    assert result.output_metadata["likelihood_kwargs"] == provenance["likelihood_kwargs"]
-    assert result.inv_out is not None
-    saved_builder = result.inv_out.model_metadata["builder"]
-    assert saved_builder["likelihood_builder"] == provenance["likelihood_builder"]
-    assert saved_builder["likelihood_kwargs"] == provenance["likelihood_kwargs"]
-
-
 def test_custom_model_builder_rejects_undeclared_output_before_sampling(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -5941,9 +5897,6 @@ def test_prepare_rhime_inputs_prunes_reloaded_merged_data_to_requested_sites(
             "TAC": _site_dataset([2.0]),
             "MHD": _site_dataset([3.0]),
             ".flux": object(),
-            ".species": "CH4",
-            ".scales": {"TAC": "tac-scale", "MHD": "mhd-scale"},
-            ".units": 1e-9,
         }
 
     def fake_make_basis_functions(**kwargs: object) -> BasisFunctions:
@@ -5980,10 +5933,7 @@ def test_prepare_rhime_inputs_prunes_reloaded_merged_data_to_requested_sites(
     assert "MHD" not in captured_fp_all_keys
     assert {key for key in captured_fp_all_keys if key.startswith(".")} == {
         ".flux",
-        ".species",
-        ".scales",
         ".split_by_sectors",
-        ".units",
     }
 
 
@@ -5996,8 +5946,6 @@ def test_prepare_merged_data_reload_keeps_all_options_aligned(
         "load_merged_data",
         lambda *args, **kwargs: {
             "MHD": _site_dataset([3.0]),
-            ".species": "CH4",
-            ".units": 1e-9,
         },
     )
 
@@ -6033,7 +5981,7 @@ def test_prepare_merged_data_reload_keeps_all_options_aligned(
         met_model=["met-mhd"],
         max_level=[20],
     )
-    assert set(merged.fp_all) == {"MHD", ".species", ".split_by_sectors", ".units"}
+    assert set(merged.fp_all) == {"MHD", ".split_by_sectors"}
 
 
 def test_site_options_direct_construction_enforces_immutable_alignment() -> None:
@@ -6227,14 +6175,15 @@ def test_apply_filters_drops_complete_site_option_record() -> None:
     assert retained == site_options.select_indices([0, 2])
 
 
-def test_filtering_prunes_scales_with_empty_sites() -> None:
-    """Reload filtering prunes calibration provenance for an empty site."""
+def test_filtering_preserves_shared_merged_data_when_dropping_sites() -> None:
+    """Filtering keeps active shared inputs while removing an empty site."""
+    flux = object()
     merged = prep_module.RhimeMergedData(
         fp_all={
             "TAC": _site_dataset([]),
             "MHD": _site_dataset([3.0]),
-            ".scales": {"TAC": "tac-scale", "MHD": "mhd-scale"},
-            ".units": 1e-9,
+            ".flux": flux,
+            ".split_by_sectors": False,
         },
         site_options=_site_options(["TAC", "MHD"], averaging_period=["1H", "1H"]),
     )
@@ -6242,8 +6191,8 @@ def test_filtering_prunes_scales_with_empty_sites() -> None:
     filtered = prep_module._filter_merged_inversion_data(merged=merged, filters=None)
 
     assert filtered.sites == ("MHD",)
-    assert filtered.fp_all[".scales"] == {"MHD": "mhd-scale"}
-    assert filtered.fp_all[".units"] == pytest.approx(1e-9)
+    assert filtered.fp_all[".flux"] is flux
+    assert filtered.fp_all[".split_by_sectors"] is False
 
 
 @pytest.mark.parametrize(

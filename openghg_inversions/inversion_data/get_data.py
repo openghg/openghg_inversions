@@ -290,8 +290,7 @@ def data_processing_surface_notracer(
     Notes:
         This function reads OpenGHG stores, emits progress messages and
         warnings, and may save a merged-data artifact. The first retained
-        scenario defines the unit target requested for later sites;
-        ``fp_all[".units"]`` stores that unit's scale against ``mol/mol``.
+        scenario defines the unit target requested for later sites.
     """
     site_values = [sites] if isinstance(sites, str) else sites
     sites = [site.upper() for site in site_values]
@@ -318,7 +317,6 @@ def data_processing_surface_notracer(
     max_level = [None if value is None else int(value) for value in max_level]
 
     fp_all = {}
-    fp_all[".species"] = species.upper()
 
     # Get flux data
     if emissions_name is None:
@@ -355,7 +353,6 @@ def data_processing_surface_notracer(
         bc_data = None
 
     # get obs and footprints, and make scenarios for each site
-    scales = {}
     check_scales = set()
     site_indices_to_keep = []
     output_units: str | None = None
@@ -454,11 +451,14 @@ def data_processing_surface_notracer(
             scenario_units = scenario_combined["mf"].attrs.get("units")
             if not isinstance(scenario_units, str) or not scenario_units:
                 raise ValueError(f"No observation units detected for the first retained site {site!r}.")
+            mole_fraction_unit_scale(
+                scenario_units,
+                context=f"site {site!r} variable 'mf'",
+            )
             output_units = scenario_units
         fp_all[site] = scenario_combined
 
         if not is_satellite_platform(site_platform):
-            scales[site] = scenario_combined.scale
             check_scales.add(scenario_combined.scale)
 
         site_indices_to_keep.append(i)
@@ -479,16 +479,8 @@ def data_processing_surface_notracer(
         msg = f"Not all sites using the same calibration scale: {len(check_scales)} scales found."
         logger.warning(msg)
 
-    fp_all[".scales"] = scales
-
     # create `mf_error`
     add_obs_error(sites, fp_all, add_averaging_error=averagingerror)
-    if output_units is None:
-        raise ValueError("No observation units detected.")
-    fp_all[".units"] = mole_fraction_unit_scale(
-        output_units,
-        context=f"site {sites[0]!r} variable 'mf'",
-    )
 
     if save_merged_data:
         if merged_data_dir is None:

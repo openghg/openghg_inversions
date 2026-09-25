@@ -1,7 +1,6 @@
 openghg\_inversions.basis.covariance\_products
-===============================================
+==============================================
 
 .. automodule:: openghg_inversions.basis.covariance_products
    :members:
    :show-inheritance:
-   :undoc-members:

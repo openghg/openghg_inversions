@@ -1,0 +1,12 @@
+openghg\_inversions.experimental
+================================
+
+.. automodule:: openghg_inversions.experimental
+   :members:
+   :show-inheritance:
+
+
+.. toctree::
+   :maxdepth: 4
+
+   openghg_inversions.experimental.ramsden2022

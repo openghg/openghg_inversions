@@ -186,12 +186,16 @@ def make_nested_paris_products(
             inner domain's native resolution. If not given, ``country_file``
             (or the outer domain's default) is resampled onto the inner grid
             and cached; see ``country_file_cache_dir``.
-        time_point, report_mode, inversion_grid, template_version,
-            country_selections: Forwarded to ``paris_flux_output`` /
-            ``paris_concentration_outputs`` for both domains.
+        time_point: Flux timestamp convention for both domains.
+        report_mode: If true, report kernel density estimate modes instead of
+            means as central estimates.
+        inversion_grid: If true, include reduced inversion-grid variables.
         flux_frequency: Flux interval frequency. If ``None``, it is inferred
             independently for each domain's flux.
         obs_avg_period: Averaging period recorded in concentration metadata.
+        template_version: PARIS template version used for both domains.
+        country_selections: Optional country names or codes included in both
+            domain products.
         country_file_cache_dir: Directory for the cached regridded inner
             country file. Defaults to the standard per-user cache directory.
 

@@ -246,10 +246,22 @@ def test_fixedbasis_params_to_rhime_translates_calculate_min_error(tmp_path: Pat
     assert "calculate_min_error" not in translated
 
 
-def test_fixedbasis_params_to_rhime_rejects_non_fixed_basis_mcmc_type(tmp_path: Path) -> None:
+def test_hbmcmc_extract_param_rejects_removed_mcmc_route(tmp_path: Path) -> None:
     config_file = tmp_path / "hbmcmc.ini"
     _fixedbasis_config(config_file)
-    params = run_hbmcmc.hbmcmc_extract_param(str(config_file), print_param=False)
+    config_file.write_text(
+        config_file.read_text(encoding="utf-8").replace('mcmc_type = "fixed_basis"', 'mcmc_type = "tdmcmc"'),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="fixed_basis"):
+        run_hbmcmc.hbmcmc_extract_param(config_file, print_param=False)
+
+
+def test_fixedbasis_params_to_rhime_rejects_removed_mcmc_route(tmp_path: Path) -> None:
+    config_file = tmp_path / "hbmcmc.ini"
+    _fixedbasis_config(config_file)
+    params = run_hbmcmc.hbmcmc_extract_param(config_file, print_param=False)
     params["mcmc_type"] = "tdmcmc"
 
     with pytest.raises(ValueError, match="fixed_basis"):
@@ -463,7 +475,7 @@ def test_run_hbmcmc_additive_no_model_error_uses_fixed_error_with_floor(
     assert seen["_compatibility_minimum_error_floor"] is True
     assert seen["preserve_legacy_likelihood"] is False
     assert seen["_compatibility_unused_sigma_settings"] is None
-    assert seen["_compatibility_likelihood_provenance"]["likelihood_kwargs"]["no_model_error"] is True
+    assert "_compatibility_likelihood_provenance" not in seen
     assert "sigma_prior" not in seen
 
 
@@ -499,15 +511,7 @@ def test_run_hbmcmc_main_selects_additive_sigma_from_ini(
     assert seen["sigma_prior"] == {"pdf": "halfnormal", "sigma": {"TAC": 2.0}}
     assert seen["aggregation_error_mode"] == "none"
     assert seen["preserve_legacy_likelihood"] is False
-    assert seen["_compatibility_likelihood_provenance"] == {
-        "likelihood_builder": {
-            "module": "openghg_inversions.rhime.likelihoods",
-            "qualname": "additive_sigma_likelihood_builder",
-        },
-        "likelihood_kwargs": {
-            "sigma_prior": {"pdf": "halfnormal", "sigma": {"TAC": 2.0}},
-        },
-    }
+    assert "_compatibility_likelihood_provenance" not in seen
 
 
 def test_run_hbmcmc_parser_rejects_removed_legacy_fixedbasis_flag(tmp_path: Path) -> None:

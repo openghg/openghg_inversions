@@ -1,0 +1,6 @@
+openghg\_inversions.rhime.co2.co2\_o2\_preparation
+==================================================
+
+.. automodule:: openghg_inversions.rhime.co2.co2_o2_preparation
+   :members:
+   :show-inheritance:

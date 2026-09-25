@@ -3,6 +3,19 @@ openghg\_inversions.rhime.co2
 
 .. automodule:: openghg_inversions.rhime.co2
    :members:
-   :imported-members:
    :show-inheritance:
-   :undoc-members:
+
+
+
+.. toctree::
+   :maxdepth: 4
+
+   openghg_inversions.rhime.co2.co2_cached_sigma_model
+   openghg_inversions.rhime.co2.co2_cached_sigma_runner
+   openghg_inversions.rhime.co2.co2_model
+   openghg_inversions.rhime.co2.co2_o2_model
+   openghg_inversions.rhime.co2.co2_o2_preparation
+   openghg_inversions.rhime.co2.co2_o2_runner
+   openghg_inversions.rhime.co2.co2_preparation
+   openghg_inversions.rhime.co2.co2_runner
+   openghg_inversions.rhime.co2.configuration
