@@ -137,7 +137,7 @@ def merged_scenario_data(
         value = next(
             (
                 source[key]
-                for source in (getattr(footprint_data, "metadata", {}), footprint_data.data.attrs)
+                for source in (footprint_data.data.attrs, getattr(footprint_data, "metadata", {}))
                 for key in source_names
                 if isinstance(source.get(key), str)
                 and source[key].strip()
