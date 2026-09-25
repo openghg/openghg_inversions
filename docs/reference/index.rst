@@ -72,6 +72,10 @@ documents the expected variables, dimensions, and coordinates.
    openghg_inversions.rhime.NestedRhimePreparedInputs
    openghg_inversions.rhime.combine_nested_rhime_inputs
    openghg_inversions.rhime.co2.Co2PreparedInputs
+   openghg_inversions.rhime.co2.BoundCo2AffineFluxMap
+   openghg_inversions.rhime.co2.produce_bucket_affine_flux_map
+   openghg_inversions.rhime.co2.import_explicit_affine_flux_map
+   openghg_inversions.rhime.co2.load_and_bind_affine_flux_map
    openghg_inversions.rhime.co2.Co2O2PreparedInputs
    openghg_inversions.rhime.co2.prepare_co2_inputs
    openghg_inversions.rhime.co2.prepare_co2_o2_inputs
@@ -94,6 +98,9 @@ executed layout example and :doc:`affine native-flux reconstruction
 
    openghg_inversions.basis.BasisFunctions
    openghg_inversions.basis.AffineFluxMap
+   openghg_inversions.basis.AffineFluxMapArtifact
+   openghg_inversions.basis.save_affine_flux_map
+   openghg_inversions.basis.load_affine_flux_map
    openghg_inversions.basis.make_basis_functions
    openghg_inversions.basis.load_basis_functions
    openghg_inversions.basis.basis_functions_from_fp_all_flat_basis

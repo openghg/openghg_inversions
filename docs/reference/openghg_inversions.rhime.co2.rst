@@ -11,6 +11,7 @@ openghg\_inversions.rhime.co2
    :maxdepth: 4
 
    openghg_inversions.rhime.co2.co2_cached_sigma_model
+   openghg_inversions.rhime.co2.co2_affine_output
    openghg_inversions.rhime.co2.co2_cached_sigma_runner
    openghg_inversions.rhime.co2.co2_model
    openghg_inversions.rhime.co2.co2_o2_model
