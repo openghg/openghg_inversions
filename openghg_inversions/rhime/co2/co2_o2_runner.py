@@ -204,6 +204,9 @@ def run_rhime_co2_o2_from_prepared_inputs(
     offset_prior: Mapping[str, PriorArgs] | None = None,
     offset_args: Mapping[str, Mapping[str, Any]] | None = None,
     sampler: RhimeSampler | None = None,
+    tau_hours: float | Mapping[str, float] | None = None,
+    fixed_site_amplitudes: float | Mapping[str, float] | None = None,
+    site_amplitude_prior: Mapping[str, Any] | None = None,
 ) -> az.InferenceData:
     """Build and sample the CO2/O2 model from prepared scientific inputs.
 
@@ -237,6 +240,12 @@ def run_rhime_co2_o2_from_prepared_inputs(
         offset_args: Per-channel offset_freq, drop_first, and per_site options,
             with the same meanings as the CO2 offset component. Baseline terms
             require identical channel units and are zero on the other channel.
+        tau_hours: Optional fixed OU timescale, scalar or mapping keyed by
+            ``co2:SITE``/``o2:SITE``, in hours. Requires the same channel units.
+        fixed_site_amplitudes: Fixed additive species/site standard deviations
+            in concentration units, scalar or mapping using the same keys.
+        site_amplitude_prior: Prior for inferred species/site amplitudes,
+            mutually exclusive with fixed amplitudes.
         sampler: Optional RHIME sampler configuration. The accepted CO2/O2
             NumPyro defaults are used when omitted.
 
@@ -253,6 +262,8 @@ def run_rhime_co2_o2_from_prepared_inputs(
             observation-label/unit contract. Label, state, covariance, and
             activity errors from model construction are also propagated.
     """
+    if tau_hours is not None and sampler is not None and sampler.nuts_sampler != "pymc":
+        raise ValueError("Linked fixed-OU requires nuts_sampler='pymc'.")
     prepared = prepared_inputs
     boundaries = dict(getattr(prepared, "boundary_sensitivity", {}))
     if use_bc is not None:
@@ -303,6 +314,9 @@ def run_rhime_co2_o2_from_prepared_inputs(
         retained_prior=prepared.retained_prior,
         independent_error_sd=independent_error_sd,
         state_activity=state_activity,
+        tau_hours=tau_hours,
+        fixed_site_amplitudes=fixed_site_amplitudes,
+        site_amplitude_prior=site_amplitude_prior,
         boundary_sensitivity=boundaries,
         bc_prior=bc_prior,
         bc_state_activity=bc_state_activity,
@@ -327,11 +341,51 @@ def run_rhime_co2_o2_from_prepared_inputs(
         variable_roles["offset_concentration"] = "offset_concentration"
     if boundaries or offset_prior:
         variable_roles["baseline_concentration"] = "baseline_concentration"
+    metadata = _co2_o2_metadata(prepared, observations=observations)
+    if tau_hours is not None:
+        variable_roles.update({"independent_error": "error", "fixed_ou_site_amplitude": "ou_site_amplitude",
+                      "observation_to_fixed_ou_site_index": "ou_site_index",
+                      "fixed_ou_timescale": "ou_tau_hours"})
+        metadata["likelihood"] = "joint Gaussian with fixed OU blocks by (species, site)"
     built = RhimeModelBuildResult(
         model=model,
         variable_roles=variable_roles,
-        metadata=_co2_o2_metadata(prepared, observations=observations),
+        metadata=metadata,
     )
-    sampler = sampler or RhimeSampler(nuts_sampler="numpyro", sample_kwargs={"target_accept": 0.95})
+    sampler = sampler or RhimeSampler(nuts_sampler="pymc" if tau_hours is not None else "numpyro", sample_kwargs={"target_accept": 0.95})
     trace = sample_rhime_model(built, sampler)
-    return _annotate_co2_o2_trace(trace, built=built)
+    trace = _annotate_co2_o2_trace(trace, built=built)
+    if tau_hours is not None:
+        trace = _annotate_linked_fixed_ou_trace(trace, observations=observations)
+    return trace
+
+
+def _annotate_linked_fixed_ou_trace(
+    trace: az.InferenceData,
+    *,
+    observations: xr.DataArray,
+) -> az.InferenceData:
+    """Retain OU group identity, units, and joint likelihood semantics."""
+    units = str(observations.observation_units.values[0])
+    for group_name in trace.groups():
+        group = getattr(trace, group_name)
+        if "ou_site" in group.coords:
+            labels = group.ou_site.values.astype(str)
+            group = group.assign_coords(
+                ou_species=("ou_site", [label.split(":", 1)[0] for label in labels]),
+                ou_station=("ou_site", [label.split(":", 1)[1] for label in labels]),
+            )
+            setattr(trace, group_name, group)
+        for name in ("ou_site_amplitude", "Y", "error"):
+            if name in group:
+                group[name].attrs["units"] = units
+        if "ou_tau_hours" in group:
+            group.ou_tau_hours.attrs["units"] = "hours"
+        if group_name == "log_likelihood" and "y" in group:
+            group.y.attrs.pop("units", None)
+            group.y.attrs.update(
+                rhime_scientific_roles=json.dumps(["joint_log_likelihood"]),
+                rhime_likelihood_scope="joint_observation_vector",
+                rhime_normalized_log_likelihood=True,
+            )
+    return trace

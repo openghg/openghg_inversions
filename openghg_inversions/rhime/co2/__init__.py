@@ -22,6 +22,8 @@ from .co2_o2_model import (
 )
 from .co2_o2_preparation import Co2O2PreparedInputs, prepare_co2_o2_inputs
 from .co2_o2_runner import run_rhime_co2_o2_from_prepared_inputs
+from .co2_o2_cached_sigma_model import build_co2_o2_cached_sigma_model
+from .co2_o2_cached_sigma_runner import run_rhime_co2_o2_cached_sigma_from_prepared_inputs
 from .configuration import (
     Co2O2RunSetup,
     Co2RunSetup,
@@ -39,6 +41,7 @@ __all__ = [
     "build_co2_cached_sigma_model",
     "build_co2_model",
     "build_co2_o2_model",
+    "build_co2_o2_cached_sigma_model",
     "co2_model_input_names",
     "co2_config_templates",
     "prepare_co2_scalar_sigma_eigenbasis",
@@ -51,4 +54,5 @@ __all__ = [
     "run_rhime_co2",
     "run_rhime_co2_cached_sigma",
     "run_rhime_co2_o2_from_prepared_inputs",
+    "run_rhime_co2_o2_cached_sigma_from_prepared_inputs",
 ]

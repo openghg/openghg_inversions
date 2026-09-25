@@ -1,0 +1,36 @@
+"""Labelled species/site grouping for the linked fixed-OU likelihood."""
+
+from __future__ import annotations
+
+import numpy as np
+import xarray as xr
+
+from openghg_inversions.sigma import SigmaAlignment
+
+
+def linked_fixed_ou_alignment(observations: xr.DataArray) -> SigmaAlignment:
+    """Group joint rows by ``species:site``, preserving their original order.
+
+    Observations must have a labelled ``observation`` axis, aligned ``species``,
+    ``site`` and ``time`` coordinates, and one common ``observation_units``
+    value. This first linked OU target excludes heterogeneous channel units.
+    Scalar amplitudes and tau apply independently to each group; mappings use
+    the explicit ``co2:SITE`` and ``o2:SITE`` labels.
+    """
+    for name in ("species", "site", "time", "observation_units"):
+        if name not in observations.coords or observations[name].dims != observations.dims:
+            raise ValueError(f"Linked fixed-OU requires observation-aligned {name!r} coordinates.")
+    if np.unique(observations.observation_units.values.astype(str)).size != 1:
+        raise ValueError("Linked fixed-OU requires the same units for CO2 and O2 (OPE-86).")
+    species = observations.species.values.astype(str)
+    if not set(species) <= {"co2", "o2"}:
+        raise ValueError("Linked fixed-OU species must be 'co2' or 'o2'.")
+    groups = np.char.add(np.char.add(species, ":"), observations.site.values.astype(str))
+    grouped = observations.assign_coords(site=(observations.dims, groups))
+    alignment = SigmaAlignment.from_observations(grouped)
+    # Preserve the original row labels in the shared coordinate registry.
+    return SigmaAlignment.from_indices(
+        alignment.site_index.assign_coords(site=observations.site),
+        alignment.period_index.assign_coords(site=observations.site),
+        site_labels=alignment.site_labels,
+    )

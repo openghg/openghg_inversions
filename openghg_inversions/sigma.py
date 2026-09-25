@@ -1,7 +1,7 @@
 """Represent observation-to-sigma alignment independently of model backends.
 
 The canonical site and period indexes are eager, non-negative integer vectors
-on ``nmeasure``. They can be prepared once and consumed by PyMC or another
+on ``nmeasure`` or ``observation``. They can be prepared once and consumed by PyMC or another
 inversion backend.
 """
 
@@ -16,7 +16,7 @@ import xarray as xr
 
 from openghg_inversions.inversion_inputs import DatetimeLike, make_sigma_freq, make_site_indicator
 
-_OBS_DIM = "nmeasure"
+_OBS_DIMS = {"nmeasure", "observation"}
 _SITE_INDEX_NAME = "sigma_site_index"
 _PERIOD_INDEX_NAME = "sigma_period_index"
 
@@ -38,8 +38,8 @@ def _normalise_index(index: xr.DataArray, name: str) -> xr.DataArray:
     """
     if not isinstance(index, xr.DataArray):
         raise TypeError(f"{name} must be an xarray.DataArray.")
-    if index.dims != (_OBS_DIM,) or index.size == 0:
-        raise ValueError(f"{name} must be a non-empty vector on {_OBS_DIM!r}.")
+    if index.ndim != 1 or index.dims[0] not in _OBS_DIMS or index.size == 0:
+        raise ValueError(f"{name} must be a non-empty vector on nmeasure or observation.")
 
     values = np.asarray(index.values)
     is_numeric = values.dtype.kind in "iuf"
@@ -54,16 +54,17 @@ def _normalise_index(index: xr.DataArray, name: str) -> xr.DataArray:
 
 def _time_coord(index: xr.DataArray) -> xr.DataArray | None:
     """Return an observation-aligned time coordinate, when present."""
+    observation_dim = str(index.dims[0])
     time = index.coords.get("time")
-    if time is not None and time.dims == (_OBS_DIM,):
+    if time is not None and time.dims == (observation_dim,):
         return time
 
-    obs_index = index.indexes.get(_OBS_DIM)
+    obs_index = index.indexes.get(observation_dim)
     if isinstance(obs_index, pd.MultiIndex) and "time" in obs_index.names:
         return xr.DataArray(
             obs_index.get_level_values("time").to_numpy(),
-            dims=(_OBS_DIM,),
-            coords={_OBS_DIM: index.coords[_OBS_DIM]},
+            dims=(observation_dim,),
+            coords={observation_dim: index.coords[observation_dim]},
             name="time",
         )
     return None
@@ -91,12 +92,13 @@ class SigmaAlignment:
         """Normalise indexes and enforce their shared observation alignment."""
         site = _normalise_index(self.site_index, _SITE_INDEX_NAME)
         period = _normalise_index(self.period_index, _PERIOD_INDEX_NAME)
-        if site.sizes[_OBS_DIM] != period.sizes[_OBS_DIM]:
+        observation_dim = str(site.dims[0])
+        if site.dims != period.dims or site.size != period.size:
             raise ValueError("Sigma site and period indexes must have the same observation length.")
 
-        site_coords = {name: coord for name, coord in site.coords.items() if coord.dims == (_OBS_DIM,)}
+        site_coords = {name: coord for name, coord in site.coords.items() if coord.dims == (observation_dim,)}
         period_coords = {
-            name: coord for name, coord in period.coords.items() if coord.dims == (_OBS_DIM,)
+            name: coord for name, coord in period.coords.items() if coord.dims == (observation_dim,)
         }
         for name in site_coords.keys() & period_coords.keys():
             if not site_coords[name].identical(period_coords[name]):
@@ -189,7 +191,12 @@ class SigmaAlignment:
                 invalid.
         """
         site = observations.coords.get("site")
-        if site is None or site.dims != (_OBS_DIM,):
+        if (
+            observations.ndim != 1
+            or observations.dims[0] not in _OBS_DIMS
+            or site is None
+            or site.dims != observations.dims
+        ):
             raise ValueError(
                 "Sigma alignment requires an observation-aligned 'site' coordinate."
             )
@@ -269,7 +276,7 @@ class SigmaAlignment:
             sigma: Values with ``nsigma_site`` and ``nsigma_time`` dimensions.
 
         Returns:
-            ``sigma_aligned`` with latent dimensions replaced by ``nmeasure``.
+            ``sigma_aligned`` with latent dimensions replaced by the observation axis.
 
         Raises:
             ValueError: If a required latent dimension is absent.
