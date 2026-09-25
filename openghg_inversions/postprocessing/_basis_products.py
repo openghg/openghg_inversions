@@ -174,6 +174,7 @@ def reconstruct_flux_stats(
             result = result.rename(time="flux_time")
         elif "flux_time" in flux.dims and "flux_time" not in result.dims:
             result = result.expand_dims(flux_time=flux.flux_time)
+        result = _transpose_inversion_grid_dataset(result)
         result = copy_flux_nonfinite_attrs(result, retained_flux)
         if "time_period" in retained_flux.attrs:
             result.attrs["time_period"] = retained_flux.attrs["time_period"]

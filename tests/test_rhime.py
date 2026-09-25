@@ -348,7 +348,7 @@ class _RecordingBasisOperator(BasisOperator):
             meta=BasisMeta(state_dim="region"),
             region_labels="range0",
         )
-        self.interpolate_calls: list[tuple[xr.DataArray, xr.DataArray | None]] = []
+        self.native_calls: list[xr.DataArray] = []
         self.basis_matrix_accesses = 0
 
     @property
@@ -362,10 +362,10 @@ class _RecordingBasisOperator(BasisOperator):
         self.basis_matrix_accesses += 1
         return self._operator.basis_matrix
 
-    def interpolate(self, state: xr.DataArray, weights: xr.DataArray | None = None) -> xr.DataArray:
-        """Record interpolation before delegating to the wrapped operator."""
-        self.interpolate_calls.append((state, weights))
-        return self._operator.interpolate(state, weights=weights)
+    def state_to_native(self, state: xr.DataArray) -> xr.DataArray:
+        """Record directional reconstruction before delegating to the wrapped operator."""
+        self.native_calls.append(state)
+        return self._operator.state_to_native(state)
 
     def to_datatree(self) -> xr.DataTree:
         """Serialization is not needed for this test double."""
@@ -7846,7 +7846,7 @@ def test_modern_flux_outputs_use_retained_basis_operator(
 
     assert "flux_posterior_mean" in flux_outputs
     assert "scaling_posterior_mean" in flux_outputs
-    assert operator.interpolate_calls
+    assert operator.native_calls
 
 
 def test_modern_outputs_record_basis_reconstruction_metadata(europe_country_file: Path) -> None:
@@ -7942,7 +7942,7 @@ def test_modern_paris_flux_outputs_use_retained_basis_operator(
         "flux_total_posterior_inversion_grid",
     ):
         assert flux_outputs[name].dtype == np.dtype("float32")
-    assert operator.interpolate_calls
+    assert operator.native_calls
     assert operator.basis_matrix_accesses
 
 

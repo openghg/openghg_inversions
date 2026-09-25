@@ -180,7 +180,7 @@ def write_netcdf_preserving_bounds_attrs(
         path: Destination NetCDF path.
         unlimited_dims: Optional dimensions to encode as unlimited.
     """
-    ds = ds.map(to_dense)
+    ds = ds.map(to_dense, keep_attrs=True)
     ds.to_netcdf(
         path,
         unlimited_dims=unlimited_dims,
