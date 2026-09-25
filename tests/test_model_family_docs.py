@@ -113,7 +113,7 @@ def test_advanced_co2_reader_path_exposes_current_boundaries() -> None:
     assert "Exactly one of ``fixed_site_amplitudes``" in recipes
     assert "Sampling configuration" in recipes
     assert "Non-negative integer strictly less than ``draws``" in recipes
-    assert "the linked recipe overrides the\ntwo defaults" in recipes
+    assert "both linked OU routes default to and require PyMC" in recipes
     assert "``[channels.co2]`` and ``[channels.o2]``" in recipes
     assert "standard deviations are 1 ppm\nand 2 ppm" in recipes
     assert "The resolver does not convert these values" in recipes
