@@ -648,15 +648,53 @@ def _add_offset_component_result(
     output_dim: str = "nmeasure",
     drop_first: bool = False,
     per_site: bool = True,
+    anchor_site: str | None = None,
 ) -> OffsetComponentResult:
     """Build one offset component and return its labelled design and graph terms."""
     output_dim = str(output_dim)
     output_coord = observations.coords[output_dim]
+    if anchor_site is not None and per_site:
+        raise ValueError("anchor_site requires per_site=False.")
     if not per_site:
         if offset_freq is not None:
             raise ValueError("Global offsets do not accept an offset frequency.")
         if drop_first:
             raise ValueError("Global offsets do not support `drop_first=True`.")
+        if anchor_site is not None:
+            if not isinstance(anchor_site, str) or not anchor_site:
+                raise TypeError("anchor_site must be a non-empty site label string.")
+            if "site" not in observations.coords or observations.coords["site"].dims != (output_dim,):
+                raise ValueError(
+                    "Anchored offsets require an observation-aligned `site` coordinate."
+                )
+            sites = np.asarray(observations.coords["site"].values)
+            if bool(pd.isna(sites).any()):
+                raise ValueError("Anchored offsets require complete site labels.")
+            if anchor_site not in sites:
+                raise ValueError(f"anchor_site {anchor_site!r} is absent from observations.")
+            if pd.unique(sites).size < 2:
+                raise ValueError("Anchored offsets require at least two sites.")
+            column = (sites != anchor_site).astype(np.float64)
+            design = xr.DataArray(
+                column[:, None],
+                dims=(output_dim, "offset_term"),
+                coords={
+                    output_dim: output_coord,
+                    "offset_term": [f"shared_except:{anchor_site}"],
+                },
+                name="offset_design",
+            )
+            design_data = add_model_data(design, f"{output_name}_design")
+            coefficient = parse_prior(var_name, prior_args)
+            output = pm.Deterministic(
+                output_name, design_data[:, 0] * coefficient, dims=output_dim
+            )
+            return OffsetComponentResult(
+                design=design,
+                latent=get_model_latent(coefficient, var_name),
+                coefficients=pt.atleast_1d(coefficient),
+                output=output,
+            )
         design = xr.DataArray(
             np.ones((observations.sizes[output_dim], 1), dtype=np.float64),
             dims=(output_dim, "offset_term"),
@@ -769,6 +807,7 @@ def add_offset_component(
     output_dim: str = "nmeasure",
     drop_first: bool = False,
     per_site: bool = True,
+    anchor_site: str | None = None,
 ) -> TensorVariable:
     """Add a global, site-only, or site-by-period offset component.
 
@@ -784,6 +823,8 @@ def add_offset_component(
         drop_first: Whether to omit the first site indicator column.
         per_site: Whether to create site-specific terms. If false, create one
             global scalar latent offset and broadcast it over observations.
+        anchor_site: Site fixed at zero when ``per_site=False``; the same scalar
+            applies to every other site. Requires at least two labelled sites.
 
     Returns:
         The aligned offset deterministic variable.
@@ -801,6 +842,7 @@ def add_offset_component(
         output_dim=output_dim,
         drop_first=drop_first,
         per_site=per_site,
+        anchor_site=anchor_site,
     ).output
 
 

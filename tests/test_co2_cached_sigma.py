@@ -19,6 +19,7 @@ from openghg_inversions.models.coords import get_coord_registry
 from openghg_inversions.models.state_activity import StateActivity
 from openghg_inversions.observation_error import resolve_aggregation_error
 from openghg_inversions.rhime.co2 import (
+    build_co2_model,
     build_co2_cached_sigma_model,
     run_rhime_co2_cached_sigma,
 )
@@ -173,6 +174,7 @@ def _build(*, state_activity: StateActivity | None = None, **kwargs: Any) -> Any
         ({"offset_freq": "monthly"}, "offset_prior"),
         ({"offset_drop_first": True}, "offset_prior"),
         ({"offset_per_site": False}, "offset_prior"),
+        ({"offset_anchor_site": "AAA"}, "offset_prior"),
     ],
 )
 def test_cached_builder_rejects_options_for_absent_components(
@@ -427,6 +429,7 @@ def test_cached_boundary_and_default_site_offset_match_dense_oracle_at_varied_po
         "offset_prior",
         "offset_per_site",
         "offset_freq",
+        "offset_anchor_site",
         "expected_offset_states",
         "expected_sampler_name",
     ),
@@ -435,6 +438,15 @@ def test_cached_boundary_and_default_site_offset_match_dense_oracle_at_varied_po
             {"pdf": "normal", "mu": 0.2, "sigma": 0.1},
             False,
             None,
+            None,
+            1,
+            "offset_latent",
+        ),
+        (
+            {"pdf": "normal", "mu": 0.2, "sigma": 0.1},
+            False,
+            None,
+            "AAA",
             1,
             "offset_latent",
         ),
@@ -442,6 +454,7 @@ def test_cached_boundary_and_default_site_offset_match_dense_oracle_at_varied_po
             {"pdf": "normal", "mu": 0.2, "sigma": 0.1},
             True,
             "monthly",
+            None,
             4,
             "offset_latent",
         ),
@@ -454,6 +467,7 @@ def test_cached_boundary_and_default_site_offset_match_dense_oracle_at_varied_po
             },
             True,
             None,
+            None,
             2,
             "offset_latent_latent",
         ),
@@ -463,6 +477,7 @@ def test_cached_offset_modes_match_completed_mean_and_dense_likelihood(
     offset_prior: dict[str, Any],
     offset_per_site: bool,
     offset_freq: str | None,
+    offset_anchor_site: str | None,
     expected_offset_states: int,
     expected_sampler_name: str,
 ) -> None:
@@ -485,6 +500,7 @@ def test_cached_offset_modes_match_completed_mean_and_dense_likelihood(
         offset_prior=offset_prior,
         offset_per_site=offset_per_site,
         offset_freq=offset_freq,
+        offset_anchor_site=offset_anchor_site,
     )
 
     variables = cached.model.replace_rvs_by_values(
@@ -517,6 +533,10 @@ def test_cached_offset_modes_match_completed_mean_and_dense_likelihood(
     )
 
     np.testing.assert_allclose(total, flux + offset)
+    if offset_anchor_site is not None:
+        np.testing.assert_array_equal(cached.model["offset_design"].eval()[:, 0], [0, 0, 1, 1])
+        np.testing.assert_allclose(offset[:2], 0.0)
+        np.testing.assert_allclose(offset[2:], offset[2])
     np.testing.assert_allclose(
         flux,
         fixed + inputs["H"].values @ flux_scaling,
@@ -528,6 +548,46 @@ def test_cached_offset_modes_match_completed_mean_and_dense_likelihood(
     )
     assert cached.target.n_state == inputs.sizes["region"] + expected_offset_states
     assert cached.states[-1].name == expected_sampler_name
+
+
+def test_named_anchor_has_same_design_in_ordinary_and_cached_models() -> None:
+    inputs = _boundary_inputs()
+    prior = CorrelatedLognormalPrior(
+        inputs["alpha_prior_mean"],
+        inputs["alpha_prior_covariance"],
+        covariance_dim="region_cov",
+    )
+    offset_prior = {"pdf": "normal", "mu": 0.2, "sigma": 0.1}
+    ordinary = build_co2_model(
+        inputs["H"],
+        retained_prior=prior,
+        fixed_prior_contribution=inputs["fixed_prior_contribution"],
+        observations=inputs["mf"],
+        observation_error=inputs["mf_error"],
+        aggregation_error=resolve_aggregation_error(inputs, "dense"),
+        offset_prior=offset_prior,
+        offset_args={"per_site": False, "anchor_site": "BBB"},
+    )
+    cached = build_co2_cached_sigma_model(
+        inputs["H"],
+        retained_prior=prior,
+        fixed_prior_contribution=inputs["fixed_prior_contribution"],
+        observations=inputs["mf"],
+        observation_error=inputs["mf_error"],
+        aggregation_error=resolve_aggregation_error(inputs, "dense"),
+        tau_hours={"AAA": 3.0, "BBB": 7.0},
+        site_amplitude_prior_scale=0.75,
+        offset_prior=offset_prior,
+        offset_per_site=False,
+        offset_anchor_site="BBB",
+    )
+    np.testing.assert_array_equal(ordinary["offset_design"].eval(), cached.model["offset_design"].eval())
+    for model in (ordinary, cached.model):
+        draw, latent = pm.draw([model["offset"], model["offset_latent"]], random_seed=19)
+        np.testing.assert_allclose(draw, [latent, latent, 0.0, 0.0])
+        registry = get_coord_registry(model)
+        assert registry is not None
+        assert registry.original_coords["offset_term"].tolist() == ["shared_except:BBB"]
 
 
 @pytest.mark.parametrize("active_component", ["boundary", "offset"])
@@ -724,8 +784,10 @@ def test_joint_outputs_are_exact_and_predict_complete_correlated_vectors() -> No
     )
 
 
+@pytest.mark.parametrize("offset_args", [None, {"per_site": False, "anchor_site": "AAA"}])
 def test_named_runner_samples_real_graph_and_labels_cached_outputs(
     monkeypatch: pytest.MonkeyPatch,
+    offset_args: dict[str, Any] | None,
 ) -> None:
     """The named runner samples the real graph and labels every cached output."""
     inputs = _boundary_inputs()
@@ -790,6 +852,7 @@ def test_named_runner_samples_real_graph_and_labels_cached_outputs(
             fixed_value=1.0,
         ),
         offset_prior={"pdf": "normal", "mu": 0.2, "sigma": 0.1},
+        offset_args=offset_args,
     )
 
     assert step_settings == {
@@ -801,16 +864,19 @@ def test_named_runner_samples_real_graph_and_labels_cached_outputs(
     assert result.posterior["flux_scaling"].shape == (1, 2, 2)
     assert result.posterior["bc"].shape == (1, 2, 8)
     assert result.posterior["offset"].shape == (1, 2, 4)
-    assert result.posterior["offset_latent"].shape == (1, 2, 2)
-    assert result.posterior["offset_latent"].dims == (
-        "chain",
-        "draw",
-        "offset_term",
-    )
-    np.testing.assert_array_equal(
-        result.posterior["offset_latent"].coords["offset_term"],
-        ["AAA", "BBB"],
-    )
+    if offset_args is None:
+        assert result.posterior["offset_latent"].shape == (1, 2, 2)
+        assert result.posterior["offset_latent"].dims == ("chain", "draw", "offset_term")
+        np.testing.assert_array_equal(result.posterior["offset_latent"].coords["offset_term"], ["AAA", "BBB"])
+    else:
+        assert result.posterior["offset_latent"].shape == (1, 2)
+        np.testing.assert_array_equal(result.constant_data["offset_design"][:, 0], [0, 0, 1, 1])
+        np.testing.assert_array_equal(result.constant_data["offset_term"], ["shared_except:AAA"])
+        np.testing.assert_allclose(result.posterior["offset"].values[:, :, :2], 0.0)
+        np.testing.assert_allclose(
+            result.posterior["offset"].values[:, :, 2:],
+            np.repeat(result.posterior["offset_latent"].values[:, :, None], 2, axis=2),
+        )
     assert result.posterior["offset_latent"].attrs["units"] == "ppm"
     assert result.posterior_predictive["y"].shape == (1, 2, 4)
     assert result.log_likelihood["y"].shape == (1, 2)

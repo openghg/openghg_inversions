@@ -397,7 +397,13 @@ def _model(value: object) -> dict[str, object]:
                 offset_args[runner_name] = _bool(
                     offset.pop(config_name), f"model.offset.{config_name}"
                 )
+        if "anchor_site" in offset:
+            offset_args["anchor_site"] = _string(
+                offset.pop("anchor_site"), "model.offset.anchor_site"
+            )
         _reject_unknown(offset, "model.offset")
+        if "anchor_site" in offset_args and offset_args.get("per_site", True):
+            raise ValueError("model.offset.anchor_site requires per_site=false.")
         if offset_args.get("per_site") is False:
             if offset_args.get("offset_freq") is not None:
                 raise ValueError("A global model.offset does not accept frequency.")

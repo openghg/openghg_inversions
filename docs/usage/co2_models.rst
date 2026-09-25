@@ -155,6 +155,14 @@ or fixed. Supplying ``offset_prior`` adds an offset. By default the offset has
 one coefficient per site; ``offset_args`` can instead select a global offset
 or site-by-period terms using ``per_site``, ``offset_freq``, and ``drop_first``.
 The model derives period indicators from the observation time coordinate.
+For one shared scalar fixed at zero at a named site, pass
+``offset_args={"per_site": False, "anchor_site": "BIR"}``. This requires an
+observation-aligned ``site`` coordinate with at least two complete site labels;
+the named anchor must occur in the selected observations. The saved
+``offset_design`` has one column labelled ``shared_except:BIR``, with zero at
+the anchor and one at every other site. ``offset`` is the observation-aligned
+deterministic contribution. The option cannot be combined with ``offset_freq``
+or ``drop_first``.
 Boundary and offset contributions remain separate from
 ``co2_flux_contribution`` and are included in ``modelled_concentration``, the
 likelihood, and sampled outputs.
@@ -310,9 +318,10 @@ LogNormal.
 Optional model components belong in their own tables. ``[model.boundary]``
 accepts boolean ``enabled`` (default true) and ``prior``; a disabled boundary
 cannot specify a prior. ``[model.offset]`` requires ``prior`` and optionally
-accepts ``frequency``, ``per_site`` (default true), and ``drop_first`` (default
-false). A global offset (``per_site = false``) cannot set a frequency or use
-``drop_first = true``.
+accepts ``frequency``, ``per_site`` (default true), ``drop_first`` (default
+false), and ``anchor_site``. A global offset (``per_site = false``) cannot set
+a frequency or use ``drop_first = true``; ``anchor_site`` also requires
+``per_site = false``.
 
 For ``variant = "cached_fixed_ou"``, ``[likelihood]`` requires
 ``kind = "fixed_ou"``, positive scalar-or-site-map ``tau_hours``, and positive

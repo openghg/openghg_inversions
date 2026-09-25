@@ -251,6 +251,7 @@ def build_co2_cached_sigma_model(
     offset_freq: str | None = None,
     offset_drop_first: bool = False,
     offset_per_site: bool = True,
+    offset_anchor_site: str | None = None,
     output_dim: str = "nmeasure",
 ) -> Co2CachedSigmaModel:
     """Build the named CO2 cached-sigma graph in scientific order.
@@ -307,6 +308,8 @@ def build_co2_cached_sigma_model(
             global offset and does not accept ``offset_freq`` or
             ``offset_drop_first=True``. The non-default value requires
             ``offset_prior``.
+        offset_anchor_site: Site fixed at zero for one shared offset scalar.
+            Requires ``offset_prior`` and ``offset_per_site=False``.
         output_dim: Name of the shared observation and model-output dimension.
 
     Returns:
@@ -326,7 +329,10 @@ def build_co2_cached_sigma_model(
     ):
         raise ValueError("bc_prior and bc_state_activity require boundary_sensitivity.")
     if offset_prior is None and (
-        offset_freq is not None or offset_drop_first or not offset_per_site
+        offset_freq is not None
+        or offset_drop_first
+        or not offset_per_site
+        or offset_anchor_site is not None
     ):
         raise ValueError("Non-default offset options require offset_prior.")
     if not np.isfinite(site_amplitude_prior_scale) or site_amplitude_prior_scale <= 0.0:
@@ -485,6 +491,7 @@ def build_co2_cached_sigma_model(
                 output_dim=output_dim,
                 drop_first=offset_drop_first,
                 per_site=offset_per_site,
+                anchor_site=offset_anchor_site,
             )
             terms.append(
                 _CachedAffineTerm(

@@ -409,6 +409,7 @@ def test_cached_variant_rejects_unsupported_posterior_predictive_names() -> None
     [
         ({"per_site": False, "frequency": "monthly"}, "does not accept frequency"),
         ({"per_site": False, "drop_first": True}, "does not support drop_first"),
+        ({"anchor_site": "MHD"}, "requires per_site=false"),
     ],
 )
 def test_global_offset_rejects_site_specific_options_during_resolution(
@@ -424,6 +425,19 @@ def test_global_offset_rejects_site_specific_options_during_resolution(
 
     with pytest.raises(ValueError, match=message):
         resolve_co2_family_config(config)
+
+
+def test_named_anchor_is_forwarded_from_configuration() -> None:
+    config = _ordinary()
+    config["model"] = {
+        "offset": {
+            "prior": {"pdf": "normal", "mu": 0.0, "sigma": 0.1},
+            "per_site": False,
+            "anchor_site": "BIR",
+        }
+    }
+    setup = cast(Co2RunSetup, resolve_co2_family_config(config))
+    assert setup.runner_kwargs["offset_args"] == {"per_site": False, "anchor_site": "BIR"}
 
 
 @pytest.mark.parametrize(
