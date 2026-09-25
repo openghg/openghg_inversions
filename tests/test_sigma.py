@@ -195,3 +195,17 @@ def test_align_vectorises_latent_sigma_over_observations() -> None:
             nsigma_time=alignment.period_index,
         ),
     )
+
+
+def test_sigma_alignment_preserves_labelled_joint_observation_axis():
+    observations = _index().rename({"nmeasure": "observation"}).assign_coords(
+        site=("observation", ["A", "B", "A", "B"])
+    )
+    alignment = SigmaAlignment.from_observations(observations, frequency="monthly")
+    values = xr.DataArray(np.arange(8).reshape(2, 4), dims=("nsigma_site", "nsigma_time"))
+    result = alignment.align(values)
+    assert result.dims == ("observation",)
+    np.testing.assert_array_equal(result, [0, 4, 1, 6])
+    xr.testing.assert_equal(result.observation, observations.observation)
+    with pytest.raises(ValueError, match="same observation length"):
+        SigmaAlignment.from_indices(alignment.site_index, alignment.period_index.rename({"observation": "nmeasure"}))

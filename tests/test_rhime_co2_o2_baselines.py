@@ -17,7 +17,7 @@ from openghg_inversions.rhime.co2 import (
 )
 from openghg_inversions.rhime.co2 import co2_o2_runner
 from openghg_inversions.rhime.sampling import RhimeSampler
-from openghg_inversions.serialization import save_inferencedata, load_inferencedata
+from openghg_inversions.serialization import save_trace, load_trace
 from test_rhime_co2_o2 import _inputs, _independent_error
 
 
@@ -109,8 +109,8 @@ def test_independent_offsets_and_boundary_reconstruct_from_draws(per_site, frequ
         trace = pm.sample_prior_predictive(draws=3, random_seed=7)
     trace = restore_inferencedata_coords(trace, get_coord_registry(model))
     path = tmp_path / "baselines.nc"
-    save_inferencedata(trace, path)
-    trace = load_inferencedata(path)
+    save_trace(trace, path)
+    trace = load_trace(path)
     for channel in ("co2", "o2"):
         opposite = slice(2, 5) if channel == "co2" else slice(0, 2)
         np.testing.assert_array_equal(trace.prior[f"{channel}_offset"][..., opposite], 0.0)

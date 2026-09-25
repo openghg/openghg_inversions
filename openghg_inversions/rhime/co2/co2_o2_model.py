@@ -35,6 +35,9 @@ from openghg_inversions.models.components import (
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR
 from .co2_model import _normalise_offset_args
+from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
+
+from .co2_o2_fixed_ou import linked_fixed_ou_alignment
 
 
 def _gather_co2_o2_sensitivity(
@@ -162,13 +165,14 @@ def _pad_channel_design(
     native_dim, state_dim = design.dims
     row_index = observations.indexes[observations.dims[0]]
     channel_index = row_index[row_index.get_level_values("species") == channel]
+    design = design.sel({native_dim: channel_index.droplevel("species")})
     native = design.drop_vars(
         [name for name, coord in design.coords.items() if native_dim in coord.dims]
     ).rename({native_dim: observations.dims[0]})
     native = native.assign_coords(
         xr.Coordinates.from_pandas_multiindex(channel_index, str(observations.dims[0]))
     )
-    # Reindex to the already validated CO2-then-O2 gathered rows.
+    # Restore the joint row order after selecting the native labels above.
     return native.reindex_like(observations, fill_value=0).transpose(observations.dims[0], state_dim)
 
 
@@ -320,6 +324,9 @@ def build_co2_o2_model(
     offset_prior: Mapping[str, PriorArgs] | None = None,
     offset_args: Mapping[str, Mapping[str, Any]] | None = None,
     output_dim: str = "observation",
+    tau_hours: float | Mapping[str, float] | None = None,
+    fixed_site_amplitudes: float | Mapping[str, float] | None = None,
+    site_amplitude_prior: Mapping[str, Any] | None = None,
 ) -> pm.Model:
     """Build the shared-state CO2/O2 affine model and fixed-error likelihood.
 
@@ -372,6 +379,12 @@ def build_co2_o2_model(
             with the same meanings as the CO2 offset component. Baseline terms
             require identical channel units and are zero on the other channel.
         output_dim: Joint observation dimension used by the likelihood.
+        tau_hours: Optional fixed OU timescale in hours, scalar or mapping keyed
+            by ``co2:SITE``/``o2:SITE``. Requires common channel units.
+        fixed_site_amplitudes: Fixed additive OU standard deviations in the
+            common concentration units; scalar or species/site mapping.
+        site_amplitude_prior: Prior for inferred species/site OU amplitudes in
+            concentration units, mutually exclusive with fixed amplitudes.
 
     Returns:
         A registered PyMC model containing the shared state, gathered joint
@@ -386,6 +399,7 @@ def build_co2_o2_model(
         o2_sensitivity,
         output_dim=output_dim,
     )
+    joint_sensitivity = joint_sensitivity.sel({output_dim: observations[output_dim]})
     prepared_sensitivity = prepare_linear_sensitivity(
         joint_sensitivity,
         output_dim=output_dim,
@@ -424,12 +438,27 @@ def build_co2_o2_model(
             output_name="modelled_concentration",
         )
 
-        add_additive_sigma_likelihood(
-            observations=observations,
-            observation_error=independent_error_sd,
-            mean=modelled,
-            aggregation_error=aggregation_error,
-            output_dim=output_dim,
-            observation_error_name="fixed_independent_error_sd",
-        )
+        if tau_hours is None:
+            if fixed_site_amplitudes is not None or site_amplitude_prior is not None:
+                raise ValueError("Fixed-OU amplitudes require tau_hours.")
+            add_additive_sigma_likelihood(
+                observations=observations,
+                observation_error=independent_error_sd,
+                mean=modelled,
+                aggregation_error=aggregation_error,
+                output_dim=output_dim,
+                observation_error_name="fixed_independent_error_sd",
+            )
+        else:
+            add_fixed_ou_gaussian_likelihood(
+                observations=observations,
+                observation_error=independent_error_sd,
+                mean=modelled,
+                aggregation_error=aggregation_error,
+                output_dim=output_dim,
+                tau_hours=tau_hours,
+                fixed_site_amplitudes=fixed_site_amplitudes,
+                site_amplitude_prior=site_amplitude_prior,
+                sigma_alignment=linked_fixed_ou_alignment(observations),
+            )
     return model

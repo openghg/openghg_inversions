@@ -9,7 +9,7 @@ from importlib.resources.abc import Traversable
 from math import isfinite
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any
+from typing import Any, cast
 import tomllib
 
 import numpy as np
@@ -23,6 +23,7 @@ from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
 from openghg_inversions.rhime.sampling import RhimeSampler
 
 from .co2_cached_sigma_runner import run_rhime_co2_cached_sigma
+from .co2_o2_cached_sigma_runner import run_rhime_co2_o2_cached_sigma_from_prepared_inputs
 from .co2_o2_preparation import Co2O2PreparedInputs
 from .co2_o2_runner import run_rhime_co2_o2_from_prepared_inputs
 from .co2_preparation import Co2PreparedInputs
@@ -533,8 +534,8 @@ def _resolve_co2(options: dict[str, object], variant: str) -> Co2RunSetup:
 
 
 def _resolve_linked(options: dict[str, object], variant: str) -> Co2O2RunSetup:
-    if variant != "linked":
-        raise ValueError("recipe='co2_o2' requires variant='linked'.")
+    if variant not in ("linked", "cached_fixed_ou"):
+        raise ValueError("recipe='co2_o2' requires variant='linked' or 'cached_fixed_ou'.")
     channels = _table(_take(options, "channels", "config"), "channels")
     errors: dict[str, object] = {}
     units: dict[str, str] = {}
@@ -571,11 +572,30 @@ def _resolve_linked(options: dict[str, object], variant: str) -> Co2O2RunSetup:
         errors[name] = error
     _reject_unknown(channels, "channels")
     if units["co2"] != units["o2"]:
-        raise ValueError("The linked configuration currently requires identical CO2 and O2 channel units.")
+        raise ValueError(
+            "The linked configuration currently requires identical CO2 and O2 channel units."
+        )
+    cached = variant == "cached_fixed_ou"
+    likelihood = options.pop("likelihood", None)
+    runner = run_rhime_co2_o2_from_prepared_inputs
+    likelihood_kwargs: dict[str, object] = {}
+    if cached:
+        runner = run_rhime_co2_o2_cached_sigma_from_prepared_inputs
+        likelihood_kwargs = _cached_likelihood(likelihood)
+    elif likelihood is not None:
+        likelihood_options = _table(likelihood, "likelihood")
+        if likelihood_options.get("kind") != "fixed_ou":
+            raise ValueError("The linked recipe supports config.likelihood.kind='fixed_ou'.")
+        likelihood_kwargs = dict(
+            cast(Mapping[str, object], _ordinary_likelihood(likelihood_options)["likelihood_kwargs"])
+        )
     sampling = _table(options.pop("sampling", {}), "sampling")
-    sampling.setdefault("nuts_sampler", "numpyro")
-    sampling.setdefault("target_accept", 0.95)
-    sampler = _sampling(sampling, cached=False)
+    sampling.setdefault("nuts_sampler", "pymc" if likelihood is not None or cached else "numpyro")
+    if not cached:
+        sampling.setdefault("target_accept", 0.95)
+    sampler = _sampling(sampling, cached=cached)
+    if likelihood is not None and sampler.nuts_sampler != "pymc":
+        raise ValueError("The linked fixed_ou likelihood requires sampling.nuts_sampler='pymc'.")
     _reject_unknown(options, "config")
     preparation_kwargs = {
         "co2_units": units["co2"],
@@ -583,8 +603,8 @@ def _resolve_linked(options: dict[str, object], variant: str) -> Co2O2RunSetup:
     }
     return Co2O2RunSetup(
         _frozen(preparation_kwargs),
-        run_rhime_co2_o2_from_prepared_inputs,
-        _frozen({"independent_error_sd": _frozen(errors), **channel_model}),
+        runner,
+        _frozen({"independent_error_sd": _frozen(errors), **channel_model, **likelihood_kwargs}),
         sampler,
     )
 
