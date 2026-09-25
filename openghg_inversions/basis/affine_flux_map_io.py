@@ -21,7 +21,7 @@ from openghg_inversions.serialization import (
 )
 
 from .affine_flux_map import AffineFluxMap, RETAINED_STATE_CONDITIONAL
-from .operators import BasisOperator
+from .operators import BasisOperator, BucketBasisOperator, MultiSourceBucketBasisOperator
 
 
 SCHEMA = "openghg_inversions.affine_flux_map"
@@ -288,11 +288,14 @@ def from_datatree(tree: xr.DataTree) -> AffineFluxMapArtifact:
     if tuple(native_dims) != native_mean.dims:
         raise ValueError("native_dims do not match native_mean dimensions.")
     if representation == "explicit":
-        prolongation: xr.DataArray | BasisOperator = _validate_array_node(
-            tree.children["prolongation"], "prolongation"
+        prolongation: xr.DataArray | BucketBasisOperator | MultiSourceBucketBasisOperator = (
+            _validate_array_node(tree.children["prolongation"], "prolongation")
         )
     else:
-        prolongation = BasisOperator.decode_datatree(_validate_operator_node(tree.children["prolongation"]))
+        decoded = BasisOperator.decode_datatree(_validate_operator_node(tree.children["prolongation"]))
+        if not isinstance(decoded, (BucketBasisOperator, MultiSourceBucketBasisOperator)):
+            raise ValueError("Unsupported bucket prolongation operator.")
+        prolongation = decoded
     return AffineFluxMapArtifact(
         affine_map=AffineFluxMap(native_mean, flux, prolongation, state_dim=state_dim),
         prepared_inputs_id=prepared_inputs_id,

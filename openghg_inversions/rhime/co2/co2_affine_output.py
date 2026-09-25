@@ -249,7 +249,10 @@ def import_explicit_affine_flux_map(
     operator = prepared.basis_functions.operator
     if isinstance(operator, MultiSourceBucketBasisOperator) and operator.source_dim in flux.dims:
         flux = flux.rename({operator.source_dim: native_mean.dims[0]})
-    affine_map = AffineFluxMap(native_mean, flux, prolongation, authoritative.dims[0])
+    state_dim = authoritative.dims[0]
+    if not isinstance(state_dim, str):
+        raise ValueError("Prepared retained-state dimension must be a string.")
+    affine_map = AffineFluxMap(native_mean, flux, prolongation, state_dim)
     return _artifact(
         prepared,
         affine_map,
