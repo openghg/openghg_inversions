@@ -1,6 +1,6 @@
 from pathlib import Path
 from collections.abc import Mapping
-from typing import Any, Literal, NamedTuple, cast
+from typing import Literal, NamedTuple, cast
 
 import numpy as np
 import pandas as pd
@@ -709,7 +709,7 @@ def make_concentration_outputs(
         xr.Dataset with computed flux stats.
 
     """
-    posterior = cast(Any, inv_out.trace).posterior
+    posterior = inv_out.trace_group("posterior")
     concentration_role = "concentration"
     baseline_role = "baseline"
     boundary_role = "boundary"
@@ -721,10 +721,10 @@ def make_concentration_outputs(
 
     boundary_available = boundary_name in posterior
     offset_available = offset_name in posterior
-    complete_baseline_available = (
-        baseline_name in posterior
-        and baseline_name not in {boundary_name, offset_name}
-    )
+    complete_baseline_available = baseline_name in posterior and baseline_name not in {
+        boundary_name,
+        offset_name,
+    }
     if boundary_available:
         conc_roles.append(boundary_role)
     elif complete_baseline_available:

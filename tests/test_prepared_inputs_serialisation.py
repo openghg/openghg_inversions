@@ -6,7 +6,6 @@ import json
 from pathlib import Path
 from typing import Any
 
-import arviz as az
 import numpy as np
 import pandas as pd
 import pymc as pm
@@ -24,6 +23,7 @@ from openghg_inversions.basis.basis_functions import (
 from openghg_inversions.basis.operators import MultiSourceBucketBasisOperator
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.inversion_data import RhimePreparedInputs, prepare_rhime_inputs
+from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.rhime import (
     PollutionEventSettings,
     RhimeModelSpec,
@@ -36,13 +36,15 @@ from openghg_inversions.rhime import (
 from openghg_inversions.serialization import (
     MULTIINDEX_DIMS_ATTR,
     encode_multiindexes_for_storage,
-    inferencedata_from_datatree,
-    inferencedata_to_datatree,
-    load_inferencedata,
+    load_trace,
     normalise_declared_multiindex,
     restore_declared_multiindexes,
-    save_inferencedata,
+    save_datatree,
+    save_trace,
+    trace_from_datatree,
+    trace_to_datatree,
 )
+from tests.helpers import make_trace
 
 
 def _basis_functions() -> BasisFunctions:
@@ -260,8 +262,7 @@ def test_prepared_inputs_normalizes_gathered_state_covariance_to_basis_source_or
         ]
     )
     column_labels = [
-        json.dumps(label, ensure_ascii=False, separators=(",", ":"))
-        for label in state_index.tolist()
+        json.dumps(label, ensure_ascii=False, separators=(",", ":")) for label in state_index.tolist()
     ]
     inv_inputs["alpha_prior_covariance"] = (
         ("region", "region_cov"),
@@ -587,7 +588,7 @@ def test_real_prepared_inputs_save_load_and_run_without_repreparation(
         model=model_spec,
         output=RhimeOutputSpec(output_format="none", save_inversion_output=False),
     )
-    sampled = az.InferenceData()
+    sampled = make_trace()
     observed: dict[str, object] = {}
     original_builder = rhime_standard.build_standard_rhime_model
 
@@ -612,7 +613,7 @@ def test_real_prepared_inputs_save_load_and_run_without_repreparation(
         model: pm.Model,
         *,
         variable_roles: dict[str, str],
-    ) -> az.InferenceData:
+    ) -> xr.DataTree:
         """Record the model passed to sampling and return a sentinel trace."""
         observed["sample_model"] = model
         assert variable_roles["concentration"] == "y"
@@ -650,31 +651,98 @@ def test_real_prepared_inputs_save_load_and_run_without_repreparation(
     assert result.outputs == {"loaded": True}
 
 
-def test_inferencedata_datatree_roundtrip_preserves_root_attrs() -> None:
-    """Shared InferenceData conversion preserves artifact-level root attributes."""
-    idata = az.InferenceData(
-        posterior=xr.Dataset(
-            {"x": (("chain", "draw"), [[1.0]])},
-            coords={"chain": [0], "draw": [0]},
-        ),
-        attrs={"title": "root metadata", "schema_version": 3},
+def test_trace_datatree_roundtrip_preserves_attrs() -> None:
+    """Shared trace conversion preserves root, group, and variable attributes."""
+    trace = xr.DataTree.from_dict(
+        {
+            "/": xr.Dataset(attrs={"title": "root metadata", "schema_version": 3}),
+            "posterior": xr.Dataset(
+                {"x": (("chain", "draw"), [[1.0]], {"units": "1"})},
+                coords={"chain": [0], "draw": [0]},
+                attrs={"role": "samples"},
+            ),
+        }
     )
 
-    restored = inferencedata_from_datatree(inferencedata_to_datatree(idata))
+    restored = trace_from_datatree(trace_to_datatree(trace))
 
-    assert restored.attrs == idata.attrs
+    assert restored.attrs == trace.attrs
+    xr.testing.assert_identical(restored["posterior"].to_dataset(), trace["posterior"].to_dataset())
 
 
-def test_inferencedata_netcdf_roundtrip_uses_xarray_default_engine(
+def test_load_trace_rejects_complete_inversion_output(tmp_path: Path) -> None:
+    """The standalone trace loader rejects complete inversion artifacts."""
+    trace = make_trace(posterior=xr.Dataset({"x": (("chain", "draw"), [[1.0]])}))
+    inv_out = InversionOutput(
+        trace=trace,
+        inv_inputs=xr.Dataset(),
+        basis_functions=_basis_functions(),
+    )
+    path = tmp_path / "inversion-output.nc"
+    inv_out.save(path)
+
+    with pytest.raises(ValueError, match="complete InversionOutput artifact"):
+        load_trace(path)
+
+
+def test_load_trace_rejects_schema_less_complete_inversion_output(tmp_path: Path) -> None:
+    """A complete artifact cannot masquerade as a trace when its schema is absent."""
+    trace = make_trace(posterior=xr.Dataset({"x": (("chain", "draw"), [[1.0]])}))
+    inv_out = InversionOutput(
+        trace=trace,
+        inv_inputs=xr.Dataset(),
+        basis_functions=_basis_functions(),
+    )
+    tree = inv_out.to_datatree()
+    del tree.attrs["schema"]
+    path = tmp_path / "schema-less-inversion-output.nc"
+    save_datatree(tree, path)
+
+    with pytest.raises(ValueError, match="complete InversionOutput artifact"):
+        load_trace(path)
+
+
+def test_save_trace_rejects_reserved_schema_attribute(tmp_path: Path) -> None:
+    """A trace with an artifact schema cannot be saved as an unloadable file."""
+    trace = make_trace(posterior=xr.Dataset({"x": (("chain", "draw"), [[1.0]])}))
+    trace.attrs["schema"] = "custom.schema"
+    path = tmp_path / "trace.nc"
+
+    with pytest.raises(ValueError, match="root 'schema' attribute is reserved"):
+        save_trace(trace, path)
+
+    assert not path.exists()
+
+
+def test_load_trace_rejects_prepared_inputs(tmp_path: Path) -> None:
+    """The standalone trace loader rejects a prepared-input artifact."""
+    path = tmp_path / "prepared-inputs.nc"
+    _prepared_inputs().save(path)
+
+    with pytest.raises(ValueError, match="incompatible schema 'openghg_inversions.rhime_prepared_inputs'"):
+        load_trace(path)
+
+
+def test_inversion_output_rejects_standalone_trace() -> None:
+    """The complete artifact loader rejects standalone trace trees."""
+    trace = make_trace(posterior=xr.Dataset({"x": (("chain", "draw"), [[1.0]])}))
+
+    with pytest.raises(ValueError, match="standalone trace artifact"):
+        InversionOutput.from_datatree(trace)
+
+
+def test_trace_netcdf_roundtrip_uses_xarray_default_engine(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     """The shared boundary must not switch HDF5 bindings within a process."""
-    idata = az.InferenceData(
-        posterior=xr.Dataset(
-            {"x": (("chain", "draw"), [[1.0]])},
-            coords={"chain": [0], "draw": [0]},
-        )
+    trace = xr.DataTree.from_dict(
+        {
+            "posterior": xr.Dataset(
+                {"x": (("chain", "draw"), [[1.0]])},
+                coords={"chain": [0], "draw": [0]},
+            )
+        }
     )
     path = tmp_path / "trace.nc"
     write_engines: list[str | None] = []
@@ -693,23 +761,25 @@ def test_inferencedata_netcdf_roundtrip_uses_xarray_default_engine(
     monkeypatch.setattr(xr.DataTree, "to_netcdf", record_write)
     monkeypatch.setattr(xr, "open_datatree", record_open)
 
-    save_inferencedata(idata, path)
-    load_inferencedata(path)
+    save_trace(trace, path)
+    load_trace(path)
 
     assert write_engines == [None]
     assert read_engines == [None]
 
 
-def test_inferencedata_zarr_roundtrip_selects_zarr_engine(
+def test_trace_zarr_roundtrip_selects_zarr_engine(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     """The shared boundary must not rely on backend guessing for Zarr stores."""
-    idata = az.InferenceData(
-        posterior=xr.Dataset(
-            {"x": (("chain", "draw"), [[1.0]])},
-            coords={"chain": [0], "draw": [0]},
-        )
+    trace = xr.DataTree.from_dict(
+        {
+            "posterior": xr.Dataset(
+                {"x": (("chain", "draw"), [[1.0]])},
+                coords={"chain": [0], "draw": [0]},
+            )
+        }
     )
     path = tmp_path / "trace.zarr"
     read_engines: list[str | None] = []
@@ -721,14 +791,14 @@ def test_inferencedata_zarr_roundtrip_selects_zarr_engine(
 
     monkeypatch.setattr(xr, "open_datatree", record_open)
 
-    save_inferencedata(idata, path)
-    load_inferencedata(path)
+    save_trace(trace, path)
+    load_trace(path)
 
     assert read_engines == ["zarr"]
 
 
 @pytest.mark.parametrize("suffix", [".nc", ".zarr"])
-def test_supported_inferencedata_roundtrip_restores_multiindex(
+def test_supported_trace_roundtrip_restores_multiindex(
     tmp_path: Path,
     suffix: str,
 ) -> None:
@@ -745,17 +815,19 @@ def test_supported_inferencedata_roundtrip_restores_multiindex(
             **xr.Coordinates.from_pandas_multiindex(nmeasure, "nmeasure"),
         },
     )
-    idata = az.InferenceData(
-        posterior_predictive=posterior_predictive,
-        attrs={"title": "semantic trace"},
+    trace = xr.DataTree.from_dict(
+        {
+            "/": xr.Dataset(attrs={"title": "semantic trace"}),
+            "posterior_predictive": posterior_predictive,
+        }
     )
     path = tmp_path / f"trace{suffix}"
 
-    save_inferencedata(idata, path)
-    restored = load_inferencedata(path)
+    save_trace(trace, path)
+    restored = load_trace(path)
 
-    assert restored.attrs == idata.attrs
-    restored_index = restored.posterior_predictive.indexes["nmeasure"]
+    assert restored.attrs == trace.attrs
+    restored_index = restored["posterior_predictive"].indexes["nmeasure"]
     assert isinstance(restored_index, pd.MultiIndex)
     assert restored_index.equals(nmeasure)
 
@@ -1008,7 +1080,7 @@ def test_loaded_prepared_inputs_run_through_existing_seam(
         model=model_spec,
         output=RhimeOutputSpec(output_format="none", save_inversion_output=False),
     )
-    sampled = az.InferenceData(
+    sampled = make_trace(
         posterior=xr.Dataset(
             {"x": (("chain", "draw", "region"), np.ones((1, 1, 2)))},
             coords={"chain": [0], "draw": [0], "region": [0, 1]},
@@ -1038,7 +1110,7 @@ def test_loaded_prepared_inputs_run_through_existing_seam(
         model: pm.Model,
         *,
         variable_roles: dict[str, str],
-    ) -> az.InferenceData:
+    ) -> xr.DataTree:
         """Record the sampled model and return the sentinel posterior."""
         observed["sample_model"] = model
         assert variable_roles["concentration"] == "y"
@@ -1131,7 +1203,7 @@ def test_multisource_order_survives_load_run_and_reconstruction(
         output=RhimeOutputSpec(output_format="none", save_inversion_output=False),
         split_by_sectors=True,
     )
-    sampled = az.InferenceData()
+    sampled = make_trace()
     observed: dict[str, object] = {}
     original_builder = rhime_multisector.build_multisector_rhime_model
 
@@ -1151,7 +1223,7 @@ def test_multisource_order_survives_load_run_and_reconstruction(
         model: pm.Model,
         *,
         variable_roles: dict[str, str],
-    ) -> az.InferenceData:
+    ) -> xr.DataTree:
         """Return a sentinel trace for the multisource prepared run."""
         assert "y" in model.named_vars
         assert variable_roles["concentration"] == "y"

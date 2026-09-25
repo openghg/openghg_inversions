@@ -76,7 +76,7 @@ the table below::
 
 ``run_rhime`` returns a :class:`~openghg_inversions.rhime.RhimeResult`, not a
 legacy tuple or sampler dictionary. Its principal attributes are ``idata``
-(ArviZ ``InferenceData``), ``inv_inputs`` (the labelled model inputs),
+(an xarray ``DataTree`` with ArviZ-compatible groups), ``inv_inputs`` (the labelled model inputs),
 ``inv_out`` (the modern ``InversionOutput`` when constructed), and ``outputs``
 (requested derived products).
 

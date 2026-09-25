@@ -120,7 +120,8 @@ Inspect and interpret the result
 --------------------------------
 
 ``RhimeResult`` keeps the resolved scientific and output specifications,
-canonical labelled arrays, the ArviZ trace, and generated products together:
+canonical labelled arrays, the xarray ``DataTree`` trace, and generated
+products together:
 
 .. jupyter-input::
 
@@ -133,7 +134,7 @@ canonical labelled arrays, the ArviZ trace, and generated products together:
        "H dimensions": result.inv_inputs["H"].dims,
        "input sizes": dict(result.inv_inputs.sizes),
        "measurement sites": measurement_index.get_level_values("site").unique().tolist(),
-       "x dimensions": result.idata.posterior["x"].dims,
+       "x dimensions": result.idata["posterior"]["x"].dims,
        "variable roles": result.model_build_result.variable_roles,
        "output products": sorted(result.outputs),
    }

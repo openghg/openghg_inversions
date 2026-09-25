@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 
-import arviz as az
 from dask import compute as dask_compute
 from dask.array import Array as DaskArray
 import numpy as np
@@ -137,10 +136,10 @@ def _co2_o2_metadata(
 
 
 def _annotate_co2_o2_trace(
-    trace: az.InferenceData,
+    trace: xr.DataTree,
     *,
     built: RhimeModelBuildResult,
-) -> az.InferenceData:
+) -> xr.DataTree:
     """Persist scientific roles, units, and provenance after coord restoration."""
     trace.attrs["rhime_recipe"] = "co2_o2"
     trace.attrs["rhime_variable_roles"] = json.dumps(
@@ -165,8 +164,7 @@ def _annotate_co2_o2_trace(
         "flux_scaling",
         "flux_scaling_fixed_value",
     }
-    for group_name in trace.groups():
-        group = getattr(trace, group_name)
+    for group in trace.children.values():
         for variable, roles in roles_by_variable.items():
             if variable in group:
                 group[variable].attrs["rhime_scientific_roles"] = json.dumps(sorted(roles))
@@ -200,7 +198,7 @@ def run_rhime_co2_o2_from_prepared_inputs(
     independent_error_sd: xr.DataArray,
     state_activity: StateActivity | None = None,
     sampler: RhimeSampler | None = None,
-) -> az.InferenceData:
+) -> xr.DataTree:
     """Build and sample the CO2/O2 model from prepared scientific inputs.
 
     This advanced replay seam begins after channel preparation. The public
@@ -228,7 +226,7 @@ def run_rhime_co2_o2_from_prepared_inputs(
             NumPyro defaults are used when omitted.
 
     Returns:
-        Restored inference data with observed concentrations in
+        Restored DataTree with observed concentrations in
         ``observed_data["y"]``, fixed independent standard deviations in
         ``constant_data["fixed_independent_error_sd"]``, labelled coordinates,
         data-dependent concentration units, scientific-role annotations, and

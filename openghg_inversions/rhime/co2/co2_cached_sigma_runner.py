@@ -12,7 +12,6 @@ import copy
 import json
 from typing import Any, cast
 
-import arviz as az
 import numpy as np
 import xarray as xr
 
@@ -167,15 +166,15 @@ def _observation_coords(observations: xr.DataArray) -> dict[str, Any]:
 
 
 def _append_joint_outputs(
-    trace: az.InferenceData,
+    trace: xr.DataTree,
     *,
     cached_model: Co2CachedSigmaModel,
     observations: xr.DataArray,
     posterior_predictive: bool,
     random_seed: Any,
-) -> az.InferenceData:
+) -> xr.DataTree:
     """Attach exact joint log likelihood and optional joint replicates."""
-    posterior = cast(xr.Dataset, trace.posterior)
+    posterior = trace["posterior"].to_dataset()
     mean = posterior["modelled_concentration"]
     sigma = posterior[OU_SITE_AMPLITUDE]
     output_dim = str(observations.dims[0])
@@ -241,58 +240,58 @@ def _append_joint_outputs(
             attrs={"rhime_predictive_scope": "joint_observation_vector"},
         )
         groups["posterior_predictive"] = predictive_data.to_dataset()
-    if "observed_data" not in trace.groups():
+    if "observed_data" not in trace.children:
         groups["observed_data"] = observations.rename("y").to_dataset()
-    trace.add_groups(groups)
+    for group, dataset in groups.items():
+        trace[group] = dataset
     burn = trace.attrs.get("burn")
     for group in groups:
-        dataset = cast(xr.Dataset, getattr(trace, group))
-        if burn is not None and "draw" in dataset.dims:
-            dataset.attrs["burn"] = burn
+        node = trace[group]
+        if burn is not None and "draw" in node.dims:
+            node.attrs["burn"] = burn
     return trace
 
 
 def _annotate_cached_co2_trace(
-    trace: az.InferenceData,
+    trace: xr.DataTree,
     built: RhimeModelBuildResult,
     *,
     concentration_units: str | None,
-) -> az.InferenceData:
+) -> xr.DataTree:
     """Add output semantics that belong only to the cached fixed-OU recipe."""
     trace = _annotate_co2_trace(
         trace,
         built,
         concentration_units=concentration_units,
     )
-    for group_name in trace.groups():
-        group = getattr(trace, group_name)
-        if isinstance(group, xr.Dataset):
-            group.attrs["rhime_recipe"] = "co2_cached_sigma_fixed_ou"
+    for group in trace.children.values():
+        group.attrs["rhime_recipe"] = "co2_cached_sigma_fixed_ou"
 
-    if hasattr(trace, "log_likelihood") and "y" in trace.log_likelihood:
-        likelihood = trace.log_likelihood["y"]
+    if "log_likelihood" in trace.children and "y" in trace["log_likelihood"]:
+        likelihood = trace["log_likelihood"]["y"]
         likelihood.attrs["rhime_scientific_roles"] = json.dumps(["joint_log_likelihood"])
         likelihood.attrs.pop("units", None)
-    if hasattr(trace, "posterior_predictive") and "y" in trace.posterior_predictive:
-        predictive = trace.posterior_predictive["y"]
+    if "posterior_predictive" in trace.children and "y" in trace["posterior_predictive"]:
+        predictive = trace["posterior_predictive"]["y"]
         predictive.attrs["rhime_scientific_roles"] = json.dumps(["concentration"])
         if concentration_units is not None:
             predictive.attrs["units"] = concentration_units
-    if hasattr(trace, "observed_data") and "y" in trace.observed_data:
-        observed = trace.observed_data["y"]
+    if "observed_data" in trace.children and "y" in trace["observed_data"]:
+        observed = trace["observed_data"]["y"]
         observed.attrs["rhime_scientific_roles"] = json.dumps(["observation"])
         if concentration_units is not None:
             observed.attrs["units"] = concentration_units
-    if hasattr(trace, "posterior") and OU_SITE_AMPLITUDE in trace.posterior:
-        amplitude = trace.posterior[OU_SITE_AMPLITUDE]
+    if "posterior" in trace.children and OU_SITE_AMPLITUDE in trace["posterior"]:
+        amplitude = trace["posterior"][OU_SITE_AMPLITUDE]
         if concentration_units is not None:
             amplitude.attrs["units"] = concentration_units
-    if hasattr(trace, "constant_data"):
-        if "ou_tau_hours" in trace.constant_data:
-            trace.constant_data["ou_tau_hours"].attrs["units"] = "hours"
+    if "constant_data" in trace.children:
+        constant_data = trace["constant_data"]
+        if "ou_tau_hours" in constant_data:
+            constant_data["ou_tau_hours"].attrs["units"] = "hours"
         for name in ("Y", "error"):
-            if concentration_units is not None and name in trace.constant_data:
-                trace.constant_data[name].attrs["units"] = concentration_units
+            if concentration_units is not None and name in constant_data:
+                constant_data[name].attrs["units"] = concentration_units
     return trace
 
 
@@ -310,7 +309,7 @@ def run_rhime_co2_cached_sigma(
     bc_state_activity: StateActivity | None = None,
     offset_prior: PriorArgs | None = None,
     offset_args: Mapping[str, Any] | None = None,
-) -> az.InferenceData:
+) -> xr.DataTree:
     """Run the package-supported CO2 fixed-OU cached-amplitude recipe.
 
     The graph and sampler are a matched pair: site amplitudes are updated first
@@ -351,7 +350,7 @@ def run_rhime_co2_cached_sigma(
             and ``per_site``.
 
     Returns:
-        Sampled inference data with the normalized joint log likelihood as one
+        Sampled DataTree with the normalized joint log likelihood as one
         value per complete observation vector and, when requested, correlated
         joint posterior-predictive vectors.
 

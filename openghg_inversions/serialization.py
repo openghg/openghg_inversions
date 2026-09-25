@@ -1,9 +1,9 @@
 """Shared serialization helpers for modern OpenGHG inversion artifacts.
 
 This module contains the storage mechanics shared by modern artifact
-containers. It saves and eagerly loads xarray ``DataTree`` objects, converts
-ArviZ ``InferenceData`` groups to and from trees, and expands pandas
-``MultiIndex`` coordinates into representations supported by NetCDF and Zarr.
+containers. It saves and eagerly loads xarray ``DataTree`` objects, prepares
+trace groups for storage, and expands pandas ``MultiIndex`` coordinates into
+representations supported by NetCDF and Zarr.
 
 Object-specific modules remain responsible for schema names, schema versions,
 required child nodes, and metadata validation. Prepared artifacts can use the
@@ -19,9 +19,8 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Iterable, Literal, cast
+from typing import Iterable, Literal, cast
 
-import arviz as az
 from cf_xarray.coding import decode_compress_to_multi_index, encode_multi_index_as_compress
 import pandas as pd
 import xarray as xr
@@ -323,71 +322,122 @@ def open_datatree_loaded(file_path: str | Path) -> xr.DataTree:
         return dt.load()
 
 
-def inferencedata_to_datatree(idata: az.InferenceData) -> xr.DataTree:
-    """Convert ArviZ InferenceData groups to a serializable DataTree.
+def trace_to_datatree(trace: xr.DataTree) -> xr.DataTree:
+    """Prepare a native trace DataTree for serialization.
 
     Args:
-        idata: InferenceData whose root attributes and groups should become
-            the tree root and child nodes.
+        trace: Trace whose root dataset and direct child groups should be
+            retained. MultiIndexes in child datasets are expanded into the
+            project storage representation.
 
     Returns:
-        DataTree containing the InferenceData root attributes and one child
-        dataset per group.
+        A serialization copy with the same direct-root group layout.
     """
     return xr.DataTree.from_dict(
         {
-            "/": xr.Dataset(attrs=dict(idata.attrs)),
-            **{group: reset_serialisation_multiindexes(idata[group]) for group in idata.groups()},
+            "/": trace.to_dataset(),
+            **{
+                group: reset_serialisation_multiindexes(child.to_dataset())
+                for group, child in trace.children.items()
+            },
         }
     )
 
 
-def inferencedata_from_datatree(dt: xr.DataTree) -> az.InferenceData:
-    """Reconstruct ArviZ InferenceData from a group DataTree.
+def trace_from_datatree(dt: xr.DataTree) -> xr.DataTree:
+    """Restore a native trace DataTree from its serialization form.
 
     Args:
-        dt: DataTree containing root attributes and one child dataset per
-            InferenceData group.
+        dt: DataTree containing trace groups directly below the root.
 
     Returns:
-        Reconstructed InferenceData with root attributes and valid serialized
-        MultiIndexes restored.
+        A trace DataTree with root and group attributes retained and valid
+        serialized MultiIndexes restored.
     """
-    return cast(Any, az.InferenceData)(
-        attrs=dict(dt.attrs),
-        **{group: restore_serialisation_multiindexes(child.to_dataset()) for group, child in dt.items()},
+    return xr.DataTree.from_dict(
+        {
+            "/": dt.to_dataset(),
+            **{
+                group: restore_serialisation_multiindexes(child.to_dataset())
+                for group, child in dt.children.items()
+            },
+        }
     )
 
 
-def save_inferencedata(
-    idata: az.InferenceData,
+def save_trace(
+    trace: xr.DataTree,
     output_file: str | Path,
     output_format: Literal["netcdf", "zarr"] | None = None,
 ) -> None:
-    """Save InferenceData through the declared MultiIndex boundary.
+    """Save a native trace through the declared MultiIndex boundary.
 
     Args:
-        idata: InferenceData whose groups and root attributes should be saved.
+        trace: Trace whose groups and root dataset should be saved.
         output_file: Destination NetCDF file or Zarr store.
         output_format: Explicit backend, or ``None`` to infer it from the path.
+
+    Raises:
+        ValueError: If the trace uses the reserved root ``schema`` attribute.
     """
-    save_datatree(inferencedata_to_datatree(idata), output_file, output_format)
+    if "schema" in trace.attrs:
+        raise ValueError("The trace root 'schema' attribute is reserved for artifact identification.")
+    save_datatree(trace_to_datatree(trace), output_file, output_format)
 
 
-def load_inferencedata(file_path: str | Path) -> az.InferenceData:
-    """Load InferenceData and restore every valid declared MultiIndex.
+def load_trace(file_path: str | Path) -> xr.DataTree:
+    """Load a native trace and restore every valid declared MultiIndex.
 
     Malformed declarations are removed and left expanded rather than guessed,
     matching :func:`restore_declared_multiindexes`' forgiving default.
 
     Args:
-        file_path: NetCDF file or Zarr store written by
-            :func:`save_inferencedata`.
+        file_path: NetCDF file or Zarr store written by :func:`save_trace`.
 
     Returns:
-        Fully loaded InferenceData with valid semantic indexes reconstructed.
+        Fully loaded trace with valid semantic indexes reconstructed.
+
+    Raises:
+        ValueError: If the artifact has an incompatible schema or complete-artifact structure.
     """
-    return inferencedata_from_datatree(open_datatree_loaded(file_path))
+    dt = open_datatree_loaded(file_path)
+    schema = dt.attrs.get("schema")
+    complete_artifact_groups = {"trace", "inv_inputs", "basis_functions"}
+    if schema == "openghg_inversions.inversion_output" or complete_artifact_groups.issubset(dt.children):
+        raise ValueError(
+            "Expected a standalone trace artifact, but received a complete "
+            "InversionOutput artifact; use InversionOutput.load() instead."
+        )
+    if schema is not None:
+        raise ValueError(f"Expected a standalone trace artifact, got incompatible schema {schema!r}.")
+    return trace_from_datatree(dt)
+
+
+def save_inferencedata(
+    trace: xr.DataTree,
+    output_file: str | Path,
+    output_format: Literal["netcdf", "zarr"] | None = None,
+) -> None:
+    """Forward the former trace-writer name to :func:`save_trace`.
+
+    Args:
+        trace: Native trace DataTree to save.
+        output_file: Destination NetCDF file or Zarr store.
+        output_format: Explicit backend, or ``None`` to infer it from the path.
+    """
+    save_trace(trace, output_file, output_format)
+
+
+def load_inferencedata(file_path: str | Path) -> xr.DataTree:
+    """Forward the former trace-loader name to :func:`load_trace`.
+
+    Args:
+        file_path: NetCDF file or Zarr store written by :func:`save_trace`.
+
+    Returns:
+        Fully loaded native trace DataTree.
+    """
+    return load_trace(file_path)
 
 
 def encode_multiindexes_for_storage(ds: xr.Dataset) -> xr.Dataset:

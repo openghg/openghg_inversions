@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
-import arviz as az
 import numpy as np
 import pandas as pd
 import pytest
@@ -23,6 +22,7 @@ from openghg_inversions.rhime import (
     SectorSpec,
     run_rhime_from_prepared_inputs,
 )
+from tests.helpers import make_trace
 
 
 def _basis_functions(source_order: list[str] | None = None) -> BasisFunctions:
@@ -829,7 +829,7 @@ def test_adapter_output_executes_through_prepared_runner_without_openghg(
         output=RhimeOutputSpec(output_format="none", save_inversion_output=False),
     )
 
-    monkeypatch.setattr(RhimeSampler, "sample", lambda self, model, **kwargs: az.InferenceData())
+    monkeypatch.setattr(RhimeSampler, "sample", lambda self, model, **kwargs: make_trace())
 
     result = run_rhime_from_prepared_inputs(prepared_inputs=prepared, run_spec=run_spec)
 
@@ -931,7 +931,7 @@ def test_unequal_source_regions_round_trip_and_execute(
         xr.testing.assert_identical(output_prepared.site_metadata, loaded.site_metadata)
         kwargs["result"].outputs["executed"] = True  # type: ignore[attr-defined,index]
 
-    monkeypatch.setattr(RhimeSampler, "sample", lambda self, model, **kwargs: az.InferenceData())
+    monkeypatch.setattr(RhimeSampler, "sample", lambda self, model, **kwargs: make_trace())
     monkeypatch.setattr(rhime_prepared, "make_multisector_rhime_outputs", skip_diagnostics)
 
     result = run_rhime_from_prepared_inputs(prepared_inputs=loaded, run_spec=run_spec)
