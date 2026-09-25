@@ -6,6 +6,7 @@ import xarray as xr
 
 from openghg_inversions.array_ops import align_sparse_lat_lon, sparse_xr_dot
 from openghg_inversions.basis.basis_functions import BasisFunctions
+from openghg_inversions.basis.operators import MultiSourceBucketBasisOperator
 from openghg_inversions.flux_sanitization import copy_flux_nonfinite_attrs, sanitize_flux_nonfinite
 
 BASIS_RECONSTRUCTION_PATH_ATTR = "basis_reconstruction_path"
@@ -86,21 +87,28 @@ def _interpolate_dataset(
     state: xr.Dataset,
     basis_functions: BasisFunctions,
     *,
-    weights: xr.DataArray | None,
+    flux_weighted: bool,
+    sum_flux_sources: bool = False,
 ) -> xr.Dataset:
-    """Interpolate each data variable from basis state space to the grid."""
+    """Reconstruct completed total-grid products from retained state variables."""
     operator_state = _to_operator_state_dim(state, basis_functions)
     data_vars = {}
+    source_dim = None
+    if isinstance(basis_functions.operator, MultiSourceBucketBasisOperator):
+        source_dim = f"native_{basis_functions.operator.source_dim}"
+    elif sum_flux_sources and "source" in basis_functions.flux.dims:
+        source_dim = "source"
     for name, data in operator_state.data_vars.items():
         interpolated = (
-            basis_functions.interpolate(data)
-            if weights is None
-            else basis_functions.operator.interpolate(data, weights=weights)
+            basis_functions.state_to_flux(data)
+            if flux_weighted else basis_functions.state_to_native(data)
         )
+        if source_dim is not None:
+            interpolated = interpolated.sum(source_dim)
         interpolated.attrs = state[name].attrs
         data_vars[name] = interpolated
     result = xr.Dataset(data_vars, attrs=state.attrs)
-    if weights is not None:
+    if flux_weighted:
         return _transpose_flux_weighted_dataset(result)
     if "flux_time" in result.dims:
         return _transpose_inversion_grid_dataset(result)
@@ -135,14 +143,17 @@ def reconstruct_flux_stats(
     *,
     report_flux_on_inversion_grid: bool,
 ) -> xr.Dataset:
-    """Reconstruct gridded flux statistics with the retained basis operator.
+    """Reconstruct gridded flux statistics using flux retained with the basis.
 
     Args:
-        basis_functions: Retained basis operator and flux metadata.
-        flux: Prior flux used to weight or scale reconstructed statistics.
+        basis_functions: Retained basis operator and authoritative flux values.
+        flux: Supplies an output ``flux_time`` dimension only when the retained
+            flux has neither ``time`` nor ``flux_time``. Its values do not
+            override the retained flux.
         stats_ds: Statistics in basis-state space.
-        report_flux_on_inversion_grid: Report region-mean flux when ``True``;
-            otherwise interpolate with prior-flux weights.
+        report_flux_on_inversion_grid: Apply mean retained flux per basis region
+            on the inversion grid when ``True``; otherwise apply retained flux
+            on its native grid.
 
     Returns:
         Reconstructed gridded statistics carrying non-finite policy metadata.
@@ -151,17 +162,50 @@ def reconstruct_flux_stats(
         NonFiniteFluxWarning: If old retained flux has no sanitation metadata
             and the lazy zero-fill backstop is applied.
     """
-    flux = sanitize_flux_nonfinite(
-        flux,
+    retained_flux = sanitize_flux_nonfinite(
+        basis_functions.flux,
         context="operator-backed flux reconstruction",
         warn=True,
     )
+    output_flux = retained_flux
+    if "time" in output_flux.dims:
+        output_flux = output_flux.rename(time="flux_time")
+    elif "flux_time" not in output_flux.dims and "flux_time" in flux.dims:
+        output_flux = output_flux.expand_dims(flux_time=flux.flux_time)
+    basis_functions = basis_functions.with_flux(output_flux)
     if report_flux_on_inversion_grid:
-        region_flux = _operator_region_flux_mean(basis_functions, flux)
-        state = _to_operator_state_dim(stats_ds, basis_functions) * region_flux
-        return copy_flux_nonfinite_attrs(_interpolate_dataset(state, basis_functions, weights=None), flux)
+        region_flux = _operator_region_flux_mean(basis_functions, output_flux)
+        state = _to_operator_state_dim(stats_ds, basis_functions)
+        occupied = set(state.dims) | set(state.coords) | set(region_flux.dims) | set(region_flux.coords)
+        renames = {}
+        for dim in state.dims:
+            if dim == basis_functions.operator.meta.state_dim or dim not in region_flux.dims:
+                continue
+            base = f"state_{dim}"
+            candidate = base
+            suffix = 2
+            while candidate in occupied:
+                candidate = f"{base}_{suffix}"
+                suffix += 1
+            renames[dim] = candidate
+            occupied.add(candidate)
+        state = state.rename(renames) * region_flux
+        result = _interpolate_dataset(
+            state, basis_functions, flux_weighted=False, sum_flux_sources=True
+        )
+        result = _transpose_inversion_grid_dataset(result)
+        result = copy_flux_nonfinite_attrs(result, retained_flux)
+        if "time_period" in retained_flux.attrs:
+            result.attrs["time_period"] = retained_flux.attrs["time_period"]
+        return result
 
-    return copy_flux_nonfinite_attrs(_interpolate_dataset(stats_ds, basis_functions, weights=flux), flux)
+    result = copy_flux_nonfinite_attrs(
+        _interpolate_dataset(stats_ds, basis_functions, flux_weighted=True, sum_flux_sources=True),
+        retained_flux,
+    )
+    if "time_period" in retained_flux.attrs:
+        result.attrs["time_period"] = retained_flux.attrs["time_period"]
+    return result
 
 
 def reconstruct_scale_factor_stats(
@@ -169,7 +213,7 @@ def reconstruct_scale_factor_stats(
     stats_ds: xr.Dataset,
 ) -> xr.Dataset:
     """Reconstruct gridded scale-factor statistics with the retained operator."""
-    return _interpolate_dataset(stats_ds, basis_functions, weights=None)
+    return _interpolate_dataset(stats_ds, basis_functions, flux_weighted=False)
 
 
 def make_x_to_country_matrix(

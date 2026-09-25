@@ -86,7 +86,9 @@ flux fields. The operator and layout classes expose the lower-level labelled
 state geometry used by custom preparation workflows. See
 :doc:`grouped basis and state metadata </usage/grouped_basis_layout>` for an
 executed layout example and :doc:`affine native-flux reconstruction
-</usage/affine_flux_map>` for the reconstruction contract.
+</usage/affine_flux_map>` for the centred reconstruction contract. See
+:doc:`linear retained-state reconstruction
+</usage/retained_state_reconstruction>` for basis and flux actions.
 
 .. autosummary::
    :nosignatures:

@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-import arviz as az
 import numpy as np
 import xarray as xr
 
@@ -49,7 +48,7 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
     sampler: RhimeSampler | None = None,
     sigma_target_accept: float = 0.8,
     state_target_accept: float = 0.9,
-) -> az.InferenceData:
+) -> xr.DataTree:
     """Sample linked species/site OU amplitudes followed by affine states.
 
     Uses the prepared-input, independent-error and channel baseline contracts
@@ -62,7 +61,8 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
     Only the PyMC backend is supported. The runner owns its CompoundStep and
     attaches normalized joint log likelihoods and optional joint predictive
     vectors from the same numerical target used during sampling. Predictive
-    keyword arguments support only ``random_seed``.
+    keyword arguments support only ``random_seed``. Returns a DataTree with
+    posterior, prior, observed-data and joint likelihood groups.
     """
     requested_sampler = sampler or RhimeSampler(nuts_sampler="pymc")
     if requested_sampler.nuts_sampler != "pymc":
@@ -160,6 +160,6 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
     trace = _annotate_co2_o2_trace(trace, built=built)
     trace = _annotate_linked_fixed_ou_trace(trace, observations=observations)
     trace.attrs["rhime_recipe"] = "co2_o2_cached_sigma_fixed_ou"
-    for group_name in trace.groups():
-        getattr(trace, group_name).attrs["rhime_recipe"] = "co2_o2_cached_sigma_fixed_ou"
+    for group in trace.children.values():
+        group.attrs["rhime_recipe"] = "co2_o2_cached_sigma_fixed_ou"
     return trace

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import arviz as az
 import numpy as np
 import pymc as pm
 import pytest
@@ -422,10 +421,10 @@ def test_default_custom_sampler_uses_namespaced_predictive_variables(
     sampler = RhimeSampler(draws=2, tune=2, chains=1)
     captured: dict[str, object] = {}
 
-    def fake_sample(configured_sampler: RhimeSampler, model: pm.Model) -> az.InferenceData:
+    def fake_sample(configured_sampler: RhimeSampler, model: pm.Model) -> xr.DataTree:
         captured["predictive"] = configured_sampler.sample_posterior_predictive
         captured["model"] = model
-        return az.InferenceData()
+        return xr.DataTree()
 
     monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
     result = run_ramsden_from_prepared_inputs(

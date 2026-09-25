@@ -31,8 +31,8 @@ dependencies = [
     # Explicit lower bound: prevents uv backtracking to numba 0.53 / llvmlite 0.36
     # due to NumPy 2.x + sparse metadata lag
     "numba>=0.59",
-    "pymc<6",
-    "arviz<1",
+    "pymc>=6,<7",
+    "arviz>=1.1,<2",
     "numpyro[cpu]",
     "xarray>=2025.06.0",
     "pandas<3.0",
@@ -54,6 +54,7 @@ jupyter = [
   "nbformat",
 ]
 dev = [
+  "h5py<3.15",
   "pytest",
   "pytest-xdist",
   "ruff==0.16.0",
@@ -67,6 +68,7 @@ dev = [
 # worktrees. Broader developer tools remain available explicitly through
 # ``uv_dev`` and the Slurm tox runner.
 local = [
+  "h5py<3.15",
   "pytest",
   "ruff==0.16.0",
 ]
@@ -100,9 +102,9 @@ pip = "*"
 # entries override matching PyPI dependencies from this project and OpenGHG.
 numpy = ">=2.0"
 numba = ">=0.59"
-pymc = "<6"
+pymc = ">=6,<7"
 pytensor = "*"
-arviz = "<1"
+arviz = ">=1.1,<2"
 xarray = ">=2025.06.0"
 pandas = "<3.0"
 matplotlib = "*"

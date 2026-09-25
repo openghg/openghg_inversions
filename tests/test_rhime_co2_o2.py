@@ -29,7 +29,7 @@ from openghg_inversions.rhime.co2.co2_o2_model import (
 )
 from openghg_inversions.rhime.co2.co2_o2_runner import _co2_o2_metadata
 from openghg_inversions.rhime.sampling import RhimeSampler
-from openghg_inversions.serialization import load_inferencedata, save_inferencedata
+from openghg_inversions.serialization import load_trace, save_trace
 
 
 def _inputs(*, gathered_state: bool = False) -> dict[str, object]:
@@ -512,8 +512,8 @@ def test_two_site_week_runner_persists_labels_roles_units_and_provenance(tmp_pat
     ) == ["flux_contribution"]
 
     path = tmp_path / "co2_o2_trace.nc"
-    save_inferencedata(trace, path)
-    reloaded = load_inferencedata(path)
+    save_trace(trace, path)
+    reloaded = load_trace(path)
     assert json.loads(reloaded.attrs["rhime_model_metadata"])["provenance"]["period"] == (
         "2021-07-12/2021-07-19"
     )

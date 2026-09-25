@@ -21,7 +21,7 @@ from openghg_inversions.rhime.co2.co2_o2_cached_sigma_runner import (
 from openghg_inversions.rhime.co2.co2_o2_runner import run_rhime_co2_o2_from_prepared_inputs
 from openghg_inversions.rhime.co2.co2_cached_sigma_runner import _sampler_for_cached_graph
 from openghg_inversions.rhime.sampling import RhimeSampler
-from openghg_inversions.serialization import save_inferencedata, load_inferencedata
+from openghg_inversions.serialization import save_trace, load_trace
 
 from test_rhime_co2_o2 import _inputs, _independent_error
 from test_cached_sigma_sampling import _nuts_stats
@@ -284,9 +284,11 @@ def test_linked_sampling_serializes_group_labels_and_joint_outputs(tmp_path, cac
             sample_posterior_predictive=True,
         ),
     )
+    assert isinstance(trace, xr.DataTree)
     path = tmp_path / "linked.nc"
-    save_inferencedata(trace, path)
-    restored = load_inferencedata(path)
+    save_trace(trace, path)
+    restored = load_trace(path)
+    assert isinstance(restored, xr.DataTree)
     assert restored.posterior.ou_site.values.tolist() == ["co2:A", "o2:A", "o2:B"]
     assert restored.posterior.ou_species.values.tolist() == ["co2", "o2", "o2"]
     assert restored.posterior.ou_station.values.tolist() == ["A", "A", "B"]

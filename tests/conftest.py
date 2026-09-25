@@ -11,7 +11,6 @@ from importlib.metadata import version
 from typing import Callable, Iterator
 from unittest.mock import patch
 
-import arviz as az
 import numpy as np
 import pytest
 from openghg.standardise import (
@@ -26,6 +25,7 @@ import zarr
 
 from openghg_inversions.basis.basis_functions import BASIS_ARTIFACT_SOURCE_ATTR, BasisFunctions
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
+from tests.helpers import make_trace
 
 _raw_data_path = Path(".").resolve() / "tests/data/"
 _TEST_STORE_DIR_NAME = "openghg_inversions_testing_store"
@@ -219,17 +219,24 @@ def multisector_postprocessing_inv_out(
         inv_inputs["mf"].attrs["units"] = "ppm"
 
         return InversionOutput(
-            trace=az.from_dict(
-                posterior={
-                    "x_ff": np.array([[[0.0], [2.0]]]),
-                    "x_ocean": np.array([[[2.0 / 3.0], [0.0]]]),
-                },
-                prior={
-                    "x_ff": np.array([[[1.0], [1.0]]]),
-                    "x_ocean": np.array([[[1.0], [1.0]]]),
-                },
-                coords={"region": [0]},
-                dims={"x_ff": ["region"], "x_ocean": ["region"]},
+            trace=make_trace(
+                posterior=xr.Dataset(
+                    {
+                        "x_ff": (("chain", "draw", "region"), np.array([[[0.0], [2.0]]])),
+                        "x_ocean": (
+                            ("chain", "draw", "region"),
+                            np.array([[[2.0 / 3.0], [0.0]]]),
+                        ),
+                    },
+                    coords={"chain": [0], "draw": [0, 1], "region": [0]},
+                ),
+                prior=xr.Dataset(
+                    {
+                        "x_ff": (("chain", "draw", "region"), np.ones((1, 2, 1))),
+                        "x_ocean": (("chain", "draw", "region"), np.ones((1, 2, 1))),
+                    },
+                    coords={"chain": [0], "draw": [0, 1], "region": [0]},
+                ),
             ),
             inv_inputs=inv_inputs.set_index(nmeasure=["site", "time"]),
             basis_functions=basis_functions or fake_multisector_basis_functions(),
