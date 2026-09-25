@@ -1,5 +1,7 @@
 # Proposal
 
+> Status: Final. Approved by the specification owner on 2026-09-25.
+
 ## Why
 
 Retained-state reconstruction has two overlapping public vocabularies: basis `interpolate` hides source summation and eager conversion, while `AffineFluxMap` uses directional `state_to_native` and `state_to_flux` operations. OPE-184 should make the output meaning and execution boundary explicit without changing the approved affine equations or making ragged multisource states a special case.

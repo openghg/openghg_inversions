@@ -1,5 +1,7 @@
 # Tasks
 
+> Status: Final. Approved by the specification owner on 2026-09-25.
+
 ## 1. Confirm callers and profile calculation strategies
 
 - [ ] 1.1 Inventory `BasisOperator.interpolate`, `BasisFunctions.interpolate`, `native_prolongation`, postprocessing, and known downstream direct callers; record source, flux, time-axis, eager-output, and map-access needs in the PR or design.

@@ -1,5 +1,7 @@
 # Design
 
+> Status: Final. Approved by the specification owner on 2026-09-25.
+
 ## Context
 
 See [proposal.md](proposal.md) for motivation and [the delta spec](specs/retained-state-reconstruction/spec.md) for observable behavior. The current `BasisOperator.interpolate` applies a linear basis, while `BasisFunctions.interpolate(flux=True)` weights it with retained flux. The multisource operator gathers source weights onto a ragged `(source, region_in_source)` state MultiIndex, sums source contributions, and calls `.as_numpy()`; its single-source counterpart remains lazy. `InversionOutput.flux` is a time-axis view of `BasisFunctions.flux`, not a different physical prior. The current output functions also materialize completed products.

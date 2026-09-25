@@ -1,5 +1,7 @@
 # Spec Delta
 
+> Status: Final. Approved by the specification owner on 2026-09-25.
+
 ## Purpose
 
 Defines how retained basis states reconstruct labelled native scaling and signed flux, with explicit source and execution semantics that align with affine reconstruction terminology.
