@@ -188,7 +188,7 @@ def test_unused_or_unknown_channel_options_fail(options, match):
         _model(_prepared(), **options)
 
 
-def _native_multiindex_inputs(*, extra_level=False):
+def _native_multiindex_inputs(*, extra_level=False, co2_dim="co2_measure"):
     inputs = _inputs()
     inputs["o2_units"] = "ppm"
     for channel in ("co2", "o2"):
@@ -216,13 +216,21 @@ def _native_multiindex_inputs(*, extra_level=False):
         inputs[f"{channel}_aggregation_covariance"] = covariance.drop_vars(covariance_dim).assign_coords(
             xr.Coordinates.from_pandas_multiindex(index.set_names([f"{level}_cov" for level in index.names]), covariance_dim)
         )
+    if co2_dim != "co2_measure":
+        for name, array in inputs.items():
+            if isinstance(array, xr.DataArray):
+                inputs[name] = array.rename({
+                    dim: replacement
+                    for dim, replacement in (("co2_measure", co2_dim), ("co2_measure_cov", f"{co2_dim}_cov"))
+                    if dim in array.dims
+                })
     return inputs
 
 
 @pytest.mark.parametrize("per_site,frequency", [(False, None), (True, None), (True, "1D")])
-@pytest.mark.parametrize("extra_level", [False, True])
-def test_offsets_restore_native_site_time_multiindexes(per_site, frequency, extra_level):
-    prepared = prepare_co2_o2_inputs(**_native_multiindex_inputs(extra_level=extra_level))
+@pytest.mark.parametrize("extra_level,co2_dim", [(False, "co2_measure"), (True, "co2_measure"), (False, "observation")])
+def test_offsets_restore_native_site_time_multiindexes(per_site, frequency, extra_level, co2_dim):
+    prepared = prepare_co2_o2_inputs(**_native_multiindex_inputs(extra_level=extra_level, co2_dim=co2_dim))
     model = _model(
         prepared,
         offset_prior={channel: {"pdf": "normal", "mu": 0.0, "sigma": 2.0} for channel in ("co2", "o2")},

@@ -260,7 +260,7 @@ def _add_co2_o2_baseline_components(
             components.append((channel, result, design))
             boundaries.append(result.output)
         if channel in (offset_prior or {}):
-            native_dim = str(sensitivity.dims[0])
+            native_dim = f"{channel}_offset_observation"
             selected = select_gathered_data_array(
                 observations,
                 key=channel,
