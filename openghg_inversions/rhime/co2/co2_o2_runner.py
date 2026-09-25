@@ -6,7 +6,6 @@ import json
 from collections.abc import Mapping
 from typing import Any
 
-import arviz as az
 from dask import compute as dask_compute
 from dask.array import Array as DaskArray
 import numpy as np
@@ -127,10 +126,10 @@ def _co2_o2_metadata(
 
 
 def _annotate_co2_o2_trace(
-    trace: az.InferenceData,
+    trace: xr.DataTree,
     *,
     built: RhimeModelBuildResult,
-) -> az.InferenceData:
+) -> xr.DataTree:
     """Persist scientific roles, units, and provenance after coord restoration."""
     trace.attrs["rhime_recipe"] = "co2_o2"
     trace.attrs["rhime_variable_roles"] = json.dumps(
@@ -158,8 +157,7 @@ def _annotate_co2_o2_trace(
         "flux_scaling",
         "flux_scaling_fixed_value",
     }
-    for group_name in trace.groups():
-        group = getattr(trace, group_name)
+    for group in trace.children.values():
         for variable, roles in roles_by_variable.items():
             if variable in group:
                 group[variable].attrs["rhime_scientific_roles"] = json.dumps(sorted(roles))
@@ -207,7 +205,7 @@ def run_rhime_co2_o2_from_prepared_inputs(
     tau_hours: float | Mapping[str, float] | None = None,
     fixed_site_amplitudes: float | Mapping[str, float] | None = None,
     site_amplitude_prior: Mapping[str, Any] | None = None,
-) -> az.InferenceData:
+) -> xr.DataTree:
     """Build and sample the CO2/O2 model from prepared scientific inputs.
 
     This advanced replay seam begins after channel preparation. The public
@@ -250,7 +248,7 @@ def run_rhime_co2_o2_from_prepared_inputs(
             defaults to PyMC; the fixed-error default uses NumPyro.
 
     Returns:
-        Restored inference data with observed concentrations in
+        Restored DataTree with observed concentrations in
         ``observed_data["y"]``, fixed independent standard deviations in
         ``constant_data["fixed_independent_error_sd"]`` (``error`` for fixed
         OU), labelled coordinates,
@@ -362,21 +360,20 @@ def run_rhime_co2_o2_from_prepared_inputs(
 
 
 def _annotate_linked_fixed_ou_trace(
-    trace: az.InferenceData,
+    trace: xr.DataTree,
     *,
     observations: xr.DataArray,
-) -> az.InferenceData:
+) -> xr.DataTree:
     """Retain OU group identity, units, and joint likelihood semantics."""
     units = str(observations.observation_units.values[0])
-    for group_name in trace.groups():
-        group = getattr(trace, group_name)
+    for group_name, node in trace.children.items():
+        group = node.to_dataset()
         if "ou_site" in group.coords:
             labels = group.ou_site.values.astype(str)
             group = group.assign_coords(
                 ou_species=("ou_site", [label.split(":", 1)[0] for label in labels]),
                 ou_station=("ou_site", [label.split(":", 1)[1] for label in labels]),
             )
-            setattr(trace, group_name, group)
         for name in ("ou_site_amplitude", "Y", "error"):
             if name in group:
                 group[name].attrs["units"] = units
@@ -389,4 +386,5 @@ def _annotate_linked_fixed_ou_trace(
                 rhime_likelihood_scope="joint_observation_vector",
                 rhime_normalized_log_likelihood=1,
             )
+        trace[group_name] = group
     return trace

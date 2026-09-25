@@ -378,10 +378,27 @@ class PymcCachedSigmaNutsStep(BlockedStep):
             }
         ]
 
+    def setup_chain(self, rng: RandomGenerator, tune: int, draws: int) -> None:
+        """Propagate PyMC's per-chain setup into the delegated stock NUTS step.
+
+        Args:
+            rng: Random generator for this chain.
+            tune: Number of tuning iterations.
+            draws: Number of posterior draws.
+        """
+        super().setup_chain(rng, tune, draws)
+        self.nuts_step.setup_chain(self.rng.spawn(1)[0], tune, draws)
+
     def set_rng(self, rng: RandomGenerator) -> None:
-        """Propagate PyMC's per-chain RNG into the delegated stock NUTS step."""
-        super().set_rng(rng)
-        self.nuts_step.set_rng(self.rng.spawn(1)[0])
+        """Reseed this step and its delegated NUTS step.
+
+        This compatibility method preserves the pre-PyMC 6 public API. PyMC 6
+        calls :meth:`setup_chain` directly during sampling.
+
+        Args:
+            rng: Random generator for this chain.
+        """
+        self.setup_chain(rng, tune=0, draws=0)
 
     def stop_tuning(self) -> None:
         """Freeze delegated step-size and mass-matrix adaptation."""

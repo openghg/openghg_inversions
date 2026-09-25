@@ -237,13 +237,8 @@ def hdi(
     @update_attrs(f"hdi_{int(100 * hdi_prob)}_of")
     def calc(data: xr.Dataset, probability: float) -> xr.Dataset:
         """Call ArviZ and narrow its union return type for Dataset input."""
-        return cast(xr.Dataset, az.hdi(data, hdi_prob=probability, skipna=True))
-
-    if "chain" not in ds.dims:
-        ds = ds.expand_dims({"chain": [0]})
-
-    if sample_dim != "draw":
-        ds = ds.rename({sample_dim: "draw"})
+        result = cast(xr.Dataset, az.hdi(data, prob=probability, dim=sample_dim, skipna=True))
+        return result.rename({"ci_bound": "hdi"})
 
     if any(data.chunks is not None for data in ds.data_vars.values()):
         ds = ds.compute()

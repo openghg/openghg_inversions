@@ -78,7 +78,7 @@ def _raw_projected_problem() -> tuple[
         name="native_mean",
     )
     prolongation = to_dense(
-        basis.native_prolongation(sensitivity, native_dims=covariance.native_dims)
+        basis._native_prolongation(sensitivity, native_dims=covariance.native_dims)
     ).compute()
     products = project_native_covariance(
         covariance=covariance,

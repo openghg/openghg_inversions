@@ -150,7 +150,7 @@ class AffineFluxMap:
             self.prolongation,
             (BucketBasisOperator, MultiSourceBucketBasisOperator),
         ):
-            result = self.prolongation.native_prolongation(
+            result = self.prolongation._native_prolongation(
                 self.native_mean,
                 native_dims=self.native_dims,
             )

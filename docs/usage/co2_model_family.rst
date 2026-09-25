@@ -57,9 +57,9 @@ Current support
      - Not supported by the staged CLI.
      - Not supported by the staged CLI.
    * - Outputs and postprocessing
-     - Returns annotated ``InferenceData``. Use the documented serialization
+     - Returns an annotated xarray ``DataTree``. Use the documented serialization
        boundary; the complete RHIME output pipeline is not integrated.
-     - Returns annotated ``InferenceData``. Use the documented serialization
+     - Returns an annotated xarray ``DataTree``. Use the documented serialization
        boundary; family-specific output and postprocessing are not integrated.
    * - Validation and acceptance
      - Coherent preparation, dedicated serialization, model construction,

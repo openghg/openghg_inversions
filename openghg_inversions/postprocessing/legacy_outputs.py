@@ -463,9 +463,10 @@ def _as_legacy_sensitivity(data: xr.DataArray, description: str) -> np.ndarray:
 
 def _posterior_first_chain(inv_out: InversionOutput) -> xr.Dataset:
     """Return posterior samples for the first chain, matching the old adapter."""
-    posterior = getattr(inv_out.trace, "posterior", None)
-    if posterior is None:
-        raise ValueError("Legacy HBMCMC output formatting requires posterior trace samples.")
+    try:
+        posterior = inv_out.trace_group("posterior")
+    except KeyError as exc:
+        raise ValueError("Legacy HBMCMC output formatting requires posterior trace samples.") from exc
     if "chain" in posterior.dims:
         return posterior.isel(chain=0, drop=True)
     return posterior
@@ -508,8 +509,11 @@ def _legacy_sigma_trace(trace: xr.DataArray) -> np.ndarray:
 
 def _legacy_convergence(inv_out: InversionOutput) -> str:
     """Return legacy convergence status from ArviZ R-hat when enough chains exist."""
-    posterior = getattr(inv_out.trace, "posterior", None)
-    if posterior is None or posterior.sizes.get("chain", 0) < 2 or posterior.sizes.get("draw", 0) < 2:
+    try:
+        posterior = inv_out.trace_group("posterior")
+    except KeyError:
+        return "Unavailable"
+    if posterior.sizes.get("chain", 0) < 2 or posterior.sizes.get("draw", 0) < 2:
         return "Unavailable"
 
     x_name = inv_out.variable_name("flux_scale")
@@ -519,7 +523,7 @@ def _legacy_convergence(inv_out: InversionOutput) -> str:
         return "Unavailable"
 
     try:
-        rhat_dataset = cast(xr.Dataset, az.rhat(inv_out.trace, var_names=[x_name]))
+        rhat_dataset = cast(xr.Dataset, az.rhat(posterior, var_names=[x_name]))
         rhat = rhat_dataset[x_name]
         max_rhat = float(rhat.max(skipna=True).item())
     except (AttributeError, KeyError, TypeError, ValueError):
@@ -639,9 +643,13 @@ def _legacy_hbmcmc_attrs(inv_out: InversionOutput) -> dict[str, str]:
         if "chains" in sampler:
             attrs.setdefault("Number of chains", str(int(sampler["chains"])))
 
-    posterior = getattr(inv_out.trace, "posterior", None)
-    if posterior is not None and "chain" in posterior.sizes:
-        attrs.setdefault("Number of chains", str(int(posterior.sizes["chain"])))
+    try:
+        posterior = inv_out.trace_group("posterior")
+    except KeyError:
+        pass
+    else:
+        if "chain" in posterior.sizes:
+            attrs.setdefault("Number of chains", str(int(posterior.sizes["chain"])))
 
     model_metadata = inv_out.model_metadata
     attrs.setdefault("Error for each site", str(model_metadata.get("sigma_per_site", "Unavailable")))

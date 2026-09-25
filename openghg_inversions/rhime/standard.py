@@ -11,7 +11,6 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-import arviz as az
 import pymc as pm
 import xarray as xr
 
@@ -395,7 +394,7 @@ def make_standard_rhime_result(
     run_spec: RhimeRunSpec,
     sampler: RhimeSampler,
     model_build_result: RhimeModelBuildResult,
-    idata: az.InferenceData,
+    idata: xr.DataTree,
     build_and_sample_seconds: float,
     model_builder: RhimeModelBuilder | None = None,
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
@@ -494,7 +493,7 @@ def run_rhime(
             absent.
 
     Returns:
-        Modern RHIME result containing canonical inputs, InferenceData, specs,
+        Modern RHIME result containing canonical inputs, a sampled DataTree, specs,
         output metadata, and generated outputs.
 
     Raises:

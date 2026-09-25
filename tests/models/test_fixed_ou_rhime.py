@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 
-import arviz as az
 import numpy as np
 import pymc as pm
 import pytest
@@ -16,6 +15,7 @@ from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
 from openghg_inversions.observation_error import resolve_aggregation_error
 from openghg_inversions.rhime.multisector import build_multisector_rhime_model
 from openghg_inversions.rhime.outputs import annotate_likelihood_trace
+from openghg_inversions.serialization import load_trace, save_trace
 from openghg_inversions.rhime.specs import SectorSpec
 from openghg_inversions.rhime.standard import build_standard_rhime_model
 
@@ -318,7 +318,7 @@ def test_standard_recipes_accept_installed_fixed_ou_likelihood(
 
 def test_likelihood_trace_annotation_round_trips_identity_and_options(tmp_path) -> None:
     """Raw trace metadata identifies the custom callable and its arguments."""
-    idata = az.InferenceData(posterior=xr.Dataset())
+    idata = xr.DataTree.from_dict({"posterior": xr.Dataset()})
     identity = {
         "module": "openghg_inversions.models.fixed_ou",
         "qualname": "add_fixed_ou_gaussian_likelihood",
@@ -330,8 +330,8 @@ def test_likelihood_trace_annotation_round_trips_identity_and_options(tmp_path) 
         likelihood_kwargs=options,
     )
     path = tmp_path / "ou-trace.nc"
-    idata.to_netcdf(path)
-    loaded = az.from_netcdf(path)
+    save_trace(idata, path)
+    loaded = load_trace(path)
 
     assert json.loads(loaded.attrs["rhime_likelihood_builder"]) == identity
     assert json.loads(loaded.attrs["rhime_likelihood_kwargs"]) == options
@@ -339,7 +339,7 @@ def test_likelihood_trace_annotation_round_trips_identity_and_options(tmp_path) 
 
 def test_likelihood_trace_annotation_serializes_array_options() -> None:
     """Numeric and temporal array options remain valid after sampling."""
-    idata = az.InferenceData(posterior=xr.Dataset())
+    idata = xr.DataTree.from_dict({"posterior": xr.Dataset()})
 
     annotate_likelihood_trace(
         idata,
