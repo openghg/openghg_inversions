@@ -135,13 +135,14 @@ is the public replay seam. It accepts only a
 :class:`~openghg_inversions.rhime.co2.Co2PreparedInputs` artifact, validates
 and materializes its selected arrays, resolves its declared aggregation-error
 representation, calls the explicit builder, samples, and stores a JSON
-variable-role and model-provenance manifest on the returned ``InferenceData``.
+variable-role and model-provenance manifest on the returned xarray
+``DataTree``.
 The artifact, rather than a runner argument, owns whether aggregation error is
 stored as an exact dense covariance or as a low-rank-plus-diagonal (LRPD)
 approximation. A prepared ``fixed_model_mismatch`` is preserved when the
 runner argument is ``None``; an explicit scalar or labelled vector overrides
 it. Persist gathered-state traces with
-:func:`openghg_inversions.serialization.save_inferencedata`, which uses the
+:func:`openghg_inversions.serialization.save_trace`, which uses the
 same MultiIndex-safe boundary as standard and multisector RHIME outputs.
 The current prepared-input runner does not accept or construct an
 outer-specific object. It constructs the complete retained prior from the
@@ -716,8 +717,8 @@ model-variable vocabulary,
    + \mathtt{co2\_o2\_flux\_contribution}.
 
 Persist sampled CO2/O2 results with
-:func:`openghg_inversions.serialization.save_inferencedata` and restore them
-with :func:`openghg_inversions.serialization.load_inferencedata`; this is the
+:func:`openghg_inversions.serialization.save_trace` and restore them
+with :func:`openghg_inversions.serialization.load_trace`; this is the
 declared boundary for preserving gathered MultiIndex coordinates.
 
 The signed oxidation ratio is fixed in this recipe and already folded into the

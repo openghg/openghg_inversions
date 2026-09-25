@@ -518,13 +518,14 @@ is the public replay seam. It accepts only a
 <a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2PreparedInputs" title="openghg_inversions.rhime.co2.Co2PreparedInputs"><code class="xref py py-class docutils literal notranslate"><span class="pre">Co2PreparedInputs</span></code></a> artifact, validates
 and materializes its selected arrays, resolves its declared aggregation-error
 representation, calls the explicit builder, samples, and stores a JSON
-variable-role and model-provenance manifest on the returned <code class="docutils literal notranslate"><span class="pre">InferenceData</span></code>.
+variable-role and model-provenance manifest on the returned xarray
+<code class="docutils literal notranslate"><span class="pre">DataTree</span></code>.
 The artifact, rather than a runner argument, owns whether aggregation error is
 stored as an exact dense covariance or as a low-rank-plus-diagonal (LRPD)
 approximation. A prepared <code class="docutils literal notranslate"><span class="pre">fixed_model_mismatch</span></code> is preserved when the
 runner argument is <code class="docutils literal notranslate"><span class="pre">None</span></code>; an explicit scalar or labelled vector overrides
 it. Persist gathered-state traces with
-<a class="reference internal" href="../reference/openghg_inversions.serialization.html#openghg_inversions.serialization.save_inferencedata" title="openghg_inversions.serialization.save_inferencedata"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.serialization.save_inferencedata()</span></code></a>, which uses the
+<a class="reference internal" href="../reference/openghg_inversions.serialization.html#openghg_inversions.serialization.save_trace" title="openghg_inversions.serialization.save_trace"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.serialization.save_trace()</span></code></a>, which uses the
 same MultiIndex-safe boundary as standard and multisector RHIME outputs.
 The current prepared-input runner does not accept or construct an
 outer-specific object. It constructs the complete retained prior from the
@@ -1089,8 +1090,8 @@ model-variable vocabulary,</p>
 = \mathtt{fixed\_prior\_contribution}
 + \mathtt{co2\_o2\_flux\_contribution}.\]</div>
 <p>Persist sampled CO2/O2 results with
-<a class="reference internal" href="../reference/openghg_inversions.serialization.html#openghg_inversions.serialization.save_inferencedata" title="openghg_inversions.serialization.save_inferencedata"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.serialization.save_inferencedata()</span></code></a> and restore them
-with <a class="reference internal" href="../reference/openghg_inversions.serialization.html#openghg_inversions.serialization.load_inferencedata" title="openghg_inversions.serialization.load_inferencedata"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.serialization.load_inferencedata()</span></code></a>; this is the
+<a class="reference internal" href="../reference/openghg_inversions.serialization.html#openghg_inversions.serialization.save_trace" title="openghg_inversions.serialization.save_trace"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.serialization.save_trace()</span></code></a> and restore them
+with <a class="reference internal" href="../reference/openghg_inversions.serialization.html#openghg_inversions.serialization.load_trace" title="openghg_inversions.serialization.load_trace"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.serialization.load_trace()</span></code></a>; this is the
 declared boundary for preserving gathered MultiIndex coordinates.</p>
 <p>The signed oxidation ratio is fixed in this recipe and already folded into the
 shared-state O2 sensitivity. When it is representable by retained-state or

@@ -499,7 +499,7 @@
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>trace</strong> (<em>InferenceData</em>) – Inference data containing posterior <code class="docutils literal notranslate"><span class="pre">sigma</span></code> and, unless
+<li><p><strong>trace</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><em>DataTree</em></a>) – Trace tree containing posterior <code class="docutils literal notranslate"><span class="pre">sigma</span></code> and, unless
 <code class="docutils literal notranslate"><span class="pre">model_data</span></code> is supplied, registered constant model data.</p></li>
 <li><p><strong>model_data</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><em>Dataset</em></a><em> | </em><em>None</em>) – Optional canonical sigma alignment data.</p></li>
 </ul>
@@ -509,8 +509,8 @@
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#AttributeError" title="(in Python v3.14)"><strong>AttributeError</strong></a> – If required inference-data groups are absent.</p></li>
-<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#KeyError" title="(in Python v3.14)"><strong>KeyError</strong></a> – If posterior sigma or registered alignment data are absent.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#KeyError" title="(in Python v3.14)"><strong>KeyError</strong></a> – If required trace groups, posterior sigma, or registered
+    alignment data are absent.</p></li>
 <li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If registered alignment data are invalid.</p></li>
 </ul>
 </dd>

@@ -479,7 +479,7 @@ the table below:</p>
 </div>
 <p><code class="docutils literal notranslate"><span class="pre">run_rhime</span></code> returns a <a class="reference internal" href="../reference/openghg_inversions.rhime.html#openghg_inversions.rhime.RhimeResult" title="openghg_inversions.rhime.RhimeResult"><code class="xref py py-class docutils literal notranslate"><span class="pre">RhimeResult</span></code></a>, not a
 legacy tuple or sampler dictionary. Its principal attributes are <code class="docutils literal notranslate"><span class="pre">idata</span></code>
-(ArviZ <code class="docutils literal notranslate"><span class="pre">InferenceData</span></code>), <code class="docutils literal notranslate"><span class="pre">inv_inputs</span></code> (the labelled model inputs),
+(an xarray <code class="docutils literal notranslate"><span class="pre">DataTree</span></code> with ArviZ-compatible groups), <code class="docutils literal notranslate"><span class="pre">inv_inputs</span></code> (the labelled model inputs),
 <code class="docutils literal notranslate"><span class="pre">inv_out</span></code> (the modern <code class="docutils literal notranslate"><span class="pre">InversionOutput</span></code> when constructed), and <code class="docutils literal notranslate"><span class="pre">outputs</span></code>
 (requested derived products).</p>
 </section>

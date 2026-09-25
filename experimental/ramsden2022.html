@@ -662,7 +662,7 @@ sector names must be non-empty and unique.</p></li>
 <li><p><strong>prepared_inputs</strong> (<a class="reference internal" href="../reference/openghg_inversions.experimental.ramsden2022.model.html#openghg_inversions.experimental.ramsden2022.model.RamsdenPreparedInputs" title="openghg_inversions.experimental.ramsden2022.model.RamsdenPreparedInputs"><em>RamsdenPreparedInputs</em></a>) – Labelled inputs consumed by the model.</p></li>
 <li><p><strong>model_spec</strong> (<a class="reference internal" href="../reference/openghg_inversions.experimental.ramsden2022.model.html#openghg_inversions.experimental.ramsden2022.model.RamsdenModelSpec" title="openghg_inversions.experimental.ramsden2022.model.RamsdenModelSpec"><em>RamsdenModelSpec</em></a>) – Historical model specification.</p></li>
 <li><p><strong>model</strong> (<a class="reference external" href="https://www.pymc.io/projects/docs/en/stable/api/model/generated/pymc.model.core.Model.html#pymc.model.core.Model" title="(in PyMC v6.3.2)"><em>Model</em></a>) – Built PyMC model.</p></li>
-<li><p><strong>idata</strong> (<em>InferenceData</em>) – Joint inference data preserving shared-state/ratio covariance
+<li><p><strong>idata</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><em>DataTree</em></a>) – Joint sampled DataTree preserving shared-state/ratio covariance
 and the two namespaced likelihood and predictive variables.</p></li>
 <li><p><strong>sampler</strong> (<a class="reference internal" href="../reference/openghg_inversions.rhime.sampling.html#openghg_inversions.rhime.sampling.RhimeSampler" title="openghg_inversions.rhime.sampling.RhimeSampler"><em>RhimeSampler</em></a>) – Modern RHIME sampler used for the run.</p></li>
 </ul>
@@ -723,7 +723,7 @@ posterior predictive sampling.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Joint result containing the built model and labelled inference data.</p>
+<dd class="field-even"><p>Joint result containing the built model and labelled sampled DataTree.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If model metadata or prepared inputs are invalid.</p>

@@ -574,7 +574,8 @@ values such as <code class="docutils literal notranslate"><span class="pre">outp
 <section id="inspect-and-interpret-the-result">
 <h2>Inspect and interpret the result<a class="headerlink" href="#inspect-and-interpret-the-result" title="Link to this heading">#</a></h2>
 <p><code class="docutils literal notranslate"><span class="pre">RhimeResult</span></code> keeps the resolved scientific and output specifications,
-canonical labelled arrays, the ArviZ trace, and generated products together:</p>
+canonical labelled arrays, the xarray <code class="docutils literal notranslate"><span class="pre">DataTree</span></code> trace, and generated
+products together:</p>
 <div class="jupyter_cell jupyter_container docutils container">
 <div class="cell_input code_cell docutils container">
 <div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">measurement_index</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">inv_inputs</span><span class="o">.</span><span class="n">indexes</span><span class="p">[</span><span class="s2">"nmeasure"</span><span class="p">]</span>
@@ -586,7 +587,7 @@ canonical labelled arrays, the ArviZ trace, and generated products together:</p>
     <span class="s2">"H dimensions"</span><span class="p">:</span> <span class="n">result</span><span class="o">.</span><span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"H"</span><span class="p">]</span><span class="o">.</span><span class="n">dims</span><span class="p">,</span>
     <span class="s2">"input sizes"</span><span class="p">:</span> <span class="nb">dict</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">inv_inputs</span><span class="o">.</span><span class="n">sizes</span><span class="p">),</span>
     <span class="s2">"measurement sites"</span><span class="p">:</span> <span class="n">measurement_index</span><span class="o">.</span><span class="n">get_level_values</span><span class="p">(</span><span class="s2">"site"</span><span class="p">)</span><span class="o">.</span><span class="n">unique</span><span class="p">()</span><span class="o">.</span><span class="n">tolist</span><span class="p">(),</span>
-    <span class="s2">"x dimensions"</span><span class="p">:</span> <span class="n">result</span><span class="o">.</span><span class="n">idata</span><span class="o">.</span><span class="n">posterior</span><span class="p">[</span><span class="s2">"x"</span><span class="p">]</span><span class="o">.</span><span class="n">dims</span><span class="p">,</span>
+    <span class="s2">"x dimensions"</span><span class="p">:</span> <span class="n">result</span><span class="o">.</span><span class="n">idata</span><span class="p">[</span><span class="s2">"posterior"</span><span class="p">][</span><span class="s2">"x"</span><span class="p">]</span><span class="o">.</span><span class="n">dims</span><span class="p">,</span>
     <span class="s2">"variable roles"</span><span class="p">:</span> <span class="n">result</span><span class="o">.</span><span class="n">model_build_result</span><span class="o">.</span><span class="n">variable_roles</span><span class="p">,</span>
     <span class="s2">"output products"</span><span class="p">:</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">outputs</span><span class="p">),</span>
 <span class="p">}</span>

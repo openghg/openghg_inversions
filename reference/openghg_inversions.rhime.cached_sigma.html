@@ -528,10 +528,30 @@ evaluations do not refactor the observation covariance.</p>
 </dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.setup_chain">
+<span class="sig-name descname"><span class="pre">setup_chain</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">rng</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tune</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">draws</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.setup_chain" title="Link to this definition">#</a></dt>
+<dd><p>Propagate PyMC’s per-chain setup into the delegated stock NUTS step.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>rng</strong> (<em>None</em><em> | </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.14)"><em>Sequence</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em>] </em><em>| </em><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a><em> | </em><a class="reference external" href="https://numpy.org/doc/stable/reference/random/generator.html#numpy.random.Generator" title="(in NumPy v2.5)"><em>Generator</em></a><em> | </em><a class="reference external" href="https://numpy.org/doc/stable/reference/random/bit_generators/generated/numpy.random.BitGenerator.html#numpy.random.BitGenerator" title="(in NumPy v2.5)"><em>BitGenerator</em></a>) – Random generator for this chain.</p></li>
+<li><p><strong>tune</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a>) – Number of tuning iterations.</p></li>
+<li><p><strong>draws</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a>) – Number of posterior draws.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.set_rng">
 <span class="sig-name descname"><span class="pre">set_rng</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">rng</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.set_rng" title="Link to this definition">#</a></dt>
-<dd><p>Propagate PyMC’s per-chain RNG into the delegated stock NUTS step.</p>
+<dd><p>Reseed this step and its delegated NUTS step.</p>
+<p>This compatibility method preserves the pre-PyMC 6 public API. PyMC 6
+calls <a class="reference internal" href="#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.setup_chain" title="openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.setup_chain"><code class="xref py py-meth docutils literal notranslate"><span class="pre">setup_chain()</span></code></a> directly during sampling.</p>
 <dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>rng</strong> (<em>None</em><em> | </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.14)"><em>Sequence</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em>] </em><em>| </em><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a><em> | </em><a class="reference external" href="https://numpy.org/doc/stable/reference/random/generator.html#numpy.random.Generator" title="(in NumPy v2.5)"><em>Generator</em></a><em> | </em><a class="reference external" href="https://numpy.org/doc/stable/reference/random/bit_generators/generated/numpy.random.BitGenerator.html#numpy.random.BitGenerator" title="(in NumPy v2.5)"><em>BitGenerator</em></a>) – Random generator for this chain.</p>
+</dd>
 </dl>
 </dd></dl>
 
@@ -683,6 +703,7 @@ step jointly updates <code class="docutils literal notranslate"><span class="pre
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep"><code class="docutils literal notranslate"><span class="pre">PymcCachedSigmaNutsStep</span></code></a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.stats_dtypes_shapes"><code class="docutils literal notranslate"><span class="pre">PymcCachedSigmaNutsStep.stats_dtypes_shapes</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.step"><code class="docutils literal notranslate"><span class="pre">PymcCachedSigmaNutsStep.step()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.setup_chain"><code class="docutils literal notranslate"><span class="pre">PymcCachedSigmaNutsStep.setup_chain()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.set_rng"><code class="docutils literal notranslate"><span class="pre">PymcCachedSigmaNutsStep.set_rng()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.stop_tuning"><code class="docutils literal notranslate"><span class="pre">PymcCachedSigmaNutsStep.stop_tuning()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.reset_tuning"><code class="docutils literal notranslate"><span class="pre">PymcCachedSigmaNutsStep.reset_tuning()</span></code></a></li>

@@ -659,7 +659,7 @@ used with the built-in graph.</p></li>
 <li><p><strong>run_spec</strong> (<a class="reference internal" href="openghg_inversions.rhime.specs.html#openghg_inversions.rhime.specs.RhimeRunSpec" title="openghg_inversions.rhime.specs.RhimeRunSpec"><em>RhimeRunSpec</em></a>) – Resolved model, output, and run settings.</p></li>
 <li><p><strong>sampler</strong> (<a class="reference internal" href="openghg_inversions.rhime.sampling.html#openghg_inversions.rhime.sampling.RhimeSampler" title="openghg_inversions.rhime.sampling.RhimeSampler"><em>RhimeSampler</em></a>) – Sampler configuration used for the trace.</p></li>
 <li><p><strong>model_build_result</strong> (<a class="reference internal" href="openghg_inversions.rhime.builders.html#openghg_inversions.rhime.builders.RhimeModelBuildResult" title="openghg_inversions.rhime.builders.RhimeModelBuildResult"><em>RhimeModelBuildResult</em></a>) – Concrete graph and semantic variable roles.</p></li>
-<li><p><strong>idata</strong> (<em>InferenceData</em>) – Sampled posterior and predictive groups.</p></li>
+<li><p><strong>idata</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><em>DataTree</em></a>) – Sampled posterior and predictive groups.</p></li>
 <li><p><strong>build_and_sample_seconds</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a>) – Combined graph-build and sampling duration.</p></li>
 <li><p><strong>model_builder</strong> (<a class="reference internal" href="openghg_inversions.rhime.builders.html#openghg_inversions.rhime.builders.RhimeModelBuilder" title="openghg_inversions.rhime.builders.RhimeModelBuilder"><em>RhimeModelBuilder</em></a><em> | </em><em>None</em>) – Optional complete-model callable used for provenance.</p></li>
 <li><p><strong>likelihood_builder</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Callable" title="(in Python v3.14)"><em>Callable</em></a><em>[</em><em>[</em><em>...</em><em>]</em><em>, </em><em>TensorVariable</em><em>] </em><em>| </em><em>None</em>) – Optional likelihood callable used for provenance.</p></li>
@@ -722,7 +722,7 @@ absent.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Modern RHIME result containing canonical inputs, InferenceData, specs,
+<dd class="field-even"><p>Modern RHIME result containing canonical inputs, a sampled DataTree, specs,
 output metadata, and sector diagnostics.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>

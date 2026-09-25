@@ -969,7 +969,7 @@ variable named <code class="docutils literal notranslate"><span class="pre">y</s
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><em>InferenceData</em></p>
+<dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><em>DataTree</em></a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -1039,7 +1039,7 @@ this flag records the prepared data layout.</p></li>
 <li><p><strong>model_spec</strong> (<a class="reference internal" href="openghg_inversions.rhime.specs.html#openghg_inversions.rhime.specs.RhimeModelSpec" title="openghg_inversions.rhime.specs.RhimeModelSpec"><em>RhimeModelSpec</em></a>) – Scientific options used to construct the model.</p></li>
 <li><p><strong>output_spec</strong> (<a class="reference internal" href="openghg_inversions.rhime.specs.html#openghg_inversions.rhime.specs.RhimeOutputSpec" title="openghg_inversions.rhime.specs.RhimeOutputSpec"><em>RhimeOutputSpec</em></a>) – Output products, paths, and naming settings.</p></li>
 <li><p><strong>inv_inputs</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><em>Dataset</em></a>) – Prepared inversion inputs supplied to the model.</p></li>
-<li><p><strong>idata</strong> (<em>InferenceData</em>) – Posterior samples and diagnostics returned by the sampler.</p></li>
+<li><p><strong>idata</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><em>DataTree</em></a>) – Posterior samples and diagnostics returned by the sampler.</p></li>
 <li><p><strong>output_metadata</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><em>Any</em></a><em>]</em>) – Output paths, timing, and provenance accumulated during
 the run. A new empty dictionary is used by default.</p></li>
 <li><p><strong>outputs</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><em>Any</em></a><em>]</em>) – In-memory postprocessing products keyed by product name. A new
@@ -1764,7 +1764,7 @@ retained outer flux used by basis generation and post-run reconstruction.</p>
 <li><p><strong>run_spec</strong> (<a class="reference internal" href="openghg_inversions.rhime.specs.html#openghg_inversions.rhime.specs.RhimeRunSpec" title="openghg_inversions.rhime.specs.RhimeRunSpec"><em>RhimeRunSpec</em></a>) – Resolved model, output, and run settings.</p></li>
 <li><p><strong>sampler</strong> (<a class="reference internal" href="openghg_inversions.rhime.sampling.html#openghg_inversions.rhime.sampling.RhimeSampler" title="openghg_inversions.rhime.sampling.RhimeSampler"><em>RhimeSampler</em></a>) – Sampler configuration used for the trace.</p></li>
 <li><p><strong>model_build_result</strong> (<a class="reference internal" href="openghg_inversions.rhime.builders.html#openghg_inversions.rhime.builders.RhimeModelBuildResult" title="openghg_inversions.rhime.builders.RhimeModelBuildResult"><em>RhimeModelBuildResult</em></a>) – Concrete graph and semantic variable roles.</p></li>
-<li><p><strong>idata</strong> (<em>InferenceData</em>) – Sampled posterior and predictive groups.</p></li>
+<li><p><strong>idata</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><em>DataTree</em></a>) – Sampled posterior and predictive groups.</p></li>
 <li><p><strong>build_and_sample_seconds</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a>) – Combined graph-build and sampling duration.</p></li>
 <li><p><strong>model_builder</strong> (<a class="reference internal" href="openghg_inversions.rhime.builders.html#openghg_inversions.rhime.builders.RhimeModelBuilder" title="openghg_inversions.rhime.builders.RhimeModelBuilder"><em>RhimeModelBuilder</em></a><em> | </em><em>None</em>) – Optional complete-model callable used for provenance.</p></li>
 <li><p><strong>likelihood_builder</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Callable" title="(in Python v3.14)"><em>Callable</em></a><em>[</em><em>[</em><em>...</em><em>]</em><em>, </em><em>TensorVariable</em><em>] </em><em>| </em><em>None</em>) – Optional likelihood callable used for provenance.</p></li>
@@ -1820,7 +1820,7 @@ retained outer flux used by basis generation and post-run reconstruction.</p>
 <li><p><strong>run_spec</strong> (<a class="reference internal" href="openghg_inversions.rhime.specs.html#openghg_inversions.rhime.specs.RhimeRunSpec" title="openghg_inversions.rhime.specs.RhimeRunSpec"><em>RhimeRunSpec</em></a>) – Resolved model, output, and run settings.</p></li>
 <li><p><strong>sampler</strong> (<a class="reference internal" href="openghg_inversions.rhime.sampling.html#openghg_inversions.rhime.sampling.RhimeSampler" title="openghg_inversions.rhime.sampling.RhimeSampler"><em>RhimeSampler</em></a>) – Sampler configuration used for the trace.</p></li>
 <li><p><strong>model_build_result</strong> (<a class="reference internal" href="openghg_inversions.rhime.builders.html#openghg_inversions.rhime.builders.RhimeModelBuildResult" title="openghg_inversions.rhime.builders.RhimeModelBuildResult"><em>RhimeModelBuildResult</em></a>) – Concrete graph and semantic variable roles.</p></li>
-<li><p><strong>idata</strong> (<em>InferenceData</em>) – Sampled posterior and predictive groups.</p></li>
+<li><p><strong>idata</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><em>DataTree</em></a>) – Sampled posterior and predictive groups.</p></li>
 <li><p><strong>build_and_sample_seconds</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a>) – Combined graph-build and sampling duration.</p></li>
 <li><p><strong>model_builder</strong> (<a class="reference internal" href="openghg_inversions.rhime.builders.html#openghg_inversions.rhime.builders.RhimeModelBuilder" title="openghg_inversions.rhime.builders.RhimeModelBuilder"><em>RhimeModelBuilder</em></a><em> | </em><em>None</em>) – Optional complete-model callable used for provenance.</p></li>
 <li><p><strong>likelihood_builder</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Callable" title="(in Python v3.14)"><em>Callable</em></a><em>[</em><em>[</em><em>...</em><em>]</em><em>, </em><em>TensorVariable</em><em>] </em><em>| </em><em>None</em>) – Optional likelihood callable used for provenance.</p></li>
@@ -2121,7 +2121,7 @@ absent.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Modern RHIME result containing canonical inputs, InferenceData, specs,
+<dd class="field-even"><p>Modern RHIME result containing canonical inputs, a sampled DataTree, specs,
 output metadata, and generated outputs.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
@@ -2201,7 +2201,7 @@ and <code class="docutils literal notranslate"><span class="pre">per_site</span>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Sampled inference data annotated with the CO2 variable-role and model
+<dd class="field-even"><p>Sampled DataTree annotated with the CO2 variable-role and model
 manifests.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
@@ -2210,7 +2210,7 @@ manifests.</p>
     construction.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><em>InferenceData</em></p>
+<dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><em>DataTree</em></a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -2311,7 +2311,7 @@ absent.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Modern RHIME result containing canonical inputs, InferenceData, specs,
+<dd class="field-even"><p>Modern RHIME result containing canonical inputs, a sampled DataTree, specs,
 output metadata, and sector diagnostics.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
@@ -2394,7 +2394,7 @@ products and one shared concentration product.</p>
 <dd class="field-even"><p>Sampled posterior and predictive groups.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><em>InferenceData</em></p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><em>DataTree</em></a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -2576,6 +2576,7 @@ products and one shared concentration product.</p>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.cached_sigma.html#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep"><code class="docutils literal notranslate"><span class="pre">PymcCachedSigmaNutsStep</span></code></a><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.cached_sigma.html#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.stats_dtypes_shapes"><code class="docutils literal notranslate"><span class="pre">PymcCachedSigmaNutsStep.stats_dtypes_shapes</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.cached_sigma.html#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.step"><code class="docutils literal notranslate"><span class="pre">PymcCachedSigmaNutsStep.step()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.cached_sigma.html#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.setup_chain"><code class="docutils literal notranslate"><span class="pre">PymcCachedSigmaNutsStep.setup_chain()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.cached_sigma.html#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.set_rng"><code class="docutils literal notranslate"><span class="pre">PymcCachedSigmaNutsStep.set_rng()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.cached_sigma.html#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.stop_tuning"><code class="docutils literal notranslate"><span class="pre">PymcCachedSigmaNutsStep.stop_tuning()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.cached_sigma.html#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.reset_tuning"><code class="docutils literal notranslate"><span class="pre">PymcCachedSigmaNutsStep.reset_tuning()</span></code></a></li>
