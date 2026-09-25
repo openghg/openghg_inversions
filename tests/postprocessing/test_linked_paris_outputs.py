@@ -268,14 +268,27 @@ def test_native_flux_rejects_uppercase_private_states_without_concentration_sign
         )
 
 
-def test_cached_joint_posterior_with_baseline_emits_paris(tmp_path):
+@pytest.mark.parametrize("native_multiindex", [False, True])
+def test_cached_joint_posterior_with_baseline_emits_paris(tmp_path, native_multiindex):
     from openghg_inversions.rhime.co2 import run_rhime_co2_o2_cached_sigma_from_prepared_inputs
     from openghg_inversions.rhime.sampling import RhimeSampler
     from openghg_inversions.serialization import load_inferencedata, save_inferencedata
     from test_rhime_co2_o2 import _independent_error
-    from test_rhime_co2_o2_baselines import _prepared
+    from test_rhime_co2_o2_baselines import _native_multiindex_inputs, _prepared
 
-    prepared = _prepared(("co2",))
+    if native_multiindex:
+        inputs = _native_multiindex_inputs()
+        observed = inputs["co2_observations"]
+        inputs["boundary_sensitivity"] = {
+            "co2": xr.DataArray(
+                [[1.0, 2.0], [3.0, 4.0]],
+                dims=(observed.dims[0], "boundary"),
+                coords={**observed.coords, "boundary": ["north", "south"]},
+            )
+        }
+        prepared = prepare_co2_o2_inputs(**inputs)
+    else:
+        prepared = _prepared(("co2",))
     trace = run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
         prepared_inputs=prepared,
         independent_error_sd=_independent_error(prepared),
