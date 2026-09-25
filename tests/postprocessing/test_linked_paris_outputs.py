@@ -277,7 +277,7 @@ def test_cached_joint_posterior_with_baseline_emits_paris(tmp_path, native_multi
     from test_rhime_co2_o2_baselines import _native_multiindex_inputs, _prepared
 
     if native_multiindex:
-        inputs = _native_multiindex_inputs()
+        inputs = _native_multiindex_inputs(extra_level=True, co2_dim="observation")
         observed = inputs["co2_observations"]
         inputs["boundary_sensitivity"] = {
             "co2": xr.DataArray(
