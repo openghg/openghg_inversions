@@ -18,6 +18,7 @@ from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.postprocessing.make_paris_outputs import (
     PARIS_LATEST_COUNTRIES,
     _country_posterior_covariance_kg,
+    _inversion_global_attr_provenance,
     _latest_country_outputs,
     _latest_paris_countries,
     _multisector_country_trace_kg,
@@ -143,6 +144,48 @@ def test_legacy_paris_global_attrs_use_inversion_species_and_domain(europe_count
     for output in (concentration, flux):
         assert output.attrs["species"] == "ch4"
         assert output.attrs["domain"] == "EUROPE-6km"
+
+
+def test_paris_global_attrs_use_footprint_and_prior_provenance(europe_country_file: Path) -> None:
+    """PARIS products describe the inversion inputs instead of assumed NAME/EDGAR defaults."""
+    inv_out = _single_sector_paris_inv_out(europe_country_file)
+    inv_out.model_metadata["sectors"] = [{"flux_source": "uniform"}]
+    inv_out.model_metadata["footprint_provenance"] = {
+        "TAC": {
+            "transport_model": "FLEXPART",
+            "transport_model_version": "FLEXPART IFS (version 9.1_Empa)",
+            "met_model": "ECMWF IFS HRES",
+        }
+    }
+
+    concentration = paris_concentration_outputs(inv_out, template_version="latest")
+    flux = paris_flux_output(inv_out, country_file=europe_country_file, inversion_grid=False)
+
+    for output in (concentration, flux):
+        assert output.attrs["apriori_description"] == "uniform"
+        assert output.attrs["transport_model"] == "FLEXPART"
+        assert output.attrs["transport_model_version"] == "FLEXPART IFS (version 9.1_Empa)"
+        assert output.attrs["met_model"] == "ECMWF IFS HRES"
+
+
+def test_paris_global_attrs_join_distinct_sites_and_leave_missing_version_blank(
+    europe_country_file: Path,
+) -> None:
+    inv_out = _single_sector_paris_inv_out(europe_country_file)
+    inv_out.model_metadata["sectors"] = [{"flux_source": "uniform"}]
+    inv_out.model_metadata["footprint_provenance"] = {
+        "TAC": {"transport_model": "FLEXPART", "met_model": "ECMWF IFS HRES"},
+        "MHD": {"transport_model": "NAME"},
+    }
+
+    attrs = _inversion_global_attr_provenance(inv_out)
+
+    assert attrs == {
+        "apriori_description": "uniform",
+        "transport_model": "FLEXPART; NAME",
+        "transport_model_version": "",
+        "met_model": "ECMWF IFS HRES",
+    }
 
 
 def _flux_nonfinite_metadata(data: xr.DataArray | xr.Dataset) -> FluxNonFiniteMetadata:

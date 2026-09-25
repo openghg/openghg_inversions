@@ -1835,7 +1835,7 @@ def test_assemble_rhime_inputs_preserves_borrowed_site_datasets(
     supplied = xr.Dataset(
         {"mf": ("time", lazy_mf)},
         coords={"time": np.array(["2019-01-01"], dtype="datetime64[ns]")},
-        attrs={"source": "caller"},
+        attrs={"source": "caller", "footprint_transport_model": "FLEXPART"},
     )
     site_data = {"TAC": supplied}
     merged = prep_module.RhimeMergedData(
@@ -1872,18 +1872,24 @@ def test_assemble_rhime_inputs_preserves_borrowed_site_datasets(
         },
         multisector=False,
     )
-    rhime_public.assemble_rhime_inputs(
+    prepared = rhime_public.assemble_rhime_inputs(
         merged,
         _fake_basis_functions(),
         site_data,
         setup.data_args,
     )
 
-    assert supplied.attrs == {"source": "caller"}
+    assert supplied.attrs == {"source": "caller", "footprint_transport_model": "FLEXPART"}
     assert "Domain" not in supplied.attrs
     assert captured["TAC"] is not supplied
-    assert captured["TAC"].attrs == {"source": "caller", "Domain": "EUROPE"}
+    assert captured["TAC"].attrs == {
+        "source": "caller",
+        "footprint_transport_model": "FLEXPART",
+        "Domain": "EUROPE",
+    }
     assert captured["TAC"]["mf"].data is lazy_mf
+    assert prepared.site_metadata["transport_model"].sel(site="TAC").item() == "FLEXPART"
+    assert prepared.site_metadata["transport_model_version"].sel(site="TAC").item() == ""
 
 
 def test_prepared_replay_computes_selected_error_only_at_pymc_boundary(
@@ -3819,50 +3825,6 @@ def test_likelihood_builder_provenance_is_saved_with_result_metadata(
     result.inv_out.save(output_path)
     reloaded = InversionOutput.load(output_path)
     assert reloaded.model_metadata["builder"]["likelihood_kwargs"] == {"degrees_of_freedom": 7.0}
-
-
-def test_legacy_additive_provenance_is_saved_with_builtin_model() -> None:
-    """Compatibility provenance survives after model selection stops using a callback."""
-    model_spec, _, run_spec = _minimal_output_specs(output_format="inv_out")
-    model_spec = replace(model_spec, use_bc=False, likelihood=AdditiveSigmaSettings())
-    run_spec = replace(run_spec, model=model_spec)
-    inv_inputs = _minimal_output_inv_inputs()
-    inv_inputs["H"] = inv_inputs["H"].assign_coords(source=model_spec.sectors[0].flux_source)
-    prepared = RhimePreparedInputs(
-        inv_inputs=inv_inputs,
-        basis_functions=_fake_basis_functions(),
-        site_metadata=_prepared_site_metadata(),
-    )
-    build_result = rhime_standard.build_standard_rhime_model_result(
-        prepared=prepared,
-        model_inputs=prepared.inv_inputs,
-        run_spec=run_spec,
-    )
-    provenance = {
-        "likelihood_builder": {
-            "module": "openghg_inversions.rhime.likelihoods",
-            "qualname": "additive_sigma_likelihood_builder",
-        },
-        "likelihood_kwargs": {"sigma_prior": {"pdf": "halfnormal", "sigma": 5.0}},
-    }
-
-    result = rhime_standard.make_standard_rhime_result(
-        prepared=prepared,
-        run_spec=run_spec,
-        sampler=RhimeSampler(),
-        model_build_result=build_result,
-        idata=_minimal_output_idata(),
-        build_and_sample_seconds=0.0,
-        _compatibility_likelihood_provenance=provenance,
-    )
-    rhime_public.make_standard_rhime_outputs(result=result, prepared=prepared)
-
-    assert result.output_metadata["likelihood_builder"] == provenance["likelihood_builder"]
-    assert result.output_metadata["likelihood_kwargs"] == provenance["likelihood_kwargs"]
-    assert result.inv_out is not None
-    saved_builder = result.inv_out.model_metadata["builder"]
-    assert saved_builder["likelihood_builder"] == provenance["likelihood_builder"]
-    assert saved_builder["likelihood_kwargs"] == provenance["likelihood_kwargs"]
 
 
 def test_custom_model_builder_rejects_undeclared_output_before_sampling(
@@ -5919,9 +5881,6 @@ def test_prepare_rhime_inputs_prunes_reloaded_merged_data_to_requested_sites(
             "TAC": _site_dataset([2.0]),
             "MHD": _site_dataset([3.0]),
             ".flux": object(),
-            ".species": "CH4",
-            ".scales": {"TAC": "tac-scale", "MHD": "mhd-scale"},
-            ".units": 1e-9,
         }
 
     def fake_make_basis_functions(**kwargs: object) -> BasisFunctions:
@@ -5958,10 +5917,7 @@ def test_prepare_rhime_inputs_prunes_reloaded_merged_data_to_requested_sites(
     assert "MHD" not in captured_fp_all_keys
     assert {key for key in captured_fp_all_keys if key.startswith(".")} == {
         ".flux",
-        ".species",
-        ".scales",
         ".split_by_sectors",
-        ".units",
     }
 
 
@@ -5974,8 +5930,6 @@ def test_prepare_merged_data_reload_keeps_all_options_aligned(
         "load_merged_data",
         lambda *args, **kwargs: {
             "MHD": _site_dataset([3.0]),
-            ".species": "CH4",
-            ".units": 1e-9,
         },
     )
 
@@ -6011,7 +5965,7 @@ def test_prepare_merged_data_reload_keeps_all_options_aligned(
         met_model=["met-mhd"],
         max_level=[20],
     )
-    assert set(merged.fp_all) == {"MHD", ".species", ".split_by_sectors", ".units"}
+    assert set(merged.fp_all) == {"MHD", ".split_by_sectors"}
 
 
 def test_site_options_direct_construction_enforces_immutable_alignment() -> None:
@@ -6205,14 +6159,15 @@ def test_apply_filters_drops_complete_site_option_record() -> None:
     assert retained == site_options.select_indices([0, 2])
 
 
-def test_filtering_prunes_scales_with_empty_sites() -> None:
-    """Reload filtering prunes calibration provenance for an empty site."""
+def test_filtering_preserves_shared_merged_data_when_dropping_sites() -> None:
+    """Filtering keeps active shared inputs while removing an empty site."""
+    flux = object()
     merged = prep_module.RhimeMergedData(
         fp_all={
             "TAC": _site_dataset([]),
             "MHD": _site_dataset([3.0]),
-            ".scales": {"TAC": "tac-scale", "MHD": "mhd-scale"},
-            ".units": 1e-9,
+            ".flux": flux,
+            ".split_by_sectors": False,
         },
         site_options=_site_options(["TAC", "MHD"], averaging_period=["1H", "1H"]),
     )
@@ -6220,8 +6175,8 @@ def test_filtering_prunes_scales_with_empty_sites() -> None:
     filtered = prep_module._filter_merged_inversion_data(merged=merged, filters=None)
 
     assert filtered.sites == ("MHD",)
-    assert filtered.fp_all[".scales"] == {"MHD": "mhd-scale"}
-    assert filtered.fp_all[".units"] == pytest.approx(1e-9)
+    assert filtered.fp_all[".flux"] is flux
+    assert filtered.fp_all[".split_by_sectors"] is False
 
 
 @pytest.mark.parametrize(
@@ -8202,8 +8157,10 @@ def test_paris_output_processes_modern_output(europe_country_file: Path) -> None
     """Real PARIS postprocessing accepts modern output directly."""
     from openghg_inversions.postprocessing.make_paris_outputs import make_paris_outputs
 
+    inv_out = _modern_postprocessing_inv_out(europe_country_file)
+    inv_out.model_metadata["domain"] = "EUROPE-6km"
     flux_outputs, conc_outputs = make_paris_outputs(
-        _modern_postprocessing_inv_out(europe_country_file),
+        inv_out,
         country_file=europe_country_file,
         obs_avg_period="1h",
         domain="europe",
@@ -8218,6 +8175,9 @@ def test_paris_output_processes_modern_output(europe_country_file: Path) -> None
         assert conc_outputs[name].dtype == np.dtype("float32")
     for name in ("flux_total_posterior", "country_flux_total_posterior"):
         assert flux_outputs[name].dtype == np.dtype("float32")
+    for output in (conc_outputs, flux_outputs):
+        assert output.attrs["species"] == "ch4"
+        assert output.attrs["domain"] == "EUROPE-6km"
 
 
 def test_paris_concentration_without_column_prior_factors_leaves_bc_unchanged(
@@ -8489,10 +8449,15 @@ def test_run_hbmcmc_chain_selection_does_not_truncate_archived_trace(monkeypatch
 def test_standard_paris_output_uses_modern_postprocessing_without_legacy_adapter(monkeypatch) -> None:
     """RHIME PARIS postprocessing consumes modern output without legacy adapters."""
     model_spec, output_spec, run_spec = _minimal_output_specs(output_format="paris")
+    site_metadata = _prepared_site_metadata().assign(
+        transport_model=("site", ["FLEXPART"]),
+        transport_model_version=("site", [""]),
+        met_model=("site", ["ECMWF IFS HRES"]),
+    )
     prepared = RhimePreparedInputs(
         inv_inputs=_minimal_output_inv_inputs(),
         basis_functions=_fake_basis_functions(),
-        site_metadata=_prepared_site_metadata(),
+        site_metadata=site_metadata,
     )
     captured: dict[str, Any] = {}
 
@@ -8527,10 +8492,54 @@ def test_standard_paris_output_uses_modern_postprocessing_without_legacy_adapter
     assert captured["country_file"] == "countries.json"
     assert captured["domain"] == "EUROPE"
     assert captured["obs_avg_period"] == "1h"
+    assert bundle.inv_out.model_metadata["footprint_provenance"]["TAC"] == {
+        "transport_model": "FLEXPART",
+        "transport_model_version": "",
+        "met_model": "ECMWF IFS HRES",
+    }
     assert bundle.output_metadata["inversion_output_contract"] == "modern"
     assert bundle.output_metadata["postprocessing_input_contract"] == "modern_inversion_output"
     assert "paris_flux" in bundle.outputs
     assert "paris_concentration" in bundle.outputs
+
+
+def test_standard_latest_paris_output_writes_index_as_unlimited_dimension(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The latest concentration schema stores time on its index dimension."""
+    model_spec, _, run_spec = _minimal_output_specs(output_format="paris")
+    run_spec = replace(
+        run_spec,
+        output=replace(
+            run_spec.output,
+            output_path=str(tmp_path),
+            paris_postprocessing_kwargs={"template_version": "latest"},
+        ),
+    )
+    prepared = RhimePreparedInputs(
+        inv_inputs=_minimal_output_inv_inputs(),
+        basis_functions=_fake_basis_functions(),
+        site_metadata=_prepared_site_metadata(),
+    )
+    concentration = xr.Dataset(
+        {"mf_observed": ("index", [1.0])},
+        coords={"time": ("index", pd.to_datetime(["2019-01-01"]))},
+    )
+    flux = xr.Dataset({"flux_total_prior": ("time", [1.0])}, coords={"time": ["2019-01-01"]})
+    monkeypatch.setattr(
+        "openghg_inversions.postprocessing.make_paris_outputs.make_paris_outputs",
+        lambda *args, **kwargs: (flux, concentration),
+    )
+
+    bundle = _result_for_outputs(run_spec, _minimal_output_idata(), model_spec=model_spec)
+    rhime_outputs.make_standard_rhime_outputs(result=bundle, prepared=prepared)
+
+    with xr.open_dataset(bundle.output_metadata["paris_concentration_path"]) as saved_concentration:
+        assert saved_concentration.encoding["unlimited_dims"] == {"index"}
+        assert saved_concentration.time.dims == ("index",)
+    with xr.open_dataset(bundle.output_metadata["paris_flux_path"]) as saved_flux:
+        assert saved_flux.encoding["unlimited_dims"] == {"time"}
 
 
 @pytest.mark.rhime_contract

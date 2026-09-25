@@ -399,7 +399,6 @@ def make_standard_rhime_result(
     model_builder: RhimeModelBuilder | None = None,
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
     likelihood_kwargs: Mapping[str, Any] | None = None,
-    _compatibility_likelihood_provenance: Mapping[str, Any] | None = None,
 ) -> RhimeResult:
     """Construct a sampled standard result before output side effects.
 
@@ -413,8 +412,6 @@ def make_standard_rhime_result(
         model_builder: Optional complete-model callable used for provenance.
         likelihood_builder: Optional likelihood callable used for provenance.
         likelihood_kwargs: Serializable options owned by the likelihood.
-        _compatibility_likelihood_provenance: Pre-resolved private compatibility provenance.
-
     Returns:
         Standard-run result ready for requested output construction.
     """
@@ -443,8 +440,6 @@ def make_standard_rhime_result(
         )
     if likelihood_kwargs is not None:
         result.output_metadata["likelihood_kwargs"] = likelihood_kwargs
-    if _compatibility_likelihood_provenance is not None:
-        result.output_metadata.update(dict(_compatibility_likelihood_provenance))
     return result
 
 
@@ -455,7 +450,6 @@ def run_rhime(
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
     likelihood_kwargs: Mapping[str, Any] | None = None,
     preserve_legacy_likelihood: bool = False,
-    _compatibility_likelihood_provenance: Mapping[str, Any] | None = None,
     _compatibility_unused_sigma_settings: PollutionEventSettings | None = None,
     _compatibility_minimum_error_floor: bool = False,
     compatibility_output_chain: int | None = None,
@@ -484,8 +478,6 @@ def run_rhime(
             scientific arrays are passed explicitly by the recipe.
         preserve_legacy_likelihood: Private ``run_hbmcmc`` compatibility
             switch. Ordinary RHIME callers should leave it false.
-        _compatibility_likelihood_provenance: Private ``run_hbmcmc`` record of
-            the historical additive callback spelling and options.
         _compatibility_unused_sigma_settings: Private ``run_hbmcmc`` settings
             for its historical disconnected sigma variable.
         _compatibility_minimum_error_floor: Private ``run_hbmcmc`` switch for
@@ -514,8 +506,6 @@ def run_rhime(
     """
     if likelihood_kwargs and likelihood_builder is None:
         raise ValueError("Non-empty `likelihood_kwargs` require an active `likelihood_builder`.")
-    if _compatibility_likelihood_provenance is not None and likelihood_builder is not None:
-        raise ValueError("Compatibility likelihood provenance cannot accompany a custom likelihood builder.")
     params = (
         params_from_config(config_file, extra_kwargs=kwargs, normalise=False)
         if config_file is not None
@@ -595,7 +585,6 @@ def run_rhime(
         build_and_sample_seconds=timer_seconds(build_and_sample_start),
         likelihood_builder=likelihood_builder,
         likelihood_kwargs=likelihood_kwargs,
-        _compatibility_likelihood_provenance=_compatibility_likelihood_provenance,
     )
     output_start = timer_start()
     if compatibility_output_chain is None:

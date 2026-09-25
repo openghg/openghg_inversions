@@ -1,0 +1,6 @@
+openghg\_inversions.models.site\_sigma
+======================================
+
+.. automodule:: openghg_inversions.models.site_sigma
+   :members:
+   :show-inheritance:

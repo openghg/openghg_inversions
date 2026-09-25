@@ -16,7 +16,6 @@ author = 'Eric Saboya and Brendan Murphy'
 extensions = [
     "sphinx.ext.napoleon",
     "sphinx.ext.autodoc",
-    "sphinx.ext.autodoc.typehints",
     "sphinx.ext.intersphinx",
     "sphinx.ext.autosummary",
     "sphinx.ext.autosectionlabel",
@@ -53,6 +52,11 @@ napoleon_use_rtype = True
 
 # Mock heavy or optional imports to prevent autodoc import failures
 autodoc_mock_imports = ["cartopy"]
+autodoc_member_order = "bysource"
+autodoc_typehints = "description"
+autodoc_typehints_description_target = "documented_params"
+add_module_names = False
+python_maximum_signature_line_length = 88
 
 # Optionally, ignore missing references for certain types
 nitpicky = False  # TODO: set to True once docs working

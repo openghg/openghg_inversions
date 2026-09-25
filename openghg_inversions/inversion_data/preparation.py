@@ -858,15 +858,9 @@ def _drop_sites_missing_from_loaded_data(
 
 
 def _select_fp_all_sites(fp_all: dict, sites: Sequence[str]) -> dict:
-    """Keep requested sites and prune site-keyed calibration scales."""
+    """Keep requested sites and shared entries."""
     site_names = set(sites)
-    selected = {key: value for key, value in fp_all.items() if key.startswith(".") or key in site_names}
-
-    scales = selected.get(".scales")
-    if isinstance(scales, Mapping):
-        selected[".scales"] = {site: scales[site] for site in sites if site in scales}
-
-    return selected
+    return {key: value for key, value in fp_all.items() if key.startswith(".") or key in site_names}
 
 
 def _make_inv_inputs(

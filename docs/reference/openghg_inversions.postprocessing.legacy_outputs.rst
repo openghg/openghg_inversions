@@ -1,0 +1,6 @@
+openghg\_inversions.postprocessing.legacy\_outputs
+==================================================
+
+.. automodule:: openghg_inversions.postprocessing.legacy_outputs
+   :members:
+   :show-inheritance:
