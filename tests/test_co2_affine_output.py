@@ -199,10 +199,11 @@ def test_supplied_restriction_import_keeps_exact_non_bucket_prolongation(tmp_pat
     reconstruction_path = tmp_path / "explicit.nc"
     prepared.save(prepared_path)
     identity = prepared_inputs_content_id(prepared_path)
+    supplied_flux = prepared.basis_functions.flux.copy(data=[[-4.0, 6.0]])
     artifact = import_explicit_affine_flux_map(
         prepared,
         native_mean,
-        prepared.basis_functions.flux,
+        supplied_flux,
         prolongation,
         prepared_inputs_id=identity,
         reference_state=prepared.inv_inputs["alpha_prior_mean"],
@@ -222,7 +223,7 @@ def test_supplied_restriction_import_keeps_exact_non_bucket_prolongation(tmp_pat
     )
     expected = np.asarray([[1.5, 0.75]])
     np.testing.assert_allclose(bound.state_to_native(state), expected)
-    np.testing.assert_allclose(bound.state_to_flux(state), expected * prepared.basis_functions.flux.values)
+    np.testing.assert_allclose(bound.state_to_flux(state), expected * supplied_flux.values)
     assert not np.array_equal(prolongation.values.reshape(2, 2), np.eye(2))
 
 
@@ -332,4 +333,26 @@ def test_saved_bucket_assignments_must_match_prepared_basis(tmp_path, multisourc
     save(replace(artifact, affine_map=altered_map), reconstruction_path)
 
     with pytest.raises(ValueError, match="bucket assignments differ"):
+        load_and_bind_affine_flux_map(reconstruction_path, prepared_path)
+
+
+@pytest.mark.parametrize("multisource", [False, True])
+def test_saved_bucket_flux_must_match_prepared_basis(tmp_path, multisource: bool) -> None:
+    """Matching labels and units cannot hide different signed flux values."""
+    prepared, native_mean = _multisource_prepared() if multisource else _prepared()
+    prepared_path = tmp_path / "prepared.nc"
+    reconstruction_path = tmp_path / "affine.nc"
+    prepared.save(prepared_path)
+    identity = prepared_inputs_content_id(prepared_path)
+    artifact = produce_bucket_affine_flux_map(prepared, native_mean, prepared_inputs_id=identity)
+    changed_flux = artifact.affine_map.flux.copy(data=artifact.affine_map.flux.values * 2)
+    changed_map = AffineFluxMap(
+        native_mean,
+        changed_flux,
+        artifact.affine_map.prolongation,
+        prepared.basis_functions.operator.meta.state_dim,
+    )
+    save(replace(artifact, affine_map=changed_map), reconstruction_path)
+
+    with pytest.raises(ValueError, match="bucket flux differs"):
         load_and_bind_affine_flux_map(reconstruction_path, prepared_path)
