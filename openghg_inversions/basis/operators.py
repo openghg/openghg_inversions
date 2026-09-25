@@ -4,8 +4,8 @@ A :class:`BasisOperator` separates bucket geometry from flux weighting and
 native covariance. For one source, :attr:`BasisOperator.basis_matrix` is the
 bucket prolongation ``U_bucket`` with native-grid rows and retained-state
 columns. A gathered multisource matrix is the spatial membership template from
-which :meth:`BasisOperator.native_prolongation` expands a canonical
-source-native ``U_bucket``. Its transpose is not automatically the retained
+which an internal adapter expands a canonical source-native ``U_bucket`` for
+covariance work. Its transpose is not automatically the retained
 restriction ``Pi``.
 
 ``FluxWeightedBasis`` handles flux weighting for sensitivity projection and
@@ -46,6 +46,7 @@ Note:
 from __future__ import annotations
 
 import json
+import warnings
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -61,6 +62,8 @@ from openghg_inversions.array_ops import (
     force_align,
     get_xr_dummies,
     iter_multi_index_level_slices,
+    require_unique_index,
+    same_index,
 )
 from openghg_inversions.basis.layout import (
     BasisStateMetadata,
@@ -135,7 +138,7 @@ class BasisMeta:
 
     The intent is to keep this minimal: we only store what is needed for the
     default implementations of `BasisOperator.sensitivity` and
-    `BasisOperator.interpolate`.
+    `BasisOperator.state_to_native`.
 
     Attributes:
         grid_dims: Dimensions to dot over when reducing a gridded quantity to the
@@ -178,7 +181,7 @@ class BasisOperator(ABC):
     @property
     @abstractmethod
     def basis_matrix(self) -> xr.DataArray:
-        """Return the bucket prolongation ``U_bucket`` from state to grid.
+        """Return the coarse-to-fine map (prolongation) ``U_bucket``.
 
         Its ordered dimensions are the configured grid dimensions followed by
         the state dimension, which may carry a MultiIndex coordinate.
@@ -228,7 +231,7 @@ class BasisOperator(ABC):
                 h = h.transpose(self.meta.state_dim, ...)
         return h
 
-    def native_prolongation(
+    def _native_prolongation(
         self,
         native_layout: xr.DataArray,
         *,
@@ -269,6 +272,36 @@ class BasisOperator(ABC):
             protected_dims={self.meta.state_dim},
         ).rename("prolongation")
 
+    def _reconstruction_state(self, state: xr.DataArray, *, native_dims: tuple[str, ...]) -> xr.DataArray:
+        """Check retained labels and separate independent sample and native axes."""
+        state_dim = self.meta.state_dim
+        expected = require_unique_index(self.basis_matrix, state_dim, name="basis")
+        if not same_index(require_unique_index(state, state_dim, name="state"), expected):
+            raise ValueError(f"state {state_dim!r} labels must exactly match the basis.")
+        occupied = set(self.basis_matrix.dims) | set(self.basis_matrix.coords) | set(state.dims) | set(state.coords)
+        renames = {}
+        for dim in (*state.dims, *state.coords):
+            if dim == state_dim or dim not in native_dims or dim in renames:
+                continue
+            base = dim if dim.startswith("state_") else f"state_{dim}"
+            candidate = base
+            suffix = 2
+            while candidate in occupied:
+                candidate = f"{base}_{suffix}"
+                suffix += 1
+            renames[dim] = candidate
+            occupied.add(candidate)
+        return state.rename(renames)
+
+    def state_to_native(self, state: xr.DataArray) -> xr.DataArray:
+        """Reconstruct linear native scaling ``U_bucket alpha``.
+
+        ``U_bucket`` is the retained-to-native coarse-to-fine map
+        (prolongation). The input is borrowed and Dask data remains lazy.
+        """
+        state = self._reconstruction_state(state, native_dims=self.meta.grid_dims)
+        return xr.dot(self.basis_matrix, state, dim=self.meta.state_dim)
+
     def interpolate(self, state: xr.DataArray, weights: xr.DataArray | None = None) -> xr.DataArray:
         """Interpolates/reconstructs a gridded field from a state vector.
 
@@ -290,6 +323,12 @@ class BasisOperator(ABC):
         Raises:
             ValueError: If `meta.state_dim` is not a dimension of `state`.
         """
+        warnings.warn(
+            "BasisOperator.interpolate is deprecated; use state_to_native and multiply by "
+            "weights explicitly.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         if self.meta.state_dim not in state.dims:
             raise ValueError(f"State dim '{self.meta.state_dim}' missing from state dims {state.dims}")
         mat = self.basis_matrix
@@ -542,9 +581,9 @@ class BucketBasisOperator(BasisOperator):
 
     The inherited :meth:`BasisOperator.sensitivity` method reduces a gridded
     footprint-times-flux array to the retained state, while
-    :meth:`BasisOperator.interpolate` reconstructs a gridded field.
-    :meth:`BasisOperator.native_prolongation` exposes the labelled bucket
-    prolongation for covariance calculations. Use
+    :meth:`BasisOperator.state_to_native` reconstructs a gridded field.
+    An internal adapter expands the labelled bucket map for covariance
+    calculations. Use
     :class:`~openghg_inversions.basis.basis_functions.FluxWeightedBasis` when
     the basis geometry must be paired with a flux field.
 
@@ -801,7 +840,7 @@ class MultiSourceBucketBasisOperator(BasisOperator):
 
     :meth:`sensitivity` aligns a source dimension in the input to the state
     MultiIndex. :meth:`interpolate` likewise accepts optional source-specific
-    weights. :meth:`native_prolongation` expands the gathered spatial template
+    weights. :meth:`_native_prolongation` expands the gathered spatial template
     onto an explicit native source dimension, and :meth:`operator_for_source`
     returns a single-source operator. DataTree serialization preserves source
     order through the stored source coordinate.
@@ -881,6 +920,10 @@ class MultiSourceBucketBasisOperator(BasisOperator):
         for src, bf in self.basis_flat.items():
             # use region_in_source_dim so we can gather it
             mats[src] = get_xr_dummies(bf, cat_dim=self.region_in_source_dim)
+        self._source_matrices = {
+            src: mat.chunk({dim: size for dim, size in (chunks or {}).items() if dim in mat.dims})
+            for src, mat in mats.items()
+        }
 
         # Gather concat over source + region_in_source_dim into state_dim
         # Result has dims (*grid_dims, state_dim) and state_dim is a MultiIndex
@@ -907,7 +950,7 @@ class MultiSourceBucketBasisOperator(BasisOperator):
         """Return the gathered spatial template for multisource ``U_bucket``.
 
         The dimensions are spatial grid by retained state; source identity is
-        carried by the ragged state coordinate. :meth:`native_prolongation`
+        carried by the ragged state coordinate. :meth:`_native_prolongation`
         expands an explicit source-native dimension and zeros cross-source
         columns. This template's transpose is not the compatible retained
         restriction ``Pi``.
@@ -924,7 +967,7 @@ class MultiSourceBucketBasisOperator(BasisOperator):
         """
         return tuple(self.basis_flat)
 
-    def native_prolongation(
+    def _native_prolongation(
         self,
         native_layout: xr.DataArray,
         *,
@@ -1133,7 +1176,7 @@ class MultiSourceBucketBasisOperator(BasisOperator):
             )
             if fillna:
                 fp_native = fp_native.fillna(0.0)
-            prolongation = self.native_prolongation(
+            prolongation = self._native_prolongation(
                 fp_native,
                 native_dims=(native_source_dim, *self.meta.grid_dims),
             )
@@ -1158,6 +1201,32 @@ class MultiSourceBucketBasisOperator(BasisOperator):
                 h = h.transpose(self.meta.state_dim, ...)
         return h
 
+    def state_to_native(self, state: xr.DataArray) -> xr.DataArray:
+        """Reconstruct each source's linear native scaling without summing it.
+
+        The gathered matrix represents a coarse-to-fine map (prolongation).
+        Each source contracts only its own ragged retained-state slice.
+        """
+        state = self._reconstruction_state(
+            state, native_dims=(f"native_{self.source_dim}", *self.meta.grid_dims)
+        )
+        state_sources = np.asarray(self.basis_matrix[self.source_dim].values)
+        pieces = []
+        for source in self.source_labels:
+            positions = np.flatnonzero(state_sources == source)
+            local_matrix = self._source_matrices[source].rename(
+                {self.region_in_source_dim: self.meta.state_dim}
+            )
+            local_state = state.isel({self.meta.state_dim: positions}).reset_index(
+                self.meta.state_dim, drop=True
+            ).assign_coords({self.meta.state_dim: local_matrix[self.meta.state_dim]})
+            pieces.append(xr.dot(local_matrix, local_state, dim=self.meta.state_dim))
+        result = xr.concat(
+            pieces,
+            dim=xr.IndexVariable(f"native_{self.source_dim}", list(self.source_labels)),
+        )
+        return result.transpose(f"native_{self.source_dim}", *self.meta.grid_dims, ...)
+
     def interpolate(self, state: xr.DataArray, weights: xr.DataArray | None = None) -> xr.DataArray:
         """Interpolate/reconstruct a gridded field from a state vector.
 
@@ -1177,6 +1246,12 @@ class MultiSourceBucketBasisOperator(BasisOperator):
         Returns:
             Gridded reconstructed field on `meta.grid_dims`.
         """
+        warnings.warn(
+            "BasisOperator.interpolate is deprecated; use state_to_native and sum "
+            "native_source explicitly for a total field.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         if self.meta.state_dim not in state.dims:
             raise ValueError(
                 f"Expected state_array to have dim '{self.meta.state_dim}', got dims {state.dims}"

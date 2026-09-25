@@ -108,7 +108,7 @@ def test_bucket_and_equivalent_explicit_prolongations_match() -> None:
         coords={"state": operator.basis_matrix.state},
         attrs={"units": "1"},
     )
-    explicit = operator.native_prolongation(
+    explicit = operator._native_prolongation(
         native_mean,
         native_dims=("lat", "lon"),
     ).assign_attrs(units="1")
@@ -170,7 +170,7 @@ def test_multisource_bucket_preserves_native_source_order_and_gathered_state() -
         operator,
         state_dim="state",
     )
-    explicit = operator.native_prolongation(
+    explicit = operator._native_prolongation(
         native_mean,
         native_dims=("native_source", "lat", "lon"),
     ).assign_attrs(units="1")
@@ -277,7 +277,7 @@ def test_bucket_construction_does_not_expand_multisource_prolongation(monkeypatc
     def unexpected_expansion(*args, **kwargs):
         raise AssertionError("native prolongation expanded during construction")
 
-    monkeypatch.setattr(operator, "native_prolongation", unexpected_expansion)
+    monkeypatch.setattr(operator, "_native_prolongation", unexpected_expansion)
     AffineFluxMap(mean, flux, operator, state_dim="state")
 
 

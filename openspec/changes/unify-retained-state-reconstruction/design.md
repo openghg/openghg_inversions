@@ -61,3 +61,59 @@ Inventory in-tree and known downstream direct use. Move in-tree callers to `stat
 2. Profile candidate multisource calculations and record the implementation choice in this design before implementation is accepted.
 3. Migrate in-tree postprocessing to the retained flux and explicit source sum; preserve historical output values and time labels, placing any necessary materialization at a named boundary.
 4. Deprecate `interpolate`, internalize the native-map adapter after checking direct users, and update usage/API docs and release notes. Rollback can retain the compatibility path while restoring individual output callers if a product regression appears.
+
+## Implementation profile and strategy decision (owner-approved addendum, 2026-09-25)
+
+Tasks 1.2–1.3 were completed against a 48 × 64 labelled grid with 24 × 32 grid
+chunks, two chains, 20 draws, and nonlexicographic sources `zeta`, `alpha`,
+`mu`. The ragged case has 7, 13, and 5 regions respectively. Every
+source-preserving candidate was explicitly summed and checked against the
+historical gathered total. `scripts/profile_ope184_reconstruction.py`
+reproduces the calculations; the raw runs and caller inventory are retained in
+`docs/plans/ope184_reconstruction_implementation.md`.
+
+For one source and a shared state with source-resolved flux, all three strategy
+labels use the same direct contraction: neither case needs a source-specific
+state map. These are one warm run per label. Wall time includes graph creation,
+execution, and parity checking. Peak RSS includes imports; comparisons are
+meaningful within this run cohort.
+
+| Case | Strategy | Wall s | Peak RSS MiB | Dask tasks | Largest dense / sparse chunk MiB |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Single | gathered slices | 0.474 | 340.5 | 37 | 0.469 / 0.012 |
+| Single | per-source | 0.545 | 340.7 | 37 | 0.469 / 0.012 |
+| Single | expanded | 0.482 | 340.7 | 37 | 0.469 / 0.012 |
+| Single | legacy total | 0.442 | 344.3 | 37 | 0.469 / 0.012 |
+| Shared state, source flux | gathered slices | 0.508 | 349.2 | 109 | 1.406 / 0.012 |
+| Shared state, source flux | per-source | 0.478 | 351.2 | 109 | 1.406 / 0.012 |
+| Shared state, source flux | expanded | 0.474 | 350.4 | 109 | 1.406 / 0.012 |
+| Shared state, source flux | legacy total | 0.554 | 358.5 | 109 | 1.406 / 0.012 |
+
+Separately timed direct calls took 0.036 s to construct and 0.508 s to execute
+for the single case, and 0.038 s and 0.473 s for the shared case. The ragged
+case below was measured after replacing an initial per-source candidate that
+rebuilt bucket operators during application and computed chunked basis data.
+The corrected candidate retains the per-source matrices already made during
+operator construction. These ragged runs used separate processes in a second
+cohort; their RSS values should not be compared numerically with the table
+above. Wall time is graph plus execution time, while the legacy call executes
+eagerly inside the method.
+
+| Ragged strategy | Graph s | Execute s | Wall s | Peak RSS MiB | Dask tasks | Largest dense / sparse chunk MiB |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Gathered slices | 0.032 | 4.726 | 4.758 | 1748.6 | 197 | 1.406 / 0.035 |
+| Retained per-source matrices | 0.029 | 0.524 | 0.553 | 1690.4 | 193 | 1.406 / 0.012 |
+| Expanded map | 1.335 | 1.397 | 2.732 | 1741.4 | 213 | 1.406 / 0.079 |
+| Legacy total | included in eager call | 0.631 | 0.631 | 1741.5 | 637 | 0.469 / 0.035 |
+
+**Decision:** Use direct contraction for single and shared-state bases, and
+retain per-source matrices for every ragged multisource state regardless of
+provenance. The ragged per-source action is the fastest source-preserving
+candidate in this fixture, avoids a full `(native_source, grid, state)` map,
+and returns a lazy Dask result without executing tasks during application.
+The total-grid consumer sums the known reconstructed source axis at its output
+boundary. In the corrected ragged pass, peak RSS was 51.1 MiB below the
+legacy total despite preserving sources until that boundary; the single and
+shared cases showed no material RSS increase over their legacy totals. Larger
+production grids and draw counts remain a measurement boundary for future
+work, not a runtime strategy switch in this change.
