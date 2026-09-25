@@ -264,7 +264,7 @@ def _add_co2_o2_baseline_components(
             components.append((channel, result, design))
             boundaries.append(result.output)
         if channel in (offset_prior or {}):
-            native_dim = str(sensitivity.dims[0])
+            native_dim = f"{channel}_offset_observation"
             selected = select_gathered_data_array(
                 observations,
                 key=channel,
@@ -272,9 +272,8 @@ def _add_co2_o2_baseline_components(
                 ragged_dim="channel_observation",
                 stack_dim=output_dim,
             ).rename({output_dim: native_dim})
-            selected = selected.drop_vars(
-                [name for name in selected.coords if name not in (native_dim, "site", "time")]
-            )
+            native_coords = {native_dim, "site", "time", *selected.indexes[native_dim].names}
+            selected = selected.drop_vars([name for name in selected.coords if name not in native_coords])
             # Native rows retain site/time metadata from channel preparation.
             frequency, drop_first, per_site = _normalise_offset_args((offset_args or {}).get(channel))
             result = _add_offset_component_result(
