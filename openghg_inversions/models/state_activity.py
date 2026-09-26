@@ -29,6 +29,8 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+from openghg_inversions.array_ops import to_dense
+
 
 #: Strictly boolean scalar, positional mask, or labelled mask.
 ActivityValue = bool | np.ndarray | xr.DataArray
@@ -222,6 +224,7 @@ def detect_zero_sensitivity(
             "zero_sensitivity": (matrix == 0).all(dim=output_dim),
         }
     ).compute()
+    inspection = inspection.map(to_dense)
     if not bool(inspection["all_finite"].item()):
         raise ValueError("Sensitivity must contain only finite values.")
 

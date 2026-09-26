@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 import pymc as pm
 import pytest
+import sparse
 import xarray as xr
 
 from openghg_inversions.basis import project_basis_prior_stdev
@@ -126,6 +127,43 @@ def test_detect_zero_sensitivity_validates_and_retains_state_metadata() -> None:
     np.testing.assert_array_equal(zero_sensitivity, [False, True, False, False])
     assert zero_sensitivity.dims == ("region",)
     np.testing.assert_array_equal(zero_sensitivity["basis_group"], ["inner", "inner", "outer", "inner"])
+
+
+@pytest.mark.parametrize("lazy", [False, True], ids=["sparse", "dask-sparse"])
+def test_sparse_sensitivity_pruning_preserves_payload_and_state_metadata(lazy: bool) -> None:
+    """Inspect sparse designs without densifying their retained matrix payload."""
+    dense = _sensitivity()
+    payload = sparse.COO.from_numpy(dense.to_numpy())
+    if lazy:
+        payload = da.from_array(payload, chunks=(1, 2))
+    sensitivity = dense.copy(data=payload)
+
+    xr.testing.assert_identical(detect_zero_sensitivity(sensitivity), detect_zero_sensitivity(dense))
+    prepared = prepare_linear_sensitivity(sensitivity)
+    expected = prepare_linear_sensitivity(dense)
+    xr.testing.assert_identical(prepared.removed, expected.removed)
+    np.testing.assert_array_equal(prepared.retained_indices, [0, 2, 3])
+    if lazy:
+        assert isinstance(prepared.sensitivity.data, da.Array)
+    assert isinstance(prepared.sensitivity.compute().data, sparse.COO)
+    np.testing.assert_array_equal(prepared.sensitivity.to_numpy(), expected.sensitivity.to_numpy())
+    assert resolve_state_activity(prepared.removed).n_active == 3
+
+
+@pytest.mark.parametrize("lazy", [False, True], ids=["sparse", "dask-sparse"])
+@pytest.mark.parametrize("invalid", [np.nan, np.inf, -np.inf])
+def test_sparse_sensitivity_rejects_nonfinite_values(lazy: bool, invalid: float) -> None:
+    """Reject nonfinite sparse entries with the same validation error as dense data."""
+    dense = _sensitivity()
+    values = dense.to_numpy().copy()
+    values[0, 0] = invalid
+    payload = sparse.COO.from_numpy(values)
+    if lazy:
+        payload = da.from_array(payload, chunks=(1, 2))
+    sensitivity = dense.copy(data=payload)
+
+    with pytest.raises(ValueError, match="Sensitivity must contain only finite values"):
+        prepare_linear_sensitivity(sensitivity)
 
 
 def test_detect_zero_sensitivity_requires_a_two_dimensional_output_design() -> None:
