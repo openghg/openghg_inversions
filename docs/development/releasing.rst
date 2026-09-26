@@ -103,6 +103,29 @@ For an urgent bug affecting the published version:
 #. Run **Publish to PyPI**.
 #. Confirm that the automatic ``main`` to ``devel`` pull request merges.
 
+Promoting an existing devel pull request
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Do not normally retarget a pull request from ``devel`` to ``main``. Its branch
+may contain unreleased ``devel`` history, which would accidentally turn the
+hotfix into a larger release. Instead, treat promotion as creating a sibling
+hotfix:
+
+#. Inspect the original pull request and separate the stable-version fix from
+   unrelated or unreleased work.
+#. Create ``hotfix/X.Y.Z-description`` from current ``main``.
+#. Cherry-pick the minimal commits when they apply cleanly, or reapply the
+   focused diff while preserving attribution.
+#. Ensure the hotfix has a regression test and Towncrier bugfix fragment, then
+   open a new pull request to ``main`` and cross-link the original pull request.
+#. Leave the original pull request open until the released fix is
+   forward-ported. Then close it as redundant or retain only work that is not
+   already on ``devel``.
+
+A future workflow may automate clean same-repository cherry-picks, but conflict
+resolution and deciding whether a change is safe for the stable line require
+maintainer review.
+
 Once ``main`` advances to a new minor version, the older minor is unsupported.
 Do not create a maintenance branch without first changing this policy.
 
