@@ -101,7 +101,10 @@ directory.
   configuration, builds the selected model, draws from its prior predictive,
   and writes ``prior-predictive.nc`` plus a readiness CheckResult.  It never
   runs posterior sampling.  ``--strict`` converts a readiness ``fail`` to a
-  nonzero process exit when a scheduler policy wants that behavior.
+  nonzero process exit when a scheduler policy wants that behavior. The
+  readiness result checks construction and finite values; it does not assess
+  scientific plausibility. Follow :doc:`prior_predictive_checking` to inspect
+  the artifact and then sample the posterior from the same prepared data.
 
 ``sample``
   Loads the prepared artifact, builds the selected model, samples it with the
@@ -150,6 +153,8 @@ Both checks use the schema version 1 understood by ``openghg-run`` and producer
   It reports ``draws`` and ``non_finite_values`` against
   ``max_non_finite_values = 0``.  Construction, input and sampling exceptions
   become a readable ``fail`` result.
+
+.. _staged-convergence-check:
 
 ``sampler-convergence``
   Reports retained chain and draw counts, maximum R-hat and its variable,

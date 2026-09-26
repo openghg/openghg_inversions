@@ -64,6 +64,13 @@ and prior flux. The 50 tuning and 50 retained draws are only an end-to-end
 smoke test. A scientific inversion needs enough chains and draws for stable
 diagnostics and must not disable convergence checks.
 
+Before committing time to posterior sampling, use the staged
+:doc:`prior-predictive checking tutorial <prior_predictive_checking>` to inspect
+what these priors and the observation model imply on the concentration scale.
+That workflow prepares the same scientific inputs once, checks prior
+predictions, and then passes the authenticated prepared artifact to posterior
+sampling.
+
 Run it
 ------
 
