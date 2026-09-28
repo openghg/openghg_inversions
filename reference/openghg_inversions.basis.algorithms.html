@@ -1198,9 +1198,10 @@ cell unmapped. Selected null values are always unmapped.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Object-valued <code class="docutils literal notranslate"><span class="pre">DataArray</span></code> with the same dimensions and coordinates as
-<code class="docutils literal notranslate"><span class="pre">inner_mask</span></code>. Mapped cells contain <code class="docutils literal notranslate"><span class="pre">(&quot;inner&quot;,</span> <span class="pre">value)</span></code> or
-<code class="docutils literal notranslate"><span class="pre">(&quot;outer&quot;,</span> <span class="pre">value)</span></code> tuples. Unmapped cells contain <code class="docutils literal notranslate"><span class="pre">NaN</span></code>.</p>
+<dd class="field-even"><p>Object-valued <code class="docutils literal notranslate"><span class="pre">DataArray</span></code> on the <code class="docutils literal notranslate"><span class="pre">inner_mask</span></code> grid, retaining
+nonconflicting coordinate metadata from all inputs. Mapped cells
+contain <code class="docutils literal notranslate"><span class="pre">(&quot;inner&quot;,</span> <span class="pre">value)</span></code> or <code class="docutils literal notranslate"><span class="pre">(&quot;outer&quot;,</span> <span class="pre">value)</span></code> tuples. Unmapped
+cells contain <code class="docutils literal notranslate"><span class="pre">NaN</span></code>.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -1304,11 +1305,11 @@ unmapped. Null values in any layer are always unmapped.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Object-valued <code class="docutils literal notranslate"><span class="pre">DataArray</span></code> with the same dimensions and coordinates as
-the first layer. Mapped cells contain tuples of layer values, while
-cells that are null or explicitly unmapped in any layer contain
-<code class="docutils literal notranslate"><span class="pre">NaN</span></code>. Its <code class="docutils literal notranslate"><span class="pre">region_class_layers</span></code> attribute records the string form
-of each layer name in mapping insertion order.</p>
+<dd class="field-even"><p>Object-valued <code class="docutils literal notranslate"><span class="pre">DataArray</span></code> on the first layer’s grid, retaining
+nonconflicting coordinate metadata from all layers. Mapped cells
+contain tuples of layer values; null or explicitly unmapped cells
+contain <code class="docutils literal notranslate"><span class="pre">NaN</span></code>. Its <code class="docutils literal notranslate"><span class="pre">region_class_layers</span></code> attribute records layer
+names in mapping insertion order.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -1378,6 +1379,14 @@ retained from both fields.</p>
 <code class="docutils literal notranslate"><span class="pre">openghg.util.align_lat_lon</span></code> instead canonicalizes one field against
 a named OpenGHG domain and does not validate arbitrary curvilinear grids,
 units, or CRS metadata.</p>
+<p>Spatial coordinates may carry units in <code class="docutils literal notranslate"><span class="pre">attrs[&quot;units&quot;]</span></code> or as Pint
+quantities. Pint coordinates are dequantified for comparison, and their
+units are retained as coordinate attributes in the result. Matching
+coordinates must have equal parsed units when both provide them; this
+function does not convert coordinate values between units or regrid.
+Coordinates without angular units receive only storage-precision
+tolerance, so separately rounded latitude/longitude grids must retain
+their unit metadata. Spatial coordinate values are inspected eagerly.</p>
 </dd></dl>
 
 <dl class="py function">
