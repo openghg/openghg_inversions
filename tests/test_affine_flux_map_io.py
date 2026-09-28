@@ -200,6 +200,23 @@ def test_rejects_prohibited_payload_coordinates(offending: str) -> None:
         from_datatree(tree)
 
 
+@pytest.mark.parametrize(
+    ("representation", "group"),
+    [
+        ("explicit", "native_mean"),
+        ("explicit", "flux"),
+        ("explicit", "prolongation"),
+        ("bucket", "prolongation"),
+    ],
+)
+@pytest.mark.parametrize("offending", ["Pi", "unrelated"])
+def test_rejects_unrelated_dimension_coordinates(representation: str, group: str, offending: str) -> None:
+    tree = to_datatree(_artifact(representation=representation))
+    tree[group] = xr.DataTree(tree[group].to_dataset().assign_coords({offending: (offending, [1, 2])}))
+    with pytest.raises(ValueError, match=offending):
+        from_datatree(tree)
+
+
 def test_rejects_missing_corrupt_and_unsupported_payload_before_map_construction() -> None:
     tree = to_datatree(_artifact())
     del tree["flux"]
@@ -231,6 +248,21 @@ def test_rejects_non_json_provenance_and_missing_identity() -> None:
         AffineFluxMapArtifact(value, "id", {"bad": np.nan}, {})
     with pytest.raises(ValueError, match="reporting_sector_mapping"):
         AffineFluxMapArtifact(value, "id", {}, {"nested": {"reporting_sector_mapping": {}}})
+
+
+def test_rejects_prohibited_provenance_added_after_construction(tmp_path: Path) -> None:
+    original = _artifact()
+    artifact = AffineFluxMapArtifact(
+        original.affine_map,
+        original.prepared_inputs_id,
+        original.projection_provenance,
+        {"nested": {}},
+    )
+    artifact.reconstruction_provenance["nested"]["Pi"] = [1, 2]
+    path = tmp_path / "invalid.nc"
+    with pytest.raises(ValueError, match="Pi"):
+        save(artifact, path)
+    assert not path.exists()
 
 
 def test_serialization_prunes_ancillary_attrs_without_mutating_inputs() -> None:

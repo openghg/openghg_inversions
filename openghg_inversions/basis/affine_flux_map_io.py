@@ -128,6 +128,10 @@ def _operator_dataset_for_storage(dataset: xr.Dataset) -> xr.Dataset:
 
 def to_datatree(artifact: AffineFluxMapArtifact) -> xr.DataTree:
     """Encode one map without composing flux and prolongation."""
+    encoded_provenance = {
+        name: json.dumps(dict(_json_mapping(getattr(artifact, name), name)), sort_keys=True)
+        for name in ("projection_provenance", "reconstruction_provenance", "source_provenance")
+    }
     value = artifact.affine_map
     if value.representation == "bucket":
         prolongation = value.prolongation.to_datatree().map_over_datasets(  # type: ignore[union-attr]
@@ -151,9 +155,7 @@ def to_datatree(artifact: AffineFluxMapArtifact) -> xr.DataTree:
         native_dims=json.dumps(value.native_dims),
         uncertainty_scope=value.uncertainty_scope,
         prepared_inputs_id=artifact.prepared_inputs_id,
-        projection_provenance=json.dumps(dict(artifact.projection_provenance), sort_keys=True),
-        reconstruction_provenance=json.dumps(dict(artifact.reconstruction_provenance), sort_keys=True),
-        source_provenance=json.dumps(dict(artifact.source_provenance), sort_keys=True),
+        **encoded_provenance,
     )
     return tree
 
@@ -181,6 +183,10 @@ def _validate_array_node(node: xr.DataTree, name: str) -> xr.DataArray:
 
 def _validate_coordinates(dataset: xr.Dataset, context: str) -> None:
     """Reject coordinate-shaped extra payloads, including prohibited fields."""
+    used_dims = {dim for variable in dataset.data_vars.values() for dim in variable.dims}
+    extra_dims = set(dataset.dims) - used_dims
+    if extra_dims:
+        raise ValueError(f"Unexpected {context} dimension {min(extra_dims, key=repr)!r}.")
     extra = set(dataset.coords) - set(dataset.dims)
     if MULTIINDEX_DIMS_ATTR in dataset.attrs:
         try:
