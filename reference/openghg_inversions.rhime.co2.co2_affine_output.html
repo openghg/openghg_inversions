@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>openghg_inversions.source_covariance &#8212; openghg_inversions  documentation</title>
+    <title>openghg_inversions.rhime.co2.co2_affine_output &#8212; openghg_inversions  documentation</title>
   
   
   
@@ -47,12 +47,12 @@
     <script src="../_static/thebelab-helper.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
-    <script>DOCUMENTATION_OPTIONS.pagename = 'reference/openghg_inversions.source_covariance';</script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'reference/openghg_inversions.rhime.co2.co2_affine_output';</script>
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="openghg_inversions.utils" href="openghg_inversions.utils.html" />
-    <link rel="prev" title="openghg_inversions.sigma" href="openghg_inversions.sigma.html" />
+    <link rel="next" title="openghg_inversions.rhime.co2.co2_cached_sigma_model" href="openghg_inversions.rhime.co2.co2_cached_sigma_model.html" />
+    <link rel="prev" title="openghg_inversions.rhime.co2" href="openghg_inversions.rhime.co2.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="" />
@@ -378,9 +378,9 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.utils.html">openghg_inversions.postprocessing.utils</a></li>
 </ul>
 </details></li>
-<li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.rhime.html">openghg_inversions.rhime</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l3 has-children"><a class="reference internal" href="openghg_inversions.rhime.co2.html">openghg_inversions.rhime.co2</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_affine_output.html">openghg_inversions.rhime.co2.co2_affine_output</a></li>
+<li class="toctree-l2 current active has-children"><a class="reference internal" href="openghg_inversions.rhime.html">openghg_inversions.rhime</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
+<li class="toctree-l3 current active has-children"><a class="reference internal" href="openghg_inversions.rhime.co2.html">openghg_inversions.rhime.co2</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
+<li class="toctree-l4 current active"><a class="current reference internal" href="#">openghg_inversions.rhime.co2.co2_affine_output</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_cached_sigma_model.html">openghg_inversions.rhime.co2.co2_cached_sigma_model</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_cached_sigma_runner.html">openghg_inversions.rhime.co2.co2_cached_sigma_runner</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_model.html">openghg_inversions.rhime.co2.co2_model</a></li>
@@ -425,7 +425,7 @@
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.observation_error.html">openghg_inversions.observation_error</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.serialization.html">openghg_inversions.serialization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.sigma.html">openghg_inversions.sigma</a></li>
-<li class="toctree-l2 current active"><a class="current reference internal" href="#">openghg_inversions.source_covariance</a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.source_covariance.html">openghg_inversions.source_covariance</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.utils.html">openghg_inversions.utils</a></li>
 </ul>
 </details></li>
@@ -475,7 +475,13 @@
     
     <li class="breadcrumb-item"><a href="openghg_inversions.html" class="nav-link">openghg_inversions</a></li>
     
-    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">openghg_inversions.source_covariance</span></li>
+    
+    <li class="breadcrumb-item"><a href="openghg_inversions.rhime.html" class="nav-link">openghg_inversions.rhime</a></li>
+    
+    
+    <li class="breadcrumb-item"><a href="openghg_inversions.rhime.co2.html" class="nav-link">openghg_inversions.rhime.co2</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">openghg_inversions.rhime.co2.co2_affine_output</span></li>
   </ul>
 </nav>
 </div>
@@ -492,193 +498,117 @@
 <div id="searchbox"></div>
                 <article class="bd-article">
                   
-  <section id="module-openghg_inversions.source_covariance">
-<span id="openghg-inversions-source-covariance"></span><h1>openghg_inversions.source_covariance<a class="headerlink" href="#module-openghg_inversions.source_covariance" title="Link to this heading">#</a></h1>
-<p>Compose labelled native covariance actions into independent source blocks.</p>
-<p>The multisource covariance represented here is block diagonal by source. Each
-configured source owns a
-<a class="reference internal" href="openghg_inversions.native_covariance.html#openghg_inversions.native_covariance.SeparableExponentialCovariance" title="openghg_inversions.native_covariance.SeparableExponentialCovariance"><code class="xref py py-class docutils literal notranslate"><span class="pre">SeparableExponentialCovariance</span></code></a>
-on the same labelled spatial grid, while amplitudes, correlation lengths, and
-optional class masks may differ by source. Applying or solving the composite
-action dispatches to each source block independently, preserves all labelled
-right-hand-side dimensions, and never constructs a dense cross-source matrix.</p>
-<p>Source labels are non-empty strings whose insertion order defines the canonical
-block order. Input arrays must carry exactly those string labels in that order;
-values are not coerced between types. The leading native source dimension
-defaults to <code class="docutils literal notranslate"><span class="pre">&quot;native_source&quot;</span></code>. This is intentionally distinct from the
-<code class="docutils literal notranslate"><span class="pre">&quot;source&quot;</span></code> level on OGI’s gathered retained-state MultiIndex because xarray
-cannot represent a dimension and a MultiIndex level with the same name in one
-prolongation array.</p>
-<p><a class="reference internal" href="#openghg_inversions.source_covariance.IndependentSourceCovariance" title="openghg_inversions.source_covariance.IndependentSourceCovariance"><code class="xref py py-class docutils literal notranslate"><span class="pre">IndependentSourceCovariance</span></code></a> can serialize its complete reproducible
-configuration, including typed class labels, to an xarray dataset. Restoration
-validates the schema, source labels, required variables, and spatial coordinate
-metadata before reconstructing the component actions.</p>
-<p>Source dispatch intentionally uses eager per-source <code class="docutils literal notranslate"><span class="pre">sel</span></code>, component
-operator, and <code class="docutils literal notranslate"><span class="pre">concat</span></code> calls. A source-only <code class="docutils literal notranslate"><span class="pre">apply_ufunc</span></code> or source
-chunking is not equivalent: each component consumes the full labelled spatial
-grid and owns an explicit eager NumPy boundary, rather than acting pointwise
-along a source vector.</p>
-<p><code class="docutils literal notranslate"><span class="pre">IndependentSourceCovariance</span></code> is an ordinary slotted, identity-based action.
-It copies the source mapping once and exposes it through a read-only proxy;
-component actions and their borrowed coordinate properties are not copied on
-ordinary access.</p>
+  <section id="module-openghg_inversions.rhime.co2.co2_affine_output">
+<span id="openghg-inversions-rhime-co2-co2-affine-output"></span><h1>openghg_inversions.rhime.co2.co2_affine_output<a class="headerlink" href="#module-openghg_inversions.rhime.co2.co2_affine_output" title="Link to this heading">#</a></h1>
+<p>Bind durable affine flux ingredients to one coherent CO2 preparation artifact.</p>
 <dl class="py class">
-<dt class="sig sig-object py" id="openghg_inversions.source_covariance.IndependentSourceCovariance">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">IndependentSourceCovariance</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">source_covariances</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">source_dim</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'native_source'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.source_covariance.IndependentSourceCovariance" title="Link to this definition">#</a></dt>
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.co2_affine_output.BoundCo2AffineFluxMap">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">BoundCo2AffineFluxMap</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">artifact</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">reference_state</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_affine_output.BoundCo2AffineFluxMap" title="Link to this definition">#</a></dt>
 <dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
-<p>Block-diagonal native covariance over an ordered source mapping.</p>
+<p>Affine reconstruction with the prepared retained mean as its sole reference.</p>
 <dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>source_covariances</strong> (<em>Mapping</em><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference internal" href="openghg_inversions.native_covariance.html#openghg_inversions.native_covariance.SeparableExponentialCovariance" title="openghg_inversions.native_covariance.SeparableExponentialCovariance"><em>SeparableExponentialCovariance</em></a><em>]</em>) – Non-empty insertion-ordered mapping from source
-labels to separable spatial covariance actions on the same grid.</p></li>
-<li><p><strong>source_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Explicit native source dimension. It should not collide
-with a level name on the retained state MultiIndex.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Raises<span class="colon">:</span></dt>
-<dd class="field-even"><ul class="simple">
-<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#TypeError" title="(in Python v3.14)"><strong>TypeError</strong></a> – If a source block is not a
-    <code class="xref py py-class docutils literal notranslate"><span class="pre">SeparableExponentialCovariance</span></code> or the source mapping cannot
-    be copied.</p></li>
-<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If the mapping is empty, source labels or <code class="docutils literal notranslate"><span class="pre">source_dim</span></code>
-    are invalid, or block spatial dimensions or grids differ.</p></li>
-</ul>
-</dd>
 </dl>
-<p class="rubric">Notes</p>
-<p>The source mapping and source-dimension properties are read-only.
-Changed configuration requires explicit reconstruction.</p>
 <dl class="py property">
-<dt class="sig sig-object py" id="openghg_inversions.source_covariance.IndependentSourceCovariance.source_covariances">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">source_covariances</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Mapping" title="(in Python v3.14)"><span class="pre">Mapping</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="openghg_inversions.native_covariance.html#openghg_inversions.native_covariance.SeparableExponentialCovariance" title="openghg_inversions.native_covariance.SeparableExponentialCovariance"><span class="pre">SeparableExponentialCovariance</span></a><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.source_covariance.IndependentSourceCovariance.source_covariances" title="Link to this definition">#</a></dt>
-<dd><p>Return the read-only source-to-covariance mapping.</p>
-</dd></dl>
-
-<dl class="py property">
-<dt class="sig sig-object py" id="openghg_inversions.source_covariance.IndependentSourceCovariance.source_dim">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">source_dim</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><a class="headerlink" href="#openghg_inversions.source_covariance.IndependentSourceCovariance.source_dim" title="Link to this definition">#</a></dt>
-<dd><p>Return the read-only native source dimension name.</p>
-</dd></dl>
-
-<dl class="py property">
-<dt class="sig sig-object py" id="openghg_inversions.source_covariance.IndependentSourceCovariance.source_labels">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">source_labels</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.source_covariance.IndependentSourceCovariance.source_labels" title="Link to this definition">#</a></dt>
-<dd><p>Return configured source labels in canonical insertion order.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Returns<span class="colon">:</span></dt>
-<dd class="field-odd"><p>Source labels defining the block order.</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py property">
-<dt class="sig sig-object py" id="openghg_inversions.source_covariance.IndependentSourceCovariance.native_dims">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">native_dims</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.source_covariance.IndependentSourceCovariance.native_dims" title="Link to this definition">#</a></dt>
-<dd><p>Return the source dimension followed by common spatial dimensions.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Returns<span class="colon">:</span></dt>
-<dd class="field-odd"><p>Native dimensions in vectorisation order.</p>
-</dd>
-</dl>
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.co2_affine_output.BoundCo2AffineFluxMap.affine_map">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">affine_map</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="openghg_inversions.basis.affine_flux_map.html#openghg_inversions.basis.affine_flux_map.AffineFluxMap" title="openghg_inversions.basis.affine_flux_map.AffineFluxMap"><span class="pre">AffineFluxMap</span></a></span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_affine_output.BoundCo2AffineFluxMap.affine_map" title="Link to this definition">#</a></dt>
+<dd><p>Expose the factorized native mean, signed flux, and prolongation.</p>
 </dd></dl>
 
 <dl class="py method">
-<dt class="sig sig-object py" id="openghg_inversions.source_covariance.IndependentSourceCovariance.apply">
-<span class="sig-name descname"><span class="pre">apply</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">rhs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.source_covariance.IndependentSourceCovariance.apply" title="Link to this definition">#</a></dt>
-<dd><p>Apply independent source covariance blocks to labelled RHS arrays.</p>
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.co2_affine_output.BoundCo2AffineFluxMap.state_to_native">
+<span class="sig-name descname"><span class="pre">state_to_native</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_affine_output.BoundCo2AffineFluxMap.state_to_native" title="Link to this definition">#</a></dt>
+<dd><p>Evaluate the retained-state-conditional native scaling mean.</p>
 <dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>rhs</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – Array containing the exact source and spatial native labels;
-all other right-hand-side dimensions are preserved.</p>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Blockwise <code class="docutils literal notranslate"><span class="pre">B</span> <span class="pre">rhs</span></code> in the original dimension order.</p>
-</dd>
-<dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#TypeError" title="(in Python v3.14)"><strong>TypeError</strong></a> – If <code class="docutils literal notranslate"><span class="pre">rhs</span></code> is not an xarray data array.</p></li>
-<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If source or spatial dimensions, coordinates, labels,
-    or numerical values are missing or invalid.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a></p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="openghg_inversions.source_covariance.IndependentSourceCovariance.solve">
-<span class="sig-name descname"><span class="pre">solve</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">rhs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.source_covariance.IndependentSourceCovariance.solve" title="Link to this definition">#</a></dt>
-<dd><p>Solve independent source covariance blocks for labelled RHS arrays.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>rhs</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – Array containing the exact source and spatial native labels;
-all other right-hand-side dimensions are preserved.</p>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Blockwise <code class="docutils literal notranslate"><span class="pre">B^-1</span> <span class="pre">rhs</span></code> in the original dimension order.</p>
-</dd>
-<dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#TypeError" title="(in Python v3.14)"><strong>TypeError</strong></a> – If <code class="docutils literal notranslate"><span class="pre">rhs</span></code> is not an xarray data array.</p></li>
-<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If source or spatial dimensions, coordinates, labels,
-    or numerical values are missing or invalid.</p></li>
-<li><p><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.linalg.LinAlgError.html#numpy.linalg.LinAlgError" title="(in NumPy v2.5)"><strong>numpy.linalg.LinAlgError</strong></a> – If a class-blocked component solve does
-    not converge.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a></p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="openghg_inversions.source_covariance.IndependentSourceCovariance.to_dataset">
-<span class="sig-name descname"><span class="pre">to_dataset</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.source_covariance.IndependentSourceCovariance.to_dataset" title="Link to this definition">#</a></dt>
-<dd><p>Serialize source order and reproducible component configuration.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Returns<span class="colon">:</span></dt>
-<dd class="field-odd"><p>Versioned dataset containing source-specific covariance parameters,
-independent eager copies of the common spatial coordinates, and
-any encoded class labels. The returned dataset may be mutated
-without changing component actions.</p>
-</dd>
-<dt class="field-even">Raises<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#TypeError" title="(in Python v3.14)"><strong>TypeError</strong></a> – If a class label or class-label attribute cannot be
-    represented by the tagged JSON encoding.</p>
-</dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><em>Dataset</em></a></p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a></p>
 </dd>
 </dl>
 </dd></dl>
 
 <dl class="py method">
-<dt class="sig sig-object py" id="openghg_inversions.source_covariance.IndependentSourceCovariance.from_dataset">
-<span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">from_dataset</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dataset</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.source_covariance.IndependentSourceCovariance.from_dataset" title="Link to this definition">#</a></dt>
-<dd><p>Restore source blocks from <a class="reference internal" href="#openghg_inversions.source_covariance.IndependentSourceCovariance.to_dataset" title="openghg_inversions.source_covariance.IndependentSourceCovariance.to_dataset"><code class="xref py py-meth docutils literal notranslate"><span class="pre">to_dataset()</span></code></a> output.</p>
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.co2_affine_output.BoundCo2AffineFluxMap.state_to_flux">
+<span class="sig-name descname"><span class="pre">state_to_flux</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_affine_output.BoundCo2AffineFluxMap.state_to_flux" title="Link to this definition">#</a></dt>
+<dd><p>Evaluate the retained-state-conditional signed flux mean.</p>
 <dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>dataset</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><em>Dataset</em></a>) – Versioned independent-source covariance dataset.</p>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Reconstructed source-block covariance action with class-label
-values, name, and JSON-compatible attributes restored.</p>
-</dd>
-<dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If schema metadata, source or spatial coordinates, or
-    required variables are absent or invalid, or encoded metadata
-    cannot be decoded.</p>
-</dd>
-<dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference internal" href="#openghg_inversions.source_covariance.IndependentSourceCovariance" title="openghg_inversions.source_covariance.IndependentSourceCovariance"><em>IndependentSourceCovariance</em></a></p>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a></p>
 </dd>
 </dl>
 </dd></dl>
 
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.co2_affine_output.import_explicit_affine_flux_map">
+<span class="sig-name descname"><span class="pre">import_explicit_affine_flux_map</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">prepared</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">native_mean</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">flux</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">prolongation</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">prepared_inputs_id</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">projection_provenance</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">reconstruction_provenance</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">source_provenance</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">reference_state</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_affine_output.import_explicit_affine_flux_map" title="Link to this definition">#</a></dt>
+<dd><p>Import exact supplied-restriction U* without constructing its projection.</p>
+<p>An externally supplied reference state is checked against prepared
+<code class="docutils literal notranslate"><span class="pre">alpha_prior_mean</span></code> and then discarded.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="openghg_inversions.basis.affine_flux_map_io.html#openghg_inversions.basis.affine_flux_map_io.AffineFluxMapArtifact" title="openghg_inversions.basis.affine_flux_map_io.AffineFluxMapArtifact"><em>AffineFluxMapArtifact</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.co2_affine_output.load_and_bind_affine_flux_map">
+<span class="sig-name descname"><span class="pre">load_and_bind_affine_flux_map</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">reconstruction_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prepared_inputs_path</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_affine_output.load_and_bind_affine_flux_map" title="Link to this definition">#</a></dt>
+<dd><p>Load both saved artifacts and verify the prepared artifact’s content ID.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#openghg_inversions.rhime.co2.co2_affine_output.BoundCo2AffineFluxMap" title="openghg_inversions.rhime.co2.co2_affine_output.BoundCo2AffineFluxMap"><em>BoundCo2AffineFluxMap</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.co2_affine_output.prepared_inputs_content_id">
+<span class="sig-name descname"><span class="pre">prepared_inputs_content_id</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_affine_output.prepared_inputs_content_id" title="Link to this definition">#</a></dt>
+<dd><p>Hash the exact saved prepared artifact, including all Zarr store files.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)">str</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.co2_affine_output.produce_bucket_affine_flux_map">
+<span class="sig-name descname"><span class="pre">produce_bucket_affine_flux_map</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">prepared</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">native_mean</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">prepared_inputs_id</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">projection_provenance</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">reconstruction_provenance</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">source_provenance</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_affine_output.produce_bucket_affine_flux_map" title="Link to this definition">#</a></dt>
+<dd><p>Reuse the prepared bucket operator and signed flux without flattening FU*.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="openghg_inversions.basis.affine_flux_map_io.html#openghg_inversions.basis.affine_flux_map_io.AffineFluxMapArtifact" title="openghg_inversions.basis.affine_flux_map_io.AffineFluxMapArtifact"><em>AffineFluxMapArtifact</em></a></p>
+</dd>
+</dl>
 </dd></dl>
 
 </section>
@@ -694,20 +624,20 @@ values, name, and JSON-compatible attributes restored.</p>
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="openghg_inversions.sigma.html"
+       href="openghg_inversions.rhime.co2.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">openghg_inversions.sigma</p>
+        <p class="prev-next-title">openghg_inversions.rhime.co2</p>
       </div>
     </a>
     <a class="right-next"
-       href="openghg_inversions.utils.html"
+       href="openghg_inversions.rhime.co2.co2_cached_sigma_model.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">openghg_inversions.utils</p>
+        <p class="prev-next-title">openghg_inversions.rhime.co2.co2_cached_sigma_model</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -730,24 +660,23 @@ values, name, and JSON-compatible attributes restored.</p>
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.source_covariance.IndependentSourceCovariance"><code class="docutils literal notranslate"><span class="pre">IndependentSourceCovariance</span></code></a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.source_covariance.IndependentSourceCovariance.source_covariances"><code class="docutils literal notranslate"><span class="pre">IndependentSourceCovariance.source_covariances</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.source_covariance.IndependentSourceCovariance.source_dim"><code class="docutils literal notranslate"><span class="pre">IndependentSourceCovariance.source_dim</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.source_covariance.IndependentSourceCovariance.source_labels"><code class="docutils literal notranslate"><span class="pre">IndependentSourceCovariance.source_labels</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.source_covariance.IndependentSourceCovariance.native_dims"><code class="docutils literal notranslate"><span class="pre">IndependentSourceCovariance.native_dims</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.source_covariance.IndependentSourceCovariance.apply"><code class="docutils literal notranslate"><span class="pre">IndependentSourceCovariance.apply()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.source_covariance.IndependentSourceCovariance.solve"><code class="docutils literal notranslate"><span class="pre">IndependentSourceCovariance.solve()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.source_covariance.IndependentSourceCovariance.to_dataset"><code class="docutils literal notranslate"><span class="pre">IndependentSourceCovariance.to_dataset()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.source_covariance.IndependentSourceCovariance.from_dataset"><code class="docutils literal notranslate"><span class="pre">IndependentSourceCovariance.from_dataset()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_affine_output.BoundCo2AffineFluxMap"><code class="docutils literal notranslate"><span class="pre">BoundCo2AffineFluxMap</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_affine_output.BoundCo2AffineFluxMap.affine_map"><code class="docutils literal notranslate"><span class="pre">BoundCo2AffineFluxMap.affine_map</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_affine_output.BoundCo2AffineFluxMap.state_to_native"><code class="docutils literal notranslate"><span class="pre">BoundCo2AffineFluxMap.state_to_native()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_affine_output.BoundCo2AffineFluxMap.state_to_flux"><code class="docutils literal notranslate"><span class="pre">BoundCo2AffineFluxMap.state_to_flux()</span></code></a></li>
 </ul>
 </li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_affine_output.import_explicit_affine_flux_map"><code class="docutils literal notranslate"><span class="pre">import_explicit_affine_flux_map()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_affine_output.load_and_bind_affine_flux_map"><code class="docutils literal notranslate"><span class="pre">load_and_bind_affine_flux_map()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_affine_output.prepared_inputs_content_id"><code class="docutils literal notranslate"><span class="pre">prepared_inputs_content_id()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_affine_output.produce_bucket_affine_flux_map"><code class="docutils literal notranslate"><span class="pre">produce_bucket_affine_flux_map()</span></code></a></li>
 </ul>
   </nav></div>
 
   <div class="sidebar-secondary-item">
 
   <div class="tocsection sourcelink">
-    <a href="../_sources/reference/openghg_inversions.source_covariance.rst.txt">
+    <a href="../_sources/reference/openghg_inversions.rhime.co2.co2_affine_output.rst.txt">
       <i class="fa-solid fa-file-lines"></i> Show Source
     </a>
   </div>

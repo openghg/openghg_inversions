@@ -454,10 +454,72 @@ not execute or persist that graph.</p>
 <code class="docutils literal notranslate"><span class="pre">retained_state_conditional</span></code>.  It is the conditional mean given the retained
 state, not complete observation-conditioned native-grid inference.  In
 particular, this value does not add unresolved variance or residual draws.</p>
-<p>Persistence and binding to coherent-CO2 prepared inputs are separate staged
-artifact concerns.  Country and other aggregate consumers should contract
-their functional with <span class="math notranslate nohighlight">\(F\)</span> and <span class="math notranslate nohighlight">\(U_*\)</span> before applying posterior
-samples rather than first constructing native-grid values for every draw.</p>
+<section id="persist-and-bind-coherent-co2-reconstruction">
+<h2>Persist and bind coherent-CO2 reconstruction<a class="headerlink" href="#persist-and-bind-coherent-co2-reconstruction" title="Link to this heading">#</a></h2>
+<p>The versioned affine artifact stores <span class="math notranslate nohighlight">\(m\)</span>, signed <span class="math notranslate nohighlight">\(F\)</span>, and one tagged
+bucket or explicit <span class="math notranslate nohighlight">\(U_*\)</span> representation. It preserves native and retained
+coordinates (including MultiIndexes), units, the intrinsic source labels and
+their order, <code class="docutils literal notranslate"><span class="pre">retained_state_conditional</span></code> scope, prepared-input content
+identity, and JSON-safe projection, reconstruction, and source provenance.
+It does not store a second reference state or a precomposed <span class="math notranslate nohighlight">\(FU_*\)</span>.</p>
+<p>Save the prepared inputs first. The saved file or Zarr store supplies the
+content identity used by the affine artifact:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.basis</span><span class="w"> </span><span class="kn">import</span> <span class="n">save_affine_flux_map</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.co2</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">load_and_bind_affine_flux_map</span><span class="p">,</span>
+    <span class="n">prepared_inputs_content_id</span><span class="p">,</span>
+    <span class="n">produce_bucket_affine_flux_map</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">prepared</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">prepared_path</span><span class="p">)</span>
+<span class="n">artifact</span> <span class="o">=</span> <span class="n">produce_bucket_affine_flux_map</span><span class="p">(</span>
+    <span class="n">prepared</span><span class="p">,</span>
+    <span class="n">native_mean</span><span class="p">,</span>
+    <span class="n">prepared_inputs_id</span><span class="o">=</span><span class="n">prepared_inputs_content_id</span><span class="p">(</span><span class="n">prepared_path</span><span class="p">),</span>
+<span class="p">)</span>
+<span class="n">save_affine_flux_map</span><span class="p">(</span><span class="n">artifact</span><span class="p">,</span> <span class="n">reconstruction_path</span><span class="p">)</span>  <span class="c1"># .nc or .zarr</span>
+<span class="n">bound</span> <span class="o">=</span> <span class="n">load_and_bind_affine_flux_map</span><span class="p">(</span><span class="n">reconstruction_path</span><span class="p">,</span> <span class="n">prepared_path</span><span class="p">)</span>
+<span class="n">native_draws</span> <span class="o">=</span> <span class="n">bound</span><span class="o">.</span><span class="n">state_to_native</span><span class="p">(</span><span class="n">alpha_draws</span><span class="p">)</span>
+<span class="n">flux_draws</span> <span class="o">=</span> <span class="n">bound</span><span class="o">.</span><span class="n">state_to_flux</span><span class="p">(</span><span class="n">alpha_draws</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Here <code class="docutils literal notranslate"><span class="pre">native_mean</span></code> is the labelled native scaling mean retained while
+coherent preparation has it, and <code class="docutils literal notranslate"><span class="pre">alpha_draws</span></code> carries the exact prepared
+retained-state labels. The bound operations take their authoritative
+<span class="math notranslate nohighlight">\(\alpha_{ref}\)</span> from <code class="docutils literal notranslate"><span class="pre">prepared.inv_inputs['alpha_prior_mean']</span></code>. Loading
+rejects a changed prepared artifact, incompatible labels or units, or a
+different declared projection strategy before applying draws. The path-based
+loader computes identity from the saved prepared artifact.</p>
+<p>For an externally calculated supplied restriction, pass exact labelled
+<code class="docutils literal notranslate"><span class="pre">native_mean</span></code>, signed <code class="docutils literal notranslate"><span class="pre">flux</span></code>, and explicit <code class="docutils literal notranslate"><span class="pre">prolongation</span></code> to
+<code class="docutils literal notranslate"><span class="pre">import_explicit_affine_flux_map</span></code>. If the incoming bundle has a reference
+state, pass it as <code class="docutils literal notranslate"><span class="pre">reference_state</span></code>; import checks exact agreement with the
+prepared mean and discards the duplicate. This path accepts <span class="math notranslate nohighlight">\(U_*\)</span> that
+differs from the bucket operator and does not construct the restriction
+<span class="math notranslate nohighlight">\(\Pi\)</span> or derive <span class="math notranslate nohighlight">\(U_*\)</span> from it. Native source labels and their order
+belong to the ingredients; a gathered retained state has one state axis, not
+a padded source-by-state axis. Source-to-sector reporting mappings are applied
+downstream.</p>
+</section>
+<section id="aggregate-before-applying-samples">
+<h2>Aggregate before applying samples<a class="headerlink" href="#aggregate-before-applying-samples" title="Link to this heading">#</a></h2>
+<p>For a labelled country functional <span class="math notranslate nohighlight">\(A\)</span> containing membership, cell area,
+physical conversion, and any source or time selection, first contract over
+native dimensions:</p>
+<div class="math notranslate nohighlight">
+\[q_{ref}=AFm, \qquad R_q=AFU_*.\]</div>
+<p>Then apply the compact country-by-state action to posterior draws:</p>
+<div class="math notranslate nohighlight">
+\[\bar q(\alpha)=q_{ref}+R_q(\alpha-\alpha_{ref}).\]</div>
+<p>The contraction occurs before chain and draw axes appear. Country values can
+therefore be calculated without producing a native-grid-by-sample array. The
+country action is a transient consumer calculation, absent from the affine
+artifact. Native-grid arrays are materialized only when <code class="docutils literal notranslate"><span class="pre">state_to_native</span></code>
+or <code class="docutils literal notranslate"><span class="pre">state_to_flux</span></code> is requested. Complete country uncertainty and unresolved
+native covariance are outside this conditional-mean contract (OPE-68);
+generic quantity maps belong to OPE-24, and staged output routing and
+reporting-sector mappings belong to OPE-164.</p>
+</section>
 </section>
 
 
@@ -498,6 +560,19 @@ samples rather than first constructing native-grid values for every draw.</p>
                 <dialog id="pst-secondary-sidebar-modal"></dialog>
                 <div id="pst-secondary-sidebar" class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
 
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#persist-and-bind-coherent-co2-reconstruction">Persist and bind coherent-CO2 reconstruction</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#aggregate-before-applying-samples">Aggregate before applying samples</a></li>
+</ul>
+  </nav></div>
 
   <div class="sidebar-secondary-item">
 

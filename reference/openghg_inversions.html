@@ -318,6 +318,7 @@
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.basis.html">openghg_inversions.basis</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.algorithms.html">openghg_inversions.basis.algorithms</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.affine_flux_map.html">openghg_inversions.basis.affine_flux_map</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.affine_flux_map_io.html">openghg_inversions.basis.affine_flux_map_io</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.basis_functions.html">openghg_inversions.basis.basis_functions</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.covariance_products.html">openghg_inversions.basis.covariance_products</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.layout.html">openghg_inversions.basis.layout</a></li>
@@ -379,6 +380,7 @@
 </details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.rhime.html">openghg_inversions.rhime</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l3 has-children"><a class="reference internal" href="openghg_inversions.rhime.co2.html">openghg_inversions.rhime.co2</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_affine_output.html">openghg_inversions.rhime.co2.co2_affine_output</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_cached_sigma_model.html">openghg_inversions.rhime.co2.co2_cached_sigma_model</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_cached_sigma_runner.html">openghg_inversions.rhime.co2.co2_cached_sigma_runner</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_model.html">openghg_inversions.rhime.co2.co2_model</a></li>
@@ -502,12 +504,14 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.AffineFluxMap.state_to_flux"><code class="docutils literal notranslate"><span class="pre">AffineFluxMap.state_to_flux()</span></code></a></li>
 </ul>
 </li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.AffineFluxMapArtifact"><code class="docutils literal notranslate"><span class="pre">AffineFluxMapArtifact</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.BasisFunctions"><code class="docutils literal notranslate"><span class="pre">BasisFunctions</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.bucket_basis_from_weights"><code class="docutils literal notranslate"><span class="pre">bucket_basis_from_weights()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.bucket_basis_function"><code class="docutils literal notranslate"><span class="pre">bucket_basis_function()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.bucketbasisfunction"><code class="docutils literal notranslate"><span class="pre">bucketbasisfunction()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.fixed_outer_regions_basis"><code class="docutils literal notranslate"><span class="pre">fixed_outer_regions_basis()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.load_basis_functions"><code class="docutils literal notranslate"><span class="pre">load_basis_functions()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.load_affine_flux_map"><code class="docutils literal notranslate"><span class="pre">load_affine_flux_map()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.load_country_region_classes"><code class="docutils literal notranslate"><span class="pre">load_country_region_classes()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.load_intem_outer_regions"><code class="docutils literal notranslate"><span class="pre">load_intem_outer_regions()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.NativeCovarianceProducts"><code class="docutils literal notranslate"><span class="pre">NativeCovarianceProducts</span></code></a></li>
@@ -521,6 +525,7 @@
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.make_basis_functions"><code class="docutils literal notranslate"><span class="pre">make_basis_functions()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.save_affine_flux_map"><code class="docutils literal notranslate"><span class="pre">save_affine_flux_map()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.paired_abs_response_weights"><code class="docutils literal notranslate"><span class="pre">paired_abs_response_weights()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.project_basis_prior_stdev"><code class="docutils literal notranslate"><span class="pre">project_basis_prior_stdev()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.project_native_covariance"><code class="docutils literal notranslate"><span class="pre">project_native_covariance()</span></code></a></li>
@@ -597,6 +602,14 @@
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.basis.affine_flux_map.html#openghg_inversions.basis.affine_flux_map.AffineFluxMap.state_to_flux"><code class="docutils literal notranslate"><span class="pre">AffineFluxMap.state_to_flux()</span></code></a></li>
 </ul>
 </li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.basis.affine_flux_map_io.html">openghg_inversions.basis.affine_flux_map_io</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.affine_flux_map_io.html#openghg_inversions.basis.affine_flux_map_io.AffineFluxMapArtifact"><code class="docutils literal notranslate"><span class="pre">AffineFluxMapArtifact</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.affine_flux_map_io.html#openghg_inversions.basis.affine_flux_map_io.to_datatree"><code class="docutils literal notranslate"><span class="pre">to_datatree()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.affine_flux_map_io.html#openghg_inversions.basis.affine_flux_map_io.from_datatree"><code class="docutils literal notranslate"><span class="pre">from_datatree()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.affine_flux_map_io.html#openghg_inversions.basis.affine_flux_map_io.save"><code class="docutils literal notranslate"><span class="pre">save()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.affine_flux_map_io.html#openghg_inversions.basis.affine_flux_map_io.load"><code class="docutils literal notranslate"><span class="pre">load()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.basis.basis_functions.html">openghg_inversions.basis.basis_functions</a><ul>
@@ -1325,6 +1338,12 @@
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2PreparedInputs.load"><code class="docutils literal notranslate"><span class="pre">Co2PreparedInputs.load()</span></code></a></li>
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.BoundCo2AffineFluxMap"><code class="docutils literal notranslate"><span class="pre">BoundCo2AffineFluxMap</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.BoundCo2AffineFluxMap.affine_map"><code class="docutils literal notranslate"><span class="pre">BoundCo2AffineFluxMap.affine_map</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.BoundCo2AffineFluxMap.state_to_native"><code class="docutils literal notranslate"><span class="pre">BoundCo2AffineFluxMap.state_to_native()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.BoundCo2AffineFluxMap.state_to_flux"><code class="docutils literal notranslate"><span class="pre">BoundCo2AffineFluxMap.state_to_flux()</span></code></a></li>
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2CachedSigmaModel"><code class="docutils literal notranslate"><span class="pre">Co2CachedSigmaModel</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2RunSetup"><code class="docutils literal notranslate"><span class="pre">Co2RunSetup</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2RunSetup.runner_arguments"><code class="docutils literal notranslate"><span class="pre">Co2RunSetup.runner_arguments()</span></code></a></li>
@@ -1342,11 +1361,23 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.prepare_co2_o2_inputs"><code class="docutils literal notranslate"><span class="pre">prepare_co2_o2_inputs()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.prepare_co2_inputs"><code class="docutils literal notranslate"><span class="pre">prepare_co2_inputs()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.load_co2_family_config"><code class="docutils literal notranslate"><span class="pre">load_co2_family_config()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.load_and_bind_affine_flux_map"><code class="docutils literal notranslate"><span class="pre">load_and_bind_affine_flux_map()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.import_explicit_affine_flux_map"><code class="docutils literal notranslate"><span class="pre">import_explicit_affine_flux_map()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.prepared_inputs_content_id"><code class="docutils literal notranslate"><span class="pre">prepared_inputs_content_id()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.produce_bucket_affine_flux_map"><code class="docutils literal notranslate"><span class="pre">produce_bucket_affine_flux_map()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.resolve_co2_family_config"><code class="docutils literal notranslate"><span class="pre">resolve_co2_family_config()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.run_rhime_co2"><code class="docutils literal notranslate"><span class="pre">run_rhime_co2()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.run_rhime_co2_cached_sigma"><code class="docutils literal notranslate"><span class="pre">run_rhime_co2_cached_sigma()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs"><code class="docutils literal notranslate"><span class="pre">run_rhime_co2_o2_from_prepared_inputs()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.run_rhime_co2_o2_cached_sigma_from_prepared_inputs"><code class="docutils literal notranslate"><span class="pre">run_rhime_co2_o2_cached_sigma_from_prepared_inputs()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_affine_output.html">openghg_inversions.rhime.co2.co2_affine_output</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_affine_output.html#openghg_inversions.rhime.co2.co2_affine_output.BoundCo2AffineFluxMap"><code class="docutils literal notranslate"><span class="pre">BoundCo2AffineFluxMap</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_affine_output.html#openghg_inversions.rhime.co2.co2_affine_output.import_explicit_affine_flux_map"><code class="docutils literal notranslate"><span class="pre">import_explicit_affine_flux_map()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_affine_output.html#openghg_inversions.rhime.co2.co2_affine_output.load_and_bind_affine_flux_map"><code class="docutils literal notranslate"><span class="pre">load_and_bind_affine_flux_map()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_affine_output.html#openghg_inversions.rhime.co2.co2_affine_output.prepared_inputs_content_id"><code class="docutils literal notranslate"><span class="pre">prepared_inputs_content_id()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_affine_output.html#openghg_inversions.rhime.co2.co2_affine_output.produce_bucket_affine_flux_map"><code class="docutils literal notranslate"><span class="pre">produce_bucket_affine_flux_map()</span></code></a></li>
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_cached_sigma_model.html">openghg_inversions.rhime.co2.co2_cached_sigma_model</a><ul>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_cached_sigma_model.html#openghg_inversions.rhime.co2.co2_cached_sigma_model.Co2CachedSigmaModel"><code class="docutils literal notranslate"><span class="pre">Co2CachedSigmaModel</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_cached_sigma_model.html#openghg_inversions.rhime.co2.co2_cached_sigma_model.build_co2_cached_sigma_model"><code class="docutils literal notranslate"><span class="pre">build_co2_cached_sigma_model()</span></code></a></li>

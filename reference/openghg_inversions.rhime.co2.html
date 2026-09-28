@@ -51,7 +51,7 @@
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="openghg_inversions.rhime.co2.co2_cached_sigma_model" href="openghg_inversions.rhime.co2.co2_cached_sigma_model.html" />
+    <link rel="next" title="openghg_inversions.rhime.co2.co2_affine_output" href="openghg_inversions.rhime.co2.co2_affine_output.html" />
     <link rel="prev" title="openghg_inversions.rhime" href="openghg_inversions.rhime.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
@@ -318,6 +318,7 @@
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.basis.html">openghg_inversions.basis</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.algorithms.html">openghg_inversions.basis.algorithms</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.affine_flux_map.html">openghg_inversions.basis.affine_flux_map</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.affine_flux_map_io.html">openghg_inversions.basis.affine_flux_map_io</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.basis_functions.html">openghg_inversions.basis.basis_functions</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.covariance_products.html">openghg_inversions.basis.covariance_products</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.layout.html">openghg_inversions.basis.layout</a></li>
@@ -379,6 +380,7 @@
 </details></li>
 <li class="toctree-l2 current active has-children"><a class="reference internal" href="openghg_inversions.rhime.html">openghg_inversions.rhime</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
 <li class="toctree-l3 current active has-children"><a class="current reference internal" href="#">openghg_inversions.rhime.co2</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_affine_output.html">openghg_inversions.rhime.co2.co2_affine_output</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_cached_sigma_model.html">openghg_inversions.rhime.co2.co2_cached_sigma_model</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_cached_sigma_runner.html">openghg_inversions.rhime.co2.co2_cached_sigma_runner</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_model.html">openghg_inversions.rhime.co2.co2_model</a></li>
@@ -767,6 +769,43 @@ omitted, infer the format from <code class="docutils literal notranslate"><span 
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Self" title="(in Python v3.14)"><em>Self</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.BoundCo2AffineFluxMap">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">BoundCo2AffineFluxMap</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">artifact</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">reference_state</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.BoundCo2AffineFluxMap" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>Affine reconstruction with the prepared retained mean as its sole reference.</p>
+<dl class="field-list simple">
+</dl>
+<dl class="py property">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.BoundCo2AffineFluxMap.affine_map">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">affine_map</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="openghg_inversions.basis.affine_flux_map.html#openghg_inversions.basis.affine_flux_map.AffineFluxMap" title="openghg_inversions.basis.affine_flux_map.AffineFluxMap"><span class="pre">AffineFluxMap</span></a></span><a class="headerlink" href="#openghg_inversions.rhime.co2.BoundCo2AffineFluxMap.affine_map" title="Link to this definition">#</a></dt>
+<dd><p>Expose the factorized native mean, signed flux, and prolongation.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.BoundCo2AffineFluxMap.state_to_native">
+<span class="sig-name descname"><span class="pre">state_to_native</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.BoundCo2AffineFluxMap.state_to_native" title="Link to this definition">#</a></dt>
+<dd><p>Evaluate the retained-state-conditional native scaling mean.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.BoundCo2AffineFluxMap.state_to_flux">
+<span class="sig-name descname"><span class="pre">state_to_flux</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.BoundCo2AffineFluxMap.state_to_flux" title="Link to this definition">#</a></dt>
+<dd><p>Evaluate the retained-state-conditional signed flux mean.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -1486,6 +1525,79 @@ runners.</p>
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.load_and_bind_affine_flux_map">
+<span class="sig-name descname"><span class="pre">load_and_bind_affine_flux_map</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">reconstruction_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prepared_inputs_path</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.load_and_bind_affine_flux_map" title="Link to this definition">#</a></dt>
+<dd><p>Load both saved artifacts and verify the prepared artifact’s content ID.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="openghg_inversions.rhime.co2.co2_affine_output.html#openghg_inversions.rhime.co2.co2_affine_output.BoundCo2AffineFluxMap" title="openghg_inversions.rhime.co2.co2_affine_output.BoundCo2AffineFluxMap"><em>BoundCo2AffineFluxMap</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.import_explicit_affine_flux_map">
+<span class="sig-name descname"><span class="pre">import_explicit_affine_flux_map</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">prepared</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">native_mean</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">flux</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">prolongation</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">prepared_inputs_id</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">projection_provenance</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">reconstruction_provenance</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">source_provenance</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">reference_state</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.import_explicit_affine_flux_map" title="Link to this definition">#</a></dt>
+<dd><p>Import exact supplied-restriction U* without constructing its projection.</p>
+<p>An externally supplied reference state is checked against prepared
+<code class="docutils literal notranslate"><span class="pre">alpha_prior_mean</span></code> and then discarded.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="openghg_inversions.basis.affine_flux_map_io.html#openghg_inversions.basis.affine_flux_map_io.AffineFluxMapArtifact" title="openghg_inversions.basis.affine_flux_map_io.AffineFluxMapArtifact"><em>AffineFluxMapArtifact</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.prepared_inputs_content_id">
+<span class="sig-name descname"><span class="pre">prepared_inputs_content_id</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.prepared_inputs_content_id" title="Link to this definition">#</a></dt>
+<dd><p>Hash the exact saved prepared artifact, including all Zarr store files.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)">str</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.produce_bucket_affine_flux_map">
+<span class="sig-name descname"><span class="pre">produce_bucket_affine_flux_map</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">prepared</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">native_mean</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">prepared_inputs_id</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">projection_provenance</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">reconstruction_provenance</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">source_provenance</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.produce_bucket_affine_flux_map" title="Link to this definition">#</a></dt>
+<dd><p>Reuse the prepared bucket operator and signed flux without flattening FU*.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="openghg_inversions.basis.affine_flux_map_io.html#openghg_inversions.basis.affine_flux_map_io.AffineFluxMapArtifact" title="openghg_inversions.basis.affine_flux_map_io.AffineFluxMapArtifact"><em>AffineFluxMapArtifact</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.co2.resolve_co2_family_config">
 <span class="sig-name descname"><span class="pre">resolve_co2_family_config</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.resolve_co2_family_config" title="Link to this definition">#</a></dt>
 <dd><p>Resolve a format-neutral mapping into one concrete recipe setup.</p>
@@ -1776,6 +1888,19 @@ posterior, prior, observed-data and joint likelihood groups.</p>
 
 <div class="toctree-wrapper compound">
 <ul>
+<li class="toctree-l1"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_affine_output.html">openghg_inversions.rhime.co2.co2_affine_output</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_affine_output.html#openghg_inversions.rhime.co2.co2_affine_output.BoundCo2AffineFluxMap"><code class="docutils literal notranslate"><span class="pre">BoundCo2AffineFluxMap</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_affine_output.html#openghg_inversions.rhime.co2.co2_affine_output.BoundCo2AffineFluxMap.affine_map"><code class="docutils literal notranslate"><span class="pre">BoundCo2AffineFluxMap.affine_map</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_affine_output.html#openghg_inversions.rhime.co2.co2_affine_output.BoundCo2AffineFluxMap.state_to_native"><code class="docutils literal notranslate"><span class="pre">BoundCo2AffineFluxMap.state_to_native()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_affine_output.html#openghg_inversions.rhime.co2.co2_affine_output.BoundCo2AffineFluxMap.state_to_flux"><code class="docutils literal notranslate"><span class="pre">BoundCo2AffineFluxMap.state_to_flux()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_affine_output.html#openghg_inversions.rhime.co2.co2_affine_output.import_explicit_affine_flux_map"><code class="docutils literal notranslate"><span class="pre">import_explicit_affine_flux_map()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_affine_output.html#openghg_inversions.rhime.co2.co2_affine_output.load_and_bind_affine_flux_map"><code class="docutils literal notranslate"><span class="pre">load_and_bind_affine_flux_map()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_affine_output.html#openghg_inversions.rhime.co2.co2_affine_output.prepared_inputs_content_id"><code class="docutils literal notranslate"><span class="pre">prepared_inputs_content_id()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_affine_output.html#openghg_inversions.rhime.co2.co2_affine_output.produce_bucket_affine_flux_map"><code class="docutils literal notranslate"><span class="pre">produce_bucket_affine_flux_map()</span></code></a></li>
+</ul>
+</li>
 <li class="toctree-l1"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_cached_sigma_model.html">openghg_inversions.rhime.co2.co2_cached_sigma_model</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_cached_sigma_model.html#openghg_inversions.rhime.co2.co2_cached_sigma_model.Co2CachedSigmaModel"><code class="docutils literal notranslate"><span class="pre">Co2CachedSigmaModel</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_cached_sigma_model.html#openghg_inversions.rhime.co2.co2_cached_sigma_model.build_co2_cached_sigma_model"><code class="docutils literal notranslate"><span class="pre">build_co2_cached_sigma_model()</span></code></a></li>
@@ -1879,11 +2004,11 @@ posterior, prior, observed-data and joint likelihood groups.</p>
       </div>
     </a>
     <a class="right-next"
-       href="openghg_inversions.rhime.co2.co2_cached_sigma_model.html"
+       href="openghg_inversions.rhime.co2.co2_affine_output.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">openghg_inversions.rhime.co2.co2_cached_sigma_model</p>
+        <p class="prev-next-title">openghg_inversions.rhime.co2.co2_affine_output</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -1926,6 +2051,12 @@ posterior, prior, observed-data and joint likelihood groups.</p>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.Co2PreparedInputs.load"><code class="docutils literal notranslate"><span class="pre">Co2PreparedInputs.load()</span></code></a></li>
 </ul>
 </li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.BoundCo2AffineFluxMap"><code class="docutils literal notranslate"><span class="pre">BoundCo2AffineFluxMap</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.BoundCo2AffineFluxMap.affine_map"><code class="docutils literal notranslate"><span class="pre">BoundCo2AffineFluxMap.affine_map</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.BoundCo2AffineFluxMap.state_to_native"><code class="docutils literal notranslate"><span class="pre">BoundCo2AffineFluxMap.state_to_native()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.BoundCo2AffineFluxMap.state_to_flux"><code class="docutils literal notranslate"><span class="pre">BoundCo2AffineFluxMap.state_to_flux()</span></code></a></li>
+</ul>
+</li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.Co2CachedSigmaModel"><code class="docutils literal notranslate"><span class="pre">Co2CachedSigmaModel</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.Co2RunSetup"><code class="docutils literal notranslate"><span class="pre">Co2RunSetup</span></code></a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.Co2RunSetup.runner_arguments"><code class="docutils literal notranslate"><span class="pre">Co2RunSetup.runner_arguments()</span></code></a></li>
@@ -1943,6 +2074,10 @@ posterior, prior, observed-data and joint likelihood groups.</p>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.prepare_co2_o2_inputs"><code class="docutils literal notranslate"><span class="pre">prepare_co2_o2_inputs()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.prepare_co2_inputs"><code class="docutils literal notranslate"><span class="pre">prepare_co2_inputs()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.load_co2_family_config"><code class="docutils literal notranslate"><span class="pre">load_co2_family_config()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.load_and_bind_affine_flux_map"><code class="docutils literal notranslate"><span class="pre">load_and_bind_affine_flux_map()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.import_explicit_affine_flux_map"><code class="docutils literal notranslate"><span class="pre">import_explicit_affine_flux_map()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.prepared_inputs_content_id"><code class="docutils literal notranslate"><span class="pre">prepared_inputs_content_id()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.produce_bucket_affine_flux_map"><code class="docutils literal notranslate"><span class="pre">produce_bucket_affine_flux_map()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.resolve_co2_family_config"><code class="docutils literal notranslate"><span class="pre">resolve_co2_family_config()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.run_rhime_co2"><code class="docutils literal notranslate"><span class="pre">run_rhime_co2()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.run_rhime_co2_cached_sigma"><code class="docutils literal notranslate"><span class="pre">run_rhime_co2_cached_sigma()</span></code></a></li>
