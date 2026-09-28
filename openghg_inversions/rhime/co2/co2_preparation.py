@@ -245,6 +245,12 @@ def _validate_co2_dataset(inputs: xr.Dataset) -> None:
     if mean.attrs.get("units") != "1" or covariance.attrs.get("units") != "1":
         raise ValueError("CO2 retained prior mean and covariance must be dimensionless.")
 
+    if "bc_mean_shift_sensitivity" in inputs:
+        shift = inputs["bc_mean_shift_sensitivity"].transpose("nmeasure")
+        if "H_bc" not in inputs:
+            raise ValueError("bc_mean_shift_sensitivity requires H_bc.")
+        _require_equivalent_units(shift.attrs.get("units"), "1", name="bc_mean_shift_sensitivity")
+
     squared_units = f"({concentration_units})**2"
     if AGGREGATION_ERROR_COVARIANCE in inputs:
         _require_equivalent_units(
@@ -499,6 +505,7 @@ def prepare_co2_inputs(
     reduction: CoherentGaussianReduction,
     *,
     aggregation_error_rank: int | None = 512,
+    boundary_mean_shift_sensitivity: xr.DataArray | None = None,
     provenance: Mapping[str, Any] | None = None,
 ) -> Co2PreparedInputs:
     """Map one coherent Gaussian reduction into the CO2 replay contract.
@@ -531,6 +538,12 @@ def prepare_co2_inputs(
             larger than the observation count are capped at that count; the
             actual factor width is further limited by numerical positive rank.
             Pass ``None`` to store the exact dense covariance.
+        boundary_mean_shift_sensitivity: Optional dimensionless response to
+            a unit additive shift of the boundary concentration field, with
+            exactly the canonical ``nmeasure`` labels and units ``"1"``.
+            Stored as ``bc_mean_shift_sensitivity``; if omitted, an existing
+            canonical field is retained. Requires canonical ``H_bc``. Supply
+            transport and column weighting consistent with that field.
         provenance: Optional JSON-serializable project or preparation
             provenance. The reduction strategy and LRPD diagnostics are added
             by this boundary.
@@ -674,6 +687,16 @@ def prepare_co2_inputs(
         ),
         "nmeasure",
     )
+
+    if boundary_mean_shift_sensitivity is not None:
+        _require_axis(boundary_mean_shift_sensitivity, "nmeasure", name="Boundary mean-shift sensitivity")
+        shift, _ = xr.align(
+            boundary_mean_shift_sensitivity.transpose("nmeasure"),
+            observations,
+            join="exact",
+            copy=False,
+        )
+        mapped["bc_mean_shift_sensitivity"] = _borrow_without_axis_coordinates(shift, "nmeasure")
 
     approximation = None
     if aggregation_error_rank is None:

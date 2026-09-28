@@ -508,3 +508,20 @@ def test_linked_binding_rechecks_units_against_prepared_inputs() -> None:
 
     with pytest.raises(ValueError, match="channels.o2.units"):
         setup.runner_arguments(prepared)
+
+
+@pytest.mark.parametrize("cached", [False, True])
+def test_boundary_mean_shift_hyperprior_configuration(cached: bool) -> None:
+    config = _ordinary()
+    if cached:
+        config["variant"] = "cached_fixed_ou"
+        config["sampling"] = {"nuts_sampler": "pymc"}
+        config["likelihood"] = {"kind": "fixed_ou", "tau_hours": 24.0, "site_amplitude_prior_scale": 1.0}
+    prior = {"pdf": "normal", "mu": 0.0, "sigma": 0.5}
+    config["model"] = {"boundary": {"mean_shift_prior": prior}}
+    setup = cast(Co2RunSetup, resolve_co2_family_config(config))
+    assert setup.runner_kwargs["use_bc"] is True
+    assert setup.runner_kwargs["bc_mean_shift_prior"] == prior
+    config["model"]["boundary"]["enabled"] = False
+    with pytest.raises(ValueError, match="mean_shift_prior requires"):
+        resolve_co2_family_config(config)

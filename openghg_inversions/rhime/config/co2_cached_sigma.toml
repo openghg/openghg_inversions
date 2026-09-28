@@ -20,3 +20,10 @@ tune = 1000
 chains = 4
 nuts_sampler = "pymc"
 random_seed = 12345
+
+# Optional global additive boundary mean shift (observation concentration units).
+# Requires prepared dimensionless bc_mean_shift_sensitivity and enabled boundary.
+# [model.boundary.mean_shift_prior]
+# pdf = "normal"
+# mu = 0.0
+# sigma = 0.5

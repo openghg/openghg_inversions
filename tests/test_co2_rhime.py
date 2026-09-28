@@ -482,9 +482,11 @@ def test_public_co2_runner_derives_default_model_error_alignment(monkeypatch: An
     assert "sigma" in sampled_models[0].named_vars
 
 
-def test_public_co2_runner_selects_boundary_and_offset_once(monkeypatch: Any) -> None:
+@pytest.mark.parametrize("mean_shift", [False, True])
+def test_public_co2_runner_selects_boundary_and_offset_once(monkeypatch: Any, mean_shift: bool) -> None:
     """The public runner materializes and composes boundary and offset once."""
     inputs = _production_boundary_inputs()
+    inputs["bc_mean_shift_sensitivity"] = xr.DataArray([0.6, 0.9], dims="nmeasure", attrs={"units": "1"})
 
     class PreparedInputsStub:
         inv_inputs = inputs
@@ -525,6 +527,7 @@ def test_public_co2_runner_selects_boundary_and_offset_once(monkeypatch: Any) ->
         use_bc=True,
         bc_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.1},
         bc_state_activity=StateActivity(active=bc_active, fixed_value=bc_fixed),
+        bc_mean_shift_prior={"pdf": "normal", "mu": 0.3, "sigma": 0.5} if mean_shift else None,
         offset_prior={"pdf": "normal", "mu": 0.2, "sigma": 0.1},
         offset_args={"per_site": False},
     )
@@ -566,6 +569,18 @@ def test_public_co2_runner_selects_boundary_and_offset_once(monkeypatch: Any) ->
         flux,
         fixed + inputs["H"].values @ flux_scaling,
     )
+
+    if mean_shift:
+        assert materialized_names[0].count("bc_mean_shift_sensitivity") == 1
+        assert roles["boundary_mean_shift"] == "bc_mean_shift"
+        np.testing.assert_allclose(
+            boundary,
+            inputs.H_bc.values @ np.where(bc_active.values, 1.0, bc_fixed.values)
+            + 0.3 * inputs.bc_mean_shift_sensitivity.values,
+            rtol=1e-6,
+        )
+    else:
+        assert "bc_mean_shift_sensitivity" not in materialized_names[0]
 
 
 def test_public_co2_runner_does_not_auto_select_prepared_baseline(monkeypatch: Any) -> None:
@@ -882,3 +897,45 @@ def test_public_co2_runner_preserves_materialized_fixed_mismatch(monkeypatch: An
     )
 
     np.testing.assert_allclose(sampled_models[0]["fixed_model_mismatch"].eval(), 0.75)
+
+
+@pytest.mark.parametrize(
+    ("values", "units", "message"),
+    [
+        ([1.0, np.nan], "1", "finite"),
+        ([-0.1, 1.0], "1", "non-negative"),
+        ([0.0, 0.0], "1", "not all zero"),
+        ([1.0, 1.0], "ppm", "dimensionless"),
+    ],
+)
+def test_boundary_mean_shift_rejects_invalid_response(values, units, message) -> None:
+    inputs = _production_boundary_inputs()
+    response = xr.DataArray(
+        values, dims="nmeasure", coords={"nmeasure": inputs.nmeasure}, attrs={"units": units}
+    )
+    with pytest.raises(ValueError, match=message):
+        _build_model(
+            inputs,
+            boundary_sensitivity=inputs.H_bc,
+            bc_mean_shift_prior={"pdf": "normal", "mu": 0.0, "sigma": 0.5},
+            boundary_mean_shift_sensitivity=response,
+        )
+
+
+def test_boundary_mean_shift_requires_matched_inputs_and_scalar_prior() -> None:
+    inputs = _production_boundary_inputs()
+    response = xr.ones_like(inputs.mf).assign_attrs(units="1")
+    prior = {"pdf": "normal", "mu": 0.0, "sigma": 0.5}
+    complete = dict(
+        boundary_sensitivity=inputs.H_bc, bc_mean_shift_prior=prior, boundary_mean_shift_sensitivity=response
+    )
+    for missing in complete:
+        options = {key: value for key, value in complete.items() if key != missing}
+        with pytest.raises(ValueError, match="together with boundary_sensitivity"):
+            _build_model(inputs, **options)
+    with pytest.raises(ValueError, match="align|index|coordinate"):
+        _build_model(
+            inputs, **{**complete, "boundary_mean_shift_sensitivity": response.isel(nmeasure=[1, 0])}
+        )
+    with pytest.raises(ValueError, match="one scalar"):
+        _build_model(inputs, **{**complete, "bc_mean_shift_prior": {**prior, "mu": [0.0, 0.0]}})

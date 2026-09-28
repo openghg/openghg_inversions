@@ -576,3 +576,58 @@ def test_standard_runner_materializes_aggregation_payload_once(
         )
 
     assert executions == 1
+
+
+def test_boundary_mean_shift_response_survives_preparation_and_round_trip(tmp_path: Path) -> None:
+    canonical = _canonical_inputs()
+    canonical.inv_inputs["H_bc"] = xr.DataArray(
+        np.ones((1, 3)), dims=("bc_region", "nmeasure"), coords={"bc_region": ["north"]}
+    )
+    response = xr.DataArray(
+        da.from_array([1.0, 0.7, 0.2], chunks=2),
+        dims="nmeasure",
+        coords=canonical.inv_inputs.mf.coords,
+        attrs={"units": "1"},
+    )
+    prepared = prepare_co2_inputs(
+        canonical,
+        _reduction(canonical),
+        aggregation_error_rank=None,
+        boundary_mean_shift_sensitivity=response,
+    )
+    assert "bc_mean_shift_sensitivity" not in canonical.inv_inputs
+    assert hasattr(prepared.inv_inputs.bc_mean_shift_sensitivity.data, "__dask_graph__")
+    path = tmp_path / "shift.nc"
+    prepared.save(path)
+    loaded = Co2PreparedInputs.load(path)
+    xr.testing.assert_identical(
+        loaded.inv_inputs.bc_mean_shift_sensitivity, response.rename("bc_mean_shift_sensitivity").compute()
+    )
+    for select in (co2_runner.co2_model_input_names, co2_cached_sigma_runner.co2_cached_sigma_input_names):
+        extra = (
+            {"preserve_prepared_fixed_mismatch": False} if select is co2_runner.co2_model_input_names else {}
+        )
+        assert "bc_mean_shift_sensitivity" not in select(loaded, use_bc=True, **extra)
+        assert "bc_mean_shift_sensitivity" in select(loaded, use_bc=True, use_bc_mean_shift=True, **extra)
+        with pytest.raises(ValueError, match="requires use_bc"):
+            select(loaded, use_bc_mean_shift=True, **extra)
+    with pytest.raises(ValueError, match="units"):
+        prepare_co2_inputs(
+            canonical,
+            _reduction(canonical),
+            boundary_mean_shift_sensitivity=response.assign_attrs(units="ppm"),
+        )
+    with pytest.raises(ValueError, match="align|index|coordinate"):
+        prepare_co2_inputs(
+            canonical,
+            _reduction(canonical),
+            boundary_mean_shift_sensitivity=response.isel(nmeasure=[2, 1, 0]),
+        )
+    with pytest.raises(ValueError, match="labelled"):
+        prepare_co2_inputs(
+            canonical,
+            _reduction(canonical),
+            boundary_mean_shift_sensitivity=xr.DataArray(
+                [1.0, 0.7, 0.2], dims="nmeasure", attrs={"units": "1"}
+            ),
+        )

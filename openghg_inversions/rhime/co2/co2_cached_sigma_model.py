@@ -23,6 +23,7 @@ from openghg_inversions.models.components import (
     _add_offset_component_result,
     _add_prepared_correlated_lognormal_state_with_activity,
     add_model_data,
+    get_model_latent,
     add_state_vector,
     add_coherent_affine_component,
     apply_linear_sensitivity,
@@ -30,7 +31,7 @@ from openghg_inversions.models.components import (
 )
 from openghg_inversions.models.coords import add_coords, registered_model
 from openghg_inversions.models.fixed_ou import FixedOuLowRank, prepare_fixed_ou_low_rank
-from openghg_inversions.models.priors import PriorArgs
+from openghg_inversions.models.priors import PriorArgs, parse_prior
 from openghg_inversions.models.state_activity import (
     PreparedLinearSensitivity,
     ResolvedStateActivity,
@@ -46,6 +47,8 @@ from openghg_inversions.observation_error import (
 from openghg_inversions.rhime.cached_sigma import PytensorMarginalQuadraticCache
 from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR
 from openghg_inversions.sigma import SigmaAlignment
+
+from .co2_model import _prepare_bc_mean_shift_sensitivity
 
 
 OU_SITE_DIM = "ou_site"
@@ -247,6 +250,8 @@ def build_co2_cached_sigma_model(
     boundary_sensitivity: xr.DataArray | None = None,
     bc_prior: PriorArgs | None = None,
     bc_state_activity: StateActivity | None = None,
+    bc_mean_shift_prior: PriorArgs | None = None,
+    boundary_mean_shift_sensitivity: xr.DataArray | None = None,
     offset_prior: PriorArgs | None = None,
     offset_freq: str | None = None,
     offset_drop_first: bool = False,
@@ -296,6 +301,16 @@ def build_co2_cached_sigma_model(
             a selected boundary component, the default boundary prior is used.
         bc_state_activity: Optional labelled active/fixed policy for boundary
             scalings. Requires ``boundary_sensitivity``.
+        bc_mean_shift_prior: Hyperprior for one global additive boundary-field
+            mean shift, in the observations' concentration units. The existing
+            boundary-scaling prior and its conditional spread are unchanged.
+            Requires both boundary sensitivities.
+        boundary_mean_shift_sensitivity: Dimensionless response to a unit
+            additive shift of every boundary curtain and period, aligned on
+            the output dimension. Supply the transport of a unit boundary
+            field, including any column weighting; do not derive it from
+            concentration-weighted ``boundary_sensitivity``. Requires
+            ``bc_mean_shift_prior``. It also applies to fixed boundary scales.
         offset_prior: Optional prior for additive offsets. Its location and
             scale parameters use the observations' concentration units. When
             omitted, no offset is added.
@@ -321,6 +336,13 @@ def build_co2_cached_sigma_model(
             for incompatible global-offset options or a model without active
             affine coefficients.
     """
+    shift_sensitivity = _prepare_bc_mean_shift_sensitivity(
+        boundary_mean_shift_sensitivity,
+        bc_mean_shift_prior,
+        observations,
+        boundary_sensitivity,
+        output_dim=output_dim,
+    )
     if boundary_sensitivity is None and (
         bc_prior is not None or bc_state_activity is not None
     ):
@@ -392,6 +414,7 @@ def build_co2_cached_sigma_model(
             boundary_activity,
             output_dim=output_dim,
         )
+    boundary_output = None
     factor, aggregation_diagonal = aggregation_error_as_low_rank(aggregation_error)
     covariance = prepare_fixed_ou_low_rank(
         factor,
@@ -455,7 +478,7 @@ def build_co2_cached_sigma_model(
                 prepared_boundary,
                 boundary_result.state,
                 data_name="hbc",
-                output_name="mu_bc",
+                output_name="mu_bc" if shift_sensitivity is None else "mu_bc_unshifted",
                 compute_deterministic=True,
             )
             boundary_active = boundary_result.activity.active_indices
@@ -474,6 +497,26 @@ def build_co2_cached_sigma_model(
                         else ()
                     ),
                     output=boundary_output,
+                )
+            )
+        if shift_sensitivity is not None:
+            assert bc_mean_shift_prior is not None
+            shift_data = add_model_data(shift_sensitivity, "bc_mean_shift_sensitivity")
+            shift = parse_prior("bc_mean_shift", dict(bc_mean_shift_prior))
+            if shift.ndim != 0:
+                raise ValueError(
+                    "bc_mean_shift_prior must define one scalar shared by all boundaries and periods."
+                )
+            shift_contribution = pm.Deterministic("mu_bc_mean_shift", shift_data * shift, dims=output_dim)
+            assert boundary_output is not None
+            pm.Deterministic("mu_bc", boundary_output + shift_contribution, dims=output_dim)
+            terms.append(
+                _CachedAffineTerm(
+                    fixed_contribution=np.zeros(observations.sizes[output_dim]),
+                    active_design=np.asarray(shift_sensitivity.values, dtype=np.float64)[:, None],
+                    coefficients=pt.atleast_1d(shift),
+                    sampled_rvs=(get_model_latent(shift, "bc_mean_shift"),),
+                    output=shift_contribution,
                 )
             )
         if offset_prior is not None:

@@ -243,8 +243,9 @@ def _check_required_inv_input_vars(
     """
     missing_required = [var for var in required_vars if var not in ds]
 
-    if any("H_bc" in fp_data[site] for site in sites) and "H_bc" not in ds:
-        missing_required.append("H_bc")
+    for name in ("H_bc", "bc_mean_shift_sensitivity"):
+        if any(name in fp_data[site] for site in sites) and name not in ds:
+            missing_required.append(name)
 
     if missing_required:
         raise ValueError(

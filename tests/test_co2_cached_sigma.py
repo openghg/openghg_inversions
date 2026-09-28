@@ -724,11 +724,16 @@ def test_joint_outputs_are_exact_and_predict_complete_correlated_vectors() -> No
     )
 
 
+@pytest.mark.parametrize("mean_shift", [False, True])
 def test_named_runner_samples_real_graph_and_labels_cached_outputs(
     monkeypatch: pytest.MonkeyPatch,
+    mean_shift: bool,
 ) -> None:
     """The named runner samples the real graph and labels every cached output."""
     inputs = _boundary_inputs()
+    inputs["bc_mean_shift_sensitivity"] = xr.DataArray(
+        [1.0, 0.8, 0.6, 0.4], dims="nmeasure", attrs={"units": "1"}
+    )
     step_settings: dict[str, float] = {}
     original_make_step = co2_cached_sigma_runner.make_cached_sigma_compound_step
 
@@ -789,6 +794,7 @@ def test_named_runner_samples_real_graph_and_labels_cached_outputs(
             active=np.asarray([True, False, False, False, False, False, False, False]),
             fixed_value=1.0,
         ),
+        bc_mean_shift_prior={"pdf": "normal", "mu": 0.0, "sigma": 0.5} if mean_shift else None,
         offset_prior={"pdf": "normal", "mu": 0.2, "sigma": 0.1},
     )
 
@@ -846,6 +852,24 @@ def test_named_runner_samples_real_graph_and_labels_cached_outputs(
     ]
     assert result.posterior.attrs["rhime_recipe"] == "co2_cached_sigma_fixed_ou"
 
+    if mean_shift:
+        assert selected[0].count("bc_mean_shift_sensitivity") == 1
+        assert result.posterior["bc_mean_shift"].dims == ("chain", "draw")
+        assert result.posterior["bc_mean_shift"].attrs["units"] == "ppm"
+        assert result.constant_data["bc_mean_shift_sensitivity"].attrs["units"] == "1"
+        np.testing.assert_allclose(
+            result.posterior["mu_bc_mean_shift"],
+            result.posterior["bc_mean_shift"] * inputs.bc_mean_shift_sensitivity,
+        )
+        np.testing.assert_allclose(
+            result.posterior["mu_bc"],
+            result.posterior["mu_bc_unshifted"] + result.posterior["mu_bc_mean_shift"],
+        )
+        assert roles["boundary_mean_shift"] == "bc_mean_shift"
+    else:
+        assert "bc_mean_shift_sensitivity" not in selected[0]
+        assert "bc_mean_shift" not in result.posterior
+
 
 def test_cached_runner_rejects_generic_target_accept() -> None:
     """The cached runner rejects one target acceptance rate for its two samplers."""
@@ -869,3 +893,92 @@ def test_cached_runner_rejects_generic_target_accept() -> None:
             site_amplitude_prior_scale=0.75,
             sampler=RhimeSampler(sample_kwargs={"target_accept": 0.95}),
         )
+
+
+@pytest.mark.parametrize("fixed_boundaries", [False, True])
+def test_boundary_mean_shift_matches_ordinary_graph_and_dense_likelihood(
+    fixed_boundaries: bool,
+) -> None:
+    """A ppm hypermean shifts transported BCs without rescaling their deviations."""
+    from openghg_inversions.rhime.co2 import build_co2_model
+
+    inputs = _boundary_inputs()
+    # Incomplete boundary coverage deliberately differs from a global observation offset.
+    response = xr.DataArray(
+        [1.0, 0.5, 0.0, 0.8],
+        dims="nmeasure",
+        coords={"nmeasure": inputs.nmeasure},
+        attrs={"units": "1"},
+    )
+    expected_response = response.values.copy()
+    if fixed_boundaries:
+        import dask.array as da
+        import sparse
+
+        response = response.copy(data=da.from_array(sparse.COO.from_numpy(response.values), chunks=2))
+    kwargs: dict[str, Any] = dict(
+        retained_prior=CorrelatedLognormalPrior(
+            inputs.alpha_prior_mean, inputs.alpha_prior_covariance, covariance_dim="region_cov"
+        ),
+        fixed_prior_contribution=inputs.fixed_prior_contribution,
+        observations=inputs.mf,
+        observation_error=inputs.mf_error,
+        aggregation_error=resolve_aggregation_error(inputs, "dense"),
+        state_activity=StateActivity(active=np.zeros(2, dtype=bool), fixed_value=1.0),
+        boundary_sensitivity=inputs.H_bc,
+        bc_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.1},
+        bc_state_activity=StateActivity(active=np.full(8, not fixed_boundaries), fixed_value=1.0),
+        bc_mean_shift_prior={"pdf": "normal", "mu": 0.0, "sigma": 0.5},
+        boundary_mean_shift_sensitivity=response,
+    )
+    ordinary = build_co2_model(inputs.H, **kwargs)
+    cached = build_co2_cached_sigma_model(
+        inputs.H,
+        **kwargs,
+        tau_hours={"AAA": 3.0, "BBB": 7.0},
+        site_amplitude_prior_scale=0.75,
+        initial_site_amplitudes=0.4,
+    )
+    covariance = _dense_fixed_ou_covariance(inputs, np.array([0.4, 0.4]), {"AAA": 3.0, "BBB": 7.0})
+    assert cached.states[-1].name == "bc_mean_shift"
+    assert cached.target.n_state == (1 if fixed_boundaries else 9)
+    for model in (ordinary, cached.model):
+        assert model["bc_mean_shift"].ndim == 0
+        outputs = model.replace_rvs_by_values(
+            [
+                model["mu_bc"],
+                model["mu_bc_unshifted"],
+                model["mu_bc_mean_shift"],
+                model["modelled_concentration"],
+            ]
+        )
+        if model is cached.model:
+            likelihood = model.replace_rvs_by_values([model["cached_fixed_ou_likelihood"]])[0]
+            outputs.extend([likelihood, pt.grad(likelihood, model.rvs_to_values[model["bc_mean_shift"]])])
+        evaluate = model.compile_fn(outputs, inputs=model.value_vars, on_unused_input="ignore")
+        point = model.initial_point()
+        bc = np.ones(8) if fixed_boundaries else np.linspace(0.8, 1.2, 8)
+        if not fixed_boundaries:
+            point["bc"] = bc
+            # The conditional scale prior is exactly the original fixed-spread prior.
+            prior_logp = model.compile_fn(
+                model.logp(vars=[model["bc"]]), inputs=model.value_vars, on_unused_input="ignore"
+            )
+            expected_prior = float(np.sum(-0.5 * ((bc - 1.0) / 0.1) ** 2 - np.log(0.1 * np.sqrt(2 * np.pi))))
+            assert prior_logp(point) == pytest.approx(expected_prior)
+        for shift in (-0.5, 0.0, 0.7):
+            point["bc_mean_shift"] = np.asarray(shift)
+            values = evaluate(point)
+            boundary, unshifted, contribution, mean = values[:4]
+            np.testing.assert_allclose(unshifted, inputs.H_bc.values @ bc)
+            np.testing.assert_allclose(contribution, expected_response * shift)
+            np.testing.assert_allclose(boundary, unshifted + contribution)
+            np.testing.assert_allclose(
+                mean, inputs.fixed_prior_contribution + inputs.H.values @ np.ones(2) + boundary
+            )
+            if model is cached.model:
+                np.testing.assert_allclose(
+                    values[4], multivariate_normal.logpdf(inputs.mf, mean=mean, cov=covariance)
+                )
+                expected_gradient = expected_response @ np.linalg.solve(covariance, inputs.mf.values - mean)
+                np.testing.assert_allclose(values[5], expected_gradient, rtol=1e-6, atol=1e-8)

@@ -18,3 +18,10 @@ chains = 4
 nuts_sampler = "numpyro"
 target_accept = 0.95
 random_seed = 12345
+
+# Optional global additive boundary mean shift (observation concentration units).
+# Requires prepared dimensionless bc_mean_shift_sensitivity and enabled boundary.
+# [model.boundary.mean_shift_prior]
+# pdf = "normal"
+# mu = 0.0
+# sigma = 0.5

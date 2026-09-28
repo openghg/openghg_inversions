@@ -674,3 +674,19 @@ def test_scalar_minimum_error_preserves_lazy_borrowed_observations():
         "minimum_error_sites": "",
     }
     np.testing.assert_allclose(result.values.compute(), 0.5)
+
+
+def test_make_inv_inputs_preserves_unit_boundary_response_and_rejects_missing_sites() -> None:
+    """A global unit response follows selected rows and cannot silently disappear."""
+    sites = {
+        name: _make_minimal_fp_site(mf_base=400.0, include_inlet_height=False)
+        for name in ("AAA", "BBB")
+    }
+    for name, values in (("AAA", [0.8, 0.7]), ("BBB", [1.0, 0.9])):
+        sites[name]["bc_mean_shift_sensitivity"] = xr.DataArray(values, dims="time", attrs={"units": "1"})
+    result = make_inv_inputs(sites, sites=["BBB", "AAA"], min_error=0.0)
+    np.testing.assert_allclose(result.bc_mean_shift_sensitivity, [1.0, 0.9, 0.8, 0.7])
+    assert result.bc_mean_shift_sensitivity.attrs["units"] == "1"
+    sites["AAA"] = sites["AAA"].drop_vars("bc_mean_shift_sensitivity")
+    with pytest.raises(ValueError, match="bc_mean_shift_sensitivity"):
+        make_inv_inputs(sites, min_error=0.0)

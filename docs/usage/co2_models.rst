@@ -161,6 +161,107 @@ likelihood, and sampled outputs.
 The location and scale parameters in ``offset_prior`` use the observations'
 concentration units.
 
+Global additive boundary mean shift
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Use ``bc_mean_shift_prior`` when a common bias in the boundary concentration
+field is plausible but the conditional variation between boundary regions and
+periods should retain its existing prior. This option is available in the
+ordinary and cached fixed-OU CO2 recipes. It uses one scalar for all curtains
+and periods; it has no reference site.
+
+Let :math:`C^0_{rt}(z)` be the supplied boundary concentration field and
+:math:`\beta_{rt}` the existing boundary scales. The hierarchical field is
+
+.. math::
+
+   \delta &\sim \mathcal{N}(0, \tau_\delta^2),\\
+   \beta_{rt} &\sim p_{\mathrm{BC}},\\
+   C_{rt}(z) \mid \delta &= C^0_{rt}(z)\,\beta_{rt} + \delta.
+
+The example uses a Normal hyperprior; ``bc_mean_shift_prior`` accepts the
+ordinary scalar prior dictionary. Its location and scale use the observations'
+concentration units, usually ppm. The boundary scaling prior ``bc_prior`` is
+unchanged. If its expectation is one, the conditional field mean is
+:math:`C^0_{rt}(z)+\delta`; its conditional spread is unchanged. Marginal
+uncertainty increases in the common additive direction. The additive shift is
+not multiplied by :math:`\beta_{rt}`. Fixing a boundary scale through
+``bc_state_activity`` fixes that scale, but the global shift still applies.
+
+Preparation must supply the transport response to a unit boundary field:
+
+.. math::
+
+   g_i = \sum_{r,t,z} T_{i,rtz},\qquad
+   \mu_{\mathrm{BC},i} = (H_{\mathrm{BC}}\beta)_i + g_i\delta.
+
+Here :math:`T` includes the same boundary transport and observation weighting
+as the concentration-weighted ``H_bc``. For a passive surface CO2 observation,
+this can be obtained by summing the dimensionless particle-exit weights over
+all four curtains, heights and boundary cells. Apply the same temporal
+averaging, row selection and, where applicable, satellite column weighting as
+for ``H_bc``. Do not renormalize incomplete boundary coverage to one. A unit
+field transported through the same boundary forward calculation is an
+alternative way to obtain this response. ``H_bc`` alone does not contain enough
+information to recover it: dividing by a nominal CO2 concentration is not the
+same operation.
+
+Pass this observation-aligned array to preparation with dimensions
+``("nmeasure",)``, exactly matching canonical observation labels, and units
+``"1"``:
+
+.. code-block:: python
+
+   prepared = prepare_co2_inputs(
+       canonical_inputs,
+       reduction,
+       boundary_mean_shift_sensitivity=unit_boundary_response,
+   )
+   trace = run_rhime_co2(
+       prepared_inputs=prepared,
+       use_bc=True,
+       bc_mean_shift_prior={"pdf": "normal", "mu": 0.0, "sigma": 0.5},
+   )
+
+The 0.5 ppm scale is illustrative and must be chosen for the boundary data
+source. Preparation stores the response as ``bc_mean_shift_sensitivity`` and
+also preserves that variable when it already exists in the canonical inputs.
+If the canonical satellite scaling helper is used, it scales an existing unit
+response alongside ``H_bc``; a response passed directly to CO2 preparation must
+already use the final observation convention. Older prepared artifacts remain
+usable without the option. Enabling the shift on an artifact without the unit
+response raises an error rather than assuming unit coverage.
+
+For TOML replay, add the following to a CO2 configuration whose prepared
+artifact contains the response:
+
+.. code-block:: toml
+
+   [model.boundary]
+   enabled = true
+
+   [model.boundary.mean_shift_prior]
+   pdf = "normal"
+   mu = 0.0
+   sigma = 0.5
+
+Direct builders accept ``bc_mean_shift_prior`` together with
+``boundary_mean_shift_sensitivity`` and the existing
+``boundary_sensitivity``. Both builders save the scalar ``bc_mean_shift``, its
+observation contribution ``mu_bc_mean_shift``, and ``mu_bc_unshifted``. The
+existing ``mu_bc`` output includes the shift, so it remains the complete
+boundary contribution. ``modelled_concentration`` and likelihoods include
+that complete contribution exactly once. The response is saved in constant
+data, with dimensionless units.
+
+This hierarchy encodes a common data-source bias, not a separate eastern
+curtain correction. It does not establish likelihood identifiability against
+boundary-scale or flux adjustments. When :math:`g=\mathbf{1}`, its likelihood
+direction is identical to a global observation offset. Avoid adding both to
+represent the same discrepancy, and assess BC/flux confounding and hyperprior
+sensitivity before interpreting the inferred shift. No regional or temporal
+hypermeans are fitted by this option.
+
 Configure prepared-input replay from TOML
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -308,8 +409,8 @@ HalfStudentT, Gamma, Exponential, Uniform with a non-negative lower bound, or
 LogNormal.
 
 Optional model components belong in their own tables. ``[model.boundary]``
-accepts boolean ``enabled`` (default true) and ``prior``; a disabled boundary
-cannot specify a prior. ``[model.offset]`` requires ``prior`` and optionally
+accepts boolean ``enabled`` (default true), ``prior``, and ``mean_shift_prior``;
+a disabled boundary cannot specify either prior. ``[model.offset]`` requires ``prior`` and optionally
 accepts ``frequency``, ``per_site`` (default true), and ``drop_first`` (default
 false). A global offset (``per_site = false``) cannot set a frequency or use
 ``drop_first = true``.

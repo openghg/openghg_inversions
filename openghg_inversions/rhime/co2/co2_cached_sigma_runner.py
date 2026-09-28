@@ -56,12 +56,15 @@ def co2_cached_sigma_input_names(
     prepared_inputs: Co2PreparedInputs,
     *,
     use_bc: bool = False,
+    use_bc_mean_shift: bool = False,
 ) -> tuple[str, ...]:
     """Declare arrays consumed by the named cached fixed-OU recipe.
 
     Args:
         prepared_inputs: Validated CO2 artifact to inspect.
         use_bc: Include the boundary-condition sensitivity ``H_bc``.
+        use_bc_mean_shift: Include the prepared dimensionless unit boundary
+            response ``bc_mean_shift_sensitivity``. Requires ``use_bc=True``.
 
     Returns:
         Ordered input-variable names required by the recipe.
@@ -73,6 +76,10 @@ def co2_cached_sigma_input_names(
     names = list(_CO2_CACHED_SIGMA_INPUT_NAMES)
     if use_bc:
         names.append("H_bc")
+    if use_bc_mean_shift:
+        if not use_bc:
+            raise ValueError("A boundary mean shift requires use_bc=True.")
+        names.append("bc_mean_shift_sensitivity")
     names.extend(
         aggregation_error_input_names(inputs, prepared_inputs.aggregation_error_mode)
     )
@@ -308,6 +315,7 @@ def run_rhime_co2_cached_sigma(
     use_bc: bool = False,
     bc_prior: PriorArgs | None = None,
     bc_state_activity: StateActivity | None = None,
+    bc_mean_shift_prior: PriorArgs | None = None,
     offset_prior: PriorArgs | None = None,
     offset_args: Mapping[str, Any] | None = None,
 ) -> az.InferenceData:
@@ -345,6 +353,10 @@ def run_rhime_co2_cached_sigma(
         use_bc: Whether to include prepared ``H_bc`` boundary sensitivity.
         bc_prior: Optional prior for boundary-condition scaling.
         bc_state_activity: Optional active/fixed boundary-state policy.
+        bc_mean_shift_prior: Hyperprior for one global additive boundary mean
+            shift, in observation concentration units. Requires ``use_bc=True``
+            and prepared dimensionless ``bc_mean_shift_sensitivity``; keeps
+            the conditional boundary-scaling spread unchanged.
         offset_prior: Optional prior for an offset component. When omitted, no
             offset is added.
         offset_args: Optional offset settings: ``offset_freq``, ``drop_first``,
@@ -361,8 +373,10 @@ def run_rhime_co2_cached_sigma(
             the sampler is not PyMC, supplies ``step`` or generic
             ``target_accept``, or has unsupported predictive keywords.
     """
-    if not use_bc and (bc_prior is not None or bc_state_activity is not None):
-        raise ValueError("bc_prior and bc_state_activity require use_bc=True.")
+    if not use_bc and (
+        bc_prior is not None or bc_state_activity is not None or bc_mean_shift_prior is not None
+    ):
+        raise ValueError("bc_prior, bc_state_activity and bc_mean_shift_prior require use_bc=True.")
     if offset_prior is None and offset_args:
         raise ValueError("offset_args require offset_prior.")
     offset_freq, offset_drop_first, offset_per_site = _normalise_offset_args(offset_args)
@@ -370,6 +384,7 @@ def run_rhime_co2_cached_sigma(
     names = co2_cached_sigma_input_names(
         prepared,
         use_bc=use_bc,
+        use_bc_mean_shift=bc_mean_shift_prior is not None,
     )
     model_inputs = materialize_pymc_inputs(prepared.rhime_inputs, variable_names=names)
     aggregation_error = resolve_aggregation_error(
@@ -396,6 +411,10 @@ def run_rhime_co2_cached_sigma(
         boundary_sensitivity=model_inputs.get("H_bc") if use_bc else None,
         bc_prior=bc_prior,
         bc_state_activity=bc_state_activity,
+        bc_mean_shift_prior=bc_mean_shift_prior,
+        boundary_mean_shift_sensitivity=(
+            model_inputs["bc_mean_shift_sensitivity"] if bc_mean_shift_prior is not None else None
+        ),
         offset_prior=offset_prior,
         offset_freq=offset_freq,
         offset_drop_first=offset_drop_first,
@@ -434,6 +453,15 @@ def run_rhime_co2_cached_sigma(
                 "boundary_concentration": "mu_bc",
                 "boundary_scale": "bc",
                 "boundary_sensitivity": "hbc",
+            }
+        )
+    if bc_mean_shift_prior is not None:
+        variable_roles.update(
+            {
+                "boundary_mean_shift": "bc_mean_shift",
+                "boundary_mean_shift_sensitivity": "bc_mean_shift_sensitivity",
+                "boundary_mean_shift_concentration": "mu_bc_mean_shift",
+                "unshifted_boundary_concentration": "mu_bc_unshifted",
             }
         )
     if offset_prior is not None:

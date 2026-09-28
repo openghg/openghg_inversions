@@ -375,7 +375,16 @@ def _model(value: object) -> dict[str, object]:
             if "prior" in boundary
             else None
         )
+        mean_shift_prior = (
+            _prior(boundary.pop("mean_shift_prior"), "model.boundary.mean_shift_prior")
+            if "mean_shift_prior" in boundary
+            else None
+        )
         _reject_unknown(boundary, "model.boundary")
+        if mean_shift_prior is not None:
+            if not enabled:
+                raise ValueError("model.boundary.mean_shift_prior requires model.boundary.enabled=true.")
+            result["bc_mean_shift_prior"] = mean_shift_prior
         if not enabled and prior is not None:
             raise ValueError("model.boundary.prior requires model.boundary.enabled=true.")
         result["use_bc"] = enabled
