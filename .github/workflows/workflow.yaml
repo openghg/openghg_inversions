@@ -29,7 +29,7 @@ jobs:
       devel: ${{ steps.versions.outputs.OPENGHG_DEVEL }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: set OpenGHG latest and previous minor versions, and devel
         id: versions
         run: |
@@ -61,7 +61,7 @@ jobs:
           echo "${{ needs.openghg-version.outputs.previous_minor }}"
           echo "${{ needs.openghg-version.outputs.devel }}"
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Set up uv
         uses: astral-sh/setup-uv@v5
         with:
@@ -86,7 +86,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Set up uv
         uses: astral-sh/setup-uv@v5
         with:
@@ -108,7 +108,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Set up uv
         uses: astral-sh/setup-uv@v5
         with:
@@ -128,7 +128,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Set up uv
         uses: astral-sh/setup-uv@v5
         with:
