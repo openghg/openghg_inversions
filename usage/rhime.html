@@ -323,6 +323,7 @@
 <li class="toctree-l1 current active has-children"><a class="reference internal" href="standard_model_family.html">Standard RHIME model family</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
 <li class="toctree-l2"><a class="reference internal" href="rhime_standard_tutorial.html">Standard RHIME tutorial</a></li>
 <li class="toctree-l2"><a class="reference internal" href="rhime_multisector_tutorial.html">Multisector RHIME tutorial</a></li>
+<li class="toctree-l2"><a class="reference internal" href="multisector_inversions.html">Site and satellite multisector inversions</a></li>
 <li class="toctree-l2"><a class="reference internal" href="concrete_rhime_model.html">Standard and multisector RHIME models</a></li>
 <li class="toctree-l2 current active"><a class="current reference internal" href="#">RHIME configuration and prepared-input reference</a></li>
 <li class="toctree-l2"><a class="reference internal" href="cli.html">Running RHIME from the command line</a></li>
@@ -535,6 +536,28 @@ supports one distinct source and one independent state vector per sector.
 Rectangular legacy inputs may carry <code class="docutils literal notranslate"><span class="pre">source_region_count(source)</span></code> so padded
 layouts can be rejected; modern preparation does not create that compatibility
 metadata.</p>
+</section>
+<section id="satellite-multisector-inputs">
+<h2>Satellite multisector inputs<a class="headerlink" href="#satellite-multisector-inputs" title="Link to this heading">#</a></h2>
+<p>Satellite runs use the same <code class="docutils literal notranslate"><span class="pre">flux_sources</span></code>, <code class="docutils literal notranslate"><span class="pre">sector_sources</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">split_by_sectors</span></code> preparation as surface-site runs. Set <code class="docutils literal notranslate"><span class="pre">platform</span></code> to
+<code class="docutils literal notranslate"><span class="pre">&quot;satellite&quot;</span></code>, supply the column <code class="docutils literal notranslate"><span class="pre">max_level</span></code>, and use <code class="docutils literal notranslate"><span class="pre">time_resolved</span></code> to
+select the footprint representation when the store contains more than one:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">False</span></code> selects integrated <code class="docutils literal notranslate"><span class="pre">fp</span></code> footprints;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">True</span></code> selects high-frequency footprints represented by legacy
+<code class="docutils literal notranslate"><span class="pre">fp_HiTRes</span></code> or by the pair <code class="docutils literal notranslate"><span class="pre">fp_time_resolved</span></code> and <code class="docutils literal notranslate"><span class="pre">fp_residual</span></code>;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">None</span></code> leaves the OpenGHG search unconstrained.</p></li>
+</ul>
+<p>The option may be a scalar or a list aligned to <code class="docutils literal notranslate"><span class="pre">sites</span></code>. For CO2,
+OpenGHG’s existing high-time-resolution convolution uses the resolved
+footprint and its residual contribution.</p>
+<p>Column preparation also retains retrieval prior-factor fields, aligns small
+satellite observation/footprint timestamp precision differences, and applies
+the existing corrected-column boundary-condition scaling to satellite rows.
+These steps apply before the same source-resolved basis projection used for
+surface multisector inversions. Use a modern output format for column data;
+legacy HBMCMC output formatting does not support column observations.</p>
 </section>
 <section id="running-prepared-inputs">
 <h2>Running Prepared Inputs<a class="headerlink" href="#running-prepared-inputs" title="Link to this heading">#</a></h2>
@@ -1318,6 +1341,7 @@ and interfaces without a current equivalent.</p>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#terminology">Terminology</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#configuring-pytensor-precision">Configuring PyTensor precision</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#python-api">Python API</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#satellite-multisector-inputs">Satellite multisector inputs</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#running-prepared-inputs">Running Prepared Inputs</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#aggregation-error-covariance">Aggregation-error covariance</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#model-construction">Model Construction</a></li>
