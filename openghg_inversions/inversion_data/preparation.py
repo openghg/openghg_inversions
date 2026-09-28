@@ -44,6 +44,7 @@ from openghg_inversions.boundary_sensitivity import (
 from openghg_inversions.filters import filtering
 from openghg_inversions.flux_sanitization import FluxNonFiniteCheck, sanitize_flux_nonfinite
 from openghg_inversions.inversion_data._site_options import (
+    expand_site_boolean_option,
     expand_site_option,
     is_column_observation,
 )
@@ -65,6 +66,7 @@ _SITE_AVERAGING_PERIOD = "averaging_period"
 SiteStringOption = Sequence[str | None] | str | None
 SiteInletOption = Sequence[str | slice | None] | str | None
 SiteIntegerOption = Sequence[int | None] | int | None
+SiteBooleanOption = Sequence[bool | None] | bool | None
 
 
 @dataclass(frozen=True, init=False)
@@ -655,6 +657,16 @@ def _normalise_site_inlets(
     return normalized
 
 
+def _normalise_site_booleans(
+    value: SiteBooleanOption,
+    *,
+    length: int,
+    name: str,
+) -> list[bool | None]:
+    """Normalize one optional boolean selector per requested site."""
+    return list(expand_site_boolean_option(value, nsites=length, name=name))
+
+
 @dataclass(frozen=True)
 class _SiteOptions:
     """All runner inputs whose positions are aligned to ``sites``.
@@ -672,6 +684,7 @@ class _SiteOptions:
     obs_data_level: tuple[str | None, ...]
     met_model: tuple[str | None, ...]
     max_level: tuple[int | None, ...]
+    time_resolved: tuple[bool | None, ...]
 
     def __post_init__(self) -> None:
         """Freeze supplied sequences and enforce the common-length invariant."""
@@ -685,6 +698,7 @@ class _SiteOptions:
             "obs_data_level",
             "met_model",
             "max_level",
+            "time_resolved",
         )
         for name in field_names:
             object.__setattr__(self, name, tuple(getattr(self, name)))
@@ -719,6 +733,7 @@ class _SiteOptions:
         obs_data_level: Sequence[str | None] | str | None,
         met_model: Sequence[str | None] | str | None,
         max_level: Sequence[int | None] | int | None,
+        time_resolved: SiteBooleanOption = None,
     ) -> _SiteOptions:
         """Normalize all site options and validate their common length.
 
@@ -751,6 +766,7 @@ class _SiteOptions:
             ),
             met_model=tuple(_normalise_site_strings(met_model, length=nsites, name="met_model")),
             max_level=tuple(_normalise_site_integers(max_level, length=nsites, name="max_level")),
+            time_resolved=tuple(_normalise_site_booleans(time_resolved, length=nsites, name="time_resolved")),
         )
 
     def select_indices(self, indices: Sequence[int]) -> _SiteOptions:
@@ -769,6 +785,7 @@ class _SiteOptions:
             obs_data_level=select(self.obs_data_level),
             met_model=select(self.met_model),
             max_level=select(self.max_level),
+            time_resolved=select(self.time_resolved),
         )
 
     @property
@@ -855,6 +872,54 @@ def _drop_sites_missing_from_loaded_data(
 
     print(f"\nDropping {dropped_sites} sites as they are not included in the merged data object.\n")
     return site_options.select_indices(keep_indices)
+
+
+def _validate_loaded_time_resolved_selector(
+    fp_all: Mapping[str, Any],
+    site_options: _SiteOptions,
+) -> None:
+    """Reject cached sites whose explicit time-resolution selector differs."""
+    mismatched_sites: list[str] = []
+    for site, selector in zip(site_options.sites, site_options.time_resolved, strict=True):
+        if selector is None or site not in fp_all:
+            continue
+        site_data = fp_all[site]
+        cached_selector = (
+            site_data.attrs.get("openghg_inversions_time_resolved")
+            if isinstance(site_data, xr.Dataset)
+            else None
+        )
+        if cached_selector != str(selector).lower():
+            mismatched_sites.append(site)
+    if mismatched_sites:
+        raise ValueError(
+            "Loaded merged data does not match the requested `time_resolved` selector for "
+            f"site(s): {mismatched_sites!r}."
+        )
+
+
+def _validate_loaded_sector_layout(fp_all: Mapping[str, Any], *, split_by_sectors: bool) -> None:
+    """Reject a cached merged-data artifact with a different sector layout.
+
+    The serialized ``.split_by_sectors`` marker records whether the cache
+    contains source-resolved sensitivities.  Missing provenance is treated as
+    the legacy combined layout, so it cannot be relabelled as sector-resolved.
+
+    Args:
+        fp_all: Loaded merged-data artifact and its serialized metadata.
+        split_by_sectors: Whether the current run requires source-resolved
+            sensitivities.
+
+    Raises:
+        ValueError: If the cached sector layout cannot satisfy this run.
+    """
+    stored_split_by_sectors = bool(fp_all.get(".split_by_sectors", False))
+    if stored_split_by_sectors != split_by_sectors:
+        raise ValueError(
+            "Loaded merged data has an incompatible `split_by_sectors` layout: "
+            f"artifact split_by_sectors={stored_split_by_sectors!r}, "
+            f"requested split_by_sectors={split_by_sectors!r}."
+        )
 
 
 def _select_fp_all_sites(fp_all: dict, sites: Sequence[str]) -> dict:
@@ -949,6 +1014,7 @@ def _prepare_merged_data(
     fp_model: str | None = None,
     fp_height: SiteStringOption = None,
     fp_species: str | None = None,
+    time_resolved: SiteBooleanOption = None,
     inlet: SiteInletOption = None,
     instrument: SiteStringOption = None,
     max_level: SiteIntegerOption = None,
@@ -993,6 +1059,7 @@ def _prepare_merged_data(
         obs_data_level=obs_data_level,
         met_model=met_model,
         max_level=max_level,
+        time_resolved=time_resolved,
     )
     rerun_merge = True
     fp_all: dict | None = None
@@ -1002,6 +1069,8 @@ def _prepare_merged_data(
         except ValueError as exc:
             print(f"{exc}, re-running data merge.")
         else:
+            _validate_loaded_time_resolved_selector(fp_all, site_options)
+            _validate_loaded_sector_layout(fp_all, split_by_sectors=split_by_sectors)
             print("Successfully read in merged data.\n")
             fp_all[".split_by_sectors"] = split_by_sectors
             rerun_merge = False
@@ -1034,6 +1103,7 @@ def _prepare_merged_data(
             fp_model=fp_model,
             fp_height=list(site_options.fp_height),
             fp_species=fp_species,
+            time_resolved=list(site_options.time_resolved),
             emissions_name=flux_sources,
             inlet=list(site_options.inlet),
             instrument=list(site_options.instrument),
@@ -1294,6 +1364,7 @@ def prepare_rhime_inputs(
     fp_model: str | None = None,
     fp_height: SiteStringOption = None,
     fp_species: str | None = None,
+    time_resolved: SiteBooleanOption = None,
     inlet: SiteInletOption = None,
     instrument: SiteStringOption = None,
     max_level: SiteIntegerOption = None,
@@ -1344,6 +1415,10 @@ def prepare_rhime_inputs(
         split_by_sectors: Whether to keep sector-resolved sensitivity inputs
             with a ``source`` provenance coordinate. Semantic sector names are
             applied later by the model specification.
+        time_resolved: Footprint time-resolution selector, either scalar or
+            aligned to ``sites``. ``True`` requests high-frequency footprints,
+            ``False`` requests integrated footprints, and ``None`` leaves the
+            store selection unspecified.
         inlet: Inlet selector, either scalar or aligned to ``sites``. Entries
             may be strings, legacy ``slice`` selectors, or ``None``.
         fp_height: Footprint inlet height, either scalar or aligned to
@@ -1401,6 +1476,7 @@ def prepare_rhime_inputs(
             fp_model=fp_model,
             fp_height=fp_height,
             fp_species=fp_species,
+            time_resolved=time_resolved,
             inlet=inlet,
             instrument=instrument,
             max_level=max_level,
