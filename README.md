@@ -350,7 +350,8 @@ tox -p --parallel-no-spinner
 ```
 
 This is the required check before pushing a draft pull request. GitHub Actions
-runs current, previous, and devel OpenGHG test jobs independently.
+runs current, previous, and devel OpenGHG test jobs independently, and tests
+the committed `uv.lock` with Python 3.12.
 
 On a Slurm cluster, submit tox from the repository root instead of creating its
 environments on a shared worktree filesystem:
