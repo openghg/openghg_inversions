@@ -35,7 +35,7 @@ dependencies = [
     "arviz>=1.1,<2",
     "numpyro[cpu]",
     "xarray>=2025.06.0",
-    "pandas<3.0",
+    "pandas<4.0",
     "matplotlib",
     "scipy",
     "openghg",
