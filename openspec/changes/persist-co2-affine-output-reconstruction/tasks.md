@@ -17,20 +17,20 @@
 
 ## 3. PR 2 — Coherent-CO2 Persistence and Binding
 
-- [ ] 3.1 Implement a versioned DataTree schema and NetCDF/Zarr save-load paths for native mean, flux, tagged prolongation representation, labels, MultiIndexes, units, scope, identities, intrinsic source provenance, and JSON-safe reconstruction/projection provenance; verify both formats round-trip
-- [ ] 3.2 Implement public load-and-bind behavior that obtains authoritative `alpha_prior_mean` from `Co2PreparedInputs` and rejects stale identities, coordinate/unit mismatches, projection mismatches, or conflicting imported reference states
-- [ ] 3.3 Reject payloads containing raw `fp_x_flux`, \(\Pi\), native \(B\), native-by-native covariance, precomposed \(FU^*\), named derived-quantity maps, quantity-specific residual blocks, or reporting-sector mappings; verify each prohibited category has a targeted failure
-- [ ] 3.4 Produce the bucket-preserving affine flux value from native mean and existing `BasisFunctions` ingredients; verify arbitrary-prior-mean `state_to_native` and `state_to_flux` parity without flattening \(FU\)
-- [ ] 3.5 Add a public import path and Verification Games-compatible fixture for exact native mean, signed reference flux, and explicit supplied-restriction \(U^*\), without implementing supplied-\(\Pi\) construction or assuming \(U^*=U_{bucket}\)
-- [ ] 3.6 Verify source-aware and gathered-state round trips preserve exact source/native order without introducing a padded public source-state dimension
-- [ ] 3.7 Add a representative labelled country-style contraction test that forms reference country values and a country-by-state action before sample dimensions, applies that compact action to draws, and confirms no derived country map is persisted
-- [ ] 3.8 Record representative serialized artifact size and peak load, grid-apply, and aggregate-contraction memory for bucket and explicit prolongations; verify materialization occurs only at named boundaries
-- [ ] 3.9 Add corruption, incomplete-payload, identity-mismatch, and unsupported-schema tests, and verify all failures occur before reconstructed outputs are produced
+- [x] 3.1 Implement a versioned DataTree schema and NetCDF/Zarr save-load paths for native mean, flux, tagged prolongation representation, labels, MultiIndexes, units, scope, identities, intrinsic source provenance, and JSON-safe reconstruction/projection provenance; verify both formats round-trip
+- [x] 3.2 Implement public load-and-bind behavior that obtains authoritative `alpha_prior_mean` from `Co2PreparedInputs` and rejects stale identities, coordinate/unit mismatches, projection mismatches, or conflicting imported reference states
+- [x] 3.3 Reject payloads containing raw `fp_x_flux`, \(\Pi\), native \(B\), native-by-native covariance, precomposed \(FU^*\), named derived-quantity maps, quantity-specific residual blocks, or reporting-sector mappings; verify each prohibited category has a targeted failure
+- [x] 3.4 Produce the bucket-preserving affine flux value from native mean and existing `BasisFunctions` ingredients; verify arbitrary-prior-mean `state_to_native` and `state_to_flux` parity without flattening \(FU\)
+- [x] 3.5 Add a public import path and Verification Games-compatible fixture for exact native mean, signed reference flux, and explicit supplied-restriction \(U^*\), without implementing supplied-\(\Pi\) construction or assuming \(U^*=U_{bucket}\)
+- [x] 3.6 Verify source-aware and gathered-state round trips preserve exact source/native order without introducing a padded public source-state dimension
+- [x] 3.7 Add a representative labelled country-style contraction test that forms reference country values and a country-by-state action before sample dimensions, applies that compact action to draws, and confirms no derived country map is persisted
+- [x] 3.8 Record representative serialized artifact size and peak load, grid-apply, and aggregate-contraction memory for bucket and explicit prolongations; verify materialization occurs only at named boundaries
+- [x] 3.9 Add corruption, incomplete-payload, identity-mismatch, and unsupported-schema tests, and verify all failures occur before reconstructed outputs are produced
 
 ## 4. Documentation and PR 2 Merge Gates
 
-- [ ] 4.1 Document native centring, `state_to_native`, `state_to_flux`, bucket/explicit prolongations, prepared-input binding, intrinsic source meaning, aggregate-before-samples ordering, retained-state conditional scope, and limitations deferred to OPE-24, OPE-68, and OPE-164
-- [ ] 4.2 Add `newsfragments/169.feature.md` without editing `CHANGELOG.md`
-- [ ] 4.3 Run focused pytest and Ruff checks for every changed Python path plus `git diff --check`, and record the exact passing commands in the PR
-- [ ] 4.4 Run the applicable registered inversion regression cases and submit compatibility, full-suite, and type-check environments through `scripts/slurm_tox.sh` rather than local tox
-- [ ] 4.5 Run `openspec validate persist-co2-affine-output-reconstruction --strict`, compare the implementation with every normative requirement, and obtain owner approval before changing any finalised artifact
+- [x] 4.1 Document native centring, `state_to_native`, `state_to_flux`, bucket/explicit prolongations, prepared-input binding, intrinsic source meaning, aggregate-before-samples ordering, retained-state conditional scope, and limitations deferred to OPE-24, OPE-68, and OPE-164
+- [x] 4.2 Add `newsfragments/169.feature.md` without editing `CHANGELOG.md`
+- [x] 4.3 Run focused pytest and Ruff checks for every changed Python path plus `git diff --check`, and record the exact passing commands in the PR
+- [x] 4.4 Run the applicable registered inversion regression cases and submit compatibility, full-suite, and type-check environments through `scripts/slurm_tox.sh` rather than local tox
+- [x] 4.5 Run `openspec validate persist-co2-affine-output-reconstruction --strict`, compare the implementation with every normative requirement, and obtain owner approval before changing any finalised artifact
