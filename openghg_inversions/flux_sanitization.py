@@ -24,6 +24,8 @@ import warnings
 import numpy as np
 import xarray as xr
 
+from openghg_inversions.array_ops import to_dense
+
 FluxNonFiniteCheck = Literal["lazy", "count"]
 _XarrayObjectT = TypeVar("_XarrayObjectT", xr.DataArray, xr.Dataset)
 
@@ -210,7 +212,7 @@ def _nonfinite_count(finite: xr.DataArray, total: int) -> tuple[int, int, float]
         should only use it for explicit audit/count mode.
     """
     count_value = (~finite).sum().compute()
-    count = int(count_value.item())
+    count = int(to_dense(count_value).item())
     fraction = float(count / total) if total else 0.0
     return count, total, fraction
 

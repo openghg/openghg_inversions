@@ -56,6 +56,25 @@ from xarray.core.common import DataWithCoords, is_chunked_array  # type: ignore
 DataSetOrArray = TypeVar("DataSetOrArray", bound=DataWithCoords)
 
 
+def require_unique_index(array: xr.DataArray, dim: str, *, name: str) -> pd.Index:
+    """Return an indexed dimension with unique labels, without reading payload data."""
+    if dim not in array.dims or dim not in array.indexes:
+        raise ValueError(f"{name} requires a labelled {dim!r} dimension.")
+    index = array.indexes[dim]
+    if not index.is_unique:
+        raise ValueError(f"{name} {dim!r} labels must be unique.")
+    return index
+
+
+def same_index(left: pd.Index, right: pd.Index) -> bool:
+    """Compare ordered labels and MultiIndex levels, ignoring ordinary Index names."""
+    if not left.equals(right):
+        return False
+    if isinstance(left, pd.MultiIndex) or isinstance(right, pd.MultiIndex):
+        return isinstance(left, pd.MultiIndex) and isinstance(right, pd.MultiIndex) and left.names == right.names
+    return True
+
+
 def expand_mapping(
     values: Mapping[Hashable, Any],
     coordinate: xr.DataArray,

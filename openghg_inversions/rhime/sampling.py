@@ -5,13 +5,11 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any, Literal, cast
 
-import arviz as az
 import numpy as np
 import pymc as pm
 import xarray as xr
 
 from openghg_inversions._timing import log_timing, timer_seconds, timer_start
-from openghg_inversions._sampling import _reset_retained_draws as _shared_reset_retained_draws
 from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
 from openghg_inversions.rhime.builders import RhimeModelBuildResult
 
@@ -21,7 +19,7 @@ NutsSampler = Literal["pymc", "nutpie", "numpyro", "blackjax"]
 def sample_rhime_model(
     model_build_result: RhimeModelBuildResult,
     sampler: RhimeSampler,
-) -> az.InferenceData:
+) -> xr.DataTree:
     """Sample a built RHIME graph at the named sampler boundary.
 
     Args:
@@ -87,11 +85,11 @@ def _sample_stat_sum(sample_stats: xr.Dataset, name: str) -> int | None:
     return int(values.sum())
 
 
-def _log_sample_stats(trace: az.InferenceData, *, label: str) -> None:
-    """Log compact sampler diagnostics from an ``InferenceData`` object."""
-    sample_stats = getattr(trace, "sample_stats", None)
-    if not isinstance(sample_stats, xr.Dataset):
+def _log_sample_stats(trace: xr.DataTree, *, label: str) -> None:
+    """Log compact sampler diagnostics from a trace tree."""
+    if "sample_stats" not in trace.children:
         return
+    sample_stats = trace["sample_stats"].to_dataset()
 
     fields: dict[str, float | int | None] = {
         "n_steps_mean": _sample_stat_mean(sample_stats, "n_steps"),
@@ -106,19 +104,27 @@ def _log_sample_stats(trace: az.InferenceData, *, label: str) -> None:
         log_timing(label, 0.0, **fields)
 
 
-def _reset_retained_draws(trace: az.InferenceData, *, burn: int) -> az.InferenceData:
+def _reset_retained_draws(trace: xr.DataTree, *, burn: int) -> xr.DataTree:
     """Relabel retained draws and preserve the discarded burn-in count.
 
     Args:
-        trace: Inference data whose draw-bearing groups are relabelled in place.
+        trace: Trace tree whose draw-bearing groups are relabelled in place.
         burn: Number of discarded burn-in draws to record in metadata.
 
     Returns:
-        The mutated inference data, with each draw coordinate reset to
+        The mutated trace tree, with each draw coordinate reset to
         consecutive zero-based integers and ``burn`` stored on the trace and
         draw-bearing groups.
     """
-    return _shared_reset_retained_draws(trace, burn=burn)
+    trace.attrs["burn"] = burn
+    for group_name, node in trace.children.items():
+        group = node.to_dataset()
+        if "draw" not in group.dims:
+            continue
+        group = group.assign_coords(draw=np.arange(group.sizes["draw"]))
+        group.attrs["burn"] = burn
+        trace[group_name] = group
+    return trace
 
 
 class RhimeSampler:
@@ -224,7 +230,7 @@ class RhimeSampler:
         model: pm.Model,
         *,
         variable_roles: Mapping[str, str] | None = None,
-    ) -> az.InferenceData:
+    ) -> xr.DataTree:
         """Sample a built RHIME model and append requested predictive groups.
 
         Args:
@@ -245,7 +251,7 @@ class RhimeSampler:
         timing_start = timer_start()
         with model:
             raw_trace = cast(
-                az.InferenceData,
+                xr.DataTree,
                 pm.sample(
                     draws=self.draws,
                     tune=self.tune,
@@ -267,7 +273,7 @@ class RhimeSampler:
         _log_sample_stats(raw_trace, label="rhime.sampler.sample_stats")
 
         timing_start = timer_start()
-        trace = cast(az.InferenceData, raw_trace.isel(draw=slice(self.burn, None)))
+        trace = raw_trace.isel(draw=slice(self.burn, None), missing_dims="ignore")
         trace = _reset_retained_draws(trace, burn=self.burn)
         log_timing("rhime.sampler.burn_slicing", timer_seconds(timing_start), burn=self.burn)
 
@@ -285,21 +291,21 @@ class RhimeSampler:
 
     def _extend_predictive(
         self,
-        trace: az.InferenceData,
+        trace: xr.DataTree,
         *,
         model: pm.Model,
         variable_roles: Mapping[str, str] | None = None,
-    ) -> az.InferenceData:
+    ) -> xr.DataTree:
         """Extend sampled trace with configured predictive groups."""
         if self.sample_prior_predictive:
             prior_draws = (
-                cast(Any, trace).posterior.sizes["draw"]
+                trace["posterior"].sizes["draw"]
                 if self.sample_prior_predictive is True
                 else int(self.sample_prior_predictive)
             )
             timing_start = timer_start()
             with model:
-                trace.extend(pm.sample_prior_predictive(prior_draws, model))
+                trace.update(pm.sample_prior_predictive(prior_draws, model))
             log_timing(
                 "rhime.sampler.prior_predictive",
                 timer_seconds(timing_start),
@@ -333,7 +339,7 @@ class RhimeSampler:
                 posterior_predictive_kwargs.setdefault("var_names", posterior_var_names)
             timing_start = timer_start()
             with model:
-                trace.extend(pm.sample_posterior_predictive(trace, **posterior_predictive_kwargs))
+                trace.update(pm.sample_posterior_predictive(trace, **posterior_predictive_kwargs))
             log_timing(
                 "rhime.sampler.posterior_predictive",
                 timer_seconds(timing_start),

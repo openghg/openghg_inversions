@@ -17,6 +17,12 @@
 > orchestration), W2.0 (tested full copy-and-modify runner), W2a (Python-only
 > likelihood callable on `run_rhime`), W2b (cookiecutter-generated downstream
 > package proof), then W4-W7. The detailed P0 plan is authoritative.
+>
+> **Completion update (2026-09-22):** PR #714 removed the direct
+> `fixedbasisMCMC` / `inferpymc` implementation. Only the `run_hbmcmc.py`
+> old-INI wrapper remains, and it always routes through `run_rhime`. References
+> below to classifying or removing the old executor are retained only as
+> historical design context.
 
 This note tracks the near-term refactor sequence for moving from the legacy
 `fixedbasisMCMC` path to the modern `run_rhime` pipeline.
@@ -45,11 +51,10 @@ version, which partially negates the benefit of keeping it as the main route.
   postprocessing results.
 - [ ] #429: keep as operator-backed output/postprocessing, but make it depend on
   the preparation split.
-- [ ] #416: first compatibility slice active; route fixedbasis-style
-  `run_hbmcmc.py` configs and deprecated HBMCMC output names to `run_rhime`
-  and the modern `legacy` formatter, then classify/deprecate the remaining
-  `fixedbasisMCMC`, `inferpymc`, `inferpymc_postprocessouts`, and hbmcmc
-  helpers.
+- [x] #416 and PR #714: route fixedbasis-style `run_hbmcmc.py` configs and
+  deprecated HBMCMC output names to `run_rhime` and the modern `legacy`
+  formatter, then remove `fixedbasisMCMC`, `inferpymc`,
+  `inferpymc_postprocessouts`, and the direct HBMCMC support modules.
 - [ ] #415: serializable RHIME bundle should serialize `RhimePreparedInputs`
   artifacts, not `fp_data`.
 - [ ] #405: complete sector-aware RHIME outputs and PARIS-compatible total outputs.
@@ -72,9 +77,9 @@ orient users around this route:
   `openghg-inversions run-rhime`, with RHIME vocabulary such as
   `flux_sources`, `sector_sources`, `draws`, `chains`, `output_path`, and
   `output_name`.
-- `fixedbasisMCMC`, `inferpymc`, and direct legacy passthrough behavior should
-  be documented only as compatibility/deprecation context, not as the normal
-  path for new users.
+- `fixedbasisMCMC`, `inferpymc`, and direct legacy passthrough behaviour are
+  removed. They should appear only in migration history, not as available
+  compatibility paths or normal routes for new users.
 
 Before expanding broad user docs, keep a concise maintainer-facing map of the
 modern responsibilities:

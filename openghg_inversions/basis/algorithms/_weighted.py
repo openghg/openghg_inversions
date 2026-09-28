@@ -45,10 +45,11 @@ def load_landsea_indices(domain: str, country_directory: str | None = None) -> n
     else:
         landsea_path = default_dir / f"country-land-sea_{domain}.nc"
         if not landsea_path.exists():
-            logger.warning(
-                f"No land-sea file found for domain {domain}. Defaulting to EUROPE (country-EUROPE-UKMO-landsea-2023.nc)"
+            raise FileNotFoundError(
+                f"No default land-sea file found for domain {domain}. Use "
+                "basis_algorithm='quadtree' or provide `country_directory` containing "
+                f"country-land-sea_{domain}.nc."
             )
-            landsea_path = default_dir / "country-EUROPE-UKMO-landsea-2023.nc"
     return xr.open_dataset(landsea_path)["country"].values
 
 
@@ -200,7 +201,14 @@ class AxisAlignedWeightedSplitStrategy:
         return best
 
 
-def get_nregions(bucket: float, grid: np.ndarray, domain: str, country_directory: str | None = None) -> int:
+def get_nregions(
+    bucket: float,
+    grid: np.ndarray,
+    domain: str,
+    country_directory: str | None = None,
+    *,
+    landsea_indices: np.ndarray | None = None,
+) -> int:
     """Optimize bucket value to number of desired regions.
 
     Args:
@@ -214,15 +222,33 @@ def get_nregions(bucket: float, grid: np.ndarray, domain: str, country_directory
             Domain across which to calculate basis functions.
         country_directory:
             Directory containing land-sea files. If None, will use default files.
+        landsea_indices:
+            Optional pre-aligned land/sea mask. This is used by callers that
+            fit a weighted basis on a labelled sub-domain.
 
     Return :
         number of basis functions for bucket value
     """
-    return np.max(bucket_split_landsea_basis(grid, bucket, domain, country_directory))
+    return np.max(
+        bucket_split_landsea_basis(
+            grid,
+            bucket,
+            domain,
+            country_directory,
+            landsea_indices=landsea_indices,
+        )
+    )
 
 
 def optimize_nregions(
-    bucket: float, grid: np.ndarray, nregion: int, tol: int, domain: str, country_directory: str | None = None
+    bucket: float,
+    grid: np.ndarray,
+    nregion: int,
+    tol: int,
+    domain: str,
+    country_directory: str | None = None,
+    *,
+    landsea_indices: np.ndarray | None = None,
 ) -> float:
     """Optimize bucket value to obtain nregion basis functions
     within +/- tol.
@@ -243,6 +269,8 @@ def optimize_nregions(
             Domain across which to calculate basis functions.
         country_directory:
             Directory containing land-sea files. If None, will use default files.
+        landsea_indices:
+            Optional pre-aligned land/sea mask for ``grid``.
 
     Return :
         Optimized bucket value
@@ -254,7 +282,13 @@ def optimize_nregions(
     for _ in range(10):
         # try 1000 iterations
         for j in range(1000):
-            current_nregion = get_nregions(current_bucket, grid, domain, country_directory)
+            current_nregion = get_nregions(
+                current_bucket,
+                grid,
+                domain,
+                country_directory,
+                landsea_indices=landsea_indices,
+            )
 
             if current_nregion <= nregion + current_tol and current_nregion >= nregion - current_tol:
                 print(
@@ -276,7 +310,12 @@ def optimize_nregions(
 
 
 def bucket_split_landsea_basis(
-    grid: np.ndarray, bucket: float, domain: str, country_directory: str | None = None
+    grid: np.ndarray,
+    bucket: float,
+    domain: str,
+    country_directory: str | None = None,
+    *,
+    landsea_indices: np.ndarray | None = None,
 ) -> np.ndarray:
     """Same as bucket_split_basis but includes
     land-sea split. i.e. basis functions cannot overlap sea and land.
@@ -292,12 +331,21 @@ def bucket_split_landsea_basis(
             Domain across which to calculate basis functions.
         country_directory:
             Directory containing land-sea files. If None, will use default files.
+        landsea_indices:
+            Optional pre-aligned land/sea mask for ``grid``. When omitted,
+            the full mask for ``domain`` is loaded.
 
     Returns:
         2D array with basis function values
 
     """
-    landsea_indices = load_landsea_indices(domain, country_directory=country_directory)
+    if landsea_indices is None:
+        landsea_indices = load_landsea_indices(domain, country_directory=country_directory)
+    if landsea_indices.shape != grid.shape:
+        raise ValueError(
+            f"Land-sea mask shape {landsea_indices.shape} does not match basis grid shape "
+            f"{grid.shape} for domain {domain}."
+        )
     myregions = bucket_value_split(grid, bucket)
 
     mybasis_function = np.zeros(shape=grid.shape)
@@ -331,6 +379,8 @@ def nregion_landsea_basis(
     tol: int = 1,
     domain: str = "EUROPE",
     country_directory: str | None = None,
+    *,
+    landsea_indices: np.ndarray | None = None,
 ) -> np.ndarray:
     """Obtain basis function with nregions (for land-sea split).
 
@@ -353,10 +403,26 @@ def nregion_landsea_basis(
             Domain across which to calculate basis functions.
         country_directory:
             Directory containing land-sea files. If None, will use default files.
+        landsea_indices:
+            Optional pre-aligned land/sea mask for ``grid``.
 
     Returns:
         basis_function: 2D basis function array
     """
-    bucket_opt = optimize_nregions(bucket, grid, nregion, tol, domain, country_directory)
-    basis_function = bucket_split_landsea_basis(grid, bucket_opt, domain, country_directory)
+    bucket_opt = optimize_nregions(
+        bucket,
+        grid,
+        nregion,
+        tol,
+        domain,
+        country_directory,
+        landsea_indices=landsea_indices,
+    )
+    basis_function = bucket_split_landsea_basis(
+        grid,
+        bucket_opt,
+        domain,
+        country_directory,
+        landsea_indices=landsea_indices,
+    )
     return basis_function

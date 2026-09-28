@@ -13,7 +13,6 @@ import json
 from pathlib import Path
 from typing import Any
 
-import arviz as az
 import xarray as xr
 
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
@@ -55,11 +54,11 @@ _CO2_SCIENTIFIC_INPUT_NAMES = (
 
 
 def _annotate_co2_trace(
-    trace: az.InferenceData,
+    trace: xr.DataTree,
     built: RhimeModelBuildResult,
     *,
     concentration_units: str | None,
-) -> az.InferenceData:
+) -> xr.DataTree:
     """Persist the CO2 scientific manifest on a sampled trace."""
     roles = dict(built.variable_roles)
     metadata = dict(built.metadata)
@@ -105,10 +104,7 @@ def _annotate_co2_trace(
         "epsilon",
         "y",
     }
-    for group_name in trace.groups():
-        group = getattr(trace, group_name)
-        if not isinstance(group, xr.Dataset):
-            continue
+    for group in trace.children.values():
         group.attrs["rhime_recipe"] = "co2"
         for name, variable in group.data_vars.items():
             scientific_roles = sorted(set(roles_by_variable.get(name, ())))
@@ -266,7 +262,7 @@ def run_rhime_co2(
     bc_state_activity: StateActivity | None = None,
     offset_prior: PriorArgs | None = None,
     offset_args: Mapping[str, Any] | None = None,
-) -> az.InferenceData:
+) -> xr.DataTree:
     """Materialize, build, and sample the CO2 coherent-reduction model.
 
     This callable is the public production replay seam for an already
@@ -307,7 +303,7 @@ def run_rhime_co2(
             and ``per_site``.
 
     Returns:
-        Sampled inference data annotated with the CO2 variable-role and model
+        Sampled DataTree annotated with the CO2 variable-role and model
         manifests.
 
     Raises:

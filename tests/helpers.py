@@ -10,6 +10,11 @@ import pandas as pd
 import xarray as xr
 
 
+def make_trace(**groups: xr.Dataset) -> xr.DataTree:
+    """Create a trace tree from named group datasets."""
+    return xr.DataTree.from_dict(groups)
+
+
 def lat_lon_data(nlat: int, nlon: int, values: np.ndarray | list | None = None) -> xr.DataArray:
     lat = np.arange(nlat)
     lon = np.arange(nlon)

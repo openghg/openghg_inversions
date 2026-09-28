@@ -25,7 +25,9 @@ Current support
      - :func:`openghg_inversions.rhime.run_rhime_co2`; see the
        :ref:`package-supported cached-sigma specialization
        <co2-cached-sigma-recipe>` for its prepared-input runner.
-     - :func:`openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs`.
+     - :func:`openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs`
+       and the matched fixed-OU
+       :func:`~openghg_inversions.rhime.co2.run_rhime_co2_o2_cached_sigma_from_prepared_inputs`.
        A complete ``run_rhime_co2_o2`` entry point is not available.
    * - Acquisition and preparation
      - :func:`openghg_inversions.rhime.co2.prepare_co2_inputs` combines
@@ -39,19 +41,27 @@ Current support
      - A packaged TOML template and strict resolver produce explicit arguments
        for the ordinary or cached fixed-OU prepared-input Python runner.
      - A packaged TOML template and strict resolver produce explicit arguments
-       for the linked prepared-input Python runner.
+       for the linked ordinary and cached fixed-OU prepared-input Python runners.
+   * - Fixed-OU mismatch
+     - Fixed tau and fixed or inferred site amplitudes; optional matched
+       cached quadratic sampler.
+     - Fixed tau and fixed or inferred amplitudes by species/site, preserving
+       cross-channel aggregation covariance. The matched cached sampler
+       updates all active affine coefficients. Requires the same channel units.
    * - Boundary conditions and offsets
      - The ordinary and cached-sigma runners can select prepared ``H_bc``
        boundary sensitivity and add global, site, or site-by-period offsets.
-     - Not exposed by the linked prepared-input runner.
+     - Channel-labelled boundary sensitivities, priors and activity, plus
+       independent global, site, or site-by-period offsets (same-unit channels).
    * - Staged workflow
      - Not supported by the staged CLI.
      - Not supported by the staged CLI.
    * - Outputs and postprocessing
-     - Returns annotated ``InferenceData``. Use the documented serialization
+     - Returns an annotated xarray ``DataTree``. Use the documented serialization
        boundary; the complete RHIME output pipeline is not integrated.
-     - Returns annotated ``InferenceData``. Use the documented serialization
-       boundary; family-specific output and postprocessing are not integrated.
+     - Returns an annotated xarray ``DataTree``. A bounded Python adapter produces
+       separate CO2/O2 PARIS concentration products and supported native flux
+       products; staged output integration remains future work.
    * - Validation and acceptance
      - Coherent preparation, dedicated serialization, model construction,
        configuration resolution, replay, provenance, and cached-sampler

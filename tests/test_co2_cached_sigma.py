@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 from typing import Any, cast
 
-import arviz as az
 import numpy as np
 import pandas as pd
 import pymc as pm
@@ -668,23 +667,21 @@ def test_joint_outputs_are_exact_and_predict_complete_correlated_vectors() -> No
         inputs["fixed_prior_contribution"].values + inputs["H"].values @ np.ones(2),
         (1, draws, 4),
     ).copy()
-    trace = az.from_dict(
-        posterior={
-            "flux_scaling": state,
-            "modelled_concentration": modelled_mean,
-            "ou_site_amplitude": sigma,
-        },
-        dims={
-            "flux_scaling": ["region"],
-            "modelled_concentration": ["nmeasure"],
-            "ou_site_amplitude": ["ou_site"],
+    posterior = xr.Dataset(
+        {
+            "flux_scaling": (("chain", "draw", "region"), state),
+            "modelled_concentration": (("chain", "draw", "nmeasure"), modelled_mean),
+            "ou_site_amplitude": (("chain", "draw", "ou_site"), sigma),
         },
         coords={
+            "chain": [0],
+            "draw": np.arange(draws),
             "region": ["biosphere", "fossil"],
             "nmeasure": inputs["nmeasure"].values,
             "ou_site": ["AAA", "BBB"],
         },
     )
+    trace = xr.DataTree.from_dict({"posterior": posterior})
 
     result = co2_cached_sigma_runner._append_joint_outputs(
         trace,

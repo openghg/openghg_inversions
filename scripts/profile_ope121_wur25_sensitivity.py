@@ -72,7 +72,7 @@ def _sensitivity_native(
     operator = basis_functions.operator
     native_source_dim = "native_source"
     fp_native = fp_x_flux.rename({operator.source_dim: native_source_dim})
-    prolongation = operator.native_prolongation(
+    prolongation = operator._native_prolongation(
         fp_native,
         native_dims=(native_source_dim, *operator.meta.grid_dims),
     )

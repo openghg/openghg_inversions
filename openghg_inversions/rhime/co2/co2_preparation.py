@@ -24,7 +24,7 @@ from openghg.util import (  # pyright: ignore[reportPrivateImportUsage, reportAt
 )
 from typing_extensions import Self
 
-from openghg_inversions.array_ops import validate_covariance_coordinates
+from openghg_inversions.array_ops import require_unique_index, same_index, validate_covariance_coordinates
 from openghg_inversions.coherent_reduction import CoherentGaussianReduction
 from openghg_inversions.inversion_data import RhimePreparedInputs
 from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
@@ -63,25 +63,7 @@ def _json_mapping(value: Mapping[str, Any]) -> Mapping[str, Any]:
     return MappingProxyType(decoded)
 
 
-def _same_index(left: pd.Index, right: pd.Index) -> bool:
-    """Compare labels and MultiIndex level meaning, independent of dimension name."""
-    if not left.equals(right):
-        return False
-    if isinstance(left, pd.MultiIndex) or isinstance(right, pd.MultiIndex):
-        return (
-            isinstance(left, pd.MultiIndex) and isinstance(right, pd.MultiIndex) and left.names == right.names
-        )
-    return True
-
-
-def _require_axis(array: xr.DataArray, dim: str, *, name: str) -> pd.Index:
-    """Return one labelled, unique axis or raise a caller-labelled error."""
-    if dim not in array.dims or dim not in array.indexes:
-        raise ValueError(f"{name} requires a labelled {dim!r} dimension.")
-    index = array.indexes[dim]
-    if not index.is_unique:
-        raise ValueError(f"{name} {dim!r} labels must be unique.")
-    return index
+_require_axis = require_unique_index
 
 
 def _require_same_axis(
@@ -92,7 +74,7 @@ def _require_same_axis(
     name: str,
 ) -> None:
     """Require exact axis labels, including MultiIndex level names."""
-    if not _same_index(_require_axis(array, dim, name=name), expected):
+    if not same_index(_require_axis(array, dim, name=name), expected):
         raise ValueError(f"{name} labels must exactly match the canonical inputs.")
 
 

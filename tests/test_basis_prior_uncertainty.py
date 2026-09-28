@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import dask.array as da
 import numpy as np
 import pytest
+import sparse
 import xarray as xr
 
 from openghg_inversions.basis import (
@@ -372,3 +374,51 @@ def test_calibrate_distinguishes_zero_from_signed_cancellation() -> None:
     assert not cancellation["state_is_active"].any().compute().item()
     assert (cancellation["x_prior_stdev"] == 0).all().compute().item()
     assert (cancellation["state_prior_stdev_numerator"] == 0).all().compute().item()
+
+
+@pytest.mark.parametrize("field", ["flux", "area_grid", "grid_cell_prior_stdev"])
+@pytest.mark.parametrize("magnitude", [1.0, 1.0e200])
+def test_project_sparse_dask_inputs_preserve_weighted_moments(field, magnitude) -> None:
+    basis = _grid([[1, 1]], name="basis").astype(int)
+    flux = _grid([[magnitude, magnitude]], name="flux")
+    kwargs = {
+        "flux": flux,
+        "area_grid": xr.ones_like(flux),
+        "grid_cell_prior_stdev": xr.full_like(flux, 0.8),
+    }
+    array = kwargs[field]
+    payload = da.from_array(sparse.COO.from_numpy(array.values), chunks=(1, 1))
+    kwargs[field] = array.copy(data=payload)
+    projected = project_basis_prior_stdev(_basis_functions(basis, flux), **kwargs)
+
+    assert kwargs[field].data is payload
+    assert isinstance(projected.data, da.Array)
+    np.testing.assert_allclose(projected.to_numpy(), [0.8 / np.sqrt(2)])
+
+
+@pytest.mark.parametrize("lazy", [False, True])
+@pytest.mark.parametrize(
+    "field,value,message",
+    [
+        ("flux", np.nan, "flux must contain only finite values"),
+        ("area_grid", -1.0, "area_grid must be non-negative"),
+        ("grid_cell_prior_stdev", -1.0, "grid_cell_prior_stdev must be non-negative"),
+        ("grid_cell_prior_stdev", np.inf, "grid_cell_prior_stdev must contain only finite values"),
+    ],
+)
+def test_project_rejects_invalid_sparse_inputs(field, value, message, lazy) -> None:
+    basis = _grid([[1, 1]], name="basis").astype(int)
+    flux = _grid([[1.0, 1.0]], name="flux")
+    kwargs = {
+        "flux": flux,
+        "area_grid": xr.ones_like(flux),
+        "grid_cell_prior_stdev": xr.full_like(flux, 0.8),
+    }
+    array = kwargs[field]
+    payload = sparse.COO.from_numpy(np.array([[value, 1.0]]))
+    if lazy:
+        payload = da.from_array(payload, chunks=(1, 1))
+    kwargs[field] = array.copy(data=payload)
+
+    with pytest.raises(ValueError, match=message):
+        project_basis_prior_stdev(_basis_functions(basis, flux), **kwargs)

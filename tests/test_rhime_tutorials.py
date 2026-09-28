@@ -4,7 +4,6 @@ from importlib.resources import files
 from pathlib import Path
 from typing import Any
 
-import arviz as az
 import numpy as np
 import pymc as pm
 import pytest
@@ -18,6 +17,7 @@ from openghg_inversions.rhime import (
     run_rhime,
     run_rhime_multisector,
 )
+from tests.helpers import make_trace
 
 
 _CONFIG_DIRECTORY = files("openghg_inversions.rhime").joinpath("config")
@@ -25,7 +25,7 @@ _STANDARD_CONFIG = _CONFIG_DIRECTORY.joinpath("standard_tutorial.ini")
 _MULTISECTOR_CONFIG = _CONFIG_DIRECTORY.joinpath("multisector_tutorial.ini")
 
 
-def _deterministic_trace(model: pm.Model, variable_names: tuple[str, ...]) -> az.InferenceData:
+def _deterministic_trace(model: pm.Model, variable_names: tuple[str, ...]) -> xr.DataTree:
     """Return one labelled posterior draw for tutorial pipeline tests."""
     coords: dict[str, np.ndarray] = {"chain": np.arange(1), "draw": np.arange(1)}
     variables: dict[str, tuple[tuple[str, ...], np.ndarray]] = {}
@@ -37,7 +37,7 @@ def _deterministic_trace(model: pm.Model, variable_names: tuple[str, ...]) -> az
             coords[dim] = np.asarray(coord)
         dims = ("chain", "draw", *model_dims)
         variables[name] = (dims, np.ones(tuple(len(coords[dim]) for dim in dims)))
-    return az.InferenceData(posterior=xr.Dataset(variables, coords=coords))
+    return make_trace(posterior=xr.Dataset(variables, coords=coords))
 
 
 def _test_store_overrides(

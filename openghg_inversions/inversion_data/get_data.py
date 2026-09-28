@@ -17,6 +17,7 @@ from typing import Any, Literal
 
 import numpy as np
 import xarray as xr
+from openghg.dataobjects import FluxData
 from openghg.retrieve import get_bc
 from openghg.types import SearchError
 
@@ -37,6 +38,28 @@ from openghg_inversions.inversion_data.scenario import merged_scenario_data
 from openghg_inversions.inversion_data.serialise import _save_merged_data
 
 logger = logging.getLogger(__name__)
+
+
+def interpolate_flux_to_footprint_grid(
+    flux_dict: dict[str, FluxData],
+    footprint_data: Any,
+) -> dict[str, FluxData]:
+    """Interpolate flux density onto a footprint grid without mutating inputs."""
+    target = footprint_data.data["fp"]
+    interpolated: dict[str, FluxData] = {}
+    for source, flux_data in flux_dict.items():
+        flux = flux_data.data["flux"].interp(
+            lat=target["lat"],
+            lon=target["lon"],
+            method="nearest",
+        )
+        dataset = flux.to_dataset(name="flux")
+        dataset.attrs = dict(flux_data.data.attrs)
+        interpolated[source] = FluxData(
+            data=dataset,
+            metadata=dict(flux_data.metadata),
+        )
+    return interpolated
 
 
 def add_obs_error(sites: list[str], fp_all: dict, add_averaging_error: bool = True) -> None:
@@ -181,6 +204,7 @@ def data_processing_surface_notracer(
     obs_store: str | list[str] | None = None,
     footprint_store: str | list[str] | None = None,
     emissions_store: str | None = None,
+    emissions_domain: str | None = None,
     split_by_sectors: bool = False,
     averagingerror: bool = True,
     save_merged_data: bool = False,
@@ -230,6 +254,9 @@ def data_processing_surface_notracer(
         obs_store: Name of object store to retrieve observations data from.
         footprint_store: Name of object store to retrieve footprints data from.
         emissions_store: Name of object store to retrieve emissions data from.
+        emissions_domain: Optional flux-domain metadata selector. When it is
+            different from ``domain``, flux density is interpolated with
+            nearest neighbours onto each footprint grid before merging.
         flux_non_finite_check: Non-finite flux handling mode. ``"lazy"``
             applies zero-fill lazily and records attrs; ``"count"`` computes
             count metadata once and warns if non-finite values are present.
@@ -263,8 +290,7 @@ def data_processing_surface_notracer(
     Notes:
         This function reads OpenGHG stores, emits progress messages and
         warnings, and may save a merged-data artifact. The first retained
-        scenario defines the unit target requested for later sites;
-        ``fp_all[".units"]`` stores that unit's scale against ``mol/mol``.
+        scenario defines the unit target requested for later sites.
     """
     site_values = [sites] if isinstance(sites, str) else sites
     sites = [site.upper() for site in site_values]
@@ -291,7 +317,6 @@ def data_processing_surface_notracer(
     max_level = [None if value is None else int(value) for value in max_level]
 
     fp_all = {}
-    fp_all[".species"] = species.upper()
 
     # Get flux data
     if emissions_name is None:
@@ -300,7 +325,7 @@ def data_processing_surface_notracer(
     flux_dict = get_flux_data(
         sources=emissions_name,
         species=species,
-        domain=domain,
+        domain=emissions_domain or domain,
         start_date=start_date,
         end_date=end_date,
         store=emissions_store,
@@ -328,7 +353,6 @@ def data_processing_surface_notracer(
         bc_data = None
 
     # get obs and footprints, and make scenarios for each site
-    scales = {}
     check_scales = set()
     site_indices_to_keep = []
     output_units: str | None = None
@@ -398,11 +422,19 @@ def data_processing_surface_notracer(
             if is_column_observation(inlet[i], site_platform) and not is_column_platform(site_platform)
             else site_platform
         )
+        scenario_flux_dict = (
+            interpolate_flux_to_footprint_grid(flux_dict, footprint_data)
+            if emissions_domain is not None and emissions_domain.lower() != domain.lower()
+            else flux_dict
+        )
+        if scenario_flux_dict is not flux_dict:
+            fp_all[".flux"] = scenario_flux_dict
+
         try:
             scenario_combined = merged_scenario_data(
                 site_data,
                 footprint_data,
-                flux_dict,
+                scenario_flux_dict,
                 bc_data,
                 platform=scenario_platform,
                 max_level=max_level[i],
@@ -419,11 +451,14 @@ def data_processing_surface_notracer(
             scenario_units = scenario_combined["mf"].attrs.get("units")
             if not isinstance(scenario_units, str) or not scenario_units:
                 raise ValueError(f"No observation units detected for the first retained site {site!r}.")
+            mole_fraction_unit_scale(
+                scenario_units,
+                context=f"site {site!r} variable 'mf'",
+            )
             output_units = scenario_units
         fp_all[site] = scenario_combined
 
         if not is_satellite_platform(site_platform):
-            scales[site] = scenario_combined.scale
             check_scales.add(scenario_combined.scale)
 
         site_indices_to_keep.append(i)
@@ -444,16 +479,8 @@ def data_processing_surface_notracer(
         msg = f"Not all sites using the same calibration scale: {len(check_scales)} scales found."
         logger.warning(msg)
 
-    fp_all[".scales"] = scales
-
     # create `mf_error`
     add_obs_error(sites, fp_all, add_averaging_error=averagingerror)
-    if output_units is None:
-        raise ValueError("No observation units detected.")
-    fp_all[".units"] = mole_fraction_unit_scale(
-        output_units,
-        context=f"site {sites[0]!r} variable 'mf'",
-    )
 
     if save_merged_data:
         if merged_data_dir is None:

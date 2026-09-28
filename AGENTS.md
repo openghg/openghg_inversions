@@ -70,7 +70,11 @@ job exits.
 
 Use Towncrier fragments for user-visible changes. Agents must add a concise
 `newsfragments/<issue>.<type>.md` file rather than editing `CHANGELOG.md`
-directly; use `+` in place of an issue number when there is no tracked issue.
+directly. When there is no tracked issue, run
+`uv run --extra dev towncrier create +.bugfix.md --no-edit` (substitute the
+fragment type) and replace the placeholder text in the uniquely named
+`+<random>.<type>.md` file. Never commit a bare `+.<type>.md` filename, which
+conflicts when independent branches add a fragment of the same type.
 Choose one of `feature`, `bugfix`, `doc`, `removal`, or `misc` for `<type>`.
 The existing `CHANGELOG.md` remains the published, human-readable changelog
 for users and developers. During release preparation, a maintainer runs

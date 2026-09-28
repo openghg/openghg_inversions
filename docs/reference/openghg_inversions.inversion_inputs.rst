@@ -1,0 +1,6 @@
+openghg\_inversions.inversion\_inputs
+=====================================
+
+.. automodule:: openghg_inversions.inversion_inputs
+   :members:
+   :show-inheritance:

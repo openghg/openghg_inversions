@@ -1,0 +1,6 @@
+openghg\_inversions.rhime.stages
+================================
+
+.. automodule:: openghg_inversions.rhime.stages
+   :members:
+   :show-inheritance:

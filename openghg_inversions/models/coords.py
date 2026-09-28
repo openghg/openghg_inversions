@@ -7,7 +7,7 @@ model coordinates, so model construction should use sanitized, PyMC-safe coords.
 
 The current sanitization policy is intentionally simple: convert each known
 dimension coordinate to a range index. The original scientific coordinates are
-stored separately so they can later be restored onto ArviZ ``InferenceData``.
+stored separately so they can later be restored onto sampled trace groups.
 """
 
 from __future__ import annotations
@@ -15,7 +15,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-import arviz as az
 import numpy as np
 import pandas as pd
 import pymc as pm
@@ -277,18 +276,18 @@ def add_coords(
 
 
 def restore_inferencedata_coords(
-    idata: az.InferenceData,
+    idata: xr.DataTree,
     coords_or_registry: CoordRegistry | dict[str, Any],
-) -> az.InferenceData:
-    """Restore saved scientific coordinates onto matching ``InferenceData`` groups.
+) -> xr.DataTree:
+    """Restore saved scientific coordinates onto matching trace groups.
 
     Args:
-        idata: Inference data object returned by sampling.
+        idata: Trace tree returned by sampling.
         coords_or_registry: Either a ``CoordRegistry`` or a legacy mapping of
             original coordinates keyed by dimension name.
 
     Returns:
-        The same ``InferenceData`` object with compatible original coordinates
+        The same trace tree with compatible original coordinates
         and auxiliary coordinates restored onto its xarray groups.
     """
     original_coords = (
@@ -297,10 +296,8 @@ def restore_inferencedata_coords(
         else coords_or_registry
     )
 
-    for group_name in idata.groups():
-        group = getattr(idata, group_name)
-        if not isinstance(group, xr.Dataset):
-            continue
+    for group_name, node in idata.children.items():
+        group = node.to_dataset()
 
         restored_multiindex_levels: set[str] = set()
         for dim, coord in original_coords.items():
@@ -333,6 +330,6 @@ def restore_inferencedata_coords(
                 # labels and silently replace ordinary auxiliaries with NaN.
                 group = group.assign_coords({name: (coord.dims, np.array(coord.values, copy=True))})
 
-        setattr(idata, group_name, group)
+        idata[group_name] = group
 
     return idata
