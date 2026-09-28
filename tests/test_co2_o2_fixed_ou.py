@@ -287,6 +287,8 @@ def test_linked_sampling_serializes_group_labels_and_joint_outputs(tmp_path, cac
     assert isinstance(trace, xr.DataTree)
     path = tmp_path / "linked.nc"
     save_trace(trace, path)
+    with xr.open_datatree(path, decode_cf=False) as encoded:
+        assert encoded.constant_data.ou_tau_hours.attrs["dtype"] == "timedelta64[ns]"
     restored = load_trace(path)
     assert isinstance(restored, xr.DataTree)
     assert restored.posterior.ou_site.values.tolist() == ["co2:A", "o2:A", "o2:B"]
