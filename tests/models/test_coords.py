@@ -1,4 +1,3 @@
-import arviz as az
 import numpy as np
 import pandas as pd
 import pymc as pm
@@ -14,6 +13,7 @@ from openghg_inversions.models.coords import (
     restore_inferencedata_coords,
     sanitize_coords_for_pymc,
 )
+from tests.helpers import make_trace
 
 
 def test_sanitize_coords_for_pymc_returns_range_coords() -> None:
@@ -121,7 +121,7 @@ def test_restore_inferencedata_coords_supports_registry_and_legacy_dict() -> Non
         data_vars={"x": (("chain", "draw", "nmeasure"), np.zeros((1, 1, 2)))},
         coords={"chain": [0], "draw": [0], "nmeasure": np.arange(2)},
     )
-    idata = az.InferenceData(posterior=posterior)
+    idata = make_trace(posterior=posterior)
     registry = CoordRegistry(original_coords={"nmeasure": multi_index})
 
     restored = restore_inferencedata_coords(idata, registry)
@@ -147,7 +147,7 @@ def test_restore_inferencedata_auxiliary_coords_owns_group_values() -> None:
         data_vars={"x": (("chain", "draw", "state"), np.zeros((1, 1, 2)))},
         coords={"chain": [0], "draw": [0], "state": np.arange(2)},
     )
-    idata = az.InferenceData(posterior=group.copy(deep=True), prior=group.copy(deep=True))
+    idata = make_trace(posterior=group.copy(deep=True), prior=group.copy(deep=True))
 
     restored = restore_inferencedata_coords(idata, registry)
     restored.posterior["latitude"].values[0] = -999.0
@@ -175,7 +175,7 @@ def test_restore_inferencedata_preserves_independent_auxiliary_on_multiindex() -
         coords={"chain": [0], "draw": [0], "state": np.arange(2)},
     )
 
-    restored = restore_inferencedata_coords(az.InferenceData(posterior=posterior), registry)
+    restored = restore_inferencedata_coords(make_trace(posterior=posterior), registry)
 
     assert restored.posterior.indexes["state"].equals(state_index)
     np.testing.assert_array_equal(restored.posterior["latitude"], [50.0, 51.0])

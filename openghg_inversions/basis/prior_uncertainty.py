@@ -13,7 +13,7 @@ from typing import Literal, cast
 import numpy as np
 import xarray as xr
 
-from openghg_inversions.array_ops import concat_gather_data_arrays, force_align
+from openghg_inversions.array_ops import concat_gather_data_arrays, force_align, to_dense
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.basis.operators import (
     BasisOperator,
@@ -79,7 +79,7 @@ def _validate_non_grid_dims(
 
 def _scalar_bool(value: xr.DataArray) -> bool:
     """Compute one labelled Boolean reduction."""
-    return bool(value.compute().item())
+    return bool(to_dense(value.compute()).item())
 
 
 def _validate_finite(array: xr.DataArray, *, name: str) -> None:
@@ -98,7 +98,7 @@ def _validate_nonnegative(array: xr.DataArray, *, name: str) -> None:
 def _stable_weight_scale(weights: xr.DataArray) -> float:
     """Return a finite scale that prevents overflow in squared weights."""
     _validate_finite(weights, name="flux * area_grid")
-    scale = float(np.abs(weights).max().compute().item())
+    scale = float(to_dense(np.abs(weights).max().compute()).item())
     return scale if scale > 0 else 1.0
 
 

@@ -130,6 +130,12 @@ The example rejects dense and low-rank aggregation covariance because it uses
 an independent Student-t distribution. Supporting those aggregation-error
 modes would require a multivariate likelihood.
 
+The package-supported scalar-sigma CO2 likelihood is a concrete CO2 model
+recipe rather than a Standard RHIME customization. See the :ref:`global
+scalar-sigma CO2 workflow
+<co2-scalar-sigma-recipe>` for its preparation, cache, units, and runner
+contract.
+
 Built-in mismatch equations are direct model components, not examples of this
 custom-callback contract. In particular,
 ``models.additive_sigma.add_additive_sigma_likelihood`` adds an absolute

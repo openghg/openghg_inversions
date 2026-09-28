@@ -6,6 +6,7 @@ on:
       - devel
     paths:
       - 'docs/**'
+      - 'openghg_inversions/**/*.py'
       - 'tox.ini'
       - 'pyproject.toml'
       - 'setup.cfg'
@@ -31,19 +32,19 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Set up Python 3.11
+      - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.12'
 
       - name: Set up uv
         uses: astral-sh/setup-uv@v5
         with:
-          version: "latest"
+          version: "0.12.5"
           enable-cache: true
 
       - name: Build docs using tox
-        run: uvx --with tox-uv tox -e docs-full
+        run: uvx --with tox-uv==1.36.0 tox==4.60.0 -e docs-full
         
       - name: Show built docs (debug)
         run: |

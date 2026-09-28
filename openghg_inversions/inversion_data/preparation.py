@@ -2,9 +2,7 @@
 
 ``prepare_rhime_inputs`` returns backend-neutral observations, sensitivities,
 basis metadata, and site metadata; component-specific model arrays are
-intentionally absent. The temporary legacy fixed-basis orchestration is owned
-by :mod:`openghg_inversions.hbmcmc.preparation` and composes the lower-level
-retrieval, filtering, basis, and array helpers retained here.
+intentionally absent.
 
 ``RhimePreparedInputs`` validates the relationships between these labeled
 arrays when it is constructed. When the retained basis-functions object
@@ -67,6 +65,7 @@ _SITE_AVERAGING_PERIOD = "averaging_period"
 SiteStringOption = Sequence[str | None] | str | None
 SiteInletOption = Sequence[str | slice | None] | str | None
 SiteIntegerOption = Sequence[int | None] | int | None
+
 
 @dataclass(frozen=True, init=False)
 class RhimePreparedInputs:
@@ -859,15 +858,9 @@ def _drop_sites_missing_from_loaded_data(
 
 
 def _select_fp_all_sites(fp_all: dict, sites: Sequence[str]) -> dict:
-    """Keep requested sites and prune site-keyed calibration scales."""
+    """Keep requested sites and shared entries."""
     site_names = set(sites)
-    selected = {key: value for key, value in fp_all.items() if key.startswith(".") or key in site_names}
-
-    scales = selected.get(".scales")
-    if isinstance(scales, Mapping):
-        selected[".scales"] = {site: scales[site] for site in sites if site in scales}
-
-    return selected
+    return {key: value for key, value in fp_all.items() if key.startswith(".") or key in site_names}
 
 
 def _make_inv_inputs(
@@ -951,6 +944,7 @@ def _prepare_merged_data(
     obs_store: str = "user",
     footprint_store: str = "user",
     emissions_store: str = "user",
+    emissions_domain: str | None = None,
     met_model: SiteStringOption = None,
     fp_model: str | None = None,
     fp_height: SiteStringOption = None,
@@ -1051,6 +1045,7 @@ def _prepare_merged_data(
             obs_store=obs_store,
             footprint_store=footprint_store,
             emissions_store=emissions_store,
+            emissions_domain=emissions_domain,
             split_by_sectors=split_by_sectors,
             averagingerror=averaging_error,
             save_merged_data=save_merged_data,
@@ -1294,6 +1289,7 @@ def prepare_rhime_inputs(
     obs_store: str = "user",
     footprint_store: str = "user",
     emissions_store: str = "user",
+    emissions_domain: str | None = None,
     met_model: SiteStringOption = None,
     fp_model: str | None = None,
     fp_height: SiteStringOption = None,
@@ -1311,6 +1307,7 @@ def prepare_rhime_inputs(
     bc_basis_case: str = "NESW",
     bc_basis_directory: str | Path | None = None,
     country_directory: str | None = None,
+    outer_regions_path: str | Path | None = None,
     bc_input: str | None = None,
     basis_algorithm: str = "weighted",
     nbasis: int = 100,
@@ -1360,6 +1357,10 @@ def prepare_rhime_inputs(
             ``sites``.
         max_level: Maximum column level, either scalar or aligned to ``sites``.
             Entries must be integers or ``None``.
+        outer_regions_path: Optional direct path to the fixed outer-region map
+            used when ``fix_basis_outer_regions`` is true.
+        emissions_domain: Optional flux-domain metadata selector. If it differs
+            from ``domain``, flux is interpolated onto the footprint grid.
         min_error: Numeric minimum error or ``"residual"``/``"percentile"``
             calculation method.
         min_error_options: Calculated minimum-error options. The only supported
@@ -1395,6 +1396,7 @@ def prepare_rhime_inputs(
             obs_store=obs_store,
             footprint_store=footprint_store,
             emissions_store=emissions_store,
+            emissions_domain=emissions_domain,
             met_model=met_model,
             fp_model=fp_model,
             fp_height=fp_height,
@@ -1431,6 +1433,7 @@ def prepare_rhime_inputs(
             fp_basis_case=fp_basis_case,
             basis_directory=basis_directory,
             country_directory=country_directory,
+            outer_regions_path=outer_regions_path,
             fp_all=filtered_merged.fp_all,
             species=species,
             domain=domain,
@@ -1493,19 +1496,3 @@ def prepare_rhime_inputs(
             averaging_period=filtered_merged.averaging_period,
         ),
     )
-
-
-def __getattr__(name: str) -> Any:
-    """Provide warning-emitting aliases for the former fixed-basis location."""
-    if name not in {"FixedBasisPreparedData", "prepare_fixedbasis_inversion_data"}:
-        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
-    warnings.warn(
-        f"{__name__}.{name} has moved to openghg_inversions.hbmcmc.preparation; "
-        "the old import path is deprecated.",
-        FutureWarning,
-        stacklevel=2,
-    )
-    from openghg_inversions.hbmcmc import preparation as fixedbasis_preparation
-
-    return getattr(fixedbasis_preparation, name)

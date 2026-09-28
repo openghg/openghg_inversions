@@ -252,13 +252,14 @@ Configuration parsing should:
 * preserve model-specific sections when names repeat across channels; and
 * pass resolved values explicitly to the functions that own them.
 
-New RHIME templates should not be added to the legacy ``hbmcmc/config`` tree or
-to an unrelated global template collection. Prefer
-``openghg_inversions/rhime/config/<recipe-name>.ini`` so the config layout
-mirrors the model recipe layout. A complex recipe implemented as a subpackage
-may keep a small model-specific resolver in that subpackage. Migrate the
-existing standard template only with a compatibility plan; it is not a
-prerequisite for adding a new model.
+The legacy ``hbmcmc/config`` template tree has been removed. Keep new RHIME
+templates in
+``openghg_inversions/rhime/config`` so the configuration layout mirrors the
+model-recipe layout. Choose a human-readable format appropriate to the recipe;
+new recipes do not need to use the legacy INI format. A complex recipe
+implemented as a subpackage may keep a small model-specific resolver in that
+subpackage. Migrate an existing template or format only with a compatibility
+plan; that migration is not a prerequisite for adding a new model.
 
 It is acceptable for a stage function to have a moderately long keyword-only
 signature. Do not replace honest parameters with an ambient context object or
@@ -290,10 +291,15 @@ labelled component boundary.
 Prepared-input inventory and ownership
 --------------------------------------
 
-``RhimePreparedInputs`` is the durable, backend-neutral labelled-data
-boundary. It may retain project-specific arrays that no current PyMC recipe
-uses. Concrete recipes declare only the names they select, materialize those
-arrays together, and pass them to components as honest named arguments.
+``RhimePreparedInputs`` is the durable, backend-neutral labelled-data boundary
+for the standard and multisector recipes. It may retain project-specific
+arrays that no current PyMC recipe uses. Concrete recipes declare only the
+names they select, materialize those arrays together, and pass them to
+components as honest named arguments.
+
+A scientifically distinct recipe may define a dedicated prepared-input type.
+Prefer composition of the reusable canonical boundary over inheritance when
+the recipe is not substitutable for the standard model.
 
 .. list-table:: Current ``inv_inputs`` inventory
    :header-rows: 1

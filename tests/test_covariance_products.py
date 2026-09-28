@@ -94,7 +94,7 @@ def _project(
 ) -> NativeCovarianceProducts:
     """Project the shared problem with its canonical observation dimension."""
     basis_prolongation = to_dense(
-        basis_operator.native_prolongation(
+        basis_operator._native_prolongation(
             native_sensitivity,
             native_dims=covariance.native_dims,
         )
@@ -273,7 +273,7 @@ def test_single_source_native_prolongation_preserves_native_auxiliary_coordinate
         grid_mapping="latitude_longitude",
     )
 
-    prolongation = basis_operator.native_prolongation(
+    prolongation = basis_operator._native_prolongation(
         native_layout,
         native_dims=covariance.native_dims,
     )
@@ -318,7 +318,7 @@ def test_state_column_name_avoids_observation_namespace_collisions(collision: st
     else:
         h = h.assign_coords(state_cov=("observation", ["MHD", "TAC", "RGL"]))
     prolongation = to_dense(
-        basis_operator.native_prolongation(h, native_dims=covariance.native_dims)
+        basis_operator._native_prolongation(h, native_dims=covariance.native_dims)
     ).compute()
 
     products = project_native_covariance(
@@ -413,7 +413,7 @@ def test_lazy_sensitivity_is_materialized_at_explicit_eager_boundary() -> None:
     covariance, basis_operator, h, _ = _problem()
     lazy_h = h.chunk({"observation": 1})
     basis_prolongation = to_dense(
-        basis_operator.native_prolongation(h, native_dims=covariance.native_dims)
+        basis_operator._native_prolongation(h, native_dims=covariance.native_dims)
     ).compute()
 
     expected = _project(covariance, basis_operator, h)
@@ -563,7 +563,7 @@ def test_square_products_preserve_typed_row_and_column_indexes(multiindex: bool)
 def test_retained_state_multiindex_survives_the_eager_boundary() -> None:
     """Payload materialization preserves retained-state index structure."""
     covariance, basis_operator, h, _ = _problem()
-    prolongation = basis_operator.native_prolongation(h, native_dims=covariance.native_dims)
+    prolongation = basis_operator._native_prolongation(h, native_dims=covariance.native_dims)
     state_index = pd.MultiIndex.from_tuples(
         [("z-source", 7), ("a-source", 2)],
         names=("source", "region"),

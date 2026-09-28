@@ -37,11 +37,11 @@ from ._functions import (
     region_constrained_basis_function,
 )
 from ._wrapper import (
-    basis_functions_wrapper,
     load_basis_functions,
     make_basis_functions,
 )
 from .basis_functions import BasisFunctions, basis_functions_from_fp_all_flat_basis
+from .affine_flux_map import AffineFluxMap
 from .prior_uncertainty import (
     MEAN_TOTAL_TARGET_STATISTIC,
     MEDIAN_RELATIVE_TARGET_STATISTIC,
@@ -57,9 +57,9 @@ from .covariance_products import (
 )
 
 __all__ = [
-    "basis_functions_wrapper",
     "basis_functions_from_fp_all_flat_basis",
     "basis_weights_from_fp_all",
+    "AffineFluxMap",
     "BasisFunctions",
     "bucket_basis_from_weights",
     "bucket_basis_function",

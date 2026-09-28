@@ -10,6 +10,7 @@ import pandas as pd
 import pytest
 import xarray as xr
 from openghg.dataobjects import ObsData
+from openghg.dataobjects import FluxData
 from openghg.retrieve import get_obs_surface
 from openghg.types import SearchError
 
@@ -23,13 +24,42 @@ from openghg_inversions.inversion_data.get_data import (
     add_obs_error,
     convert_to_list,
     data_processing_surface_notracer,
+    interpolate_flux_to_footprint_grid,
 )
 from openghg_inversions.inversion_data.getters import get_flux_data
 from openghg_inversions.inversion_data.serialise import (
+    _save_merged_data,
+    datatree_to_fp_all,
     fp_all_from_dataset,
     load_merged_data,
     make_combined_scenario,
 )
+
+
+def test_interpolate_flux_to_footprint_grid_uses_nearest_without_mutation() -> None:
+    flux = xr.DataArray(
+        np.array([[[1.0, 2.0], [3.0, 4.0]]]),
+        name="flux",
+        dims=("time", "lat", "lon"),
+        coords={"time": ["2023-01-01"], "lat": [0.0, 1.0], "lon": [10.0, 11.0]},
+        attrs={"units": "mol m-2 s-1"},
+    )
+    original = FluxData(
+        data=flux.to_dataset(name="flux"),
+        metadata={"domain": "europe"},
+    )
+    footprint = SimpleNamespace(
+        data=xr.Dataset(
+            {"fp": (("time", "lat", "lon"), np.ones((1, 2, 2)))},
+            coords={"time": ["2023-01-01"], "lat": [0.1, 0.9], "lon": [10.1, 10.9]},
+        )
+    )
+
+    result = interpolate_flux_to_footprint_grid({"inventory": original}, footprint)
+
+    xr.testing.assert_equal(result["inventory"].data["flux"], flux.assign_coords(lat=[0.1, 0.9], lon=[10.1, 10.9]))
+    xr.testing.assert_identical(original.data["flux"], flux)
+    assert result["inventory"].metadata == {"domain": "europe"}
 @pytest.mark.parametrize(
     ("raw_units", "expected"),
     [("1", 1.0), ("mol/mol", 1.0), ("ppb", 1e-9), ("1e-09 mol/mol", 1e-9)],
@@ -52,13 +82,10 @@ def test_data_processing_surface_notracer(tac_ch4_data_args, merged_data_file_na
 
     # check keys of "fp_all"
     assert list(result[0].keys()) == [
-        ".species",
         ".flux",
         ".split_by_sectors",
         ".bc",
         "TAC",
-        ".scales",
-        ".units",
     ]
 
     # variables to check (to avoid surprises from new variables added to data)
@@ -77,7 +104,57 @@ def test_data_processing_surface_notracer(tac_ch4_data_args, merged_data_file_na
 
 def test_load_merged_data(merged_data_dir, merged_data_file_name):
     """This should pass by finding the merged data with .zarr suffix."""
-    load_merged_data(merged_data_dir, merged_data_name=merged_data_file_name + "no_zip")
+    fp_all = load_merged_data(merged_data_dir, merged_data_name=merged_data_file_name + "no_zip")
+
+    assert {".scales", ".species", ".units"}.isdisjoint(fp_all)
+
+
+def test_datatree_to_fp_all_drops_obsolete_metadata() -> None:
+    """Older structured artifacts can retain redundant root metadata."""
+    tree = xr.DataTree.from_dict(
+        {"scenarios": xr.DataTree.from_dict({"TAC": xr.Dataset({"mf": ("time", [1.0])})})}
+    )
+    tree.attrs = {
+        ".scales": {"TAC": "WMO-X2004A"},
+        ".species": "CH4",
+        ".units": 1e-9,
+        ".split_by_sectors": False,
+    }
+
+    fp_all = datatree_to_fp_all(tree)
+
+    assert set(fp_all) == {"TAC", ".split_by_sectors"}
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"merged_data_name": "legacy.pickle"},
+        {"merged_data_name": "legacy", "output_format": "pickle"},
+    ],
+)
+def test_merged_data_rejects_pickle_format(tmp_path, kwargs: dict[str, str]) -> None:
+    """Neither explicit pickle suffixes nor format options are accepted."""
+    with pytest.raises(ValueError, match="Pickle|Unsupported merged-data format"):
+        _save_merged_data({}, tmp_path, **kwargs)
+    with pytest.raises(ValueError, match="Pickle|Unsupported merged-data format"):
+        load_merged_data(tmp_path, **kwargs)
+
+
+def test_load_merged_data_does_not_autodetect_pickle(tmp_path) -> None:
+    """A legacy pickle artifact must not be opened during format discovery."""
+    (tmp_path / "legacy.pickle").write_bytes(b"not a pickle")
+
+    with pytest.raises(ValueError, match="Pickle merged-data files are no longer supported"):
+        load_merged_data(tmp_path, merged_data_name="legacy")
+
+
+def test_fp_all_from_dataset_rejects_non_mole_fraction_units() -> None:
+    """Combined legacy data must retain its mol/mol-compatible unit boundary."""
+    combined = xr.Dataset({"mf": ("time", [1.0], {"units": "kg"})})
+
+    with pytest.raises(ValueError, match="serialized merged observations.*to mol/mol"):
+        fp_all_from_dataset(combined)
 
 
 def test_load_merged_data_missing_data_error(merged_data_dir, merged_data_file_name):
@@ -121,6 +198,76 @@ def test_missing_data_at_one_site(tac_ch4_data_args):
 
     assert "TAC" in fp_all
     assert "MHD" not in fp_all
+
+
+def test_get_footprint_to_match_preserves_original_observation_positions(
+    openghg_test_store, monkeypatch: pytest.MonkeyPatch
+):
+    """Unmatched inlets and empty footprints do not shift observation positions."""
+    obs = get_obs_surface(
+        site="tac",
+        species="ch4",
+        inlet="185m",
+        start_date="2019-01-01",
+        end_date="2019-01-02",
+        average="1h",
+        store="inversions_tests",
+    )
+    available_footprint = getters_module.get_footprint(
+        site="TAC",
+        species="inert",
+        domain="EUROPE",
+        model="NAME",
+        inlet="185m",
+        store="inversions_tests",
+        start_date="2019-01-01",
+        end_date="2019-01-02",
+    )
+    empty_footprint = copy.deepcopy(available_footprint)
+    empty_footprint.data = empty_footprint.data.isel(time=slice(0, 0))
+
+    monkeypatch.setattr(
+        getters_module,
+        "search_footprints",
+        lambda **kwargs: SimpleNamespace(results=pd.DataFrame({"inlet": ["10m", "185m"]})),
+    )
+
+    def get_test_footprint(**kwargs):
+        if kwargs["inlet"] == "10m":
+            return copy.deepcopy(empty_footprint)
+        return copy.deepcopy(available_footprint)
+
+    monkeypatch.setattr(getters_module, "get_footprint", get_test_footprint)
+
+    unmatched_count = 4
+    empty_footprint_count = 1
+    obs.data["inlet"] = xr.DataArray(
+        np.concatenate(
+            (
+                np.full(unmatched_count, 100.0),
+                np.full(empty_footprint_count, 10.0),
+                np.full(obs.data.sizes["time"] - unmatched_count - empty_footprint_count, 185.0),
+            )
+        ),
+        coords={"time": obs.data.time},
+        dims="time",
+    )
+
+    footprint = getters_module.get_footprint_to_match(
+        obs,
+        domain="EUROPE",
+        model="NAME",
+        fp_species="inert",
+        store="inversions_tests",
+        start_date="2019-01-01",
+        end_date="2019-01-02",
+        averaging_period="1h",
+    )
+
+    np.testing.assert_array_equal(
+        footprint.data.time.values,
+        obs.data.time.values[unmatched_count + empty_footprint_count :],
+    )
 
 
 def test_mixed_platforms_keep_surface_calibration_scale_per_site(
@@ -173,8 +320,7 @@ def test_mixed_platforms_keep_surface_calibration_scale_per_site(
         ("GOSAT-BRAZIL", "satellite", 17),
     ]
     assert scenario_platforms == ["surface", "satellite"]
-    assert result[0][".scales"] == {"TAC": "surface-scale"}
-    assert result[0][".units"] == pytest.approx(1e-9)
+    assert result[0]["TAC"].attrs["scale"] == "surface-scale"
     assert len(result) == 6
 
 
@@ -354,7 +500,6 @@ def test_data_processing_reuses_first_successful_observation_units(
 
     assert requested_output_units == [None, "ppb"]
     assert retained_sites == ["TAC", "GOSAT-BRAZIL"]
-    assert fp_all[".units"] == pytest.approx(1e-9)
     np.testing.assert_allclose(fp_all["TAC"]["mf"], [1000.0])
     np.testing.assert_allclose(fp_all["GOSAT-BRAZIL"]["mf"], [1000.0])
     np.testing.assert_allclose(fp_all["GOSAT-BRAZIL"]["mf_mod"], [900.0])
@@ -363,6 +508,32 @@ def test_data_processing_reuses_first_successful_observation_units(
     np.testing.assert_allclose(fp_all["GOSAT-BRAZIL"]["mf_error"], [np.sqrt(13.0)])
     np.testing.assert_array_equal(fp_all["GOSAT-BRAZIL"]["mf_number_of_observations"], [20])
     assert fp_all["TAC"]["mf"].attrs["units"] == fp_all["GOSAT-BRAZIL"]["mf"].attrs["units"]
+
+
+def test_data_processing_rejects_non_mole_fraction_units(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The first retained scenario must use units convertible to mol/mol."""
+    scenario = xr.Dataset(
+        {"mf": ("time", [1.0], {"units": "kg"})},
+        attrs={"scale": "test-scale"},
+    )
+    monkeypatch.setattr(get_data_module, "get_flux_data", lambda **kwargs: {})
+    monkeypatch.setattr(get_data_module, "get_obs_data", lambda **kwargs: object())
+    monkeypatch.setattr(get_data_module, "get_footprint_data", lambda **kwargs: object())
+    monkeypatch.setattr(get_data_module, "merged_scenario_data", lambda *args, **kwargs: scenario)
+
+    with pytest.raises(ValueError, match="site 'TAC'.*to mol/mol"):
+        data_processing_surface_notracer(
+            species="ch4",
+            sites=["TAC"],
+            domain="EUROPE",
+            averaging_period="1h",
+            start_date="2019-01-01",
+            end_date="2019-01-02",
+            emissions_name=["inventory"],
+            use_bc=False,
+        )
 
 
 @pytest.mark.parametrize("error_type", [TypeError, ValueError])
@@ -458,7 +629,16 @@ def test_merged_scenario_preserves_footprint_max_level_provenance(
             return expected
 
     monkeypatch.setattr(scenario_module, "ModelScenario", FakeModelScenario)
-    footprint = SimpleNamespace(data=xr.Dataset(attrs={"max_level": 17}))
+    footprint = SimpleNamespace(
+        data=xr.Dataset(
+            attrs={
+                "max_level": 17,
+                "model": "NAME",
+                "transport_model_version": "FLEXPART IFS (version 9.1_Empa)",
+            }
+        ),
+        metadata={"model": "name", "met_model": "ECMWF IFS HRES"},
+    )
 
     result = scenario_module.merged_scenario_data(
         obs_data=object(),  # type: ignore[arg-type]
@@ -469,6 +649,9 @@ def test_merged_scenario_preserves_footprint_max_level_provenance(
 
     assert result.attrs["max_level"] == 3
     assert result.attrs["footprint_max_level"] == 17
+    assert result.attrs["footprint_transport_model"] == "NAME"
+    assert result.attrs["footprint_transport_model_version"] == "FLEXPART IFS (version 9.1_Empa)"
+    assert result.attrs["footprint_met_model"] == "ECMWF IFS HRES"
 
 
 def test_missing_data_at_all_sites(openghg_test_store):

@@ -1,7 +1,9 @@
 {%- macro automodule(modname, options) -%}
 .. automodule:: {{ modname }}
 {%- for option in options %}
+{%- if option != "undoc-members" %}
    :{{ option }}:
+{%- endif %}
 {%- endfor %}
 {%- endmacro %}
 
@@ -18,6 +20,12 @@
 {% else %}
 {{- pkgname | e | heading }}
 {% endif %}
+
+{%- if pkgname == "openghg_inversions.hbmcmc" %}
+The direct ``fixedbasisMCMC`` and ``inferpymc`` implementation was removed in
+0.8. Only ``openghg_inversions.hbmcmc.run_hbmcmc`` remains as a transitional
+old-INI-to-RHIME wrapper. See :doc:`../usage/legacy_and_migration`.
+{%- else %}
 
 {%- if is_namespace %}
 .. py:module:: {{ pkgname }}
@@ -51,3 +59,4 @@
 
 {{ automodule(pkgname, automodule_options) }}
 {% endif %}
+{%- endif %}

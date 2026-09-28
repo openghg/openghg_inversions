@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Callable, cast
+from typing import Callable, cast
 
 import numpy as np
 import pytest
@@ -18,6 +18,7 @@ from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.postprocessing.make_paris_outputs import (
     PARIS_LATEST_COUNTRIES,
     _country_posterior_covariance_kg,
+    _inversion_global_attr_provenance,
     _latest_country_outputs,
     _latest_paris_countries,
     _multisector_country_trace_kg,
@@ -27,6 +28,7 @@ from openghg_inversions.postprocessing.make_paris_outputs import (
     paris_concentration_outputs,
     paris_flux_output,
 )
+from tests.helpers import make_trace
 
 
 _LATEST_FLUX_DIMENSION_ORDER = {
@@ -57,6 +59,133 @@ def _assert_latest_flux_dimension_order(ds: xr.Dataset) -> None:
             continue
         expected = tuple(sorted(variable.dims, key=_LATEST_FLUX_DIMENSION_ORDER.__getitem__))
         assert variable.dims == expected, name
+
+
+def _single_sector_paris_inv_out(country_file: Path) -> InversionOutput:
+    """Build a small single-sector output on the country-file grid."""
+    with xr.open_dataset(country_file) as country_grid:
+        lat = country_grid.lat.load()
+        lon = country_grid.lon.load()
+    basis = xr.DataArray(
+        np.ones((lat.size, lon.size), dtype=int),
+        dims=("lat", "lon"),
+        coords={"lat": lat, "lon": lon},
+        name="basis",
+    )
+    flux = xr.ones_like(basis, dtype=float).rename("flux")
+    flux.attrs["units"] = "mol/m2/s"
+    basis_functions = BasisFunctions.from_flat_basis(
+        basis_flat=basis,
+        flux=flux,
+        operator_kwargs={"state_dim": "region"},
+    )
+    inv_inputs = xr.Dataset(
+        {
+            "H": (("region", "nmeasure"), [[1.0]]),
+            "mf": ("nmeasure", [10.0], {"units": "ppm"}),
+            "mf_error": ("nmeasure", [1.0]),
+            "mf_repeatability": ("nmeasure", [0.5]),
+            "mf_variability": ("nmeasure", [0.25]),
+            "site_indicator": ("nmeasure", [0]),
+        },
+        coords={
+            "region": [0],
+            "nmeasure": [0],
+            "site": ("nmeasure", ["TAC"]),
+            "time": ("nmeasure", np.array(["2019-01-01T00:00:00"], dtype="datetime64[ns]")),
+        },
+    ).set_index(nmeasure=["site", "time"])
+    nmeasure_index = inv_inputs.indexes["nmeasure"]
+    trace_coords = {
+        "chain": [0],
+        "draw": [0, 1],
+        "region": [0],
+        **xr.Coordinates.from_pandas_multiindex(nmeasure_index, "nmeasure"),
+    }
+    trace = make_trace(
+        posterior=xr.Dataset(
+            {
+                "x": (("chain", "draw", "region"), np.array([[[1.0], [1.1]]])),
+                "y": (("chain", "draw", "nmeasure"), np.array([[[10.0], [11.0]]])),
+                "epsilon": (("chain", "draw", "nmeasure"), np.ones((1, 2, 1))),
+            },
+            coords=trace_coords,
+        ),
+        prior=xr.Dataset(
+            {
+                "x": (("chain", "draw", "region"), np.ones((1, 2, 1))),
+                "y": (("chain", "draw", "nmeasure"), np.array([[[9.0], [10.0]]])),
+                "epsilon": (("chain", "draw", "nmeasure"), np.ones((1, 2, 1))),
+            },
+            coords=trace_coords,
+        ),
+    )
+    return InversionOutput(
+        trace=trace,
+        inv_inputs=inv_inputs,
+        basis_functions=basis_functions,
+        run_metadata={
+            "start_date": "2019-01-01",
+            "end_date": "2019-01-02",
+            "sites": ["TAC"],
+            "split_by_sectors": False,
+        },
+        model_metadata={"species": "ch4", "domain": "EUROPE-6km"},
+    )
+
+
+def test_legacy_paris_global_attrs_use_inversion_species_and_domain(europe_country_file: Path) -> None:
+    """Legacy concentration and flux products retain inversion metadata."""
+    inv_out = _single_sector_paris_inv_out(europe_country_file)
+
+    concentration = paris_concentration_outputs(inv_out)
+    flux = paris_flux_output(inv_out, country_file=europe_country_file, inversion_grid=False)
+
+    for output in (concentration, flux):
+        assert output.attrs["species"] == "ch4"
+        assert output.attrs["domain"] == "EUROPE-6km"
+
+
+def test_paris_global_attrs_use_footprint_and_prior_provenance(europe_country_file: Path) -> None:
+    """PARIS products describe the inversion inputs instead of assumed NAME/EDGAR defaults."""
+    inv_out = _single_sector_paris_inv_out(europe_country_file)
+    inv_out.model_metadata["sectors"] = [{"flux_source": "uniform"}]
+    inv_out.model_metadata["footprint_provenance"] = {
+        "TAC": {
+            "transport_model": "FLEXPART",
+            "transport_model_version": "FLEXPART IFS (version 9.1_Empa)",
+            "met_model": "ECMWF IFS HRES",
+        }
+    }
+
+    concentration = paris_concentration_outputs(inv_out, template_version="latest")
+    flux = paris_flux_output(inv_out, country_file=europe_country_file, inversion_grid=False)
+
+    for output in (concentration, flux):
+        assert output.attrs["apriori_description"] == "uniform"
+        assert output.attrs["transport_model"] == "FLEXPART"
+        assert output.attrs["transport_model_version"] == "FLEXPART IFS (version 9.1_Empa)"
+        assert output.attrs["met_model"] == "ECMWF IFS HRES"
+
+
+def test_paris_global_attrs_join_distinct_sites_and_leave_missing_version_blank(
+    europe_country_file: Path,
+) -> None:
+    inv_out = _single_sector_paris_inv_out(europe_country_file)
+    inv_out.model_metadata["sectors"] = [{"flux_source": "uniform"}]
+    inv_out.model_metadata["footprint_provenance"] = {
+        "TAC": {"transport_model": "FLEXPART", "met_model": "ECMWF IFS HRES"},
+        "MHD": {"transport_model": "NAME"},
+    }
+
+    attrs = _inversion_global_attr_provenance(inv_out)
+
+    assert attrs == {
+        "apriori_description": "uniform",
+        "transport_model": "FLEXPART; NAME",
+        "transport_model_version": "",
+        "met_model": "ECMWF IFS HRES",
+    }
 
 
 def _flux_nonfinite_metadata(data: xr.DataArray | xr.Dataset) -> FluxNonFiniteMetadata:
@@ -335,9 +464,10 @@ def test_latest_paris_concentration_has_cf_metadata(
     inv_out = multisector_postprocessing_inv_out()
     inv_out.run_metadata["split_by_sectors"] = False
     for group_name, values in (("prior", [9.0, 11.0]), ("posterior", [10.0, 12.0])):
-        group = getattr(inv_out.trace, group_name)
+        group = inv_out.trace_group(group_name)
         group["y"] = (("chain", "draw", "nmeasure"), np.asarray(values)[None, :, None])
         group["epsilon"] = (("chain", "draw", "nmeasure"), np.ones((1, 2, 1)))
+        inv_out.trace[group_name] = group
     inv_out.inv_inputs["altitude"] = ("nmeasure", [100.0])
     inv_out.inv_inputs["altitude_model"] = ("nmeasure", [125.0])
 
@@ -452,6 +582,56 @@ def test_multisector_country_covariance_promotes_float32_traces(
     np.testing.assert_allclose(cross_covariance[0, 0].sum(), expected_variance)
 
 
+def test_country_covariances_use_all_chains(
+    multisector_postprocessing_inv_out: Callable[..., InversionOutput],
+) -> None:
+    """PARIS covariance products reduce over both chain and draw."""
+    inv_out = multisector_postprocessing_inv_out()
+    ff = np.asarray([[1.0, 3.0], [11.0, 15.0]])
+    ocean = np.asarray([[2.0, 4.0], [8.0, 12.0]])
+    total = ff + ocean
+    coords = {
+        "flux_time": [np.datetime64("2019-01-01")],
+        "country": ["GBR"],
+        "chain": [0, 1],
+        "draw": [0, 1],
+    }
+    country_trace = xr.Dataset(coords=coords)
+    for sector_name, values in (("ff", ff), ("ocean", ocean)):
+        country_trace[f"country_{sector_name}_posterior"] = (
+            ("chain", "draw", "flux_time", "country"),
+            values[:, :, None, None],
+        )
+    country_trace["country_posterior"] = (
+        ("chain", "draw", "flux_time", "country"),
+        total[:, :, None, None],
+    )
+
+    total_covariance = _country_posterior_covariance_kg(
+        inv_out,
+        countries=cast(Countries, None),
+        flux_frequency="yearly",
+        multisector_country_trace=country_trace,
+    )
+    sector_covariances, cross_covariance = _sector_country_posterior_covariances_kg(
+        inv_out,
+        countries=cast(Countries, None),
+        flux_frequency="yearly",
+        sector_name_by_suffix={"ff": "ff", "ocean": "ocean"},
+        multisector_country_trace=country_trace,
+    )
+
+    np.testing.assert_allclose(total_covariance[0, 0, 0], np.var(total))
+    np.testing.assert_allclose(sector_covariances["ff"][0, 0, 0], np.var(ff))
+    np.testing.assert_allclose(sector_covariances["ocean"][0, 0, 0], np.var(ocean))
+    assert cross_covariance is not None
+    expected_cross_covariance = np.cov(
+        np.stack([ff.ravel(), ocean.ravel()]),
+        bias=True,
+    )
+    np.testing.assert_allclose(cross_covariance[0, 0], expected_cross_covariance)
+
+
 def test_single_sector_country_statistics_promote_before_unit_conversion(
     multisector_postprocessing_inv_out: Callable[..., InversionOutput],
 ) -> None:
@@ -525,15 +705,14 @@ def test_latest_paris_flux_output_renames_overlapping_sector_suffixes_exactly(
     inv_out = multisector_postprocessing_inv_out(basis_functions)
 
     for group_name in ("prior", "posterior"):
-        trace_group = getattr(inv_out.trace, group_name).rename(
+        trace_group = inv_out.trace_group(group_name).rename(
             {"x_ff": "x_energy", "x_ocean": "x_energy_waste"}
         )
         trace_group["x_total_ff"] = trace_group["x_energy"]
-        setattr(inv_out.trace, group_name, trace_group)
-    inference_data = cast(Any, inv_out.trace)
-    prior = inference_data.prior
+        inv_out.trace[group_name] = trace_group
+    prior = inv_out.trace_group("prior")
     extra_prior_draw = prior.isel(draw=[0]).assign_coords(draw=[prior.sizes["draw"]])
-    inference_data.prior = xr.concat([prior, extra_prior_draw], dim="draw")
+    inv_out.trace["prior"] = xr.concat([prior, extra_prior_draw], dim="draw")
     inv_out.model_metadata["sectors"] = [
         {"name": "Energy", "flux_source": "ff-inventory", "variable_suffix": "energy"},
         {

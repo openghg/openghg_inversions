@@ -387,18 +387,18 @@ def get_footprint_to_match(
         logger.warning(
             f"For site {site}: {s} times where obs. inlet height was not within {tolerance}m of a footprint height."
         )
-    inlets_to_heights = inlets_to_heights[inlet_tolerance_passed]
+    matched_height_indices = np.unique(inlets_to_heights[inlet_tolerance_passed])
 
-    # footprint heights to load
-    matched_fp_heights = [fp_heights_strs[i] for i in np.unique(inlets_to_heights)]
-    footprints = []
+    # footprint heights to load, retaining their indices when empty results are skipped
+    indexed_footprints = []
 
-    for fp_height in matched_fp_heights:
+    for i in matched_height_indices:
+        fp_height = fp_heights_strs[i]
         fp_data = get_footprint(**fp_kwargs, inlet=fp_height)
         if fp_data.data.time.size > 0:
-            footprints.append(fp_data)
+            indexed_footprints.append((i, fp_data))
 
-    if not footprints:
+    if not indexed_footprints:
         raise SearchError("No footprints found with inlet heights matching given obs.")
 
     # select footprints to match inlets
@@ -413,19 +413,19 @@ def get_footprint_to_match(
             raise ValueError("`averaging_period` could not be inferred from ObsData; please provide a value.")
 
     # select times from footprints to match with obs
-    for i, fp in zip(np.unique(inlets_to_heights), footprints):
-        i_idx = np.where(inlets_to_heights == i)[0]
+    for i, fp in indexed_footprints:
+        i_idx = np.where(inlet_tolerance_passed & (inlets_to_heights == i))[0]
         fp_idx = get_fp_indexer(obs.data.isel(time=i_idx), fp.data, averaging_period=averaging_period)
         fp.data = fp.data.sel(time=fp_idx)
 
     # make FootprintData to return
-    metadata = footprints[0].metadata
+    metadata = indexed_footprints[0][1].metadata
 
-    if len(footprints) > 1:
+    if len(indexed_footprints) > 1:
         metadata["inlet"] = "varies"
         metadata["height"] = "varies"
 
-    data = xr.concat([fp.data for fp in footprints], dim="time").sortby("time")
+    data = xr.concat([fp.data for _, fp in indexed_footprints], dim="time").sortby("time")
 
     return FootprintData(data=data, metadata=metadata)
 

@@ -8,6 +8,11 @@ Local repository snapshot: `origin/devel` at `da008974`
 
 Tracker evidence updated through 13:47 UTC, including merged PR #660
 
+Compatibility update (2026-09-22): PR #670 completed all-chain derived
+outputs, and PR #714 removed the direct HBMCMC implementation. The residual
+compatibility surface is the inbound old-INI wrapper and modern legacy-format
+output product.
+
 ## Purpose and authority
 
 This note verifies the attached architecture review against the repository,
@@ -51,7 +56,7 @@ The work should be managed as three independent release gates:
 - **readable model integration** — recipe ownership, typed configuration,
   concrete model-family delivery, and truthful outputs; and
 - **reproducible adoption** — real-run evidence, tutorials, replay, user task
-  tests, and only then legacy retirement.
+  tests, and evidence for any later wrapper retirement.
 
 ## Verified corrections to the attached review
 
@@ -63,7 +68,7 @@ The work should be managed as three independent release gates:
 | CO2 and linked CO2/O2 are future pressure tests. | OPE-74/75/77/119 are Done; PRs #617, #632, and #646 are merged. The repository contains concrete `rhime/co2` preparation, model, and replay runners. | Publish a recipe-maturity matrix. Finish outputs/configuration/acceptance and real-run cutover rather than re-designing the graphs. |
 | The `rhime`/`models` distinction is wholly unsettled. | `models` contains reusable PyMC mechanics, has no `models -> rhime` imports, and concrete recipes live under `rhime`. Tests enforce recipe ownership. | #663/OPE-128 should decide residual ownership, exact import exceptions, and migrations. Do not reopen the settled dependency direction or require a package rename. |
 | No `.values` or `np.asarray` is allowed before materialisation. | Canonical numerical guidance allows inspection of normally eager indexed dimension coordinates. It prohibits hidden payload coercion or execution. | State the rule precisely: no scientific data-payload coercion before its named boundary; eager indexed-label inspection is allowed. |
-| Reframe #416 as active legacy-removal work. | [#416](https://github.com/openghg/openghg_inversions/issues/416) is closed. [#587](https://github.com/openghg/openghg_inversions/issues/587) revised its assumptions and owns the live retirement gate. | Do not revive #416. Open a new bounded residual-removal issue only after the current gates pass. |
+| Reframe #416 as active legacy-removal work. | [#416](https://github.com/openghg/openghg_inversions/issues/416) is closed, and PR #714 later removed the direct HBMCMC implementation. | Do not revive #416. Treat the old-INI wrapper and modern legacy-format product as separate residual contracts; open a bounded issue only if evidence supports retiring either one. |
 | The open-item counts describe current repository state. | The review's scoped count became stale as #659 merged. Queries scoped to items created in 2026 and unscoped full-repository queries produce different totals. | Every published count must include query, scope, and timestamp; counts are not planning inputs. |
 
 Two additional qualifications are important:
@@ -78,8 +83,8 @@ Two additional qualifications are important:
 
 | Recipe | Current maturity | Remaining production claim |
 | --- | --- | --- |
-| Standard RHIME | Full acquisition-to-output recipe with visible orchestration and typed likelihood settings. | All-chain derived products, automatic diagnostics, tutorials/user acceptance, and legacy-retirement evidence. |
-| Multisector RHIME | Full acquisition-to-output recipe with a separate visible runner. | Same safety/adoption gates; resolve outstanding sector/output issues independently. |
+| Standard RHIME | Full acquisition-to-output recipe with visible orchestration, typed likelihood settings, and all-chain derived outputs. | Automatic diagnostics, tutorials/user acceptance, and residual wrapper-migration evidence. |
+| Multisector RHIME | Full acquisition-to-output recipe with a separate visible runner and all-chain derived outputs. | Same remaining safety/adoption gates; resolve outstanding sector/output issues independently. |
 | CO2 only | Concrete prepared-input/model/sample seam is merged. | Complete acquisition/configuration/result/output contract, grouped reporting evidence, units, diagnostics, and scientist acceptance. |
 | CO2/O2 | Concrete linked preparation, graph, and advanced replay seam are merged. | Unit-safe heterogeneous-channel contract, configuration, tracer-aware outputs, diagnostics, and real-run acceptance. |
 | Nested domain | No production implementation on `devel`; #359 and #600 remain divergent reference branches. | Execute #407 -> #408 -> #409 under #666. |
@@ -90,9 +95,10 @@ would overstate their acquisition, configuration, result, and output support.
 ## Scientific-output safety is the first release gate
 
 The raw `InferenceData` and serialized inversion output retain all chains. The
-defect is the derived-product boundary: `convert_idata_to_dataset` currently
-uses `isel(chain=0)`, and modern basic/PARIS products consume that conversion.
-The explicit legacy adapter also selects chain zero for compatibility.
+The former derived-product defect in `convert_idata_to_dataset` was resolved by
+PR #670 / #657. Modern basic, PARIS, country, concentration, flux, and
+legacy-format products now retain explicit all-chain semantics. The remaining
+safety gap is automatic, machine-readable diagnostics and validity policy.
 
 Sampling currently logs divergences and sampler mechanics, while R-hat and ESS
 are only available through an explicitly requested diagnostic. A standard
@@ -106,16 +112,18 @@ issue own every modelling-workflow concern.
 
 The safety work therefore has three distinct owners:
 
-1. [#657](https://github.com/openghg/openghg_inversions/issues/657) — preserve
-   all chains in derived concentration, flux, country, basic, and PARIS paths;
+1. [#657](https://github.com/openghg/openghg_inversions/issues/657) — complete
+   in PR #670; preserves all chains in derived concentration, flux, country,
+   basic, PARIS, and modern legacy-format paths;
 2. [#656](https://github.com/openghg/openghg_inversions/issues/656) — calculate
    and retain chain count, draws, divergences, R-hat, bulk ESS, and tail ESS;
 3. a focused decision arising from
    [#637](https://github.com/openghg/openghg_inversions/issues/637) — define
    when products warn, fail closed, or are scientifically unsupported.
 
-#656 and #657 can proceed in parallel. Neither should silently acquire the
-policy decision: #656 explicitly does not define universal hard thresholds.
+#657 is complete. #656 can proceed independently, but it must not silently
+acquire the policy decision: #656 explicitly does not define universal hard
+thresholds.
 
 ### Safety acceptance criteria
 
@@ -124,9 +132,8 @@ policy decision: #656 explicitly does not define universal hard thresholds.
 - Ordinary modern paths contain no implicit first-chain selection.
 - Reductions state whether they preserve `chain`/`draw`, stack them into a
   sample axis, or reduce both dimensions.
-- Explicit legacy compatibility either documents first-chain behaviour or
-  receives an approved multi-chain mapping; it never determines modern output
-  semantics.
+- The old-INI wrapper reaches the same all-chain RHIME output path; compatibility
+  input spelling and filenames never determine modern output semantics.
 - Diagnostics are machine-readable and travel with the result and persisted
   artifact.
 - One-chain R-hat and ESS are recorded as **not assessable**, never passed.
@@ -159,8 +166,8 @@ OPE-125 records a concrete failure and cost, not speculative optimization:
 - the large artifact was written before the useful compressed trace, so an
   output failure could prevent recovery of the trace.
 
-This work is separate from #656/#657. The smaller chain and diagnostic fixes
-must not wait for the broader storage redesign.
+This work is separate from #656 and the completed #657. The remaining
+diagnostic fix must not wait for the broader storage redesign.
 
 ### CO2 production and Verification Games cutover
 
@@ -211,8 +218,9 @@ issue should be widened during this pass.
 
 ### Missing canonical Linear records
 
-- GitHub #637, #645, #656, and #657 have no Linear mirrors even though Linear
-  is supposed to own priority and dependencies.
+- GitHub #637, #645, and #656 have no Linear mirrors even though Linear is
+  supposed to own priority and dependencies. Record completed #657 as delivered
+  evidence rather than reopening it for tracker symmetry.
 - GitHub #661 has no Linear parent, while OPE-126, OPE-127, and OPE-128 act as
   its children.
 - OPE-126/127/128 currently have no priority or owner despite being described
@@ -236,8 +244,9 @@ body in both systems.
 | #359/#600 | Mark reference-only and superseded by #666/#407-409; close after evidence extraction. | Record configs, fixtures, assets/licences, diagnostics, scientific checks, and whether real-data evidence is trustworthy. |
 | #392/#410 | Audit against #626/#587 before consolidation. | Map each acceptance criterion; do not close by title similarity alone. |
 
-Do not reactivate closed #416. Open a new residual-removal issue after the
-retirement gates pass.
+Do not reactivate closed #416. Open a new bounded issue only if observed
+migration justifies retiring the old-INI wrapper or changing support for the
+modern legacy-format product.
 
 ### Linear cleanup actions
 
@@ -274,7 +283,8 @@ may proceed while Phase 0 is reconciled.
 
 **Work**
 
-- Implement #657 and #656 as independent focused changes.
+- Treat #657 as delivered by PR #670; implement #656 as the remaining focused
+  diagnostics change.
 - Create and approve the #637 output-validity/fail-closed decision.
 - Define a bounded PEFO replacement or validation task using additive-sigma and
   fixed/OU evidence; do not infer universal replacement from one experiment.
@@ -283,8 +293,8 @@ may proceed while Phase 0 is reconciled.
 **Exit**
 
 - All safety acceptance criteria above pass.
-- Modern production claims and legacy retirement are blocked explicitly on the
-  safety gate.
+- Modern production claims remain blocked explicitly on the safety gate. Any
+  later wrapper retirement has its own migration gate.
 
 ### Phase 2 — finish current delivery and adoption evidence
 
@@ -314,9 +324,10 @@ are explicit.
 **3a. OPE-128 / #663 — narrow package ownership**
 
 - Treat `rhime -> models` and recipe-first ownership as settled.
-- Decide residual owners for `_model_building.py`, compatibility aliases from
-  modern preparation into `hbmcmc`, CO2 configuration/outputs, and stale public
-  helpers such as `add_inferpymc_likelihood_component`.
+- Decide residual owners for `_model_building.py` and CO2
+  configuration/outputs. PR #714 removed preparation aliases into the direct
+  HBMCMC implementation and stale inferpymc-only helpers; they are no longer
+  ownership questions.
 - Publish current/target trees, allowed import edges, exact compatibility
   exceptions, and a public import migration table.
 - Split moves into small issues; do not rename `models` without a demonstrated
@@ -400,7 +411,7 @@ Before implementation, preserve or reject the reference evidence from #359 and
   visible `H_outer @ x_outer + H_inner @ x_inner` equation, native-grid outputs,
   a controlled end-to-end test, and a scientist modification exercise.
 
-### Phase 5 — operating model and legacy retirement
+### Phase 5 — operating model and residual compatibility
 
 **Work**
 
@@ -408,9 +419,11 @@ Before implementation, preserve or reject the reference evidence from #359 and
 - Proceed to OPE-99 and OPE-101-103 cleanup only after parity and queryability
   exist.
 - Complete OPE-66/69/70 and OPE-49's user gate.
-- Decide genuine legacy product parity and migration for real INI/SLURM users.
-- Open a new, bounded residual-removal issue with a deprecation window and
-  release notes; do not revive #416.
+- Record which real INI/SLURM users still need the wrapper and which modern
+  legacy-format products remain supported.
+- If evidence supports wrapper retirement, open a new bounded issue with a
+  deprecation window and release notes; do not revive #416 or couple wrapper
+  retirement to the product-format decision.
 
 **Exit**
 
@@ -434,8 +447,9 @@ have named answers:
 3. **Production recipe:** Does the label require acquisition, external config,
    outputs, diagnostics, provenance, examples, and scientist acceptance, or is
    a prepared-input replay seam sufficient?
-4. **Package ownership:** What exact modules may import `hbmcmc` for
-   compatibility, and when do those exceptions expire?
+4. **Package ownership:** No production module may import the removed HBMCMC
+   implementation. When does observed user migration justify deleting the
+   inbound-only `run_hbmcmc.py` old-INI wrapper?
 5. **Configuration:** What is the canonical in-memory type for each real recipe,
    which defaults are scientifically valid, and which external format is
    supported first?
@@ -443,8 +457,9 @@ have named answers:
    with what rubric, and where is the evidence stored?
 7. **Nested reference evidence:** Which #600 run, configuration, data identities,
    outputs, diagnostics, and tolerances are trustworthy enough to retain?
-8. **Legacy retirement:** Which real configurations and products require parity,
-   what observed migration is sufficient, and what is the release window?
+8. **Residual compatibility:** Which real old-INI configurations still require
+   the wrapper, which modern legacy-format products remain supported, and what
+   observed migration is sufficient to retire the wrapper separately?
 9. **Gamma-Dirichlet note:** The attachment refers to an uploaded aggregation-
    error note that is absent from the attachment directory and repository.
    Link the source or remove that pressure-test claim.
@@ -465,8 +480,8 @@ The architecture is complete when:
   work;
 - each claimed production recipe meets its documented maturity contract;
 - real-run evidence is reproducible and queryable; and
-- legacy retirement is approved from observed safety, parity, and user
-  migration evidence.
+- any later retirement of the old-INI wrapper or modern legacy-format product
+  is approved from observed safety, parity, and user-migration evidence.
 
 This is consolidation work. No new compiler, registry, universal component
 protocol, generic pipeline, or package-wide validation framework is required.

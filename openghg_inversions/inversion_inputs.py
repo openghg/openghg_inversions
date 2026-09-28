@@ -179,8 +179,7 @@ def _drop_nan_and_compute(
 ) -> xr.Dataset:
     """Drop NaNs in required inversion variables and materialize core variables.
 
-    This centralizes the dataset cleanup that was previously duplicated in
-    hbmcmc.make_inv_inputs. It:
+    This centralizes dataset cleanup for RHIME input construction. It:
       - drops nmeasure rows with NaNs in required variables (H, H_bc, mf, mf_error)
       - triggers computation for a selected set of variables so returned dataset
         is ready for immediate consumption (avoids repeated dask computations)
@@ -366,7 +365,7 @@ def make_inv_inputs(
             "before gathering into nmeasure."
         ) from exc
 
-    # Check that we have variables for standard RHIME inversion (`inferpymc`).
+    # Check that we have variables for a standard RHIME inversion.
     # Note that mf_prior_factor and mf_prior_upper_level_factor are only needed
     # for post-processing (and only if column data is used).
     _check_required_inv_input_vars(

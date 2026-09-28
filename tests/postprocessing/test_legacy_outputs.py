@@ -2,7 +2,6 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 
-import arviz as az
 import h5py
 import numpy as np
 import pandas as pd
@@ -14,6 +13,7 @@ from openghg_inversions import utils
 from openghg_inversions.postprocessing import legacy_outputs
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.postprocessing.legacy_outputs import _compute_apriori_flux
+from tests.helpers import make_trace
 
 
 def _minimal_legacy_inv_inputs(
@@ -121,7 +121,7 @@ def _legacy_inv_out(
         groups["constant_data"] = xr.Dataset(constant_vars, coords=constant_coords)
 
     return InversionOutput(
-        trace=cast(Any, az.InferenceData)(**groups),
+        trace=make_trace(**groups),
         inv_inputs=_minimal_legacy_inv_inputs(include_bc=include_bc, observation_times=observation_times),
         basis_functions=cast(Any, _basis_functions_stub(flux_time=flux_time, time_period=time_period)),
         run_metadata={
@@ -153,7 +153,7 @@ def stub_legacy_product_builders(monkeypatch: pytest.MonkeyPatch) -> None:
             "y_posterior_predictive_hdi_68": (("nmeasure", "hdi"), np.ones((2, 2))),
             "y_posterior_predictive_hdi_95": (("nmeasure", "hdi"), np.ones((2, 2))),
         }
-        if "bc" in cast(Any, inv_out.trace).posterior:
+        if "bc" in inv_out.trace_group("posterior"):
             data_vars.update(
                 {
                     "mu_bc_posterior_mean": (("nmeasure",), np.array([0.5, 1.5])),
@@ -202,6 +202,28 @@ def stub_legacy_product_builders(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         legacy_outputs, "_legacy_country_index", lambda domain, country_file=None: np.array([[1]])
     )
+
+
+def test_legacy_derived_chain_selection_keeps_full_trace_metadata(
+    stub_legacy_product_builders: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Compatibility summaries select chain 0 without truncating diagnostics metadata."""
+    inv_out = _legacy_inv_out(model_data=True, chains=2)
+    original = legacy_outputs.make_concentration_outputs
+    captured: dict[str, int] = {}
+
+    def record_concentration(inv_out: InversionOutput, **kwargs: object) -> xr.Dataset:
+        captured["chains"] = inv_out.trace_group("posterior").sizes["chain"]
+        return original(inv_out, **kwargs)
+
+    monkeypatch.setattr(legacy_outputs, "make_concentration_outputs", record_concentration)
+
+    output = legacy_outputs.make_legacy_hbmcmc_output(inv_out, derived_output_chain=0)
+
+    assert captured["chains"] == 1
+    assert output.attrs["Number of chains"] == "2"
+    assert output.sizes["steps"] == inv_out.trace_group("posterior").sizes["draw"]
 
 
 def test_compute_apriori_flux_handles_missing_month():

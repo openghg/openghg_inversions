@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 from typing import Any, cast
 
-import arviz as az
 import numpy as np
 import pandas as pd
 import pymc as pm
@@ -190,10 +189,11 @@ def test_cached_input_names_do_not_auto_select_prepared_boundary() -> None:
 
     class PreparedInputsStub:
         inv_inputs = inputs
+        rhime_inputs = None
+        aggregation_error_mode = "dense"
 
     names = co2_cached_sigma_runner.co2_cached_sigma_input_names(
         cast(Any, PreparedInputsStub()),
-        aggregation_error_mode="dense",
     )
 
     assert "H_bc" not in names
@@ -667,23 +667,21 @@ def test_joint_outputs_are_exact_and_predict_complete_correlated_vectors() -> No
         inputs["fixed_prior_contribution"].values + inputs["H"].values @ np.ones(2),
         (1, draws, 4),
     ).copy()
-    trace = az.from_dict(
-        posterior={
-            "flux_scaling": state,
-            "modelled_concentration": modelled_mean,
-            "ou_site_amplitude": sigma,
-        },
-        dims={
-            "flux_scaling": ["region"],
-            "modelled_concentration": ["nmeasure"],
-            "ou_site_amplitude": ["ou_site"],
+    posterior = xr.Dataset(
+        {
+            "flux_scaling": (("chain", "draw", "region"), state),
+            "modelled_concentration": (("chain", "draw", "nmeasure"), modelled_mean),
+            "ou_site_amplitude": (("chain", "draw", "ou_site"), sigma),
         },
         coords={
+            "chain": [0],
+            "draw": np.arange(draws),
             "region": ["biosphere", "fossil"],
             "nmeasure": inputs["nmeasure"].values,
             "ou_site": ["AAA", "BBB"],
         },
     )
+    trace = xr.DataTree.from_dict({"posterior": posterior})
 
     result = co2_cached_sigma_runner._append_joint_outputs(
         trace,
@@ -726,6 +724,7 @@ def test_joint_outputs_are_exact_and_predict_complete_correlated_vectors() -> No
 def test_named_runner_samples_real_graph_and_labels_cached_outputs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """The named runner samples the real graph and labels every cached output."""
     inputs = _boundary_inputs()
     step_settings: dict[str, float] = {}
     original_make_step = co2_cached_sigma_runner.make_cached_sigma_compound_step
@@ -737,6 +736,8 @@ def test_named_runner_samples_real_graph_and_labels_cached_outputs(
 
     class PreparedInputsStub:
         inv_inputs = inputs
+        rhime_inputs = None
+        aggregation_error_mode = "dense"
 
         def validated(self) -> "PreparedInputsStub":
             return self
@@ -779,7 +780,6 @@ def test_named_runner_samples_real_graph_and_labels_cached_outputs(
         sampler=sampler,
         sigma_target_accept=0.82,
         state_target_accept=0.93,
-        aggregation_error_mode="dense",
         use_bc=True,
         bc_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.1},
         bc_state_activity=StateActivity(
@@ -845,20 +845,24 @@ def test_named_runner_samples_real_graph_and_labels_cached_outputs(
 
 
 def test_cached_runner_rejects_generic_target_accept() -> None:
+    """The cached runner rejects one target acceptance rate for its two samplers."""
     class PreparedInputsStub:
         inv_inputs = _inputs()
+        aggregation_error_mode = "dense"
 
         def validated(self) -> "PreparedInputsStub":
             return self
+
+    prepared = PreparedInputsStub()
+    prepared.rhime_inputs = cast(Any, prepared)
 
     with pytest.raises(
         ValueError,
         match="sigma_target_accept.*state_target_accept",
     ):
         run_rhime_co2_cached_sigma(
-            prepared_inputs=cast(Any, PreparedInputsStub()),
+            prepared_inputs=cast(Any, prepared),
             tau_hours={"AAA": 3.0, "BBB": 7.0},
             site_amplitude_prior_scale=0.75,
             sampler=RhimeSampler(sample_kwargs={"target_accept": 0.95}),
-            aggregation_error_mode="dense",
         )
