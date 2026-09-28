@@ -9151,3 +9151,71 @@ def test_cli_run_rhime_multisector_passes_config(monkeypatch, tmp_path: Path) ->
 def test_safe_pymc_name_sanitizes_source_names() -> None:
     assert safe_pymc_name("total-ukghg-edgar7") == "total_ukghg_edgar7"
     assert safe_pymc_name("Sector 2") == "sector_2"
+
+
+def test_rhime_acquisition_forwards_satellite_footprint_mode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The public runner stage must not drop the time-resolved selector."""
+    captured: dict[str, Any] = {}
+    expected = object()
+
+    def fake_prepare_merged_data(**kwargs: Any) -> object:
+        captured.update(kwargs)
+        return expected
+
+    monkeypatch.setattr(prep_module, "_prepare_merged_data", fake_prepare_merged_data)
+    data_args = {
+        **rhime_params.RHIME_PREPARATION_DEFAULTS,
+        "species": "co2",
+        "sites": ["OCO2-EASTASIA"],
+        "domain": "EASTASIA",
+        "averaging_period": ["1H"],
+        "start_date": "2022-03-31 04:00:00",
+        "end_date": "2022-04-01 04:08:10",
+        "output_name": "satellite_multisector",
+        "flux_sources": ["anth", "resp", "gpp_atm"],
+        "time_resolved": [True],
+    }
+
+    actual = rhime_preparation.retrieve_or_reload_rhime_data(data_args, multisector=True)
+
+    assert actual is expected
+    assert captured["time_resolved"] == [True]
+    assert captured["split_by_sectors"] is True
+
+
+def test_satellite_rhime_template_matches_modern_input_schema() -> None:
+    """The satellite example uses the same keys and value shapes as modern RHIME."""
+    import openghg_inversions.config.config as config_module
+
+    template_dir = Path(__file__).parents[1] / "openghg_inversions" / "config" / "templates"
+    generic_path = template_dir / "rhime_template.ini"
+    satellite_path = template_dir / "rhime_satellite_template.ini"
+    generic = config_module.all_param(str(generic_path), exclude_not_found=False, allow_new=True)
+    satellite = config_module.all_param(str(satellite_path), exclude_not_found=False, allow_new=True)
+
+    assert set(satellite) - set(generic) == {"pollution_events_from_obs"}
+    assert set(generic) <= set(satellite)
+    assert satellite["sites"] == ["GOSAT-BRAZIL"]
+    assert satellite["platform"] == ["satellite"]
+    assert satellite["inlet"] == ["column"]
+    assert satellite["fp_height"] == ["column"]
+    assert satellite["max_level"] == [3]
+    assert satellite["output_format"] == "paris"
+    assert satellite["paris_postprocessing_kwargs"] == {
+        "template_version": "latest",
+        "country_selections": None,
+    }
+    assert "emissions_name" not in satellite
+    assert "nit" not in satellite
+    assert "nchain" not in satellite
+
+    normalized = params_from_config(satellite_path)
+    setup = rhime_params.make_rhime_runner_setup(
+        params=normalized,
+        multisector=False,
+    )
+    assert setup.run_spec.sites == ("GOSAT-BRAZIL",)
+    assert setup.data_args["platform"] == ["satellite"]
+    assert setup.data_args["max_level"] == [3]

@@ -18,7 +18,7 @@ import openghg_inversions.inversion_data.get_data as get_data_module
 import openghg_inversions.inversion_data.getters as getters_module
 import openghg_inversions.inversion_data.scenario as scenario_module
 from openghg_inversions.flux_sanitization import FluxNonFiniteMetadata, NonFiniteFluxWarning
-from openghg_inversions.inversion_data._site_options import expand_site_option
+from openghg_inversions.inversion_data._site_options import expand_site_boolean_option, expand_site_option
 from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
 from openghg_inversions.inversion_data.get_data import (
     add_obs_error,
@@ -501,6 +501,14 @@ def test_expand_site_option_rejects_misaligned_or_boolean_values() -> None:
         expand_site_option({"unordered", "values"}, nsites=2, name="option")
     with pytest.raises(ValueError, match="site-aligned iterable"):
         expand_site_option({"TAC": "value"}, nsites=1, name="option")
+
+
+def test_expand_site_boolean_option_broadcasts_and_validates() -> None:
+    """Footprint-mode selectors support scalar and site-aligned optional booleans."""
+    assert expand_site_boolean_option(True, nsites=2, name="time_resolved") == (True, True)
+    assert expand_site_boolean_option([False, None], nsites=2, name="time_resolved") == (False, None)
+    with pytest.raises(ValueError, match="booleans or None"):
+        expand_site_boolean_option([True, "false"], nsites=2, name="time_resolved")  # type: ignore[list-item]
 
 
 def test_data_processing_reuses_first_successful_observation_units(
