@@ -141,7 +141,8 @@ def test_satellite_boundary_scaling_uses_footprint_level_provenance() -> None:
         }
     )
 
-    inputs["bc_mean_shift_sensitivity"] = xr.DataArray([1.0, 0.5], dims="nmeasure", attrs={"units": "1"})
+    inputs["G_bc"] = xr.DataArray([[1.0, 0.5], [0.3, 0.2]], dims=("bc_region", "nmeasure"), attrs={"units": "1"})
+    inputs["bc_centering_weights"] = xr.DataArray([2.0, 1.0], dims="bc_region", attrs={"units": "1"})
     original = inputs.copy(deep=True)
     result = scale_satellite_boundary_sensitivity_to_column_signal(
         inputs,
@@ -153,8 +154,9 @@ def test_satellite_boundary_scaling_uses_footprint_level_provenance() -> None:
 
     np.testing.assert_allclose(result["H_bc"], [[12.5, 50.0], [37.5, 100.0]])
 
-    np.testing.assert_allclose(result.bc_mean_shift_sensitivity, [0.125, 0.125])
-    assert result.bc_mean_shift_sensitivity.attrs["units"] == "1"
+    np.testing.assert_allclose(result.G_bc, [[0.125, 0.125], [0.0375, 0.05]])
+    xr.testing.assert_identical(result.bc_centering_weights, inputs.bc_centering_weights)
+    assert result.G_bc.attrs["units"] == "1"
     xr.testing.assert_identical(inputs, original)
 
 

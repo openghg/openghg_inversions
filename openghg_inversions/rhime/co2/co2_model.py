@@ -14,9 +14,7 @@ import numpy as np
 import pymc as pm
 import xarray as xr
 
-from openghg_inversions.array_ops import to_dense
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
-from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
 from openghg_inversions.models.additive_sigma import (
     DEFAULT_ADDITIVE_SIGMA_PRIOR,
     add_additive_sigma_likelihood,
@@ -25,12 +23,11 @@ from openghg_inversions.models.components import (
     add_coherent_affine_component,
     add_correlated_lognormal_state_with_activity,
     add_linear_component,
-    add_model_data,
     add_offset_component,
     apply_linear_sensitivity,
 )
 from openghg_inversions.models.coords import registered_model
-from openghg_inversions.models.priors import PriorArgs, parse_prior
+from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.models.state_activity import (
     StateActivity,
     prepare_linear_sensitivity,
@@ -41,6 +38,8 @@ from openghg_inversions.rhime._model_building import _call_custom_likelihood
 from openghg_inversions.rhime.builders import RhimeLikelihoodBuilder
 from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR
 from openghg_inversions.sigma import SigmaAlignment
+
+from .co2_boundary import add_centered_boundary, prepare_centered_boundary
 
 
 def _fixed_mismatch_array(
@@ -86,38 +85,6 @@ def _normalise_offset_args(
     return frequency, drop_first, per_site
 
 
-def _prepare_bc_mean_shift_sensitivity(
-    sensitivity: xr.DataArray | None,
-    prior: PriorArgs | None,
-    observations: xr.DataArray,
-    boundary_sensitivity: xr.DataArray | None,
-    *,
-    output_dim: str = "nmeasure",
-) -> xr.DataArray | None:
-    """Validate and materialize the unit boundary response at model construction."""
-    if sensitivity is None and prior is None:
-        return None
-    if sensitivity is None or prior is None or boundary_sensitivity is None:
-        raise ValueError(
-            "bc_mean_shift_prior and boundary_mean_shift_sensitivity must be supplied "
-            "together with boundary_sensitivity."
-        )
-    sensitivity, _ = xr.align(sensitivity.transpose(output_dim), observations, join="exact", copy=False)
-    units = sensitivity.attrs.get("units")
-    if units is None or not np.isclose(
-        mole_fraction_unit_scale(str(units), context="boundary mean-shift sensitivity"),
-        1.0,
-        rtol=1e-12,
-        atol=0.0,
-    ):
-        raise ValueError("boundary_mean_shift_sensitivity must have unscaled dimensionless units ('1').")
-    sensitivity = to_dense(sensitivity).compute()
-    values = np.asarray(sensitivity.values)
-    if not np.isfinite(values).all() or (values < 0).any() or not (values > 0).any():
-        raise ValueError("boundary_mean_shift_sensitivity must be finite, non-negative and not all zero.")
-    return sensitivity
-
-
 def build_co2_model(
     flux_sensitivity: xr.DataArray,
     *,
@@ -136,7 +103,9 @@ def build_co2_model(
     bc_prior: PriorArgs | None = None,
     bc_state_activity: StateActivity | None = None,
     bc_mean_shift_prior: PriorArgs | None = None,
-    boundary_mean_shift_sensitivity: xr.DataArray | None = None,
+    bc_anomaly_scale: float | None = None,
+    boundary_correction_sensitivity: xr.DataArray | None = None,
+    bc_centering_weights: xr.DataArray | None = None,
     offset_prior: PriorArgs | None = None,
     offset_args: Mapping[str, Any] | None = None,
 ) -> pm.Model:
@@ -196,16 +165,21 @@ def build_co2_model(
         bc_prior: Optional prior arguments for boundary-condition scaling.
         bc_state_activity: Optional labelled activity policy for boundary
             states.
-        bc_mean_shift_prior: Hyperprior for one global additive boundary-field
-            mean shift, in the observations' concentration units. The existing
-            boundary-scaling prior and its conditional spread are unchanged.
-            Requires both boundary sensitivities.
-        boundary_mean_shift_sensitivity: Dimensionless response to a unit
-            additive shift of every boundary curtain and period, aligned on
-            the output dimension. Supply the transport of a unit boundary
-            field, including any column weighting; do not derive it from
-            concentration-weighted ``boundary_sensitivity``. Requires
-            ``bc_mean_shift_prior``. It also applies to fixed boundary scales.
+        bc_mean_shift_prior: Prior for one common additive boundary correction
+            over the inversion window, in concentration units. Selects centred
+            additive boundaries instead of sampled multiplicative scales;
+            cannot be combined with ``bc_prior`` or ``bc_state_activity``.
+        bc_anomaly_scale: Positive fixed Gaussian scale before weighted
+            centring, in concentration units. Required in additive mode.
+        boundary_correction_sensitivity: Dimensionless unit boundary transport
+            on the observation and ``bc_region`` axes, labelled exactly as
+            ``boundary_sensitivity``. Required in additive mode.
+        bc_centering_weights: Positive dimensionless ``bc_region`` weights
+            defining the mean across curtain/period states. Normalized within
+            the model; the weighted mean of additive anomalies is exactly zero.
+            Required in additive mode. See the centred-boundary explanation in
+            :doc:`/usage/co2_models` and Stan's parameterizing-centred-vectors
+            discussion for the constraint and its prior covariance.
         offset_prior: Optional prior for an offset component. When omitted, no
             offset is added. Site codes are derived from the ``site`` coordinate
             on ``observations``.
@@ -234,8 +208,9 @@ def build_co2_model(
             "additive-sigma or fixed-mismatch options; pass its options in "
             "likelihood_kwargs."
         )
-    shift_sensitivity = _prepare_bc_mean_shift_sensitivity(
-        boundary_mean_shift_sensitivity, bc_mean_shift_prior, observations, boundary_sensitivity
+    centered_boundary = prepare_centered_boundary(
+        boundary_sensitivity, boundary_correction_sensitivity, bc_centering_weights,
+        observations, bc_mean_shift_prior, bc_anomaly_scale, bc_prior, bc_state_activity,
     )
     bc_prior = dict(DEFAULT_BC_PRIOR if bc_prior is None else bc_prior)
     if offset_prior is not None:
@@ -264,31 +239,22 @@ def build_co2_model(
             output_name="co2_flux_contribution",
         )
         boundary_contribution = None
-        if boundary_sensitivity is not None:
+        if centered_boundary is not None:
+            assert bc_mean_shift_prior is not None and bc_anomaly_scale is not None
+            boundary_contribution, _, _ = add_centered_boundary(
+                centered_boundary, bc_mean_shift_prior, bc_anomaly_scale
+            )
+        elif boundary_sensitivity is not None:
             boundary_contribution = add_linear_component(
                 prepare_linear_sensitivity(boundary_sensitivity),
                 data_name="hbc",
                 prior_args=bc_prior,
                 var_name="bc",
-                output_name="mu_bc" if shift_sensitivity is None else "mu_bc_unshifted",
+                output_name="mu_bc",
                 output_dim="nmeasure",
                 compute_deterministic=True,
                 state_activity=bc_state_activity,
             ).output
-
-        if shift_sensitivity is not None:
-            assert bc_mean_shift_prior is not None
-            shift_data = add_model_data(shift_sensitivity, "bc_mean_shift_sensitivity")
-            shift = parse_prior("bc_mean_shift", dict(bc_mean_shift_prior))
-            if shift.ndim != 0:
-                raise ValueError(
-                    "bc_mean_shift_prior must define one scalar shared by all boundaries and periods."
-                )
-            shift_contribution = pm.Deterministic("mu_bc_mean_shift", shift_data * shift, dims="nmeasure")
-            assert boundary_contribution is not None
-            boundary_contribution = pm.Deterministic(
-                "mu_bc", boundary_contribution + shift_contribution, dims="nmeasure"
-            )
 
         offset = None
         if offset_prior is not None:

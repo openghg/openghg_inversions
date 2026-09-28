@@ -222,7 +222,8 @@ def _drop_nan_and_compute(
 
 def _drop_unobserved_bc_states(ds: xr.Dataset) -> xr.Dataset:
     """Drop boundary-condition states with zero sensitivity to every observation."""
-    if "H_bc" not in ds:
+    # A centred boundary field includes unobserved states in its weighted mean.
+    if "H_bc" not in ds or "G_bc" in ds:
         return ds
     return ds.sel(bc_region=(ds["H_bc"] != 0).any("nmeasure"))
 
@@ -243,7 +244,7 @@ def _check_required_inv_input_vars(
     """
     missing_required = [var for var in required_vars if var not in ds]
 
-    for name in ("H_bc", "bc_mean_shift_sensitivity"):
+    for name in ("H_bc", "G_bc", "bc_centering_weights"):
         if any(name in fp_data[site] for site in sites) and name not in ds:
             missing_required.append(name)
 
@@ -307,7 +308,11 @@ def make_inv_inputs(
 
     The returned dataset contains shared observations, sensitivities, error
     terms, and site alignment metadata. Model-component-specific arrays are
-    constructed by their owning components.
+    constructed by their owning components. Optional dimensionless ``G_bc``
+    is expanded onto the same boundary states as ``H_bc``. Supply explicit
+    ``bc_centering_weights`` after gathering, using the resolved boundary-state
+    labels in ``prepare_co2_inputs``; raw curtain weights do not define how to
+    weight the expanded periods.
 
     Args:
         fp_data: Per-site merged observations and sensitivity data.
@@ -348,6 +353,13 @@ def make_inv_inputs(
     if missing_sites:
         raise ValueError(f"`fp_data` is missing requested site(s): {missing_sites!r}.")
 
+    if any("bc_centering_weights" in fp_data[site] for site in sites):
+        raise ValueError(
+            "Supply bc_centering_weights on resolved boundary states in prepare_co2_inputs, "
+            "after gathering and period expansion."
+        )
+    if any("G_bc" in fp_data[site] and "H_bc" not in fp_data[site] for site in sites):
+        raise ValueError("G_bc requires H_bc at every contributing site.")
     site_data = {site: fp_data[site] for site in sites}
     site_data = _fill_missing_optional_observation_factors(site_data)
     _validate_per_site_dimension_names(site_data, ragged_dim="time")
@@ -380,19 +392,21 @@ def make_inv_inputs(
     if "H_bc" in ds:
         from openghg_inversions.boundary_sensitivity import BoundaryAlignment
 
-        boundary_sensitivity = BoundaryAlignment.prepare(
-            ds["H_bc"],
-            frequency=bc_freq,
-            anchor_time=start_date,
-        ).data.transpose("bc_region", "nmeasure")
+        expanded = {
+            name: BoundaryAlignment.prepare(
+                ds[name], frequency=bc_freq, anchor_time=start_date
+            ).data.transpose("bc_region", "nmeasure")
+            for name in ("H_bc", "G_bc") if name in ds
+        }
         ds = ds.drop_dims("bc_region")
-        ds["H_bc"] = xr.DataArray(
-            boundary_sensitivity.data,
-            dims=("bc_region", "nmeasure"),
-            coords={"bc_region": boundary_sensitivity["bc_region"]},
-            name="H_bc",
-            attrs=boundary_sensitivity.attrs,
-        )
+        for name, sensitivity in expanded.items():
+            ds[name] = xr.DataArray(
+                sensitivity.data,
+                dims=("bc_region", "nmeasure"),
+                coords={} if "bc_region" in ds.coords else {"bc_region": sensitivity["bc_region"]},
+                name=name,
+                attrs=sensitivity.attrs,
+            )
 
     ds = add_site_indicator(ds)
     ds = add_min_error(ds, fp_data=fp_data, min_error=min_error, min_error_per_site=min_error_per_site)

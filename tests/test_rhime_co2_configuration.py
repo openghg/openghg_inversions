@@ -518,10 +518,26 @@ def test_boundary_mean_shift_hyperprior_configuration(cached: bool) -> None:
         config["sampling"] = {"nuts_sampler": "pymc"}
         config["likelihood"] = {"kind": "fixed_ou", "tau_hours": 24.0, "site_amplitude_prior_scale": 1.0}
     prior = {"pdf": "normal", "mu": 0.0, "sigma": 0.5}
-    config["model"] = {"boundary": {"mean_shift_prior": prior}}
+    config["model"] = {"boundary": {"mean_shift_prior": prior, "anomaly_scale": 0.3}}
     setup = cast(Co2RunSetup, resolve_co2_family_config(config))
     assert setup.runner_kwargs["use_bc"] is True
     assert setup.runner_kwargs["bc_mean_shift_prior"] == prior
+    assert setup.runner_kwargs["bc_anomaly_scale"] == 0.3
     config["model"]["boundary"]["enabled"] = False
     with pytest.raises(ValueError, match="mean_shift_prior requires"):
+        resolve_co2_family_config(config)
+
+
+@pytest.mark.parametrize("boundary, message", [
+    ({"mean_shift_prior": {"pdf": "normal", "mu": 0.0, "sigma": 0.5}}, "together"),
+    ({"anomaly_scale": 0.3}, "together"),
+    ({"anomaly_scale": 0.0}, "positive"),
+    ({"anomaly_scale": True}, "numeric"),
+    ({"anomaly_scale": 0.3, "mean_shift_prior": {"pdf": "normal", "mu": 0.0, "sigma": 0.5},
+      "prior": {"pdf": "normal", "mu": 1.0, "sigma": 0.1}}, "cannot use"),
+])
+def test_centred_boundary_configuration_rejects_incomplete_or_scaling_options(boundary, message) -> None:
+    config = _ordinary()
+    config["model"] = {"boundary": boundary}
+    with pytest.raises((ValueError, TypeError), match=message):
         resolve_co2_family_config(config)

@@ -21,9 +21,9 @@ chains = 4
 nuts_sampler = "pymc"
 random_seed = 12345
 
-# Optional global additive boundary mean shift (observation concentration units).
-# Requires prepared dimensionless bc_mean_shift_sensitivity and enabled boundary.
-# [model.boundary.mean_shift_prior]
-# pdf = "normal"
-# mu = 0.0
-# sigma = 0.5
+# Optional centred additive boundary corrections (observation concentration units).
+# Requires prepared G_bc and explicit bc_centering_weights; replaces BC scaling.
+# [model.boundary]
+# enabled = true
+# anomaly_scale = 0.5
+# mean_shift_prior = { pdf = "normal", mu = 0.0, sigma = 0.5 }

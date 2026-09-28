@@ -677,16 +677,28 @@ def test_scalar_minimum_error_preserves_lazy_borrowed_observations():
 
 
 def test_make_inv_inputs_preserves_unit_boundary_response_and_rejects_missing_sites() -> None:
-    """A global unit response follows selected rows and cannot silently disappear."""
+    """Boundary correction columns follow exactly the H_bc period expansion."""
     sites = {
         name: _make_minimal_fp_site(mf_base=400.0, include_inlet_height=False)
         for name in ("AAA", "BBB")
     }
     for name, values in (("AAA", [0.8, 0.7]), ("BBB", [1.0, 0.9])):
-        sites[name]["bc_mean_shift_sensitivity"] = xr.DataArray(values, dims="time", attrs={"units": "1"})
-    result = make_inv_inputs(sites, sites=["BBB", "AAA"], min_error=0.0)
-    np.testing.assert_allclose(result.bc_mean_shift_sensitivity, [1.0, 0.9, 0.8, 0.7])
-    assert result.bc_mean_shift_sensitivity.attrs["units"] == "1"
-    sites["AAA"] = sites["AAA"].drop_vars("bc_mean_shift_sensitivity")
-    with pytest.raises(ValueError, match="bc_mean_shift_sensitivity"):
+        response = xr.DataArray(
+            [values], dims=("bc_region", "time"), coords={"bc_region": ["north"]}, attrs={"units": "1"}
+        )
+        response = response.reindex(bc_region=["north", "east"], fill_value=0.0)
+        sites[name]["G_bc"] = response
+        sites[name]["H_bc"] = response * 400
+    result = make_inv_inputs(sites, sites=["BBB", "AAA"], bc_freq="1h", min_error=0.0)
+    np.testing.assert_allclose(result.G_bc, [
+        [1.0, 0.0, 0.8, 0.0], [0.0, 0.9, 0.0, 0.7],
+        [0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0],
+    ])
+    np.testing.assert_allclose(result.H_bc, result.G_bc * 400)
+    assert result.G_bc.attrs["units"] == "1"
+    sites["AAA"]["bc_centering_weights"] = xr.DataArray([1.0, 1.0], dims="bc_region")
+    with pytest.raises(ValueError, match="resolved boundary states"):
+        make_inv_inputs(sites, min_error=0.0)
+    sites["AAA"] = sites["AAA"].drop_vars(["G_bc", "bc_centering_weights"])
+    with pytest.raises(ValueError, match="G_bc"):
         make_inv_inputs(sites, min_error=0.0)

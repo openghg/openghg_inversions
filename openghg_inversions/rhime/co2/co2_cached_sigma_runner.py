@@ -63,8 +63,8 @@ def co2_cached_sigma_input_names(
     Args:
         prepared_inputs: Validated CO2 artifact to inspect.
         use_bc: Include the boundary-condition sensitivity ``H_bc``.
-        use_bc_mean_shift: Include the prepared dimensionless unit boundary
-            response ``bc_mean_shift_sensitivity``. Requires ``use_bc=True``.
+        use_bc_mean_shift: Include the prepared dimensionless boundary correction
+            operator ``G_bc`` and ``bc_centering_weights``. Requires ``use_bc=True``.
 
     Returns:
         Ordered input-variable names required by the recipe.
@@ -79,7 +79,7 @@ def co2_cached_sigma_input_names(
     if use_bc_mean_shift:
         if not use_bc:
             raise ValueError("A boundary mean shift requires use_bc=True.")
-        names.append("bc_mean_shift_sensitivity")
+        names.extend(("G_bc", "bc_centering_weights"))
     names.extend(
         aggregation_error_input_names(inputs, prepared_inputs.aggregation_error_mode)
     )
@@ -316,6 +316,7 @@ def run_rhime_co2_cached_sigma(
     bc_prior: PriorArgs | None = None,
     bc_state_activity: StateActivity | None = None,
     bc_mean_shift_prior: PriorArgs | None = None,
+    bc_anomaly_scale: float | None = None,
     offset_prior: PriorArgs | None = None,
     offset_args: Mapping[str, Any] | None = None,
 ) -> az.InferenceData:
@@ -353,10 +354,13 @@ def run_rhime_co2_cached_sigma(
         use_bc: Whether to include prepared ``H_bc`` boundary sensitivity.
         bc_prior: Optional prior for boundary-condition scaling.
         bc_state_activity: Optional active/fixed boundary-state policy.
-        bc_mean_shift_prior: Hyperprior for one global additive boundary mean
-            shift, in observation concentration units. Requires ``use_bc=True``
-            and prepared dimensionless ``bc_mean_shift_sensitivity``; keeps
-            the conditional boundary-scaling spread unchanged.
+        bc_mean_shift_prior: Prior for the global additive boundary mean
+            correction, in observation concentration units. Selects centred
+            additive corrections and requires ``use_bc=True``, ``G_bc``,
+            ``bc_centering_weights`` and ``bc_anomaly_scale``. Cannot be
+            combined with multiplicative ``bc_prior`` or ``bc_state_activity``.
+        bc_anomaly_scale: Positive Gaussian standard deviation in observation
+            concentration units before subtracting the weighted boundary mean.
         offset_prior: Optional prior for an offset component. When omitted, no
             offset is added.
         offset_args: Optional offset settings: ``offset_freq``, ``drop_first``,
@@ -374,9 +378,14 @@ def run_rhime_co2_cached_sigma(
             ``target_accept``, or has unsupported predictive keywords.
     """
     if not use_bc and (
-        bc_prior is not None or bc_state_activity is not None or bc_mean_shift_prior is not None
+        bc_prior is not None or bc_state_activity is not None
+        or bc_mean_shift_prior is not None or bc_anomaly_scale is not None
     ):
-        raise ValueError("bc_prior, bc_state_activity and bc_mean_shift_prior require use_bc=True.")
+        raise ValueError("Boundary prior and activity options require use_bc=True.")
+    if (bc_mean_shift_prior is None) != (bc_anomaly_scale is None):
+        raise ValueError("bc_mean_shift_prior and bc_anomaly_scale must be supplied together.")
+    if bc_mean_shift_prior is not None and (bc_prior is not None or bc_state_activity is not None):
+        raise ValueError("Centred boundary corrections cannot use bc_prior or bc_state_activity.")
     if offset_prior is None and offset_args:
         raise ValueError("offset_args require offset_prior.")
     offset_freq, offset_drop_first, offset_per_site = _normalise_offset_args(offset_args)
@@ -412,9 +421,13 @@ def run_rhime_co2_cached_sigma(
         bc_prior=bc_prior,
         bc_state_activity=bc_state_activity,
         bc_mean_shift_prior=bc_mean_shift_prior,
-        boundary_mean_shift_sensitivity=(
-            model_inputs["bc_mean_shift_sensitivity"] if bc_mean_shift_prior is not None else None
+        boundary_correction_sensitivity=(
+            model_inputs["G_bc"] if bc_mean_shift_prior is not None else None
         ),
+        bc_centering_weights=(
+            model_inputs["bc_centering_weights"] if bc_mean_shift_prior is not None else None
+        ),
+        bc_anomaly_scale=bc_anomaly_scale,
         offset_prior=offset_prior,
         offset_freq=offset_freq,
         offset_drop_first=offset_drop_first,
@@ -451,17 +464,22 @@ def run_rhime_co2_cached_sigma(
         variable_roles.update(
             {
                 "boundary_concentration": "mu_bc",
-                "boundary_scale": "bc",
                 "boundary_sensitivity": "hbc",
             }
         )
+    if use_bc and bc_mean_shift_prior is None:
+        variable_roles["boundary_scale"] = "bc"
     if bc_mean_shift_prior is not None:
         variable_roles.update(
             {
                 "boundary_mean_shift": "bc_mean_shift",
-                "boundary_mean_shift_sensitivity": "bc_mean_shift_sensitivity",
+                "boundary_correction_sensitivity": "G_bc",
+                "boundary_centering_weights": "bc_centering_weights",
+                "boundary_anomaly": "bc_anomaly",
+                "boundary_correction": "bc_correction",
+                "boundary_anomaly_concentration": "mu_bc_anomaly",
                 "boundary_mean_shift_concentration": "mu_bc_mean_shift",
-                "unshifted_boundary_concentration": "mu_bc_unshifted",
+                "reference_boundary_concentration": "mu_bc_reference",
             }
         )
     if offset_prior is not None:

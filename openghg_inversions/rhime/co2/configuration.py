@@ -380,11 +380,20 @@ def _model(value: object) -> dict[str, object]:
             if "mean_shift_prior" in boundary
             else None
         )
+        anomaly_scale = (
+            _number(boundary.pop("anomaly_scale"), "model.boundary.anomaly_scale", positive=True)
+            if "anomaly_scale" in boundary else None
+        )
+        if (mean_shift_prior is None) != (anomaly_scale is None):
+            raise ValueError("model.boundary.mean_shift_prior and anomaly_scale must be supplied together.")
+        if mean_shift_prior is not None and prior is not None:
+            raise ValueError("Centred boundary corrections cannot use model.boundary.prior.")
         _reject_unknown(boundary, "model.boundary")
         if mean_shift_prior is not None:
             if not enabled:
                 raise ValueError("model.boundary.mean_shift_prior requires model.boundary.enabled=true.")
             result["bc_mean_shift_prior"] = mean_shift_prior
+            result["bc_anomaly_scale"] = anomaly_scale
         if not enabled and prior is not None:
             raise ValueError("model.boundary.prior requires model.boundary.enabled=true.")
         result["use_bc"] = enabled
