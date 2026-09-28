@@ -310,7 +310,7 @@ def make_co2_o2_paris_outputs(
             matrix, state = xr.align(matrix, prepared.retained_prior.mean, join="exact", copy=False)
             excluded = state.tracer_scope.str.lower() == ("o2" if species == "co2" else "co2")
             other_flux = matrix.isel({state_dim: np.flatnonzero(excluded.values)}) * basis.flux
-            if bool((other_flux != 0).any().compute()):
+            if bool(to_dense((other_flux != 0).any().compute()).item()):
                 raise ValueError(f"Native {species} flux basis includes the other tracer's private states.")
             try:
                 flux = basis.flux.pint.quantify().pint.to("mol / m^2 / s").pint.dequantify()
