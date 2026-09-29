@@ -251,10 +251,12 @@ def percentile_error_method(ds_dict: dict[str, xr.Dataset]) -> np.ndarray:
     """Compute estimate of minimum model error using percentile error method.
 
     This is a simple method to estimate the minimum model error (i.e. the model error used at baseline
-    points). For each site. it takes the monthly median measured mf and subtracts the monthly 5th
-    percentile measured mf, then calculates the annual mean of these monthly values. The thinking behind
+    points). For each site, it takes the monthly median measured mf and subtracts the monthly 5th
+    percentile measured mf, then averages these differences across all available months. The thinking behind
     this is that transport error might result in modelled enhancements at the baseline points, even with
     an accurate flux map. So this provides a rough calculation for the likely impact of such an event.
+
+    Each site's measured data is converted eagerly to NumPy before calculation.
 
     Args:
         ds_dict: dictionary of combined scenario datasets, keyed by site codes.

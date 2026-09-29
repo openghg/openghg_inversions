@@ -58,7 +58,12 @@ def _same_flux_units(actual: xr.DataArray, expected: xr.DataArray) -> None:
 
 @dataclass(frozen=True, slots=True, eq=False)
 class BoundCo2AffineFluxMap:
-    """Affine reconstruction with the prepared retained mean as its sole reference."""
+    """Affine reconstruction using a retained reference state.
+
+    Use :func:`load_and_bind_affine_flux_map` to verify saved artifacts against
+    prepared inputs. Direct construction accepts ``reference_state`` as given
+    and does not check that it belongs to the prepared artifact.
+    """
 
     artifact: AffineFluxMapArtifact
     reference_state: xr.DataArray
@@ -213,7 +218,11 @@ def produce_bucket_affine_flux_map(
     reconstruction_provenance: Mapping[str, Any] | None = None,
     source_provenance: Mapping[str, Any] | None = None,
 ) -> AffineFluxMapArtifact:
-    """Reuse the prepared bucket operator and signed flux without flattening FU*."""
+    """Reuse the prepared bucket operator and signed flux without flattening FU*.
+
+    For later loading, pass the content ID of the saved prepared inputs from
+    :func:`prepared_inputs_content_id` as ``prepared_inputs_id``.
+    """
     basis = prepared.basis_functions
     if not isinstance(basis.operator, (BucketBasisOperator, MultiSourceBucketBasisOperator)):
         raise ValueError("Bucket affine production requires a bucket BasisFunctions operator.")
@@ -249,6 +258,9 @@ def import_explicit_affine_flux_map(
 
     An externally supplied reference state is checked against prepared
     ``alpha_prior_mean`` and then discarded.
+
+    For later loading, pass the content ID of the saved prepared inputs from
+    :func:`prepared_inputs_content_id` as ``prepared_inputs_id``.
     """
     authoritative = prepared.inv_inputs["alpha_prior_mean"]
     if reference_state is not None:
