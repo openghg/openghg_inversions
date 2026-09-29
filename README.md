@@ -343,15 +343,15 @@ uv tool install tox --with tox-uv
 ```
 or, within a virtual environment, install `tox` and `tox-uv`.
 
-The fast default checks the current OpenGHG release and runs Ruff:
+The default checks the locked OpenGHG release, borrowed-reference typing, and Ruff:
 
 ```bash
 tox -p --parallel-no-spinner
 ```
 
 This is the required check before pushing a draft pull request. GitHub Actions
-runs current, previous, and devel OpenGHG test jobs independently, and tests
-the committed `uv.lock` with Python 3.12.
+tests the committed `uv.lock` against the latest OpenGHG release and tests the
+OpenGHG devel branch separately. It fails if the lockfile lags a new release.
 
 On a Slurm cluster, submit tox from the repository root instead of creating its
 environments on a shared worktree filesystem:
@@ -382,25 +382,12 @@ PYTENSOR_FLAGS="${PYTENSOR_FLAGS:+${PYTENSOR_FLAGS},}base_compiledir=${TMPDIR:-/
 If `PYTENSOR_FLAGS` already defines `base_compiledir`, update that entry
 instead of adding the same key twice.
 
-For final review or release-sensitive dependency changes, run the full
-compatibility matrix:
+For final review or release-sensitive dependency changes, also test against
+OpenGHG devel:
 
 ```bash
-tox -p --parallel-no-spinner -e py312-openghgCur,py312-openghgPrev,py312-openghgDev,lint
+tox -p --parallel-no-spinner -e py312-openghgCur,py312-openghgDev,borrowed-types,lint
 ```
-
-The previous-release environment defaults to `openghg==0.18.0`. Override it
-with a deterministic package spec when needed, for example:
-
-```bash
-OPENGHG_PREV_SPEC='openghg==0.17.1' tox -e py312-openghgPrev
-```
-
-When a new OpenGHG minor release is published, update the default
-`OPENGHG_PREV_SPEC` value in `tox.ini` to the release that has just become the
-previous minor. GitHub Actions discovers current and previous releases
-automatically, but the local tox pin is deliberately maintained explicitly so
-tox configuration does not require network access.
 
 To specify individual jobs, you can use, e.g.:
 
