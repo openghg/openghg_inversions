@@ -472,8 +472,30 @@ again.</p>
 <li><p>Run <strong>Publish to PyPI</strong>.</p></li>
 <li><p>Confirm that the automatic <code class="docutils literal notranslate"><span class="pre">main</span></code> to <code class="docutils literal notranslate"><span class="pre">devel</span></code> pull request merges.</p></li>
 </ol>
+<section id="promoting-an-existing-devel-pull-request">
+<h3>Promoting an existing devel pull request<a class="headerlink" href="#promoting-an-existing-devel-pull-request" title="Link to this heading">#</a></h3>
+<p>Do not normally retarget a pull request from <code class="docutils literal notranslate"><span class="pre">devel</span></code> to <code class="docutils literal notranslate"><span class="pre">main</span></code>. Its branch
+may contain unreleased <code class="docutils literal notranslate"><span class="pre">devel</span></code> history, which would accidentally turn the
+hotfix into a larger release. Instead, treat promotion as creating a sibling
+hotfix:</p>
+<ol class="arabic simple">
+<li><p>Inspect the original pull request and separate the stable-version fix from
+unrelated or unreleased work.</p></li>
+<li><p>Create <code class="docutils literal notranslate"><span class="pre">hotfix/X.Y.Z-description</span></code> from current <code class="docutils literal notranslate"><span class="pre">main</span></code>.</p></li>
+<li><p>Cherry-pick the minimal commits when they apply cleanly, or reapply the
+focused diff while preserving attribution.</p></li>
+<li><p>Ensure the hotfix has a regression test and Towncrier bugfix fragment, then
+open a new pull request to <code class="docutils literal notranslate"><span class="pre">main</span></code> and cross-link the original pull request.</p></li>
+<li><p>Leave the original pull request open until the released fix is
+forward-ported. Then close it as redundant or retain only work that is not
+already on <code class="docutils literal notranslate"><span class="pre">devel</span></code>.</p></li>
+</ol>
+<p>A future workflow may automate clean same-repository cherry-picks, but conflict
+resolution and deciding whether a change is safe for the stable line require
+maintainer review.</p>
 <p>Once <code class="docutils literal notranslate"><span class="pre">main</span></code> advances to a new minor version, the older minor is unsupported.
 Do not create a maintenance branch without first changing this policy.</p>
+</section>
 </section>
 <section id="feature-drift-and-inactive-pull-requests">
 <h2>Feature drift and inactive pull requests<a class="headerlink" href="#feature-drift-and-inactive-pull-requests" title="Link to this heading">#</a></h2>
@@ -551,7 +573,10 @@ Closing never deletes its branch, and work can be reopened later.</p>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#one-time-repository-setup">One-time repository setup</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#monthly-release">Monthly release</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#publication">Publication</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#current-line-hotfix">Current-line hotfix</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#current-line-hotfix">Current-line hotfix</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#promoting-an-existing-devel-pull-request">Promoting an existing devel pull request</a></li>
+</ul>
+</li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#feature-drift-and-inactive-pull-requests">Feature drift and inactive pull requests</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#manual-fallbacks">Manual fallbacks</a></li>
 </ul>
