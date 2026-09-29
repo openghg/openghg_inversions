@@ -138,6 +138,48 @@ def test_bucket_and_equivalent_explicit_prolongations_match() -> None:
     assert bucket_map.prolongation is operator
 
 
+def test_country_contraction_precedes_sample_axes() -> None:
+    """Native ingredients form a compact country action before applying draws."""
+    mean, flux, prolongation, reference, state = _arrays()
+    affine_map = AffineFluxMap(mean, flux, prolongation, state_dim="state")
+    membership = xr.DataArray(
+        [
+            [[1.0, 0.5], [0.0, 0.0]],
+            [[0.0, 0.5], [1.0, 1.0]],
+        ],
+        dims=("country", "lat", "lon"),
+        coords={"country": ["A", "B"], "lat": mean.lat, "lon": mean.lon},
+    )
+    area = xr.DataArray(
+        [[2.0, 3.0], [4.0, 5.0]],
+        dims=("lat", "lon"),
+        coords={"lat": mean.lat, "lon": mean.lon},
+    )
+    conversion = 7.0
+    weights = membership * area * conversion
+
+    reference_country = xr.dot(weights, flux * mean, dim=affine_map.native_dims)
+    country_to_state = xr.dot(
+        weights * flux,
+        prolongation,
+        dim=affine_map.native_dims,
+    )
+    assert set(country_to_state.dims) == {"country", "time", "state"}
+    assert "chain" not in country_to_state.dims
+    assert "draw" not in country_to_state.dims
+
+    country_draws = reference_country + xr.dot(country_to_state, state - reference, dim="state")
+    expected_grid = (
+        mean.values[None, :, :, None, None]
+        + np.einsum("ijk,cdk->ijcd", prolongation.values, state.values - reference.values)[None, :, :, :, :]
+    )
+    expected_country = np.einsum("kij,tij,tijcd->ktcd", weights.values, flux.values, expected_grid)
+    np.testing.assert_allclose(
+        country_draws.transpose("country", "time", "chain", "draw"),
+        expected_country,
+    )
+
+
 def test_multisource_bucket_preserves_native_source_order_and_gathered_state() -> None:
     """Native sources stay explicit while the retained state remains one ragged axis."""
     native_mean, _, _, _, _ = _arrays()
@@ -237,9 +279,7 @@ def test_multisource_reconstruction_matches_independent_source_oracle() -> None:
     )
     affine_map = AffineFluxMap(mean, flux, operator, state_dim="state")
     assert affine_map.native_dims == mean.dims
-    assert reference.indexes["state"].tolist() == [
-        ("fossil", 0), ("fossil", 1), ("bio", 0), ("bio", 1)
-    ]
+    assert reference.indexes["state"].tolist() == [("fossil", 0), ("fossil", 1), ("bio", 0), ("bio", 1)]
 
     delta = state.values - reference.values
     expected = np.empty((2, 2, 2, 2))

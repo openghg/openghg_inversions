@@ -479,6 +479,7 @@ def _site_options(
     obs_data_level: list[str | None] | str | None = None,
     met_model: list[str | None] | str | None = None,
     max_level: list[int | None] | int | None = None,
+    time_resolved: list[bool | None] | bool | None = None,
 ) -> prep_module._SiteOptions:
     """Build normalized site-aligned options for private preparation tests."""
     return prep_module._SiteOptions.from_inputs(
@@ -491,6 +492,7 @@ def _site_options(
         obs_data_level=obs_data_level,
         met_model=met_model,
         max_level=max_level,
+        time_resolved=time_resolved,
     )
 
 
@@ -4236,6 +4238,7 @@ def test_rhime_runner_setup_builds_specs_before_preparation(tmp_path: Path) -> N
         "chains": "3",
         "sample_kwargs": {"random_seed": 42},
         "posterior_predictive_kwargs": {"random_seed": 43},
+        "time_resolved": True,
     }
 
     setup = rhime_params.make_rhime_runner_setup(
@@ -4245,6 +4248,7 @@ def test_rhime_runner_setup_builds_specs_before_preparation(tmp_path: Path) -> N
 
     assert setup.data_args["flux_sources"] == ["ff-source", "gpp-source", "ter-source", "ocean-source"]
     assert setup.data_args["split_by_sectors"] is True
+    assert setup.data_args["time_resolved"] is True
     assert setup.data_args["basis_algorithm"] == "weighted"
     assert setup.data_args["nbasis"] == 100
     assert setup.data_args["bc_basis_case"] == "NESW"
@@ -5929,7 +5933,7 @@ def test_prepare_merged_data_reload_keeps_all_options_aligned(
         prep_module,
         "load_merged_data",
         lambda *args, **kwargs: {
-            "MHD": _site_dataset([3.0]),
+            "MHD": _site_dataset([3.0]).assign_attrs(openghg_inversions_time_resolved="false"),
         },
     )
 
@@ -5949,6 +5953,7 @@ def test_prepare_merged_data_reload_keeps_all_options_aligned(
         obs_data_level=["level-tac", "level-mhd", "level-rgl"],
         met_model=["met-tac", "met-mhd", "met-rgl"],
         max_level=[10, 20, 30],
+        time_resolved=[True, False, None],
         reload_merged_data=True,
         merged_data_dir=str(tmp_path),
         use_bc=False,
@@ -5964,6 +5969,7 @@ def test_prepare_merged_data_reload_keeps_all_options_aligned(
         obs_data_level=["level-mhd"],
         met_model=["met-mhd"],
         max_level=[20],
+        time_resolved=[False],
     )
     assert set(merged.fp_all) == {"MHD", ".split_by_sectors"}
 
@@ -5981,6 +5987,7 @@ def test_site_options_direct_construction_enforces_immutable_alignment() -> None
             obs_data_level=(None, None),
             met_model=(None, None),
             max_level=(None, None),
+            time_resolved=(None, None),
         )
 
     options = _site_options(["TAC"], averaging_period=["1H"])
@@ -6047,6 +6054,74 @@ def test_prepare_merged_data_retrieval_keeps_requested_metadata_authoritative(
         met_model=["met-tac", "met-rgl"],
         max_level=[10, 30],
     )
+
+
+def test_prepare_merged_data_reload_rejects_time_resolved_selector_mismatch(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Reloaded data cannot satisfy the opposite footprint-resolution selector."""
+    cached_site = _site_dataset([3.0])
+    cached_site.attrs["openghg_inversions_time_resolved"] = "false"
+    monkeypatch.setattr(
+        prep_module,
+        "load_merged_data",
+        lambda *args, **kwargs: {"TAC": cached_site, ".species": "CH4", ".units": 1e-9},
+    )
+
+    with pytest.raises(ValueError, match="does not match the requested `time_resolved` selector"):
+        prep_module._prepare_merged_data(
+            species="ch4",
+            sites=["TAC"],
+            domain="EUROPE",
+            averaging_period=["1H"],
+            start_date="2019-01-01",
+            end_date="2019-02-01",
+            output_name="reload_resolution",
+            flux_sources=["inventory"],
+            time_resolved=True,
+            reload_merged_data=True,
+            merged_data_dir=str(tmp_path),
+            use_bc=False,
+        )
+
+
+@pytest.mark.parametrize(
+    ("cached_split_by_sectors", "requested_split_by_sectors"),
+    [(False, True), (True, False)],
+)
+def test_prepare_merged_data_reload_rejects_sector_layout_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    cached_split_by_sectors: bool,
+    requested_split_by_sectors: bool,
+) -> None:
+    """Reloading never relabels a cache as the opposite sector layout."""
+    monkeypatch.setattr(
+        prep_module,
+        "load_merged_data",
+        lambda *args, **kwargs: {
+            "TAC": _site_dataset([3.0]),
+            ".species": "CH4",
+            ".split_by_sectors": cached_split_by_sectors,
+            ".units": 1e-9,
+        },
+    )
+
+    with pytest.raises(ValueError, match="incompatible `split_by_sectors` layout"):
+        prep_module._prepare_merged_data(
+            species="ch4",
+            sites=["TAC"],
+            domain="EUROPE",
+            averaging_period=["1H"],
+            start_date="2019-01-01",
+            end_date="2019-02-01",
+            output_name="reload_sector_layout",
+            flux_sources=["inventory"],
+            split_by_sectors=requested_split_by_sectors,
+            reload_merged_data=True,
+            merged_data_dir=str(tmp_path),
+            use_bc=False,
+        )
 
 
 def test_prepare_merged_data_ignores_redundant_retrieval_metadata(
@@ -9076,3 +9151,71 @@ def test_cli_run_rhime_multisector_passes_config(monkeypatch, tmp_path: Path) ->
 def test_safe_pymc_name_sanitizes_source_names() -> None:
     assert safe_pymc_name("total-ukghg-edgar7") == "total_ukghg_edgar7"
     assert safe_pymc_name("Sector 2") == "sector_2"
+
+
+def test_rhime_acquisition_forwards_satellite_footprint_mode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The public runner stage must not drop the time-resolved selector."""
+    captured: dict[str, Any] = {}
+    expected = object()
+
+    def fake_prepare_merged_data(**kwargs: Any) -> object:
+        captured.update(kwargs)
+        return expected
+
+    monkeypatch.setattr(prep_module, "_prepare_merged_data", fake_prepare_merged_data)
+    data_args = {
+        **rhime_params.RHIME_PREPARATION_DEFAULTS,
+        "species": "co2",
+        "sites": ["OCO2-EASTASIA"],
+        "domain": "EASTASIA",
+        "averaging_period": ["1H"],
+        "start_date": "2022-03-31 04:00:00",
+        "end_date": "2022-04-01 04:08:10",
+        "output_name": "satellite_multisector",
+        "flux_sources": ["anth", "resp", "gpp_atm"],
+        "time_resolved": [True],
+    }
+
+    actual = rhime_preparation.retrieve_or_reload_rhime_data(data_args, multisector=True)
+
+    assert actual is expected
+    assert captured["time_resolved"] == [True]
+    assert captured["split_by_sectors"] is True
+
+
+def test_satellite_rhime_template_matches_modern_input_schema() -> None:
+    """The satellite example uses the same keys and value shapes as modern RHIME."""
+    import openghg_inversions.config.config as config_module
+
+    template_dir = Path(__file__).parents[1] / "openghg_inversions" / "config" / "templates"
+    generic_path = template_dir / "rhime_template.ini"
+    satellite_path = template_dir / "rhime_satellite_template.ini"
+    generic = config_module.all_param(str(generic_path), exclude_not_found=False, allow_new=True)
+    satellite = config_module.all_param(str(satellite_path), exclude_not_found=False, allow_new=True)
+
+    assert set(satellite) - set(generic) == {"pollution_events_from_obs"}
+    assert set(generic) <= set(satellite)
+    assert satellite["sites"] == ["GOSAT-BRAZIL"]
+    assert satellite["platform"] == ["satellite"]
+    assert satellite["inlet"] == ["column"]
+    assert satellite["fp_height"] == ["column"]
+    assert satellite["max_level"] == [3]
+    assert satellite["output_format"] == "paris"
+    assert satellite["paris_postprocessing_kwargs"] == {
+        "template_version": "latest",
+        "country_selections": None,
+    }
+    assert "emissions_name" not in satellite
+    assert "nit" not in satellite
+    assert "nchain" not in satellite
+
+    normalized = params_from_config(satellite_path)
+    setup = rhime_params.make_rhime_runner_setup(
+        params=normalized,
+        multisector=False,
+    )
+    assert setup.run_spec.sites == ("GOSAT-BRAZIL",)
+    assert setup.data_args["platform"] == ["satellite"]
+    assert setup.data_args["max_level"] == [3]
