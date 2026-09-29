@@ -126,3 +126,61 @@ or ``state_to_flux`` is requested. Complete country uncertainty and unresolved
 native covariance are outside this conditional-mean contract (OPE-68);
 generic quantity maps belong to OPE-24, and staged output routing and
 reporting-sector mappings belong to OPE-164.
+
+.. _co2-affine-flux-summaries:
+
+Summarize conditional CO2 fluxes
+------------------------------
+
+The CO2 postprocessing adapter consumes an ordinary or cached fixed-OU CO2
+trace and a bound affine reconstruction. Use the posterior from the same
+preparation as the bound artifact. Binding checks the reconstruction against
+the saved preparation; matching trace labels alone does not establish that
+the posterior came from that preparation.
+
+The trace must declare the ``flux_scale`` scientific role and contain the full
+retained state, including restored fixed states. Prior and posterior groups
+are summarized independently, so they may have different sample counts::
+
+   from openghg_inversions.postprocessing.co2_flux_outputs import (
+       co2_native_flux_outputs,
+       co2_country_flux_outputs,
+   )
+   from openghg_inversions.postprocessing.countries import Countries
+
+   bound = load_and_bind_affine_flux_map(reconstruction_path, prepared_path)
+   native = co2_native_flux_outputs(trace, bound)
+   countries = Countries.from_file(country_file=country_path)
+   country = co2_country_flux_outputs(trace, bound, countries)
+
+Here ``trace`` is the annotated CO2 ``DataTree`` returned by its runner, or
+reloaded through the :doc:`documented serialization boundary
+<co2_models>`. The country file must have exactly the reconstruction's latitude
+and longitude coordinates. The adapter does not regrid masks implicitly.
+
+Native outputs use ``mol m-2 s-1``. Country outputs use grams of CO2 per
+fixed 365-day year, preserving any flux-time axis. This is an annualized rate
+at each time, not a calendar-year integral. Country membership, regional
+selection and cell area come from ``Countries``.
+
+Both prior and posterior groups are required. Variable names have the form
+``flux_total_posterior_mean`` or ``country_total_prior_stdev``. The statistics
+are the mean, population standard deviation and 0.159/0.841 quantiles over
+all chains and draws. Multisource products also contain ``flux_*`` or
+``country_*`` variables retaining the native-source axis. Totals sum sources
+on each draw before calculating statistics, preserving signed cancellation
+and source covariance. Quantiles are calculated after the signed affine
+reconstruction, never by interpolating retained-state quantiles.
+
+Country output first constructs compact country-by-state actions with dense
+chunk payloads, so it does not allocate native-grid-by-draw values. Native output
+explicitly requests grid reconstruction. Dask-backed inputs remain lazy until the caller computes
+or writes the returned product; sample statistics may consolidate sample
+chunks. Neither function mutates the trace or reconstruction inputs.
+
+Both products retain prepared-artifact identity, reconstruction provenance and
+``uncertainty_scope="retained_state_conditional"``. Their intervals exclude
+unresolved native-state uncertainty and its observation-conditioned mean
+update. These functions return labelled summary datasets; they do not write
+PARIS files or add CO2 to the staged CLI. Linked CO2/O2 traces need a
+tracer-specific reconstruction contract and are rejected here.

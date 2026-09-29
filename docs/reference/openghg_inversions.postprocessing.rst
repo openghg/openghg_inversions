@@ -11,6 +11,7 @@ openghg\_inversions.postprocessing
    :maxdepth: 4
 
    openghg_inversions.postprocessing.countries
+   openghg_inversions.postprocessing.co2_flux_outputs
    openghg_inversions.postprocessing.diagnostics
    openghg_inversions.postprocessing.inversion_output
    openghg_inversions.postprocessing.legacy_outputs
