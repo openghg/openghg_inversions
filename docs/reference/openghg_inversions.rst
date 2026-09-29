@@ -12,11 +12,14 @@ openghg\_inversions
    openghg_inversions.basis
    openghg_inversions.config
    openghg_inversions.experimental
+   openghg_inversions.forward
    openghg_inversions.hbmcmc
+   openghg_inversions.inference
    openghg_inversions.inversion_data
    openghg_inversions.models
    openghg_inversions.postprocessing
    openghg_inversions.rhime
+   openghg_inversions.workflow
 
 
 
