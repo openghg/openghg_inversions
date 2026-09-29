@@ -1,4 +1,4 @@
-"""Repository path retained for callers of the legacy ``Paths`` class."""
+"""Expose the project path through ``Paths.openghginv``."""
 
 from pathlib import Path
 
