@@ -27,6 +27,11 @@ The normative programming principles are in
 The main workflow roadmap remains
 [`run_rhime_readability_and_modifiability.md`](run_rhime_readability_and_modifiability.md).
 
+The dated [end-to-end scientific integration proposal](rhime_end_to_end_architecture.md)
+elaborates acquisition, prepared artifacts, reconstruction, and output contracts
+for the expanding families. Its work packages are proposed amendments to the
+existing delivery work, not a replacement for this plan or tracker ownership.
+
 ## Decisions made now
 
 ### 1. Named recipes are the production extension unit

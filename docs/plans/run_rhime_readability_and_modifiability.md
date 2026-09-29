@@ -40,6 +40,11 @@ Nested-domain, CO2-only, and CO2-with-O2-tracer recipes may proceed in parallel
 with this cleanup. They must follow the same readability rules, but do not have
 to wait for a generic model framework or for W4-W6 to finish.
 
+The [end-to-end scientific integration proposal](rhime_end_to_end_architecture.md)
+adds a dated contract and acceptance proposal for acquisition, durable results,
+and reconstruction across those families. It preserves this plan's procedural
+recipe guidance and does not independently change approved delivery priorities.
+
 ## Problem
 
 The default `run_rhime(...)` call executes the whole pipeline, but the code a
