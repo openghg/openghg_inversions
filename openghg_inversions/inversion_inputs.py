@@ -9,7 +9,7 @@ explicit empty selection is an error.
 
 import datetime as dt
 from collections.abc import Iterable
-from typing import Any, Literal
+from typing import Any, Literal, TypeAlias
 
 import numpy as np
 import pandas as pd
@@ -21,7 +21,7 @@ from openghg_inversions.model_error import (
     normalise_min_error_options as normalise_min_error_options,  # noqa: PLC0414
 )
 
-DatetimeLike = str | dt.datetime | np.datetime64 | pd.Timestamp
+DatetimeLike: TypeAlias = str | dt.datetime | np.datetime64 | pd.Timestamp
 
 
 def _validate_per_site_dimension_names(
