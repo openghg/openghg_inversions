@@ -378,7 +378,7 @@ def _annotate_linked_fixed_ou_trace(
             if name in group:
                 group[name].attrs["units"] = units
         if "ou_tau_hours" in group:
-            group.ou_tau_hours.attrs["units"] = "hours"
+            group.ou_tau_hours.attrs.update(units="hours", dtype="timedelta64[ns]")
         if group_name == "log_likelihood" and "y" in group:
             group.y.attrs.pop("units", None)
             group.y.attrs.update(
