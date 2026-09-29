@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -1954,8 +1955,8 @@ def _make_simple_state_trace(
     region_dim: str = "region",
     draw_dim: str = "draw",
     chain_dim: str | None = None,
-    region_values: list[float] = [10.0, 100.0],
-    draw_values: list[int] = [0, 1, 2],
+    region_values: Sequence[float] = (10.0, 100.0),
+    draw_values: Sequence[int] = (0, 1, 2),
 ) -> xr.DataArray:
     """Make a tiny deterministic PyMC-like trace array for interpolate tests."""
     state = xr.DataArray(

@@ -137,19 +137,15 @@ def generate_from_template(template_file, output_file):
         answer = input(
             f"This action with overwrite existing {output_file} file. Do you wish to proceed (Y/N): "
         )
-        if answer.lower() == "y" or answer.lower() == "yes":
-            out = open(output_file, "w", encoding="utf-8")
-        elif answer.lower() == "n" or answer.lower() == "no":
+        if answer.lower() == "n" or answer.lower() == "no":
             raise Exception("Configuration file has not been generated.")
-        else:
+        elif answer.lower() != "y" and answer.lower() != "yes":
             raise Exception(
                 f"Did not understand input: '{answer}'. Configuration file has not been regenerated."
             )
-    else:
-        out = open(output_file, "w", encoding="utf-8")
 
     copy = False
-    with open(template_file, encoding="utf-8") as fname:
+    with open(output_file, "w", encoding="utf-8") as out, open(template_file, encoding="utf-8") as fname:
         for line in fname:
             if copy:
                 out.write(line)
@@ -165,8 +161,6 @@ def generate_from_template(template_file, output_file):
                 out.write(line)
 
     print(f"Configuration file: {output_file} has been generated.")
-
-    out.close()
 
 
 def str_check(string, error=True):
@@ -457,7 +451,7 @@ def get_value(name, config, section, param_type=None):
                 Exception raised and program exited
     """
     if param_type:
-        keys, key_type = find_param_key(param_type, section)
+        keys, _ = find_param_key(param_type, section)
         key = keys[0]  # Should only ever be one key for a section
         types = param_type
         try:
@@ -487,12 +481,12 @@ def get_value(name, config, section, param_type=None):
 
 def extract_params(
     config_file,
-    expected_param=[],
+    expected_param=(),
     section=None,
     section_group=None,
-    names=[],
-    ignore_sections=[],
-    ignore_section_groups=[],
+    names=(),
+    ignore_sections=(),
+    ignore_section_groups=(),
     # optional_param=[],optional_section=[],optional_section_group=[],
     exclude_not_found=True,
     allow_new=False,
@@ -726,7 +720,7 @@ def extract_params(
 
 def all_param(
     config_file,
-    expected_param=[],
+    expected_param=(),
     param_type=None,
     exclude_not_found=False,
     allow_new=False,

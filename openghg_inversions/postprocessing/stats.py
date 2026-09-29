@@ -279,7 +279,7 @@ def median(ds: xr.Dataset, sample_dim: str = "draw") -> xr.Dataset:
     return ds.median(dim=sample_dim)
 
 
-def calculate_stats(ds: xr.Dataset, stats: list[str] = ["mean", "quantiles"], **kwargs) -> xr.Dataset:
+def calculate_stats(ds: xr.Dataset, stats: Sequence[str] = ("mean", "quantiles"), **kwargs) -> xr.Dataset:
     """Calculate stats on dataset.
 
     Args:
