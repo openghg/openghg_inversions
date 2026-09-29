@@ -7,6 +7,12 @@
 
 set -euo pipefail
 
+# The OpenGHG devel tox factor installs a Git dependency, while compute nodes
+# may not put Git on PATH by default.
+if ! command -v git >/dev/null 2>&1; then
+    module load git
+fi
+
 repo_root=${OGI_REPO_ROOT:-${SLURM_SUBMIT_DIR:?Submit this job from the repository root}}
 if [[ ! -f "$repo_root/tox.ini" || ! -f "$repo_root/pyproject.toml" ]]; then
     printf 'Not an openghg_inversions checkout: %s\n' "$repo_root" >&2
