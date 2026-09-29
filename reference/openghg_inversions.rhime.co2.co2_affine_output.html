@@ -505,7 +505,10 @@
 <dt class="sig sig-object py" id="openghg_inversions.rhime.co2.co2_affine_output.BoundCo2AffineFluxMap">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">BoundCo2AffineFluxMap</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">artifact</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">reference_state</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_affine_output.BoundCo2AffineFluxMap" title="Link to this definition">#</a></dt>
 <dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
-<p>Affine reconstruction with the prepared retained mean as its sole reference.</p>
+<p>Affine reconstruction using a retained reference state.</p>
+<p>Use <a class="reference internal" href="#openghg_inversions.rhime.co2.co2_affine_output.load_and_bind_affine_flux_map" title="openghg_inversions.rhime.co2.co2_affine_output.load_and_bind_affine_flux_map"><code class="xref py py-func docutils literal notranslate"><span class="pre">load_and_bind_affine_flux_map()</span></code></a> to verify saved artifacts against
+prepared inputs. Direct construction accepts <code class="docutils literal notranslate"><span class="pre">reference_state</span></code> as given
+and does not check that it belongs to the prepared artifact.</p>
 <dl class="field-list simple">
 </dl>
 <dl class="py property">
@@ -559,6 +562,8 @@
 <dd><p>Import exact supplied-restriction U* without constructing its projection.</p>
 <p>An externally supplied reference state is checked against prepared
 <code class="docutils literal notranslate"><span class="pre">alpha_prior_mean</span></code> and then discarded.</p>
+<p>For later loading, pass the content ID of the saved prepared inputs from
+<a class="reference internal" href="#openghg_inversions.rhime.co2.co2_affine_output.prepared_inputs_content_id" title="openghg_inversions.rhime.co2.co2_affine_output.prepared_inputs_content_id"><code class="xref py py-func docutils literal notranslate"><span class="pre">prepared_inputs_content_id()</span></code></a> as <code class="docutils literal notranslate"><span class="pre">prepared_inputs_id</span></code>.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference internal" href="openghg_inversions.basis.affine_flux_map_io.html#openghg_inversions.basis.affine_flux_map_io.AffineFluxMapArtifact" title="openghg_inversions.basis.affine_flux_map_io.AffineFluxMapArtifact"><em>AffineFluxMapArtifact</em></a></p>
@@ -604,6 +609,8 @@
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_affine_output.produce_bucket_affine_flux_map" title="Link to this definition">#</a></dt>
 <dd><p>Reuse the prepared bucket operator and signed flux without flattening FU*.</p>
+<p>For later loading, pass the content ID of the saved prepared inputs from
+<a class="reference internal" href="#openghg_inversions.rhime.co2.co2_affine_output.prepared_inputs_content_id" title="openghg_inversions.rhime.co2.co2_affine_output.prepared_inputs_content_id"><code class="xref py py-func docutils literal notranslate"><span class="pre">prepared_inputs_content_id()</span></code></a> as <code class="docutils literal notranslate"><span class="pre">prepared_inputs_id</span></code>.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference internal" href="openghg_inversions.basis.affine_flux_map_io.html#openghg_inversions.basis.affine_flux_map_io.AffineFluxMapArtifact" title="openghg_inversions.basis.affine_flux_map_io.AffineFluxMapArtifact"><em>AffineFluxMapArtifact</em></a></p>

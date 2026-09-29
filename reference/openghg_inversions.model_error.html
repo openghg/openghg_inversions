@@ -606,10 +606,11 @@ is more robust to outliers.</p></li>
 <span class="sig-name descname"><span class="pre">percentile_error_method</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ds_dict</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.model_error.percentile_error_method" title="Link to this definition">#</a></dt>
 <dd><p>Compute estimate of minimum model error using percentile error method.</p>
 <p>This is a simple method to estimate the minimum model error (i.e. the model error used at baseline
-points). For each site. it takes the monthly median measured mf and subtracts the monthly 5th
-percentile measured mf, then calculates the annual mean of these monthly values. The thinking behind
+points). For each site, it takes the monthly median measured mf and subtracts the monthly 5th
+percentile measured mf, then averages these differences across all available months. The thinking behind
 this is that transport error might result in modelled enhancements at the baseline points, even with
 an accurate flux map. So this provides a rough calculation for the likely impact of such an event.</p>
+<p>Each site’s measured data is converted eagerly to NumPy before calculation.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><p><strong>ds_dict</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><em>Dataset</em></a><em>]</em>) – dictionary of combined scenario datasets, keyed by site codes.</p>
