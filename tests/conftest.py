@@ -486,7 +486,7 @@ def _file_lock(lock_path: Path, timeout: float = 120.0) -> Iterator[None]:
             break
         except FileExistsError:
             if time.monotonic() - start_time > timeout:
-                raise TimeoutError(f"Timed out waiting for fixture lock {lock_path}")
+                raise TimeoutError(f"Timed out waiting for fixture lock {lock_path}") from None
             time.sleep(0.1)
 
     try:

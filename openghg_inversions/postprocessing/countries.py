@@ -362,7 +362,7 @@ class Countries:
             except KeyError:
                 raise ValueError(
                     "Country region definitions not consistent with country file names. Try setting `country_code`."
-                )
+                ) from None
             else:
                 region_matrix = xr.concat(
                     region_vectors,
