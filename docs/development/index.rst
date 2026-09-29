@@ -12,6 +12,15 @@ development. They are normative for new RHIME work.
    documentation
    releasing
 
+The :doc:`six-layer prototype <rhime_six_layer_prototype>` is an implementation
+experiment for architecture review; its proposed package layout is not an
+additional production requirement.
+
+.. toctree::
+   :hidden:
+
+   rhime_six_layer_prototype
+
 Scientific notation in prose
 ----------------------------
 

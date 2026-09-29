@@ -6,6 +6,12 @@ Status: strengthened architectural proposal; implementation and scientific choic
 
 Audience: model authors, maintainers, scientific reviewers, and delivery owners
 
+Implementation experiment, 29 September 2026: the
+[six-layer prototype](../development/rhime_six_layer_prototype.rst) applies a
+bounded part of this plan to newer `devel`. It records actual ownership moves,
+graph-free staged reconstruction, compatibility, and possible smaller landing
+steps. The evidence and tracker statuses below remain dated to this proposal.
+
 ## Purpose, authority, and evidence
 
 Keep named, readable scientific recipes and make their input and output

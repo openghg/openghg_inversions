@@ -38,7 +38,8 @@ Run specifications and results
 ------------------------------
 
 These objects describe the model, sampling, and output settings accepted by
-the RHIME runners.
+the RHIME runners. The sampler's former ``rhime`` imports remain compatible;
+its implementation is owned by ``inference``.
 
 .. autosummary::
    :nosignatures:
@@ -46,7 +47,7 @@ the RHIME runners.
    openghg_inversions.rhime.RhimeRunSpec
    openghg_inversions.rhime.RhimeModelSpec
    openghg_inversions.rhime.RhimeOutputSpec
-   openghg_inversions.rhime.RhimeSampler
+   openghg_inversions.inference.RhimeSampler
    openghg_inversions.rhime.RhimeResult
    openghg_inversions.rhime.NestedRhimeResult
    openghg_inversions.rhime.SectorSpec
@@ -70,6 +71,7 @@ documents the expected variables, dimensions, and coordinates.
    openghg_inversions.inversion_data.prepare_rhime_inputs
    openghg_inversions.inversion_data.prepare_rhime_inputs_from_xarray
    openghg_inversions.inversion_data.load_merged_data
+   openghg_inversions.inversion_data.acquisition.retrieve_or_reload_rhime_data
    openghg_inversions.rhime.NestedRhimePreparedInputs
    openghg_inversions.rhime.combine_nested_rhime_inputs
    openghg_inversions.rhime.co2.Co2PreparedInputs
@@ -117,6 +119,8 @@ executed layout example and :doc:`affine native-flux reconstruction
    openghg_inversions.basis.layout.BasisPartition
    openghg_inversions.basis.layout.BasisLayout
    openghg_inversions.basis.layout.BasisLayoutResult
+   openghg_inversions.forward.rectangular_extent_mask
+   openghg_inversions.forward.remove_domain_overlap
 
 Covariance and coherent reduction
 ---------------------------------
@@ -175,10 +179,18 @@ Outputs and serialisation
 helpers. Serialisation helpers preserve the labelled indexes required by
 prepared inputs and inference data.
 
+``OutputContract`` records model roles and explicit state mappings without a
+live graph. The reconstruction factory binds that metadata to prepared values
+and samples; it does not write products. See the
+:doc:`six-layer prototype </development/rhime_six_layer_prototype>` for the
+current scope and :doc:`staged replay </usage/staged_workflow>` for persistence.
+
 .. autosummary::
    :nosignatures:
 
    openghg_inversions.postprocessing.inversion_output.InversionOutput
+   openghg_inversions.postprocessing.contracts.OutputContract
+   openghg_inversions.postprocessing.reconstruction.make_inversion_output
    openghg_inversions.postprocessing.linked_paris_outputs.make_co2_o2_paris_outputs
    openghg_inversions.postprocessing.linked_paris_outputs.reconstruct_co2_o2_concentrations
    openghg_inversions.postprocessing.countries.Countries

@@ -25,6 +25,7 @@ import xarray as xr
 
 from openghg_inversions._timing import log_timing, timer_seconds, timer_start
 from openghg_inversions.array_ops import to_dense
+from openghg_inversions.forward import rectangular_extent_mask, remove_domain_overlap
 from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs
 from openghg_inversions.models.components import add_linear_component, add_offset_component
 from openghg_inversions.models.coords import registered_model
@@ -275,17 +276,17 @@ def make_nested_inversion_outputs(
 ) -> tuple[InversionOutput, InversionOutput]:
     """Adapt a nested RHIME result into durable outer and inner output views."""
     rhime_result = nested_result.rhime_result
-    build_result = rhime_result.model_build_result
-    if build_result is None:
-        raise ValueError("Nested RHIME result is missing its model build result.")
+    output_contract = rhime_result.output_contract
+    if output_contract is None:
+        raise ValueError("Nested RHIME result is missing its output contract.")
 
     prepared = nested_result.prepared_inputs
-    outer_trace_dim = str(build_result.metadata["outer_state_dimension"])
-    inner_trace_dim = str(build_result.metadata["inner_state_dimension"])
+    outer_trace_dim = str(output_contract.metadata["outer_state_dimension"])
+    inner_trace_dim = str(output_contract.metadata["inner_state_dimension"])
     outer_inv_out = _make_inversion_output(
         result=rhime_result,
         prepared=prepared.outer,
-        variable_roles=_domain_variable_roles(build_result.variable_roles, tag="outer"),
+        variable_roles=_domain_variable_roles(output_contract.variable_roles, tag="outer"),
         state_dimension_mapping={
             "trace": outer_trace_dim,
             "basis": prepared.outer.basis_functions.operator.meta.state_dim,
@@ -294,7 +295,7 @@ def make_nested_inversion_outputs(
     inner_inv_out = _make_inversion_output(
         result=rhime_result,
         prepared=prepared.inner,
-        variable_roles=_domain_variable_roles(build_result.variable_roles, tag="inner"),
+        variable_roles=_domain_variable_roles(output_contract.variable_roles, tag="inner"),
         state_dimension_mapping={
             "trace": inner_trace_dim,
             "basis": prepared.inner.basis_functions.operator.meta.state_dim,
@@ -530,30 +531,12 @@ def combine_nested_rhime_inputs(
     )
 
 
-def _extent_mask(
-    inner_dataset: xr.Dataset,
-    *,
-    target_lat: xr.DataArray,
-    target_lon: xr.DataArray,
-) -> xr.DataArray:
-    """Return a lazy target-grid mask for the rectangular inner extent."""
-    if "lat" not in inner_dataset.coords or "lon" not in inner_dataset.coords:
-        raise ValueError("Inner-domain datasets must contain indexed `lat` and `lon` coordinates.")
-    inner_lat = inner_dataset.get_index("lat")
-    inner_lon = inner_dataset.get_index("lon")
-    if inner_lat.empty or inner_lon.empty:
-        raise ValueError("Inner-domain latitude and longitude coordinates must not be empty.")
-    lat_mask = (target_lat >= inner_lat.min()) & (target_lat <= inner_lat.max())
-    lon_mask = (target_lon >= inner_lon.min()) & (target_lon <= inner_lon.max())
-    return lat_mask & lon_mask
-
-
 def _mask_spatial_variables(dataset: xr.Dataset, mask: xr.DataArray) -> xr.Dataset:
     """Return a shallow dataset copy with prior-response arrays lazily masked."""
     result = dataset.copy(deep=False)
     for name in ("fp", "fp_x_flux", "fp_x_flux_sectoral"):
         if name in result and set(mask.dims).issubset(result[name].dims):
-            result[name] = result[name].where(~mask, other=0.0)
+            result[name] = remove_domain_overlap(result[name], mask)
     return result
 
 
@@ -677,7 +660,7 @@ def mask_outer_merged_for_inner_domain(
             raise TypeError("Modern nested-domain preparation requires per-site xarray Datasets.")
         if "lat" not in outer_dataset.coords or "lon" not in outer_dataset.coords:
             raise ValueError(f"Outer-domain dataset for site {site!r} is missing lat/lon coordinates.")
-        site_mask = _extent_mask(
+        site_mask = rectangular_extent_mask(
             inner_dataset,
             target_lat=outer_dataset["lat"],
             target_lon=outer_dataset["lon"],
@@ -697,7 +680,7 @@ def mask_outer_merged_for_inner_domain(
             raise ValueError(f"Outer flux entry {source!r} is missing lat/lon coordinates.")
         union_mask: xr.DataArray | None = None
         for site in inner.sites:
-            site_mask = _extent_mask(
+            site_mask = rectangular_extent_mask(
                 inner.fp_all[site],
                 target_lat=flux["lat"],
                 target_lon=flux["lon"],
@@ -706,7 +689,7 @@ def mask_outer_merged_for_inner_domain(
         if union_mask is None:  # guarded by the non-empty site invariant
             raise ValueError("Nested-domain masking requires at least one retained site.")
         masked_dataset = flux_dataset.copy(deep=False)
-        masked_dataset["flux"] = flux.where(~union_mask, other=0.0)
+        masked_dataset["flux"] = remove_domain_overlap(flux, union_mask)
         masked_flux_entries[str(source)] = _replace_data_object_data(flux_data, masked_dataset)
     fp_all[".flux"] = masked_flux_entries
 

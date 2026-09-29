@@ -16,12 +16,14 @@ import xarray as xr
 
 from openghg_inversions._timing import log_timing, timer_seconds, timer_start
 from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs
+from openghg_inversions.inversion_data.acquisition import retrieve_or_reload_rhime_data
 from openghg_inversions.models.components import (
     add_linear_component,
     add_offset_component,
 )
 from openghg_inversions.models.coords import registered_model
 from openghg_inversions.models.priors import PriorArgs
+from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.models.state_activity import StateActivity, prepare_linear_sensitivity
 from openghg_inversions.observation_error import (
     AggregationError,
@@ -52,7 +54,6 @@ from .preparation import (
     build_rhime_basis,
     build_rhime_sensitivities,
     filter_rhime_observations,
-    retrieve_or_reload_rhime_data,
     with_prepared_rhime_sites,
 )
 from .sampling import RhimeSampler, sample_rhime_model
@@ -393,7 +394,8 @@ def make_standard_rhime_result(
     prepared: RhimePreparedInputs,
     run_spec: RhimeRunSpec,
     sampler: RhimeSampler,
-    model_build_result: RhimeModelBuildResult,
+    model_build_result: RhimeModelBuildResult | None = None,
+    output_contract: OutputContract | None = None,
     idata: xr.DataTree,
     build_and_sample_seconds: float,
     model_builder: RhimeModelBuilder | None = None,
@@ -406,7 +408,9 @@ def make_standard_rhime_result(
         prepared: Retained canonical inputs and basis functions.
         run_spec: Resolved model, output, and run settings.
         sampler: Sampler configuration used for the trace.
-        model_build_result: Concrete graph and semantic variable roles.
+        model_build_result: Concrete graph and roles, when retained in memory.
+        output_contract: Durable output information for graph-free reconstruction.
+            Defaults to the live build result's contract when supplied.
         idata: Sampled posterior and predictive groups.
         build_and_sample_seconds: Combined graph-build and sampling duration.
         model_builder: Optional complete-model callable used for provenance.
@@ -422,9 +426,10 @@ def make_standard_rhime_result(
         inv_inputs=prepared.inv_inputs,
         idata=idata,
         sampler=sampler,
-        model=model_build_result.model,
+        model=model_build_result.model if model_build_result is not None else None,
         basis_functions=prepared.basis_functions,
         model_build_result=model_build_result,
+        output_contract=output_contract,
         output_metadata={"build_and_sample_seconds": build_and_sample_seconds},
     )
     if model_builder is not None:
@@ -519,12 +524,14 @@ def run_rhime(
     if likelihood_builder is None and setup.run_spec.model.likelihood is None:
         raise ValueError("A standard RHIME run requires a built-in or custom likelihood.")
 
+    # 1. Resolve acquisition through the data owner.
     preparation_start = timer_start()
     merged = retrieve_or_reload_rhime_data(
         setup.data_args,
         multisector=False,
         merged_data=merged_data,
     )
+    # 2. Keep the scientific preparation order visible in this recipe.
     filtered = filter_rhime_observations(merged, setup.data_args)
     basis_functions = build_rhime_basis(filtered, setup.data_args)
     site_data = build_rhime_sensitivities(
@@ -546,6 +553,7 @@ def run_rhime(
     )
     run_spec = with_prepared_rhime_sites(setup.run_spec, prepared)
 
+    # 3. Cross the explicit numerical/backend boundary, then build the graph.
     model_input_names = list(standard_model_input_names(prepared, run_spec.model))
     if _compatibility_unused_sigma_settings is not None or _compatibility_minimum_error_floor:
         _require_component_inputs(
@@ -572,10 +580,12 @@ def run_rhime(
         legacy_unused_sigma_settings=_compatibility_unused_sigma_settings,
         **legacy_additive_kwargs,
     )
+    # 4. Inference receives the completed graph and its variable roles.
     idata = sample_rhime_model(
         model_build_result,
         setup.sampler,
     )
+    # 5. Bind the samples to durable scientific output information.
     result = make_standard_rhime_result(
         prepared=prepared,
         run_spec=run_spec,
@@ -586,6 +596,7 @@ def run_rhime(
         likelihood_builder=likelihood_builder,
         likelihood_kwargs=likelihood_kwargs,
     )
+    # 6. The recipe adapter passes scientific views to product writers.
     output_start = timer_start()
     if compatibility_output_chain is None:
         make_standard_rhime_outputs(result=result, prepared=prepared)

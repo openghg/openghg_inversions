@@ -8,11 +8,9 @@ orchestrator or scheduler.
 from __future__ import annotations
 
 from dataclasses import asdict, replace
-from datetime import date, datetime
 from hashlib import sha256
 import json
 from numbers import Integral, Real
-import os
 from pathlib import Path
 from typing import Any, Literal, Mapping, cast
 
@@ -22,10 +20,18 @@ import pymc as pm
 import xarray as xr
 
 from openghg_inversions.inversion_data import RhimePreparedInputs, _save_merged_data
+from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.serialization import (
     load_trace,
     reset_serialisation_multiindexes,
     save_trace,
+)
+
+from openghg_inversions.workflow.artifacts import (
+    artifact_path as _artifact_path,
+    file_identity as _file_identity,
+    json_value as _json_value,
+    write_json as _write_json,
 )
 
 from .multisector import (
@@ -78,79 +84,21 @@ _PREPARATION_IDENTITY_EXCLUDED_OPTIONS = frozenset(
 )
 
 
-def _json_value(value: Any) -> Any:
-    """Return a stable JSON-compatible value for configuration provenance."""
-    if isinstance(value, Path):
-        return str(value)
-    if isinstance(value, slice):
-        return {
-            "type": "slice",
-            "start": _json_value(value.start),
-            "stop": _json_value(value.stop),
-            "step": _json_value(value.step),
-        }
-    if isinstance(value, xr.DataArray):
-        materialized = value.compute()
-        return {
-            "dims": [str(dim) for dim in materialized.dims],
-            "coords": {
-                str(dim): _json_value(materialized.coords[dim].to_numpy())
-                for dim in materialized.dims
-                if dim in materialized.coords
-            },
-            "values": _json_value(materialized.to_numpy()),
-        }
-    if isinstance(value, np.ndarray):
-        return _json_value(value.tolist())
-    if isinstance(value, np.generic):
-        return _json_value(value.item())
-    if isinstance(value, datetime | date):
-        return value.isoformat()
-    if isinstance(value, Mapping):
-        return {str(key): _json_value(item) for key, item in value.items()}
-    if isinstance(value, tuple | list):
-        return [_json_value(item) for item in value]
-    return value
-
-
-def _write_json(path: str | Path, value: Mapping[str, Any]) -> Path:
-    output_path = Path(path).resolve()
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(
-        json.dumps(_json_value(value), allow_nan=False, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
-    return output_path
-
-
-def _artifact_path(path: Path) -> str:
-    """Prefer an OGR run-relative path while remaining scheduler-independent."""
-    run_root = os.environ.get("RUN_ROOT")
-    if run_root is not None:
-        try:
-            return str(path.resolve().relative_to(Path(run_root).resolve()))
-        except ValueError:
-            pass
-    return str(path.resolve())
-
-
-def _file_identity(path: Path) -> str:
-    """Return the content identity used in compact stage manifests."""
-    digest = sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return f"sha256:{digest.hexdigest()}"
-
-
 def _load_stage_manifest(path: str | Path, *, stage: str) -> tuple[Path, dict[str, Any]]:
     """Load and validate one OGI stage manifest envelope."""
     manifest_path = Path(path).resolve()
     loaded = json.loads(manifest_path.read_text(encoding="utf-8"))
     if not isinstance(loaded, dict):
         raise ValueError(f"Stage manifest {manifest_path} must contain one JSON object.")
+    supported_versions = (1, 2) if stage == "sample" else (1,)
+    if type(loaded.get("schema_version")) is not int or loaded["schema_version"] not in supported_versions:
+        raise ValueError(f"Stage manifest {manifest_path} has an unsupported schema_version.")
+    if stage == "sample" and loaded["schema_version"] == 1:
+        for field in ("artifacts", "artifact_identities"):
+            entries = loaded.get(field)
+            if isinstance(entries, Mapping) and "output_binding" in entries:
+                raise ValueError("A sample manifest with an output binding requires schema_version=2.")
     expected = {
-        "schema_version": 1,
         "producer": "openghg_inversions",
         "stage": stage,
     }
@@ -185,6 +133,42 @@ def _verify_manifest_artifact(
             f"manifest has {recorded!r}, supplied artifact has {actual!r}."
         )
     return actual
+
+
+def _load_output_binding(
+    manifest: Mapping[str, Any],
+    *,
+    manifest_path: Path,
+) -> OutputContract:
+    """Verify the graph-free output contract bound to these exact saved arrays."""
+    artifacts = manifest.get("artifacts")
+    relative_path = artifacts.get("output_binding") if isinstance(artifacts, Mapping) else None
+    if not isinstance(relative_path, str) or not relative_path or Path(relative_path).is_absolute():
+        raise ValueError("Sample manifest requires a relative output_binding artifact path.")
+    binding_path = (manifest_path.parent / relative_path).resolve()
+    if not binding_path.is_relative_to(manifest_path.parent):
+        raise ValueError("Output binding must be beneath its sample manifest directory.")
+    _verify_manifest_artifact(
+        manifest,
+        manifest_path=manifest_path,
+        artifact_name="output_binding",
+        artifact_path=binding_path,
+    )
+    binding = json.loads(binding_path.read_text(encoding="utf-8"))
+    fields = {"schema", "schema_version", "artifact_identities", "output_contract"}
+    if not isinstance(binding, dict) or set(binding) != fields:
+        raise ValueError("Output binding has missing or unexpected fields.")
+    if (
+        binding["schema"] != "openghg_inversions.output_binding"
+        or type(binding["schema_version"]) is not int
+        or binding["schema_version"] != 1
+    ):
+        raise ValueError("Output binding has an unsupported schema or schema_version.")
+    identities = manifest["artifact_identities"]
+    expected = {name: identities[name] for name in ("prepared_inputs", "posterior")}
+    if binding["artifact_identities"] != expected:
+        raise ValueError("Output binding does not match the prepared-input and posterior identities.")
+    return OutputContract.from_dict(binding["output_contract"])
 
 
 def _output_path(output_dir: Path, requested: str | Path | None, default_name: str) -> Path:
@@ -585,7 +569,12 @@ def sample_rhime_stage(
     output_dir: str | Path,
     preparation_manifest: str | Path,
 ) -> dict[str, Any]:
-    """Sample explicitly supplied prepared inputs without running preparation."""
+    """Sample prepared inputs and persist matched posterior/output bindings.
+
+    Writes the trace, a versioned output contract bound to both numerical
+    artifacts, and a schema-version-2 sample manifest. Preparation is never
+    invoked implicitly.
+    """
     destination = _stage_output_directory(output_dir)
     prepared, resolved = _load_prepared(
         prepared_inputs,
@@ -597,8 +586,21 @@ def sample_rhime_stage(
     idata = sample_rhime_model(built, resolved.sampler)
     trace_path = _output_path(destination, None, "posterior.nc")
     save_trace(idata, trace_path)
+    identities = {
+        "posterior": _file_identity(trace_path),
+        "prepared_inputs": _file_identity(Path(prepared_inputs).resolve()),
+    }
+    binding_path = _write_json(
+        _output_path(destination, None, "output-binding.json"),
+        {
+            "schema": "openghg_inversions.output_binding",
+            "schema_version": 1,
+            "artifact_identities": identities,
+            "output_contract": built.output_contract.to_dict(),
+        },
+    )
     manifest = {
-        "schema_version": 1,
+        "schema_version": 2,
         "producer": "openghg_inversions",
         "stage": "sample",
         "configuration_identity": configuration_identity(resolved, model=model),
@@ -606,10 +608,11 @@ def sample_rhime_stage(
         "artifacts": {
             "posterior": _artifact_path(trace_path),
             "prepared_inputs": _artifact_path(Path(prepared_inputs)),
+            "output_binding": binding_path.name,
         },
         "artifact_identities": {
-            "posterior": _file_identity(trace_path),
-            "prepared_inputs": _file_identity(Path(prepared_inputs).resolve()),
+            **identities,
+            "output_binding": _file_identity(binding_path),
         },
     }
     manifest_path = _write_json(_output_path(destination, None, "sample-manifest.json"), manifest)
@@ -774,7 +777,13 @@ def postprocess_rhime_stage(
     preparation_manifest: str | Path,
     sample_manifest: str | Path,
 ) -> RhimeResult:
-    """Build requested products from explicit prepared and posterior inputs."""
+    """Build requested products from matched prepared, posterior and role artifacts.
+
+    Version-2 sample manifests use their verified saved output bindings, without
+    materializing model inputs or constructing a graph. Genuine version-1
+    manifests retain graph reconstruction to recover their missing roles.
+    Output settings may change; the sampled scientific configuration may not.
+    """
     destination = _stage_output_directory(output_dir)
     configured_output = setup.run_spec.output
     _filename_component("output_name", configured_output.output_name)
@@ -804,7 +813,16 @@ def postprocess_rhime_stage(
     )
     run_spec = replace(resolved.run_spec, output=output_spec)
     resolved = RhimeRunnerSetup(run_spec=run_spec, sampler=sampled_sampler, data_args=resolved.data_args)
-    built = _build_prepared_model(prepared, resolved, model=model)
+    if sample_contract["schema_version"] == 1:
+        # Older manifests did not persist roles; preserve their explicit graph replay.
+        built = _build_prepared_model(prepared, resolved, model=model)
+        output_contract = built.output_contract
+    else:
+        built = None
+        output_contract = _load_output_binding(
+            sample_contract, manifest_path=Path(sample_manifest).resolve()
+        )
+    output_contract.validate_requested_output(output_spec.output_format)
     idata = load_trace(posterior_path)
     if model == "multisector":
         result = make_multisector_rhime_result(
@@ -812,6 +830,7 @@ def postprocess_rhime_stage(
             run_spec=run_spec,
             sampler=resolved.sampler,
             model_build_result=built,
+            output_contract=output_contract,
             idata=idata,
             build_and_sample_seconds=0.0,
         )
@@ -822,6 +841,7 @@ def postprocess_rhime_stage(
             run_spec=run_spec,
             sampler=resolved.sampler,
             model_build_result=built,
+            output_contract=output_contract,
             idata=idata,
             build_and_sample_seconds=0.0,
         )
@@ -849,10 +869,7 @@ def postprocess_rhime_stage(
         "stage": "postprocess",
         "configuration_identity": configuration_identity(resolved, model=model),
         "effective_configuration": effective_configuration(resolved, model=model),
-        "input_identities": {
-            "prepared_inputs": _file_identity(Path(prepared_inputs).resolve()),
-            "posterior": _file_identity(posterior_path),
-        },
+        "input_identities": dict(sample_contract["artifact_identities"]),
         "artifacts": {name: _artifact_path(Path(path)) for name, path in artifacts.items()},
     }
     manifest_path = _write_json(_output_path(destination, None, "postprocess-manifest.json"), manifest)
