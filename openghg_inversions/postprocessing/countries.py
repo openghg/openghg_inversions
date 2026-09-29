@@ -273,6 +273,7 @@ class CountryRegions:
             warnings.warn(
                 "Dropping country regions with unmatched countries in `country_regions`: " + msg,
                 UserWarning,
+                stacklevel=2,
             )
 
         aligned_country_regions = {}

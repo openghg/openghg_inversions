@@ -458,6 +458,7 @@ def fp_all_from_dataset(ds: xr.Dataset) -> dict:
             "Legacy `fp_all_from_dataset` drops scenario `source` dimensions, so sector-resolved "
             "state cannot be reconstructed. Setting `fp_all['.split_by_sectors'] = False` on load.",
             UserWarning,
+            stacklevel=2,
         )
     fp_all[".split_by_sectors"] = False
 
