@@ -50,8 +50,15 @@ From the Actions page, run **Prepare release** with the next minor version and
 * updates ``pyproject.toml``;
 * assembles Towncrier fragments into ``CHANGELOG.md``;
 * commits and pushes the result;
-* opens a pull request to ``main``; and
+* opens a pull request to ``main`` with a checklist of non-bot commit authors
+  since the previous release; and
 * dispatches ordinary CI for the generated commit.
+
+Review every contributor candidate before merging the release pull request.
+Resolve Git usernames to people's preferred real names and update
+``.zenodo.json`` when someone is missing; the workflow never copies candidates
+into published metadata automatically. Git's standard ``.mailmap`` file may be
+used to consolidate recurring author aliases.
 
 ``devel`` remains open while the release pull request is stabilized. Apply a
 release-blocking fix to the release branch and ``devel``; do not leave a fix on

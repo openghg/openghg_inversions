@@ -90,6 +90,23 @@ jobs:
             exit 1
           fi
 
+      - name: Collect contributor candidates
+        run: |
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 --match 'v*')
+          {
+            echo "## Contributor review"
+            echo
+            echo "Non-bot commit authors since \`${PREVIOUS_TAG}\`:"
+            echo
+            git log --no-merges --format='%aN' "${PREVIOUS_TAG}..HEAD" \
+              | sort \
+              | uniq -c \
+              | sort -rn \
+              | awk '!/\[bot\]$/ { count=$1; $1=""; sub(/^[[:space:]]+/, ""); printf "- [ ] `%s` — %d commit%s\n", $0, count, (count == 1 ? "" : "s") }'
+            echo
+            echo "Review each identity against \`.zenodo.json\`. Resolve usernames to real names; do not copy them into Zenodo metadata."
+          } > "$RUNNER_TEMP/release-contributors.md"
+
       - name: Assemble release commit
         env:
           BRANCH: ${{ steps.release.outputs.branch }}
@@ -132,6 +149,8 @@ jobs:
             echo "## Release candidate ${VERSION}"
             echo
             echo "Prepared automatically from \`${SOURCE}\`."
+            echo
+            cat "$RUNNER_TEMP/release-contributors.md"
             echo
             echo "- [ ] CI Gate passes for the final main commit"
             echo "- [ ] Publish GitHub release \`v${VERSION}\` after review"
