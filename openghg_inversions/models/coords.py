@@ -209,7 +209,7 @@ class CoordRegistry:
 
 def attach_coord_registry(model: pm.Model, registry: CoordRegistry) -> None:
     """Attach a coordinate registry to a PyMC model."""
-    setattr(model, "_openghg_coord_registry", registry)
+    model._openghg_coord_registry = registry
 
 
 def get_coord_registry(model: pm.Model) -> CoordRegistry | None:
