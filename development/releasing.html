@@ -423,9 +423,15 @@ From the Actions page, run <strong>Prepare release</strong> with the next minor 
 <li><p>updates <code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code>;</p></li>
 <li><p>assembles Towncrier fragments into <code class="docutils literal notranslate"><span class="pre">CHANGELOG.md</span></code>;</p></li>
 <li><p>commits and pushes the result;</p></li>
-<li><p>opens a pull request to <code class="docutils literal notranslate"><span class="pre">main</span></code>; and</p></li>
+<li><p>opens a pull request to <code class="docutils literal notranslate"><span class="pre">main</span></code> with a checklist of non-bot commit authors
+since the previous release; and</p></li>
 <li><p>dispatches ordinary CI for the generated commit.</p></li>
 </ul>
+<p>Review every contributor candidate before merging the release pull request.
+Resolve Git usernames to people’s preferred real names and update
+<code class="docutils literal notranslate"><span class="pre">.zenodo.json</span></code> when someone is missing; the workflow never copies candidates
+into published metadata automatically. Git’s standard <code class="docutils literal notranslate"><span class="pre">.mailmap</span></code> file may be
+used to consolidate recurring author aliases.</p>
 <p><code class="docutils literal notranslate"><span class="pre">devel</span></code> remains open while the release pull request is stabilized. Apply a
 release-blocking fix to the release branch and <code class="docutils literal notranslate"><span class="pre">devel</span></code>; do not leave a fix on
 only one side.</p>
