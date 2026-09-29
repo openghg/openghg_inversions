@@ -236,7 +236,7 @@ class ContrastProximityComponentConsolidation:
 
         consolidated_values, final_groups = _labels_from_active_regions(
             active,
-            label_values.shape,
+            (label_values.shape[0], label_values.shape[1]),
         )
         deliberately_disconnected = _deliberately_disconnected_regions(
             consolidated_values,
