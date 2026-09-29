@@ -163,15 +163,21 @@ def test_country_products_compose_before_sampling_and_convert_to_annual_co2_mass
     xr.testing.assert_identical(countries.matrix, before)
 
 
-def test_sparse_dask_inputs_remain_lazy_and_borrowed():
+@pytest.mark.parametrize("chunk_prolongation", [False, True], ids=["eager-sparse", "dask-sparse"])
+def test_sparse_dask_inputs_remain_lazy_and_borrowed(chunk_prolongation):
     bound, trace, countries = _fixture()
     expected_native = co2_native_flux_outputs(trace, bound)
     expected_country = co2_country_flux_outputs(trace, bound, countries)
     mapping = bound.affine_map
+    sparse_u = sparse.COO.from_numpy(mapping.prolongation.values)
     lazy_u = mapping.prolongation.copy(
-        data=da.from_array(sparse.COO.from_numpy(mapping.prolongation.values), chunks=(1, 1, 2, 2))
+        data=da.from_array(sparse_u, chunks=(1, 1, 2, 2)) if chunk_prolongation else sparse_u
     )
-    lazy_map = replace(mapping, prolongation=lazy_u, flux=mapping.flux.chunk({"lat": 1}))
+    lazy_map = replace(
+        mapping,
+        prolongation=lazy_u,
+        flux=mapping.flux.chunk({"lat": 1}) if chunk_prolongation else mapping.flux,
+    )
     lazy_bound = replace(bound, artifact=replace(bound.artifact, affine_map=lazy_map))
     for group in ("prior", "posterior"):
         trace[group] = trace[group].to_dataset().chunk({"chain": 1, "draw": 1})
