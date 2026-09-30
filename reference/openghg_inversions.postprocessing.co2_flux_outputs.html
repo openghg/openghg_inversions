@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>openghg_inversions.models.fixed_error &#8212; openghg_inversions  documentation</title>
+    <title>openghg_inversions.postprocessing.co2_flux_outputs &#8212; openghg_inversions  documentation</title>
   
   
   
@@ -47,13 +47,12 @@
     <script src="../_static/thebelab-helper.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
-    <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@4/tex-mml-chtml.js"></script>
-    <script>DOCUMENTATION_OPTIONS.pagename = 'reference/openghg_inversions.models.fixed_error';</script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'reference/openghg_inversions.postprocessing.co2_flux_outputs';</script>
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="openghg_inversions.models.fixed_ou" href="openghg_inversions.models.fixed_ou.html" />
-    <link rel="prev" title="openghg_inversions.models.coords" href="openghg_inversions.models.coords.html" />
+    <link rel="next" title="openghg_inversions.postprocessing.countries" href="openghg_inversions.postprocessing.countries.html" />
+    <link rel="prev" title="openghg_inversions.postprocessing" href="openghg_inversions.postprocessing.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="" />
@@ -350,12 +349,12 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.xarray_adapter.html">openghg_inversions.inversion_data.xarray_adapter</a></li>
 </ul>
 </details></li>
-<li class="toctree-l2 current active has-children"><a class="reference internal" href="openghg_inversions.models.html">openghg_inversions.models</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
+<li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.models.html">openghg_inversions.models</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.additive_sigma.html">openghg_inversions.models.additive_sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.cached_sigma.html">openghg_inversions.models.cached_sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.components.html">openghg_inversions.models.components</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.coords.html">openghg_inversions.models.coords</a></li>
-<li class="toctree-l3 current active"><a class="current reference internal" href="#">openghg_inversions.models.fixed_error</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.fixed_error.html">openghg_inversions.models.fixed_error</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.fixed_ou.html">openghg_inversions.models.fixed_ou</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.pollution_event.html">openghg_inversions.models.pollution_event</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.priors.html">openghg_inversions.models.priors</a></li>
@@ -364,8 +363,8 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.state_activity.html">openghg_inversions.models.state_activity</a></li>
 </ul>
 </details></li>
-<li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.postprocessing.html">openghg_inversions.postprocessing</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.co2_flux_outputs.html">openghg_inversions.postprocessing.co2_flux_outputs</a></li>
+<li class="toctree-l2 current active has-children"><a class="reference internal" href="openghg_inversions.postprocessing.html">openghg_inversions.postprocessing</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
+<li class="toctree-l3 current active"><a class="current reference internal" href="#">openghg_inversions.postprocessing.co2_flux_outputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.countries.html">openghg_inversions.postprocessing.countries</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.diagnostics.html">openghg_inversions.postprocessing.diagnostics</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.inversion_output.html">openghg_inversions.postprocessing.inversion_output</a></li>
@@ -478,9 +477,9 @@
     <li class="breadcrumb-item"><a href="openghg_inversions.html" class="nav-link">openghg_inversions</a></li>
     
     
-    <li class="breadcrumb-item"><a href="openghg_inversions.models.html" class="nav-link">openghg_inversions.models</a></li>
+    <li class="breadcrumb-item"><a href="openghg_inversions.postprocessing.html" class="nav-link">openghg_inversions.postprocessing</a></li>
     
-    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">openghg_inversions.models.fixed_error</span></li>
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">openghg_inversions.postprocessing.co2_flux_outputs</span></li>
   </ul>
 </nav>
 </div>
@@ -497,57 +496,88 @@
 <div id="searchbox"></div>
                 <article class="bd-article">
                   
-  <section id="module-openghg_inversions.models.fixed_error">
-<span id="openghg-inversions-models-fixed-error"></span><h1>openghg_inversions.models.fixed_error<a class="headerlink" href="#module-openghg_inversions.models.fixed_error" title="Link to this heading">#</a></h1>
-<p>Gaussian observations without inferred model-data mismatch.</p>
-<p>For reported observation-error variance <span class="math notranslate nohighlight">\(s_y^2\)</span> and optional fixed
-aggregation covariance <span class="math notranslate nohighlight">\(C_{agg}\)</span>, this component constructs the
-independent variance</p>
-<div class="math notranslate nohighlight">
-\[v = \max\left(|s_y|, 10^{-12}\bar{y}\right)^2.\]</div>
-<p>The tiny scale guard preserves the historical no-model-error behaviour for
-zero reported errors. No inferred <code class="docutils literal notranslate"><span class="pre">sigma</span></code> or prepared minimum-error floor is
-part of this model.</p>
+  <section id="module-openghg_inversions.postprocessing.co2_flux_outputs">
+<span id="openghg-inversions-postprocessing-co2-flux-outputs"></span><h1>openghg_inversions.postprocessing.co2_flux_outputs<a class="headerlink" href="#module-openghg_inversions.postprocessing.co2_flux_outputs" title="Link to this heading">#</a></h1>
+<p>Conditional native and country flux summaries for coherent CO2 posteriors.</p>
 <dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.models.fixed_error.add_fixed_error_likelihood">
-<span class="sig-name descname"><span class="pre">add_fixed_error_likelihood</span></span><span class="sig-paren">(</span>
-
-<dl>
-<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">observations</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">observation_error</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">aggregation_error</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">mean</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">output_dim</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'nmeasure'</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">observation_error_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'error'</span></span></em>,</dd>
-</dl>
-
-<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.fixed_error.add_fixed_error_likelihood" title="Link to this definition">#</a></dt>
-<dd><p>Add a Gaussian likelihood without inferred model-data mismatch.</p>
+<dt class="sig sig-object py" id="openghg_inversions.postprocessing.co2_flux_outputs.co2_native_flux_outputs">
+<span class="sig-name descname"><span class="pre">co2_native_flux_outputs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">trace</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bound</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.postprocessing.co2_flux_outputs.co2_native_flux_outputs" title="Link to this definition">#</a></dt>
+<dd><p>Summarize signed affine native flux draws from a CO2-only trace.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>observations</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Observed mole fractions.</p></li>
-<li><p><strong>observation_error</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Reported observation-error standard deviations.</p></li>
-<li><p><strong>aggregation_error</strong> (<a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.AggregationError" title="openghg_inversions.observation_error.AggregationError"><em>AggregationError</em></a>) – Validated fixed aggregation-error representation.</p></li>
-<li><p><strong>mean</strong> (<em>TensorVariable</em>) – Completed forward-model concentration aligned with
-<code class="docutils literal notranslate"><span class="pre">output_dim</span></code>.</p></li>
-<li><p><strong>output_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Observation dimension used for named PyMC variables.</p></li>
-<li><p><strong>observation_error_name</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – PyMC data name for the reported error.</p></li>
+<li><p><strong>trace</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.9.0)"><em>DataTree</em></a>) – Annotated ordinary or cached fixed-OU CO2 trace containing prior
+and posterior draws of the explicitly declared <code class="docutils literal notranslate"><span class="pre">flux_scale</span></code>.
+Each group needs chain, draw, and the complete retained-state axis.</p></li>
+<li><p><strong>bound</strong> (<a class="reference internal" href="openghg_inversions.rhime.co2.co2_affine_output.html#openghg_inversions.rhime.co2.co2_affine_output.BoundCo2AffineFluxMap" title="openghg_inversions.rhime.co2.co2_affine_output.BoundCo2AffineFluxMap"><em>BoundCo2AffineFluxMap</em></a>) – Reconstruction bound to the saved prepared inputs, with the
+authoritative retained reference mean. The caller must supply the
+trace generated from that preparation; trace identity is not checked.
+Native dimensions are
+<code class="docutils literal notranslate"><span class="pre">lat,</span> <span class="pre">lon</span></code> or a leading source dimension followed by <code class="docutils literal notranslate"><span class="pre">lat,</span> <span class="pre">lon</span></code>.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>The observed Gaussian variable, named <code class="docutils literal notranslate"><span class="pre">y</span></code>. The total marginal error
-scale is also recorded in the active model as <code class="docutils literal notranslate"><span class="pre">epsilon</span></code>.</p>
+<dd class="field-even"><p>Mean, population standard deviation, and 0.159/0.841 quantiles in
+<code class="docutils literal notranslate"><span class="pre">mol</span> <span class="pre">m-2</span> <span class="pre">s-1</span></code>. <code class="docutils literal notranslate"><span class="pre">flux_total_prior_*</span></code> and <code class="docutils literal notranslate"><span class="pre">flux_total_posterior_*</span></code>
+summarize source sums. Multisource maps also retain <code class="docutils literal notranslate"><span class="pre">flux_prior_*</span></code>
+and <code class="docutils literal notranslate"><span class="pre">flux_posterior_*</span></code> on their native source axis. Prior and posterior
+sample axes are reduced independently, pooling all chains. Results
+remain lazy for Dask inputs; quantiles consolidate sample chunks through
+the existing statistics helper. Inputs remain borrowed.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If the observation or aggregation-error inputs are
-    inconsistent with <code class="docutils literal notranslate"><span class="pre">output_dim</span></code>.</p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If the recipe, role, samples, native layout, state labels,
+    or units cannot represent these products faithfully.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><em>TensorVariable</em></p>
+<dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a></p>
 </dd>
 </dl>
+<p class="rubric">Notes</p>
+<p>Uncertainty describes retained-state-conditional native means only;
+unresolved native covariance is not added. Nonlinear statistics are
+calculated after signed reconstruction and after source summation.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.postprocessing.co2_flux_outputs.co2_country_flux_outputs">
+<span class="sig-name descname"><span class="pre">co2_country_flux_outputs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">trace</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bound</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">countries</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.postprocessing.co2_flux_outputs.co2_country_flux_outputs" title="Link to this definition">#</a></dt>
+<dd><p>Summarize affine CO2 country flux without constructing native flux draws.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>trace</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.9.0)"><em>DataTree</em></a>) – CO2-only annotated trace, with the same sample requirements as
+<a class="reference internal" href="#openghg_inversions.postprocessing.co2_flux_outputs.co2_native_flux_outputs" title="openghg_inversions.postprocessing.co2_flux_outputs.co2_native_flux_outputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">co2_native_flux_outputs()</span></code></a>.</p></li>
+<li><p><strong>bound</strong> (<a class="reference internal" href="openghg_inversions.rhime.co2.co2_affine_output.html#openghg_inversions.rhime.co2.co2_affine_output.BoundCo2AffineFluxMap" title="openghg_inversions.rhime.co2.co2_affine_output.BoundCo2AffineFluxMap"><em>BoundCo2AffineFluxMap</em></a>) – Reconstruction bound to its authoritative prepared reference.
+The caller must supply the trace generated from that preparation;
+trace identity is not checked.</p></li>
+<li><p><strong>countries</strong> (<a class="reference internal" href="openghg_inversions.postprocessing.countries.html#openghg_inversions.postprocessing.countries.Countries" title="openghg_inversions.postprocessing.countries.Countries"><em>Countries</em></a>) – Country membership and cell areas on exactly the map’s
+indexed <code class="docutils literal notranslate"><span class="pre">lat,</span> <span class="pre">lon</span></code> grid. No regridding or partial overlap is used.
+<code class="docutils literal notranslate"><span class="pre">Countries.area_grid</span></code> is in square metres.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">country_total_prior_*</span></code> and <code class="docutils literal notranslate"><span class="pre">country_total_posterior_*</span></code> mean,
+population standard deviation, and 0.159/0.841 quantiles in grams of
+CO2 per fixed 365-day year. Multisource maps additionally retain
+<code class="docutils literal notranslate"><span class="pre">country_prior_*</span></code> and <code class="docutils literal notranslate"><span class="pre">country_posterior_*</span></code> on the source axis.
+Other flux dimensions, such as time, remain in the result. Computation
+stays lazy for Dask inputs. Compact country reference/response arrays
+use dense chunk payloads; sample chunks for quantiles are consolidated.
+Inputs are borrowed.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If input requirements or exact country-grid alignment fail.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a></p>
+</dd>
+</dl>
+<p class="rubric">Notes</p>
+<p>Country reference values <code class="docutils literal notranslate"><span class="pre">A</span> <span class="pre">F</span> <span class="pre">m</span></code> and responses <code class="docutils literal notranslate"><span class="pre">A</span> <span class="pre">F</span> <span class="pre">U*</span></code> are formed
+before applying any sample axes. The result carries the conditional
+uncertainty scope and reconstruction identity; unresolved native
+covariance is not included. Source totals are summed per draw.</p>
 </dd></dl>
 
 </section>
@@ -563,20 +593,20 @@ scale is also recorded in the active model as <code class="docutils literal notr
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="openghg_inversions.models.coords.html"
+       href="openghg_inversions.postprocessing.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">openghg_inversions.models.coords</p>
+        <p class="prev-next-title">openghg_inversions.postprocessing</p>
       </div>
     </a>
     <a class="right-next"
-       href="openghg_inversions.models.fixed_ou.html"
+       href="openghg_inversions.postprocessing.countries.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">openghg_inversions.models.fixed_ou</p>
+        <p class="prev-next-title">openghg_inversions.postprocessing.countries</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -599,14 +629,15 @@ scale is also recorded in the active model as <code class="docutils literal notr
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.fixed_error.add_fixed_error_likelihood"><code class="docutils literal notranslate"><span class="pre">add_fixed_error_likelihood()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.postprocessing.co2_flux_outputs.co2_native_flux_outputs"><code class="docutils literal notranslate"><span class="pre">co2_native_flux_outputs()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.postprocessing.co2_flux_outputs.co2_country_flux_outputs"><code class="docutils literal notranslate"><span class="pre">co2_country_flux_outputs()</span></code></a></li>
 </ul>
   </nav></div>
 
   <div class="sidebar-secondary-item">
 
   <div class="tocsection sourcelink">
-    <a href="../_sources/reference/openghg_inversions.models.fixed_error.rst.txt">
+    <a href="../_sources/reference/openghg_inversions.postprocessing.co2_flux_outputs.rst.txt">
       <i class="fa-solid fa-file-lines"></i> Show Source
     </a>
   </div>
