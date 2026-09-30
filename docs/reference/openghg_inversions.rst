@@ -13,6 +13,7 @@ openghg\_inversions
    openghg_inversions.config
    openghg_inversions.experimental
    openghg_inversions.hbmcmc
+   openghg_inversions.inference
    openghg_inversions.inversion_data
    openghg_inversions.models
    openghg_inversions.postprocessing
