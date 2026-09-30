@@ -31,6 +31,7 @@ from openghg_inversions.inversion_data.serialise import (
     _save_merged_data,
     datatree_to_fp_all,
     fp_all_from_dataset,
+    fp_all_to_datatree,
     load_merged_data,
     make_combined_scenario,
 )
@@ -124,6 +125,24 @@ def test_datatree_to_fp_all_drops_obsolete_metadata() -> None:
     fp_all = datatree_to_fp_all(tree)
 
     assert set(fp_all) == {"TAC", ".split_by_sectors"}
+
+
+@pytest.mark.parametrize("flag", [False, True, np.bool_(False), np.bool_(True)])
+@pytest.mark.parametrize("engine", ["h5netcdf", "netcdf4"])
+def test_merged_netcdf_roundtrips_boolean_root_metadata(tmp_path, flag, engine) -> None:
+    """The staged preparation marker is NetCDF-safe without changing inputs."""
+    scenario = xr.Dataset({"mf": ("time", [1.0])})
+    fp_all = {"TAC": scenario, ".split_by_sectors": flag}
+
+    other_engine = "netcdf4" if engine == "h5netcdf" else "h5netcdf"
+    with xr.set_options(netcdf_engine_order=[engine, other_engine, "scipy"]):
+        _save_merged_data(fp_all, tmp_path, merged_data_name="prepared.nc")
+    restored = load_merged_data(tmp_path, merged_data_name="prepared.nc")
+
+    assert restored[".split_by_sectors"] is bool(flag)
+    xr.testing.assert_identical(restored["TAC"], scenario)
+    assert fp_all[".split_by_sectors"] is flag
+    assert fp_all_to_datatree(fp_all).attrs[".split_by_sectors"] is flag
 
 
 @pytest.mark.parametrize(
