@@ -10,6 +10,8 @@ The code and recorded plots form one stateful session. You can
 :jupyter-download-notebook:`download it as a Jupyter notebook <prior_predictive_checking>`
 to rerun or modify locally after populating the companion store. Run either
 the shell commands or their notebook equivalents below, not both.
+The downloaded notebook contains the executable cells and recorded text;
+rerun it to display plots, and use this page for interpretation and caveats.
 
 .. jupyter-kernel:: python3
    :id: prior_predictive_checking
@@ -112,7 +114,9 @@ locally, outputs go to ``outputs/prior-check``:
 
 .. jupyter-output::
 
-   Outputs will be refreshed by the tutorial recorder.
+   {'OpenGHG Inversions commit': 'b1dbf67d9267067d8633204c01ea1e4cc30c4ed0',
+    'tutorial data': 'v1.0.0',
+    'prepared inputs written': True}
 
 Generate prior predictions
 --------------------------
@@ -160,7 +164,7 @@ The notebook equivalent runs the same finite-value check:
 
 .. jupyter-output::
 
-   Outputs will be refreshed by the tutorial recorder.
+   {'status': 'pass', 'message': 'Prior predictive produced 500 finite draws.'}
 
 Inspect the artifact
 --------------------
@@ -170,8 +174,12 @@ Load the result and inspect its groups and variable names before plotting:
 .. jupyter-input::
 
    from openghg_inversions.serialization import load_trace
+   from openghg_inversions.inversion_data import RhimePreparedInputs
 
    prior = load_trace(run / "prior-predictive/prior-predictive.nc")
+   prepared = RhimePreparedInputs.load(prepared_path)
+   observations = prepared.inv_inputs["mf"]
+   concentration_units = observations.attrs.get("units", "mole fraction")
    {
        "groups": list(prior.children),
        "prior variables": sorted(prior["prior"].data_vars),
@@ -180,7 +188,9 @@ Load the result and inspect its groups and variable names before plotting:
 
 .. jupyter-output::
 
-   Outputs will be refreshed by the tutorial recorder.
+   {'groups': ['prior', 'prior_predictive', 'observed_data', 'constant_data'],
+    'prior variables': ['bc', 'epsilon', 'mu', 'mu_bc', 'sigma', 'x'],
+    'replicated observations': ['y']}
 
 The output should include at least ``prior``, ``prior_predictive``, and
 ``observed_data``. A missing group means the expected prior-check artifact was
@@ -221,16 +231,19 @@ concentrations:
        kind="ecdf",
        num_samples=100,
        backend="matplotlib",
-       visuals={"observed_dist": {"color": "black", "label": "Observed"}},
+       visuals={"remove_axis": False,
+                "observed_dist": {"color": "black", "label": "Observed"}},
    )
    plt.gca().set_title("Prior predictive concentration distributions")
+   plt.gca().set_xlabel(f"Concentration ({concentration_units} mole fraction)")
+   plt.gca().set_ylabel("Cumulative probability")
    plt.gca().legend()
    plt.show()
    "Prior predictive ECDFs: 100 simulated datasets and the observations."
 
 .. jupyter-output::
 
-   Outputs will be refreshed by the tutorial recorder.
+   'Prior predictive ECDFs: 100 simulated datasets and the observations.'
 
 .. figure:: ../_static/tutorials/prior_predictive_checking-4-1.png
    :alt: Prior predictive concentration ECDFs overlaid with the observed CH4 ECDF.
@@ -248,11 +261,7 @@ prepared artifact supplies the authoritative site/time measurement index:
 .. jupyter-input::
 
    import numpy as np
-   from openghg_inversions.inversion_data import RhimePreparedInputs
 
-   prepared = RhimePreparedInputs.load(prepared_path)
-   observations = prepared.inv_inputs["mf"]
-   concentration_units = observations.attrs.get("units", "mole fraction")
    measurement_index = prepared.inv_inputs.indexes["nmeasure"]
    sites = measurement_index.get_level_values("site")
    times = measurement_index.get_level_values("time")
@@ -298,7 +307,11 @@ prepared artifact supplies the authoritative site/time measurement index:
 
 .. jupyter-output::
 
-   Outputs will be refreshed by the tutorial recorder.
+   {'sites': ['MHD', 'TAC'], 'concentration units': '1e-09'}
+
+Here ``1e-09`` denotes a mole-fraction scale of 10⁻⁹, or parts per billion
+(ppb); a plotted value of 2000 therefore means 2000 ppb, not 2000 mol/mol.
+For other data, use their recorded units rather than assuming this scale.
 
 .. figure:: ../_static/tutorials/prior_predictive_checking-5-1.png
    :alt: MHD and TAC time series with observations, three prior simulations, and pointwise 90 percent intervals.
@@ -394,7 +407,7 @@ In the notebook, explicitly reuse the same artifact and manifest:
 
 .. jupyter-output::
 
-   Outputs will be refreshed by the tutorial recorder.
+   {'posterior samples': {'chain': 2, 'draw': 50}}
 
 Next run the staged convergence check:
 
@@ -420,7 +433,8 @@ perform a posterior predictive check:
 
 .. jupyter-output::
 
-   Outputs will be refreshed by the tutorial recorder.
+   {'status': 'fail',
+    'message': 'Posterior convergence thresholds were exceeded.'}
 
 The deliberately short smoke run is not expected to pass convergence checks.
 The next plot demonstrates the mechanics only; it is not evidence that this
@@ -435,16 +449,19 @@ posterior is reliable. For scientific work, obtain adequate diagnostics first.
        kind="ecdf",
        num_samples=100,
        backend="matplotlib",
-       visuals={"observed_dist": {"color": "black", "label": "Observed"}},
+       visuals={"remove_axis": False,
+                "observed_dist": {"color": "black", "label": "Observed"}},
    )
    plt.gca().set_title("Posterior predictive distributions (smoke run only)")
+   plt.gca().set_xlabel(f"Concentration ({concentration_units} mole fraction)")
+   plt.gca().set_ylabel("Cumulative probability")
    plt.gca().legend()
    plt.show()
    "Posterior predictive ECDFs: illustration only, not a converged scientific result."
 
 .. jupyter-output::
 
-   Outputs will be refreshed by the tutorial recorder.
+   'Posterior predictive ECDFs: illustration only, not a converged scientific result.'
 
 .. figure:: ../_static/tutorials/prior_predictive_checking-8-1.png
    :alt: Posterior predictive concentration ECDFs and observed ECDF from the short smoke run.
