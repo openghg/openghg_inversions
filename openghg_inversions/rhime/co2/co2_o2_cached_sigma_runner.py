@@ -8,8 +8,8 @@ from typing import Any
 import numpy as np
 import xarray as xr
 
-from openghg_inversions.models import StateActivity
-from openghg_inversions.models.priors import PriorArgs
+from openghg_inversions.model_components import StateActivity
+from openghg_inversions.model_components.priors import PriorArgs
 from openghg_inversions.rhime.builders import RhimeModelBuildResult
 from openghg_inversions.rhime.sampling import RhimeSampler, sample_rhime_model
 

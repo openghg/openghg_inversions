@@ -20,7 +20,7 @@ from dask.callbacks import Callback
 from examples.rhime_customisation import likelihoods as example_likelihoods
 import openghg_inversions.inversion_data.acquisition as acquisition_module
 import openghg_inversions.inversion_data.preparation as prep_module
-import openghg_inversions.models as models
+import openghg_inversions.model_components as models
 import openghg_inversions.postprocessing.inversion_output as inversion_output_module
 import openghg_inversions.rhime as rhime_public
 import openghg_inversions.rhime._model_building as rhime_model_building
@@ -48,8 +48,8 @@ from openghg_inversions.flux_sanitization import (
 )
 from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs, prepare_rhime_inputs
 from openghg_inversions.inversion_inputs import make_inv_inputs
-from openghg_inversions.models import StateActivity
-from openghg_inversions.models._flux import safe_pymc_name
+from openghg_inversions.model_components import StateActivity
+from openghg_inversions.model_components._flux import safe_pymc_name
 from openghg_inversions.observation_error import AggregationError, resolve_aggregation_error
 from openghg_inversions.postprocessing._basis_products import (
     BASIS_ARTIFACT_PATH_OUTPUT_ATTR,
@@ -2639,7 +2639,7 @@ def test_concrete_rhime_builders_are_owned_by_recipe_modules() -> None:
 @pytest.mark.parametrize(
     "module_name",
     [
-        "openghg_inversions.models",
+        "openghg_inversions.model_components",
         "openghg_inversions.rhime",
         "openghg_inversions.rhime.standard",
         "openghg_inversions.rhime.multisector",

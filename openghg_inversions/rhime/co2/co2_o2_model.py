@@ -14,7 +14,7 @@ import xarray as xr
 
 from openghg_inversions.array_ops import concat_gather_data_arrays, select_gathered_data_array
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
-from openghg_inversions.models import (
+from openghg_inversions.model_components import (
     StateActivity,
     add_coherent_affine_component,
     add_correlated_lognormal_state_with_activity,
@@ -23,19 +23,19 @@ from openghg_inversions.models import (
     registered_model,
     resolve_state_activity,
 )
-from openghg_inversions.models.additive_sigma import add_additive_sigma_likelihood
+from openghg_inversions.model_components.additive_sigma import add_additive_sigma_likelihood
 from openghg_inversions.observation_error import AggregationError
-from openghg_inversions.models.components import (
+from openghg_inversions.model_components.components import (
     LinearComponentResult,
     OffsetComponentResult,
     _add_offset_component_result,
     add_linear_component,
     add_model_data,
 )
-from openghg_inversions.models.priors import PriorArgs
+from openghg_inversions.model_components.priors import PriorArgs
 from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR
 from .co2_model import _normalise_offset_args
-from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
+from openghg_inversions.model_components.fixed_ou import add_fixed_ou_gaussian_likelihood
 
 from .co2_o2_fixed_ou import linked_fixed_ou_alignment
 

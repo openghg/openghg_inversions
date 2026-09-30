@@ -10,7 +10,7 @@ import pymc as pm
 import xarray as xr
 
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
-from openghg_inversions.models import (
+from openghg_inversions.model_components import (
     StateActivity,
     add_coherent_affine_component,
     apply_linear_sensitivity,
@@ -18,13 +18,13 @@ from openghg_inversions.models import (
     registered_model,
     resolve_state_activity,
 )
-from openghg_inversions.models.components import (
+from openghg_inversions.model_components.components import (
     LinearComponentResult,
     _add_prepared_correlated_lognormal_state_with_activity,
     prepare_active_correlated_lognormal_prior,
 )
-from openghg_inversions.models.priors import PriorArgs
-from openghg_inversions.models.fixed_ou import prepare_fixed_ou_low_rank
+from openghg_inversions.model_components.priors import PriorArgs
+from openghg_inversions.model_components.fixed_ou import prepare_fixed_ou_low_rank
 from openghg_inversions.observation_error import (
     AggregationError,
     aggregation_error_as_low_rank,

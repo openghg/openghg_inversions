@@ -6,12 +6,12 @@ import pytest
 import xarray as xr
 from scipy.stats import multivariate_normal
 
-from openghg_inversions.models.additive_sigma import (
+from openghg_inversions.model_components.additive_sigma import (
     add_additive_sigma_likelihood,
 )
-from openghg_inversions.models.coords import registered_model
-from openghg_inversions.models.fixed_error import add_fixed_error_likelihood
-from openghg_inversions.models.pollution_event import add_pollution_event_likelihood
+from openghg_inversions.model_components.coords import registered_model
+from openghg_inversions.model_components.fixed_error import add_fixed_error_likelihood
+from openghg_inversions.model_components.pollution_event import add_pollution_event_likelihood
 from openghg_inversions.observation_error import resolve_aggregation_error
 from openghg_inversions.sigma import SigmaAlignment
 

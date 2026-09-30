@@ -225,8 +225,8 @@ def test_consumer_imports_only_public_supported_modules(module_path: str | None)
     for node in imports:
         if isinstance(node, ast.ImportFrom) and (node.module or "").startswith("openghg_inversions"):
             assert node.module in {
-                "openghg_inversions.models.additive_sigma",
-                "openghg_inversions.models.pollution_event",
+                "openghg_inversions.model_components.additive_sigma",
+                "openghg_inversions.model_components.pollution_event",
                 "openghg_inversions.observation_error",
                 "openghg_inversions.rhime",
                 "openghg_inversions.sigma",

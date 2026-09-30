@@ -5,7 +5,7 @@ import pymc as pm
 import pytest
 import xarray as xr
 
-from openghg_inversions.models import registered_model
+from openghg_inversions.model_components import registered_model
 from openghg_inversions.rhime.builders import (
     RhimeModelBuildResult,
     RhimeModelBuilderContext,

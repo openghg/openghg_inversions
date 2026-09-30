@@ -158,7 +158,7 @@ The model-owned
 ``models.fixed_ou.add_fixed_ou_gaussian_likelihood`` adds a fixed-timescale,
 within-site Ornstein--Uhlenbeck mismatch covariance. For example::
 
-   from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
+   from openghg_inversions.model_components.fixed_ou import add_fixed_ou_gaussian_likelihood
    from openghg_inversions.rhime import run_rhime
 
    result = run_rhime(

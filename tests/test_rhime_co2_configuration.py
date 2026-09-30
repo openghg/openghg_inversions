@@ -12,9 +12,9 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
-from openghg_inversions.models.scalar_sigma import add_scalar_sigma_eigen_likelihood
-from openghg_inversions.models.site_sigma import add_site_sigma_gaussian_likelihood
+from openghg_inversions.model_components.fixed_ou import add_fixed_ou_gaussian_likelihood
+from openghg_inversions.model_components.scalar_sigma import add_scalar_sigma_eigen_likelihood
+from openghg_inversions.model_components.site_sigma import add_site_sigma_gaussian_likelihood
 from openghg_inversions.rhime.co2.configuration import (
     Co2O2RunSetup,
     Co2RunSetup,

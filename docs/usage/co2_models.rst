@@ -83,7 +83,7 @@ component. The state axis retains ``basis_group``, ``basis_partition``, and
 than inferring outer entries from integer ranges or positions.
 
 Fixed versus inferred outer entries use the ordinary
-:class:`~openghg_inversions.models.StateActivity` contract. To preserve the
+:class:`~openghg_inversions.model_components.StateActivity` contract. To preserve the
 fixed-at-one behavior, pass
 ``StateActivity(fixed_groups=("outer",), fixed_value=1.0)``. Leaving the outer
 group active infers those entries with the same correlated LogNormal state as
@@ -545,8 +545,8 @@ accept ``aggregation_error_mode``.
 The CO2 builder and prepared-input runner also accept one ordinary
 ``likelihood_builder`` with explicit ``likelihood_kwargs``. This selects
 package components such as
-:func:`openghg_inversions.models.fixed_ou.add_fixed_ou_gaussian_likelihood` and
-:func:`openghg_inversions.models.add_site_sigma_gaussian_likelihood` after
+:func:`openghg_inversions.model_components.fixed_ou.add_fixed_ou_gaussian_likelihood` and
+:func:`openghg_inversions.model_components.add_site_sigma_gaussian_likelihood` after
 ``modelled_concentration`` has been completed. Selecting one replaces the
 default additive-sigma likelihood; its scientific options belong in
 ``likelihood_kwargs`` rather than the default ``sigma_*`` or
@@ -579,7 +579,7 @@ external numerical preparation artifact used through the ordinary
 Prepare and save that artifact once from the same prepared CO2 inputs that
 sampling will use::
 
-   from openghg_inversions.models import save_scalar_sigma_eigenbasis
+   from openghg_inversions.model_components import save_scalar_sigma_eigenbasis
    from openghg_inversions.rhime.co2 import (
        Co2PreparedInputs,
        prepare_co2_scalar_sigma_eigenbasis,
@@ -591,7 +591,7 @@ sampling will use::
 
 Select the package likelihood through the CO2 runner::
 
-   from openghg_inversions.models import add_scalar_sigma_eigen_likelihood
+   from openghg_inversions.model_components import add_scalar_sigma_eigen_likelihood
    from openghg_inversions.rhime.co2 import run_rhime_co2
 
    trace = run_rhime_co2(
@@ -628,10 +628,10 @@ fingerprinted.
 This is a same-unit CO2-only likelihood; it does not support the linked
 mixed-unit CO2/O2 vector. A direct
 :func:`openghg_inversions.rhime.co2.build_co2_model` caller may load the cache
-with :func:`openghg_inversions.models.load_scalar_sigma_eigenbasis` and pass
+with :func:`openghg_inversions.model_components.load_scalar_sigma_eigenbasis` and pass
 the resulting ``eigenbasis`` in ``likelihood_kwargs``. See the
 :doc:`scalar-sigma API reference
-<../reference/openghg_inversions.models.scalar_sigma>` for signatures and
+<../reference/openghg_inversions.model_components.scalar_sigma>` for signatures and
 object contracts.
 
 .. _linked-co2-o2-model:

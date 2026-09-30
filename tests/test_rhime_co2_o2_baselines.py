@@ -8,7 +8,7 @@ import pymc as pm
 import pytest
 import xarray as xr
 
-from openghg_inversions.models import StateActivity, restore_inferencedata_coords, get_coord_registry
+from openghg_inversions.model_components import StateActivity, restore_inferencedata_coords, get_coord_registry
 from openghg_inversions.rhime.co2 import (
     build_co2_o2_model,
     prepare_co2_o2_inputs,

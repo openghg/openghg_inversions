@@ -28,7 +28,7 @@ from typing import Any
 
 from openghg_inversions._timing import log_timing, timed, timer_seconds, timer_start
 from openghg_inversions.config import config
-from openghg_inversions.models.additive_sigma import DEFAULT_ADDITIVE_SIGMA_PRIOR
+from openghg_inversions.model_components.additive_sigma import DEFAULT_ADDITIVE_SIGMA_PRIOR
 from openghg_inversions.rhime import PollutionEventSettings, resolve_rhime_options, run_rhime
 from openghg_inversions.rhime.params import normalise_rhime_params
 

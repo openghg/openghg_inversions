@@ -15,19 +15,19 @@ from openghg_inversions._timing import log_timing, timer_seconds, timer_start
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs
 from openghg_inversions.inversion_data.acquisition import retrieve_or_reload_rhime_data
-from openghg_inversions.models.components import (
+from openghg_inversions.model_components.components import (
     add_linear_component,
     add_offset_component,
 )
-from openghg_inversions.models.coords import registered_model
-from openghg_inversions.models.priors import PriorArgs
+from openghg_inversions.model_components.coords import registered_model
+from openghg_inversions.model_components.priors import PriorArgs
 from openghg_inversions.postprocessing.contracts import OutputContract
-from openghg_inversions.models._flux import (
+from openghg_inversions.model_components._flux import (
     _namespace_sector_state_coords,
     _prepared_sources,
     _select_sector_design,
 )
-from openghg_inversions.models.state_activity import (
+from openghg_inversions.model_components.state_activity import (
     PreparedLinearSensitivity,
     StateActivity,
     active_prior_args,

@@ -15,20 +15,20 @@ import pymc as pm
 import xarray as xr
 
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
-from openghg_inversions.models.additive_sigma import (
+from openghg_inversions.model_components.additive_sigma import (
     DEFAULT_ADDITIVE_SIGMA_PRIOR,
     add_additive_sigma_likelihood,
 )
-from openghg_inversions.models.components import (
+from openghg_inversions.model_components.components import (
     add_coherent_affine_component,
     add_correlated_lognormal_state_with_activity,
     add_linear_component,
     add_offset_component,
     apply_linear_sensitivity,
 )
-from openghg_inversions.models.coords import registered_model
-from openghg_inversions.models.priors import PriorArgs
-from openghg_inversions.models.state_activity import (
+from openghg_inversions.model_components.coords import registered_model
+from openghg_inversions.model_components.priors import PriorArgs
+from openghg_inversions.model_components.state_activity import (
     StateActivity,
     prepare_linear_sensitivity,
     resolve_state_activity,

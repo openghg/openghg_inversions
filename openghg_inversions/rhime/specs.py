@@ -7,8 +7,8 @@ from pathlib import Path
 from typing import Any, Literal, cast
 
 from openghg_inversions.inversion_inputs import DatetimeLike
-from openghg_inversions.models.priors import PriorArgs
-from openghg_inversions.models.state_activity import StateActivity
+from openghg_inversions.model_components.priors import PriorArgs
+from openghg_inversions.model_components.state_activity import StateActivity
 from openghg_inversions.observation_error import AggregationErrorMode
 
 OutputFormat = Literal["none", "inv_out", "basic", "paris", "legacy"]
