@@ -12,7 +12,7 @@ from dataclasses import dataclass, field, replace
 import json
 from numbers import Integral
 from pathlib import Path
-from typing import Any, Literal, Self
+from typing import Any, Literal, Self, cast
 
 from dask import compute as dask_compute
 import numpy as np
@@ -135,7 +135,9 @@ class Co2O2PreparedInputs:
         datasets: dict[str, xr.Dataset] = {}
         for name, variables in arrays.items():
             dataset = xr.Dataset(variables)
-            indexes = [dim for dim in dataset.dims if isinstance(dataset.indexes.get(dim), pd.MultiIndex)]
+            indexes = [
+                cast(str, dim) for dim in dataset.dims if isinstance(dataset.indexes.get(dim), pd.MultiIndex)
+            ]
             if indexes:
                 dataset = encode_cf_multiindexes(dataset, indexes)
             datasets[name] = dataset.assign_attrs(
@@ -426,11 +428,11 @@ def _validate_prepared_inputs(prepared: Co2O2PreparedInputs) -> None:
     if not _same_index(covariance.indexes["observation"], index):
         raise ValueError("Aggregation covariance observation labels must match prepared observations.")
     for name, dim in (("observation_units", "observation"), ("observation_units_cov", "observation_cov")):
-        coordinate = covariance.coords.get(name)
+        unit_coordinate = covariance.coords.get(name)
         if (
-            coordinate is None
-            or coordinate.dims != (dim,)
-            or not np.array_equal(dask_compute(coordinate.data)[0], unit_values)
+            unit_coordinate is None
+            or unit_coordinate.dims != (dim,)
+            or not np.array_equal(dask_compute(unit_coordinate.data)[0], unit_values)
         ):
             raise ValueError(f"Aggregation covariance {name} must match prepared observation units.")
     if set(prepared.boundary_sensitivity) - {"co2", "o2"}:
