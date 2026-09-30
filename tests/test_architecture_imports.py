@@ -19,11 +19,7 @@ import pytest
         ("rhime.co2", "recipes.co2"),
         ("models", "model_components"),
         ("models.components", "model_components.components"),
-        ("inversion_data.prepared", "inversion_data.prepared_inputs"),
-        ("postprocessing.reconstruction", "postprocessing.output_views"),
         ("postprocessing.linked_paris_outputs", "recipes.co2.outputs"),
-        ("forward.domain_support", "recipes._domain_support"),
-        ("workflow.artifacts", "recipes._stage_artifacts"),
     ],
 )
 def test_legacy_exports_are_canonical_objects(legacy: str, canonical: str) -> None:

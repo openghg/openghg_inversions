@@ -25,7 +25,7 @@ from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs, prepare_rhime_inputs
 from openghg_inversions.inversion_data import acquisition
 from openghg_inversions.inversion_data import preparation as legacy_preparation
-from openghg_inversions.inversion_data import prepared as prepared_contract
+from openghg_inversions.inversion_data import prepared_inputs as prepared_contract
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.recipes import (
     PollutionEventSettings,

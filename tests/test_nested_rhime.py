@@ -16,7 +16,7 @@ import xarray as xr
 import openghg_inversions.recipes.nested as nested_module
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.cli import main
-from openghg_inversions.forward import rectangular_extent_mask, remove_domain_overlap
+from openghg_inversions.recipes._domain_support import rectangular_extent_mask, remove_domain_overlap
 from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs
 from openghg_inversions.inversion_data.preparation import _SiteOptions
 from openghg_inversions.postprocessing.contracts import OutputContract

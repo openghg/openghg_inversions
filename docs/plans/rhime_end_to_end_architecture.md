@@ -782,8 +782,8 @@ bindings, or new scientific models.
 
 The single-consumer domain operations now live in
 `recipes/_domain_support.py`, and stage mechanics in
-`recipes/_stage_artifacts.py`. The prototype `forward.domain_support` and
-`workflow.artifacts` imports remain explicit compatibility aliases. Extract a
+`recipes/_stage_artifacts.py`. Abandoned module names introduced only within
+this unmerged prototype are removed, rather than maintained as aliases. Extract a
 broader shared owner when existing consumers establish common meaning and
 behavior, rather than creating directories for conceptual layers. The pure
 domain operations and explicit artifact checks remain useful as local helpers.
@@ -818,8 +818,7 @@ Do not retain a second preparation layer that only relays calls to private helpe
 Do not move family-specific CO2 preparation to `inversion_data` solely because
 it occurs before model construction.
 
-The prototype `postprocessing/reconstruction.py` implementation now lives in
-`output_views.py`: its function assembles `InversionOutput` and metadata.
+`postprocessing/output_views.py` assembles `InversionOutput` and metadata.
 Numerical reconstruction remains with the corresponding basis/affine-map and
 postprocessing operations. Binding and calculating reconstructed quantities
 are different responsibilities, even when a recipe invokes them consecutively.
@@ -876,15 +875,23 @@ head `641dcc1d`; the historical evidence elsewhere retains its original paths:
 | --- | --- | --- |
 | `rhime` and supported family/submodule imports | `recipes` and corresponding family modules | Alias supported objects, preserve identity, update internal callers and examples; retain explicit compatibility-import tests |
 | `models` and supported component submodules | `model_components` | Alias existing components and state classes; test both import orders and preserve backend initialization |
-| `inversion_data.preparation.RhimePreparedInputs` and prototype `inversion_data.prepared` | `inversion_data.prepared_inputs` | Preserve class identity and existing artifact schema; test old imports and saved artifacts |
+| `inversion_data.preparation.RhimePreparedInputs` | `inversion_data.prepared_inputs` | Preserve class identity and existing artifact schema; test old imports and saved artifacts |
 | `rhime.prepared.run_rhime_from_prepared_inputs` | `recipes.from_prepared` | Preserve execution entry point; make its implementation name distinct from the data contract |
 | `rhime.preparation.retrieve_or_reload_rhime_data` | `inversion_data.acquisition` | Public function remains aliased; provider patches target acquisition globals such as `data_processing_surface_notracer` and `load_merged_data` |
 | `rhime.sampling.RhimeSampler` | `inference.sampling.RhimeSampler` | Same class, but implementation patches such as `pm.sample` belong at `inference.sampling.pm.sample` |
-| `postprocessing.reconstruction.make_inversion_output` | `postprocessing.output_views.make_inversion_output` | Preserve the view factory import while correcting its implementation module name |
-| Prototype `forward.domain_support` and `workflow.artifacts` | `recipes._domain_support` and `recipes._stage_artifacts` | Retain explicit aliases; normal internal imports use the local owners |
 | `rhime.cached_sigma` | `inference.cached_sigma` | Reusable mechanics move without changing scientific graph/step policy |
 | `postprocessing.linked_paris_outputs` | `recipes.co2.outputs` | Carbon adapter moves beside its scientific family; general writers remain independent |
 | `postprocessing.diagnostics` scores and summary | `postprocessing.metrics` and `inference.diagnostics` | Preserve the existing adapter API and separate product decoration from neutral calculations |
+
+Compatibility applies to established interfaces, not abandoned names from an
+unmerged prototype. The current eager `recipes` initializer remains an import
+isolation limitation: importing a local helper loads unrelated families and
+PyMC. A bounded follow-up should use selective exports and place backend
+initialization at the owners that need it. Acceptance requires fresh-process
+helper imports without PyMC or unrelated recipes, independent family imports
+even when another family fails, preserved export identity, and correct default
+and explicitly selected PyTensor precision for direct backend imports. Do not
+claim broader scientific composability from namespace separation alone.
 
 An import alias does not relocate a function's global namespace. Tests should
 patch dependencies where the implementation looks them up; do not promise

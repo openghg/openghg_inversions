@@ -85,9 +85,9 @@ recipes remain readable in one module each, with CO2-family recipes grouped
 in a subpackage. The former ``rhime`` and ``models`` locations re-export the
 canonical objects, including family and component submodules.
 ``rhime.RhimeSampler`` and ``rhime.sampling.RhimeSampler`` still identify the
-shared inference sampler. ``inversion_data.RhimePreparedInputs``, the older
-preparation-module import and the prototype ``inversion_data.prepared`` import
-identify the class now defined in ``inversion_data.prepared_inputs``. Its
+shared inference sampler. ``inversion_data.RhimePreparedInputs`` and the older
+preparation-module import identify the class now defined in
+``inversion_data.prepared_inputs``. Its
 on-disk schema remains version 1. Existing runner names and configuration
 formats continue to work; current examples use ``recipes/config`` resources.
 The installed ``rhime/config`` resource tree is retained for compatibility,
@@ -95,10 +95,9 @@ with matching template contents.
 
 Use ``recipes.from_prepared`` for execution from durable prepared inputs and
 ``recipes.preparation_adapters`` for standard/multisector preparation policy.
-The prototype ``postprocessing.reconstruction``, ``forward.domain_support``
-and ``workflow.artifacts`` imports also remain compatibility paths; new
-internal callers use their canonical owners. Compatibility aliases preserve
-object identity, not private monkeypatch locations: patch dependencies where
+Only established imports receive compatibility aliases; abandoned names
+introduced within this unmerged prototype are removed. Compatibility aliases
+preserve object identity, not private monkeypatch locations: patch dependencies where
 the implementation looks them up.
 
 Reusable cached-sigma mechanics live in ``inference/cached_sigma.py``; the
@@ -287,3 +286,18 @@ sigma-step statistics. `Issue #769
 <https://github.com/openghg/openghg_inversions/issues/769>`_ tracks integration
 of this specialized behavior with generic predictive execution. That
 functional work is not implemented by this namespace revision.
+
+Import isolation follow-up
+--------------------------
+
+The recipe package initializer still eagerly imports its families and staged
+workflow. Importing a local helper therefore also loads the model backend and
+unrelated recipes. The ownership changes improve navigation but do not yet
+isolate family imports or establish broader scientific composability.
+
+A follow-up should selectively load public exports and move PyTensor setup to
+the backend boundaries that currently rely on the package initializer. Verify
+in fresh processes that local artifact/domain helpers load no backend or
+unrelated family, a failing optional family does not prevent another family
+from importing, and direct backend imports preserve default and explicitly
+selected precision. Established public exports must retain object identity.
