@@ -159,20 +159,20 @@ def reconstruct_co2_concentrations(trace: xr.DataTree, prepared: Co2PreparedInpu
                 continue
             raise ValueError(f"CO2 scientific outputs require {group} draws.")
         dataset = trace_group(trace, group)
-        for output, role in component_roles.items():
+        for component_name, role in component_roles.items():
             name = roles.get(role)
             if name in dataset:
                 value = dataset[name]
-            elif output in {"boundary", "offset"} and role not in roles:
+            elif component_name in {"boundary", "offset"} and role not in roles:
                 value = xr.zeros_like(dataset[roles["model_mean"]])
-            elif output in {"modelled", "pollution", "flux_scale"} or role in roles:
+            elif component_name in {"modelled", "pollution", "flux_scale"} or role in roles:
                 raise ValueError(f"CO2 scientific outputs require role {role!r} in {group}.")
             else:
                 continue
             value, _ = xr.align(value, observations, join="exact", copy=False)
             if group == "prior":
                 value = value.rename({dim: f"prior_{dim}" for dim in ("chain", "draw") if dim in value.dims})
-            result[f"{output}_{group}"] = value
+            result[f"{component_name}_{group}"] = value
         result[f"residual_{group}"] = observations - result[f"modelled_{group}"]
         predictive_group = f"{group}_predictive"
         if predictive_group in trace.children:
