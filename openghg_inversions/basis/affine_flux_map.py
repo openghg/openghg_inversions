@@ -9,7 +9,7 @@ import pandas as pd
 import xarray as xr
 from openghg.util import cf_ureg  # pyright: ignore[reportPrivateImportUsage]
 
-from openghg_inversions.array_ops import require_unique_index, same_index
+from openghg_inversions.array_ops import require_unique_index, same_index, sparse_xr_dot
 
 from .operators import BucketBasisOperator, MultiSourceBucketBasisOperator
 
@@ -234,10 +234,10 @@ class AffineFluxMap:
                 reference state has incompatible dimensions or labels.
         """
         centred, prolongation = self._centred_state(state, reference_state)
-        reconstructed = _in_dimensionless_units(self.native_mean, name="native_mean") + xr.dot(
+        reconstructed = _in_dimensionless_units(self.native_mean, name="native_mean") + sparse_xr_dot(
             prolongation,
             centred,
-            dim=self.state_dim,
+            dim=[self.state_dim],
         )
         return reconstructed.rename("native_scaling").assign_attrs(
             units="1",
