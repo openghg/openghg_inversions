@@ -8,11 +8,9 @@ orchestrator or scheduler.
 from __future__ import annotations
 
 from dataclasses import asdict, replace
-from datetime import date, datetime
 from hashlib import sha256
 import json
 from numbers import Integral, Real
-import os
 from pathlib import Path
 from typing import Any, Literal, Mapping, cast
 
@@ -27,6 +25,13 @@ from openghg_inversions.serialization import (
     load_trace,
     reset_serialisation_multiindexes,
     save_trace,
+)
+
+from openghg_inversions.rhime._stage_artifacts import (
+    artifact_path as _artifact_path,
+    file_identity as _file_identity,
+    json_value as _json_value,
+    write_json as _write_json,
 )
 
 from .multisector import (
@@ -77,71 +82,6 @@ _PREPARATION_IDENTITY_EXCLUDED_OPTIONS = frozenset(
         "save_merged_data",
     }
 )
-
-
-def _json_value(value: Any) -> Any:
-    """Return a stable JSON-compatible value for configuration provenance."""
-    if isinstance(value, Path):
-        return str(value)
-    if isinstance(value, slice):
-        return {
-            "type": "slice",
-            "start": _json_value(value.start),
-            "stop": _json_value(value.stop),
-            "step": _json_value(value.step),
-        }
-    if isinstance(value, xr.DataArray):
-        materialized = value.compute()
-        return {
-            "dims": [str(dim) for dim in materialized.dims],
-            "coords": {
-                str(dim): _json_value(materialized.coords[dim].to_numpy())
-                for dim in materialized.dims
-                if dim in materialized.coords
-            },
-            "values": _json_value(materialized.to_numpy()),
-        }
-    if isinstance(value, np.ndarray):
-        return _json_value(value.tolist())
-    if isinstance(value, np.generic):
-        return _json_value(value.item())
-    if isinstance(value, datetime | date):
-        return value.isoformat()
-    if isinstance(value, Mapping):
-        return {str(key): _json_value(item) for key, item in value.items()}
-    if isinstance(value, tuple | list):
-        return [_json_value(item) for item in value]
-    return value
-
-
-def _write_json(path: str | Path, value: Mapping[str, Any]) -> Path:
-    output_path = Path(path).resolve()
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(
-        json.dumps(_json_value(value), allow_nan=False, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
-    return output_path
-
-
-def _artifact_path(path: Path) -> str:
-    """Prefer an OGR run-relative path while remaining scheduler-independent."""
-    run_root = os.environ.get("RUN_ROOT")
-    if run_root is not None:
-        try:
-            return str(path.resolve().relative_to(Path(run_root).resolve()))
-        except ValueError:
-            pass
-    return str(path.resolve())
-
-
-def _file_identity(path: Path) -> str:
-    """Return the content identity used in compact stage manifests."""
-    digest = sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return f"sha256:{digest.hexdigest()}"
 
 
 def _load_stage_manifest(path: str | Path, *, stage: str) -> tuple[Path, dict[str, Any]]:

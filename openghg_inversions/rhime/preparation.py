@@ -3,7 +3,10 @@
 The functions in this module form the backend-neutral preparation spine used
 by :func:`openghg_inversions.rhime.run_rhime` and copied project runners:
 
-``retrieve/reload -> filter -> basis -> sensitivities -> labelled assembly``.
+``filter -> basis -> sensitivities -> labelled assembly``.
+
+Acquisition is owned by :mod:`openghg_inversions.inversion_data.acquisition`;
+its established stage name is re-exported here for compatibility.
 
 Merged data and xarray objects supplied to these stages are borrowed.  Stages
 return new handoffs when they need to attach variables or metadata and never
@@ -30,6 +33,9 @@ from openghg_inversions._timing import log_timing, timed
 from openghg_inversions.basis import make_basis_functions
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs
+from openghg_inversions.inversion_data.acquisition import (
+    retrieve_or_reload_rhime_data as retrieve_or_reload_rhime_data,
+)
 from openghg_inversions.inversion_data import preparation as inversion_preparation
 from openghg_inversions.model_error import normalise_min_error_options
 from openghg_inversions.rhime.specs import RhimeRunSpec
@@ -54,73 +60,6 @@ def with_prepared_rhime_sites(
         sites=tuple(prepared.sites),
         averaging_period=tuple(prepared.averaging_period),
     )
-
-
-def retrieve_or_reload_rhime_data(
-    data_args: Mapping[str, Any],
-    *,
-    multisector: bool,
-    merged_data: RhimeMergedData | None = None,
-) -> RhimeMergedData:
-    """Retrieve, reload, or accept externally supplied merged RHIME data.
-
-    Passing ``merged_data`` is the explicit no-I/O path.  The object remains
-    borrowed and is returned unchanged after a sector-layout compatibility check.
-    Otherwise this stage may read OpenGHG stores or a local merged artifact,
-    optionally write merged data, sanitize flux arrays, print progress, and
-    emit warnings.  ``data_args`` is never mutated.
-    """
-    if merged_data is not None:
-        stored_multisector = bool(merged_data.fp_all.get(".split_by_sectors", False))
-        if stored_multisector != multisector:
-            raise ValueError(
-                "External RHIME merged data has an incompatible sector layout: "
-                f"artifact split_by_sectors={stored_multisector!r}, "
-                f"runner multisector={multisector!r}."
-            )
-        return merged_data
-
-    with timed(
-        "rhime.prepare_inputs.merged_data",
-        sites=len(data_args["sites"]),
-        split_by_sectors=multisector,
-    ):
-        return inversion_preparation._prepare_merged_data(
-            species=data_args["species"],
-            sites=data_args["sites"],
-            domain=data_args["domain"],
-            averaging_period=data_args["averaging_period"],
-            start_date=data_args["start_date"],
-            end_date=data_args["end_date"],
-            output_name=data_args["output_name"],
-            flux_sources=data_args["flux_sources"],
-            split_by_sectors=multisector,
-            bc_store=data_args["bc_store"],
-            obs_store=data_args["obs_store"],
-            footprint_store=data_args["footprint_store"],
-            emissions_store=data_args["emissions_store"],
-            emissions_domain=data_args["emissions_domain"],
-            met_model=data_args["met_model"],
-            fp_model=data_args["fp_model"],
-            fp_height=data_args["fp_height"],
-            fp_species=data_args["fp_species"],
-            time_resolved=data_args["time_resolved"],
-            inlet=data_args["inlet"],
-            instrument=data_args["instrument"],
-            max_level=data_args["max_level"],
-            calibration_scale=data_args["calibration_scale"],
-            obs_data_level=data_args["obs_data_level"],
-            platform=data_args["platform"],
-            use_tracer=data_args["use_tracer"],
-            use_bc=data_args["use_bc"],
-            bc_input=data_args["bc_input"],
-            averaging_error=data_args["averaging_error"],
-            reload_merged_data=data_args["reload_merged_data"],
-            save_merged_data=data_args["save_merged_data"],
-            merged_data_dir=data_args["merged_data_dir"],
-            merged_data_name=data_args["merged_data_name"],
-            flux_non_finite_check=data_args["flux_non_finite_check"],
-        )
 
 
 def filter_rhime_observations(
