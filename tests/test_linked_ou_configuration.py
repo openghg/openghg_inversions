@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from openghg_inversions.rhime.co2 import (
+from openghg_inversions.recipes.co2 import (
     Co2O2PreparedInputs,
     Co2O2RunSetup,
     resolve_co2_family_config,

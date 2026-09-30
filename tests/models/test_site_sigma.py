@@ -12,7 +12,7 @@ from scipy.stats import multivariate_normal
 from openghg_inversions.model_components.coords import get_coord_registry, registered_model
 from openghg_inversions.model_components.site_sigma import add_site_sigma_gaussian_likelihood
 from openghg_inversions.observation_error import AggregationError, resolve_aggregation_error
-from openghg_inversions.rhime.standard import build_standard_rhime_model
+from openghg_inversions.recipes.standard import build_standard_rhime_model
 
 
 SITE_LABELS = np.array(["A", "B", "A"])

@@ -37,14 +37,14 @@ def _command_kwargs(args: argparse.Namespace) -> dict[str, Any]:
 
 def _run_rhime_command(args: argparse.Namespace) -> None:
     """Run the standard RHIME command with lazy imports for fast help output."""
-    from openghg_inversions.rhime import run_rhime
+    from openghg_inversions.recipes import run_rhime
 
     run_rhime(config_file=args.config, **_command_kwargs(args))
 
 
 def _run_rhime_multisector_command(args: argparse.Namespace) -> None:
     """Run the multi-sector RHIME command with lazy imports for fast help output."""
-    from openghg_inversions.rhime import run_rhime_multisector
+    from openghg_inversions.recipes import run_rhime_multisector
 
     run_rhime_multisector(config_file=args.config, **_command_kwargs(args))
 
@@ -81,7 +81,7 @@ def _add_output_dir(parser: argparse.ArgumentParser) -> None:
 
 def _stage_setup(args: argparse.Namespace):
     """Load and resolve one staged command's existing RHIME configuration."""
-    from openghg_inversions.rhime.stages import load_stage_params, resolve_stage_setup
+    from openghg_inversions.recipes.stages import load_stage_params, resolve_stage_setup
 
     params = load_stage_params(
         config_file=args.config,
@@ -99,7 +99,7 @@ def _stage_output_dir(args: argparse.Namespace) -> Path:
 
 
 def _prepare_command(args: argparse.Namespace) -> None:
-    from openghg_inversions.rhime.stages import prepare_rhime_stage
+    from openghg_inversions.recipes.stages import prepare_rhime_stage
 
     manifest = prepare_rhime_stage(
         setup=_stage_setup(args),
@@ -110,7 +110,7 @@ def _prepare_command(args: argparse.Namespace) -> None:
 
 
 def _prior_predictive_command(args: argparse.Namespace) -> None:
-    from openghg_inversions.rhime.stages import prior_predictive_stage
+    from openghg_inversions.recipes.stages import prior_predictive_stage
 
     result = prior_predictive_stage(
         setup=_stage_setup(args),
@@ -128,7 +128,7 @@ def _prior_predictive_command(args: argparse.Namespace) -> None:
 
 
 def _sample_command(args: argparse.Namespace) -> None:
-    from openghg_inversions.rhime.stages import sample_rhime_stage
+    from openghg_inversions.recipes.stages import sample_rhime_stage
 
     result = sample_rhime_stage(
         setup=_stage_setup(args),
@@ -141,7 +141,7 @@ def _sample_command(args: argparse.Namespace) -> None:
 
 
 def _diagnose_command(args: argparse.Namespace) -> None:
-    from openghg_inversions.rhime.stages import diagnose_rhime_stage
+    from openghg_inversions.recipes.stages import diagnose_rhime_stage
 
     result = diagnose_rhime_stage(
         posterior=args.posterior,
@@ -160,7 +160,7 @@ def _diagnose_command(args: argparse.Namespace) -> None:
 
 
 def _postprocess_command(args: argparse.Namespace) -> None:
-    from openghg_inversions.rhime.stages import postprocess_rhime_stage
+    from openghg_inversions.recipes.stages import postprocess_rhime_stage
 
     postprocess_rhime_stage(
         setup=_stage_setup(args),
@@ -175,7 +175,7 @@ def _postprocess_command(args: argparse.Namespace) -> None:
 
 def _run_rhime_nested_command(args: argparse.Namespace) -> None:
     """Run the nested-domain RHIME command with lazy imports for fast help output."""
-    from openghg_inversions.rhime import run_rhime_nested
+    from openghg_inversions.recipes import run_rhime_nested
 
     run_rhime_nested(config_file=args.config, **_command_kwargs(args))
 

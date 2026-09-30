@@ -1,155 +1,68 @@
-"""Public RHIME runners, specifications, builders, and orchestration stages.
+"""Compatibility imports; implementation lives in :mod:`openghg_inversions.recipes`."""
 
-Use ``run_rhime``, ``run_rhime_multisector``, ``run_rhime_nested``, or the
-prepared-input entry points for complete runs. Copied runners may use
-the supported resolve, retrieve/reload, filter, basis, sensitivity, assembly,
-alignment, materialization, build, sample, result, and output stages directly.
-Alignment is pure; acquisition may access data, model materialization crosses
-the eager backend boundary, sampling executes PyMC, and output stages may write
-requested products.
-"""
-
-from __future__ import annotations
-
-# ruff: noqa: E402
-
-# PyTensor precision must be selected before importing likelihoods, recipes, or
-# any other module that imports PyMC.
-from openghg_inversions._pymc_config import configure_pytensor
-
-configure_pytensor()
-
-from .builders import (
-    RhimeLikelihoodBuilder,
-    RhimeModelBuilder,
-    RhimeModelBuilderContext,
-    RhimeModelBuildResult,
-)
-from .co2 import build_co2_model, co2_model_input_names, run_rhime_co2
-from .materialization import materialize_pymc_inputs
-from .params import params_from_config, resolve_flux_sources, resolve_rhime_options
-from .preparation import (
-    assemble_rhime_inputs,
-    build_rhime_basis,
-    build_rhime_sensitivities,
-    filter_rhime_observations,
-    retrieve_or_reload_rhime_data,
-    with_prepared_rhime_sites,
-)
-from .multisector import (
-    build_multisector_rhime_model,
-    build_multisector_rhime_model_result,
-    make_multisector_rhime_result,
-    multisector_model_input_names,
-    run_rhime_multisector,
-)
-from .nested import (
-    NestedRhimePreparedInputs,
-    NestedRhimeResult,
-    align_inner_merged_to_outer_observations,
-    build_nested_rhime_model,
-    build_nested_rhime_model_result,
-    combine_nested_rhime_inputs,
-    mask_outer_merged_for_inner_domain,
-    nested_model_input_names,
-    prepare_nested_rhime_inputs,
-    run_rhime_nested,
-    run_rhime_nested_from_prepared_inputs,
-)
-from .outputs import RhimeResult, make_multisector_rhime_outputs, make_standard_rhime_outputs
-from .prepared import run_rhime_from_prepared_inputs
-from .sampling import RhimeSampler, sample_rhime_model
-from .stages import (
-    CONVERGENCE_CHECK_NAME,
-    PREPARATION_CHECK_NAME,
-    configuration_identity,
-    diagnose_rhime_stage,
-    effective_configuration,
-    load_stage_params,
-    postprocess_rhime_stage,
-    prepare_rhime_stage,
-    prior_predictive_stage,
-    resolve_stage_setup,
-    sample_rhime_stage,
-)
-from .standard import (
-    build_standard_rhime_model,
-    build_standard_rhime_model_result,
-    make_standard_rhime_result,
-    run_rhime,
-    standard_model_input_names,
-)
-from .specs import (
-    AdditiveSigmaSettings,
-    FixedErrorSettings,
-    PollutionEventSettings,
-    RhimeModelSpec,
-    RhimeOutputSpec,
-    RhimeRunSpec,
-    SectorSpec,
+from openghg_inversions.recipes import (
+    AdditiveSigmaSettings as AdditiveSigmaSettings,
+    CONVERGENCE_CHECK_NAME as CONVERGENCE_CHECK_NAME,
+    FixedErrorSettings as FixedErrorSettings,
+    NestedRhimePreparedInputs as NestedRhimePreparedInputs,
+    NestedRhimeResult as NestedRhimeResult,
+    PREPARATION_CHECK_NAME as PREPARATION_CHECK_NAME,
+    PollutionEventSettings as PollutionEventSettings,
+    RhimeLikelihoodBuilder as RhimeLikelihoodBuilder,
+    RhimeModelBuildResult as RhimeModelBuildResult,
+    RhimeModelBuilder as RhimeModelBuilder,
+    RhimeModelBuilderContext as RhimeModelBuilderContext,
+    RhimeModelSpec as RhimeModelSpec,
+    RhimeOutputSpec as RhimeOutputSpec,
+    RhimeResult as RhimeResult,
+    RhimeRunSpec as RhimeRunSpec,
+    RhimeSampler as RhimeSampler,
+    SectorSpec as SectorSpec,
+    align_inner_merged_to_outer_observations as align_inner_merged_to_outer_observations,
+    assemble_rhime_inputs as assemble_rhime_inputs,
+    build_co2_model as build_co2_model,
+    build_multisector_rhime_model as build_multisector_rhime_model,
+    build_multisector_rhime_model_result as build_multisector_rhime_model_result,
+    build_nested_rhime_model as build_nested_rhime_model,
+    build_nested_rhime_model_result as build_nested_rhime_model_result,
+    build_rhime_basis as build_rhime_basis,
+    build_rhime_sensitivities as build_rhime_sensitivities,
+    build_standard_rhime_model as build_standard_rhime_model,
+    build_standard_rhime_model_result as build_standard_rhime_model_result,
+    co2_model_input_names as co2_model_input_names,
+    combine_nested_rhime_inputs as combine_nested_rhime_inputs,
+    configuration_identity as configuration_identity,
+    diagnose_rhime_stage as diagnose_rhime_stage,
+    effective_configuration as effective_configuration,
+    filter_rhime_observations as filter_rhime_observations,
+    load_stage_params as load_stage_params,
+    make_multisector_rhime_outputs as make_multisector_rhime_outputs,
+    make_multisector_rhime_result as make_multisector_rhime_result,
+    make_standard_rhime_outputs as make_standard_rhime_outputs,
+    make_standard_rhime_result as make_standard_rhime_result,
+    mask_outer_merged_for_inner_domain as mask_outer_merged_for_inner_domain,
+    materialize_pymc_inputs as materialize_pymc_inputs,
+    multisector_model_input_names as multisector_model_input_names,
+    nested_model_input_names as nested_model_input_names,
+    params_from_config as params_from_config,
+    postprocess_rhime_stage as postprocess_rhime_stage,
+    prepare_nested_rhime_inputs as prepare_nested_rhime_inputs,
+    prepare_rhime_stage as prepare_rhime_stage,
+    prior_predictive_stage as prior_predictive_stage,
+    resolve_flux_sources as resolve_flux_sources,
+    resolve_rhime_options as resolve_rhime_options,
+    resolve_stage_setup as resolve_stage_setup,
+    retrieve_or_reload_rhime_data as retrieve_or_reload_rhime_data,
+    run_rhime as run_rhime,
+    run_rhime_co2 as run_rhime_co2,
+    run_rhime_from_prepared_inputs as run_rhime_from_prepared_inputs,
+    run_rhime_multisector as run_rhime_multisector,
+    run_rhime_nested as run_rhime_nested,
+    run_rhime_nested_from_prepared_inputs as run_rhime_nested_from_prepared_inputs,
+    sample_rhime_model as sample_rhime_model,
+    sample_rhime_stage as sample_rhime_stage,
+    standard_model_input_names as standard_model_input_names,
+    with_prepared_rhime_sites as with_prepared_rhime_sites,
 )
 
-__all__ = [
-    "SectorSpec",
-    "AdditiveSigmaSettings",
-    "FixedErrorSettings",
-    "PollutionEventSettings",
-    "RhimeModelSpec",
-    "RhimeLikelihoodBuilder",
-    "NestedRhimePreparedInputs",
-    "NestedRhimeResult",
-    "RhimeModelBuilder",
-    "RhimeModelBuilderContext",
-    "RhimeModelBuildResult",
-    "RhimeOutputSpec",
-    "RhimeSampler",
-    "RhimeRunSpec",
-    "RhimeResult",
-    "CONVERGENCE_CHECK_NAME",
-    "PREPARATION_CHECK_NAME",
-    "params_from_config",
-    "assemble_rhime_inputs",
-    "align_inner_merged_to_outer_observations",
-    "build_multisector_rhime_model",
-    "build_co2_model",
-    "build_multisector_rhime_model_result",
-    "build_nested_rhime_model",
-    "build_nested_rhime_model_result",
-    "build_rhime_basis",
-    "build_rhime_sensitivities",
-    "build_standard_rhime_model",
-    "build_standard_rhime_model_result",
-    "filter_rhime_observations",
-    "configuration_identity",
-    "diagnose_rhime_stage",
-    "effective_configuration",
-    "load_stage_params",
-    "combine_nested_rhime_inputs",
-    "mask_outer_merged_for_inner_domain",
-    "nested_model_input_names",
-    "prepare_nested_rhime_inputs",
-    "make_multisector_rhime_result",
-    "make_multisector_rhime_outputs",
-    "make_standard_rhime_result",
-    "make_standard_rhime_outputs",
-    "materialize_pymc_inputs",
-    "co2_model_input_names",
-    "multisector_model_input_names",
-    "retrieve_or_reload_rhime_data",
-    "resolve_flux_sources",
-    "resolve_rhime_options",
-    "resolve_stage_setup",
-    "postprocess_rhime_stage",
-    "prepare_rhime_stage",
-    "prior_predictive_stage",
-    "run_rhime",
-    "run_rhime_co2",
-    "run_rhime_from_prepared_inputs",
-    "run_rhime_multisector",
-    "run_rhime_nested",
-    "run_rhime_nested_from_prepared_inputs",
-    "sample_rhime_model",
-    "sample_rhime_stage",
-    "standard_model_input_names",
-    "with_prepared_rhime_sites",
-]
+__all__ = ['SectorSpec', 'AdditiveSigmaSettings', 'FixedErrorSettings', 'PollutionEventSettings', 'RhimeModelSpec', 'RhimeLikelihoodBuilder', 'NestedRhimePreparedInputs', 'NestedRhimeResult', 'RhimeModelBuilder', 'RhimeModelBuilderContext', 'RhimeModelBuildResult', 'RhimeOutputSpec', 'RhimeSampler', 'RhimeRunSpec', 'RhimeResult', 'CONVERGENCE_CHECK_NAME', 'PREPARATION_CHECK_NAME', 'params_from_config', 'assemble_rhime_inputs', 'align_inner_merged_to_outer_observations', 'build_multisector_rhime_model', 'build_co2_model', 'build_multisector_rhime_model_result', 'build_nested_rhime_model', 'build_nested_rhime_model_result', 'build_rhime_basis', 'build_rhime_sensitivities', 'build_standard_rhime_model', 'build_standard_rhime_model_result', 'filter_rhime_observations', 'configuration_identity', 'diagnose_rhime_stage', 'effective_configuration', 'load_stage_params', 'combine_nested_rhime_inputs', 'mask_outer_merged_for_inner_domain', 'nested_model_input_names', 'prepare_nested_rhime_inputs', 'make_multisector_rhime_result', 'make_multisector_rhime_outputs', 'make_standard_rhime_result', 'make_standard_rhime_outputs', 'materialize_pymc_inputs', 'co2_model_input_names', 'multisector_model_input_names', 'retrieve_or_reload_rhime_data', 'resolve_flux_sources', 'resolve_rhime_options', 'resolve_stage_setup', 'postprocess_rhime_stage', 'prepare_rhime_stage', 'prior_predictive_stage', 'run_rhime', 'run_rhime_co2', 'run_rhime_from_prepared_inputs', 'run_rhime_multisector', 'run_rhime_nested', 'run_rhime_nested_from_prepared_inputs', 'sample_rhime_model', 'sample_rhime_stage', 'standard_model_input_names', 'with_prepared_rhime_sites']

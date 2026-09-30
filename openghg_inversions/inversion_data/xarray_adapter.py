@@ -925,7 +925,7 @@ def prepare_rhime_inputs_from_xarray(
 
     Returns:
         Canonical prepared inputs accepted by
-        :func:`openghg_inversions.rhime.run_rhime_from_prepared_inputs`.
+        :func:`openghg_inversions.recipes.run_rhime_from_prepared_inputs`.
 
     Raises:
         TypeError: If the input container or mapping values are unsupported,

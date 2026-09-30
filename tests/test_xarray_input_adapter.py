@@ -10,10 +10,10 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-import openghg_inversions.rhime.prepared as rhime_prepared
+import openghg_inversions.recipes.from_prepared as rhime_prepared
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.inversion_data import prepare_rhime_inputs_from_xarray
-from openghg_inversions.rhime import (
+from openghg_inversions.recipes import (
     PollutionEventSettings,
     RhimeModelSpec,
     RhimeOutputSpec,

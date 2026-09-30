@@ -18,6 +18,7 @@ openghg\_inversions
    openghg_inversions.model_components
    openghg_inversions.models
    openghg_inversions.postprocessing
+   openghg_inversions.recipes
    openghg_inversions.rhime
 
 

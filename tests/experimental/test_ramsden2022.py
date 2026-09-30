@@ -17,7 +17,7 @@ from openghg_inversions.experimental.ramsden2022 import (
     run_ramsden_from_prepared_inputs,
 )
 from openghg_inversions.model_components import get_coord_registry
-from openghg_inversions.rhime import RhimeSampler
+from openghg_inversions.recipes import RhimeSampler
 
 
 X_PRIOR = {"pdf": "normal", "mu": [2.0, 3.0], "sigma": 0.5}

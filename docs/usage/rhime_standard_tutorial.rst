@@ -1,7 +1,7 @@
 Standard RHIME tutorial
 =======================
 
-This tutorial runs the supported one-sector :func:`openghg_inversions.rhime.run_rhime`
+This tutorial runs the supported one-sector :func:`openghg_inversions.recipes.run_rhime`
 recipe, inspects its labelled result, and reloads its durable inversion-output
 product.
 
@@ -56,7 +56,7 @@ Configuration
 The packaged example is a complete production-shape configuration validated by
 the test suite. It is runnable after populating the named companion store:
 
-.. literalinclude:: ../../openghg_inversions/rhime/config/standard_tutorial.ini
+.. literalinclude:: ../../openghg_inversions/recipes/config/standard_tutorial.ini
    :language: ini
 
 ``quadtree`` constructs four flux-scaling regions from the retrieved footprint
@@ -72,7 +72,7 @@ From a source checkout, the supported CLI route is:
 .. code-block:: console
 
    $ pixi run -e dev openghg-inversions run-rhime \
-       --config openghg_inversions/rhime/config/standard_tutorial.ini \
+       --config openghg_inversions/recipes/config/standard_tutorial.ini \
        --output-path outputs
 
 The :doc:`cli` page documents the equivalent ``uv run`` command for
@@ -86,10 +86,10 @@ The equivalent supported Python entry point is:
    import os
    from pathlib import Path
 
-   from openghg_inversions.rhime import run_rhime
+   from openghg_inversions.recipes import run_rhime
 
    tutorial_output_path = Path(os.environ.get("OPENGHG_TUTORIAL_OUTPUT_PATH", "outputs"))
-   resource = files("openghg_inversions.rhime").joinpath("config/standard_tutorial.ini")
+   resource = files("openghg_inversions.recipes").joinpath("config/standard_tutorial.ini")
    with as_file(resource) as config:
        result = run_rhime(config_file=config, output_path=tutorial_output_path)
 

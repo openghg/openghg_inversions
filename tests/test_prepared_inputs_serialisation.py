@@ -12,9 +12,9 @@ import pymc as pm
 import pytest
 import xarray as xr
 
-import openghg_inversions.rhime.multisector as rhime_multisector
-import openghg_inversions.rhime.prepared as rhime_prepared
-import openghg_inversions.rhime.standard as rhime_standard
+import openghg_inversions.recipes.multisector as rhime_multisector
+import openghg_inversions.recipes.from_prepared as rhime_prepared
+import openghg_inversions.recipes.standard as rhime_standard
 from openghg_inversions.basis.basis_functions import (
     BASIS_ARTIFACT_PATH_ATTR,
     BASIS_ARTIFACT_SOURCE_ATTR,
@@ -27,7 +27,7 @@ from openghg_inversions.inversion_data import acquisition
 from openghg_inversions.inversion_data import preparation as legacy_preparation
 from openghg_inversions.inversion_data import prepared_inputs as prepared_contract
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
-from openghg_inversions.rhime import (
+from openghg_inversions.recipes import (
     PollutionEventSettings,
     RhimeModelSpec,
     RhimeOutputSpec,

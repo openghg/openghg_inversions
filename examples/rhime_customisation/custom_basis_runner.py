@@ -46,7 +46,7 @@ from openghg_inversions.basis.algorithms import (
     region_constrained_basis,
 )
 from openghg_inversions.inversion_data import RhimeMergedData
-from openghg_inversions.rhime import (
+from openghg_inversions.recipes import (
     RhimeResult,
     assemble_rhime_inputs,
     build_rhime_sensitivities,

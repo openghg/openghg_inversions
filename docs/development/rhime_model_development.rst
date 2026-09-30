@@ -79,13 +79,60 @@ Each public recipe should provide:
 
 * one obvious runner and concrete model builder;
 * a runnable configuration or example stored beside the recipe or in an
-  obviously parallel ``rhime/config`` layout;
+  obviously parallel ``recipes/config`` layout;
 * focused tests of its equations and an end-to-end smoke test;
 * a description of inputs, outputs, assumptions, and limitations; and
 * the relevant scientific citation and model provenance.
 
 The current model-family expansion plan is recorded in
 ``docs/plans/rhime_model_family_expansion.md``.
+
+Implementation ownership
+------------------------
+
+Complete models and their procedural runners live in ``recipes/``. Reusable
+model-building functions live in ``model_components/``. New internal imports
+and examples use these canonical owners. The established ``rhime`` and
+``models`` namespaces retain explicit compatibility aliases; they are not
+parallel implementations.
+
+Keep acquisition in ``inversion_data/acquisition.py``, durable prepared values
+in ``inversion_data/prepared_inputs.py``, and shared scientific transformations
+in ``inversion_data/preparation.py``. The standard/multisector option adapters
+in ``recipes/preparation_adapters.py`` choose and order those transformations.
+``recipes/from_prepared.py`` executes models from already prepared values;
+it does not own the prepared-data schema. Family-specific preparation remains
+beside its science when its assumptions are not shared.
+
+``inference`` owns sampling and neutral posterior diagnostics.
+``postprocessing/metrics.py`` owns scientific scores comparing observations
+and predictions. Product naming, thresholds and acceptance decisions stay with
+their respective output adapters and recipes. A diagnostic calculation does not establish a scientific pass.
+Preserve chain/draw coordinates for convergence checks; combine samples only
+when the selected score permits it.
+
+``postprocessing/contracts.py`` describes roles and state mappings, and
+``postprocessing/output_views.py`` binds those to samples and prepared values.
+Numerical reconstruction remains with basis, affine-map and postprocessing
+operations. Ordinary reconstruction of supported saved quantities must not
+require acquisition or a live model. New predictive draws can require an
+explicit graph replay path.
+
+Keep helpers with one production consumer local: nested support operations
+live in ``recipes/_domain_support.py`` and stage artifact mechanics in
+``recipes/_stage_artifacts.py``. Promote a helper to a shared public owner
+when real consumers establish a common contract. These names describe
+responsibility, not six mandatory packages or an inferred execution graph.
+
+Preserve supported import identity and artifact schemas during namespace
+moves. Update installed resource paths, loaders, examples and internal callers
+together. An import alias does not move a function's globals: implementation
+tests patch dependencies at their canonical owner, rather than depending on
+private compatibility-module attributes. Keep namespace moves distinct from
+changes to equations, priors, configuration defaults or persistence schemas.
+
+See :doc:`rhime_six_layer_prototype` for the implemented handoffs and the
+remaining limits of the output and predictive contracts.
 
 Components and composite components
 -----------------------------------
@@ -254,7 +301,7 @@ Configuration parsing should:
 
 The legacy ``hbmcmc/config`` template tree has been removed. Keep new RHIME
 templates in
-``openghg_inversions/rhime/config`` so the configuration layout mirrors the
+``openghg_inversions/recipes/config`` so the configuration layout mirrors the
 model-recipe layout. Choose a human-readable format appropriate to the recipe;
 new recipes do not need to use the legacy INI format. A complex recipe
 implemented as a subpackage may keep a small model-specific resolver in that

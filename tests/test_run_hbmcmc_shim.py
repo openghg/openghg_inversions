@@ -9,8 +9,8 @@ import pytest
 import xarray as xr
 
 import openghg_inversions.hbmcmc.run_hbmcmc as run_hbmcmc
-import openghg_inversions.rhime.standard as rhime_standard
-from openghg_inversions.rhime import PollutionEventSettings
+import openghg_inversions.recipes.standard as rhime_standard
+from openghg_inversions.recipes import PollutionEventSettings
 from openghg_inversions.sigma import SigmaAlignment
 
 

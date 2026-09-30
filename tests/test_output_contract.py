@@ -51,7 +51,7 @@ def test_reconstruction_imports_no_backend_or_recipe_in_fresh_process() -> None:
             sys.executable,
             "-c",
             "import sys; from openghg_inversions.postprocessing.output_views import make_inversion_output; "
-            "assert not {'pymc', 'pytensor', 'openghg_inversions.rhime'} & sys.modules.keys()",
+            "assert not {'pymc', 'pytensor', 'openghg_inversions.recipes'} & sys.modules.keys()",
         ],
         check=True,
         capture_output=True,

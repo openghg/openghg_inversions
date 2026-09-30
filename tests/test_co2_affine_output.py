@@ -15,14 +15,14 @@ from openghg_inversions.basis.affine_flux_map_io import save
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.basis.operators import BucketBasisOperator, MultiSourceBucketBasisOperator
 from openghg_inversions.inversion_data import RhimePreparedInputs
-from openghg_inversions.rhime.co2.co2_affine_output import (
+from openghg_inversions.recipes.co2.co2_affine_output import (
     _bind_affine_flux_map,
     import_explicit_affine_flux_map,
     load_and_bind_affine_flux_map,
     prepared_inputs_content_id,
     produce_bucket_affine_flux_map,
 )
-from openghg_inversions.rhime.co2.co2_preparation import Co2PreparedInputs
+from openghg_inversions.recipes.co2.co2_preparation import Co2PreparedInputs
 
 
 def _prepared() -> tuple[Co2PreparedInputs, xr.DataArray]:
