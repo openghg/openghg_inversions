@@ -372,7 +372,7 @@ def data_processing_surface_notracer(
         "inlet",  # needed if multiple inlets combined
         "inlet_height",  # sometimes needed if inlet='multiple' (may be outdated soon)
     ]
-    warnings.warn(f"Dropping all variables besides {keep_variables}")
+    warnings.warn(f"Dropping all variables besides {keep_variables}", stacklevel=2)
     for i, site in enumerate(sites):
         # Get observations data
         site_platform = platform[i]

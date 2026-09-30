@@ -150,14 +150,11 @@ def generate_from_template(template_file, output_file):
             if copy:
                 out.write(line)
             elif not line.strip():
-                # print('Empty line',i)
                 continue
             elif line.strip().startswith("##"):
-                # print("##",i)
                 continue
             else:
                 copy = True
-                # print("Writing out from line: {}".format(i))
                 out.write(line)
 
     print(f"Configuration file: {output_file} has been generated.")
@@ -258,33 +255,6 @@ def list_check(string, force_convert=True, error=True):
     return out
 
 
-# def float_check(string,error=True):
-#
-#    out = eval_check(string)
-#
-#    try:
-#        out = float(out)
-#    except ValueError:
-#        if error:
-#            print 'Could not convert input parameter to float: {0}'.format(out)
-#        return None
-#
-#    return out
-
-# def int_check(string,error=True):
-#
-#    out = eval_check(string)
-#
-#    try:
-#        out = int(out)
-#    except ValueError:
-#        if error:
-#            print 'Could not convert input parameter to int: {0}'.format(out)
-#        return None
-#
-#    return out
-
-
 def convert(string, value_type=None):
     """Convert the input string to the specified value_type.
     
@@ -305,46 +275,12 @@ def convert(string, value_type=None):
     elif value_type is np.ndarray:
         out = list_check(string)
         out = np.array(out)
-    #    elif value_type is float:
-    #        out = float_check(string)
-    #    elif value_type is int:
-    #        out = int_check(string)
     else:
         out, check = eval_check(string, error=False)
         if out is None and check is False:
             out = str_check(out, error=False)
 
     return out
-
-
-# def check_params(param,param_type,keys=[],optional_param=[],raise_exception=True):
-#    '''
-#    The check_params function
-#    '''
-#    names = param.keys()
-#
-#    if keys:
-#        check_keys = keys
-#    else:
-#        check_keys = param_type.keys()
-#
-#    check_names = []
-#    for key in check_keys:
-#        try:
-#            check_names.extend(param_type[key].keys())
-#        except KeyError:
-#            print "Key '{0}' cannot be found in param_type passed to check_params function".format(key)
-#            return None
-#
-#    for name in check_names:
-#        if name not in names:
-#            if name not in optional_param:
-#                if raise_exception:
-#                    raise Exception("Parameter '{0}' must be specified in configuration file".format(name))
-#                else:
-#                    return False
-#
-#    return True
 
 
 def all_parameters_in_param_type(param_type):
@@ -409,15 +345,10 @@ def find_param_key(param_type, section=None, section_group=None):
         key_type = "section_group"
     elif section_group in [k.split(".")[0] for k in all_keys]:
         keys = [k for k in all_keys if k.split(".")[0].lower() == section_group.lower()]
-        # keys_starter = [k.split('.')[0] for k in all_keys]
-        # keys = all_keys[keys_starter.index(section_group)]
         key_type = "section"
     else:
         keys = [None]
         key_type = None
-        # raise Exception('Section/Classification {0}/{1} does not match to any key in input param_type'.format(section_group,section))
-        # print('Param class cannot be found i for section of parameters not defined. Using {0} as default'.format(section_groups[0]))
-        # section_group = section_groups[0]
 
     return keys, key_type
 
@@ -457,12 +388,9 @@ def get_value(name, config, section, param_type=None):
         try:
             value_type = types[key][name]  # Find specified type of object for input parameter
         except KeyError:
-            # raise Exception('Input parameter {0} in section {1} not expected (not found in param_type dictionary [{2}][{0}])'.format(name,section,key))
             print(f"Type for input name '{name}' is not specified.")
             value_type = None
     else:
-        # print "Type for input name '{0}' is not specified.".format(name)
-        # value_type = str
         value_type = None
 
     # For int, float and bool object functions within config module exist to cast directly to these types
@@ -487,7 +415,6 @@ def extract_params(
     names=(),
     ignore_sections=(),
     ignore_section_groups=(),
-    # optional_param=[],optional_section=[],optional_section_group=[],
     exclude_not_found=True,
     allow_new=False,
     param_type=None,
@@ -533,7 +460,6 @@ def extract_params(
             if s in all_sections:
                 select_sections.append(s)
             else:
-                # raise KeyError('Specified section {0} could not be found in configuration file: {1}'.format(s,config_file))
                 print(f"Specified section {s} could not be found in configuration file: {config_file}")
                 return None
     elif section_group:
@@ -546,7 +472,6 @@ def extract_params(
             ]  # Find all sections covered by section_group (section_group.name)
             select_sections.extend(s_sections)
         if not select_sections:
-            # raise KeyError('No sections could be found for specified section_group {0} in configuration file: {1}'.format(section_group,config_file))
             print(
                 f"No sections could be found for specified section_group {section_group} in configuration file: {config_file}"
             )
@@ -557,14 +482,12 @@ def extract_params(
             if es in select_sections:
                 select_sections.remove(es)
             else:
-                # raise KeyError('Specified section {0} could not be found in configuration file: {1}'.format(es,config_file))
                 print(f"Specified section {es} could not be found in configuration file: {config_file}")
     elif ignore_section_groups:
         select_sections = all_sections
         for esg in ignore_section_groups:
             ignore_s = [s for s in all_sections if s.split(".")[0].lower() == esg.lower()]
             if not ignore_s:
-                # raise KeyError('No sections could be found for specified section_group {0} in configuration file: {1}'.format(esg,config_file))
                 print(
                     f"No sections could be found for specified section_group {esg} in configuration file: {config_file}"
                 )
@@ -577,7 +500,6 @@ def extract_params(
     # Extracting parameter names from the input config file. Filter by names if already present
     extracted_names = []
     match_section = []
-    # pdb.set_trace() # REMOVE
     if names:
         for sect in select_sections:
             k = list(config[sect].keys())
@@ -595,7 +517,6 @@ def extract_params(
             match_section.extend(s)  # Associated list with the section heading for each parameter
 
     # Creating list of names we want to put into the parameter dictionary based on inputs (e.g. section, section_group)
-    # pdb.set_trace() # REMOVE
     if not names:
         if param_type:
             if section_group:
@@ -606,8 +527,6 @@ def extract_params(
                     else:
                         k = find_param_key(section_group=sg, param_type=param_type)[0]
                     keys.extend(k)
-                # keys,key_type = find_param_key(section_group=section_group,param_type=param_type)
-                # keys = [key_value]
             elif section:
                 keys = []
                 for i, s in enumerate(section):
@@ -616,8 +535,6 @@ def extract_params(
                     else:
                         k = find_param_key(section=s, param_type=param_type)[0]
                     keys.extend(k)
-                # keys,key_type = find_param_key(section=section,param_type=param_type)
-                # keys = [key_value]
             elif ignore_sections:
                 keys = list(param_type.keys())
                 for es in ignore_sections:
@@ -635,40 +552,21 @@ def extract_params(
             else:
                 keys = list(param_type.keys())
 
-            # print('Keys to extract input names from param_type: {0}'.format(keys))
             names = []
             if (section and key_type == "section_group") or (ignore_sections and key_type == "section_group"):
                 print(
                     "WARNING: Cannot create list of necessary input parameters based on param_type input. Please check all inputs are included (or excluded) manually."
                 )
                 names = extracted_names  # Set to just match names extracted from file
-            #            elif (section_group and key_type == 'section_group') or (section and key_type == 'section') or (section_group and key_type == 'section'):
             else:
                 for key in keys:
                     names.extend(list(param_type[key].keys()))
-        #            else:
-        #                names = all_parameters_in_param_type(param_type) # Extract all parameter names from param_type dictionary
         else:
             names = extracted_names.copy()  # Set to just match names extracted from file
 
     for ep in expected_param:
         if ep not in names:
             names.append(ep)
-
-    # pdb.set_trace() # REMOVE
-
-    #    if optional_section:
-    #        keys,key_type = find_param_key(section=optional_section,param_type=param_type)
-    #        if key_type == 'section_group':
-    #            print('WARNING: Cannot create list of optional parameters for the section based on param_type input. Please add parameters to optional_parameters list.')
-    #        else:
-    #            for key in keys:
-    #                optional_param.extend(list(param_type[key].keys()))
-    #
-    #    if optional_section_group:
-    #        keys,key_type = find_param_key(section_group=optional_section_group,param_type=param_type)
-    #        for key in keys:
-    #            optional_param.extend(list(param_type[key].keys()))
 
     param = OrderedDict({})
 
@@ -710,11 +608,6 @@ def extract_params(
                 )
             param[extracted_name] = get_value(extracted_name, config, match_section[index])
 
-    # if exclude_not_found:
-    #    param = OrderedDict([(key,value) for key,value in param.iteritems() if value != None])
-
-    # print("names",names)
-
     return param
 
 
@@ -724,7 +617,6 @@ def all_param(
     param_type=None,
     exclude_not_found=False,
     allow_new=False,
-    # optional_param=[]
 ):
     """Extract all parameters from a config file.
     
@@ -748,7 +640,6 @@ def all_param(
     param = OrderedDict({})
     param = extract_params(
         config_file,
-        # optional_param=optional_param,
         expected_param=expected_param,
         param_type=param_type,
         exclude_not_found=exclude_not_found,

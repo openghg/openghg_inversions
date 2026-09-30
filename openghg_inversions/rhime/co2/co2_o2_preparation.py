@@ -528,9 +528,7 @@ def prepare_co2_o2_inputs(
         }
     co2_sensitivity = (
         co2_sensitivity.rename("co2_effective_sensitivity")
-        .assign_coords(
-            **sensitivity_coords,
-        )
+        .assign_coords(sensitivity_coords)
         .assign_attrs(units=f"{co2_units} per dimensionless flux scale")
     )
     ratio_direction = "O2 flux per CO2 flux"
@@ -551,9 +549,7 @@ def prepare_co2_o2_inputs(
         ratio_record["unavailable_reason"] = o2_co2_flux_ratio_unavailable_reason
     o2_sensitivity = (
         o2_sensitivity.rename("o2_effective_sensitivity")
-        .assign_coords(
-            **sensitivity_coords,
-        )
+        .assign_coords(sensitivity_coords)
         .assign_attrs(
             units=f"{o2_units} per dimensionless flux scale",
             oxidation_ratio_convention="embedded_signed_o2_per_co2",

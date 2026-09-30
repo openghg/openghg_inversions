@@ -374,6 +374,7 @@ def add_state_vector(
     if activity.n_active:
         active_dim = f"{state_dim}_{var_name}_active"
         active_index = state_coord.to_index()[active_indices]
+        active_coords: xr.Coordinates | dict[str, Any]
         if isinstance(active_index, pd.MultiIndex):
             active_index = active_index.set_names(
                 [f"{name}_{var_name}_active" for name in active_index.names]
@@ -584,6 +585,7 @@ def prepare_active_correlated_lognormal_prior(
     active_indices = activity.active_indices
     active_dim = f"{state_dim}_{var_name}_active"
     active_index = mean.coords[state_dim].to_index()[active_indices]
+    active_coords: xr.Coordinates | dict[str, Any]
     if isinstance(active_index, pd.MultiIndex):
         active_index = active_index.set_names(
             [f"{name}_{var_name}_active" for name in active_index.names]
@@ -714,6 +716,7 @@ def _add_offset_component_result(
     if selected_sites.size == 0:
         raise ValueError("drop_first removes the only available offset site.")
     site_matrix = (site_codes[:, None] == selected_sites[None, :]).astype(int)
+    term_coords: xr.Coordinates | dict[str, Any]
     if indicator is not None:
         if bool(pd.isna(indicator.values).any()):
             raise ValueError("Offset frequency indicators must have non-missing labels.")
