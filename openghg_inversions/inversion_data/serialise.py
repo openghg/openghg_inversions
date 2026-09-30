@@ -117,6 +117,12 @@ def _save_merged_data(
             with zarr.ZipStore(merged_data_dir / (merged_data_name + ".zarr.zip"), mode="w") as store:
                 dt.to_zarr(store, mode="w-", encoding=encoding)
     else:
+        # OpenGHG can attach None when a coordinate's units are unknown.
+        # Omit that absent metadata, without inventing a physical unit.
+        for node in dt.subtree:
+            for coordinate in node.coords.values():
+                if coordinate.attrs.get("units") is None:
+                    coordinate.attrs.pop("units", None)
         dt.to_netcdf(merged_data_dir / (merged_data_name + ".nc"), encoding=datatree_ncdf_encoding(dt))
 
 
