@@ -14,7 +14,7 @@ import json
 from numbers import Integral, Real
 import os
 from pathlib import Path
-from typing import Any, Literal, Mapping, cast
+from typing import TYPE_CHECKING, Any, Literal, Mapping, cast
 
 import arviz as az
 import numpy as np
@@ -51,7 +51,10 @@ from .standard import (
 )
 from .materialization import materialize_pymc_inputs
 
-ModelKind = Literal["standard", "multisector"]
+if TYPE_CHECKING:
+    from .co2.stages import Co2StageSetup
+
+ModelKind = Literal["standard", "multisector", "co2"]
 
 PREPARATION_CHECK_NAME = "prior-predictive-readiness"
 CONVERGENCE_CHECK_NAME = "sampler-convergence"
@@ -155,9 +158,7 @@ def _load_stage_manifest(path: str | Path, *, stage: str) -> tuple[Path, dict[st
         "stage": stage,
     }
     mismatched = {
-        name: (loaded.get(name), value)
-        for name, value in expected.items()
-        if loaded.get(name) != value
+        name: (loaded.get(name), value) for name, value in expected.items() if loaded.get(name) != value
     }
     if mismatched:
         raise ValueError(f"Stage manifest {manifest_path} has an invalid envelope: {mismatched!r}.")
@@ -193,7 +194,11 @@ def _output_path(output_dir: Path, requested: str | Path | None, default_name: s
         path = (output_dir / default_name).resolve()
     else:
         requested_path = Path(requested)
-        path = requested_path.resolve() if requested_path.is_absolute() else (output_dir / requested_path).resolve()
+        path = (
+            requested_path.resolve()
+            if requested_path.is_absolute()
+            else (output_dir / requested_path).resolve()
+        )
     try:
         path.relative_to(output_dir)
     except ValueError:
@@ -242,6 +247,7 @@ def load_stage_params(
     config_file: str | Path | None = None,
     params_file: str | Path | None = None,
     overrides: Mapping[str, Any] | None = None,
+    model: ModelKind = "standard",
 ) -> dict[str, Any]:
     """Load existing RHIME parameters from one explicit source.
 
@@ -252,7 +258,12 @@ def load_stage_params(
         raise ValueError("Pass exactly one of `config_file` or `params_file`.")
     if config_file is not None:
         source_path = Path(config_file).resolve()
-        params = params_from_config(source_path, normalise=False)
+        if model == "co2":
+            from .co2 import load_co2_family_config
+
+            params = dict(load_co2_family_config(source_path))
+        else:
+            params = params_from_config(source_path, normalise=False)
     else:
         source_path = Path(cast(str | Path, params_file)).resolve()
         loaded = json.loads(source_path.read_text(encoding="utf-8"))
@@ -261,16 +272,31 @@ def load_stage_params(
         params = loaded
     if overrides:
         params.update(overrides)
+    if model == "co2":
+        from .co2.stages import resolve_co2_stage_paths
+
+        return resolve_co2_stage_paths(params, base_dir=source_path.parent)
     return _resolve_stage_paths(params, base_dir=source_path.parent)
 
 
-def resolve_stage_setup(params: Mapping[str, Any], *, model: ModelKind) -> RhimeRunnerSetup:
+def resolve_stage_setup(params: Mapping[str, Any], *, model: ModelKind) -> RhimeRunnerSetup | Co2StageSetup:
     """Resolve stage parameters through the canonical RHIME boundary."""
+    if model == "co2":
+        from .co2.stages import resolve_co2_stage_setup
+
+        return resolve_co2_stage_setup(params)
+    if model not in ("standard", "multisector"):
+        raise ValueError(f"Unsupported staged model {model!r}.")
     return resolve_rhime_options(params=params, multisector=model == "multisector")
 
 
-def effective_configuration(setup: RhimeRunnerSetup, *, model: ModelKind) -> dict[str, Any]:
+def effective_configuration(setup: RhimeRunnerSetup | Co2StageSetup, *, model: ModelKind) -> dict[str, Any]:
     """Return the resolved scientific configuration used by every stage."""
+    if model == "co2":
+        from .co2.stages import effective_co2_configuration
+
+        return effective_co2_configuration(cast("Co2StageSetup", setup))
+    setup = cast(RhimeRunnerSetup, setup)
     return {
         "model": model,
         "run_spec": asdict(setup.run_spec),
@@ -279,8 +305,13 @@ def effective_configuration(setup: RhimeRunnerSetup, *, model: ModelKind) -> dic
     }
 
 
-def configuration_identity(setup: RhimeRunnerSetup, *, model: ModelKind) -> str:
+def configuration_identity(setup: RhimeRunnerSetup | Co2StageSetup, *, model: ModelKind) -> str:
     """Hash resolved data, period, model, and prior choices."""
+    if model == "co2":
+        from .co2.stages import co2_configuration_identity
+
+        return co2_configuration_identity(cast("Co2StageSetup", setup))
+    setup = cast(RhimeRunnerSetup, setup)
     run_spec = setup.run_spec
     preparation = {
         name: value
@@ -311,11 +342,16 @@ def configuration_identity(setup: RhimeRunnerSetup, *, model: ModelKind) -> str:
 
 def prepare_rhime_stage(
     *,
-    setup: RhimeRunnerSetup,
+    setup: RhimeRunnerSetup | Co2StageSetup,
     model: ModelKind,
     output_dir: str | Path,
 ) -> dict[str, Any]:
     """Prepare and persist independently inspectable RHIME inputs."""
+    if model == "co2":
+        from .co2.stages import prepare_co2_stage
+
+        return prepare_co2_stage(setup=cast("Co2StageSetup", setup), output_dir=output_dir)
+    setup = cast(RhimeRunnerSetup, setup)
     destination = _stage_output_directory(output_dir)
     multisector = model == "multisector"
     data_args = dict(setup.data_args)
@@ -336,7 +372,7 @@ def prepare_rhime_stage(
             "RHIME preparation could not produce required site input(s) "
             f"{missing_sites!r} for species {data_args['species']!r} and period "
             f"{data_args['start_date']} to {data_args['end_date']}."
-    )
+        )
     merged_path = _output_path(destination, None, "merged-data/merged-data.nc")
     merged_dir = merged_path.parent
     _save_merged_data(filtered.fp_all, merged_dir, merged_data_name="merged-data.nc")
@@ -507,19 +543,20 @@ def _validate_diagnostic_thresholds(
         ("min_bulk_ess", min_bulk_ess, 0.0),
         ("min_tail_ess", min_tail_ess, 0.0),
     ):
-        if isinstance(value, bool) or not isinstance(value, Real) or not np.isfinite(value) or value < minimum:
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, Real)
+            or not np.isfinite(value)
+            or value < minimum
+        ):
             raise ValueError(f"Diagnostic threshold {name} must be finite and at least {minimum:g}.")
-    if (
-        isinstance(max_divergences, bool)
-        or not isinstance(max_divergences, Integral)
-        or max_divergences < 0
-    ):
+    if isinstance(max_divergences, bool) or not isinstance(max_divergences, Integral) or max_divergences < 0:
         raise ValueError("Diagnostic threshold max_divergences must be a non-negative integer.")
 
 
 def prior_predictive_stage(
     *,
-    setup: RhimeRunnerSetup,
+    setup: RhimeRunnerSetup | Co2StageSetup,
     model: ModelKind,
     prepared_inputs: str | Path,
     output_dir: str | Path,
@@ -529,6 +566,19 @@ def prior_predictive_stage(
     stage: str = "prior-predictive",
 ) -> dict[str, Any]:
     """Build the configured graph and check finite prior-predictive draws."""
+    if model == "co2":
+        from .co2.stages import prior_predictive_co2_stage
+
+        return prior_predictive_co2_stage(
+            setup=cast("Co2StageSetup", setup),
+            prepared_inputs=prepared_inputs,
+            preparation_manifest=preparation_manifest,
+            output_dir=output_dir,
+            check_output=check_output,
+            draws=draws,
+            stage=stage,
+        )
+    setup = cast(RhimeRunnerSetup, setup)
     stage = _check_stage(stage)
     if isinstance(draws, bool) or not isinstance(draws, Integral) or draws <= 0:
         raise ValueError("Prior-predictive draws must be a positive integer.")
@@ -545,9 +595,7 @@ def prior_predictive_stage(
         with built.model:
             prior = pm.sample_prior_predictive(draws, built.model)
         values = [
-            np.asarray(group[name].values)
-            for group in prior.children.values()
-            for name in group.data_vars
+            np.asarray(group[name].values) for group in prior.children.values() for name in group.data_vars
         ]
         non_finite = sum(int(np.size(value) - np.isfinite(value).sum()) for value in values)
         status = "pass" if values and non_finite == 0 else "fail"
@@ -579,13 +627,23 @@ def prior_predictive_stage(
 
 def sample_rhime_stage(
     *,
-    setup: RhimeRunnerSetup,
+    setup: RhimeRunnerSetup | Co2StageSetup,
     model: ModelKind,
     prepared_inputs: str | Path,
     output_dir: str | Path,
     preparation_manifest: str | Path,
 ) -> dict[str, Any]:
     """Sample explicitly supplied prepared inputs without running preparation."""
+    if model == "co2":
+        from .co2.stages import sample_co2_stage
+
+        return sample_co2_stage(
+            setup=cast("Co2StageSetup", setup),
+            prepared_inputs=prepared_inputs,
+            preparation_manifest=preparation_manifest,
+            output_dir=output_dir,
+        )
+    setup = cast(RhimeRunnerSetup, setup)
     destination = _stage_output_directory(output_dir)
     prepared, resolved = _load_prepared(
         prepared_inputs,
@@ -637,10 +695,10 @@ def diagnose_rhime_stage(
         min_tail_ess=min_tail_ess,
         max_divergences=max_divergences,
     )
-    destination = _stage_output_directory(output_dir)
     posterior_path = Path(posterior).resolve()
+    sample_contract = None
     if sample_manifest is not None:
-        _verify_sample_manifest(sample_manifest, posterior=posterior_path)
+        sample_contract = _verify_sample_manifest(sample_manifest, posterior=posterior_path)
     idata = load_trace(posterior_path)
     summary = az.summary(
         idata["posterior"].to_dataset(),
@@ -650,6 +708,7 @@ def diagnose_rhime_stage(
     )
     if "summary" in summary.dims:
         summary = summary.rename(summary="metric")
+    destination = _stage_output_directory(output_dir)
     summary_path = _output_path(destination, None, "posterior-diagnostics.nc")
     reset_serialisation_multiindexes(summary).to_netcdf(summary_path)
 
@@ -696,12 +755,8 @@ def diagnose_rhime_stage(
     rhat, rhat_variable, unassessable_rhat = finite_extreme("r_hat", "max")
     bulk_ess, bulk_ess_variable, unassessable_bulk_ess = finite_extreme("ess_bulk", "min")
     tail_ess, tail_ess_variable, unassessable_tail_ess = finite_extreme("ess_tail", "min")
-    posterior_group = (
-        idata["posterior"].to_dataset() if "posterior" in idata.children else None
-    )
-    sample_stats = (
-        idata["sample_stats"].to_dataset() if "sample_stats" in idata.children else None
-    )
+    posterior_group = idata["posterior"].to_dataset() if "posterior" in idata.children else None
+    sample_stats = idata["sample_stats"].to_dataset() if "sample_stats" in idata.children else None
     divergences_by_chain = (
         np.asarray(sample_stats["diverging"].sum("draw").values, dtype=int).tolist()
         if sample_stats is not None and "diverging" in sample_stats
@@ -760,13 +815,38 @@ def diagnose_rhime_stage(
         artifact_paths=[_artifact_path(summary_path)],
         stage=stage,
     )
-    _write_json(_output_path(destination, check_output, "sampler-convergence.json"), result)
+    check_path = _write_json(_output_path(destination, check_output, "sampler-convergence.json"), result)
+    if (
+        sample_contract is not None
+        and sample_contract.get("effective_configuration", {}).get("model") == "co2"
+    ):
+        from .co2.stages import installed_ogi_provenance
+
+        _write_json(
+            destination / "diagnose-manifest.json",
+            {
+                "schema_version": 1,
+                "producer": "openghg_inversions",
+                "stage": "diagnose",
+                "configuration_identity": sample_contract["configuration_identity"],
+                "ogi": installed_ogi_provenance(),
+                "input_identities": {"posterior": _file_identity(posterior_path)},
+                "artifacts": {
+                    "diagnostics": _artifact_path(summary_path),
+                    "check": _artifact_path(check_path),
+                },
+                "artifact_identities": {
+                    "diagnostics": _file_identity(summary_path),
+                    "check": _file_identity(check_path),
+                },
+            },
+        )
     return result
 
 
 def postprocess_rhime_stage(
     *,
-    setup: RhimeRunnerSetup,
+    setup: RhimeRunnerSetup | Co2StageSetup,
     model: ModelKind,
     prepared_inputs: str | Path,
     posterior: str | Path,
@@ -775,6 +855,18 @@ def postprocess_rhime_stage(
     sample_manifest: str | Path,
 ) -> RhimeResult:
     """Build requested products from explicit prepared and posterior inputs."""
+    if model == "co2":
+        from .co2.stages import postprocess_co2_stage
+
+        return postprocess_co2_stage(
+            setup=cast("Co2StageSetup", setup),
+            prepared_inputs=prepared_inputs,
+            preparation_manifest=preparation_manifest,
+            sample_manifest=sample_manifest,
+            posterior=posterior,
+            output_dir=output_dir,
+        )
+    setup = cast(RhimeRunnerSetup, setup)
     destination = _stage_output_directory(output_dir)
     configured_output = setup.run_spec.output
     _filename_component("output_name", configured_output.output_name)

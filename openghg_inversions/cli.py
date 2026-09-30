@@ -60,11 +60,11 @@ def _merge_paris_outputs_command(args: argparse.Namespace) -> None:
 def _add_stage_config_args(parser: argparse.ArgumentParser) -> None:
     """Add explicit scientific configuration arguments for staged commands."""
     source = parser.add_mutually_exclusive_group(required=True)
-    source.add_argument("-c", "--config", help="Explicit RHIME INI configuration path")
+    source.add_argument("-c", "--config", help="Explicit RHIME INI or CO2 TOML configuration path")
     source.add_argument("--params-file", help="Explicit JSON file containing RHIME parameter names")
     parser.add_argument(
         "--model",
-        choices=("standard", "multisector"),
+        choices=("standard", "multisector", "co2"),
         required=True,
         help="RHIME model recipe; never inferred from the gas",
     )
@@ -87,6 +87,7 @@ def _stage_setup(args: argparse.Namespace):
         config_file=args.config,
         params_file=args.params_file,
         overrides=args.kwargs,
+        model=args.model,
     )
     return resolve_stage_setup(params, model=args.model)
 

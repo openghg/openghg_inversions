@@ -64,8 +64,9 @@ standard additive-sigma likelihood can opt into ``min_error`` explicitly.
 OpenGHG Inversions does not default ``s_fixed`` to 1 ppm. The
 Verification Games fixed-only policy passes ``fixed_model_mismatch=1.0`` and
 ``no_model_error=True`` visibly. A runnable CO2 configuration and resolver are
-described below; staged routing and common output integration remain tracked in
-`OPE-79 <https://linear.app/openghg-inversions/issue/OPE-79>`_.
+described below. The :doc:`CO₂ model family <co2_model_family>` guide shows
+installed staged commands and supported outputs; broader scientific acceptance
+remains tracked in `OPE-79 <https://linear.app/openghg-inversions/issue/OPE-79>`_.
 
 For the matched fixed-tau Ornstein--Uhlenbeck (OU) likelihood with independently
 inferred site amplitudes, use :ref:`the package-supported cached-sigma CO2 runner
@@ -170,7 +171,9 @@ The CO2 family provides three installed TOML templates:
 :func:`openghg_inversions.rhime.co2.co2_config_templates` to discover their
 installed paths. Copy the closest template for a run; do not edit the installed
 resource. The templates configure the existing prepared-input Python seams.
-They do not make CO2 available through the staged CLI.
+The CO2-only templates also underpin ``--model co2`` staged commands; see
+:doc:`co2_model_family` for the staged output table and complete command
+sequence. Linked CO2/O2 templates remain Python-only.
 
 :func:`openghg_inversions.rhime.co2.load_co2_family_config` reads TOML, while
 :func:`openghg_inversions.rhime.co2.resolve_co2_family_config` accepts an
@@ -239,7 +242,9 @@ binding method::
 ``prepared_inputs.path`` and ``likelihood.eigenbasis_path`` become ordinary
 ``pathlib.Path`` values. Relative values are interpreted from the process
 working directory, not from the directory containing the TOML file. Use
-absolute paths when the run may start from another directory.
+absolute paths when the run may start from another directory. The staged CLI
+resolves these paths relative to the configuration file before invoking this
+resolver.
 
 The resolver deliberately supports a closed matrix rather than arbitrary
 callable imports:

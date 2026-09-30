@@ -53,13 +53,23 @@ _CO2_SCIENTIFIC_INPUT_NAMES = (
 )
 
 
-def _annotate_co2_trace(
+def annotate_co2_trace(
     trace: xr.DataTree,
     built: RhimeModelBuildResult,
     *,
     concentration_units: str | None,
 ) -> xr.DataTree:
-    """Persist the CO2 scientific manifest on a sampled trace."""
+    """Persist CO2 scientific roles and units on prior or posterior output.
+
+    Args:
+        trace: PyMC sample groups represented as a DataTree, annotated in place.
+        built: Concrete model with the CO2 variable-role and provenance mapping.
+        concentration_units: Observation concentration units, or ``None`` to
+            omit concentration-unit attributes.
+
+    Returns:
+        The annotated trace.
+    """
     roles = dict(built.variable_roles)
     metadata = dict(built.metadata)
     trace.attrs["rhime_variable_roles"] = json.dumps(roles, sort_keys=True)
@@ -121,6 +131,9 @@ def _annotate_co2_trace(
     return trace
 
 
+_annotate_co2_trace = annotate_co2_trace
+
+
 def _state_activity_from_inputs(model_inputs: xr.Dataset) -> StateActivity | None:
     """Return an exact prepared activity policy when one is present."""
     if "state_is_active" not in model_inputs:
@@ -159,9 +172,7 @@ def co2_model_input_names(
     names = list(_CO2_SCIENTIFIC_INPUT_NAMES)
     if use_bc:
         names.append("H_bc")
-    names.extend(
-        aggregation_error_input_names(inputs, prepared_inputs.aggregation_error_mode)
-    )
+    names.extend(aggregation_error_input_names(inputs, prepared_inputs.aggregation_error_mode))
     if "state_is_active" in inputs:
         names.append("state_is_active")
         if "state_fixed_value" in inputs:
@@ -231,9 +242,7 @@ def _resolve_co2_likelihood_kwargs(
     if unexpected := sorted(options.keys() - allowed):
         raise ValueError(f"Unexpected scalar-sigma likelihood option(s): {unexpected!r}.")
     if "eigenbasis_path" not in options or "sigma_prior" not in options:
-        raise ValueError(
-            "Scalar-sigma likelihood selection requires `eigenbasis_path` and `sigma_prior`."
-        )
+        raise ValueError("Scalar-sigma likelihood selection requires `eigenbasis_path` and `sigma_prior`.")
     if not isinstance(options["eigenbasis_path"], str | Path):
         raise TypeError("Scalar-sigma `eigenbasis_path` must be a string or Path.")
     return {
@@ -247,7 +256,7 @@ def _resolve_co2_likelihood_kwargs(
     }
 
 
-def run_rhime_co2(
+def build_rhime_co2(
     *,
     prepared_inputs: Co2PreparedInputs,
     sigma_alignment: SigmaAlignment | None = None,
@@ -255,15 +264,14 @@ def run_rhime_co2(
     fixed_model_mismatch: float | xr.DataArray | None = None,
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
     likelihood_kwargs: Mapping[str, Any] | None = None,
-    sampler: RhimeSampler | None = None,
     no_model_error: bool = False,
     use_bc: bool = False,
     bc_prior: PriorArgs | None = None,
     bc_state_activity: StateActivity | None = None,
     offset_prior: PriorArgs | None = None,
     offset_args: Mapping[str, Any] | None = None,
-) -> xr.DataTree:
-    """Materialize, build, and sample the CO2 coherent-reduction model.
+) -> RhimeModelBuildResult:
+    """Materialize and build the CO2 coherent-reduction model without sampling.
 
     This callable is the public production replay seam for an already
     validated :class:`Co2PreparedInputs` artifact. It alone unpacks the
@@ -275,8 +283,6 @@ def run_rhime_co2(
     overrides prepared data. By default, inferred model error varies by site
     over one shared time period. An explicit ``sigma_alignment`` overrides
     that alignment; ``no_model_error=True`` disables inferred model error.
-    The Verification Games fixed-likelihood harness passes 1 ppm and disables
-    inferred model error.
 
     Args:
         prepared_inputs: Validated coherent-reduction inputs for the CO2
@@ -292,7 +298,6 @@ def run_rhime_co2(
         likelihood_kwargs: Options passed only to the selected likelihood. For
             the scalar-sigma eigen likelihood, pass an ``eigenbasis_path`` and
             ``sigma_prior``; the cache is loaded before model construction.
-        sampler: Optional RHIME sampler configuration.
         no_model_error: If true, omit inferred additive model error.
         use_bc: Whether to include prepared ``H_bc`` boundary sensitivity.
         bc_prior: Optional prior for boundary-condition scaling.
@@ -303,8 +308,7 @@ def run_rhime_co2(
             and ``per_site``.
 
     Returns:
-        Sampled DataTree annotated with the CO2 variable-role and model
-        manifests.
+        Concrete model with CO2 variable roles and serializable provenance.
 
     Raises:
         ValueError: If model-error options contradict ``no_model_error``, or
@@ -312,9 +316,7 @@ def run_rhime_co2(
             construction.
     """
     if no_model_error and (sigma_alignment is not None or sigma_prior is not None):
-        raise ValueError(
-            "`no_model_error=True` cannot be combined with `sigma_alignment` or `sigma_prior`."
-        )
+        raise ValueError("`no_model_error=True` cannot be combined with `sigma_alignment` or `sigma_prior`.")
     if likelihood_builder is None and likelihood_kwargs:
         raise ValueError("likelihood_kwargs require likelihood_builder.")
     if not use_bc and (bc_prior is not None or bc_state_activity is not None):
@@ -403,6 +405,12 @@ def run_rhime_co2(
         )
     if offset_prior is not None:
         variable_roles["offset_concentration"] = "offset"
+    for role, name in {
+        "active_flux_scale": "flux_scaling_active",
+        "offset_coefficient": "offset_latent",
+    }.items():
+        if name in model.named_vars:
+            variable_roles[role] = name
     built = RhimeModelBuildResult(
         model=model,
         variable_roles=variable_roles,
@@ -414,11 +422,90 @@ def run_rhime_co2(
             "basis_artifact_path": getattr(prepared, "basis_artifact_path", None),
         },
     )
+    return built
+
+
+def run_rhime_co2(
+    *,
+    prepared_inputs: Co2PreparedInputs,
+    sigma_alignment: SigmaAlignment | None = None,
+    sigma_prior: PriorArgs | None = None,
+    fixed_model_mismatch: float | xr.DataArray | None = None,
+    likelihood_builder: RhimeLikelihoodBuilder | None = None,
+    likelihood_kwargs: Mapping[str, Any] | None = None,
+    sampler: RhimeSampler | None = None,
+    no_model_error: bool = False,
+    use_bc: bool = False,
+    bc_prior: PriorArgs | None = None,
+    bc_state_activity: StateActivity | None = None,
+    offset_prior: PriorArgs | None = None,
+    offset_args: Mapping[str, Any] | None = None,
+) -> xr.DataTree:
+    """Materialize, build, and sample the CO2 coherent-reduction model.
+
+    This callable is the public production replay seam for an already
+    validated :class:`Co2PreparedInputs` artifact. It delegates labelled input
+    materialization and retained-prior construction to :func:`build_rhime_co2`,
+    then samples and annotates the resulting graph.
+
+    ``fixed_model_mismatch=None`` preserves a prepared fixed-mismatch field if
+    present, otherwise omits the term. An explicit scalar or labelled vector
+    overrides prepared data. By default, inferred model error varies by site
+    over one shared time period. An explicit ``sigma_alignment`` overrides
+    that alignment; ``no_model_error=True`` disables inferred model error.
+
+    Args:
+        prepared_inputs: Validated coherent-reduction inputs for the CO2
+            recipe.
+        sigma_alignment: Optional grouping policy for inferred additive model
+            error. The default is derived from the prepared site indicator.
+        sigma_prior: Optional prior arguments for inferred additive model
+            error.
+        fixed_model_mismatch: Optional known scalar or labelled mismatch
+            standard deviation. When omitted, a prepared value is preserved.
+        likelihood_builder: Optional ordinary likelihood component replacing
+            the default additive-sigma likelihood.
+        likelihood_kwargs: Options passed only to the selected likelihood. For
+            the scalar-sigma eigen likelihood, pass an ``eigenbasis_path`` and
+            ``sigma_prior``; the cache is loaded before model construction.
+        sampler: Optional RHIME sampler configuration.
+        no_model_error: If true, omit inferred additive model error.
+        use_bc: Whether to include prepared ``H_bc`` boundary sensitivity.
+        bc_prior: Optional prior for boundary-condition scaling.
+        bc_state_activity: Optional active/fixed boundary-state policy.
+        offset_prior: Optional prior for an offset component. When omitted, no
+            offset is added.
+        offset_args: Optional offset settings: ``offset_freq``, ``drop_first``,
+            and ``per_site``.
+
+    Returns:
+        Sampled DataTree annotated with the CO2 variable-role and model
+        manifests.
+
+    Raises:
+        ValueError: If model-error options contradict ``no_model_error``, or
+            prepared inputs are missing, inconsistent, or fail model
+            construction.
+    """
+    built = build_rhime_co2(
+        prepared_inputs=prepared_inputs,
+        sigma_alignment=sigma_alignment,
+        sigma_prior=sigma_prior,
+        fixed_model_mismatch=fixed_model_mismatch,
+        likelihood_builder=likelihood_builder,
+        likelihood_kwargs=likelihood_kwargs,
+        no_model_error=no_model_error,
+        use_bc=use_bc,
+        bc_prior=bc_prior,
+        bc_state_activity=bc_state_activity,
+        offset_prior=offset_prior,
+        offset_args=offset_args,
+    )
     trace = sample_rhime_model(built, RhimeSampler() if sampler is None else sampler)
-    trace = _annotate_co2_trace(
+    trace = annotate_co2_trace(
         trace,
         built,
-        concentration_units=model_inputs["mf"].attrs.get("units"),
+        concentration_units=prepared_inputs.inv_inputs["mf"].attrs.get("units"),
     )
     if likelihood_builder is not None:
         annotate_likelihood_trace(
@@ -430,6 +517,8 @@ def run_rhime_co2(
 
 
 __all__ = [
+    "annotate_co2_trace",
+    "build_rhime_co2",
     "co2_model_input_names",
     "prepare_co2_scalar_sigma_eigenbasis",
     "run_rhime_co2",

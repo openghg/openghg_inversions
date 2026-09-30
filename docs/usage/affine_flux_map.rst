@@ -124,8 +124,9 @@ country action is a transient consumer calculation, absent from the affine
 artifact. Native-grid arrays are materialized only when ``state_to_native``
 or ``state_to_flux`` is requested. Complete country uncertainty and unresolved
 native covariance are outside this conditional-mean contract (OPE-68);
-generic quantity maps belong to OPE-24, and staged output routing and
-reporting-sector mappings belong to OPE-164.
+generic quantity maps belong to OPE-24. The :doc:`CO₂ staged output adapter
+<co2_model_family>` binds this reconstruction to posterior artifacts and accepts
+explicit reporting-sector mappings.
 
 .. _co2-affine-flux-summaries:
 
@@ -181,6 +182,8 @@ chunks. Neither function mutates the trace or reconstruction inputs.
 Both products retain prepared-artifact identity, reconstruction provenance and
 ``uncertainty_scope="retained_state_conditional"``. Their intervals exclude
 unresolved native-state uncertainty and its observation-conditioned mean
-update. These functions return labelled summary datasets; they do not write
-PARIS files or add CO2 to the staged CLI. Linked CO2/O2 traces need a
+update. These functions return labelled summary datasets. The
+:doc:`CO₂ staged output adapter <co2_model_family>` uses them for conditional
+native-flux and country products and supported PARIS exports. Linked CO2/O2
+traces need a
 tracer-specific reconstruction contract and are rejected here.

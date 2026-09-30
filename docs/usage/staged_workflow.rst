@@ -4,19 +4,23 @@ Staged RHIME workflows
 ``openghg-inversions`` exposes file-backed stages for schedulers such as
 ``openghg-run``. The interface composes the same configuration resolver,
 preparation functions, model recipes, sampler and output functions used by
-``run_rhime``. It is not a second scientific configuration system, and
-OpenGHG Inversions does not depend on ``openghg-run``.
+the corresponding Python runners. It is not a second scientific configuration
+system, and OpenGHG Inversions does not depend on ``openghg-run``.
 
-The first supported recipes are ``standard`` and ``multisector``.  Recipe
+The supported recipes are ``standard``, ``multisector`` and ``co2``. Recipe
 selection is always explicit with ``--model``.  It is not inferred from
 ``species``, ``fp_model`` or ``met_model``: CH4 and CO2 need not use the same
 model, while several F-gases may use the same standard recipe.  The distinct
-CO2 and CO2/O2 prepared-input recipes are not yet routed through these commands.
+CO2 recipe accepts an existing coherent prepared-input artifact and supports
+ordinary and cached fixed-OU execution. Linked CO2/O2 staging remains separate
+follow-up work. See :doc:`co2_model_family` for CO2 prerequisites, commands and
+output capabilities.
 
 Configuration inputs
 --------------------
 
-Every scientific stage except ``diagnose`` accepts exactly one of:
+For ``--model standard`` and ``--model multisector``, every scientific stage
+except ``diagnose`` accepts exactly one of:
 
 * ``--config /absolute/path/run.ini``, using the existing RHIME INI vocabulary;
 * ``--params-file /absolute/path/ogi-params.json``, containing one JSON object
@@ -45,11 +49,19 @@ Legacy fixedbasis-style PARIS INIs contain options such as ``nit``, ``nchain``,
 JSON file; use canonical RHIME names or first migrate the configuration through
 that existing compatibility boundary.
 
+For ``--model co2``, pass ``--config co2.toml`` using the CO2-family TOML
+vocabulary, or a ``--params-file`` JSON object with the same nested structure.
+The CO2 resolver validates the recipe; the optional ``[outputs]`` table selects
+staged products. Relative artifact paths resolve from the configuration file.
+CO2 stage manifests require an identifiable installed Git revision from a VCS
+installation or source checkout; see :doc:`co2_model_family`.
+
 Configuration flow
 ------------------
 
-The existing RHIME configuration supports gas-, site-, transport-, model-,
-year-, month- and prior-specific choices directly:
+For standard and multisector recipes, the existing RHIME configuration supports
+gas-, site-, transport-, model-, year-, month- and prior-specific choices
+directly:
 
 * ``species``, ``start_date`` and ``end_date`` select gas and period;
 * ``sites`` and the aligned ``averaging_period``, ``inlet``, ``instrument``,
@@ -95,6 +107,9 @@ directory.
   ``prepare-manifest.json``.  It never builds a
   PyMC graph or samples a posterior.  The NetCDF is a versioned
   ``RhimePreparedInputs`` artifact and is independently inspectable/loadable.
+  For ``co2``, preparation validates and copies the configured
+  ``Co2PreparedInputs`` artifact and optional bound affine reconstruction,
+  preserving their content identities; it does not acquire observation data.
 
 ``prior-predictive``
   Loads ``--prepared-inputs``, validates its layout against the explicit
@@ -123,9 +138,9 @@ directory.
 ``postprocess``
   Loads both prepared inputs and posterior, reconstructs the selected model's
   output contract, and invokes the existing RHIME output implementation.  The
-  configuration's ``output_format`` controls ``inv_out``, ``basic``, ``paris``
-  or ``legacy`` products; explicit save paths in configuration are replaced so
-  every product remains beneath the stage output directory.  For the same
+  standard/multisector configuration's ``output_format`` controls ``inv_out``,
+  ``basic``, ``paris`` or ``legacy`` products; explicit save paths in configuration
+  are replaced so every product remains beneath the stage output directory.  For the same
   reason, staged postprocessing requires safe filename components and both the
   preparation and sample manifests.  The latter binds the posterior to its
   prepared-input digest and scientific configuration.  The sampler settings
@@ -136,6 +151,10 @@ directory.
   identity until an explicitly requested statistic or covariance combines the
   samples. ``postprocess-manifest.json`` is always written; the otherwise
   in-memory ``basic`` product is written as ``basic.nc``.
+  CO2 supports ``none``, ``basic`` and constrained ``paris`` products. Its
+  native-flux and country outputs require an exact bound affine reconstruction
+  and prior draws, and retain conditional uncertainty scope. The complete
+  supported CO2 contract is documented in :doc:`co2_model_family`.
 
 CheckResult contract
 --------------------
@@ -149,7 +168,10 @@ Both checks use the schema version 1 understood by ``openghg-run`` and producer
   prior-predictive variables are produced, and all sampled values are finite.
   It reports ``draws`` and ``non_finite_values`` against
   ``max_non_finite_values = 0``.  Construction, input and sampling exceptions
-  become a readable ``fail`` result.
+  become a readable ``fail`` result for standard and multisector recipes. CO2
+  handoff, construction and sampling errors reject the command before a
+  readiness check is written; non-finite predictive values produce a ``fail``
+  check.
 
 ``sampler-convergence``
   Reports retained chain and draw counts, maximum R-hat and its variable,
