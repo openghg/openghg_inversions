@@ -25,6 +25,7 @@ Example:
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -38,6 +39,8 @@ from typing_extensions import Self
 
 from openghg_inversions.array_ops import (
     force_align,
+    require_unique_index,
+    same_index,
 )
 from openghg_inversions.basis.operators import (
     BasisOperator,
@@ -46,6 +49,7 @@ from openghg_inversions.basis.operators import (
     RegionLabels,
 )
 from openghg_inversions.flux_sanitization import sanitize_flux_nonfinite
+from openghg_inversions.serialization import open_datatree_loaded
 
 BASIS_METADATA_ATTR_PREFIX = "openghg_inversions:"
 BASIS_ARTIFACT_SOURCE_ATTR = f"{BASIS_METADATA_ATTR_PREFIX}basis_artifact_source"
@@ -309,7 +313,7 @@ class FluxWeightedBasis:
         return type(self)(operator=self.operator, flux=flux, metadata=dict(self.metadata))
 
     def flat_basis(self) -> xr.DataArray | dict[str, xr.DataArray]:
-        """Return the legacy flattened basis view used by ``fp_sensitivity``."""
+        """Return the flattened basis view used by legacy basis artifacts."""
         basis_flat = getattr(self.operator, "basis_flat", None)
         if isinstance(basis_flat, xr.DataArray):
             return basis_flat.rename("basis")
@@ -446,8 +450,59 @@ class FluxWeightedBasis:
             ValueError: If the serialized schema, metadata, labels, or
                 operator state is invalid.
         """
-        with xr.open_datatree(file_path) as dt:
-            return cast(Self, cls.from_datatree(dt.load()))
+        return cast(Self, cls.from_datatree(open_datatree_loaded(file_path)))
+
+    def state_to_native(self, state: xr.DataArray) -> xr.DataArray:
+        """Reconstruct linear native scaling with the coarse-to-fine map (prolongation).
+
+        A source-specific basis retains an ordered ``native_source`` dimension
+        (or ``native_{source_dim}`` when its source dimension has another name).
+        Sum that dimension explicitly when a total scaling grid is needed.
+        """
+        return self.operator.state_to_native(state)
+
+    def state_to_flux(self, state: xr.DataArray) -> xr.DataArray:
+        """Reconstruct signed flux from the retained state and this basis's flux.
+
+        A source-specific basis retains an ordered ``native_source`` dimension
+        (or ``native_{source_dim}`` when renamed). A shared basis with
+        source-resolved retained flux instead returns a ``source`` dimension.
+        Sum the source dimension explicitly when a total flux grid is needed.
+        """
+        flux = self.flux
+        state_dim = self.operator.meta.state_dim
+        for dim in self.operator.meta.grid_dims:
+            expected = require_unique_index(self.operator.basis_matrix, dim, name="basis")
+            if not same_index(require_unique_index(flux, dim, name="flux"), expected):
+                raise ValueError(f"flux {dim!r} labels must exactly match the basis.")
+
+        native_source_dim = None
+        if isinstance(self.operator, MultiSourceBucketBasisOperator) and self.operator.source_dim in flux.dims:
+            native_source_dim = f"native_{self.operator.source_dim}"
+            if list(require_unique_index(flux, self.operator.source_dim, name="flux")) != list(
+                self.operator.source_labels
+            ):
+                raise ValueError("flux source labels must exactly match the basis source order.")
+            flux = flux.rename({self.operator.source_dim: native_source_dim})
+
+        occupied = set(state.dims) | set(state.coords) | set(flux.dims) | set(flux.coords)
+        renames = {}
+        for dim in state.dims:
+            if dim == state_dim or dim not in flux.dims:
+                continue
+            base = dim if dim.startswith("state_") else f"state_{dim}"
+            candidate = base
+            suffix = 2
+            while candidate in occupied:
+                candidate = f"{base}_{suffix}"
+                suffix += 1
+            renames[dim] = candidate
+            occupied.add(candidate)
+        native = self.state_to_native(state.rename(renames))
+        if native_source_dim is not None and native_source_dim not in native.dims:
+            raise ValueError("source-specific flux requires a source-specific native basis.")
+        native, flux = xr.align(native, flux, join="exact", copy=False)
+        return (native * flux).rename("flux").assign_attrs(flux.attrs)
 
     def interpolate(self, state: xr.DataArray, *, flux: bool = False) -> xr.DataArray:
         """Interpolate from state vector to the grid.
@@ -460,6 +515,12 @@ class FluxWeightedBasis:
         Returns:
             Interpolated gridded array on the operator grid dims, with any non-dot dims preserved.
         """
+        warnings.warn(
+            "BasisFunctions.interpolate is deprecated; use state_to_native or state_to_flux, "
+            "then sum source axes explicitly for total fields.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         if not flux:
             return self.operator.interpolate(state)
 
@@ -575,9 +636,8 @@ def basis_functions_from_fp_all_flat_basis(
 def flux_from_fp_all(fp_all: dict) -> xr.DataArray:
     """Legacy adapter that builds representative flux from ``fp_all``.
 
-    This is a temporary compatibility helper for the current ``fp_sensitivity``
-    path. Remove it when issue #429 makes ``BasisFunctions.sensitivity`` the
-    source of prepared sensitivities.
+    This compatibility helper attaches current-run flux when loading a legacy
+    flat basis artifact as retained ``BasisFunctions``.
 
     Args:
         fp_all: Legacy merged-data dictionary containing ``fp_all[".flux"]`` and

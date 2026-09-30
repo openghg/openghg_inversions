@@ -8,7 +8,6 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Callable, cast
 
-import arviz as az
 import dask.array as da
 from dask import delayed
 import numpy as np
@@ -19,8 +18,6 @@ import xarray as xr
 from dask.callbacks import Callback
 
 from examples.rhime_customisation import likelihoods as example_likelihoods
-import openghg_inversions.hbmcmc.inversion_pymc as legacy_mcmc
-import openghg_inversions.hbmcmc.preparation as fixedbasis_preparation
 import openghg_inversions.inversion_data.preparation as prep_module
 import openghg_inversions.models as models
 import openghg_inversions.postprocessing.inversion_output as inversion_output_module
@@ -34,6 +31,7 @@ import openghg_inversions.rhime.sampling as rhime_sampling
 import openghg_inversions.rhime.specs as rhime_specs
 import openghg_inversions.rhime.standard as rhime_standard
 import openghg_inversions.rhime.multisector as rhime_multisector
+from tests.helpers import make_trace
 from openghg_inversions.basis.basis_functions import (
     BASIS_ARTIFACT_PATH_ATTR,
     BASIS_ARTIFACT_SOURCE_ATTR,
@@ -61,6 +59,8 @@ from openghg_inversions.postprocessing._basis_products import (
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.postprocessing.make_outputs import (
     make_concentration_outputs,
+    make_country_outputs,
+    make_flux_outputs,
     observation_inputs_for_outputs,
 )
 from openghg_inversions.postprocessing.make_paris_outputs import PARIS_LATEST_COUNTRIES
@@ -92,14 +92,21 @@ from openghg_inversions.sigma import SigmaAlignment
 
 
 @pytest.fixture(scope="module")
-def rhime_inv_inputs(mhd_and_tac_fp_data) -> xr.Dataset:
-    return make_inv_inputs(
-        mhd_and_tac_fp_data,
-        sites=["MHD", "TAC"],
+def rhime_inv_inputs(
+    mhd_and_tac_ch4_data_args: dict[str, Any],
+    default_bc_basis_directory: Path,
+) -> xr.Dataset:
+    data_args = dict(mhd_and_tac_ch4_data_args)
+    flux_sources = data_args.pop("emissions_name")
+    prepared = prepare_rhime_inputs(
+        **data_args,
+        output_name="test-rhime-inputs",
+        flux_sources=flux_sources,
         bc_freq="3h",
         min_error=0.0,
-        start_date="2019-01-01",
+        bc_basis_directory=default_bc_basis_directory,
     )
+    return prepared.inv_inputs
 
 
 def _flux_nonfinite_metadata(data: xr.DataArray | xr.Dataset) -> FluxNonFiniteMetadata:
@@ -341,7 +348,7 @@ class _RecordingBasisOperator(BasisOperator):
             meta=BasisMeta(state_dim="region"),
             region_labels="range0",
         )
-        self.interpolate_calls: list[tuple[xr.DataArray, xr.DataArray | None]] = []
+        self.native_calls: list[xr.DataArray] = []
         self.basis_matrix_accesses = 0
 
     @property
@@ -355,10 +362,10 @@ class _RecordingBasisOperator(BasisOperator):
         self.basis_matrix_accesses += 1
         return self._operator.basis_matrix
 
-    def interpolate(self, state: xr.DataArray, weights: xr.DataArray | None = None) -> xr.DataArray:
-        """Record interpolation before delegating to the wrapped operator."""
-        self.interpolate_calls.append((state, weights))
-        return self._operator.interpolate(state, weights=weights)
+    def state_to_native(self, state: xr.DataArray) -> xr.DataArray:
+        """Record directional reconstruction before delegating to the wrapped operator."""
+        self.native_calls.append(state)
+        return self._operator.state_to_native(state)
 
     def to_datatree(self) -> xr.DataTree:
         """Serialization is not needed for this test double."""
@@ -472,6 +479,7 @@ def _site_options(
     obs_data_level: list[str | None] | str | None = None,
     met_model: list[str | None] | str | None = None,
     max_level: list[int | None] | int | None = None,
+    time_resolved: list[bool | None] | bool | None = None,
 ) -> prep_module._SiteOptions:
     """Build normalized site-aligned options for private preparation tests."""
     return prep_module._SiteOptions.from_inputs(
@@ -484,6 +492,7 @@ def _site_options(
         obs_data_level=obs_data_level,
         met_model=met_model,
         max_level=max_level,
+        time_resolved=time_resolved,
     )
 
 
@@ -547,18 +556,19 @@ def _minimal_output_specs(
     return model_spec, output_spec, run_spec
 
 
-def _minimal_output_idata() -> az.InferenceData:
+def _minimal_output_idata() -> xr.DataTree:
     """Build a minimal posterior trace with one region."""
-    return az.from_dict(
-        posterior={"x": np.ones((1, 1, 1))},
-        coords={"region": [0]},
-        dims={"x": ["region"]},
+    return make_trace(
+        posterior=xr.Dataset(
+            {"x": (("chain", "draw", "region"), np.ones((1, 1, 1)))},
+            coords={"chain": [0], "draw": [0], "region": [0]},
+        )
     )
 
 
 def _result_for_outputs(
     run_spec: RhimeRunSpec,
-    idata: az.InferenceData,
+    idata: xr.DataTree,
     *,
     model_spec: RhimeModelSpec | None = None,
     country_file: str | None = None,
@@ -583,7 +593,7 @@ def _result_for_outputs(
     )
 
 
-def _posterior_only_idata(model: pm.Model, variable_names: tuple[str, ...]) -> az.InferenceData:
+def _posterior_only_idata(model: pm.Model, variable_names: tuple[str, ...]) -> xr.DataTree:
     """Build deterministic posterior variables using a PyMC model's coordinates.
 
     Args:
@@ -606,10 +616,10 @@ def _posterior_only_idata(model: pm.Model, variable_names: tuple[str, ...]) -> a
         shape = tuple(len(coords[dim]) for dim in dims)
         posterior_vars[variable_name] = (dims, np.ones(shape))
 
-    return az.InferenceData(posterior=xr.Dataset(posterior_vars, coords=coords))
+    return make_trace(posterior=xr.Dataset(posterior_vars, coords=coords))
 
 
-def _postprocessing_output_idata(nregion: int = 1) -> az.InferenceData:
+def _postprocessing_output_idata(nregion: int = 1) -> xr.DataTree:
     """Build a small complete trace for modern postprocessing smoke tests."""
     region = np.arange(nregion)
     nmeasure = pd.MultiIndex.from_arrays(
@@ -624,50 +634,56 @@ def _postprocessing_output_idata(nregion: int = 1) -> az.InferenceData:
         [np.linspace(0.8 + draw, 1.8 + draw, nregion) for draw in range(3)],
         axis=0,
     )
-    idata = az.from_dict(
-        posterior={
-            "x": x_posterior[np.newaxis, :, :],
-            "epsilon": np.full((1, 3, 1), 2.0),
-            "mu_bc": np.full((1, 3, 1), 0.1),
-        },
-        prior={
-            "x": x_prior[np.newaxis, :, :],
-            "mu_bc": np.full((1, 3, 1), 0.05),
-        },
-        posterior_predictive={"y": np.full((1, 3, 1), 10.0)},
-        prior_predictive={"y": np.full((1, 3, 1), 9.0)},
-        constant_data={
-            "hx": np.ones(1),
-            "hbc": np.full(1, 0.1),
-            "min_error": np.zeros(1),
-        },
-        coords={"region": region, "nmeasure": np.arange(len(nmeasure))},
-        dims={
-            "x": ["region"],
-            "epsilon": ["nmeasure"],
-            "mu_bc": ["nmeasure"],
-            "y": ["nmeasure"],
-            "hx": ["nmeasure"],
-            "hbc": ["nmeasure"],
-            "min_error": ["nmeasure"],
-        },
+    sample_coords = {"chain": [0], "draw": np.arange(3), "region": region, "nmeasure": [0]}
+    idata = make_trace(
+        posterior=xr.Dataset(
+            {
+                "x": (("chain", "draw", "region"), x_posterior[np.newaxis, :, :]),
+                "epsilon": (("chain", "draw", "nmeasure"), np.full((1, 3, 1), 2.0)),
+                "mu_bc": (("chain", "draw", "nmeasure"), np.full((1, 3, 1), 0.1)),
+            },
+            coords=sample_coords,
+        ),
+        prior=xr.Dataset(
+            {
+                "x": (("chain", "draw", "region"), x_prior[np.newaxis, :, :]),
+                "mu_bc": (("chain", "draw", "nmeasure"), np.full((1, 3, 1), 0.05)),
+            },
+            coords=sample_coords,
+        ),
+        posterior_predictive=xr.Dataset(
+            {"y": (("chain", "draw", "nmeasure"), np.full((1, 3, 1), 10.0))},
+            coords={"chain": [0], "draw": np.arange(3), "nmeasure": [0]},
+        ),
+        prior_predictive=xr.Dataset(
+            {"y": (("chain", "draw", "nmeasure"), np.full((1, 3, 1), 9.0))},
+            coords={"chain": [0], "draw": np.arange(3), "nmeasure": [0]},
+        ),
+        constant_data=xr.Dataset(
+            {
+                "hx": ("nmeasure", np.ones(1)),
+                "hbc": ("nmeasure", np.full(1, 0.1)),
+                "min_error": ("nmeasure", np.zeros(1)),
+            },
+            coords={"nmeasure": [0]},
+        ),
     )
     nmeasure_coords = xr.Coordinates.from_pandas_multiindex(nmeasure, "nmeasure")
-    for group in idata.groups():
-        ds = idata[group]
+    for group, node in idata.children.items():
+        ds = node.to_dataset()
         if "nmeasure" in ds.dims:
-            setattr(idata, group, ds.assign_coords(nmeasure_coords))
+            idata[group] = ds.assign_coords(nmeasure_coords)
     return idata
 
 
-def _rename_idata_data_vars(idata: az.InferenceData, rename: dict[str, str]) -> az.InferenceData:
-    """Rename data variables across all InferenceData groups."""
+def _rename_idata_data_vars(idata: xr.DataTree, rename: dict[str, str]) -> xr.DataTree:
+    """Rename data variables across all trace groups."""
     groups: dict[str, xr.Dataset] = {}
-    for group in idata.groups():
-        ds = idata[group]
+    for group, node in idata.children.items():
+        ds = node.to_dataset()
         group_rename = {old: new for old, new in rename.items() if old in ds.data_vars}
         groups[group] = ds.rename_vars(group_rename) if group_rename else ds.copy()
-    return cast(Any, az.InferenceData)(**groups)
+    return make_trace(**groups)
 
 
 def _modern_postprocessing_inv_out(
@@ -698,6 +714,49 @@ def _modern_postprocessing_inv_out(
         },
         model_metadata={"species": "ch4", "domain": "EUROPE"},
     )
+
+
+def test_modern_derived_outputs_use_every_posterior_chain(europe_country_file: Path) -> None:
+    """Concentration, flux, and country means include every posterior chain."""
+    inv_out = _modern_postprocessing_inv_out(europe_country_file)
+    chain_zero_concentration = make_concentration_outputs(inv_out, stats=["mean"])
+    chain_zero_flux = make_flux_outputs(inv_out, stats=["mean"])
+    chain_zero_country = make_country_outputs(inv_out, country_file=europe_country_file, stats=["mean"])
+
+    groups: dict[str, xr.Dataset] = {}
+    for group_name, node in inv_out.trace.children.items():
+        group = node.to_dataset()
+        if "chain" not in group.dims:
+            groups[group_name] = group
+            continue
+        chain_zero = group.isel(chain=0, drop=True)
+        chain_one = chain_zero.copy(deep=True)
+        if group_name in {"posterior", "posterior_predictive"}:
+            for name in chain_one.data_vars:
+                chain_one[name] = 3 * chain_one[name]
+        groups[group_name] = xr.concat(
+            [chain_zero, chain_one],
+            dim=xr.IndexVariable("chain", [0, 1]),
+        )
+    all_chains = replace(inv_out, trace=make_trace(**groups))
+
+    concentration = make_concentration_outputs(all_chains, stats=["mean"])
+    flux = make_flux_outputs(all_chains, stats=["mean"])
+    country = make_country_outputs(all_chains, country_file=europe_country_file, stats=["mean"])
+
+    xr.testing.assert_allclose(
+        concentration["y_posterior_predictive_mean"],
+        2 * chain_zero_concentration["y_posterior_predictive_mean"],
+    )
+    xr.testing.assert_allclose(
+        flux["scaling_posterior_mean"],
+        2 * chain_zero_flux["scaling_posterior_mean"],
+    )
+    xr.testing.assert_allclose(
+        country["country_posterior_mean"],
+        2 * chain_zero_country["country_posterior_mean"],
+    )
+    assert all_chains.trace.posterior["x"].dims[:2] == ("chain", "draw")
 
 
 def _with_column_prior_factors(inv_out: InversionOutput) -> InversionOutput:
@@ -1778,7 +1837,7 @@ def test_assemble_rhime_inputs_preserves_borrowed_site_datasets(
     supplied = xr.Dataset(
         {"mf": ("time", lazy_mf)},
         coords={"time": np.array(["2019-01-01"], dtype="datetime64[ns]")},
-        attrs={"source": "caller"},
+        attrs={"source": "caller", "footprint_transport_model": "FLEXPART"},
     )
     site_data = {"TAC": supplied}
     merged = prep_module.RhimeMergedData(
@@ -1815,18 +1874,24 @@ def test_assemble_rhime_inputs_preserves_borrowed_site_datasets(
         },
         multisector=False,
     )
-    rhime_public.assemble_rhime_inputs(
+    prepared = rhime_public.assemble_rhime_inputs(
         merged,
         _fake_basis_functions(),
         site_data,
         setup.data_args,
     )
 
-    assert supplied.attrs == {"source": "caller"}
+    assert supplied.attrs == {"source": "caller", "footprint_transport_model": "FLEXPART"}
     assert "Domain" not in supplied.attrs
     assert captured["TAC"] is not supplied
-    assert captured["TAC"].attrs == {"source": "caller", "Domain": "EUROPE"}
+    assert captured["TAC"].attrs == {
+        "source": "caller",
+        "footprint_transport_model": "FLEXPART",
+        "Domain": "EUROPE",
+    }
     assert captured["TAC"]["mf"].data is lazy_mf
+    assert prepared.site_metadata["transport_model"].sel(site="TAC").item() == "FLEXPART"
+    assert prepared.site_metadata["transport_model_version"].sel(site="TAC").item() == ""
 
 
 def test_prepared_replay_computes_selected_error_only_at_pymc_boundary(
@@ -2118,7 +2183,7 @@ def test_multisector_model_accepts_gathered_ragged_states(
             var_names=var_names,
             random_seed=535,
         )
-    prior = models.restore_inferencedata_coords(cast(az.InferenceData, prior), registry)
+    prior = models.restore_inferencedata_coords(cast(xr.DataTree, prior), registry)
     dataset = prior.prior
     assert list(dataset["state_ff"].values) == ff_labels
     assert list(dataset["state_ocean"].values) == ocean_labels
@@ -2740,7 +2805,7 @@ def test_run_rhime_from_prepared_inputs_routes_without_preparation(
         stage_calls.append("build")
         return build_result
 
-    def sample(*args: Any, **kwargs: Any) -> az.InferenceData:
+    def sample(*args: Any, **kwargs: Any) -> xr.DataTree:
         """Record replay's public sampling stage."""
         assert args == (build_result, sampler)
         stage_calls.append("sample")
@@ -2936,7 +3001,7 @@ def test_public_rhime_runners_follow_named_stage_order(
         calls.append("build")
         return build_result
 
-    def sample(*args: Any, **kwargs: Any) -> az.InferenceData:
+    def sample(*args: Any, **kwargs: Any) -> xr.DataTree:
         """Record public sampling."""
         assert args == (build_result, sampler)
         assert kwargs == {}
@@ -3314,6 +3379,39 @@ def test_public_stages_compose_as_complete_external_runner(monkeypatch: pytest.M
     assert result.idata is idata
 
 
+def test_build_rhime_basis_forwards_fixed_outer_region_asset(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The readable RHIME basis stage forwards the resolved fixed-region map."""
+    expected = _fake_basis_functions()
+    captured: dict[str, Any] = {}
+
+    def make_basis(**kwargs: Any) -> BasisFunctions:
+        captured.update(kwargs)
+        return expected
+
+    monkeypatch.setattr(rhime_preparation, "make_basis_functions", make_basis)
+    merged = cast(RhimeMergedData, SimpleNamespace(fp_all={"TAC": xr.Dataset()}))
+    data_args = {
+        "basis_algorithm": "weighted",
+        "nbasis": 40,
+        "fp_basis_case": None,
+        "basis_directory": None,
+        "country_directory": None,
+        "outer_regions_path": "intem_region_definition_EUHROB.nc",
+        "species": "ch4",
+        "domain": "EUROPE",
+        "start_date": "2019-01-01",
+        "fix_basis_outer_regions": True,
+        "flux_sources": ["inventory"],
+        "output_name": "nested",
+        "basis_output_path": None,
+    }
+
+    actual = rhime_public.build_rhime_basis(merged, data_args)
+
+    assert actual is expected
+    assert captured["outer_regions_path"] == "intem_region_definition_EUHROB.nc"
+
+
 def test_run_rhime_from_prepared_inputs_accepts_complete_model_builder(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -3352,7 +3450,7 @@ def test_run_rhime_from_prepared_inputs_accepts_complete_model_builder(
         model: pm.Model,
         *,
         variable_roles: dict[str, str],
-    ) -> az.InferenceData:
+    ) -> xr.DataTree:
         assert model["custom_y"] is not None
         assert variable_roles["concentration"] == "custom_y"
         return _minimal_output_idata()
@@ -3704,7 +3802,7 @@ def test_likelihood_builder_provenance_is_saved_with_result_metadata(
         model: pm.Model,
         *,
         variable_roles: dict[str, str],
-    ) -> az.InferenceData:
+    ) -> xr.DataTree:
         assert model["offset_latent"].ndim == 0
         assert variable_roles["concentration"] == "y"
         return _minimal_output_idata()
@@ -3729,50 +3827,6 @@ def test_likelihood_builder_provenance_is_saved_with_result_metadata(
     result.inv_out.save(output_path)
     reloaded = InversionOutput.load(output_path)
     assert reloaded.model_metadata["builder"]["likelihood_kwargs"] == {"degrees_of_freedom": 7.0}
-
-
-def test_legacy_additive_provenance_is_saved_with_builtin_model() -> None:
-    """Compatibility provenance survives after model selection stops using a callback."""
-    model_spec, _, run_spec = _minimal_output_specs(output_format="inv_out")
-    model_spec = replace(model_spec, use_bc=False, likelihood=AdditiveSigmaSettings())
-    run_spec = replace(run_spec, model=model_spec)
-    inv_inputs = _minimal_output_inv_inputs()
-    inv_inputs["H"] = inv_inputs["H"].assign_coords(source=model_spec.sectors[0].flux_source)
-    prepared = RhimePreparedInputs(
-        inv_inputs=inv_inputs,
-        basis_functions=_fake_basis_functions(),
-        site_metadata=_prepared_site_metadata(),
-    )
-    build_result = rhime_standard.build_standard_rhime_model_result(
-        prepared=prepared,
-        model_inputs=prepared.inv_inputs,
-        run_spec=run_spec,
-    )
-    provenance = {
-        "likelihood_builder": {
-            "module": "openghg_inversions.rhime.likelihoods",
-            "qualname": "additive_sigma_likelihood_builder",
-        },
-        "likelihood_kwargs": {"sigma_prior": {"pdf": "halfnormal", "sigma": 5.0}},
-    }
-
-    result = rhime_standard.make_standard_rhime_result(
-        prepared=prepared,
-        run_spec=run_spec,
-        sampler=RhimeSampler(),
-        model_build_result=build_result,
-        idata=_minimal_output_idata(),
-        build_and_sample_seconds=0.0,
-        _compatibility_likelihood_provenance=provenance,
-    )
-    rhime_public.make_standard_rhime_outputs(result=result, prepared=prepared)
-
-    assert result.output_metadata["likelihood_builder"] == provenance["likelihood_builder"]
-    assert result.output_metadata["likelihood_kwargs"] == provenance["likelihood_kwargs"]
-    assert result.inv_out is not None
-    saved_builder = result.inv_out.model_metadata["builder"]
-    assert saved_builder["likelihood_builder"] == provenance["likelihood_builder"]
-    assert saved_builder["likelihood_kwargs"] == provenance["likelihood_kwargs"]
 
 
 def test_custom_model_builder_rejects_undeclared_output_before_sampling(
@@ -4000,7 +4054,7 @@ def test_run_rhime_from_prepared_inputs_defaults_sampler_and_skips_none_output_w
         model: pm.Model,
         *,
         variable_roles: dict[str, str],
-    ) -> az.InferenceData:
+    ) -> xr.DataTree:
         sampled_with.append(self)
         assert "y" in model.named_vars
         assert variable_roles["concentration"] == "y"
@@ -4184,6 +4238,7 @@ def test_rhime_runner_setup_builds_specs_before_preparation(tmp_path: Path) -> N
         "chains": "3",
         "sample_kwargs": {"random_seed": 42},
         "posterior_predictive_kwargs": {"random_seed": 43},
+        "time_resolved": True,
     }
 
     setup = rhime_params.make_rhime_runner_setup(
@@ -4193,6 +4248,7 @@ def test_rhime_runner_setup_builds_specs_before_preparation(tmp_path: Path) -> N
 
     assert setup.data_args["flux_sources"] == ["ff-source", "gpp-source", "ter-source", "ocean-source"]
     assert setup.data_args["split_by_sectors"] is True
+    assert setup.data_args["time_resolved"] is True
     assert setup.data_args["basis_algorithm"] == "weighted"
     assert setup.data_args["nbasis"] == 100
     assert setup.data_args["bc_basis_case"] == "NESW"
@@ -4568,53 +4624,47 @@ def test_rhime_sampler_runs_pymc_sampling_and_predictive_steps(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """RhimeSampler owns PyMC sampling, burn slicing, and predictive groups."""
-
-    class FakePosterior:
-        sizes = {"draw": 6}
-
-    class FakeInferenceData:
-        posterior = FakePosterior()
-        sample_stats = xr.Dataset(
+    raw_trace = make_trace(
+        posterior=xr.Dataset(
+            {"x": (("chain", "draw"), np.ones((2, 6)))},
+            coords={"chain": [0, 1], "draw": np.arange(6)},
+        ),
+        sample_stats=xr.Dataset(
             {
                 "n_steps": (("chain", "draw"), np.array([[1, 2, 3], [4, 5, 6]])),
                 "tree_depth": (("chain", "draw"), np.array([[2, 2, 3], [3, 4, 4]])),
                 "step_size": (("chain", "draw"), np.array([[0.1, 0.1, 0.2], [0.2, 0.2, 0.2]])),
                 "acceptance_rate": (("chain", "draw"), np.array([[0.8, 0.9, 1.0], [0.7, 0.8, 0.9]])),
                 "diverging": (("chain", "draw"), np.array([[False, True, False], [False, False, True]])),
-            }
-        )
-
-        def __init__(self) -> None:
-            self.isel_kwargs: dict[str, Any] | None = None
-            self.extensions: list[Any] = []
-            self.attrs: dict[str, Any] = {}
-
-        def isel(self, **kwargs: Any) -> "FakeInferenceData":
-            self.isel_kwargs = kwargs
-            return self
-
-        def groups(self) -> list[str]:
-            """Return the fake InferenceData group names."""
-            return ["sample_stats"]
-
-        def extend(self, other: Any) -> None:
-            self.extensions.append(other)
-
-    fake_idata = FakeInferenceData()
+            },
+            coords={"chain": [0, 1], "draw": np.arange(3)},
+        ),
+    )
     seen: dict[str, Any] = {}
     timings: list[tuple[str, dict[str, Any]]] = []
 
     def fake_sample(**kwargs: Any) -> Any:
         seen["sample_kwargs"] = kwargs
-        return fake_idata
+        return raw_trace
 
-    def fake_prior_predictive(draws: int, model: pm.Model) -> str:
+    def fake_prior_predictive(draws: int, model: pm.Model) -> xr.DataTree:
         seen["prior_predictive"] = {"draws": draws, "model": model}
-        return "prior"
+        return make_trace(
+            prior=xr.Dataset(
+                {"x": (("chain", "draw"), np.ones((1, draws)))},
+                coords={"chain": [0], "draw": np.arange(draws)},
+            )
+        )
 
-    def fake_posterior_predictive(trace: Any, **kwargs: Any) -> str:
+    def fake_posterior_predictive(trace: xr.DataTree, **kwargs: Any) -> xr.DataTree:
         seen["posterior_predictive"] = {"trace": trace, **kwargs}
-        return "posterior"
+        draws = trace["posterior"].sizes["draw"]
+        return make_trace(
+            posterior_predictive=xr.Dataset(
+                {"y": (("chain", "draw"), np.ones((2, draws)))},
+                coords={"chain": [0, 1], "draw": np.arange(draws)},
+            )
+        )
 
     def fake_log_timing(label: str, seconds: float, **fields: Any) -> None:
         timings.append((label, fields))
@@ -4641,9 +4691,8 @@ def test_rhime_sampler_runs_pymc_sampling_and_predictive_steps(
         posterior_predictive_kwargs={"random_seed": 42},
     )
 
-    idata = sampler.sample(model)
+    trace = sampler.sample(model)
 
-    assert idata is fake_idata
     assert seen["sample_kwargs"]["draws"] == 7
     assert seen["sample_kwargs"]["tune"] == 2
     assert seen["sample_kwargs"]["chains"] == 3
@@ -4653,15 +4702,16 @@ def test_rhime_sampler_runs_pymc_sampling_and_predictive_steps(
     assert seen["sample_kwargs"]["target_accept"] == 0.9
     assert seen["sample_kwargs"]["return_inferencedata"] is True
     assert seen["sample_kwargs"]["idata_kwargs"] == {"log_likelihood": True}
-    assert fake_idata.isel_kwargs == {"draw": slice(1, None)}
-    assert seen["prior_predictive"] == {"draws": 6, "model": model}
+    assert seen["prior_predictive"] == {"draws": 5, "model": model}
     assert seen["posterior_predictive"] == {
-        "trace": fake_idata,
+        "trace": trace,
         "model": model,
         "var_names": ["y"],
         "random_seed": 42,
     }
-    assert fake_idata.extensions == ["prior", "posterior"]
+    assert set(trace.children) == {"posterior", "sample_stats", "prior", "posterior_predictive"}
+    np.testing.assert_array_equal(trace["posterior"].draw, np.arange(5))
+    assert trace.attrs["burn"] == 1
     sample_stats_fields = dict(timings)["rhime.sampler.sample_stats"]
     assert sample_stats_fields["n_steps_mean"] == 3.5
     assert sample_stats_fields["n_steps_max"] == 6.0
@@ -4677,14 +4727,14 @@ def test_rhime_sampler_preserves_disabled_log_likelihood(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The public sampling seam preserves an explicit log-likelihood policy."""
-    trace = az.InferenceData(
+    trace = make_trace(
         posterior=xr.Dataset(
             {"state": (("chain", "draw"), np.ones((1, 2)))},
         ),
     )
     seen: dict[str, Any] = {}
 
-    def fake_sample(**kwargs: Any) -> az.InferenceData:
+    def fake_sample(**kwargs: Any) -> xr.DataTree:
         seen.update(kwargs)
         return trace
 
@@ -4713,7 +4763,7 @@ def test_rhime_sampler_resets_retained_draws_before_extending_predictive_groups(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Equal-length predictive groups do not outer-align against burned draw labels."""
-    raw_trace = az.InferenceData(
+    raw_trace = make_trace(
         posterior=xr.Dataset(
             {"x": (("chain", "draw"), np.arange(2000, dtype=float)[None, :])},
             coords={"chain": [0], "draw": np.arange(2000)},
@@ -4729,14 +4779,14 @@ def test_rhime_sampler_resets_retained_draws_before_extending_predictive_groups(
     )
     predictive_draws: dict[str, np.ndarray] = {}
 
-    def fake_sample(**kwargs: Any) -> az.InferenceData:
+    def fake_sample(**kwargs: Any) -> xr.DataTree:
         """Return the unsliced sampling trace."""
         return raw_trace
 
-    def fake_prior_predictive(draws: int, model: pm.Model) -> az.InferenceData:
+    def fake_prior_predictive(draws: int, model: pm.Model) -> xr.DataTree:
         """Build prior groups with zero-based draw labels."""
         predictive_draws["prior"] = np.arange(draws)
-        return az.InferenceData(
+        return make_trace(
             prior=xr.Dataset(
                 {"x": (("chain", "draw"), np.ones((1, draws)))},
                 coords={"chain": [0], "draw": predictive_draws["prior"]},
@@ -4747,12 +4797,12 @@ def test_rhime_sampler_resets_retained_draws_before_extending_predictive_groups(
             ),
         )
 
-    def fake_posterior_predictive(trace: az.InferenceData, **kwargs: Any) -> az.InferenceData:
+    def fake_posterior_predictive(trace: xr.DataTree, **kwargs: Any) -> xr.DataTree:
         """Record and mirror the retained posterior draw labels."""
         inference_data = cast(Any, trace)
         predictive_draws["posterior_seen"] = inference_data.posterior.draw.values.copy()
         draws = inference_data.posterior.sizes["draw"]
-        return az.InferenceData(
+        return make_trace(
             posterior_predictive=xr.Dataset(
                 {"y": (("chain", "draw"), np.ones((1, draws)))},
                 coords={"chain": [0], "draw": np.arange(draws)},
@@ -4797,13 +4847,11 @@ def test_rhime_sampler_resolves_predictive_name_from_custom_model_roles(
     """The historical default ``y`` follows the explicit custom concentration role."""
     seen: dict[str, Any] = {}
 
-    class FakeTrace:
-        def extend(self, other: Any) -> None:
-            seen["extension"] = other
+    trace = make_trace(posterior=xr.Dataset())
 
-    def fake_posterior_predictive(trace: Any, **kwargs: Any) -> str:
+    def fake_posterior_predictive(trace: Any, **kwargs: Any) -> xr.DataTree:
         seen.update(kwargs)
-        return "posterior"
+        return make_trace(posterior_predictive=xr.Dataset({"custom_y": ("draw", [1.0])}))
 
     monkeypatch.setattr(
         "openghg_inversions.rhime.sampling.pm.sample_posterior_predictive",
@@ -4814,14 +4862,14 @@ def test_rhime_sampler_resolves_predictive_name_from_custom_model_roles(
 
     sampler = RhimeSampler(sample_prior_predictive=False)
     sampler._extend_predictive(
-        cast(Any, FakeTrace()),
+        trace,
         model=model,
         variable_roles={"concentration": "custom_y"},
     )
 
     assert seen["var_names"] == ["custom_y"]
     assert seen["model"] is model
-    assert seen["extension"] == "posterior"
+    assert "posterior_predictive" in trace.children
 
 
 def test_rhime_sampler_restores_registered_coords_after_predictive_steps(
@@ -4829,40 +4877,25 @@ def test_rhime_sampler_restores_registered_coords_after_predictive_steps(
 ) -> None:
     """RhimeSampler restores model-managed coordinates after predictive groups are attached."""
 
-    class FakePosterior:
-        sizes = {"draw": 2}
+    sampled = make_trace(
+        posterior=xr.Dataset(
+            {"x": (("chain", "draw"), np.ones((1, 2)))},
+            coords={"chain": [0], "draw": [0, 1]},
+        )
+    )
+    calls: list[tuple[xr.DataTree, models.CoordRegistry, list[str]]] = []
 
-    class FakeInferenceData:
-        posterior = FakePosterior()
+    def fake_sample(**kwargs: Any) -> xr.DataTree:
+        return sampled
 
-        def __init__(self) -> None:
-            self.extensions: list[str] = []
-            self.attrs: dict[str, Any] = {}
+    def fake_prior_predictive(draws: int, model: pm.Model) -> xr.DataTree:
+        return make_trace(prior=xr.Dataset({"x": ("draw", np.ones(draws))}))
 
-        def isel(self, **kwargs: Any) -> "FakeInferenceData":
-            return self
+    def fake_posterior_predictive(trace: Any, **kwargs: Any) -> xr.DataTree:
+        return make_trace(posterior_predictive=xr.Dataset({"y": ("draw", np.ones(2))}))
 
-        def groups(self) -> list[str]:
-            """Return the fake InferenceData group names."""
-            return []
-
-        def extend(self, other: str) -> None:
-            self.extensions.append(other)
-
-    fake_idata = FakeInferenceData()
-    calls: list[tuple[FakeInferenceData, models.CoordRegistry, list[str]]] = []
-
-    def fake_sample(**kwargs: Any) -> FakeInferenceData:
-        return fake_idata
-
-    def fake_prior_predictive(draws: int, model: pm.Model) -> str:
-        return "prior"
-
-    def fake_posterior_predictive(trace: Any, **kwargs: Any) -> str:
-        return "posterior"
-
-    def fake_restore(trace: FakeInferenceData, registry: models.CoordRegistry) -> FakeInferenceData:
-        calls.append((trace, registry, list(trace.extensions)))
+    def fake_restore(trace: xr.DataTree, registry: models.CoordRegistry) -> xr.DataTree:
+        calls.append((trace, registry, list(trace.children)))
         return trace
 
     monkeypatch.setattr("openghg_inversions.rhime.sampling.pm.sample", fake_sample)
@@ -4884,8 +4917,8 @@ def test_rhime_sampler_restores_registered_coords_after_predictive_steps(
 
     result = RhimeSampler(draws=2, chains=1, tune=0).sample(model)
 
-    assert result is fake_idata
-    assert calls == [(fake_idata, registry, ["prior", "posterior"])]
+    assert result is calls[0][0]
+    assert calls == [(result, registry, ["posterior", "prior", "posterior_predictive"])]
 
 
 def test_params_from_config_maps_legacy_emissions_name(tmp_path: Path) -> None:
@@ -5657,126 +5690,6 @@ def test_multisector_site_preparation_keeps_gathered_source_state() -> None:
     ]
 
 
-def test_fixedbasis_preparation_adds_anchored_legacy_sigma_index(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Legacy preparation retains its anchored component compatibility index."""
-    times = pd.to_datetime(["2019-01-08", "2019-01-09", "2019-01-15"])
-    inv_inputs = xr.Dataset(
-        {
-            "H": (("region", "nmeasure"), np.ones((1, 3))),
-            "site_indicator": ("nmeasure", np.zeros(3, dtype=int)),
-        },
-        coords={"region": [0], "nmeasure": np.arange(3), "time": ("nmeasure", times)},
-    )
-    fp_data = {"TAC": _site_dataset([2.0, 3.0, 4.0])}
-    merged = prep_module.RhimeMergedData(
-        fp_all=fp_data,
-        site_options=_site_options(["TAC"], averaging_period=["1H"]),
-    )
-    basis_functions = _fake_basis_functions()
-
-    monkeypatch.setattr(fixedbasis_preparation, "_prepare_merged_data", lambda **kwargs: merged)
-    monkeypatch.setattr(
-        fixedbasis_preparation,
-        "basis_functions_wrapper",
-        lambda **kwargs: (fp_data, {"emissions": basis_functions}),
-    )
-    monkeypatch.setattr(
-        fixedbasis_preparation,
-        "_apply_filters_and_drop_empty_sites",
-        lambda **kwargs: (fp_data, _site_options(["TAC"], averaging_period=["1H"])),
-    )
-    monkeypatch.setattr(fixedbasis_preparation, "_set_domain_attrs", lambda *args, **kwargs: None)
-    monkeypatch.setattr(
-        fixedbasis_preparation,
-        "_make_inv_inputs",
-        lambda **kwargs: inv_inputs.copy(),
-    )
-
-    prepared = fixedbasis_preparation.prepare_fixedbasis_inversion_data(
-        species="ch4",
-        sites=["TAC"],
-        domain="EUROPE",
-        averaging_period=["1H"],
-        start_date="2019-01-01",
-        end_date="2019-02-01",
-        output_name="fixedbasis_sigma",
-        flux_sources=["total-ukghg-edgar7"],
-        sigma_freq="8D",
-        use_bc=False,
-    )
-
-    assert prepared.inv_inputs is not None
-    np.testing.assert_array_equal(prepared.inv_inputs["sigma_freq_index"], [0, 1, 1])
-
-
-def test_fixedbasis_preparation_uses_platform_for_sites_retained_after_filtering(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Satellite BC scaling receives preserved level provenance after filtering."""
-    fp_data = {"OCO2-EASTASIA": _site_dataset([2.0]).assign_attrs(footprint_max_level=17)}
-    merged = prep_module.RhimeMergedData(
-        fp_all={"TAC": _site_dataset([]), **fp_data},
-        site_options=_site_options(
-            ["TAC", "OCO2-EASTASIA"],
-            averaging_period=["1H", "1H"],
-            platform=["surface", "satellite"],
-            max_level=[None, 3],
-        ),
-    )
-    retained_options = merged.site_options.select_indices([1])
-    captured: dict[str, object] = {}
-
-    monkeypatch.setattr(fixedbasis_preparation, "_prepare_merged_data", lambda **kwargs: merged)
-    monkeypatch.setattr(
-        fixedbasis_preparation,
-        "basis_functions_wrapper",
-        lambda **kwargs: (fp_data, {"emissions": _fake_basis_functions()}),
-    )
-    monkeypatch.setattr(
-        fixedbasis_preparation,
-        "_apply_filters_and_drop_empty_sites",
-        lambda **kwargs: (fp_data, retained_options),
-    )
-    monkeypatch.setattr(fixedbasis_preparation, "_set_domain_attrs", lambda *args, **kwargs: None)
-    monkeypatch.setattr(
-        fixedbasis_preparation,
-        "_make_inv_inputs",
-        lambda **kwargs: _minimal_prepared_inv_inputs(sites=("OCO2-EASTASIA",)),
-    )
-
-    def capture_scaling(inv_inputs: xr.Dataset, **kwargs: object) -> xr.Dataset:
-        captured.update(kwargs)
-        return inv_inputs
-
-    monkeypatch.setattr(
-        fixedbasis_preparation,
-        "_scale_satellite_bc_sensitivity_to_column_signal",
-        capture_scaling,
-    )
-
-    fixedbasis_preparation.prepare_fixedbasis_inversion_data(
-        species="co2",
-        sites=["TAC", "OCO2-EASTASIA"],
-        domain="EASTASIA",
-        averaging_period=["1H", "1H"],
-        platform=["surface", "satellite"],
-        start_date="2019-01-01",
-        end_date="2019-02-01",
-        output_name="filtered_satellite",
-        flux_sources=["test-source"],
-        use_bc=False,
-    )
-
-    assert captured == {
-        "sites": ["OCO2-EASTASIA"],
-        "platform": ("satellite",),
-        "observation_max_level": (3,),
-        "footprint_max_level": (17,),
-    }
-
-
 def test_rhime_preparation_uses_platform_for_sites_retained_after_filtering(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -5881,9 +5794,6 @@ def test_prepare_rhime_inputs_uses_basis_sensitivity_without_legacy_side_channel
         xr.testing.assert_identical(fp_data["TAC"]["H"], expected_sensitivity)
         return _minimal_prepared_inv_inputs()
 
-    def forbidden_basis_functions_wrapper(*args: object, **kwargs: object) -> None:
-        raise AssertionError("RHIME preparation should use make_basis_functions and direct sensitivity.")
-
     monkeypatch.setattr(
         prep_module,
         "data_processing_surface_notracer",
@@ -5891,13 +5801,6 @@ def test_prepare_rhime_inputs_uses_basis_sensitivity_without_legacy_side_channel
     )
     monkeypatch.setattr(prep_module, "make_basis_functions", fake_make_basis_functions)
     monkeypatch.setattr(prep_module, "make_inv_inputs", fake_make_inv_inputs)
-    monkeypatch.setattr(
-        prep_module,
-        "basis_functions_wrapper",
-        forbidden_basis_functions_wrapper,
-        raising=False,
-    )
-
     prepared = prepare_rhime_inputs(
         species="ch4",
         sites=["TAC"],
@@ -5982,9 +5885,6 @@ def test_prepare_rhime_inputs_prunes_reloaded_merged_data_to_requested_sites(
             "TAC": _site_dataset([2.0]),
             "MHD": _site_dataset([3.0]),
             ".flux": object(),
-            ".species": "CH4",
-            ".scales": {"TAC": "tac-scale", "MHD": "mhd-scale"},
-            ".units": 1e-9,
         }
 
     def fake_make_basis_functions(**kwargs: object) -> BasisFunctions:
@@ -6021,10 +5921,7 @@ def test_prepare_rhime_inputs_prunes_reloaded_merged_data_to_requested_sites(
     assert "MHD" not in captured_fp_all_keys
     assert {key for key in captured_fp_all_keys if key.startswith(".")} == {
         ".flux",
-        ".species",
-        ".scales",
         ".split_by_sectors",
-        ".units",
     }
 
 
@@ -6036,9 +5933,7 @@ def test_prepare_merged_data_reload_keeps_all_options_aligned(
         prep_module,
         "load_merged_data",
         lambda *args, **kwargs: {
-            "MHD": _site_dataset([3.0]),
-            ".species": "CH4",
-            ".units": 1e-9,
+            "MHD": _site_dataset([3.0]).assign_attrs(openghg_inversions_time_resolved="false"),
         },
     )
 
@@ -6058,6 +5953,7 @@ def test_prepare_merged_data_reload_keeps_all_options_aligned(
         obs_data_level=["level-tac", "level-mhd", "level-rgl"],
         met_model=["met-tac", "met-mhd", "met-rgl"],
         max_level=[10, 20, 30],
+        time_resolved=[True, False, None],
         reload_merged_data=True,
         merged_data_dir=str(tmp_path),
         use_bc=False,
@@ -6073,8 +5969,9 @@ def test_prepare_merged_data_reload_keeps_all_options_aligned(
         obs_data_level=["level-mhd"],
         met_model=["met-mhd"],
         max_level=[20],
+        time_resolved=[False],
     )
-    assert set(merged.fp_all) == {"MHD", ".species", ".split_by_sectors", ".units"}
+    assert set(merged.fp_all) == {"MHD", ".split_by_sectors"}
 
 
 def test_site_options_direct_construction_enforces_immutable_alignment() -> None:
@@ -6090,6 +5987,7 @@ def test_site_options_direct_construction_enforces_immutable_alignment() -> None
             obs_data_level=(None, None),
             met_model=(None, None),
             max_level=(None, None),
+            time_resolved=(None, None),
         )
 
     options = _site_options(["TAC"], averaging_period=["1H"])
@@ -6156,6 +6054,74 @@ def test_prepare_merged_data_retrieval_keeps_requested_metadata_authoritative(
         met_model=["met-tac", "met-rgl"],
         max_level=[10, 30],
     )
+
+
+def test_prepare_merged_data_reload_rejects_time_resolved_selector_mismatch(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Reloaded data cannot satisfy the opposite footprint-resolution selector."""
+    cached_site = _site_dataset([3.0])
+    cached_site.attrs["openghg_inversions_time_resolved"] = "false"
+    monkeypatch.setattr(
+        prep_module,
+        "load_merged_data",
+        lambda *args, **kwargs: {"TAC": cached_site, ".species": "CH4", ".units": 1e-9},
+    )
+
+    with pytest.raises(ValueError, match="does not match the requested `time_resolved` selector"):
+        prep_module._prepare_merged_data(
+            species="ch4",
+            sites=["TAC"],
+            domain="EUROPE",
+            averaging_period=["1H"],
+            start_date="2019-01-01",
+            end_date="2019-02-01",
+            output_name="reload_resolution",
+            flux_sources=["inventory"],
+            time_resolved=True,
+            reload_merged_data=True,
+            merged_data_dir=str(tmp_path),
+            use_bc=False,
+        )
+
+
+@pytest.mark.parametrize(
+    ("cached_split_by_sectors", "requested_split_by_sectors"),
+    [(False, True), (True, False)],
+)
+def test_prepare_merged_data_reload_rejects_sector_layout_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    cached_split_by_sectors: bool,
+    requested_split_by_sectors: bool,
+) -> None:
+    """Reloading never relabels a cache as the opposite sector layout."""
+    monkeypatch.setattr(
+        prep_module,
+        "load_merged_data",
+        lambda *args, **kwargs: {
+            "TAC": _site_dataset([3.0]),
+            ".species": "CH4",
+            ".split_by_sectors": cached_split_by_sectors,
+            ".units": 1e-9,
+        },
+    )
+
+    with pytest.raises(ValueError, match="incompatible `split_by_sectors` layout"):
+        prep_module._prepare_merged_data(
+            species="ch4",
+            sites=["TAC"],
+            domain="EUROPE",
+            averaging_period=["1H"],
+            start_date="2019-01-01",
+            end_date="2019-02-01",
+            output_name="reload_sector_layout",
+            flux_sources=["inventory"],
+            split_by_sectors=requested_split_by_sectors,
+            reload_merged_data=True,
+            merged_data_dir=str(tmp_path),
+            use_bc=False,
+        )
 
 
 def test_prepare_merged_data_ignores_redundant_retrieval_metadata(
@@ -6268,14 +6234,15 @@ def test_apply_filters_drops_complete_site_option_record() -> None:
     assert retained == site_options.select_indices([0, 2])
 
 
-def test_filtering_prunes_scales_with_empty_sites() -> None:
-    """Reload filtering prunes calibration provenance for an empty site."""
+def test_filtering_preserves_shared_merged_data_when_dropping_sites() -> None:
+    """Filtering keeps active shared inputs while removing an empty site."""
+    flux = object()
     merged = prep_module.RhimeMergedData(
         fp_all={
             "TAC": _site_dataset([]),
             "MHD": _site_dataset([3.0]),
-            ".scales": {"TAC": "tac-scale", "MHD": "mhd-scale"},
-            ".units": 1e-9,
+            ".flux": flux,
+            ".split_by_sectors": False,
         },
         site_options=_site_options(["TAC", "MHD"], averaging_period=["1H", "1H"]),
     )
@@ -6283,8 +6250,8 @@ def test_filtering_prunes_scales_with_empty_sites() -> None:
     filtered = prep_module._filter_merged_inversion_data(merged=merged, filters=None)
 
     assert filtered.sites == ("MHD",)
-    assert filtered.fp_all[".scales"] == {"MHD": "mhd-scale"}
-    assert filtered.fp_all[".units"] == pytest.approx(1e-9)
+    assert filtered.fp_all[".flux"] is flux
+    assert filtered.fp_all[".split_by_sectors"] is False
 
 
 @pytest.mark.parametrize(
@@ -7366,7 +7333,7 @@ def test_derived_output_filename_can_use_legacy_convention(tmp_path: Path) -> No
 @pytest.mark.rhime_contract
 def test_make_standard_outputs_attach_products_to_result() -> None:
     """Attach the standard modern outputs with aligned release coordinates."""
-    model_spec, output_spec, run_spec = _minimal_output_specs()
+    model_spec, _, run_spec = _minimal_output_specs()
     inv_inputs = _minimal_output_inv_inputs().assign_coords(
         release_lat=("nmeasure", [51.0]),
         release_lon=("nmeasure", [-2.0]),
@@ -7426,7 +7393,7 @@ def test_standard_postprocessing_failure_precedes_output_writes(
 
 def test_output_bundle_serializes_state_activity_spec() -> None:
     """A concrete per-sector policy remains valid output metadata."""
-    _, output_spec, run_spec = _minimal_output_specs()
+    _, _, run_spec = _minimal_output_specs()
     sector = replace(
         run_spec.model.sectors[0],
         state_activity=StateActivity(active=False, fixed_value=2.0),
@@ -7490,13 +7457,14 @@ def test_make_multisector_outputs_attach_modern_inv_out(tmp_path: Path) -> None:
         basis_functions=_fake_basis_functions(),
         site_metadata=_prepared_site_metadata(),
     )
-    idata = az.from_dict(
-        posterior={
-            "x_ff": np.ones((1, 1, 1)),
-            "x_ocean": np.ones((1, 1, 1)),
-        },
-        coords={"region": [0]},
-        dims={"x_ff": ["region"], "x_ocean": ["region"]},
+    idata = make_trace(
+        posterior=xr.Dataset(
+            {
+                "x_ff": (("chain", "draw", "region"), np.ones((1, 1, 1))),
+                "x_ocean": (("chain", "draw", "region"), np.ones((1, 1, 1))),
+            },
+            coords={"chain": [0], "draw": [0], "region": [0]},
+        )
     )
 
     bundle = _result_for_outputs(run_spec, idata, model_spec=model_spec)
@@ -7628,9 +7596,13 @@ def test_make_multisector_outputs_build_latest_paris_flux(
         site_metadata=_prepared_site_metadata(),
     )
     idata = cast(Any, multisector_postprocessing_inv_out().trace)
-    for group in (idata.prior, idata.posterior):
+    for group_name in ("prior", "posterior"):
+        group = idata[group_name].to_dataset()
         group["y"] = (("chain", "draw", "nmeasure"), np.ones((1, 2, 1)))
-    idata.posterior["epsilon"] = (("chain", "draw", "nmeasure"), np.ones((1, 2, 1)))
+        idata[group_name] = group
+    posterior = idata["posterior"].to_dataset()
+    posterior["epsilon"] = (("chain", "draw", "nmeasure"), np.ones((1, 2, 1)))
+    idata["posterior"] = posterior
 
     bundle = _result_for_outputs(
         run_spec,
@@ -7670,7 +7642,7 @@ def test_make_multisector_outputs_build_latest_paris_flux(
 @pytest.mark.rhime_contract
 def test_default_model_inversion_output_save_load_roundtrip(tmp_path: Path) -> None:
     """Round-trip default-model metadata, trace attrs, inputs, and retained basis."""
-    model_spec, output_spec, run_spec = _minimal_output_specs()
+    model_spec, _, run_spec = _minimal_output_specs()
     prepared = RhimePreparedInputs(
         inv_inputs=_minimal_output_inv_inputs(),
         basis_functions=_fake_basis_functions(artifact_source="unit-test"),
@@ -7791,7 +7763,7 @@ def test_modern_inversion_output_save_load_roundtrip(tmp_path: Path) -> None:
 
 def test_modern_inversion_output_restores_bytes_multiindex_metadata() -> None:
     """Modern output loading accepts bytes-encoded MultiIndex metadata."""
-    model_spec, output_spec, run_spec = _minimal_output_specs()
+    model_spec, _, run_spec = _minimal_output_specs()
     inv_inputs = _minimal_output_inv_inputs()
     prepared = RhimePreparedInputs(
         inv_inputs=inv_inputs,
@@ -7817,7 +7789,7 @@ def test_modern_inversion_output_restores_bytes_multiindex_metadata() -> None:
 
 def test_modern_inversion_output_roundtrips_trace_multiindex() -> None:
     """Modern output serialization preserves restored trace measurement coordinates."""
-    model_spec, output_spec, run_spec = _minimal_output_specs()
+    model_spec, _, run_spec = _minimal_output_specs()
     nmeasure_index = pd.MultiIndex.from_arrays(
         [["TAC"], pd.to_datetime(["2019-01-01"])],
         names=["site", "time"],
@@ -7841,7 +7813,7 @@ def test_modern_inversion_output_roundtrips_trace_multiindex() -> None:
     )
     bundle = _result_for_outputs(
         run_spec,
-        az.InferenceData(posterior=posterior, posterior_predictive=posterior_predictive),
+        make_trace(posterior=posterior, posterior_predictive=posterior_predictive),
         model_spec=model_spec,
     )
     rhime_outputs.make_standard_rhime_outputs(result=bundle, prepared=prepared)
@@ -7867,7 +7839,7 @@ def test_modern_inversion_output_roundtrips_trace_multiindex() -> None:
 )
 def test_modern_inversion_output_ignores_malformed_multiindex_metadata(raw_multiindex_dims: object) -> None:
     """Malformed MultiIndex metadata should not break modern output loading."""
-    model_spec, output_spec, run_spec = _minimal_output_specs()
+    model_spec, _, run_spec = _minimal_output_specs()
     inv_inputs = _minimal_output_inv_inputs()
     prepared = RhimePreparedInputs(
         inv_inputs=inv_inputs,
@@ -7893,7 +7865,7 @@ def test_modern_inversion_output_supports_flux_outputs() -> None:
     """Modern InversionOutput feeds flux postprocessing directly."""
     from openghg_inversions.postprocessing.make_outputs import make_flux_outputs
 
-    model_spec, output_spec, run_spec = _minimal_output_specs()
+    model_spec, _, run_spec = _minimal_output_specs()
     prepared = RhimePreparedInputs(
         inv_inputs=_minimal_output_inv_inputs(),
         basis_functions=_fake_basis_functions(),
@@ -7901,11 +7873,15 @@ def test_modern_inversion_output_supports_flux_outputs() -> None:
     )
     bundle = _result_for_outputs(
         run_spec,
-        az.from_dict(
-            posterior={"x": np.ones((1, 2, 1))},
-            prior={"x": np.ones((1, 2, 1))},
-            coords={"region": [0]},
-            dims={"x": ["region"]},
+        make_trace(
+            posterior=xr.Dataset(
+                {"x": (("chain", "draw", "region"), np.ones((1, 2, 1)))},
+                coords={"chain": [0], "draw": [0, 1], "region": [0]},
+            ),
+            prior=xr.Dataset(
+                {"x": (("chain", "draw", "region"), np.ones((1, 2, 1)))},
+                coords={"chain": [0], "draw": [0, 1], "region": [0]},
+            ),
         ),
         model_spec=model_spec,
     )
@@ -7944,7 +7920,7 @@ def test_modern_flux_outputs_use_retained_basis_operator(
 
     assert "flux_posterior_mean" in flux_outputs
     assert "scaling_posterior_mean" in flux_outputs
-    assert operator.interpolate_calls
+    assert operator.native_calls
 
 
 def test_modern_outputs_record_basis_reconstruction_metadata(europe_country_file: Path) -> None:
@@ -8040,7 +8016,7 @@ def test_modern_paris_flux_outputs_use_retained_basis_operator(
         "flux_total_posterior_inversion_grid",
     ):
         assert flux_outputs[name].dtype == np.dtype("float32")
-    assert operator.interpolate_calls
+    assert operator.native_calls
     assert operator.basis_matrix_accesses
 
 
@@ -8061,7 +8037,7 @@ def test_modern_paris_flux_outputs_backfill_unsanitized_nonfinite_flux(europe_co
 
 def test_observation_inputs_for_outputs_stay_dataset_based() -> None:
     """Modern postprocessing avoids split legacy observation fields."""
-    model_spec, output_spec, run_spec = _minimal_output_specs()
+    model_spec, _, run_spec = _minimal_output_specs()
     inv_inputs = _minimal_output_inv_inputs()
     inv_inputs["mf_prior_factor"] = ("nmeasure", [0.2])
     inv_inputs["mf_prior_upper_level_factor"] = ("nmeasure", [0.3])
@@ -8168,13 +8144,13 @@ def test_paris_baseline_convention_reports_offset_only_as_baseline(
     """An offset-only model reports the bias separately and as its full baseline."""
     base = _modern_postprocessing_inv_out(europe_country_file)
     groups: dict[str, xr.Dataset] = {}
-    for group_name in base.trace.groups():
-        source_group = getattr(base.trace, group_name)
+    for group_name, node in base.trace.children.items():
+        source_group = node.to_dataset()
         group = source_group.drop_vars("mu_bc", errors="ignore")
         if group_name in {"posterior", "prior"}:
             group["offset"] = xr.full_like(source_group["mu_bc"], 0.2)
         groups[group_name] = group
-    trace = cast(Any, az.InferenceData)(**groups)
+    trace = make_trace(**groups)
     inv_out = replace(
         base,
         trace=trace,
@@ -8256,8 +8232,10 @@ def test_paris_output_processes_modern_output(europe_country_file: Path) -> None
     """Real PARIS postprocessing accepts modern output directly."""
     from openghg_inversions.postprocessing.make_paris_outputs import make_paris_outputs
 
+    inv_out = _modern_postprocessing_inv_out(europe_country_file)
+    inv_out.model_metadata["domain"] = "EUROPE-6km"
     flux_outputs, conc_outputs = make_paris_outputs(
-        _modern_postprocessing_inv_out(europe_country_file),
+        inv_out,
         country_file=europe_country_file,
         obs_avg_period="1h",
         domain="europe",
@@ -8272,6 +8250,9 @@ def test_paris_output_processes_modern_output(europe_country_file: Path) -> None
         assert conc_outputs[name].dtype == np.dtype("float32")
     for name in ("flux_total_posterior", "country_flux_total_posterior"):
         assert flux_outputs[name].dtype == np.dtype("float32")
+    for output in (conc_outputs, flux_outputs):
+        assert output.attrs["species"] == "ch4"
+        assert output.attrs["domain"] == "EUROPE-6km"
 
 
 def test_paris_concentration_without_column_prior_factors_leaves_bc_unchanged(
@@ -8441,10 +8422,10 @@ def test_latest_paris_concentration_fills_missing_bc_with_nan(europe_country_fil
 
     base = _modern_postprocessing_inv_out(europe_country_file)
     groups = {}
-    for group in base.trace.groups():
-        ds = base.trace[group]
+    for group, node in base.trace.children.items():
+        ds = node.to_dataset()
         groups[group] = ds.drop_vars([name for name in ("mu_bc", "hbc") if name in ds], errors="ignore")
-    trace = cast(Any, az.InferenceData)(**groups)
+    trace = make_trace(**groups)
     inv_out = InversionOutput(
         trace=trace,
         inv_inputs=base.inv_inputs,
@@ -8470,7 +8451,7 @@ def test_latest_paris_concentration_fills_missing_bc_with_nan(europe_country_fil
 
 def test_standard_basic_output_uses_modern_postprocessing_without_legacy_adapter(monkeypatch) -> None:
     """RHIME basic postprocessing consumes modern output without legacy adapters."""
-    model_spec, output_spec, run_spec = _minimal_output_specs(output_format="basic")
+    model_spec, _, run_spec = _minimal_output_specs(output_format="basic")
     prepared = RhimePreparedInputs(
         inv_inputs=_minimal_output_inv_inputs(),
         basis_functions=_fake_basis_functions(),
@@ -8478,15 +8459,11 @@ def test_standard_basic_output_uses_modern_postprocessing_without_legacy_adapter
     )
     captured: dict[str, Any] = {}
 
-    def fail_inferpymc_postprocessouts(**kwargs: Any) -> None:
-        raise AssertionError("run_rhime output helpers must not call inferpymc_postprocessouts")
-
     def fake_basic_output(inv_out: InversionOutput, country_file: str | None = None) -> xr.Dataset:
         captured["inv_out"] = inv_out
         captured["country_file"] = country_file
         return xr.Dataset({"ok": ((), 1)})
 
-    monkeypatch.setattr(legacy_mcmc, "inferpymc_postprocessouts", fail_inferpymc_postprocessouts)
     monkeypatch.setattr("openghg_inversions.postprocessing.make_outputs.basic_output", fake_basic_output)
 
     bundle = _result_for_outputs(
@@ -8505,18 +8482,59 @@ def test_standard_basic_output_uses_modern_postprocessing_without_legacy_adapter
     assert "basic" in bundle.outputs
 
 
-def test_standard_paris_output_uses_modern_postprocessing_without_legacy_adapter(monkeypatch) -> None:
-    """RHIME PARIS postprocessing consumes modern output without legacy adapters."""
-    model_spec, output_spec, run_spec = _minimal_output_specs(output_format="paris")
+def test_run_hbmcmc_chain_selection_does_not_truncate_archived_trace(monkeypatch) -> None:
+    """Compatibility selection affects derived products, not the modern artifact."""
+    model_spec, _, run_spec = _minimal_output_specs(output_format="basic")
     prepared = RhimePreparedInputs(
         inv_inputs=_minimal_output_inv_inputs(),
         basis_functions=_fake_basis_functions(),
         site_metadata=_prepared_site_metadata(),
     )
-    captured: dict[str, Any] = {}
+    idata = _minimal_output_idata()
+    groups = {}
+    for group_name, node in idata.children.items():
+        group = node.to_dataset()
+        if "chain" in group.dims:
+            groups[group_name] = xr.concat(
+                [group.isel(chain=0, drop=True), group.isel(chain=0, drop=True)],
+                dim=xr.IndexVariable("chain", [0, 1]),
+            )
+        else:
+            groups[group_name] = group
+    bundle = _result_for_outputs(run_spec, make_trace(**groups), model_spec=model_spec)
+    captured: dict[str, InversionOutput] = {}
 
-    def fail_inferpymc_postprocessouts(**kwargs: Any) -> None:
-        raise AssertionError("run_rhime output helpers must not call inferpymc_postprocessouts")
+    def fake_basic_output(inv_out: InversionOutput, country_file: str | None = None) -> xr.Dataset:
+        captured["inv_out"] = inv_out
+        return xr.Dataset({"ok": ((), 1)})
+
+    monkeypatch.setattr("openghg_inversions.postprocessing.make_outputs.basic_output", fake_basic_output)
+
+    rhime_outputs.make_standard_rhime_outputs(
+        result=bundle,
+        prepared=prepared,
+        compatibility_output_chain=0,
+    )
+
+    assert bundle.inv_out is not None
+    assert bundle.inv_out.trace.posterior.sizes["chain"] == 2
+    assert captured["inv_out"].trace.posterior.sizes["chain"] == 1
+
+
+def test_standard_paris_output_uses_modern_postprocessing_without_legacy_adapter(monkeypatch) -> None:
+    """RHIME PARIS postprocessing consumes modern output without legacy adapters."""
+    model_spec, _, run_spec = _minimal_output_specs(output_format="paris")
+    site_metadata = _prepared_site_metadata().assign(
+        transport_model=("site", ["FLEXPART"]),
+        transport_model_version=("site", [""]),
+        met_model=("site", ["ECMWF IFS HRES"]),
+    )
+    prepared = RhimePreparedInputs(
+        inv_inputs=_minimal_output_inv_inputs(),
+        basis_functions=_fake_basis_functions(),
+        site_metadata=site_metadata,
+    )
+    captured: dict[str, Any] = {}
 
     def fake_make_paris_outputs(
         inv_out: InversionOutput,
@@ -8531,7 +8549,6 @@ def test_standard_paris_output_uses_modern_postprocessing_without_legacy_adapter
         captured["obs_avg_period"] = obs_avg_period
         return xr.Dataset({"flux": ((), 1)}), xr.Dataset({"conc": ((), 1)})
 
-    monkeypatch.setattr(legacy_mcmc, "inferpymc_postprocessouts", fail_inferpymc_postprocessouts)
     monkeypatch.setattr(
         "openghg_inversions.postprocessing.make_paris_outputs.make_paris_outputs",
         fake_make_paris_outputs,
@@ -8550,10 +8567,54 @@ def test_standard_paris_output_uses_modern_postprocessing_without_legacy_adapter
     assert captured["country_file"] == "countries.json"
     assert captured["domain"] == "EUROPE"
     assert captured["obs_avg_period"] == "1h"
+    assert bundle.inv_out.model_metadata["footprint_provenance"]["TAC"] == {
+        "transport_model": "FLEXPART",
+        "transport_model_version": "",
+        "met_model": "ECMWF IFS HRES",
+    }
     assert bundle.output_metadata["inversion_output_contract"] == "modern"
     assert bundle.output_metadata["postprocessing_input_contract"] == "modern_inversion_output"
     assert "paris_flux" in bundle.outputs
     assert "paris_concentration" in bundle.outputs
+
+
+def test_standard_latest_paris_output_writes_index_as_unlimited_dimension(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The latest concentration schema stores time on its index dimension."""
+    model_spec, _, run_spec = _minimal_output_specs(output_format="paris")
+    run_spec = replace(
+        run_spec,
+        output=replace(
+            run_spec.output,
+            output_path=str(tmp_path),
+            paris_postprocessing_kwargs={"template_version": "latest"},
+        ),
+    )
+    prepared = RhimePreparedInputs(
+        inv_inputs=_minimal_output_inv_inputs(),
+        basis_functions=_fake_basis_functions(),
+        site_metadata=_prepared_site_metadata(),
+    )
+    concentration = xr.Dataset(
+        {"mf_observed": ("index", [1.0])},
+        coords={"time": ("index", pd.to_datetime(["2019-01-01"]))},
+    )
+    flux = xr.Dataset({"flux_total_prior": ("time", [1.0])}, coords={"time": ["2019-01-01"]})
+    monkeypatch.setattr(
+        "openghg_inversions.postprocessing.make_paris_outputs.make_paris_outputs",
+        lambda *args, **kwargs: (flux, concentration),
+    )
+
+    bundle = _result_for_outputs(run_spec, _minimal_output_idata(), model_spec=model_spec)
+    rhime_outputs.make_standard_rhime_outputs(result=bundle, prepared=prepared)
+
+    with xr.open_dataset(bundle.output_metadata["paris_concentration_path"]) as saved_concentration:
+        assert saved_concentration.encoding["unlimited_dims"] == {"index"}
+        assert saved_concentration.time.dims == ("index",)
+    with xr.open_dataset(bundle.output_metadata["paris_flux_path"]) as saved_flux:
+        assert saved_flux.encoding["unlimited_dims"] == {"time"}
 
 
 @pytest.mark.rhime_contract
@@ -8587,12 +8648,12 @@ def test_standard_legacy_output_uses_modern_inversion_output(
         basis_functions=modern_output.basis_functions,
         site_metadata=_prepared_site_metadata(),
     )
-    idata = cast(Any, az.InferenceData)(
+    idata = make_trace(
         **{
-            group: modern_output.trace[group].drop_vars("hx")
+            group: node.to_dataset().drop_vars("hx")
             if group == "constant_data"
-            else modern_output.trace[group]
-            for group in modern_output.trace.groups()
+            else node.to_dataset()
+            for group, node in modern_output.trace.children.items()
         }
     )
 
@@ -8617,75 +8678,6 @@ def test_standard_legacy_output_uses_modern_inversion_output(
         assert reloaded.sizes["nmeasure"] == legacy_output.sizes["nmeasure"]
         assert "fluxmode" in reloaded
         assert "countrymean" in reloaded
-
-
-def test_save_inferencedata_prefers_h5netcdf(tmp_path: Path) -> None:
-    class FakeInferenceData:
-        def __init__(self) -> None:
-            self.calls = []
-
-        def to_netcdf(self, path, **kwargs):
-            self.calls.append((path, kwargs))
-
-    idata = FakeInferenceData()
-    path = tmp_path / "trace.nc"
-
-    rhime_outputs._save_inferencedata(idata, path)  # type: ignore[reportArgumentType]
-
-    assert idata.calls == [(str(path), {"engine": "h5netcdf", "compress": True})]
-
-
-def test_save_inferencedata_falls_back_after_h5netcdf_failure(tmp_path: Path) -> None:
-    class FakeInferenceData:
-        def __init__(self) -> None:
-            self.calls = []
-
-        def to_netcdf(self, path, **kwargs):
-            self.calls.append((path, kwargs))
-            if kwargs.get("engine") == "h5netcdf":
-                raise ValueError("h5netcdf unavailable")
-
-    idata = FakeInferenceData()
-    path = tmp_path / "trace.nc"
-
-    rhime_outputs._save_inferencedata(idata, path)  # type: ignore[reportArgumentType]
-
-    assert idata.calls == [
-        (str(path), {"engine": "h5netcdf", "compress": True}),
-        (str(path), {"compress": True}),
-    ]
-
-
-@pytest.mark.rhime_contract
-def test_save_inferencedata_preserves_burn_attrs_and_resets_multiindex_coords(tmp_path: Path) -> None:
-    """Standalone trace saving preserves burn metadata and serializable coordinates."""
-    nmeasure_index = pd.MultiIndex.from_arrays(
-        [["TAC"], pd.to_datetime(["2019-01-01"])],
-        names=["site", "time"],
-    )
-    posterior_predictive = xr.Dataset(
-        {"y": (("chain", "draw", "nmeasure"), np.ones((1, 1, 1)))},
-        coords={
-            "chain": [0],
-            "draw": [0],
-            **xr.Coordinates.from_pandas_multiindex(nmeasure_index, "nmeasure"),
-        },
-    )
-    path = tmp_path / "trace.nc"
-
-    idata = az.InferenceData(posterior_predictive=posterior_predictive)
-    idata.attrs["burn"] = 1000
-    cast(Any, idata).posterior_predictive.attrs["burn"] = 1000
-
-    rhime_outputs._save_inferencedata(idata, path)
-    reloaded = az.from_netcdf(path)
-
-    reloaded_posterior_predictive = cast(Any, reloaded).posterior_predictive
-    assert reloaded.attrs["burn"] == 1000
-    assert reloaded_posterior_predictive.attrs["burn"] == 1000
-    assert "site" in reloaded_posterior_predictive.coords
-    assert "time" in reloaded_posterior_predictive.coords
-    assert not isinstance(reloaded_posterior_predictive.indexes.get("nmeasure"), pd.MultiIndex)
 
 
 def test_supported_parameter_validation_accepts_sigma_per_site(tmp_path: Path) -> None:
@@ -8779,7 +8771,7 @@ def test_run_rhime_api_smoke(
         model: pm.Model,
         *,
         variable_roles: dict[str, str] | None = None,
-    ) -> az.InferenceData:
+    ) -> xr.DataTree:
         """Return deterministic posteriors after checking predictive role selection."""
         assert self.draws == 1
         assert variable_roles is not None
@@ -8927,7 +8919,7 @@ def test_run_rhime_multisector_api_smoke(
         model: pm.Model,
         *,
         variable_roles: dict[str, str] | None = None,
-    ) -> az.InferenceData:
+    ) -> xr.DataTree:
         """Return deterministic scale factors after checking declared roles."""
         assert self.draws == 1
         assert variable_roles is not None
@@ -9159,3 +9151,71 @@ def test_cli_run_rhime_multisector_passes_config(monkeypatch, tmp_path: Path) ->
 def test_safe_pymc_name_sanitizes_source_names() -> None:
     assert safe_pymc_name("total-ukghg-edgar7") == "total_ukghg_edgar7"
     assert safe_pymc_name("Sector 2") == "sector_2"
+
+
+def test_rhime_acquisition_forwards_satellite_footprint_mode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The public runner stage must not drop the time-resolved selector."""
+    captured: dict[str, Any] = {}
+    expected = object()
+
+    def fake_prepare_merged_data(**kwargs: Any) -> object:
+        captured.update(kwargs)
+        return expected
+
+    monkeypatch.setattr(prep_module, "_prepare_merged_data", fake_prepare_merged_data)
+    data_args = {
+        **rhime_params.RHIME_PREPARATION_DEFAULTS,
+        "species": "co2",
+        "sites": ["OCO2-EASTASIA"],
+        "domain": "EASTASIA",
+        "averaging_period": ["1H"],
+        "start_date": "2022-03-31 04:00:00",
+        "end_date": "2022-04-01 04:08:10",
+        "output_name": "satellite_multisector",
+        "flux_sources": ["anth", "resp", "gpp_atm"],
+        "time_resolved": [True],
+    }
+
+    actual = rhime_preparation.retrieve_or_reload_rhime_data(data_args, multisector=True)
+
+    assert actual is expected
+    assert captured["time_resolved"] == [True]
+    assert captured["split_by_sectors"] is True
+
+
+def test_satellite_rhime_template_matches_modern_input_schema() -> None:
+    """The satellite example uses the same keys and value shapes as modern RHIME."""
+    import openghg_inversions.config.config as config_module
+
+    template_dir = Path(__file__).parents[1] / "openghg_inversions" / "config" / "templates"
+    generic_path = template_dir / "rhime_template.ini"
+    satellite_path = template_dir / "rhime_satellite_template.ini"
+    generic = config_module.all_param(str(generic_path), exclude_not_found=False, allow_new=True)
+    satellite = config_module.all_param(str(satellite_path), exclude_not_found=False, allow_new=True)
+
+    assert set(satellite) - set(generic) == {"pollution_events_from_obs"}
+    assert set(generic) <= set(satellite)
+    assert satellite["sites"] == ["GOSAT-BRAZIL"]
+    assert satellite["platform"] == ["satellite"]
+    assert satellite["inlet"] == ["column"]
+    assert satellite["fp_height"] == ["column"]
+    assert satellite["max_level"] == [3]
+    assert satellite["output_format"] == "paris"
+    assert satellite["paris_postprocessing_kwargs"] == {
+        "template_version": "latest",
+        "country_selections": None,
+    }
+    assert "emissions_name" not in satellite
+    assert "nit" not in satellite
+    assert "nchain" not in satellite
+
+    normalized = params_from_config(satellite_path)
+    setup = rhime_params.make_rhime_runner_setup(
+        params=normalized,
+        multisector=False,
+    )
+    assert setup.run_spec.sites == ("GOSAT-BRAZIL",)
+    assert setup.data_args["platform"] == ["satellite"]
+    assert setup.data_args["max_level"] == [3]

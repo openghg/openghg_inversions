@@ -613,6 +613,7 @@ def add_fixed_ou_gaussian_likelihood(
     fixed_site_amplitudes: float | Mapping[str, float] | None = None,
     site_amplitude_prior: Mapping[str, Any] | None = None,
     output_dim: str = "nmeasure",
+    sigma_alignment: SigmaAlignment | None = None,
 ) -> TensorVariable:
     """Add fixed-tau, within-site OU mismatch to a Gaussian observation model.
 
@@ -621,7 +622,8 @@ def add_fixed_ou_gaussian_likelihood(
     an explicit prior in the observations' concentration units. A positive OU
     term may make a singular fixed base valid. Fixed amplitudes must produce
     strictly positive generalized base-plus-OU mode variances before the
-    low-rank update.
+    low-rank update. ``sigma_alignment`` may explicitly map a labelled joint
+    observation axis to species/site groups; by default groups are sites.
     """
     if fixed_site_amplitudes is not None and site_amplitude_prior is not None:
         raise ValueError("Pass either `fixed_site_amplitudes` or `site_amplitude_prior`, not both.")
@@ -639,7 +641,11 @@ def add_fixed_ou_gaussian_likelihood(
         raise ValueError(
             "The fixed-OU likelihood requires observation-aligned 'site' and 'time' coordinates."
         )
-    alignment = SigmaAlignment.from_observations(observations)
+    alignment = (
+        SigmaAlignment.from_observations(observations)
+        if sigma_alignment is None
+        else sigma_alignment
+    )
     site_index = alignment.site_index.rename("ou_site_index")
     site_coord = alignment.site_labels.rename({"nsigma_site": "ou_site"}).rename("ou_site")
     site_labels = tuple(str(label) for label in site_coord.values)

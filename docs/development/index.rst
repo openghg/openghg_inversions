@@ -9,6 +9,8 @@ development. They are normative for new RHIME work.
 
    rhime_model_development
    validation_and_xarray
+   documentation
+   releasing
 
 Scientific notation in prose
 ----------------------------

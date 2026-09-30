@@ -66,6 +66,8 @@ class Co2O2PreparedInputs:
         retained_prior: Correlated prior over shared GPP/TER/FF and separate
             CO2- and O2-ocean retained states.
         provenance: JSON-serializable preparation and data provenance.
+        boundary_sensitivity: Optional mapping keyed by co2 and o2, containing
+            native-channel H_bc arrays (observation, boundary state).
     """
 
     observations: xr.DataArray
@@ -77,6 +79,7 @@ class Co2O2PreparedInputs:
     aggregation_error: AggregationError
     retained_prior: CorrelatedLognormalPrior
     provenance: Mapping[str, Any] = field(default_factory=dict)
+    boundary_sensitivity: Mapping[str, xr.DataArray] = field(default_factory=dict)
 
 
 def _axis(array: xr.DataArray, name: str) -> str:
@@ -90,9 +93,7 @@ def _axis(array: xr.DataArray, name: str) -> str:
 
 def _same_axis(reference: xr.DataArray, candidate: xr.DataArray, name: str) -> None:
     dim = str(reference.dims[0])
-    if candidate.dims != (dim,) or not _same_index(
-        candidate.indexes[dim], reference.indexes[dim]
-    ):
+    if candidate.dims != (dim,) or not _same_index(candidate.indexes[dim], reference.indexes[dim]):
         raise ValueError(f"{name} labels must exactly match its observations.")
 
 
@@ -105,6 +106,11 @@ def _state(prior: CorrelatedLognormalPrior) -> xr.DataArray:
     mean = prior.mean
     if any(name not in mean.coords for name in ("source", "tracer_scope")):
         raise ValueError("Retained states require source and tracer_scope coordinates.")
+    sources = {str(source) for source in mean["source"].values}
+    if len(sources) != len({source.lower() for source in sources}):
+        raise ValueError(
+            f"Retained source labels must use consistent spelling; found case variants in {sorted(sources)}."
+        )
     pairs = {
         (str(source).lower(), str(scope).lower())
         for source, scope in zip(mean["source"].values, mean["tracer_scope"].values, strict=True)
@@ -246,11 +252,11 @@ def _stack(
 ) -> xr.DataArray:
     """Stack labelled channel vectors while preserving their lazy payloads."""
     channels = {
-        species: value.rename(name).assign_coords(
+        species: value.rename(name)
+        .assign_coords(
             observation_units=(value.dims[0], np.full(value.size, units)),
-        ).rename(
-            {value.dims[0]: "channel_observation"}
         )
+        .rename({value.dims[0]: "channel_observation"})
         for species, value, units in (
             ("co2", co2, co2_units),
             ("o2", o2, o2_units),
@@ -301,14 +307,12 @@ def _joint_covariance(
     covariance = covariance.drop_indexes(("observation", "observation_cov")).drop_vars(
         ("observation", "observation_cov")
     )
-    column_index = observation_index.set_names(
-        [f"{name}_cov" for name in observation_index.names]
+    column_index = observation_index.set_names([f"{name}_cov" for name in observation_index.names])
+    return (
+        covariance.assign_coords(xr.Coordinates.from_pandas_multiindex(observation_index, "observation"))
+        .assign_coords(xr.Coordinates.from_pandas_multiindex(column_index, "observation_cov"))
+        .rename(AGGREGATION_ERROR_COVARIANCE)
     )
-    return covariance.assign_coords(
-        xr.Coordinates.from_pandas_multiindex(observation_index, "observation")
-    ).assign_coords(
-        xr.Coordinates.from_pandas_multiindex(column_index, "observation_cov")
-    ).rename(AGGREGATION_ERROR_COVARIANCE)
 
 
 def prepare_co2_o2_inputs(
@@ -328,6 +332,7 @@ def prepare_co2_o2_inputs(
     co2_units: str,
     o2_units: str,
     provenance: Mapping[str, Any] | None = None,
+    boundary_sensitivity: Mapping[str, xr.DataArray] | None = None,
 ) -> Co2O2PreparedInputs:
     """Validate coherent-reduction channel products and form one joint likelihood.
 
@@ -373,10 +378,14 @@ def prepare_co2_o2_inputs(
             observation units.
         retained_prior: Retained correlated prior whose indexed state axis has
             ``source`` and ``tracer_scope`` coordinates for shared GPP/TER/FF,
-            CO2 ocean, and O2 ocean states.
+            CO2 ocean, and O2 ocean states. Repeated source labels must use
+            one consistent spelling, including case.
         co2_units: Non-empty units label for CO2 observations and sensitivity rows.
         o2_units: Non-empty units label for O2 observations and sensitivity rows.
         provenance: Optional JSON-serializable preparation provenance.
+        boundary_sensitivity: Optional co2/o2 mapping of labelled H_bc arrays
+            on native observation rows and one unique boundary-state axis.
+            Channels must currently have identical units. Payloads remain borrowed.
 
     Returns:
         Labelled, backend-neutral joint inputs. Observation vectors, affine
@@ -386,7 +395,8 @@ def prepare_co2_o2_inputs(
 
     Raises:
         ValueError: If units or provenance are invalid; observation, sensitivity,
-            state, ratio, or covariance dimensions/indexes disagree; the
+            state, ratio, or covariance dimensions/indexes disagree; source
+            labels contain inconsistent case variants; the
             ratio exactly-one, direction, sign, provenance, or numerical-value
             contract fails; cross-tracer ocean loadings are nonzero; or the
             assembled dense covariance is non-finite, asymmetric, or not
@@ -399,6 +409,32 @@ def prepare_co2_o2_inputs(
     except (TypeError, ValueError) as exc:
         raise ValueError("CO2/O2 provenance must be JSON serializable.") from exc
 
+    boundary_sensitivity = dict(boundary_sensitivity or {})
+    if set(boundary_sensitivity) - {"co2", "o2"}:
+        raise ValueError("boundary_sensitivity must be keyed only by co2 and o2.")
+    if boundary_sensitivity and co2_units != o2_units:
+        raise ValueError("Linked boundary sensitivity currently requires identical channel units.")
+    for channel, observations in (("co2", co2_observations), ("o2", o2_observations)):
+        if channel in boundary_sensitivity:
+            boundary = boundary_sensitivity[channel]
+            if boundary.ndim != 2 or boundary.dims[0] != observations.dims[0]:
+                raise ValueError(
+                    f"{channel} boundary sensitivity requires native observation rows and one state axis."
+                )
+            boundary, _ = xr.align(boundary, observations, join="exact", copy=False)
+            declared_units = boundary.attrs.get("units")
+            if declared_units is not None and declared_units not in (
+                co2_units,
+                f"{co2_units} per dimensionless boundary scale",
+            ):
+                raise ValueError(f"{channel} boundary sensitivity units must match its channel units.")
+            state_dim = boundary.dims[1]
+            if state_dim not in boundary.indexes or not boundary.indexes[state_dim].is_unique:
+                raise ValueError(f"{channel} boundary states require unique labels.")
+            boundary_sensitivity[channel] = boundary.assign_attrs(
+                units=f"{co2_units} per dimensionless boundary scale"
+            )
+
     co2_dim = _axis(co2_observations, "CO2 observations")
     o2_dim = _axis(o2_observations, "O2 observations")
     if co2_dim == o2_dim:
@@ -408,9 +444,7 @@ def prepare_co2_o2_inputs(
     state_mean = _state(retained_prior)
     _sensitivity(co2_sensitivity, co2_observations, state_mean, "CO2")
     _sensitivity(o2_sensitivity, o2_observations, state_mean, "O2")
-    o2_co2_flux_ratio_unavailable_reason = str(
-        o2_co2_flux_ratio_unavailable_reason or ""
-    ).strip() or None
+    o2_co2_flux_ratio_unavailable_reason = str(o2_co2_flux_ratio_unavailable_reason or "").strip() or None
     o2_co2_flux_ratio = _ratio_provenance(
         o2_co2_flux_ratio,
         o2_co2_flux_ratio_unavailable_reason,
@@ -492,9 +526,11 @@ def prepare_co2_o2_inputs(
             for name, coordinate in sensitivity_coords.items()
             if name not in state_index.names
         }
-    co2_sensitivity = co2_sensitivity.rename("co2_effective_sensitivity").assign_coords(
-        **sensitivity_coords,
-    ).assign_attrs(units=f"{co2_units} per dimensionless flux scale")
+    co2_sensitivity = (
+        co2_sensitivity.rename("co2_effective_sensitivity")
+        .assign_coords(sensitivity_coords)
+        .assign_attrs(units=f"{co2_units} per dimensionless flux scale")
+    )
     ratio_direction = "O2 flux per CO2 flux"
     ratio_sign = "signed; positive CO2 flux has negative O2 loading"
     ratio_record: dict[str, object] = {
@@ -511,15 +547,17 @@ def prepare_co2_o2_inputs(
         )
     else:
         ratio_record["unavailable_reason"] = o2_co2_flux_ratio_unavailable_reason
-    o2_sensitivity = o2_sensitivity.rename("o2_effective_sensitivity").assign_coords(
-        **sensitivity_coords,
-    ).assign_attrs(
-        units=f"{o2_units} per dimensionless flux scale",
-        oxidation_ratio_convention="embedded_signed_o2_per_co2",
-        oxidation_ratio_direction=ratio_direction,
-        oxidation_ratio_sign=ratio_sign,
-        oxidation_ratio_scope="shared GPP/TER/FF states; O2 ocean applied directly",
-        oxidation_ratio_provenance=json.dumps(ratio_record, sort_keys=True),
+    o2_sensitivity = (
+        o2_sensitivity.rename("o2_effective_sensitivity")
+        .assign_coords(sensitivity_coords)
+        .assign_attrs(
+            units=f"{o2_units} per dimensionless flux scale",
+            oxidation_ratio_convention="embedded_signed_o2_per_co2",
+            oxidation_ratio_direction=ratio_direction,
+            oxidation_ratio_sign=ratio_sign,
+            oxidation_ratio_scope="shared GPP/TER/FF states; O2 ocean applied directly",
+            oxidation_ratio_provenance=json.dumps(ratio_record, sort_keys=True),
+        )
     )
     covariance.attrs["units"] = "observation_units * observation_units_cov"
     aggregation_error = resolve_aggregation_error(
@@ -542,4 +580,5 @@ def prepare_co2_o2_inputs(
         aggregation_error=aggregation_error,
         retained_prior=retained_prior,
         provenance=prepared_provenance,
+        boundary_sensitivity=boundary_sensitivity,
     )

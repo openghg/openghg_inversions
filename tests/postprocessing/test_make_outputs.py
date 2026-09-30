@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Callable, cast
+from typing import Callable
 
-import arviz as az
 import numpy as np
 import pytest
 import xarray as xr
 
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.flux_sanitization import FluxNonFiniteMetadata, NONFINITE_POLICY_ZERO_FILL
+from openghg_inversions.postprocessing._basis_products import reconstruct_flux_stats
 from openghg_inversions.postprocessing import make_outputs
 from openghg_inversions.postprocessing.countries import Countries
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
@@ -20,6 +20,7 @@ from openghg_inversions.postprocessing.make_outputs import (
     make_multisector_country_trace_outputs,
     make_multisector_flux_trace_outputs,
 )
+from tests.helpers import make_trace
 
 
 def _flux_nonfinite_metadata(data: xr.DataArray | xr.Dataset) -> FluxNonFiniteMetadata:
@@ -27,6 +28,39 @@ def _flux_nonfinite_metadata(data: xr.DataArray | xr.Dataset) -> FluxNonFiniteMe
     metadata = FluxNonFiniteMetadata.from_attrs(data.attrs)
     assert metadata is not None
     return metadata
+
+
+def test_flux_reconstruction_does_not_guess_recipe_specific_state_dimension() -> None:
+    """Generic reconstruction requires recipes to normalize their state dimensions."""
+    basis = xr.DataArray(
+        [[1, 2]],
+        dims=("lat", "lon"),
+        coords={"lat": [50.0], "lon": [-2.0, -1.0]},
+    )
+    flux = xr.ones_like(basis, dtype=float).rename("flux")
+    basis_functions = BasisFunctions.from_flat_basis(
+        basis,
+        flux,
+        operator_kwargs={"state_dim": "region"},
+    )
+    stats = xr.Dataset(
+        {
+            "x_posterior_mean": ("inner_region", [2.0, 3.0]),
+            "x_posterior_quantile": (
+                ("inner_region", "quantile"),
+                [[1.5, 2.5], [2.5, 3.5]],
+            ),
+        },
+        coords={"inner_region": [0, 1], "quantile": [0.16, 0.84]},
+    )
+
+    with pytest.raises(ValueError, match="Could not find a basis state dimension"):
+        reconstruct_flux_stats(
+            basis_functions,
+            flux,
+            stats,
+            report_flux_on_inversion_grid=False,
+        )
 
 
 def test_multisector_flux_outputs_reconstruct_sector_and_total_flux(
@@ -129,13 +163,20 @@ def test_multisector_mode_kde_scale_factors_use_each_sector_state_dimension(
         operator_kwargs={"state_dim": "state"},
     )
     inv_out = multisector_postprocessing_inv_out(basis_functions)
-    inv_out.trace = az.from_dict(
-        posterior={
-            "x_ff": np.array([[[1.0, 2.0], [1.5, 2.5], [2.0, 3.0], [2.5, 3.5]]]),
-            "x_ocean": np.array([[[0.5], [1.0], [1.5], [2.0]]]),
-        },
-        coords={"state_ff": [0, 1], "state_ocean": [0]},
-        dims={"x_ff": ["state_ff"], "x_ocean": ["state_ocean"]},
+    inv_out.trace = make_trace(
+        posterior=xr.Dataset(
+            {
+                "x_ff": (
+                    ("chain", "draw", "state_ff"),
+                    np.array([[[1.0, 2.0], [1.5, 2.5], [2.0, 3.0], [2.5, 3.5]]]),
+                ),
+                "x_ocean": (
+                    ("chain", "draw", "state_ocean"),
+                    np.array([[[0.5], [1.0], [1.5], [2.0]]]),
+                ),
+            },
+            coords={"chain": [0], "draw": np.arange(4), "state_ff": [0, 1], "state_ocean": [0]},
+        )
     )
 
     outputs = make_flux_outputs(
@@ -174,10 +215,9 @@ def test_multisector_flux_total_preserves_all_missing_draws(
 ) -> None:
     """Sector totals keep padding from unequal trace-group draw counts missing."""
     inv_out = multisector_postprocessing_inv_out()
-    inference_data = cast(Any, inv_out.trace)
-    prior = inference_data.prior
+    prior = inv_out.trace_group("prior")
     extra_prior_draw = prior.isel(draw=[0]).assign_coords(draw=[prior.sizes["draw"]])
-    inference_data.prior = xr.concat([prior, extra_prior_draw], dim="draw")
+    inv_out.trace["prior"] = xr.concat([prior, extra_prior_draw], dim="draw")
 
     trace = make_multisector_flux_trace_outputs(
         inv_out,
@@ -204,9 +244,7 @@ def test_multisector_flux_total_requires_each_sector_per_draw(
     ) -> xr.Dataset:
         del output, report_flux_on_inversion_grid
         values = (
-            np.asarray([0.0, 0.0, 0.0])
-            if sector.variable_suffix == "ff"
-            else np.asarray([1.0, 2.0, np.nan])
+            np.asarray([0.0, 0.0, 0.0]) if sector.variable_suffix == "ff" else np.asarray([1.0, 2.0, np.nan])
         )
         return xr.Dataset({f"flux_{sector.variable_suffix}_posterior": ("draw", values)})
 
@@ -242,9 +280,7 @@ def test_multisector_country_total_requires_each_sector_per_draw(
     ) -> xr.Dataset:
         del output
         values = (
-            np.asarray([0.0, 0.0, 0.0])
-            if sector.variable_suffix == "ff"
-            else np.asarray([1.0, 2.0, np.nan])
+            np.asarray([0.0, 0.0, 0.0]) if sector.variable_suffix == "ff" else np.asarray([1.0, 2.0, np.nan])
         )
         return xr.Dataset({"x_posterior": ("draw", values)})
 

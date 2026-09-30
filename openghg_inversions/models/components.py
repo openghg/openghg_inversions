@@ -374,6 +374,7 @@ def add_state_vector(
     if activity.n_active:
         active_dim = f"{state_dim}_{var_name}_active"
         active_index = state_coord.to_index()[active_indices]
+        active_coords: xr.Coordinates | dict[str, Any]
         if isinstance(active_index, pd.MultiIndex):
             active_index = active_index.set_names(
                 [f"{name}_{var_name}_active" for name in active_index.names]
@@ -584,6 +585,7 @@ def prepare_active_correlated_lognormal_prior(
     active_indices = activity.active_indices
     active_dim = f"{state_dim}_{var_name}_active"
     active_index = mean.coords[state_dim].to_index()[active_indices]
+    active_coords: xr.Coordinates | dict[str, Any]
     if isinstance(active_index, pd.MultiIndex):
         active_index = active_index.set_names(
             [f"{name}_{var_name}_active" for name in active_index.names]
@@ -648,10 +650,19 @@ def _add_offset_component_result(
     output_dim: str = "nmeasure",
     drop_first: bool = False,
     per_site: bool = True,
+    namespace: str = "",
 ) -> OffsetComponentResult:
     """Build one offset component and return its labelled design and graph terms."""
     output_dim = str(output_dim)
     output_coord = observations.coords[output_dim]
+    if namespace:
+        output_index = observations.indexes.get(output_dim)
+        if isinstance(output_index, pd.MultiIndex):
+            output_coord = xr.Coordinates.from_pandas_multiindex(
+                output_index.set_names([f"{namespace}{name}" for name in output_index.names]), output_dim
+            )[output_dim]
+        add_coords({output_dim: output_coord})
+    term_dim = f"{namespace}offset_term"
     if not per_site:
         if offset_freq is not None:
             raise ValueError("Global offsets do not accept an offset frequency.")
@@ -659,8 +670,8 @@ def _add_offset_component_result(
             raise ValueError("Global offsets do not support `drop_first=True`.")
         design = xr.DataArray(
             np.ones((observations.sizes[output_dim], 1), dtype=np.float64),
-            dims=(output_dim, "offset_term"),
-            coords={output_dim: output_coord, "offset_term": ["global"]},
+            dims=(output_dim, term_dim),
+            coords={output_dim: output_coord, term_dim: ["global"]},
             name="offset_design",
         )
         coefficient = parse_prior(var_name, prior_args)
@@ -684,7 +695,7 @@ def _add_offset_component_result(
     if bool(pd.isna(observations.coords["site"].values).any()):
         raise ValueError("Offset observations must have non-missing site labels.")
     site_indicator = make_site_indicator(observations.coords["site"])
-    site_indicator = site_indicator.rename("site_indicator").transpose(output_dim)
+    site_indicator = site_indicator.rename(f"{namespace}site_indicator").transpose(output_dim)
     indicator = None
     if offset_freq is not None:
         time_coord = observations.coords.get("time")
@@ -696,7 +707,7 @@ def _add_offset_component_result(
         if bool(pd.isna(time_coord.values).any()):
             raise ValueError("Offset frequencies require complete observation timestamps.")
         indicator = make_freq_indicator(time_coord, offset_freq).rename(
-            "offset_freq_indicator"
+            f"{namespace}offset_freq_indicator"
         )
 
     site_codes = np.asarray(site_indicator.values, dtype=int)
@@ -705,6 +716,7 @@ def _add_offset_component_result(
     if selected_sites.size == 0:
         raise ValueError("drop_first removes the only available offset site.")
     site_matrix = (site_codes[:, None] == selected_sites[None, :]).astype(int)
+    term_coords: xr.Coordinates | dict[str, Any]
     if indicator is not None:
         if bool(pd.isna(indicator.values).any()):
             raise ValueError("Offset frequency indicators must have non-missing labels.")
@@ -716,34 +728,49 @@ def _add_offset_component_result(
         )
         term_index = pd.MultiIndex.from_product(
             [site_labels[selected_sites], period_labels],
-            names=("offset_site", "offset_period"),
+            names=(f"{namespace}offset_site", f"{namespace}offset_period"),
         )
         term_coords = xr.Coordinates.from_pandas_multiindex(
             term_index,
-            "offset_term",
+            term_dim,
         )
     else:
         design_matrix = site_matrix
         selected_labels = site_labels[selected_sites]
         term_coords = {
-            "offset_term": selected_labels,
-            "offset_site": ("offset_term", selected_labels),
+            term_dim: selected_labels,
+            f"{namespace}offset_site": (term_dim, selected_labels),
         }
 
     design = xr.DataArray(
         design_matrix,
-        dims=(output_dim, "offset_term"),
+        dims=(output_dim, term_dim),
         coords={
             output_dim: output_coord,
             **term_coords,
         },
         name="offset_design",
     )
+    if namespace:
+        if isinstance(observations.indexes.get(output_dim), pd.MultiIndex):
+            site_indicator = site_indicator.reset_index(output_dim, drop=True).assign_coords(
+                {output_dim: output_coord}
+            )
+            if indicator is not None:
+                indicator = indicator.reset_index(output_dim, drop=True).assign_coords({output_dim: output_coord})
+        else:
+            site_indicator = site_indicator.rename({
+                name: f"{namespace}{name}" for name in site_indicator.coords if name != output_dim
+            })
+            if indicator is not None:
+                indicator = indicator.rename({
+                    name: f"{namespace}{name}" for name in indicator.coords if name != output_dim
+                })
     add_model_data(site_indicator, str(site_indicator.name))
     if indicator is not None:
         add_model_data(indicator.transpose(output_dim), str(indicator.name))
     design_data = add_model_data(design, f"{output_name}_design")
-    coefficient = parse_prior(var_name, prior_args, dims="offset_term")
+    coefficient = parse_prior(var_name, prior_args, dims=term_dim)
     coefficients = pt.atleast_1d(coefficient)
     aligned = pt.dot(design_data, coefficients)
     output = pm.Deterministic(
@@ -769,6 +796,7 @@ def add_offset_component(
     output_dim: str = "nmeasure",
     drop_first: bool = False,
     per_site: bool = True,
+    namespace: str = "",
 ) -> TensorVariable:
     """Add a global, site-only, or site-by-period offset component.
 
@@ -784,6 +812,8 @@ def add_offset_component(
         drop_first: Whether to omit the first site indicator column.
         per_site: Whether to create site-specific terms. If false, create one
             global scalar latent offset and broadcast it over observations.
+        namespace: Optional prefix for component coordinates and indicator data
+            when several independent offset components share one model.
 
     Returns:
         The aligned offset deterministic variable.
@@ -801,82 +831,5 @@ def add_offset_component(
         output_dim=output_dim,
         drop_first=drop_first,
         per_site=per_site,
+        namespace=namespace,
     ).output
-
-
-def add_inferpymc_likelihood_component(
-    data: xr.Dataset,
-    /,
-    mu: TensorVariable,
-    mu_bc: TensorVariable | None,
-    sigprior: dict,
-    sigma_alignment: SigmaAlignment,
-    offset: TensorVariable | None = None,
-    power: dict | float = 1.99,
-    pollution_events_from_obs: bool = False,
-    no_model_error: bool = False,
-    output_dim: str = "nmeasure",
-) -> TensorVariable:
-    """Add the inferpymc observation model.
-
-    ``mu`` is the non-baseline forward-model contribution. ``mu_bc`` is the
-    baseline contribution, usually ``H_bc @ bc``, plus offset if applicable.
-
-    Args:
-        data: Canonical inferpymc input dataset.
-        mu: Non-baseline forward-model contribution.
-        mu_bc: Baseline contribution, if present.
-        sigprior: Prior specification for sigma.
-        sigma_alignment: Backend-neutral site and period alignment for sigma.
-        offset: Optional aligned offset term.
-        power: Scalar or prior specification controlling pollution-event
-            scaling.
-        pollution_events_from_obs: Whether to derive pollution events from the
-            observations instead of ``mu``.
-        no_model_error: Whether to bypass the model-error term.
-        output_dim: Observation/output dimension name.
-
-    Returns:
-        The ``epsilon`` deterministic variable used by the observation model.
-    """
-    y_data = add_model_data(data["mf"].transpose(output_dim), "Y")
-    error_data = add_model_data(data["mf_error"].transpose(output_dim), "error")
-    min_error_data = add_model_data(data["min_error"].transpose(output_dim), "min_error")
-
-    sigma = add_sigma_component(
-        sigma_alignment,
-        prior_args=sigprior,
-    )
-
-    if pollution_events_from_obs is True:
-        if mu_bc is not None:
-            pollution_event = pt.abs(y_data - mu_bc)
-        else:
-            pollution_event = pt.abs(y_data) + 1e-6 * pt.mean(y_data)
-    else:
-        pollution_event = pt.abs(mu)
-
-    pollution_event_scaled_error = pollution_event * sigma
-
-    if no_model_error is True:
-        mean_obs = np.nanmean(data["mf"].values)
-        small_amount = pm.floatX(1e-12 * mean_obs)
-        eps = cast(Any, pt.maximum)(pt.abs(error_data), small_amount)
-    else:
-        power0 = parse_prior("power", power) if isinstance(power, dict) else power
-        eps = cast(Any, pt.maximum)(
-            pt.sqrt(error_data**2 + pt.pow(pollution_event_scaled_error, power0)),
-            min_error_data,
-        )
-
-    # TODO: this calculation should probably happen separately
-    # e.g. using a add_linear_component_sum function.
-    total_mu = mu
-    if mu_bc is not None:
-        total_mu = total_mu + mu_bc
-    if offset is not None:
-        total_mu = total_mu + offset
-
-    epsilon = pm.Deterministic("epsilon", eps, dims=output_dim)
-    pm.Normal("y", mu=total_mu, sigma=epsilon, observed=y_data, dims=output_dim)
-    return epsilon

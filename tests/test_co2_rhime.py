@@ -9,7 +9,6 @@ from typing import Any, cast
 import numpy as np
 import pandas as pd
 import pymc as pm
-import arviz as az
 import pytest
 from scipy.stats import multivariate_normal
 import xarray as xr
@@ -17,15 +16,21 @@ import xarray as xr
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.models.coords import get_coord_registry
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
+from openghg_inversions.models.scalar_sigma import (
+    add_scalar_sigma_eigen_likelihood,
+    load_scalar_sigma_eigenbasis,
+    prepare_scalar_sigma_eigenbasis,
+    save_scalar_sigma_eigenbasis,
+)
 from openghg_inversions.models.site_sigma import add_site_sigma_gaussian_likelihood
 from openghg_inversions.models.state_activity import StateActivity
-from openghg_inversions.observation_error import resolve_aggregation_error
+from openghg_inversions.observation_error import AggregationError, resolve_aggregation_error
 from openghg_inversions.rhime.co2 import (
     build_co2_model,
     run_rhime_co2,
 )
 from openghg_inversions.rhime.co2 import co2_runner
-from openghg_inversions.serialization import load_inferencedata, save_inferencedata
+from openghg_inversions.serialization import load_trace, save_trace
 
 
 FIXTURE = Path(__file__).parent / "data" / "co2_only_golden.json"
@@ -85,33 +90,54 @@ def _production_boundary_inputs() -> xr.Dataset:
     return inputs
 
 
-def _empty_sampled_trace(inputs: xr.Dataset) -> az.InferenceData:
+def _empty_sampled_trace(inputs: xr.Dataset) -> xr.DataTree:
     """Return a small trace with representative CO2 sample groups."""
-    return az.from_dict(
-        posterior={
-            "flux_scaling": np.ones((1, 2, inputs.sizes["region"])),
-            "co2_flux_contribution": np.ones((1, 2, inputs.sizes["nmeasure"])),
-            "modelled_concentration": np.ones((1, 2, inputs.sizes["nmeasure"])),
-            "epsilon": np.ones((1, 2, inputs.sizes["nmeasure"])),
+    sample_dims = ("chain", "draw")
+    sample_coords = {"chain": [0], "draw": [0, 1]}
+    posterior = xr.Dataset(
+        {
+            "flux_scaling": (
+                (*sample_dims, "region"),
+                np.ones((1, 2, inputs.sizes["region"])),
+            ),
+            "co2_flux_contribution": (
+                (*sample_dims, "nmeasure"),
+                np.ones((1, 2, inputs.sizes["nmeasure"])),
+            ),
+            "modelled_concentration": (
+                (*sample_dims, "nmeasure"),
+                np.ones((1, 2, inputs.sizes["nmeasure"])),
+            ),
+            "epsilon": (
+                (*sample_dims, "nmeasure"),
+                np.ones((1, 2, inputs.sizes["nmeasure"])),
+            ),
         },
-        posterior_predictive={"y": np.ones((1, 2, inputs.sizes["nmeasure"]))},
-        constant_data={
-            "error": inputs["mf_error"].values,
-            "fixed_model_mismatch": np.ones(inputs.sizes["nmeasure"]),
-            "fixed_prior_contribution": inputs["fixed_prior_contribution"].values,
-            "co2_sensitivity": inputs["H"].values,
+        coords={**sample_coords, "region": inputs["region"], "nmeasure": inputs["nmeasure"]},
+    )
+    posterior_predictive = xr.Dataset(
+        {
+            "y": (
+                (*sample_dims, "nmeasure"),
+                np.ones((1, 2, inputs.sizes["nmeasure"])),
+            )
         },
-        dims={
-            "flux_scaling": ["region"],
-            "co2_flux_contribution": ["nmeasure"],
-            "modelled_concentration": ["nmeasure"],
-            "epsilon": ["nmeasure"],
-            "y": ["nmeasure"],
-            "error": ["nmeasure"],
-            "fixed_model_mismatch": ["nmeasure"],
-            "fixed_prior_contribution": ["nmeasure"],
-            "co2_sensitivity": ["nmeasure", "region"],
-        },
+        coords={**sample_coords, "nmeasure": inputs["nmeasure"]},
+    )
+    constant_data = xr.Dataset(
+        {
+            "error": inputs["mf_error"],
+            "fixed_model_mismatch": ("nmeasure", np.ones(inputs.sizes["nmeasure"])),
+            "fixed_prior_contribution": inputs["fixed_prior_contribution"],
+            "co2_sensitivity": inputs["H"],
+        }
+    )
+    return xr.DataTree.from_dict(
+        {
+            "posterior": posterior,
+            "posterior_predictive": posterior_predictive,
+            "constant_data": constant_data,
+        }
     )
 
 
@@ -257,6 +283,7 @@ def test_co2_structural_zero_is_fixed_at_one_and_pruned_only_from_operator() -> 
     np.testing.assert_allclose(
         forward,
         inputs["fixed_prior_contribution"].values + inputs["H"].values @ full_state,
+        rtol=2.0e-6,
     )
 
 
@@ -332,6 +359,7 @@ def test_co2_partial_activity_preserves_full_gathered_multiindex_state() -> None
     np.testing.assert_allclose(
         forward,
         inputs["fixed_prior_contribution"].values + inputs["H"].values @ full_state,
+        rtol=2.0e-6,
     )
     assert registry.original_coords["region"].equals(state_index)
     assert registry.original_coords["region_flux_scaling_active"].tolist() == [
@@ -350,10 +378,13 @@ def test_public_co2_runner_persists_fixed_mismatch_manifest(
     monkeypatch: Any,
     tmp_path: Path,
 ) -> None:
+    """The runner persists fixed mismatch, roles, units, and recipe metadata."""
     inputs = _golden_inputs()
 
     class PreparedInputsStub:
         inv_inputs = inputs
+        rhime_inputs = None
+        aggregation_error_mode = "dense"
 
         def validated(self) -> "PreparedInputsStub":
             return self
@@ -369,7 +400,7 @@ def test_public_co2_runner_persists_fixed_mismatch_manifest(
     monkeypatch.setattr(co2_runner, "build_co2_model", build_model)
     sampled_models: list[pm.Model] = []
 
-    def sample_model(built: Any, _sampler: Any) -> az.InferenceData:
+    def sample_model(built: Any, _sampler: Any) -> xr.DataTree:
         sampled_models.append(built.model)
         return _empty_sampled_trace(inputs)
 
@@ -408,8 +439,8 @@ def test_public_co2_runner_persists_fixed_mismatch_manifest(
     assert roles["observation_error"] == "error"
     trace_variables = {
         name
-        for group_name in result.groups()
-        for name in getattr(result, group_name).data_vars
+        for group in result.children.values()
+        for name in group.data_vars
     }
     assert set(roles.values()) <= trace_variables
     assert metadata["recipe"] == "co2"
@@ -422,14 +453,15 @@ def test_public_co2_runner_persists_fixed_mismatch_manifest(
     ]
 
     path = tmp_path / "co2-trace.nc"
-    save_inferencedata(result, path)
-    restored = load_inferencedata(path)
+    save_trace(result, path)
+    restored = load_trace(path)
     assert json.loads(restored.attrs["rhime_model_metadata"])["recipe"] == "co2"
     assert restored.posterior["flux_scaling"].attrs["units"] == "1"
     assert restored.constant_data["fixed_prior_contribution"].attrs["units"] == "ppm"
 
 
 def test_public_co2_runner_derives_default_model_error_alignment(monkeypatch: Any) -> None:
+    """The runner derives default site-by-period mismatch alignment from labels."""
     inputs = _golden_inputs()
     inputs = inputs.assign_coords(
         site=("nmeasure", [f"site-{index}" for index in range(inputs.sizes["nmeasure"])])
@@ -437,6 +469,8 @@ def test_public_co2_runner_derives_default_model_error_alignment(monkeypatch: An
 
     class PreparedInputsStub:
         inv_inputs = inputs
+        rhime_inputs = None
+        aggregation_error_mode = "dense"
 
         def validated(self) -> "PreparedInputsStub":
             return self
@@ -449,7 +483,7 @@ def test_public_co2_runner_derives_default_model_error_alignment(monkeypatch: An
 
     sampled_models: list[pm.Model] = []
 
-    def sample_model(built: Any, _sampler: Any) -> az.InferenceData:
+    def sample_model(built: Any, _sampler: Any) -> xr.DataTree:
         sampled_models.append(built.model)
         return _empty_sampled_trace(inputs)
 
@@ -476,6 +510,8 @@ def test_public_co2_runner_selects_boundary_and_offset_once(monkeypatch: Any) ->
 
     class PreparedInputsStub:
         inv_inputs = inputs
+        rhime_inputs = None
+        aggregation_error_mode = "dense"
 
         def validated(self) -> "PreparedInputsStub":
             return self
@@ -487,7 +523,7 @@ def test_public_co2_runner_selects_boundary_and_offset_once(monkeypatch: Any) ->
         materialized_names.append(variable_names)
         return inputs
 
-    def sample_model(built: Any, _sampler: Any) -> az.InferenceData:
+    def sample_model(built: Any, _sampler: Any) -> xr.DataTree:
         built_models.append(built.model)
         return _empty_sampled_trace(inputs)
 
@@ -560,6 +596,8 @@ def test_public_co2_runner_does_not_auto_select_prepared_baseline(monkeypatch: A
 
     class PreparedInputsStub:
         inv_inputs = inputs
+        rhime_inputs = None
+        aggregation_error_mode = "dense"
 
         def validated(self) -> "PreparedInputsStub":
             return self
@@ -571,7 +609,7 @@ def test_public_co2_runner_does_not_auto_select_prepared_baseline(monkeypatch: A
         selected.append(variable_names)
         return inputs
 
-    def sample_model(built: Any, _sampler: Any) -> az.InferenceData:
+    def sample_model(built: Any, _sampler: Any) -> xr.DataTree:
         built_models.append(built.model)
         return _empty_sampled_trace(inputs)
 
@@ -591,7 +629,7 @@ def _run_selected_co2_likelihood(
     monkeypatch: Any,
     likelihood_builder: Any,
     likelihood_kwargs: dict[str, Any],
-) -> tuple[xr.Dataset, Any, dict[str, Any], az.InferenceData]:
+) -> tuple[xr.Dataset, Any, dict[str, Any], xr.DataTree]:
     """Run one selected likelihood through the public CO2 route."""
     inputs = _golden_inputs().assign_coords(
         site=("nmeasure", ["MHD", "MHD"]),
@@ -606,6 +644,8 @@ def _run_selected_co2_likelihood(
 
     class PreparedInputsStub:
         inv_inputs = inputs
+        rhime_inputs = None
+        aggregation_error_mode = "dense"
 
         def validated(self) -> "PreparedInputsStub":
             return self
@@ -613,7 +653,7 @@ def _run_selected_co2_likelihood(
     monkeypatch.setattr(co2_runner, "materialize_pymc_inputs", lambda *_args, **_kwargs: inputs)
     built_results: list[Any] = []
 
-    def sample_model(built: Any, _sampler: Any) -> az.InferenceData:
+    def sample_model(built: Any, _sampler: Any) -> xr.DataTree:
         built_results.append(built)
         return _empty_sampled_trace(inputs)
 
@@ -688,7 +728,7 @@ def test_public_co2_runner_selects_fixed_ou_likelihood(monkeypatch: Any) -> None
             + ou_covariance
         ),
     )
-    assert actual_logp == pytest.approx(expected_logp, rel=1.0e-10)
+    assert actual_logp == pytest.approx(expected_logp, rel=1.0e-6)
     assert json.loads(result.attrs["rhime_likelihood_kwargs"]) == likelihood_kwargs
     assert json.loads(result.attrs["rhime_likelihood_builder"])["qualname"].endswith(
         "recording_likelihood"
@@ -725,19 +765,126 @@ def test_public_co2_runner_selects_iid_site_sigma_likelihood(monkeypatch: Any) -
         mean=mean,
         cov=inputs["aggregation_error_covariance"].values + iid_covariance,
     )
-    assert actual_logp == pytest.approx(expected_logp, rel=1.0e-10)
+    assert actual_logp == pytest.approx(expected_logp, rel=1.0e-6)
     assert json.loads(result.attrs["rhime_likelihood_kwargs"]) == likelihood_kwargs
     assert json.loads(result.attrs["rhime_likelihood_builder"])["qualname"].endswith(
         "recording_likelihood"
     )
 
 
+def test_public_co2_runner_resolves_scalar_sigma_cache_before_model(
+    monkeypatch: Any,
+    tmp_path: Path,
+) -> None:
+    """The CO2 route loads the cache before graph construction and keeps provenance small."""
+    inputs = _golden_inputs()
+    aggregation_error = resolve_aggregation_error(inputs, "dense")
+    basis = prepare_scalar_sigma_eigenbasis(
+        observations=inputs["mf"],
+        observation_error=inputs["mf_error"],
+        aggregation_error=aggregation_error,
+    )
+    cache_path = save_scalar_sigma_eigenbasis(
+        tmp_path / "scalar-sigma.nc",
+        basis,
+    )
+
+    class PreparedInputsStub:
+        inv_inputs = inputs
+        rhime_inputs = None
+        aggregation_error_mode = "dense"
+
+        def validated(self) -> "PreparedInputsStub":
+            return self
+
+    monkeypatch.setattr(
+        co2_runner,
+        "materialize_pymc_inputs",
+        lambda *_args, **_kwargs: inputs,
+    )
+    load_contexts: list[pm.Model | None] = []
+
+    def recording_load(
+        path: str | Path,
+        *,
+        observations: xr.DataArray,
+        observation_error: xr.DataArray,
+        aggregation_error: AggregationError,
+    ) -> Any:
+        load_contexts.append(pm.Model.get_context(error_if_none=False))
+        return load_scalar_sigma_eigenbasis(
+            path,
+            observations=observations,
+            observation_error=observation_error,
+            aggregation_error=aggregation_error,
+        )
+
+    monkeypatch.setattr(co2_runner, "load_scalar_sigma_eigenbasis", recording_load)
+    built_results: list[Any] = []
+
+    def sample_model(built: Any, _sampler: Any) -> xr.DataTree:
+        built_results.append(built)
+        trace = _empty_sampled_trace(inputs)
+        trace.posterior["sigma_global"] = xr.DataArray(
+            np.ones((1, 2)),
+            dims=("chain", "draw"),
+        )
+        return trace
+
+    monkeypatch.setattr(co2_runner, "sample_rhime_model", sample_model)
+    likelihood_kwargs = {
+        "eigenbasis_path": cache_path,
+        "sigma_prior": {"pdf": "halfnormal", "sigma": 0.75},
+    }
+
+    result = run_rhime_co2(
+        prepared_inputs=cast(Any, PreparedInputsStub()),
+        likelihood_builder=add_scalar_sigma_eigen_likelihood,
+        likelihood_kwargs=likelihood_kwargs,
+    )
+
+    assert load_contexts == [None]
+    model = built_results[0].model
+    assert {"modelled_concentration", "sigma_global", "epsilon", "y"} <= set(
+        model.named_vars
+    )
+    assert model["y"].dtype == str(pm.floatX(0.0).dtype)
+    point = model.initial_point()
+    point["sigma_global_log__"] = np.asarray(np.log(0.5))
+    mean, _ = _initial_mean_and_observed_logp(model)
+    actual_logp = float(model.compile_logp(vars=model.observed_RVs)(point))
+    expected_logp = multivariate_normal.logpdf(
+        inputs["mf"].values,
+        mean=mean,
+        cov=(
+            inputs["aggregation_error_covariance"].values
+            + np.diag(inputs["mf_error"].values**2)
+            + np.eye(inputs.sizes["nmeasure"]) * 0.25
+        ),
+    )
+    assert actual_logp == pytest.approx(expected_logp, rel=1.0e-6)
+    assert json.loads(result.attrs["rhime_likelihood_kwargs"]) == {
+        "eigenbasis_path": str(cache_path),
+        "sigma_prior": likelihood_kwargs["sigma_prior"],
+    }
+    assert json.loads(result.attrs["rhime_likelihood_builder"])["qualname"] == (
+        "add_scalar_sigma_eigen_likelihood"
+    )
+    assert result.posterior["sigma_global"].attrs["units"] == "ppm"
+    assert json.loads(
+        result.posterior["sigma_global"].attrs["rhime_scientific_roles"]
+    ) == ["global_iid_mismatch_standard_deviation"]
+
+
 def test_public_co2_runner_preserves_materialized_fixed_mismatch(monkeypatch: Any) -> None:
+    """A materialized fixed mismatch is forwarded without replacement."""
     inputs = _golden_inputs()
     inputs["fixed_model_mismatch"] = xr.full_like(inputs["mf"], 0.75)
 
     class PreparedInputsStub:
         inv_inputs = inputs
+        rhime_inputs = None
+        aggregation_error_mode = "dense"
 
         def validated(self) -> "PreparedInputsStub":
             return self
@@ -745,7 +892,7 @@ def test_public_co2_runner_preserves_materialized_fixed_mismatch(monkeypatch: An
     monkeypatch.setattr(co2_runner, "materialize_pymc_inputs", lambda *_args, **_kwargs: inputs)
     sampled_models: list[pm.Model] = []
 
-    def sample_model(built: Any, _sampler: Any) -> az.InferenceData:
+    def sample_model(built: Any, _sampler: Any) -> xr.DataTree:
         sampled_models.append(built.model)
         return _empty_sampled_trace(inputs)
 

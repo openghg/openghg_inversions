@@ -9,10 +9,8 @@ import tempfile
 import time
 from importlib.metadata import version
 from typing import Callable, Iterator
-from types import MappingProxyType
 from unittest.mock import patch
 
-import arviz as az
 import numpy as np
 import pytest
 from openghg.standardise import (
@@ -27,6 +25,7 @@ import zarr
 
 from openghg_inversions.basis.basis_functions import BASIS_ARTIFACT_SOURCE_ATTR, BasisFunctions
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
+from tests.helpers import make_trace
 
 _raw_data_path = Path(".").resolve() / "tests/data/"
 _TEST_STORE_DIR_NAME = "openghg_inversions_testing_store"
@@ -220,17 +219,24 @@ def multisector_postprocessing_inv_out(
         inv_inputs["mf"].attrs["units"] = "ppm"
 
         return InversionOutput(
-            trace=az.from_dict(
-                posterior={
-                    "x_ff": np.array([[[0.0], [2.0]]]),
-                    "x_ocean": np.array([[[2.0 / 3.0], [0.0]]]),
-                },
-                prior={
-                    "x_ff": np.array([[[1.0], [1.0]]]),
-                    "x_ocean": np.array([[[1.0], [1.0]]]),
-                },
-                coords={"region": [0]},
-                dims={"x_ff": ["region"], "x_ocean": ["region"]},
+            trace=make_trace(
+                posterior=xr.Dataset(
+                    {
+                        "x_ff": (("chain", "draw", "region"), np.array([[[0.0], [2.0]]])),
+                        "x_ocean": (
+                            ("chain", "draw", "region"),
+                            np.array([[[2.0 / 3.0], [0.0]]]),
+                        ),
+                    },
+                    coords={"chain": [0], "draw": [0, 1], "region": [0]},
+                ),
+                prior=xr.Dataset(
+                    {
+                        "x_ff": (("chain", "draw", "region"), np.ones((1, 2, 1))),
+                        "x_ocean": (("chain", "draw", "region"), np.ones((1, 2, 1))),
+                    },
+                    coords={"chain": [0], "draw": [0, 1], "region": [0]},
+                ),
             ),
             inv_inputs=inv_inputs.set_index(nmeasure=["site", "time"]),
             basis_functions=basis_functions or fake_multisector_basis_functions(),
@@ -480,7 +486,7 @@ def _file_lock(lock_path: Path, timeout: float = 120.0) -> Iterator[None]:
             break
         except FileExistsError:
             if time.monotonic() - start_time > timeout:
-                raise TimeoutError(f"Timed out waiting for fixture lock {lock_path}")
+                raise TimeoutError(f"Timed out waiting for fixture lock {lock_path}") from None
             time.sleep(0.1)
 
     try:
@@ -612,27 +618,3 @@ def mhd_and_tac_ch4_data_args(openghg_test_store):
         "averaging_period": ["1h", "1h"],
     }
     return data_args
-
-
-@pytest.fixture(scope="module")
-def mhd_and_tac_fp_data(mhd_and_tac_ch4_data_args, default_bc_basis_directory):
-    from openghg_inversions.basis import basis_functions_wrapper
-    from openghg_inversions.inversion_data.get_data import data_processing_surface_notracer
-
-    fp_all, *_ = data_processing_surface_notracer(**mhd_and_tac_ch4_data_args)
-
-    basis_args = {
-        "species": "ch4",
-        "domain": "EUROPE",
-        "start_date": "2019-01-01",
-        "emissions_name": ["total-ukghg-edgar7"],
-        "nbasis": 100,
-        "use_bc": True,
-        "basis_algorithm": "weighted",
-        "bc_basis_case": "NESW",
-        "bc_basis_directory": default_bc_basis_directory,
-    }
-
-    fp_data = basis_functions_wrapper(fp_all, **basis_args)
-
-    return MappingProxyType(fp_data)  # read-only

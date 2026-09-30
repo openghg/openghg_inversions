@@ -231,12 +231,13 @@ class CountryInfo:
     """
 
     def __init__(self, country_name: Any) -> None:
-        self.input_name = (
+        self.input_name: str = (
             country_name.input_name if isinstance(country_name, CountryInfo) else to_string(country_name)
         )
 
         iso3166 = get_iso3166_codes()
 
+        self._alpha2: str | None
         if len(self.input_name) == 2 and self.input_name.upper() in iso3166:
             self._alpha2 = self.input_name.upper()
         elif len(self.input_name) == 3 and iso3to2(self.input_name) in iso3166:
@@ -285,6 +286,7 @@ class CountryInfoList(UserList):
     This means that the format used to input country names doesn't matter: the output
     format is controlled by `country_code`, and comparisons are done using equality of
     `CountryInfo` objects, so no conversion is required before comparing.
+    The `country_code` property can be changed after construction.
 
     NOTE: to iterate over underlying `CountryInfo` objects, use the `.data` attribute.
     For instance:
@@ -311,10 +313,10 @@ class CountryInfoList(UserList):
 
     @property
     def country_code(self) -> Literal["alpha2", "alpha3"] | None:
-        return self._country_code  # type: ignore
+        return self._country_code
 
     @country_code.setter
-    def _(self, value: Literal["alpha2", "alpha3"] | None) -> None:
+    def country_code(self, value: Literal["alpha2", "alpha3"] | None) -> None:
         self._country_code = value
 
     def __str__(self) -> str:

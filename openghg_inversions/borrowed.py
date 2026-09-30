@@ -127,7 +127,7 @@ class BorrowedNDArray(np.ndarray[Any, Any]):
     @deprecated("Mutation through a borrowed array reference is unsupported", category=None)
     def resize(self, *args: Any, **kwargs: Any) -> None:
         """Mark in-place resizing as unsupported."""
-        super().resize(*args, **kwargs)
+        super().resize(*args, **kwargs)  # type: ignore[deprecated]
 
     @deprecated("Mutation through a borrowed array reference is unsupported", category=None)
     def setfield(self, *args: Any, **kwargs: Any) -> None:

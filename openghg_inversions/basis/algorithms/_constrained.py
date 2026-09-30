@@ -50,6 +50,10 @@ from ._partition import AxisParallelSplitStep, GreedySplitStrategy
 AllocationMode: TypeAlias = Literal["weight", "area"]
 NbasisAllocation: TypeAlias = int | Mapping[Hashable, int]
 _GRID_COORDINATE_DEGREE_ATOL = 2.0e-5
+_ANGULAR_GRID_UNITS = frozenset(
+    cf_ureg.parse_units(name)
+    for name in ("degree", "degrees", "degrees_north", "degrees_east", "radian")
+)
 _GRID_METADATA_KEYS = ("units", "calendar", "axis", "standard_name", "positive")
 _DESCRIPTIVE_COORDINATE_ATTRS = {"comment", "history", "long_name", "longname", "source"}
 _CRS_ATTRIBUTE_MARKERS = {"crs_wkt", "grid_mapping_name", "spatial_ref"}
@@ -331,9 +335,10 @@ def combine_inner_outer_region_classes(
         name: Name for the returned ``DataArray``.
 
     Returns:
-        Object-valued ``DataArray`` with the same dimensions and coordinates as
-        ``inner_mask``. Mapped cells contain ``("inner", value)`` or
-        ``("outer", value)`` tuples. Unmapped cells contain ``NaN``.
+        Object-valued ``DataArray`` on the ``inner_mask`` grid, retaining
+        nonconflicting coordinate metadata from all inputs. Mapped cells
+        contain ``("inner", value)`` or ``("outer", value)`` tuples. Unmapped
+        cells contain ``NaN``.
 
     Raises:
         ValueError: If any input is not two-dimensional, dimension-name sets
@@ -407,11 +412,11 @@ def intersect_region_class_layers(
         name: Name for the returned ``DataArray``.
 
     Returns:
-        Object-valued ``DataArray`` with the same dimensions and coordinates as
-        the first layer. Mapped cells contain tuples of layer values, while
-        cells that are null or explicitly unmapped in any layer contain
-        ``NaN``. Its ``region_class_layers`` attribute records the string form
-        of each layer name in mapping insertion order.
+        Object-valued ``DataArray`` on the first layer's grid, retaining
+        nonconflicting coordinate metadata from all layers. Mapped cells
+        contain tuples of layer values; null or explicitly unmapped cells
+        contain ``NaN``. Its ``region_class_layers`` attribute records layer
+        names in mapping insertion order.
 
     Raises:
         ValueError: If no layers are supplied, any layer is not two-dimensional,
@@ -439,7 +444,7 @@ def intersect_region_class_layers(
     template_name = f"region-class layer {layer_items[0][0]!r}"
     aligned_layers: list[xr.DataArray] = []
     for layer_name, layer in layer_items:
-        _, aligned_layer = _align_2d_inputs(
+        template, aligned_layer = _align_2d_inputs(
             template,
             layer,
             reference_name=template_name,
@@ -645,6 +650,15 @@ def normalize_spatial_grid(
         ``openghg.util.align_lat_lon`` instead canonicalizes one field against
         a named OpenGHG domain and does not validate arbitrary curvilinear grids,
         units, or CRS metadata.
+
+        Spatial coordinates may carry units in ``attrs["units"]`` or as Pint
+        quantities. Pint coordinates are dequantified for comparison, and their
+        units are retained as coordinate attributes in the result. Matching
+        coordinates must have equal parsed units when both provide them; this
+        function does not convert coordinate values between units or regrid.
+        Coordinates without angular units receive only storage-precision
+        tolerance, so separately rounded latitude/longitude grids must retain
+        their unit metadata. Spatial coordinate values are inspected eagerly.
     """
     _, normalized_candidate = _align_2d_inputs(
         reference,
@@ -679,7 +693,8 @@ def _normalize_matching_grid_coordinates(
         Both arrays normalized to the spatial and CRS coordinate values from
         ``reference``, with nonconflicting metadata from either input retained.
         Descriptive coordinate attributes, numeric storage dtype, and unrelated
-        scalar provenance coordinates do not define the physical grid.
+        scalar provenance coordinates do not define the physical grid. Pint
+        coordinate units are carried into ordinary ``units`` attributes.
     """
     reference_coordinates = _spatial_coordinate_names(reference)
     candidate_coordinates = _spatial_coordinate_names(candidate)
@@ -691,9 +706,16 @@ def _normalize_matching_grid_coordinates(
             f"missing {missing!r}, unexpected {unexpected!r}."
         )
 
+    reference_grid = {
+        name: reference.coords[name].pint.dequantify() for name in reference_coordinates
+    }
+    candidate_grid = {
+        name: candidate.coords[name].pint.dequantify() for name in candidate_coordinates
+    }
+
     for coordinate_name in sorted(reference_coordinates, key=str):
-        reference_coordinate = reference.coords[coordinate_name]
-        candidate_coordinate = candidate.coords[coordinate_name]
+        reference_coordinate = reference_grid[coordinate_name]
+        candidate_coordinate = candidate_grid[coordinate_name]
         if set(reference_coordinate.dims) != set(candidate_coordinate.dims):
             raise xr.AlignmentError(
                 f"Coordinate {coordinate_name!r} on {candidate_name} has dimensions "
@@ -701,11 +723,6 @@ def _normalize_matching_grid_coordinates(
                 f"{reference_coordinate.dims!r} on {reference_name}."
             )
         candidate_coordinate = candidate_coordinate.transpose(*reference_coordinate.dims)
-        if not _coordinate_values_compatible(reference_coordinate, candidate_coordinate):
-            raise xr.AlignmentError(
-                f"Coordinate {coordinate_name!r} on {candidate_name} is not physically "
-                f"compatible with {reference_name}."
-            )
         _validate_grid_metadata(
             reference_coordinate,
             candidate_coordinate,
@@ -713,6 +730,17 @@ def _normalize_matching_grid_coordinates(
             reference_name=reference_name,
             candidate_name=candidate_name,
         )
+        if not _coordinate_values_compatible(reference_coordinate, candidate_coordinate):
+            unit_note = (
+                " Neither coordinate has units; only storage-precision differences are allowed."
+                " Preserve coordinate units to allow angular rounding."
+                if not (reference_coordinate.attrs.get("units") or candidate_coordinate.attrs.get("units"))
+                else ""
+            )
+            raise xr.AlignmentError(
+                f"Coordinate {coordinate_name!r} on {candidate_name} is not physically "
+                f"compatible with {reference_name}.{unit_note}"
+            )
 
     reference_crs = _crs_coordinate_names(reference, array_name=reference_name)
     candidate_crs = _crs_coordinate_names(candidate, array_name=candidate_name)
@@ -748,7 +776,10 @@ def _normalize_matching_grid_coordinates(
             )
 
     authoritative_coordinates = {
-        name: _coordinate_with_merged_metadata(reference.coords[name], candidate.coords[name])
+        name: _coordinate_with_merged_metadata(
+            reference_grid.get(name, reference.coords[name]),
+            candidate_grid.get(name, candidate.coords[name]),
+        )
         for name in reference_coordinates | reference_crs
     }
     return (
@@ -853,7 +884,12 @@ def _coordinate_values_compatible(reference: xr.DataArray, candidate: xr.DataArr
 
 
 def _coordinate_absolute_tolerance(reference: xr.DataArray, candidate: xr.DataArray) -> float:
-    """Return a unit- and storage-precision-aware absolute tolerance."""
+    """Allow angular rounding only when coordinate units explicitly identify an angle.
+
+    The angular limit is ``2e-5`` degrees converted to the coordinate's units,
+    then capped at one-thousandth of the representative grid spacing. Missing,
+    unknown, and non-angular units receive only floating-storage tolerance.
+    """
     if reference.ndim == 0:
         return 0.0
     values = np.concatenate(
@@ -872,13 +908,18 @@ def _coordinate_absolute_tolerance(reference: xr.DataArray, candidate: xr.DataAr
         default=0.0,
     )
 
-    units = str(reference.attrs.get("units") or candidate.attrs.get("units") or "").lower()
-    if "radian" in units or units == "rad":
-        tolerance = max(precision_tolerance, float(np.deg2rad(_GRID_COORDINATE_DEGREE_ATOL)))
-    elif "degree" in units:
-        tolerance = max(precision_tolerance, _GRID_COORDINATE_DEGREE_ATOL)
-    else:
-        tolerance = precision_tolerance
+    tolerance = precision_tolerance
+    units = reference.attrs.get("units") or candidate.attrs.get("units")
+    if units:
+        try:
+            parsed_units = cf_ureg.parse_units(str(units))
+            if parsed_units in _ANGULAR_GRID_UNITS:
+                angular_tolerance = cf_ureg.Quantity(_GRID_COORDINATE_DEGREE_ATOL, "degree").to(
+                    parsed_units
+                )
+                tolerance = max(precision_tolerance, float(angular_tolerance.magnitude))
+        except (PintError, TypeError, ValueError):
+            pass
 
     grid_spacing = _representative_grid_spacing(reference)
     if grid_spacing is not None:

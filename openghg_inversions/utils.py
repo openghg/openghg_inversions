@@ -1,5 +1,4 @@
-"""Script containing common Python functions that can be called for running
-HBMCMC and other inversion models.
+"""Common Python functions used by RHIME and supporting inversion workflows.
 
 The main functions are related to applying basis functions to the flux and boundary
 conditions, and their sensitivities.
@@ -19,6 +18,7 @@ import pandas as pd
 import xarray as xr
 from openghg.analyse import combine_datasets as openghg_combine_datasets
 
+from openghg_inversions.array_ops import to_dense
 from openghg_inversions._country_file import load_country_dataset
 from openghg_inversions.config.paths import Paths
 
@@ -180,6 +180,7 @@ def write_netcdf_preserving_bounds_attrs(
         path: Destination NetCDF path.
         unlimited_dims: Optional dimensions to encode as unlimited.
     """
+    ds = ds.map(to_dense, keep_attrs=True)
     ds.to_netcdf(
         path,
         unlimited_dims=unlimited_dims,

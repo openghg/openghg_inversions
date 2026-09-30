@@ -11,11 +11,25 @@
       "name": "Saboya, Eric",
       "affiliation": "University of Bristol"
     },
+    {
+      "name": "Rigby, Matt",
+      "affiliation": "University of Bristol"
+    },
+    {
+      "name": "Ganesan, Anita",
+      "affiliation": "University of Bristol"
+    }
   ],
   "contributors": [
     {
       "name": "Western, Luke",
-      "affiliation": "University of Bristol"
+      "affiliation": "University of Bristol",
+      "type": "Other"
+    },
+    {
+      "name": "Mantri, Supriya",
+      "affiliation": "University of Bristol",
+      "type": "Other"
     },
     {
       "name": "Danjou, Alexandre",

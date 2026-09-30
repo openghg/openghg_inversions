@@ -4,8 +4,8 @@ A :class:`BasisOperator` separates bucket geometry from flux weighting and
 native covariance. For one source, :attr:`BasisOperator.basis_matrix` is the
 bucket prolongation ``U_bucket`` with native-grid rows and retained-state
 columns. A gathered multisource matrix is the spatial membership template from
-which :meth:`BasisOperator.native_prolongation` expands a canonical
-source-native ``U_bucket``. Its transpose is not automatically the retained
+which an internal adapter expands a canonical source-native ``U_bucket`` for
+covariance work. Its transpose is not automatically the retained
 restriction ``Pi``.
 
 ``FluxWeightedBasis`` handles flux weighting for sensitivity projection and
@@ -46,6 +46,7 @@ Note:
 from __future__ import annotations
 
 import json
+import warnings
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -61,6 +62,8 @@ from openghg_inversions.array_ops import (
     force_align,
     get_xr_dummies,
     iter_multi_index_level_slices,
+    require_unique_index,
+    same_index,
 )
 from openghg_inversions.basis.layout import (
     BasisStateMetadata,
@@ -135,7 +138,7 @@ class BasisMeta:
 
     The intent is to keep this minimal: we only store what is needed for the
     default implementations of `BasisOperator.sensitivity` and
-    `BasisOperator.interpolate`.
+    `BasisOperator.state_to_native`.
 
     Attributes:
         grid_dims: Dimensions to dot over when reducing a gridded quantity to the
@@ -178,7 +181,7 @@ class BasisOperator(ABC):
     @property
     @abstractmethod
     def basis_matrix(self) -> xr.DataArray:
-        """Return the bucket prolongation ``U_bucket`` from state to grid.
+        """Return the coarse-to-fine map (prolongation) ``U_bucket``.
 
         Its ordered dimensions are the configured grid dimensions followed by
         the state dimension, which may carry a MultiIndex coordinate.
@@ -228,7 +231,7 @@ class BasisOperator(ABC):
                 h = h.transpose(self.meta.state_dim, ...)
         return h
 
-    def native_prolongation(
+    def _native_prolongation(
         self,
         native_layout: xr.DataArray,
         *,
@@ -269,6 +272,36 @@ class BasisOperator(ABC):
             protected_dims={self.meta.state_dim},
         ).rename("prolongation")
 
+    def _reconstruction_state(self, state: xr.DataArray, *, native_dims: tuple[str, ...]) -> xr.DataArray:
+        """Check retained labels and separate independent sample and native axes."""
+        state_dim = self.meta.state_dim
+        expected = require_unique_index(self.basis_matrix, state_dim, name="basis")
+        if not same_index(require_unique_index(state, state_dim, name="state"), expected):
+            raise ValueError(f"state {state_dim!r} labels must exactly match the basis.")
+        occupied = set(self.basis_matrix.dims) | set(self.basis_matrix.coords) | set(state.dims) | set(state.coords)
+        renames = {}
+        for dim in (*state.dims, *state.coords):
+            if dim == state_dim or dim not in native_dims or dim in renames:
+                continue
+            base = dim if dim.startswith("state_") else f"state_{dim}"
+            candidate = base
+            suffix = 2
+            while candidate in occupied:
+                candidate = f"{base}_{suffix}"
+                suffix += 1
+            renames[dim] = candidate
+            occupied.add(candidate)
+        return state.rename(renames)
+
+    def state_to_native(self, state: xr.DataArray) -> xr.DataArray:
+        """Reconstruct linear native scaling ``U_bucket alpha``.
+
+        ``U_bucket`` is the retained-to-native coarse-to-fine map
+        (prolongation). The input is borrowed and Dask data remains lazy.
+        """
+        state = self._reconstruction_state(state, native_dims=self.meta.grid_dims)
+        return xr.dot(self.basis_matrix, state, dim=self.meta.state_dim)
+
     def interpolate(self, state: xr.DataArray, weights: xr.DataArray | None = None) -> xr.DataArray:
         """Interpolates/reconstructs a gridded field from a state vector.
 
@@ -290,6 +323,12 @@ class BasisOperator(ABC):
         Raises:
             ValueError: If `meta.state_dim` is not a dimension of `state`.
         """
+        warnings.warn(
+            "BasisOperator.interpolate is deprecated; use state_to_native and multiply by "
+            "weights explicitly.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         if self.meta.state_dim not in state.dims:
             raise ValueError(f"State dim '{self.meta.state_dim}' missing from state dims {state.dims}")
         mat = self.basis_matrix
@@ -526,9 +565,59 @@ RegionLabels = Literal["range0", "range1", "basis_values"]
 
 @register_basis_operator("bucket")
 class BucketBasisOperator(BasisOperator):
-    """Single flat bucket basis: basis_flat(lat, lon) with integer region labels.
+    """Map one integer-labelled grid basis onto a retained state.
 
-    Stores basis_flat and constructs basis_matrix via get_xr_dummies.
+    Use this operator for a single source, or when several sources share the
+    same spatial basis. Each distinct non-negative value in ``basis_flat`` is a
+    bucket. The operator converts those buckets into a sparse one-hot
+    :attr:`basis_matrix` with dimensions
+    ``(*meta.grid_dims, meta.state_dim)``. Grid coordinates are retained, and a
+    singleton ``time`` dimension is removed.
+
+    ``region_labels`` controls the coordinate on the retained state dimension:
+    ``"range0"`` produces ``0..N-1``, ``"range1"`` produces ``1..N``, and
+    ``"basis_values"`` preserves the sorted labels from ``basis_flat``.
+    Optional state metadata follows the states through this relabelling.
+
+    The inherited :meth:`BasisOperator.sensitivity` method reduces a gridded
+    footprint-times-flux array to the retained state, while
+    :meth:`BasisOperator.state_to_native` reconstructs a gridded field.
+    An internal adapter expands the labelled bucket map for covariance
+    calculations. Use
+    :class:`~openghg_inversions.basis.basis_functions.FluxWeightedBasis` when
+    the basis geometry must be paired with a flux field.
+
+    Args:
+        basis_flat: Integer-labelled basis array on the configured grid,
+            typically with dimensions ``("lat", "lon")``. A singleton
+            ``time`` dimension is allowed and removed.
+        meta: Grid dimensions and retained-state dimension name. Defaults to
+            :class:`BasisMeta`.
+        state_dim: Optional override for ``meta.state_dim``.
+        region_labels: Policy for the retained-state coordinate labels.
+        state_metadata: Optional state-axis metadata indexed either by raw
+            ``basis_label`` values or by the final state dimension.
+        chunks: Optional chunk sizes for the generated basis matrix.
+
+    Example:
+        Build a two-region operator whose retained coordinate uses the labels
+        from the flat basis::
+
+            basis = xr.DataArray(
+                [[1, 1], [2, 2]],
+                dims=("lat", "lon"),
+                coords={"lat": [50.0, 51.0], "lon": [-2.0, -1.0]},
+            )
+            operator = BucketBasisOperator(
+                basis, state_dim="region", region_labels="basis_values"
+            )
+            assert operator.basis_matrix.dims == ("lat", "lon", "region")
+
+    See Also:
+        * :class:`MultiSourceBucketBasisOperator`: Source-specific, potentially
+            ragged basis geometries.
+        * :class:`~openghg_inversions.basis.basis_functions.FluxWeightedBasis`:
+            A basis operator paired with its flux field.
     """
 
     def __init__(
@@ -541,21 +630,6 @@ class BucketBasisOperator(BasisOperator):
         state_metadata: xr.Dataset | BasisStateMetadata | None = None,
         chunks: dict[str, int] | None = None,
     ) -> None:
-        """Creates a single-source bucket basis operator.
-
-        Args:
-            basis_flat: Integer-labelled basis array on the grid (typically `(lat, lon)`).
-                If a singleton `time` dimension is present, it is dropped.
-            meta: Metadata describing grid and state dimension names.
-            state_dim: Optional override of `meta.state_dim`.
-            region_labels: Policy for the output state coordinate labels:
-                - `"range0"`: `0..N-1` (legacy-friendly)
-                - `"range1"`: `1..N`
-                - `"basis_values"`: use the ordered non-negative labels found in `basis_flat`.
-            state_metadata: Optional metadata for the state axis. Metadata may be
-                indexed by raw ``basis_label`` values or by the final state dimension.
-            chunks: Optional chunking to apply to the basis matrix.
-        """
         meta = meta or BasisMeta()
         if state_dim is not None:
             meta = BasisMeta(grid_dims=meta.grid_dims, state_dim=state_dim)
@@ -749,10 +823,63 @@ class BucketBasisOperator(BasisOperator):
 
 @register_basis_operator("multisource_bucket")
 class MultiSourceBucketBasisOperator(BasisOperator):
-    """Multiple flat bases keyed by source, with potentially ragged region counts.
+    """Combine source-specific flat bases into one ragged retained state.
 
-    The canonical state dimension is a ragged MultiIndex over
-    ``(source, region_in_source)``.
+    Use this operator when sources have different spatial bases or different
+    numbers of regions. If all sources share one basis, use
+    :class:`BucketBasisOperator` and carry source on the flux instead.
+
+    ``basis_flat`` preserves mapping insertion order as the canonical source
+    order. Every source array must describe the same labelled grid; equivalent
+    coordinate orders are aligned to the first source. A singleton ``time``
+    dimension is removed. The resulting :attr:`basis_matrix` has dimensions
+    ``(*meta.grid_dims, meta.state_dim)``. Its state coordinate is a ragged
+    :class:`pandas.MultiIndex` with levels named by ``source_dim`` and
+    ``region_in_source_dim``, so each source can contribute a different number
+    of regions without padding.
+
+    :meth:`sensitivity` aligns a source dimension in the input to the state
+    MultiIndex. :meth:`interpolate` likewise accepts optional source-specific
+    weights. :meth:`_native_prolongation` expands the gathered spatial template
+    onto an explicit native source dimension, and :meth:`operator_for_source`
+    returns a single-source operator. DataTree serialization preserves source
+    order through the stored source coordinate.
+
+    Args:
+        basis_flat: Non-empty mapping from source name to an integer-labelled
+            basis array on the configured grid, typically with dimensions
+            ``("lat", "lon")``.
+        meta: Grid dimensions and retained-state dimension name. Defaults to
+            :class:`BasisMeta`.
+        source_dim: Name of the source MultiIndex level.
+        region_in_source_dim: Name of the per-source region MultiIndex level.
+        state_dim: Optional override for ``meta.state_dim``.
+        chunks: Optional chunk sizes for the gathered basis matrix.
+
+    Raises:
+        ValueError: If ``basis_flat`` is empty, a source label is not a string,
+            or source arrays have incompatible dimensions, non-unique grid
+            labels, or different grid labels.
+
+    Example:
+        Gather source bases with two and one regions, respectively::
+
+            anthropogenic = xr.DataArray(
+                [[1, 2]], dims=("lat", "lon"), coords={"lat": [50.0], "lon": [-2.0, -1.0]}
+            )
+            biospheric = xr.DataArray(
+                [[1, 1]], dims=("lat", "lon"), coords={"lat": [50.0], "lon": [-2.0, -1.0]}
+            )
+            operator = MultiSourceBucketBasisOperator(
+                {"anthropogenic": anthropogenic, "biospheric": biospheric},
+                state_dim="region",
+            )
+            assert operator.source_labels == ("anthropogenic", "biospheric")
+
+    See Also:
+        * :class:`BucketBasisOperator`: One basis geometry shared by all sources.
+        * :class:`~openghg_inversions.basis.basis_functions.FluxWeightedBasis`:
+            A basis operator paired with source-aware flux.
     """
 
     def __init__(
@@ -765,25 +892,6 @@ class MultiSourceBucketBasisOperator(BasisOperator):
         state_dim: str | None = None,
         chunks: dict[str, int] | None = None,
     ) -> None:
-        """Creates a multisource bucket basis operator with ragged per-source regions.
-
-        The canonical state dimension is a ragged MultiIndex over
-        `(source, region_in_source)`, stored on the single dimension `meta.state_dim`.
-
-        Args:
-            basis_flat: Mapping from source name to a 2D integer-labelled basis array
-                (typically `(lat, lon)`).
-            meta: Metadata describing grid and state dimension names.
-            source_dim: Name of the source dimension/level.
-            region_in_source_dim: Name for the per-source region index level.
-            state_dim: Optional override of `meta.state_dim`.
-            chunks: Optional chunking to apply to the gathered basis matrix.
-
-        Raises:
-            ValueError: If `basis_flat` is empty or a source label is not a
-                string, or if source bases have incompatible dimensions,
-                non-unique grid labels, or different grid labels.
-        """
         meta = meta or BasisMeta()
         if state_dim is not None:
             meta = BasisMeta(grid_dims=meta.grid_dims, state_dim=state_dim)
@@ -812,6 +920,10 @@ class MultiSourceBucketBasisOperator(BasisOperator):
         for src, bf in self.basis_flat.items():
             # use region_in_source_dim so we can gather it
             mats[src] = get_xr_dummies(bf, cat_dim=self.region_in_source_dim)
+        self._source_matrices = {
+            src: mat.chunk({dim: size for dim, size in (chunks or {}).items() if dim in mat.dims})
+            for src, mat in mats.items()
+        }
 
         # Gather concat over source + region_in_source_dim into state_dim
         # Result has dims (*grid_dims, state_dim) and state_dim is a MultiIndex
@@ -838,7 +950,7 @@ class MultiSourceBucketBasisOperator(BasisOperator):
         """Return the gathered spatial template for multisource ``U_bucket``.
 
         The dimensions are spatial grid by retained state; source identity is
-        carried by the ragged state coordinate. :meth:`native_prolongation`
+        carried by the ragged state coordinate. :meth:`_native_prolongation`
         expands an explicit source-native dimension and zeros cross-source
         columns. This template's transpose is not the compatible retained
         restriction ``Pi``.
@@ -855,7 +967,7 @@ class MultiSourceBucketBasisOperator(BasisOperator):
         """
         return tuple(self.basis_flat)
 
-    def native_prolongation(
+    def _native_prolongation(
         self,
         native_layout: xr.DataArray,
         *,
@@ -1064,7 +1176,7 @@ class MultiSourceBucketBasisOperator(BasisOperator):
             )
             if fillna:
                 fp_native = fp_native.fillna(0.0)
-            prolongation = self.native_prolongation(
+            prolongation = self._native_prolongation(
                 fp_native,
                 native_dims=(native_source_dim, *self.meta.grid_dims),
             )
@@ -1089,6 +1201,32 @@ class MultiSourceBucketBasisOperator(BasisOperator):
                 h = h.transpose(self.meta.state_dim, ...)
         return h
 
+    def state_to_native(self, state: xr.DataArray) -> xr.DataArray:
+        """Reconstruct each source's linear native scaling without summing it.
+
+        The gathered matrix represents a coarse-to-fine map (prolongation).
+        Each source contracts only its own ragged retained-state slice.
+        """
+        state = self._reconstruction_state(
+            state, native_dims=(f"native_{self.source_dim}", *self.meta.grid_dims)
+        )
+        state_sources = np.asarray(self.basis_matrix[self.source_dim].values)
+        pieces = []
+        for source in self.source_labels:
+            positions = np.flatnonzero(state_sources == source)
+            local_matrix = self._source_matrices[source].rename(
+                {self.region_in_source_dim: self.meta.state_dim}
+            )
+            local_state = state.isel({self.meta.state_dim: positions}).reset_index(
+                self.meta.state_dim, drop=True
+            ).assign_coords({self.meta.state_dim: local_matrix[self.meta.state_dim]})
+            pieces.append(xr.dot(local_matrix, local_state, dim=self.meta.state_dim))
+        result = xr.concat(
+            pieces,
+            dim=xr.IndexVariable(f"native_{self.source_dim}", list(self.source_labels)),
+        )
+        return result.transpose(f"native_{self.source_dim}", *self.meta.grid_dims, ...)
+
     def interpolate(self, state: xr.DataArray, weights: xr.DataArray | None = None) -> xr.DataArray:
         """Interpolate/reconstruct a gridded field from a state vector.
 
@@ -1108,6 +1246,12 @@ class MultiSourceBucketBasisOperator(BasisOperator):
         Returns:
             Gridded reconstructed field on `meta.grid_dims`.
         """
+        warnings.warn(
+            "BasisOperator.interpolate is deprecated; use state_to_native and sum "
+            "native_source explicitly for a total field.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         if self.meta.state_dim not in state.dims:
             raise ValueError(
                 f"Expected state_array to have dim '{self.meta.state_dim}', got dims {state.dims}"

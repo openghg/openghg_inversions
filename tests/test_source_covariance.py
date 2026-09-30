@@ -318,7 +318,7 @@ def test_gathered_source_products_match_block_diagonal_dense_oracle() -> None:
     covariance, native_sensitivity = _problem()
     basis = _basis(covariance)
     basis_prolongation = to_dense(
-        basis.native_prolongation(
+        basis._native_prolongation(
             native_sensitivity,
             native_dims=covariance.native_dims,
         )
@@ -374,7 +374,7 @@ def test_multisource_native_prolongation_preserves_native_auxiliary_coordinates(
         grid_mapping="latitude_longitude",
     )
 
-    prolongation = basis.native_prolongation(
+    prolongation = basis._native_prolongation(
         native_layout,
         native_dims=covariance.native_dims,
     )
@@ -397,7 +397,7 @@ def test_multisource_native_prolongation_requires_canonical_source_order() -> No
     reordered = native_sensitivity.isel(native_source=[1, 0])
 
     with pytest.raises(ValueError, match="source|coordinate|align|order"):
-        basis.native_prolongation(reordered, native_dims=covariance.native_dims)
+        basis._native_prolongation(reordered, native_dims=covariance.native_dims)
 
 
 def test_multisource_native_prolongation_rejects_source_dimension_level_collision() -> None:
@@ -411,7 +411,7 @@ def test_multisource_native_prolongation_rejects_source_dimension_level_collisio
     basis = _basis(covariance)
 
     with pytest.raises(ValueError, match="source.*dimension|MultiIndex|level|collision"):
-        basis.native_prolongation(
+        basis._native_prolongation(
             colliding_sensitivity,
             native_dims=colliding_covariance.native_dims,
         )

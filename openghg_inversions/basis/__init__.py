@@ -37,11 +37,16 @@ from ._functions import (
     region_constrained_basis_function,
 )
 from ._wrapper import (
-    basis_functions_wrapper,
     load_basis_functions,
     make_basis_functions,
 )
 from .basis_functions import BasisFunctions, basis_functions_from_fp_all_flat_basis
+from .affine_flux_map import AffineFluxMap
+from .affine_flux_map_io import (
+    AffineFluxMapArtifact,
+    load as load_affine_flux_map,
+    save as save_affine_flux_map,
+)
 from .prior_uncertainty import (
     MEAN_TOTAL_TARGET_STATISTIC,
     MEDIAN_RELATIVE_TARGET_STATISTIC,
@@ -57,15 +62,17 @@ from .covariance_products import (
 )
 
 __all__ = [
-    "basis_functions_wrapper",
     "basis_functions_from_fp_all_flat_basis",
     "basis_weights_from_fp_all",
+    "AffineFluxMap",
+    "AffineFluxMapArtifact",
     "BasisFunctions",
     "bucket_basis_from_weights",
     "bucket_basis_function",
     "bucketbasisfunction",
     "fixed_outer_regions_basis",
     "load_basis_functions",
+    "load_affine_flux_map",
     "load_country_region_classes",
     "load_intem_outer_regions",
     "MEAN_TOTAL_TARGET_STATISTIC",
@@ -75,6 +82,7 @@ __all__ = [
     "RetainedProjection",
     "RetainedProjectionStrategy",
     "make_basis_functions",
+    "save_affine_flux_map",
     "paired_abs_response_weights",
     "project_basis_prior_stdev",
     "project_native_covariance",

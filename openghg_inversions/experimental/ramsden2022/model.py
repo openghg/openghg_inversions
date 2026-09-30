@@ -33,7 +33,6 @@ from dataclasses import dataclass
 import math
 from typing import Any, Literal
 
-import arviz as az
 import numpy as np
 import pandas as pd
 import pymc as pm
@@ -199,7 +198,7 @@ class RamsdenResult:
         prepared_inputs: Labelled inputs consumed by the model.
         model_spec: Historical model specification.
         model: Built PyMC model.
-        idata: Joint inference data preserving shared-state/ratio covariance
+        idata: Joint sampled DataTree preserving shared-state/ratio covariance
             and the two namespaced likelihood and predictive variables.
         sampler: Modern RHIME sampler used for the run.
     """
@@ -207,7 +206,7 @@ class RamsdenResult:
     prepared_inputs: RamsdenPreparedInputs
     model_spec: RamsdenModelSpec
     model: pm.Model
-    idata: az.InferenceData
+    idata: xr.DataTree
     sampler: RhimeSampler
 
 
@@ -940,7 +939,7 @@ def run_ramsden_from_prepared_inputs(
             posterior predictive sampling.
 
     Returns:
-        Joint result containing the built model and labelled inference data.
+        Joint result containing the built model and labelled sampled DataTree.
 
     Raises:
         ValueError: If model metadata or prepared inputs are invalid.

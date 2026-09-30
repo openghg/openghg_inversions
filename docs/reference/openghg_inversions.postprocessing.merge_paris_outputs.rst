@@ -1,0 +1,6 @@
+openghg\_inversions.postprocessing.merge\_paris\_outputs
+========================================================
+
+.. automodule:: openghg_inversions.postprocessing.merge_paris_outputs
+   :members:
+   :show-inheritance:

@@ -1,11 +1,12 @@
 from pathlib import Path
 from collections.abc import Mapping
-from typing import Any, Literal, NamedTuple, cast
+from typing import Literal, NamedTuple, cast
 
 import numpy as np
 import pandas as pd
 import xarray as xr
 
+from openghg_inversions.array_ops import to_dense
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.flux_sanitization import copy_flux_nonfinite_attrs
 from openghg_inversions.postprocessing.countries import Countries, paris_regions_dict
@@ -44,6 +45,17 @@ TRACE_GROUP_SUFFIXES = (
     "_prior",
     "_posterior",
 )
+
+
+def _materialize_product(ds: xr.Dataset) -> xr.Dataset:
+    """Convert completed output variables to dense NumPy data for consumers and writers."""
+    return xr.Dataset(
+        {name: to_dense(data) for name, data in ds.data_vars.items()},
+        coords=ds.coords,
+        attrs=ds.attrs,
+    ).as_numpy()
+
+
 _PRODUCT_METADATA_FIELDS = Literal["species", "domain", "start_date", "end_date"]
 
 
@@ -189,7 +201,7 @@ def total_error_output(inv_out: InversionOutput, take_mean: bool = True) -> xr.D
     result = trace.epsilon_posterior
 
     if take_mean:
-        result = result.mean("draw")
+        result = result.mean([dim for dim in ("chain", "draw") if dim in result.dims])
 
     obs_inputs = observation_inputs_for_outputs(inv_out)
     result.attrs["units"] = obs_inputs["y_obs"].attrs.get("units", "")
@@ -204,7 +216,8 @@ def model_error_output(inv_out: InversionOutput) -> xr.DataArray:
     obs = observation_inputs_for_outputs(inv_out)
     total_obs_err = obs["y_obs_error"]
 
-    result = np.sqrt(np.maximum(total_err**2 - total_obs_err**2, 0)).mean("draw")  # type: ignore
+    result = np.sqrt(np.maximum(total_err**2 - total_obs_err**2, 0))  # type: ignore
+    result = result.mean([dim for dim in ("chain", "draw") if dim in result.dims])
     result.attrs["units"] = obs["y_obs"].attrs.get("units", "")
     result.attrs["long_name"] = "inferred model error"
     return result.rename("model_error")
@@ -422,7 +435,7 @@ def make_multisector_flux_trace_outputs(
     )
     result = xr.merge([total_flux_trace, *sector_flux_traces])
     if materialize:
-        result = result.as_numpy()
+        result = _materialize_product(result)
     result = _copy_first_flux_nonfinite_metadata(result, [total_flux_trace, *sector_flux_traces])
     return add_basis_reconstruction_metadata(result, inv_out.basis_functions)
 
@@ -530,7 +543,7 @@ def make_sector_flux_outputs(
                 )
             )
 
-    result = _set_multisector_flux_attrs(xr.merge(outputs), inv_out, sectors).as_numpy()
+    result = _materialize_product(_set_multisector_flux_attrs(xr.merge(outputs), inv_out, sectors))
     result = _copy_first_flux_nonfinite_metadata(result, [total_flux_trace, *sector_flux_traces])
     return add_basis_reconstruction_metadata(result, inv_out.basis_functions)
 
@@ -617,7 +630,7 @@ def make_flux_outputs(
 
         flux_stats = xr.merge([flux_stats, scale_factor_stats])
 
-    return add_basis_reconstruction_metadata(flux_stats.as_numpy(), inv_out.basis_functions)
+    return add_basis_reconstruction_metadata(_materialize_product(flux_stats), inv_out.basis_functions)
 
 
 def flatten_post_prior(ds: xr.Dataset) -> xr.Dataset:
@@ -708,7 +721,7 @@ def make_concentration_outputs(
         xr.Dataset with computed flux stats.
 
     """
-    posterior = cast(Any, inv_out.trace).posterior
+    posterior = inv_out.trace_group("posterior")
     concentration_role = "concentration"
     baseline_role = "baseline"
     boundary_role = "boundary"
@@ -720,10 +733,10 @@ def make_concentration_outputs(
 
     boundary_available = boundary_name in posterior
     offset_available = offset_name in posterior
-    complete_baseline_available = (
-        baseline_name in posterior
-        and baseline_name not in {boundary_name, offset_name}
-    )
+    complete_baseline_available = baseline_name in posterior and baseline_name not in {
+        boundary_name,
+        offset_name,
+    }
     if boundary_available:
         conc_roles.append(boundary_role)
     elif complete_baseline_available:

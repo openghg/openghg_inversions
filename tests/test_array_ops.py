@@ -13,10 +13,40 @@ from openghg_inversions.array_ops import (
     concat_gather_datatree,
     concat_gather_datasets,
     expand_mapping,
+    get_xr_dummies,
     iter_multi_index_level_slices,
+    require_unique_index,
+    same_index,
     select_gathered_data_array,
     validate_covariance_coordinates,
 )
+
+
+@pytest.mark.parametrize("return_sparse", [False, True])
+def test_get_xr_dummies_accepts_unlabelled_dimension(return_sparse: bool) -> None:
+    values = xr.DataArray([0, 1, 0], dims="observation")
+
+    result = get_xr_dummies(values, cat_dim="category", return_sparse=return_sparse)
+
+    assert result.dims == ("observation", "category")
+    assert "observation" not in result.coords
+    np.testing.assert_array_equal(result.category, [0, 1])
+    data = result.data.todense() if return_sparse else result.data
+    np.testing.assert_array_equal(data, [[1, 0], [0, 1], [1, 0]])
+
+
+def test_unique_index_and_co2_index_comparison_semantics() -> None:
+    """Ordinary Index names are ignored; gathered MultiIndex level names are not."""
+    from openghg_inversions.rhime.co2.co2_o2_preparation import _same_index as co2_o2_same_index
+
+    array = xr.DataArray([1, 2], dims="state", coords={"state": ["a", "b"]})
+    ordinary = require_unique_index(array, "state", name="state")
+    other_name = pd.Index(["a", "b"], name="other")
+    assert same_index(ordinary, other_name)
+    assert not co2_o2_same_index(ordinary, other_name)
+    left = pd.MultiIndex.from_tuples([("bio", 1)], names=["source", "region"])
+    right = pd.MultiIndex.from_tuples([("bio", 1)], names=["sector", "region"])
+    assert not same_index(left, right)
 
 
 def test_expand_mapping_uses_labelled_vectorized_indexing() -> None:

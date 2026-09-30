@@ -231,7 +231,7 @@ Incompatible source coordinates
    xarray padding or positional alignment.
 
 Unexpected output selection
-   ``inv_out`` and sector diagnostics are supported here. Latest PARIS flux
-   output is a separate, explicitly configured route; multisector PARIS
-   concentration output is not currently implemented. See :doc:`rhime` before
+   ``inv_out`` and sector diagnostics are the default tutorial products.
+   ``output_format="paris"`` instead adds latest-template sector-resolved and
+   total flux output plus total concentration output. See :doc:`rhime` before
    changing ``output_format``.

@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 from types import SimpleNamespace
 
-import arviz as az
 import dask.array as da
 from dask import delayed
 from dask.array import Array as DaskArray
@@ -48,17 +47,17 @@ def test_trace_annotation_labels_total_marginal_error() -> None:
             "observation_units": ("observation", ["ppm", "per meg"]),
         },
     )
-    trace = az.InferenceData(posterior=posterior)
+    trace = xr.DataTree.from_dict({"posterior": posterior})
 
     co2_o2_runner._annotate_co2_o2_trace(
         trace,
         built=SimpleNamespace(variable_roles=_CO2_O2_VARIABLE_ROLES, metadata={}),
     )
 
-    assert json.loads(trace.posterior["epsilon"].attrs["rhime_scientific_roles"]) == [
+    assert json.loads(trace["posterior"]["epsilon"].attrs["rhime_scientific_roles"]) == [
         "total_marginal_error"
     ]
-    assert trace.posterior["epsilon"].attrs["units"] == (
+    assert trace["posterior"]["epsilon"].attrs["units"] == (
         "mixed; see observation_units coordinate"
     )
 
@@ -206,7 +205,7 @@ def test_replay_materializes_payloads_and_auxiliary_units_in_one_graph(monkeypat
     )
     independent_error_sd = array.copy(deep=False, data=values)
     monkeypatch.setattr(co2_o2_runner, "build_co2_o2_model", lambda **_: pm.Model())
-    monkeypatch.setattr(co2_o2_runner, "sample_rhime_model", lambda *_: az.InferenceData())
+    monkeypatch.setattr(co2_o2_runner, "sample_rhime_model", lambda *_: xr.DataTree())
     compute_graphs: list[object] = []
 
     with Callback(start=lambda graph: compute_graphs.append(graph)):

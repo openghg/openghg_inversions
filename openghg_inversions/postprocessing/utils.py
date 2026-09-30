@@ -75,7 +75,7 @@ def update_attrs(prefix: str):
                 except StopIteration:
                     raise ValueError(
                         "`update_attrs` can only decorate functions that accept and return an xr.Dataset."
-                    )
+                    ) from None
 
             result = func(*args, **kwargs)
 

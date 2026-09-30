@@ -22,11 +22,12 @@ The classes have the following distinct roles.
      - Responsibility
    * - ``BasisOperator``
      - Owns basis geometry and retained-state labels. For a single source,
-       ``basis_matrix`` is the bucket prolongation :math:`U_{\mathrm{bucket}}`.
-       A gathered multisource matrix is a spatial template; the basis-side
-       ``native_prolongation`` adapter expands it onto a canonical explicit
-       native source dimension. In both cases, the transpose does not define
-       the retained restriction :math:`\Pi`.
+       ``basis_matrix`` is the bucket coarse-to-fine map (prolongation)
+       :math:`U_{\mathrm{bucket}}`.
+       A gathered multisource matrix is a spatial template; covariance
+       projection expands it onto a canonical explicit native source
+       dimension through an internal adapter. In both cases, the transpose
+       does not define the retained restriction :math:`\Pi`.
    * - ``InvertibleNativeCovarianceAction``
      - Structural interface for a labelled, self-adjoint positive-definite
        :math:`B`, including its compatible inverse solve, without constructing
@@ -152,8 +153,10 @@ estimate while its Cholesky factor is already available. A restriction whose
 retained covariance is numerically ill-conditioned is rejected with a
 basis-design diagnostic. This is not an eigendecomposition of the
 observation-sized covariance, nor a requirement that the unresolved
-aggregation covariance be independently factorable before observation and
-model-error covariance are added.
+aggregation covariance be positive definite or Cholesky-factorable before
+observation and model-error covariance are added. The unresolved covariance
+may be singular, but LRPD preparation and dense aggregation-error resolution
+still require it to be positive semidefinite within numerical tolerance.
 
 What projection does not construct
 ----------------------------------

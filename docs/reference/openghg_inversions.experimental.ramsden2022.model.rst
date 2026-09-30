@@ -1,0 +1,6 @@
+openghg\_inversions.experimental.ramsden2022.model
+==================================================
+
+.. automodule:: openghg_inversions.experimental.ramsden2022.model
+   :members:
+   :show-inheritance:

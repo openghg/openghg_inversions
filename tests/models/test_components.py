@@ -3,13 +3,10 @@ import pandas as pd
 import pymc as pm
 import pytest
 import xarray as xr
-from pytensor.compile.mode import Mode
 
-from openghg_inversions.hbmcmc.components import make_offset
 from openghg_inversions.models import add_coherent_affine_component
 from openghg_inversions.models.components import (
     LinearComponentResult,
-    add_inferpymc_likelihood_component,
     add_linked_linear_component,
     add_linear_component,
     add_model_data,
@@ -340,20 +337,6 @@ def test_add_offset_component_derives_site_indicator_from_observations() -> None
     np.testing.assert_array_equal(registry.original_coords["offset_term"], ["MHD", "TAC"])
 
 
-def test_hbmcmc_make_offset_preserves_site_indicator_call() -> None:
-    """Keep the released HBMCMC wrapper accepting a numeric site indicator."""
-    with pm.Model(coords={"nmeasure": np.arange(3)}) as model:
-        attach_coord_registry(model, CoordRegistry())
-        offset = make_offset(
-            np.array([0, 0, 1]),
-            {"pdf": "normal", "mu": 0.0, "sigma": 1.0},
-            offset_freq="monthly",
-        )
-
-    np.testing.assert_array_equal(model["site_indicator"].eval(), [0, 0, 1])
-    assert offset.eval().shape == (3,)
-
-
 def test_add_offset_component_requires_observation_sites() -> None:
     """Reject offset inputs without labelled observation sites."""
     observations = xr.DataArray(np.ones(4), dims="nmeasure", name="mf")
@@ -444,94 +427,3 @@ def test_add_offset_component_drop_first_and_freq_builds_expected_design() -> No
             names=("offset_site", "offset_period"),
         )
     )
-
-
-def test_add_inferpymc_likelihood_component_adds_epsilon_and_y() -> None:
-    """Check the likelihood helper adds epsilon, y, and sigma variables."""
-    ds = _likelihood_dataset()
-
-    with pm.Model(coords={"nmeasure": np.arange(4)}) as model:
-        attach_coord_registry(model, CoordRegistry())
-        mu = pm.Data("mu_input", np.ones(4), dims="nmeasure")
-        mu_bc = pm.Data("mu_bc_input", np.zeros(4), dims="nmeasure")
-        add_inferpymc_likelihood_component(
-            ds,
-            mu=mu,
-            mu_bc=mu_bc,
-            sigprior={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
-            sigma_alignment=_sigma_alignment(ds),
-        )
-
-    assert {"epsilon", "y", "sigma"}.issubset(model.named_vars)
-
-
-def test_likelihood_no_model_error_uses_observation_error() -> None:
-    """Check no-model-error mode bypasses pollution-event model error."""
-    ds = _likelihood_dataset().copy()
-    ds["min_error"] = ("nmeasure", np.full(ds.sizes["nmeasure"], 999.0))
-
-    with pm.Model(coords={"nmeasure": np.arange(4)}) as model:
-        attach_coord_registry(model, CoordRegistry())
-        mu = pm.Data("mu_input", np.ones(4), dims="nmeasure")
-        add_inferpymc_likelihood_component(
-            ds,
-            mu=mu,
-            mu_bc=None,
-            sigprior={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
-            no_model_error=True,
-            sigma_alignment=_sigma_alignment(ds, per_site=False),
-        )
-
-    np.testing.assert_allclose(model.named_vars["epsilon"].eval(), ds["mf_error"].values)
-
-
-def test_likelihood_pollution_events_from_obs_can_run_without_boundary_conditions() -> None:
-    """Check obs-derived pollution-event scaling does not require BC terms."""
-    ds = _likelihood_dataset().copy()
-
-    with pm.Model(coords={"nmeasure": np.arange(4)}) as model:
-        attach_coord_registry(model, CoordRegistry())
-        mu = pm.Data("mu_input", np.zeros(4), dims="nmeasure")
-        add_inferpymc_likelihood_component(
-            ds,
-            mu=mu,
-            mu_bc=None,
-            sigprior={"pdf": "uniform", "lower": 0.5, "upper": 1.5},
-            pollution_events_from_obs=True,
-            sigma_alignment=SigmaAlignment.from_frequency(
-                ds["site_indicator"],
-                frequency=None,
-                per_site=False,
-            ),
-            power=2.0,
-        )
-
-    epsilon = model.named_vars["epsilon"].eval(mode=Mode(linker="py", optimizer="fast_run"))
-    assert np.all(np.diff(epsilon) > 0)
-    assert "y" in model.named_vars
-
-
-def test_likelihood_samples_prior_predictive_with_shared_sigma_and_registered_site_indicator() -> None:
-    """Check shared sigma indexing still works after offsets register site data."""
-    ds = _likelihood_dataset()
-
-    with pm.Model(coords={"nmeasure": np.arange(4)}) as model:
-        attach_coord_registry(model, CoordRegistry())
-        mu = pm.Data("mu_input", np.ones(4), dims="nmeasure")
-        mu_bc = pm.Data("mu_bc_input", np.zeros(4), dims="nmeasure")
-        offset = add_offset_component(
-            ds["mf"],
-            prior_args={"pdf": "normal", "mu": 0.0, "sigma": 1.0},
-            output_name="offset",
-        )
-        add_inferpymc_likelihood_component(
-            ds,
-            mu=mu,
-            mu_bc=mu_bc,
-            offset=offset,
-            sigprior={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
-            sigma_alignment=_sigma_alignment(ds, per_site=False),
-        )
-
-        assert model.named_vars["sigma"].eval().shape[0] == 1
-        pm.sample_prior_predictive(draws=1, model=model, random_seed=123)

@@ -28,7 +28,7 @@ from openghg_inversions.postprocessing.make_outputs import (
     make_multisector_flux_trace_outputs,
     observation_and_error_outputs,
 )
-from openghg_inversions.postprocessing.stats import calculate_stats, stats_functions
+from openghg_inversions.postprocessing.stats import calculate_stats, combine_chain_draw, stats_functions
 
 # path to `paris_formatting` submodule
 paris_formatting_path = Path(__file__).parent
@@ -419,11 +419,17 @@ def make_global_attrs(
     author: str | None = None,
     species: str = "inert",
     domain: str = "EUROPE",
-    apriori_description: str = "EDGAR 8.0",
+    apriori_description: str = "",
     history: str | None = None,
     comment: str | None = None,
+    transport_model: str = "",
+    transport_model_version: str = "",
+    met_model: str = "",
 ) -> dict[str, str]:
     """Build global attributes shared by PARIS output products.
+
+    PARIS postprocessing fills the prior and footprint arguments from the
+    ``InversionOutput`` automatically; scripts normally call ``make_paris_outputs``.
 
     Args:
         output_type: PARIS product type, either flux or concentration.
@@ -435,6 +441,9 @@ def make_global_attrs(
             processing entry.
         comment: Optional dataset comment. A descriptive nonempty default is
             used when this is omitted or empty.
+        transport_model: Transport model recorded by the footprint source.
+        transport_model_version: Version recorded by the footprint source.
+        met_model: Meteorological model recorded by the footprint source.
 
     Returns:
         CF-oriented global attributes for a PARIS dataset.
@@ -457,9 +466,9 @@ def make_global_attrs(
         inversion_system="RHIME",
         inversion_system_version=code_version(),
         apriori_description=apriori_description,
-        transport_model="NAME",
-        transport_model_version="NAME III (version 8.0)",
-        met_model="UKV",
+        transport_model=transport_model,
+        transport_model_version=transport_model_version,
+        met_model=met_model,
         domain=domain,
         species=species,
         project="Process Attribution of Regional emISsions (PARIS)",
@@ -474,6 +483,30 @@ def make_global_attrs(
     global_attrs["license"] = "CC-BY-4.0"
 
     return global_attrs
+
+
+def _inversion_global_attr_provenance(inv_out: InversionOutput) -> dict[str, str]:
+    """Describe the actual flux sources and footprint metadata in an inversion."""
+    sectors = inv_out.model_metadata.get("sectors", ())
+    sources = {
+        sector["flux_source"]
+        for sector in sectors
+        if isinstance(sector, Mapping) and isinstance(sector.get("flux_source"), str)
+    }
+    if not sources and isinstance(inv_out.flux.attrs.get("source"), str):
+        sources = {inv_out.flux.attrs["source"]}
+
+    footprint_provenance = inv_out.model_metadata.get("footprint_provenance", {})
+    result = {"apriori_description": "; ".join(sorted(sources))}
+    for name in ("transport_model", "transport_model_version", "met_model"):
+        values = {
+            str(site_metadata.get(name, "")).strip()
+            for site_metadata in footprint_provenance.values()
+            if isinstance(site_metadata, Mapping)
+        }
+        values.discard("")
+        result[name] = "; ".join(sorted(values))
+    return result
 
 
 def add_variable_attrs(
@@ -586,6 +619,7 @@ def paris_concentration_outputs(
             obs_avg_period=obs_avg_period,
         )
 
+    species, domain = _require_paris_metadata(inv_out)
     stats = ["kde_mode", "quantiles"] if report_mode else ["mean", "quantiles"]
 
     stats_args = {"quantiles__quantiles": [0.159, 0.841]}
@@ -667,7 +701,9 @@ def paris_concentration_outputs(
 
     result.sitenames.attrs["long_name"] = "identifier of site"
 
-    result.attrs = make_global_attrs("conc")
+    result.attrs = make_global_attrs(
+        "conc", species=species, domain=domain, **_inversion_global_attr_provenance(inv_out)
+    )
     result.attrs["paris_concentration_template_version"] = template_files.concentration_version
 
     return _cast_float_data_vars_to_float32(result)
@@ -791,7 +827,9 @@ def paris_concentration_outputs_latest(
         .transpose("index", "percentile", "platform", "nbnds", missing_dims="ignore")
     )
 
-    result.attrs = make_global_attrs("conc", species=species, domain=domain)
+    result.attrs = make_global_attrs(
+        "conc", species=species, domain=domain, **_inversion_global_attr_provenance(inv_out)
+    )
     result.attrs["paris_concentration_template_version"] = template_files.concentration_version
 
     result = _cast_data_vars_to_template_dtypes(result, template_files.concentration).as_numpy()
@@ -1164,9 +1202,10 @@ def _country_posterior_covariance_kg(
         flux_frequency,
     )
 
-    posterior = posterior.isel(flux_time=valid_indices).dropna("draw", how="all")
+    posterior, sample_dim = combine_chain_draw(posterior.isel(flux_time=valid_indices))
+    posterior = posterior.dropna(sample_dim, how="all")
     values = np.asarray(
-        posterior.transpose("flux_time", "country", "draw").values,
+        posterior.transpose("flux_time", "country", sample_dim).values,
         dtype=np.float64,
     )
     if values.shape[2] == 0:
@@ -1223,13 +1262,18 @@ def _sector_country_posterior_covariances_kg(
         flux_frequency,
     )
 
-    sector_posteriors = [
-        sector_trace[f"country_{sector_name}_posterior"]
-        .isel(flux_time=valid_indices)
-        .dropna("draw", how="all")
-        .transpose("flux_time", "country", "draw")
-        for sector_name in sector_names
-    ]
+    sector_posteriors = []
+    for sector_name in sector_names:
+        posterior, sample_dim = combine_chain_draw(
+            sector_trace[f"country_{sector_name}_posterior"].isel(flux_time=valid_indices)
+        )
+        sector_posteriors.append(
+            (
+                posterior.dropna(sample_dim, how="all").rename({sample_dim: "sample"})
+                if sample_dim != "sample"
+                else posterior.dropna(sample_dim, how="all")
+            ).transpose("flux_time", "country", "sample")
+        )
     sector_covariances = {}
     for sector_name, posterior in zip(sector_names, sector_posteriors, strict=True):
         values = np.asarray(posterior.values, dtype=np.float64)
@@ -1252,7 +1296,7 @@ def _sector_country_posterior_covariances_kg(
         dim="sector",
     )
     values = np.asarray(
-        posterior_by_sector.transpose("flux_time", "country", "sector", "draw").values,
+        posterior_by_sector.transpose("flux_time", "country", "sector", "sample").values,
         dtype=np.float64,
     )
     if values.shape[3] == 0:
@@ -1488,7 +1532,9 @@ def paris_flux_output(
 
     result = result.transpose("time", "percentile", "country", "latitude", "longitude")
 
-    result.attrs = make_global_attrs("flux")
+    result.attrs = make_global_attrs(
+        "flux", species=species, domain=domain, **_inversion_global_attr_provenance(inv_out)
+    )
     result.attrs["paris_flux_template_version"] = template_files.flux_version
     result = copy_flux_nonfinite_attrs(result, flux_outs)
 
@@ -1740,7 +1786,9 @@ def paris_flux_output_latest(
         sector_cross_covariance,
         emissions_attrs,
     )
-    result.attrs = make_global_attrs("flux", species=species, domain=domain)
+    result.attrs = make_global_attrs(
+        "flux", species=species, domain=domain, **_inversion_global_attr_provenance(inv_out)
+    )
     result.attrs["paris_flux_template_version"] = template_files.flux_version
     result = copy_flux_nonfinite_attrs(
         result,

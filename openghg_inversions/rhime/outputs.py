@@ -9,7 +9,6 @@ import json
 from pathlib import Path
 from typing import Any, cast
 
-import arviz as az
 import numpy as np
 import pymc as pm
 import xarray as xr
@@ -26,19 +25,38 @@ from openghg_inversions.rhime.specs import (
     RhimeOutputSpec,
     RhimeRunSpec,
 )
-from openghg_inversions.serialization import reset_serialisation_multiindexes
+from openghg_inversions.serialization import save_trace
 from openghg_inversions.utils import ncdf_encoding, write_netcdf_preserving_bounds_attrs
 
 
 @dataclass
 class RhimeResult:
-    """Complete result of a standard or multisector RHIME recipe."""
+    """Complete result of a standard or multisector RHIME recipe.
+
+    Args:
+        run_spec: Top-level dates, sites, model, and output settings for the run.
+        model_spec: Scientific options used to construct the model.
+        output_spec: Output products, paths, and naming settings.
+        inv_inputs: Prepared inversion inputs supplied to the model.
+        idata: Posterior samples and diagnostics returned by the sampler.
+        output_metadata: Output paths, timing, and provenance accumulated during
+            the run. A new empty dictionary is used by default.
+        outputs: In-memory postprocessing products keyed by product name. A new
+            empty dictionary is used by default.
+        basis_functions: Basis operator and flux retained for postprocessing.
+        model: Concrete sampled PyMC model, when retained.
+        inv_out: Modern inversion output, when postprocessing created one.
+        sampler: Sampling configuration used for the run. A new
+            :class:`RhimeSampler` is used by default.
+        model_build_result: Model, variable-role manifest, and builder metadata,
+            when available.
+    """
 
     run_spec: RhimeRunSpec
     model_spec: RhimeModelSpec
     output_spec: RhimeOutputSpec
     inv_inputs: xr.Dataset
-    idata: az.InferenceData
+    idata: xr.DataTree
     output_metadata: dict[str, Any] = field(default_factory=dict)
     outputs: dict[str, Any] = field(default_factory=dict)
     basis_functions: BasisFunctions | None = None
@@ -49,7 +67,7 @@ class RhimeResult:
 
 
 def annotate_likelihood_trace(
-    idata: az.InferenceData,
+    idata: xr.DataTree,
     *,
     builder_identity: dict[str, str],
     likelihood_kwargs: Mapping[str, Any] | None,
@@ -60,15 +78,14 @@ def annotate_likelihood_trace(
     arrays cross an explicit eager serialization boundary.
 
     Args:
-        idata: Inference data to annotate in place.
+        idata: Sampled trace to annotate in place.
         builder_identity: Importable module and qualified-name provenance for
             the likelihood builder.
         likelihood_kwargs: Resolved builder options to preserve as structured
             JSON metadata.
 
     Returns:
-        None. The input inference data and matching variable attributes are
-        annotated in place.
+        None. The input trace is annotated in place.
     """
     idata.attrs["rhime_likelihood_builder"] = json.dumps(builder_identity, sort_keys=True)
     idata.attrs["rhime_likelihood_kwargs"] = json.dumps(
@@ -84,8 +101,9 @@ def _structured_metadata(value: Any) -> Any:
 
     Returns:
         Scalars and recursively structured dictionaries/lists. DataArrays keep
-        explicit dimensions, dimension coordinates, and values. Python and
-        NumPy dates/times become ISO strings; timedeltas become strings.
+        explicit dimensions, dimension coordinates, and values. Paths become
+        strings, Python and NumPy dates/times become ISO strings, and timedeltas
+        become strings.
     """
     if isinstance(value, xr.DataArray):
         materialized = value.compute()
@@ -104,13 +122,15 @@ def _structured_metadata(value: Any) -> Any:
         return value.isoformat()
     if isinstance(value, timedelta):
         return str(value)
+    if isinstance(value, Path):
+        return str(value)
     if isinstance(value, np.ndarray):
         if value.ndim == 0:
             return _structured_metadata(value[()])
         return [_structured_metadata(item) for item in value]
     if isinstance(value, np.generic):
         return value.item()
-    if isinstance(value, dict):
+    if isinstance(value, Mapping):
         return {str(key): _structured_metadata(item) for key, item in value.items()}
     if isinstance(value, tuple | list):
         return [_structured_metadata(item) for item in value]
@@ -199,45 +219,6 @@ def _define_derived_output_filename(
     )
 
 
-def _save_inferencedata(idata: az.InferenceData, path: str | Path) -> None:
-    """Save inference data while preserving metadata and serializable coords.
-
-    Root and group attributes are preserved while group MultiIndexes are reset
-    on a serialization copy. The h5netcdf, ArviZ-default, and netcdf4 backends
-    are attempted in that order.
-
-    Args:
-        idata: Inference data to serialize.
-        path: Destination NetCDF path.
-
-    Raises:
-        RuntimeError: If every supported NetCDF backend fails.
-    """
-    if isinstance(idata, az.InferenceData):
-        idata = cast(Any, az.InferenceData)(
-            attrs=dict(idata.attrs),
-            **{group: reset_serialisation_multiindexes(idata[group]) for group in idata.groups()},
-        )
-
-    failures = []
-    for engine in ("h5netcdf", None, "netcdf4"):
-        try:
-            if engine is None:
-                idata.to_netcdf(str(path), compress=True)
-            else:
-                idata.to_netcdf(str(path), engine=engine, compress=True)
-        except Exception as exc:
-            engine_name = "arviz-default" if engine is None else engine
-            failures.append(f"{engine_name}: {exc}")
-        else:
-            return
-
-    joined_failures = "\n".join(failures)
-    raise RuntimeError(
-        f"Could not save RHIME trace to {path}. Tried h5netcdf, ArviZ default, and netcdf4:\n{joined_failures}"
-    )
-
-
 def _save_requested_trace(result: RhimeResult) -> None:
     """Save the sampled trace when requested by the resolved output spec."""
     trace_path = _resolve_output_path(
@@ -249,7 +230,7 @@ def _save_requested_trace(result: RhimeResult) -> None:
         return
     trace_path.parent.mkdir(parents=True, exist_ok=True)
     with timed("rhime.output.trace_save", path=trace_path):
-        _save_inferencedata(result.idata, trace_path)
+        save_trace(result.idata, trace_path)
     result.output_metadata["trace_path"] = str(trace_path)
 
 
@@ -257,19 +238,46 @@ def _make_inversion_output(
     *,
     result: RhimeResult,
     prepared: RhimePreparedInputs,
+    variable_roles: Mapping[str, str] | None = None,
+    state_dimension_mapping: Mapping[str, str] | None = None,
 ) -> InversionOutput:
     """Create a modern InversionOutput without fixedbasis legacy adapters.
 
     Args:
         result: Sampled recipe result and model-owned output contract.
         prepared: Retained canonical inputs and basis functions.
+        variable_roles: Optional override for the semantic role-to-variable
+            mapping. Defaults to ``result.model_build_result.variable_roles``.
+            Nested RHIME passes a per-domain override here: its builder
+            declares tagged roles (``"flux_scale:outer"``, ``"flux_scale:inner"``,
+            etc.) so one shared trace can be viewed as two ordinary,
+            single-grid ``InversionOutput`` contracts.
+        state_dimension_mapping: Optional explicit mapping from the selected
+            trace state dimension to the retained basis operator state
+            dimension. Nested views use this to normalize selected trace
+            variables without modifying the shared sampled trace.
 
     Returns:
         Complete modern inversion-output artifact.
     """
     model_build_result = cast(RhimeModelBuildResult, result.model_build_result)
     model_metadata = cast(dict[str, Any], _structured_metadata(asdict(result.model_spec)))
-    model_metadata["variable_roles"] = dict(model_build_result.variable_roles)
+    model_metadata["footprint_provenance"] = {
+        str(site): {
+            name: str(prepared.site_metadata[name].sel(site=site).item())
+            for name in ("transport_model", "transport_model_version", "met_model")
+            if name in prepared.site_metadata
+        }
+        for site in prepared.sites
+    }
+    model_metadata["variable_roles"] = (
+        dict(model_build_result.variable_roles) if variable_roles is None else dict(variable_roles)
+    )
+    if state_dimension_mapping is not None:
+        mapping = {str(key): str(value) for key, value in state_dimension_mapping.items()}
+        if set(mapping) != {"trace", "basis"}:
+            raise ValueError("State-dimension mappings require exactly the keys 'trace' and 'basis'.")
+        model_metadata["state_dimension_mapping"] = mapping
     builder_metadata = dict(model_build_result.metadata)
     for key in ("model_builder", "likelihood_builder", "likelihood_kwargs"):
         if key in result.output_metadata:
@@ -323,12 +331,15 @@ def make_standard_rhime_outputs(
     *,
     result: RhimeResult,
     prepared: RhimePreparedInputs,
+    compatibility_output_chain: int | None = None,
 ) -> None:
     """Create and attach the requested standard RHIME outputs.
 
     Args:
         result: Sampled standard result receiving requested products.
         prepared: Retained canonical inputs and basis functions.
+        compatibility_output_chain: Optional zero-based chain index used only
+            for ``run_hbmcmc`` derived-output compatibility.
     """
     output_spec = result.output_spec
     run_spec = result.run_spec
@@ -345,6 +356,9 @@ def make_standard_rhime_outputs(
         )
     outputs["inversion_output"] = inv_out
     output_metadata["inversion_output_contract"] = "modern"
+    postprocess_inv_out = inv_out
+    if compatibility_output_chain is not None and output_spec.output_format != "legacy":
+        postprocess_inv_out = inv_out.select_chain(compatibility_output_chain)
 
     inv_out_path = _resolve_output_path(
         output_spec.save_inversion_output,
@@ -356,7 +370,7 @@ def make_standard_rhime_outputs(
 
         output_metadata["postprocessing_input_contract"] = "modern_inversion_output"
         with timed("rhime.output.basic_postprocess"):
-            outputs["basic"] = basic_output(inv_out, country_file=output_spec.country_file)
+            outputs["basic"] = basic_output(postprocess_inv_out, country_file=output_spec.country_file)
     elif output_spec.output_format == "paris":
         from openghg_inversions.postprocessing.make_paris_outputs import make_paris_outputs
 
@@ -365,7 +379,7 @@ def make_standard_rhime_outputs(
         kwargs = output_spec.paris_postprocessing_kwargs or {}
         with timed("rhime.output.paris_postprocess"):
             flux_outs, conc_outs = make_paris_outputs(
-                inv_out,
+                postprocess_inv_out,
                 country_file=output_spec.country_file,
                 domain=model_spec.domain,
                 obs_avg_period=obs_avg_period,
@@ -393,7 +407,9 @@ def make_standard_rhime_outputs(
                 ext=".nc",
             )
             with timed("rhime.output.paris_concentration_netcdf_write", path=conc_file):
-                write_netcdf_preserving_bounds_attrs(conc_outs, conc_file, unlimited_dims=["time"])
+                write_netcdf_preserving_bounds_attrs(
+                    conc_outs, conc_file, unlimited_dims=["index" if "index" in conc_outs.dims else "time"]
+                )
             with timed("rhime.output.paris_flux_netcdf_write", path=flux_file):
                 write_netcdf_preserving_bounds_attrs(flux_outs, flux_file, unlimited_dims=["time"])
             output_metadata["paris_concentration_path"] = str(conc_file)
@@ -407,6 +423,7 @@ def make_standard_rhime_outputs(
                 inv_out,
                 country_file=output_spec.country_file,
                 use_bc=model_spec.use_bc,
+                derived_output_chain=compatibility_output_chain,
             )
         outputs["legacy"] = legacy_out
 

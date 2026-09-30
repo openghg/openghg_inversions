@@ -1,0 +1,6 @@
+openghg\_inversions.postprocessing.nested\_paris\_outputs
+=========================================================
+
+.. automodule:: openghg_inversions.postprocessing.nested_paris_outputs
+   :members:
+   :show-inheritance:

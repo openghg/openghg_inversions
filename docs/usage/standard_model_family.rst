@@ -16,6 +16,7 @@ between these recipes.
 
    rhime_standard_tutorial
    rhime_multisector_tutorial
+   multisector_inversions
    concrete_rhime_model
    rhime
    cli

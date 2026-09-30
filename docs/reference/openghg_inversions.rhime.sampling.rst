@@ -1,0 +1,6 @@
+openghg\_inversions.rhime.sampling
+==================================
+
+.. automodule:: openghg_inversions.rhime.sampling
+   :members:
+   :show-inheritance:

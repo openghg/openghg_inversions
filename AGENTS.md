@@ -1,5 +1,12 @@
 # Repository Guidance
 
+## Work Tracking
+
+GitHub Issues track work that needs project discussion. Linear may also be used
+for implementation tasks, especially personal or subdivided work.
+
+- For Linear issue IDs such as `OPE-17`, use the Linear MCP integration.
+
 ## RHIME architecture and scientific model development
 
 New RHIME work must follow the simplicity and locality rules in
@@ -50,8 +57,7 @@ git diff --check
 ```
 
 Use focused test paths while iterating and run the relevant broader pytest
-coverage before handing off a change. We still support Python 3.10, so avoid
-syntax, typing, and dependency features that require newer Python versions.
+coverage before handing off a change. We support Python 3.12 and 3.13.
 
 Do not run tox locally in a Codex-managed worktree. Submit compatibility,
 full-suite, and type-check environments to Slurm with
@@ -64,7 +70,11 @@ job exits.
 
 Use Towncrier fragments for user-visible changes. Agents must add a concise
 `newsfragments/<issue>.<type>.md` file rather than editing `CHANGELOG.md`
-directly; use `+` in place of an issue number when there is no tracked issue.
+directly. When there is no tracked issue, run
+`uv run --extra dev towncrier create +.bugfix.md --no-edit` (substitute the
+fragment type) and replace the placeholder text in the uniquely named
+`+<random>.<type>.md` file. Never commit a bare `+.<type>.md` filename, which
+conflicts when independent branches add a fragment of the same type.
 Choose one of `feature`, `bugfix`, `doc`, `removal`, or `misc` for `<type>`.
 The existing `CHANGELOG.md` remains the published, human-readable changelog
 for users and developers. During release preparation, a maintainer runs
