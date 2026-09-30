@@ -7335,7 +7335,7 @@ def test_derived_output_filename_can_use_legacy_convention(tmp_path: Path) -> No
 @pytest.mark.rhime_contract
 def test_make_standard_outputs_attach_products_to_result() -> None:
     """Attach the standard modern outputs with aligned release coordinates."""
-    model_spec, output_spec, run_spec = _minimal_output_specs()
+    model_spec, _, run_spec = _minimal_output_specs()
     inv_inputs = _minimal_output_inv_inputs().assign_coords(
         release_lat=("nmeasure", [51.0]),
         release_lon=("nmeasure", [-2.0]),
@@ -7395,7 +7395,7 @@ def test_standard_postprocessing_failure_precedes_output_writes(
 
 def test_output_bundle_serializes_state_activity_spec() -> None:
     """A concrete per-sector policy remains valid output metadata."""
-    _, output_spec, run_spec = _minimal_output_specs()
+    _, _, run_spec = _minimal_output_specs()
     sector = replace(
         run_spec.model.sectors[0],
         state_activity=StateActivity(active=False, fixed_value=2.0),
@@ -7644,7 +7644,7 @@ def test_make_multisector_outputs_build_latest_paris_flux(
 @pytest.mark.rhime_contract
 def test_default_model_inversion_output_save_load_roundtrip(tmp_path: Path) -> None:
     """Round-trip default-model metadata, trace attrs, inputs, and retained basis."""
-    model_spec, output_spec, run_spec = _minimal_output_specs()
+    model_spec, _, run_spec = _minimal_output_specs()
     prepared = RhimePreparedInputs(
         inv_inputs=_minimal_output_inv_inputs(),
         basis_functions=_fake_basis_functions(artifact_source="unit-test"),
@@ -7765,7 +7765,7 @@ def test_modern_inversion_output_save_load_roundtrip(tmp_path: Path) -> None:
 
 def test_modern_inversion_output_restores_bytes_multiindex_metadata() -> None:
     """Modern output loading accepts bytes-encoded MultiIndex metadata."""
-    model_spec, output_spec, run_spec = _minimal_output_specs()
+    model_spec, _, run_spec = _minimal_output_specs()
     inv_inputs = _minimal_output_inv_inputs()
     prepared = RhimePreparedInputs(
         inv_inputs=inv_inputs,
@@ -7791,7 +7791,7 @@ def test_modern_inversion_output_restores_bytes_multiindex_metadata() -> None:
 
 def test_modern_inversion_output_roundtrips_trace_multiindex() -> None:
     """Modern output serialization preserves restored trace measurement coordinates."""
-    model_spec, output_spec, run_spec = _minimal_output_specs()
+    model_spec, _, run_spec = _minimal_output_specs()
     nmeasure_index = pd.MultiIndex.from_arrays(
         [["TAC"], pd.to_datetime(["2019-01-01"])],
         names=["site", "time"],
@@ -7841,7 +7841,7 @@ def test_modern_inversion_output_roundtrips_trace_multiindex() -> None:
 )
 def test_modern_inversion_output_ignores_malformed_multiindex_metadata(raw_multiindex_dims: object) -> None:
     """Malformed MultiIndex metadata should not break modern output loading."""
-    model_spec, output_spec, run_spec = _minimal_output_specs()
+    model_spec, _, run_spec = _minimal_output_specs()
     inv_inputs = _minimal_output_inv_inputs()
     prepared = RhimePreparedInputs(
         inv_inputs=inv_inputs,
@@ -7867,7 +7867,7 @@ def test_modern_inversion_output_supports_flux_outputs() -> None:
     """Modern InversionOutput feeds flux postprocessing directly."""
     from openghg_inversions.postprocessing.make_outputs import make_flux_outputs
 
-    model_spec, output_spec, run_spec = _minimal_output_specs()
+    model_spec, _, run_spec = _minimal_output_specs()
     prepared = RhimePreparedInputs(
         inv_inputs=_minimal_output_inv_inputs(),
         basis_functions=_fake_basis_functions(),
@@ -8039,7 +8039,7 @@ def test_modern_paris_flux_outputs_backfill_unsanitized_nonfinite_flux(europe_co
 
 def test_observation_inputs_for_outputs_stay_dataset_based() -> None:
     """Modern postprocessing avoids split legacy observation fields."""
-    model_spec, output_spec, run_spec = _minimal_output_specs()
+    model_spec, _, run_spec = _minimal_output_specs()
     inv_inputs = _minimal_output_inv_inputs()
     inv_inputs["mf_prior_factor"] = ("nmeasure", [0.2])
     inv_inputs["mf_prior_upper_level_factor"] = ("nmeasure", [0.3])
@@ -8453,7 +8453,7 @@ def test_latest_paris_concentration_fills_missing_bc_with_nan(europe_country_fil
 
 def test_standard_basic_output_uses_modern_postprocessing_without_legacy_adapter(monkeypatch) -> None:
     """RHIME basic postprocessing consumes modern output without legacy adapters."""
-    model_spec, output_spec, run_spec = _minimal_output_specs(output_format="basic")
+    model_spec, _, run_spec = _minimal_output_specs(output_format="basic")
     prepared = RhimePreparedInputs(
         inv_inputs=_minimal_output_inv_inputs(),
         basis_functions=_fake_basis_functions(),
@@ -8525,7 +8525,7 @@ def test_run_hbmcmc_chain_selection_does_not_truncate_archived_trace(monkeypatch
 
 def test_standard_paris_output_uses_modern_postprocessing_without_legacy_adapter(monkeypatch) -> None:
     """RHIME PARIS postprocessing consumes modern output without legacy adapters."""
-    model_spec, output_spec, run_spec = _minimal_output_specs(output_format="paris")
+    model_spec, _, run_spec = _minimal_output_specs(output_format="paris")
     site_metadata = _prepared_site_metadata().assign(
         transport_model=("site", ["FLEXPART"]),
         transport_model_version=("site", [""]),

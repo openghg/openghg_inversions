@@ -86,7 +86,7 @@ def expand_site_boolean_option(
 
 def is_column_observation(inlet: object, platform: object) -> bool:
     """Return whether one inlet/platform pair explicitly selects column data."""
-    return isinstance(inlet, str) and inlet.lower() == "column" or is_column_platform(platform)
+    return (isinstance(inlet, str) and inlet.lower() == "column") or is_column_platform(platform)
 
 
 def is_column_platform(platform: object) -> bool:

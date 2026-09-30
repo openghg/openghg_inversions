@@ -58,7 +58,9 @@ Current support
      - Not supported by the staged CLI.
    * - Outputs and postprocessing
      - Returns an annotated xarray ``DataTree``. Use the documented serialization
-       boundary; the complete RHIME output pipeline is not integrated.
+       boundary. :ref:`Conditional native-flux and country summaries
+       <co2-affine-flux-summaries>` are available from a bound affine artifact;
+       the complete RHIME output pipeline is not integrated.
      - Returns an annotated xarray ``DataTree``. A bounded Python adapter produces
        separate CO2/O2 PARIS concentration products and supported native flux
        products; staged output integration remains future work.

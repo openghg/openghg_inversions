@@ -165,8 +165,9 @@ def split_contrast_score(
         cell_weight,
         spatial_dims=spatial_dims,
     )
-    mask_a = _nodes_mask(child_a, weight_values.shape, name="child_a")
-    mask_b = _nodes_mask(child_b, weight_values.shape, name="child_b")
+    grid_shape = (weight_values.shape[0], weight_values.shape[1])
+    mask_a = _nodes_mask(child_a, grid_shape, name="child_a")
+    mask_b = _nodes_mask(child_b, grid_shape, name="child_b")
     if np.any(mask_a & mask_b):
         raise ValueError("child_a and child_b must not overlap.")
 
@@ -270,11 +271,14 @@ def _xarray_design_by_grid_values(
     """Return xarray contribution values as ``(design_obs, row, col)``."""
     if spatial_dims is None:
         if isinstance(cell_weight, xr.DataArray):
-            spatial_dims = tuple(cell_weight.dims)  # type: ignore[assignment]
+            inferred_dims = tuple(cell_weight.dims)
         else:
-            spatial_dims = tuple(contribution.dims[-2:])  # type: ignore[assignment]
-    if len(spatial_dims) != 2:
+            inferred_dims = tuple(contribution.dims[-2:])
+    else:
+        inferred_dims = spatial_dims
+    if len(inferred_dims) != 2:
         raise ValueError("spatial_dims must contain exactly two dimensions.")
+    spatial_dims = (inferred_dims[0], inferred_dims[1])
     if any(dim not in contribution.dims for dim in spatial_dims):
         raise ValueError("spatial_dims must be dimensions of contribution.")
 

@@ -129,9 +129,14 @@ def _make_inv_inputs(
 def _warn_for_nan_inputs(inv_inputs: xr.Dataset, *, use_bc: bool) -> None:
     """Warn when prepared sensitivity matrices contain NaN values."""
     if np.isnan(inv_inputs.H.values).any():
-        warnings.warn(f"H matrix contains {np.isnan(inv_inputs.H.values).flatten().sum()} NaN values")
+        warnings.warn(
+            f"H matrix contains {np.isnan(inv_inputs.H.values).flatten().sum()} NaN values", stacklevel=3
+        )
     if use_bc and "H_bc" in inv_inputs and np.isnan(inv_inputs.H_bc.values).any():
-        warnings.warn(f"H_bc matrix contains {np.isnan(inv_inputs.H_bc.values).flatten().sum()} NaN values")
+        warnings.warn(
+            f"H_bc matrix contains {np.isnan(inv_inputs.H_bc.values).flatten().sum()} NaN values",
+            stacklevel=3,
+        )
 
 
 def _apply_filters_and_drop_empty_sites(

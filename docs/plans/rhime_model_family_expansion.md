@@ -183,6 +183,9 @@ required outcome. Use #410 for the readable recipe and extension documentation.
 
 ## CO2 model family
 
+The bounded output implementation and remaining delivery sequence are recorded
+in [CO2 and linked CO2/O2 postprocessing delivery](co2_postprocessing.md).
+
 The production subpackage must support a CO2-only recipe and a CO2 recipe with
 an O2 tracer. The current linked Verification Games prototype has a small model
 graph but substantial scientific preparation. Its corrected case uses shared

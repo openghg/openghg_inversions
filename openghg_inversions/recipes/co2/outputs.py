@@ -110,7 +110,7 @@ def reconstruct_co2_o2_concentrations(
             for source in np.unique(prepared.retained_prior.mean.source.values[selected.values]):
                 states = np.flatnonzero((selected & (prepared.retained_prior.mean.source == source)).values)
                 term = xr.dot(
-                    sensitivity.isel(observation=rows, **{state_dim: states}),
+                    sensitivity.isel({"observation": rows, state_dim: states}),
                     scales.isel({state_dim: states}),
                     dim=state_dim,
                 )

@@ -191,6 +191,8 @@ current scope and :doc:`staged replay </usage/staged_workflow>` for persistence.
    openghg_inversions.postprocessing.inversion_output.InversionOutput
    openghg_inversions.postprocessing.contracts.OutputContract
    openghg_inversions.postprocessing.output_views.make_inversion_output
+   openghg_inversions.postprocessing.co2_flux_outputs.co2_native_flux_outputs
+   openghg_inversions.postprocessing.co2_flux_outputs.co2_country_flux_outputs
    openghg_inversions.recipes.co2.outputs.make_co2_o2_paris_outputs
    openghg_inversions.recipes.co2.outputs.reconstruct_co2_o2_concentrations
    openghg_inversions.postprocessing.countries.Countries
