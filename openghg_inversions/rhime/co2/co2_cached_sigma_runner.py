@@ -23,7 +23,7 @@ from openghg_inversions.observation_error import (
     resolve_aggregation_error,
 )
 from openghg_inversions.rhime.builders import RhimeModelBuildResult
-from openghg_inversions.rhime.cached_sigma import make_cached_sigma_compound_step
+from openghg_inversions.inference.cached_sigma import make_cached_sigma_compound_step
 from openghg_inversions.rhime.materialization import materialize_pymc_inputs
 from openghg_inversions.rhime.sampling import RhimeSampler, sample_rhime_model
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from openghg_inversions.rhime import stages
+from openghg_inversions.inference import diagnostics as inference_diagnostics
 
 from contextlib import nullcontext
 import json
@@ -490,7 +490,7 @@ def test_diagnostics_preserve_threshold_edge_values(
             coords={"metric": ["r_hat", "ess_bulk", "ess_tail"]},
         )
 
-    monkeypatch.setattr(stages.az, "summary", fake_summary)
+    monkeypatch.setattr(inference_diagnostics.az, "summary", fake_summary)
 
     result = diagnose_rhime_stage(posterior=posterior_path, output_dir=tmp_path / "diagnose")
 
@@ -529,7 +529,7 @@ def test_diagnostics_preserve_finite_failures_when_one_metric_is_nonfinite(
         },
         coords={"metric": ["r_hat", "ess_bulk", "ess_tail"], "region": ["known", "undefined"]},
     )
-    monkeypatch.setattr(stages.az, "summary", lambda *args, **kwargs: summary)
+    monkeypatch.setattr(inference_diagnostics.az, "summary", lambda *args, **kwargs: summary)
 
     result = diagnose_rhime_stage(posterior=posterior_path, output_dir=tmp_path / "diagnose")
 
@@ -551,7 +551,7 @@ def test_diagnostics_handle_unassessable_scalar_metric(
     posterior_path = tmp_path / "posterior.nc"
     save_trace(idata, posterior_path)
     monkeypatch.setattr(
-        stages.az,
+        inference_diagnostics.az,
         "summary",
         lambda *args, **kwargs: xr.Dataset(
             {"x": ("metric", [np.nan, 800.0, 700.0])},

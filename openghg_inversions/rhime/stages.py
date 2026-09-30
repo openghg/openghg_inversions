@@ -14,7 +14,7 @@ from numbers import Integral, Real
 from pathlib import Path
 from typing import Any, Literal, Mapping, cast
 
-import arviz as az
+from openghg_inversions.inference.diagnostics import posterior_summary
 import numpy as np
 import pymc as pm
 import xarray as xr
@@ -645,14 +645,7 @@ def diagnose_rhime_stage(
     if sample_manifest is not None:
         _verify_sample_manifest(sample_manifest, posterior=posterior_path)
     idata = load_trace(posterior_path)
-    summary = az.summary(
-        idata["posterior"].to_dataset(),
-        kind="diagnostics",
-        fmt="xarray",
-        round_to="none",
-    )
-    if "summary" in summary.dims:
-        summary = summary.rename(summary="metric")
+    summary = posterior_summary(idata["posterior"].to_dataset())
     summary_path = _output_path(destination, None, "posterior-diagnostics.nc")
     reset_serialisation_multiindexes(summary).to_netcdf(summary_path)
 
