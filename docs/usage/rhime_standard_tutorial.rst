@@ -283,10 +283,12 @@ a clean source checkout, run:
 
 This opt-in command downloads the pinned ``v1.0.0`` companion release under the
 ignored ``build`` directory and verifies its files against the manifest,
-populates the named OpenGHG store, executes both downloadable notebooks, and
-updates only their paired output blocks. It records the current clean
+populates the named OpenGHG store, executes the registered downloadable notebooks,
+and updates their paired output blocks and displayed PNG assets. Select one
+notebook with ``--tutorial`` when invoking ``python -m scripts.record_tutorial_outputs``.
+It records the current clean
 OpenGHG Inversions commit and the data tag, then rebuilds the rendered pages.
-Review and commit the resulting RST changes. Ordinary previews, documentation
+Review and commit the resulting RST and image changes. Ordinary previews, documentation
 CI, and ``tox -e docs`` never acquire data or execute these tutorial inputs;
 they render the committed outputs offline. The recorder invokes Sphinx
 directly and does not create a tox environment.

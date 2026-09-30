@@ -6,6 +6,14 @@ concentrations without sampling a posterior, and uses the result to decide
 whether the configured priors and observation model are scientifically
 plausible. It then samples the posterior from the same prepared data.
 
+The code and recorded plots form one stateful session. You can
+:jupyter-download-notebook:`download it as a Jupyter notebook <prior_predictive_checking>`
+to rerun or modify locally after populating the companion store. Run either
+the shell commands or their notebook equivalents below, not both.
+
+.. jupyter-kernel:: python3
+   :id: prior_predictive_checking
+
 A prior predictive check asks what observations the complete model could
 generate before its unknown parameters are conditioned on the observed
 concentrations. RHIME predictions remain conditional on the prepared sites,
@@ -65,6 +73,47 @@ This writes ``prepared-inputs.nc`` and ``prepare-manifest.json`` beneath
 footprints, prior flux, boundary conditions, basis, and sensitivities used by
 the subsequent stages. It does not contain posterior samples.
 
+In the notebook, use the installed configuration resource and run the same
+CLI through the kernel's Python environment. The optional environment
+variables let the output recorder isolate its artifacts and record provenance;
+locally, outputs go to ``outputs/prior-check``:
+
+.. jupyter-input::
+
+   from importlib.resources import as_file, files
+   import json
+   import os
+   from pathlib import Path
+   import subprocess
+   import sys
+
+   run = Path(os.environ.get("OPENGHG_TUTORIAL_OUTPUT_PATH", "outputs/prior-check"))
+   resource = files("openghg_inversions.rhime").joinpath("config/standard_tutorial.ini")
+
+   def stage(command, *arguments):
+       completed = subprocess.run(
+           [sys.executable, "-m", "openghg_inversions.cli", command, *map(str, arguments)],
+           capture_output=True, text=True,
+       )
+       if completed.returncode:
+           raise RuntimeError(completed.stdout + completed.stderr)
+       return completed.stdout
+
+   with as_file(resource) as config:
+       stage("prepare", "--config", config, "--model", "standard",
+             "--output-dir", run / "prepare")
+   prepared_path = run / "prepare/prepared-inputs.nc"
+   preparation_manifest = run / "prepare/prepare-manifest.json"
+   {
+       "OpenGHG Inversions commit": os.environ.get("OPENGHG_TUTORIAL_CODE_REF", "local checkout"),
+       "tutorial data": os.environ.get("OPENGHG_TUTORIAL_DATA_TAG", "v1.0.0"),
+       "prepared inputs written": prepared_path.is_file(),
+   }
+
+.. jupyter-output::
+
+   Outputs will be refreshed by the tutorial recorder.
+
 Generate prior predictions
 --------------------------
 
@@ -89,7 +138,7 @@ scientific question.
 The command builds the configured PyMC model and calls prior-predictive
 sampling, but it does not call NUTS or sample a posterior. It writes:
 
-* ``prior-predictive.nc``, an ArviZ ``InferenceData`` artifact; and
+* ``prior-predictive.nc``, a native xarray ``DataTree`` trace artifact; and
 * ``prior-predictive-readiness.json``, a machine-readable check result.
 
 ``--strict`` exits nonzero if model construction fails or sampled values are
@@ -97,22 +146,41 @@ non-finite. A ``pass`` means only that the model produced finite values. It
 does **not** mean that the simulated concentrations, variability, or extremes
 are scientifically plausible.
 
+The notebook equivalent runs the same finite-value check:
+
+.. jupyter-input::
+
+   with as_file(resource) as config:
+       stage("prior-predictive", "--config", config, "--model", "standard",
+             "--prepared-inputs", prepared_path,
+             "--preparation-manifest", preparation_manifest,
+             "--draws", 500, "--output-dir", run / "prior-predictive", "--strict")
+   readiness = json.loads((run / "prior-predictive/prior-predictive-readiness.json").read_text())
+   {"status": readiness["status"], "message": readiness["message"]}
+
+.. jupyter-output::
+
+   Outputs will be refreshed by the tutorial recorder.
+
 Inspect the artifact
 --------------------
 
 Load the result and inspect its groups and variable names before plotting:
 
-.. code-block:: python
+.. jupyter-input::
 
-   import arviz as az
-   from openghg_inversions.serialization import load_inferencedata
+   from openghg_inversions.serialization import load_trace
 
-   prior = load_inferencedata(
-       "outputs/prior-check/prior-predictive/prior-predictive.nc"
-   )
-   print(prior.groups())
-   print("prior variables:", sorted(prior.prior.data_vars))
-   print("replicated observations:", sorted(prior.prior_predictive.data_vars))
+   prior = load_trace(run / "prior-predictive/prior-predictive.nc")
+   {
+       "groups": list(prior.children),
+       "prior variables": sorted(prior["prior"].data_vars),
+       "replicated observations": sorted(prior["prior_predictive"].data_vars),
+   }
+
+.. jupyter-output::
+
+   Outputs will be refreshed by the tutorial recorder.
 
 The output should include at least ``prior``, ``prior_predictive``, and
 ``observed_data``. A missing group means the expected prior-check artifact was
@@ -141,48 +209,61 @@ The important distinction is:
 For example, compare the distribution of replicated and observed
 concentrations:
 
-.. code-block:: python
+.. jupyter-input::
 
+   import arviz_plots as azp
    import matplotlib.pyplot as plt
 
-   az.plot_ppc(
+   azp.plot_ppc_dist(
        prior,
-       group="prior",
-       observed=True,
+       group="prior_predictive",
        var_names=["y"],
-       kind="cumulative",
-       num_pp_samples=100,
-       random_seed=42,
+       kind="ecdf",
+       num_samples=100,
+       backend="matplotlib",
+       visuals={"observed_dist": {"color": "black", "label": "Observed"}},
    )
+   plt.gca().set_title("Prior predictive concentration distributions")
+   plt.gca().legend()
    plt.show()
+   "Prior predictive ECDFs: 100 simulated datasets and the observations."
 
-``observed=True`` is explicit because ArviZ hides observed data by default for
-a prior predictive plot. A single flattened comparison can conceal a failure
+.. jupyter-output::
+
+   Outputs will be refreshed by the tutorial recorder.
+
+.. figure:: ../_static/tutorials/prior_predictive_checking-4-1.png
+   :alt: Prior predictive concentration ECDFs overlaid with the observed CH4 ECDF.
+
+   Each simulated curve pools both sites and all times; the black curve is
+   observed data. Compare magnitudes and tails, not just agreement with the
+   observed curve.
+
+``observed_dist`` is explicit because ArviZ hides observed data by default for
+a prior predictive plot. This uses the ArviZ 1.x plotting package installed
+with the current OpenGHG Inversions dependencies. A flattened comparison can conceal a failure
 at one site or during one period, so also inspect the labelled structure. The
 prepared artifact supplies the authoritative site/time measurement index:
 
-.. code-block:: python
+.. jupyter-input::
 
    import numpy as np
    from openghg_inversions.inversion_data import RhimePreparedInputs
 
-   prepared = RhimePreparedInputs.load(
-       "outputs/prior-check/prepare/prepared-inputs.nc"
-   )
+   prepared = RhimePreparedInputs.load(prepared_path)
    observations = prepared.inv_inputs["mf"]
    concentration_units = observations.attrs.get("units", "mole fraction")
-   print("concentration units:", concentration_units)
    measurement_index = prepared.inv_inputs.indexes["nmeasure"]
    sites = measurement_index.get_level_values("site")
    times = measurement_index.get_level_values("time")
    predictions = (
-       prior.prior_predictive["y"]
+       prior["prior_predictive"]["y"]
        .stack(sample=("chain", "draw"))
        .transpose("sample", "nmeasure")
    )
 
    site_names = sites.unique().tolist()
-   figure, axes = plt.subplots(len(site_names), 1, squeeze=False, sharex=False)
+   figure, axes = plt.subplots(len(site_names), 1, figsize=(10, 7), squeeze=False)
    for axis, site in zip(axes.flat, site_names):
        positions = np.flatnonzero(sites == site)
        intervals = predictions.isel(nmeasure=positions).quantile(
@@ -211,7 +292,20 @@ prepared artifact supplies the authoritative site/time measurement index:
        axis.set_ylabel(f"Concentration ({concentration_units})")
        axis.legend()
    figure.autofmt_xdate()
+   figure.tight_layout()
    plt.show()
+   {"sites": site_names, "concentration units": concentration_units}
+
+.. jupyter-output::
+
+   Outputs will be refreshed by the tutorial recorder.
+
+.. figure:: ../_static/tutorials/prior_predictive_checking-5-1.png
+   :alt: MHD and TAC time series with observations, three prior simulations, and pointwise 90 percent intervals.
+
+   Prior predictive intervals, median, and three complete simulated series at
+   each site, with observed concentrations. These are pointwise intervals,
+   not a simultaneous 90% band for a whole trajectory.
 
 The example produces one panel for MHD and one for TAC. Each panel should show
 the observed CH₄ series, three complete simulated series, and the pointwise
@@ -285,6 +379,23 @@ runs the configured sampler, and writes ``posterior.nc`` and
 ``sample-manifest.json``. It reuses the data artifact, not the in-memory PyMC
 graph from the prior-predictive process.
 
+In the notebook, explicitly reuse the same artifact and manifest:
+
+.. jupyter-input::
+
+   with as_file(resource) as config:
+       stage("sample", "--config", config, "--model", "standard",
+             "--prepared-inputs", prepared_path,
+             "--preparation-manifest", preparation_manifest,
+             "--output-dir", run / "sample")
+   posterior = load_trace(run / "sample/posterior.nc")
+   {"posterior samples": {name: posterior["posterior"].sizes[name]
+                          for name in ("chain", "draw")}}
+
+.. jupyter-output::
+
+   Outputs will be refreshed by the tutorial recorder.
+
 Next run the staged convergence check:
 
 .. code-block:: bash
@@ -299,18 +410,47 @@ R-hat, and divergences before interpreting the posterior; see the
 :ref:`staged convergence-check contract <staged-convergence-check>`. Then
 perform a posterior predictive check:
 
-.. code-block:: python
+.. jupyter-input::
 
-   posterior = load_inferencedata("outputs/prior-check/sample/posterior.nc")
-   az.plot_ppc(
+   stage("diagnose", "--posterior", run / "sample/posterior.nc",
+         "--sample-manifest", run / "sample/sample-manifest.json",
+         "--output-dir", run / "diagnose")
+   diagnostics = json.loads((run / "diagnose/sampler-convergence.json").read_text())
+   {"status": diagnostics["status"], "message": diagnostics["message"]}
+
+.. jupyter-output::
+
+   Outputs will be refreshed by the tutorial recorder.
+
+The deliberately short smoke run is not expected to pass convergence checks.
+The next plot demonstrates the mechanics only; it is not evidence that this
+posterior is reliable. For scientific work, obtain adequate diagnostics first.
+
+.. jupyter-input::
+
+   azp.plot_ppc_dist(
        posterior,
-       group="posterior",
-       observed=True,
+       group="posterior_predictive",
        var_names=["y"],
-       num_pp_samples=100,
-       random_seed=42,
+       kind="ecdf",
+       num_samples=100,
+       backend="matplotlib",
+       visuals={"observed_dist": {"color": "black", "label": "Observed"}},
    )
+   plt.gca().set_title("Posterior predictive distributions (smoke run only)")
+   plt.gca().legend()
    plt.show()
+   "Posterior predictive ECDFs: illustration only, not a converged scientific result."
+
+.. jupyter-output::
+
+   Outputs will be refreshed by the tutorial recorder.
+
+.. figure:: ../_static/tutorials/prior_predictive_checking-8-1.png
+   :alt: Posterior predictive concentration ECDFs and observed ECDF from the short smoke run.
+
+   Posterior predictive comparison from the 50-draw smoke run. Apparent
+   agreement with observations cannot compensate for inadequate convergence.
 
 Prior and posterior predictive checks answer different questions. The first
 tests whether the model's implications before parameter fitting are plausible,
@@ -326,11 +466,28 @@ Further reading
 
 * PyMC, `Prior and Posterior Predictive Checks
   <https://www.pymc.io/projects/docs/en/v5.7.2/learn/core_notebooks/posterior_predictive.html>`_.
-* ArviZ, `plot_ppc API
-  <https://python.arviz.org/en/v0.23.4/api/generated/arviz.plot_ppc.html>`_.
+* ArviZ, `plot_ppc_dist API
+  <https://python.arviz.org/projects/plots/en/stable/api/generated/arviz_plots.plot_ppc_dist.html>`_.
 * Stan User's Guide, `Posterior and Prior Predictive Checks
   <https://mc-stan.org/docs/stan-users-guide/posterior-predictive-checks.html>`_.
 * Gabry, J. et al. (2019), “Visualization in Bayesian workflow”,
   `doi:10.1111/rssa.12378 <https://doi.org/10.1111/rssa.12378>`_.
 * Gelman, A. et al. (2020), “Bayesian Workflow”,
   `arXiv:2011.01808 <https://arxiv.org/abs/2011.01808>`_.
+
+Refreshing the recorded outputs
+-------------------------------
+
+From a clean checkout, maintainers can refresh this notebook's text and plots
+with the shared recorder:
+
+.. code-block:: console
+
+   $ pixi run -e dev python -m scripts.record_tutorial_outputs --tutorial prior_predictive_checking
+
+The opt-in recorder downloads and verifies the pinned companion data,
+populates an isolated store, executes the notebook, and saves displayed PNGs
+under ``docs/_static/tutorials``. Review and commit both the refreshed RST and
+images. Ordinary documentation builds render the recorded results without
+downloading data or sampling; see the :doc:`standard tutorial
+<rhime_standard_tutorial>` for the recorder's provenance contract.
