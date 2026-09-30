@@ -138,11 +138,10 @@ class _PytensorSigmaLikelihoodOp(Op):
 
     def infer_shape(
         self,
-        fgraph: Any,
         node: Apply,
         input_shapes: list[tuple[Any, ...]],
     ) -> list[tuple[Any, ...]]:
-        del fgraph, node
+        del node
         return [(), input_shapes[0]]
 
     def install_residual(self, residual: ArrayLike) -> None:
