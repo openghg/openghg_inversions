@@ -24,7 +24,7 @@ logger = logging.Logger(__name__)
 
 
 # this dictionary will be populated by using the decorator `register_filter`
-filtering_functions = {}
+filtering_functions: dict[str, Callable] = {}
 
 
 def register_filter(filt: Callable) -> Callable:
@@ -68,7 +68,7 @@ def list_filters() -> None:
 
 def filtering(
     datasets_in: dict,
-    filters: str | None | dict[str, list[str | None]] | list[str | None],
+    filters: str | None | dict[str, str | None | list[str | None]] | list[str | None],
     keep_missing: bool = False,
 ) -> dict:
     """Applies time filtering to all datasets in `datasets_in`.
