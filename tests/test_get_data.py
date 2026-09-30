@@ -131,7 +131,10 @@ def test_datatree_to_fp_all_drops_obsolete_metadata() -> None:
 @pytest.mark.parametrize("engine", ["h5netcdf", "netcdf4"])
 def test_merged_netcdf_roundtrips_boolean_root_metadata(tmp_path, flag, engine) -> None:
     """The staged preparation marker is NetCDF-safe without changing inputs."""
-    scenario = xr.Dataset({"mf": ("time", [1.0])})
+    scenario = xr.Dataset(
+        {"mf": ("time", [1.0])},
+        coords={"height": ("height", [500.0], {"units": None, "long_name": "height"})},
+    )
     fp_all = {"TAC": scenario, ".split_by_sectors": flag}
 
     other_engine = "netcdf4" if engine == "h5netcdf" else "h5netcdf"
@@ -140,7 +143,10 @@ def test_merged_netcdf_roundtrips_boolean_root_metadata(tmp_path, flag, engine) 
     restored = load_merged_data(tmp_path, merged_data_name="prepared.nc")
 
     assert restored[".split_by_sectors"] is bool(flag)
-    xr.testing.assert_identical(restored["TAC"], scenario)
+    expected = scenario.copy()
+    expected["height"].attrs.pop("units")
+    xr.testing.assert_identical(restored["TAC"], expected)
+    assert scenario["height"].attrs["units"] is None
     assert fp_all[".split_by_sectors"] is flag
     assert fp_all_to_datatree(fp_all).attrs[".split_by_sectors"] is flag
 
