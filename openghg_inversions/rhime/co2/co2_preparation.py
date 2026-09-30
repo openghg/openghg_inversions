@@ -14,7 +14,7 @@ from numbers import Integral
 import json
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Literal, cast
+from typing import Any, Literal, Self, cast
 
 import pandas as pd
 import numpy as np
@@ -22,7 +22,6 @@ import xarray as xr
 from openghg.util import (  # pyright: ignore[reportPrivateImportUsage, reportAttributeAccessIssue]
     cf_ureg,
 )
-from typing_extensions import Self
 
 from openghg_inversions.array_ops import require_unique_index, same_index, validate_covariance_coordinates
 from openghg_inversions.coherent_reduction import CoherentGaussianReduction

@@ -29,13 +29,12 @@ import warnings
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Self, cast
 
 import matplotlib.pyplot as plt
 import numpy as np
 import xarray as xr
 from openghg.analyse._utils import match_dataset_dims, stack_datasets
-from typing_extensions import Self
 
 from openghg_inversions.array_ops import (
     force_align,

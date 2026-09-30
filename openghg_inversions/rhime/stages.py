@@ -14,7 +14,8 @@ import json
 from numbers import Integral, Real
 import os
 from pathlib import Path
-from typing import Any, Literal, Mapping, cast
+from collections.abc import Mapping
+from typing import Any, Literal, cast
 
 import arviz as az
 import numpy as np

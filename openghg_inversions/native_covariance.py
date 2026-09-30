@@ -47,7 +47,8 @@ from __future__ import annotations
 
 import inspect
 import json
-from typing import Callable, Protocol, cast
+from collections.abc import Callable
+from typing import Protocol, cast
 
 import numpy as np
 from scipy.linalg import cho_factor, cho_solve  # type: ignore[import-untyped]

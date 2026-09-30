@@ -19,10 +19,9 @@ around NetCDF/Zarr limitations.
 """
 
 from pathlib import Path
-from collections.abc import Iterable, Mapping
-from typing_extensions import Self
+from collections.abc import Hashable, Iterable, Mapping
 from dataclasses import dataclass, field, replace
-from typing import Any, Hashable, Literal, cast
+from typing import Any, Literal, Self, cast
 import json
 
 import numpy as np

@@ -50,11 +50,10 @@ import warnings
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, ClassVar, Literal, TypeVar, cast
+from typing import Any, ClassVar, Literal, Self, TypeVar, cast
 
 import numpy as np
 import xarray as xr
-from typing_extensions import Self
 
 from openghg_inversions.array_ops import (
     align_to_multi_index_level_values,
