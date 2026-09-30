@@ -1,5 +1,5 @@
 An explicit six-layer RHIME prototype
-====================================
+=====================================
 
 This prototype makes ownership and durable handoffs visible in the existing
 standard and multisector workflows. A saved posterior can now reach supported
@@ -11,8 +11,17 @@ The experiment implements a bounded part of
 ``docs/plans/rhime_end_to_end_architecture.md`` against ``devel`` at
 ``f708d606`` on 29 September 2026. That plan's earlier issue and code mappings
 remain historical evidence. This page describes implemented behavior and
-possible smaller landing steps; it does not supersede
+possible later delivery splits; it does not supersede
 :doc:`rhime_model_development` or complete the proposed linked-channel models.
+
+The plan was revised on 30 September 2026 to keep the ideal recipe/capability
+organization as the next prototype target. That target uses ``recipes/`` and
+``model_components/``, clearer prepared-input and output-view module names,
+canonical internal imports, and local helpers where there is only one
+production consumer. Compatibility aliases keep the prototype a candidate
+for merging; a later PR split is a separate delivery decision. The ownership
+map below describes the implemented head ``641dcc1d``, before those proposed
+changes. This documentation revision does not implement them.
 
 Where each layer lives
 ----------------------
@@ -48,8 +57,10 @@ the actual scientific sequence; each still calls ordinary functions directly.
    * - 4. Inference and checks
      - ``inference/sampling.py``
      - ``RhimeSampler.sample(model, variable_roles=...)`` owns sampling and
-       predictive draws. The recipe adapter adds timing. Specialized cached
-       sigma graph/step policy stays with its scientific recipe.
+       ordinary PyMC predictive execution. Cached-sigma recipes disable its
+       generic posterior prediction and generate joint replicates separately.
+       Convergence summaries and scientific predictive checks also consume
+       saved results; they are not all owned by the sampling module.
    * - 5. Scientific reconstruction
      - ``postprocessing/contracts.py``, ``postprocessing/reconstruction.py``,
        existing basis and output operations
@@ -112,7 +123,7 @@ crosses an explicit serialization boundary. No property performs retrieval,
 and the ownership moves do not introduce computation into prepared values.
 
 The durable output handoff
--------------------------
+--------------------------
 
 Previously, staged postprocessing built a model to recover its variable roles
 and supported formats. New staged samples write:
@@ -160,7 +171,7 @@ replay route. The staged CLI still supports standard and multisector. A
 graph-free nested output adapter does not imply a nested staged runner.
 
 Nested domains exercise a second view
-------------------------------------
+-------------------------------------
 
 The nested recipe now uses the same durable contract to form outer and inner
 output views, including when the live model has been discarded. Each view
@@ -182,7 +193,7 @@ prior independence. This extraction supplies a concrete starting point for
 multisector and CO2 nesting; those compositions are not implemented here.
 
 What the experiment establishes
-------------------------------
+-------------------------------
 
 Focused checks cover the responsibilities affected by the change:
 
@@ -205,18 +216,19 @@ These are implementation and small numerical checks, not a production
 inversion benchmark or scientific validation of a new model. They do not
 establish runtime improvements from moving code.
 
-How to scale this back for delivery
-----------------------------------
+Ideal prototype and subsequent delivery
+---------------------------------------
 
-The most valuable first change is the output handoff: retain ``OutputContract``,
-neutral view construction, matched saved bindings, and graph-free replay.
-That directly removes repeated model reconstruction from a real workflow.
+Keep the complete ideal organization in the prototype so its navigation and
+extension points can be assessed together. Retain ``OutputContract``, neutral
+view construction, matched saved bindings, graph-free replay and the distinct
+acquisition/prepared-contract owners through the namespace revision.
 
-Then land the prepared contract/acquisition split with compatibility exports.
-It gives acquisition and scientific preparation distinct owners without
-changing their scientific bodies. The sampler relocation, generic artifact
-namespace, and public domain-operation extraction can be reviewed separately;
-the durable output contract does not require all three package moves.
+The PR can later be split into functional handoffs and organizational moves,
+with compatibility exports preserving existing callers. That split should
+retain the agreed target rather than reduce the prototype in advance. The
+plan's migration map distinguishes public import compatibility from changes
+to implementation-level patch locations and installed resource paths.
 
 Before promoting the wider plan, extend this route through one fixed-coupling
 linked-channel model. Its adapter should obtain unequal observation supports,
@@ -233,6 +245,10 @@ still advertises writer formats, so it does not yet solve partial availability
 of quantities within a format. It also does not implement coherent CH4/C2H6,
 inferred coupling, or radiocarbon equations.
 
-The draft is consequently an implementation to inspect and trim. Its package
-names are negotiable; explicit scientific choices, compatible handoffs, and
-the ability to reopen supported products are the properties to retain.
+The revised plan also separates neutral convergence calculations from
+scientific predictive scores and stage thresholds. At this implementation
+head, cached-sigma posterior prediction has a dedicated joint generator;
+latent prior sampling does not provide joint prior-predictive observations,
+and a complete divergence assessment must account for the separately named
+sigma-step statistics. Those limitations are documented for subsequent work,
+not changed by the organizational proposal.
