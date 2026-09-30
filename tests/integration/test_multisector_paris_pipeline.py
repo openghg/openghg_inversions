@@ -16,7 +16,7 @@ from openghg_inversions.postprocessing.make_paris_outputs import (
     PARIS_LATEST_COUNTRIES,
     paris_template_files,
 )
-from openghg_inversions.rhime import run_rhime_multisector
+from openghg_inversions.recipes import run_rhime_multisector
 
 
 _CDL_VARIABLE = re.compile(

@@ -14,22 +14,22 @@ from scipy.stats import multivariate_normal
 import xarray as xr
 
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
-from openghg_inversions.models.coords import get_coord_registry
-from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
-from openghg_inversions.models.scalar_sigma import (
+from openghg_inversions.model_components.coords import get_coord_registry
+from openghg_inversions.model_components.fixed_ou import add_fixed_ou_gaussian_likelihood
+from openghg_inversions.model_components.scalar_sigma import (
     add_scalar_sigma_eigen_likelihood,
     load_scalar_sigma_eigenbasis,
     prepare_scalar_sigma_eigenbasis,
     save_scalar_sigma_eigenbasis,
 )
-from openghg_inversions.models.site_sigma import add_site_sigma_gaussian_likelihood
-from openghg_inversions.models.state_activity import StateActivity
+from openghg_inversions.model_components.site_sigma import add_site_sigma_gaussian_likelihood
+from openghg_inversions.model_components.state_activity import StateActivity
 from openghg_inversions.observation_error import AggregationError, resolve_aggregation_error
-from openghg_inversions.rhime.co2 import (
+from openghg_inversions.recipes.co2 import (
     build_co2_model,
     run_rhime_co2,
 )
-from openghg_inversions.rhime.co2 import co2_runner
+from openghg_inversions.recipes.co2 import co2_runner
 from openghg_inversions.serialization import load_trace, save_trace
 
 

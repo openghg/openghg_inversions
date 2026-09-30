@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from openghg_inversions.rhime import RhimeResult, run_rhime
+from openghg_inversions.recipes import RhimeResult, run_rhime
 
 from .likelihoods import likelihood_builder
 

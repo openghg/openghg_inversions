@@ -14,21 +14,20 @@ remain historical evidence. This page describes implemented behavior and
 possible later delivery splits; it does not supersede
 :doc:`rhime_model_development` or complete the proposed linked-channel models.
 
-The plan was revised on 30 September 2026 to keep the ideal recipe/capability
-organization as the next prototype target. That target uses ``recipes/`` and
-``model_components/``, clearer prepared-input and output-view module names,
-canonical internal imports, and local helpers where there is only one
-production consumer. Compatibility aliases keep the prototype a candidate
-for merging; a later PR split is a separate delivery decision. The ownership
-map below describes the implemented head ``641dcc1d``, before those proposed
-changes. This documentation revision does not implement them.
+The 30 September namespace revision implements the recipe/capability layout:
+``recipes/`` owns complete models and their runners, while
+``model_components/`` owns reusable model-building functions. Prepared-input
+values, execution from prepared values, and output-view construction have
+separate names. Internal imports use these canonical owners. Established
+imports remain explicit compatibility aliases to the same objects. A later
+PR split is a delivery decision, not a different architectural target.
 
 Where each layer lives
 ----------------------
 
 The layers are responsibilities and handoffs. They do not require six classes
-or an execution engine. Open :func:`openghg_inversions.rhime.standard.run_rhime`
-or :func:`openghg_inversions.rhime.multisector.run_rhime_multisector` to read
+or an execution engine. Open :func:`openghg_inversions.recipes.standard.run_rhime`
+or :func:`openghg_inversions.recipes.multisector.run_rhime_multisector` to read
 the actual scientific sequence; each still calls ordinary functions directly.
 
 .. list-table::
@@ -43,14 +42,14 @@ the actual scientific sequence; each still calls ordinary functions directly.
      - Owns retrieval/reload, complete site options, and ``RhimeMergedData``.
        Recipe configuration resolves policy before calling the provider.
    * - 2. Scientific preparation
-     - ``rhime/preparation.py``, ``inversion_data/preparation.py``,
-       ``inversion_data/prepared.py``
+     - ``recipes/preparation_adapters.py``, ``inversion_data/preparation.py``,
+       ``inversion_data/prepared_inputs.py``
      - Recipe stages filter, build a basis and sensitivities, and assemble
        ``RhimePreparedInputs``. Its schema, validation and persistence have a
-       separate owner. ``forward/domain_support.py`` supplies pure grid
-       operations shared with nested preparation.
+       separate owner. ``recipes/_domain_support.py`` keeps pure grid
+       operations local to nested preparation.
    * - 3. Model construction
-     - Concrete standard/multisector builders and ``models/``
+     - Concrete standard/multisector builders and ``model_components/``
      - Materialization remains explicit. Builders return a PyMC graph, roles,
        and an independently usable ``OutputContract``. Equations and state
        allocation remain visible in the recipe family.
@@ -59,32 +58,55 @@ the actual scientific sequence; each still calls ordinary functions directly.
      - ``RhimeSampler.sample(model, variable_roles=...)`` owns sampling and
        ordinary PyMC predictive execution. Cached-sigma recipes disable its
        generic posterior prediction and generate joint replicates separately.
-       Convergence summaries and scientific predictive checks also consume
-       saved results; they are not all owned by the sampling module.
+       ``inference/diagnostics.py`` calculates neutral posterior summaries;
+       ``postprocessing/metrics.py`` contains scientific predictive scores.
+       Recipes retain acceptance policy.
    * - 5. Scientific reconstruction
-     - ``postprocessing/contracts.py``, ``postprocessing/reconstruction.py``,
+     - ``postprocessing/contracts.py``, ``postprocessing/output_views.py``,
        existing basis and output operations
      - Samples, prepared data, and an explicit contract form an
        ``InversionOutput`` view. Construction needs no live model and performs
        no file writes. Domain adapters select roles and state axes explicitly.
    * - 6. Products and persistence
-     - Existing output writers/codecs; ``workflow/artifacts.py``
-     - Writers consume scientific views. Shared helpers handle JSON, content
-       hashes and paths. ``rhime/stages.py`` retains recipe dispatch and
+     - Existing output writers/codecs; ``recipes/_stage_artifacts.py``
+     - Writers consume scientific views. Local stage helpers handle JSON, content
+       hashes and paths. ``recipes/stages.py`` retains recipe dispatch and
        artifact-schema policy, including the saved output binding.
 
 The principal dependency direction is recipes towards these owners.
-``inference`` may use reusable model-coordinate helpers; neutral reconstruction
-does not import ``rhime`` or a model backend. ``forward`` does not query stores
-or allocate latent states. ``workflow/artifacts.py`` does not choose a model,
-infer execution order, or know the contents of a scientific run.
+``inference`` may use reusable model-coordinate helpers; output-view
+construction does not import recipes or a model backend. Local domain helpers
+do not query stores or allocate latent states. Stage artifact helpers do not
+choose a model or infer execution order. Keeping these two helpers local
+reflects their single production consumer.
 
-The package moves contain actual implementations. The former import locations
-re-export compatible objects. In particular, ``rhime.RhimeSampler`` and
-``rhime.sampling.RhimeSampler`` still identify the shared sampler, while
-``inversion_data.RhimePreparedInputs`` and the older preparation-module import
-identify the same prepared class. Its on-disk schema remains version 1.
-Existing named runners and configuration formats continue to work.
+The moves contain actual implementations. Complete standard and multisector
+recipes remain readable in one module each, with CO2-family recipes grouped
+in a subpackage. The former ``rhime`` and ``models`` locations re-export the
+canonical objects, including family and component submodules.
+``rhime.RhimeSampler`` and ``rhime.sampling.RhimeSampler`` still identify the
+shared inference sampler. ``inversion_data.RhimePreparedInputs``, the older
+preparation-module import and the prototype ``inversion_data.prepared`` import
+identify the class now defined in ``inversion_data.prepared_inputs``. Its
+on-disk schema remains version 1. Existing runner names and configuration
+formats continue to work; current examples use ``recipes/config`` resources.
+The installed ``rhime/config`` resource tree is retained for compatibility,
+with matching template contents.
+
+Use ``recipes.from_prepared`` for execution from durable prepared inputs and
+``recipes.preparation_adapters`` for standard/multisector preparation policy.
+The prototype ``postprocessing.reconstruction``, ``forward.domain_support``
+and ``workflow.artifacts`` imports also remain compatibility paths; new
+internal callers use their canonical owners. Compatibility aliases preserve
+object identity, not private monkeypatch locations: patch dependencies where
+the implementation looks them up.
+
+Reusable cached-sigma mechanics live in ``inference/cached_sigma.py``; the
+scientific graph and joint-prediction policy stay in their CO2 recipes.
+Carbon-specific linked output adaptation lives beside those recipes in
+``recipes/co2/outputs.py``, with ``postprocessing.linked_paris_outputs``
+retained as a compatibility alias. General PARIS writers stay in
+``postprocessing``.
 
 A readable procedural route
 ---------------------------
@@ -113,7 +135,7 @@ calls; :doc:`/usage/staged_workflow` supplies runnable CLI examples.
 This is a sequence of explicit choices. The output contract never chooses
 equations, source sharing, a prior, or a likelihood. It records the output
 meaning of the model already selected. For ordinary analysis, callers can
-use :func:`openghg_inversions.postprocessing.reconstruction.make_inversion_output`
+use :func:`openghg_inversions.postprocessing.output_views.make_inversion_output`
 directly with the prepared value, trace and metadata. The existing recipe
 output adapter supplies those metadata for maintained runs.
 
@@ -179,7 +201,8 @@ selects its own roles and explicitly maps its posterior state dimension to
 its basis dimension. Both share the unchanged posterior, preserve every
 chain, and retain distinct native grids and support provenance.
 
-Two public operations were extracted from that recipe:
+Two pure operations in its local ``_domain_support`` helper separate array
+operations from OpenGHG adaptation:
 
 * ``rectangular_extent_mask`` constructs an inclusive coordinate bounding-box
   mask on a target grid. It does not infer cell edges, interpolate, or
@@ -189,8 +212,9 @@ Two public operations were extracted from that recipe:
 
 The recipe still decides per-site versus union masking, adapts OpenGHG
 objects, and records support policy. Removing spatial overlap does not imply
-prior independence. This extraction supplies a concrete starting point for
-multisector and CO2 nesting; those compositions are not implemented here.
+prior independence. These local operations supply a starting point for
+multisector and CO2 nesting; a second production consumer can establish a
+shared public contract. Those compositions are not implemented here.
 
 What the experiment establishes
 -------------------------------
@@ -222,7 +246,7 @@ Ideal prototype and subsequent delivery
 Keep the complete ideal organization in the prototype so its navigation and
 extension points can be assessed together. Retain ``OutputContract``, neutral
 view construction, matched saved bindings, graph-free replay and the distinct
-acquisition/prepared-contract owners through the namespace revision.
+acquisition/prepared-contract owners alongside the new namespaces.
 
 The PR can later be split into functional handoffs and organizational moves,
 with compatibility exports preserving existing callers. That split should
@@ -245,10 +269,21 @@ still advertises writer formats, so it does not yet solve partial availability
 of quantities within a format. It also does not implement coherent CH4/C2H6,
 inferred coupling, or radiocarbon equations.
 
-The revised plan also separates neutral convergence calculations from
-scientific predictive scores and stage thresholds. At this implementation
-head, cached-sigma posterior prediction has a dedicated joint generator;
-latent prior sampling does not provide joint prior-predictive observations,
-and a complete divergence assessment must account for the separately named
-sigma-step statistics. Those limitations are documented for subsequent work,
-not changed by the organizational proposal.
+Inference checks and scientific scores
+-------------------------------------
+
+``inference/diagnostics.py`` owns reusable posterior convergence summaries.
+``postprocessing/metrics.py`` owns Bayesian R-squared scores calculated from observations and
+predictive samples, including site/time groupings. The established
+``postprocessing.diagnostics`` interfaces remain adapters for existing output
+callers; product naming and stage thresholds remain outside neutral inference
+calculations. Moving these calculations does not change their equations or
+establish new acceptance thresholds.
+
+Cached-sigma posterior prediction still uses its dedicated joint generator.
+Latent prior sampling does not supply joint prior-predictive observations, and
+a complete divergence assessment must account for the separately named
+sigma-step statistics. `Issue #769
+<https://github.com/openghg/openghg_inversions/issues/769>`_ tracks integration
+of this specialized behavior with generic predictive execution. That
+functional work is not implemented by this namespace revision.

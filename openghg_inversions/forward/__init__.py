@@ -1,4 +1,4 @@
-"""Backend-neutral operations on labelled forward responses and domain support."""
+"""Compatibility exports for nested-recipe domain support."""
 
 from .domain_support import rectangular_extent_mask, remove_domain_overlap
 

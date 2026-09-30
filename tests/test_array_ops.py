@@ -23,7 +23,7 @@ from openghg_inversions.array_ops import (
 
 def test_unique_index_and_co2_index_comparison_semantics() -> None:
     """Ordinary Index names are ignored; gathered MultiIndex level names are not."""
-    from openghg_inversions.rhime.co2.co2_o2_preparation import _same_index as co2_o2_same_index
+    from openghg_inversions.recipes.co2.co2_o2_preparation import _same_index as co2_o2_same_index
 
     array = xr.DataArray([1, 2], dims="state", coords={"state": ["a", "b"]})
     ordinary = require_unique_index(array, "state", name="state")

@@ -9,16 +9,15 @@ Status: strengthened architectural proposal; implementation and scientific choic
 
 Audience: model authors, maintainers, scientific reviewers, and delivery owners
 
-Implementation experiment, 29 September 2026: the
+Implementation experiment, 29–30 September 2026: the
 [six-layer prototype](../development/rhime_six_layer_prototype.rst) applies a
-bounded part of this plan to newer `devel`. It records actual ownership moves,
-graph-free staged reconstruction and compatibility. The 30 September revision
-below sets the target for the next prototype iteration; it does not claim that
-those namespace changes have been implemented. Keep the ideal target in the
-prototype, with compatibility imports making it a candidate for merging. The
-PR may subsequently be split for delivery; that possibility does not reduce
-the prototype's architectural scope. Earlier evidence and tracker statuses
-remain dated to their stated snapshots.
+bounded part of this plan to newer `devel`. It implements graph-free staged
+reconstruction, canonical `recipes` and `model_components` namespaces, explicit
+prepared-input/output-view owners, and compatibility aliases. The walkthrough
+records the current implementation; the wider linked-channel and scientific
+contracts below remain proposed work. Keep the ideal organization visible in
+the prototype; a later delivery split need not change that target. Earlier
+code evidence and tracker statuses remain dated to their stated snapshots.
 
 ## Purpose, authority, and evidence
 
@@ -215,18 +214,24 @@ live model. Choose its owner from the inputs and meaning of the calculation:
 | Posterior convergence calculations | `inference/diagnostics.py` | Posterior and sample-stat groups; compute reusable R-hat, ESS, MCSE and relevant transition diagnostics without a live graph or `InversionOutput` |
 | Ordinary PyMC predictive generation | Small explicit functions beside inference | A generative graph plus prior or posterior draws; sampler choice alone does not establish predictive support |
 | Specialized predictive generation | The scientific recipe or demonstrated family helper | Matched scientific mean, uncertainty representation and paired parameter draws; no implicit dispatch from a component name |
-| Scientific predictive assessment | `postprocessing/diagnostics.py` | Saved observations, predictive samples, units and sampling support; site/time summaries such as Bayesian R-squared |
+| Scientific predictive assessment | `postprocessing/metrics.py` | Saved observations, predictive samples, units and sampling support; site/time summaries such as Bayesian R-squared |
 | Acceptance thresholds and stage results | Explicit recipe/stage policy | Apply declared thresholds, preserve unknown/unassessable cases and write check artifacts; do not conflate an available metric with a scientific pass |
 
-`inference/diagnostics.py` is a target, not an existing module at the reviewed
-prototype head. Its neutral calculations should be shared by the current
+The namespace prototype now separates neutral calculations into
+`inference/diagnostics.py`, shared by the compatibility
 `postprocessing.diagnostics.summary` adapter and staged convergence checks.
-The current overlap is that both call ArviZ diagnostic summaries. Keep product
-decoration, such as `_trace` naming, in postprocessing. Site/time predictive
-scores remain there because they interpret observation-aligned results.
-Preserve chain/draw identity for convergence calculations; pooling is allowed
-only where the specific diagnostic calls for it. Canonical diagnostic imports
-must not require recipe imports or graph construction through initializers.
+Scientific predictive scores live in `postprocessing/metrics.py`. Keep product
+decoration, such as `_trace` naming, in postprocessing. These ownership moves
+preserve the existing calculations; they do not establish new thresholds or
+complete specialized predictive support. Preserve chain/draw identity for
+convergence calculations; pooling is allowed only where the specific score
+calls for it. Canonical diagnostic imports must not require recipe imports or
+graph construction through initializers.
+
+The following cached-sigma findings describe the explicitly pinned earlier
+head. [#769](https://github.com/openghg/openghg_inversions/issues/769) tracks
+its generic predictive integration; that functional work is not implemented
+by the namespace prototype.
 
 At #764 head `641dcc1d`, the fixed-OU cached-sigma CO2 runner uses the shared
 sampler with an explicitly constructed sigma-then-state `CompoundStep`. It
@@ -754,18 +759,18 @@ must retain this distinction.
 
 ## Package ownership and dependency direction
 
-The 30 September target organizes implementation around named scientific
-recipes and shared capabilities. Implement this ideal in the prototype;
-compatibility and a possible later PR split are delivery mechanisms. These
-owners need not correspond one-to-one to the six conceptual layers.
+The 30 September namespace prototype organizes implementation around named
+scientific recipes and shared capabilities. Compatibility aliases and a
+possible later PR split are delivery mechanisms. These owners need not
+correspond one-to-one to the six conceptual layers.
 
 | Canonical home | Responsibility | Target and limit |
 | --- | --- | --- |
-| `recipes/` and scientific family subpackages | Complete scientific definitions and procedural runners, with recipe-specific configuration, preparation and output adapters nearby | Move the main implementation from `rhime`; keep small recipes in single modules and retain `co2/` for the larger family. No registry, base class or inferred execution graph |
-| `model_components/` | Reusable model-building functions, including priors, coordinates, responses, baselines and likelihood terms | Rename the current `models` implementation; keep complete concrete models with their runners. Keep supporting operations here only when their responsibility belongs with these components |
+| `recipes/` and scientific family subpackages | Complete scientific definitions and procedural runners, with recipe-specific configuration, preparation and output adapters nearby | The main implementation moves from `rhime`; keep small recipes in single modules and retain `co2/` for the larger family. No registry, base class or inferred execution graph |
+| `model_components/` | Reusable model-building functions, including priors, coordinates, responses, baselines and likelihood terms | The implementation moves from `models`; keep complete concrete models with their runners. Keep supporting operations here only when their responsibility belongs with these components |
 | `inversion_data/` | Acquisition, shared scientific preparation, labelled alignment and durable prepared-input contracts | Preserve acquisition/contract separation. Shared transformations accept explicit data; recipe adapters choose and order them |
 | `inference/` | Sampling already constructed models, reusable step mechanics, ordinary predictive execution and neutral inference diagnostics | Preserve the small sampling boundary; recipes retain specialized graph/cache/step and predictive policy. Diagnostic calculation is separate from threshold policy |
-| `postprocessing/` | Scientific output values and views, numerical reconstruction, scientific predictive assessments, aggregation and products | Consume saved roles and matched artifacts without importing recipes or requiring a model graph for ordinary outputs |
+| `postprocessing/` | Scientific output values and views, numerical reconstruction, scientific predictive metrics, aggregation and products | Consume saved roles and matched artifacts without importing recipes or requiring a model graph for ordinary outputs |
 | Existing `basis/`, covariance/reduction and low-level modules | Scientific operators, uncertainty representations, codecs, array and timing operations | Retain their existing responsibilities; the five principal owners above are not a demand to absorb every numerical module |
 | `rhime/`, `models/` and other established compatibility paths | Supported public imports and legacy entry points | Explicit aliases point to canonical implementations; no duplicate scientific implementations or normal internal routing through compatibility modules |
 
@@ -775,15 +780,21 @@ replay and separate acquisition/prepared contracts already demonstrated by
 implement quantity-specific output capabilities, coherent linked-channel
 bindings, or new scientific models.
 
-`forward/domain_support.py` currently serves the nested recipe, and
-`workflow/artifacts.py` serves staged execution. For this target, keep the
-small domain operations in the nested module or a nearby `_domain_support.py`
-helper, and artifact mechanics beside `recipes/stages.py` in `_stage_artifacts.py`
-if a separate file improves reading. Public aliases can preserve prototype
-imports. Extract a broader shared owner when existing consumers establish
-common meaning and behavior, rather than creating directories to represent
-conceptual layers. The pure domain operations and explicit artifact checks
-remain useful even when their files stay local.
+The single-consumer domain operations now live in
+`recipes/_domain_support.py`, and stage mechanics in
+`recipes/_stage_artifacts.py`. The prototype `forward.domain_support` and
+`workflow.artifacts` imports remain explicit compatibility aliases. Extract a
+broader shared owner when existing consumers establish common meaning and
+behavior, rather than creating directories for conceptual layers. The pure
+domain operations and explicit artifact checks remain useful as local helpers.
+
+Reusable cached-sigma numerical and step mechanics live in
+`inference/cached_sigma.py`; CO2 recipes retain their graph, cache, ordered step
+and joint-prediction policy. Carbon-specific linked output adaptation lives in
+`recipes/co2/outputs.py`, with `postprocessing.linked_paris_outputs` retained as
+an explicit compatibility alias. General PARIS writers remain in
+`postprocessing`. These ownership changes do not implement #769's generic
+predictive integration.
 
 ### Navigation and preparation boundaries
 
@@ -796,21 +807,20 @@ Use distinct names for data values, scientific transformations and execution:
 | Change acquisition or common scientific preparation | `inversion_data/acquisition.py` or `inversion_data/preparation.py` |
 | Change prepared values, validation or schema | `inversion_data/prepared_inputs.py` |
 | Run a model from already prepared inputs | `recipes/from_prepared.py` |
-| Change shared sampling or convergence calculations | `inference/sampling.py` or `inference/diagnostics.py` |
+| Change shared sampling, step mechanics or convergence calculations | `inference/sampling.py`, `inference/cached_sigma.py` or `inference/diagnostics.py` |
+| Change observation-aligned scientific scores | `postprocessing/metrics.py` |
 | Bind saved results to scientific views | `postprocessing/contracts.py` and `postprocessing/output_views.py` |
 
-The existing two `preparation.py` modules need an ownership review as well as
-clearer names. Keep shared numerical transformations in `inversion_data` and
-recipe choices beside the model. Where a shared standard/multisector adapter
-is useful, name it `recipes/preparation_adapters.py` and explain the policy or
-resolved-option adaptation it performs. Do not retain a second preparation
-layer that only relays calls to private helpers without a clear purpose.
+Shared numerical transformations stay in `inversion_data`, with recipe
+choices beside the model. `recipes/preparation_adapters.py` names the shared
+standard/multisector adapters and the resolved-option policy they perform.
+Do not retain a second preparation layer that only relays calls to private helpers without a clear purpose.
 Do not move family-specific CO2 preparation to `inversion_data` solely because
 it occurs before model construction.
 
-Rename the prototype `postprocessing/reconstruction.py` to `output_views.py`:
-its current function assembles `InversionOutput` and metadata. Numerical
-reconstruction remains with the corresponding basis/affine-map and
+The prototype `postprocessing/reconstruction.py` implementation now lives in
+`output_views.py`: its function assembles `InversionOutput` and metadata.
+Numerical reconstruction remains with the corresponding basis/affine-map and
 postprocessing operations. Binding and calculating reconstructed quantities
 are different responsibilities, even when a recipe invokes them consecutively.
 
@@ -836,8 +846,9 @@ A cycle introduced by moving covariance code through a package initializer
 is still a cycle. Preserve required PyTensor initialization order; pure saved
 result and diagnostic operations should not require building a graph.
 
-Classify code before moving it: `models/state_activity.py` contains neutral
-labelled operations; `models/fixed_ou.py` mixes kernels and backend integration.
+Classify code by responsibility: `model_components/state_activity.py` contains
+neutral labelled operations; `model_components/fixed_ou.py` mixes kernels and
+backend integration.
 Directory names alone do not establish ownership. Split namespace-only moves
 from scientific/default/configuration/persistence-schema changes in commits
 and review. A later split into smaller PRs must preserve the agreed ideal
@@ -858,7 +869,8 @@ Internal imports should use canonical owners. A real recipe adapter, such as
 recipe timing; it is not merely an obsolete sampler alias.
 
 The migration map must distinguish the following public and implementation
-consequences (targets below are planned, not claims about head `641dcc1d`):
+consequences of the namespace prototype below. They supersede the layout of
+head `641dcc1d`; the historical evidence elsewhere retains its original paths:
 
 | Established location | Canonical target | Compatibility and testing consequence |
 | --- | --- | --- |
@@ -869,7 +881,10 @@ consequences (targets below are planned, not claims about head `641dcc1d`):
 | `rhime.preparation.retrieve_or_reload_rhime_data` | `inversion_data.acquisition` | Public function remains aliased; provider patches target acquisition globals such as `data_processing_surface_notracer` and `load_merged_data` |
 | `rhime.sampling.RhimeSampler` | `inference.sampling.RhimeSampler` | Same class, but implementation patches such as `pm.sample` belong at `inference.sampling.pm.sample` |
 | `postprocessing.reconstruction.make_inversion_output` | `postprocessing.output_views.make_inversion_output` | Preserve the view factory import while correcting its implementation module name |
-| Prototype `forward.domain_support` and `workflow.artifacts` | Local recipe support modules | Retain explicit aliases where supported; normal internal imports use the local owners |
+| Prototype `forward.domain_support` and `workflow.artifacts` | `recipes._domain_support` and `recipes._stage_artifacts` | Retain explicit aliases; normal internal imports use the local owners |
+| `rhime.cached_sigma` | `inference.cached_sigma` | Reusable mechanics move without changing scientific graph/step policy |
+| `postprocessing.linked_paris_outputs` | `recipes.co2.outputs` | Carbon adapter moves beside its scientific family; general writers remain independent |
+| `postprocessing.diagnostics` scores and summary | `postprocessing.metrics` and `inference.diagnostics` | Preserve the existing adapter API and separate product decoration from neutral calculations |
 
 An import alias does not relocate a function's global namespace. Tests should
 patch dependencies where the implementation looks them up; do not promise
@@ -883,6 +898,9 @@ downstream custom runners, and importable callable provenance. Preserve the
 meaning and readability of saved artifacts and historical module names;
 do not rewrite old scientific provenance to the new spelling. If an old
 resource path needs a temporary compatibility exception, record it explicitly.
+The prototype retains `rhime/config` resources alongside canonical
+`recipes/config`, with equality checks; existing resource lookup paths remain
+valid while current examples and loaders use the canonical location.
 
 ## Existing issue responsibilities
 

@@ -10,14 +10,14 @@ import pytest
 import xarray as xr
 from scipy.stats import multivariate_normal
 
-from openghg_inversions.models.coords import get_coord_registry, registered_model
-from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
+from openghg_inversions.model_components.coords import get_coord_registry, registered_model
+from openghg_inversions.model_components.fixed_ou import add_fixed_ou_gaussian_likelihood
 from openghg_inversions.observation_error import resolve_aggregation_error
-from openghg_inversions.rhime.multisector import build_multisector_rhime_model
-from openghg_inversions.rhime.outputs import annotate_likelihood_trace
+from openghg_inversions.recipes.multisector import build_multisector_rhime_model
+from openghg_inversions.recipes.outputs import annotate_likelihood_trace
 from openghg_inversions.serialization import load_trace, save_trace
-from openghg_inversions.rhime.specs import SectorSpec
-from openghg_inversions.rhime.standard import build_standard_rhime_model
+from openghg_inversions.recipes.specs import SectorSpec
+from openghg_inversions.recipes.standard import build_standard_rhime_model
 
 
 def _ou_inputs(*, low_rank: bool = True, zero_base: bool = False) -> xr.Dataset:
@@ -320,7 +320,7 @@ def test_likelihood_trace_annotation_round_trips_identity_and_options(tmp_path) 
     """Raw trace metadata identifies the custom callable and its arguments."""
     idata = xr.DataTree.from_dict({"posterior": xr.Dataset()})
     identity = {
-        "module": "openghg_inversions.models.fixed_ou",
+        "module": "openghg_inversions.model_components.fixed_ou",
         "qualname": "add_fixed_ou_gaussian_likelihood",
     }
     options = {"tau_hours": {"MHD": 5.0, "TAC": 7.0}}

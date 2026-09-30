@@ -17,11 +17,18 @@ class OutputContract:
     """Bind scientific roles and a selected state axis to durable model data.
 
     Args:
-        variable_roles: Scientific role to variable name in samples or prepared data.
-        supported_output_formats: Formats whose existing writer contracts are met.
-        metadata: JSON-compatible builder identity and scientific provenance.
+        variable_roles: Nonempty mapping of nonempty scientific role strings to
+            nonempty variable names in samples or prepared data.
+        supported_output_formats: Supported writer names from ``none``, ``inv_out``,
+            ``basic``, ``paris`` and ``legacy``. Must include ``none``.
+        metadata: Finite JSON-compatible builder identity and scientific provenance.
         state_dimension_mapping: Optional explicit ``trace`` and ``basis`` state
-            dimensions for one output view over the shared posterior.
+            dimensions for one output view over the shared posterior. Must be empty
+            or contain exactly these two keys with nonempty string values.
+
+    Raises:
+        ValueError: A role, format, metadata value or dimension mapping violates
+            the constraints above.
     """
 
     variable_roles: Mapping[str, str]

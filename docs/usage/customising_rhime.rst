@@ -71,7 +71,7 @@ The complete integration is one named argument:
 .. code-block:: python
 
    from my_project.likelihoods import likelihood_builder
-   from openghg_inversions.rhime import run_rhime
+   from openghg_inversions.recipes import run_rhime
 
    result = run_rhime(
        config_file="config.ini",
@@ -158,8 +158,8 @@ The model-owned
 ``models.fixed_ou.add_fixed_ou_gaussian_likelihood`` adds a fixed-timescale,
 within-site Ornstein--Uhlenbeck mismatch covariance. For example::
 
-   from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
-   from openghg_inversions.rhime import run_rhime
+   from openghg_inversions.model_components.fixed_ou import add_fixed_ou_gaussian_likelihood
+   from openghg_inversions.recipes import run_rhime
 
    result = run_rhime(
        ...,
@@ -267,7 +267,7 @@ Then the equivalent command is::
    uv run my-inversion inversion.ini \
        --kwargs '{"output_path": "outputs", "output_format": "inv_out"}'
 
-The generated runner uses documented names from ``openghg_inversions.rhime``.
+The generated runner uses documented names from ``openghg_inversions.recipes``.
 Its likelihood module imports reusable components from their documented owner
 modules: ``models.pollution_event``, ``observation_error``, and ``sigma``.
 The dependency direction is therefore the generated project to OpenGHG
@@ -300,7 +300,7 @@ modules to ``src/<package_name>/likelihoods.py`` and
 ``src/<package_name>/run_with_likelihood.py``. Copy the complete module below
 to ``src/<package_name>/rhime_runner.py`` only when the project needs to own a
 deeper orchestration change. Import scientific stage implementations from
-``openghg_inversions.rhime`` rather than copying those implementations.
+``openghg_inversions.recipes`` rather than copying those implementations.
 
 Run it with a normal RHIME configuration and optional overrides::
 

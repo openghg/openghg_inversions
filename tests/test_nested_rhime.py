@@ -13,7 +13,7 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-import openghg_inversions.rhime.nested as nested_module
+import openghg_inversions.recipes.nested as nested_module
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.cli import main
 from openghg_inversions.forward import rectangular_extent_mask, remove_domain_overlap
@@ -25,7 +25,7 @@ from openghg_inversions.postprocessing.nested_paris_outputs import (
 )
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.postprocessing.make_outputs import make_flux_outputs
-from openghg_inversions.rhime.nested import (
+from openghg_inversions.recipes.nested import (
     NestedRhimeResult,
     _domain_variable_roles,
     align_inner_merged_to_outer_observations,
@@ -34,12 +34,12 @@ from openghg_inversions.rhime.nested import (
     make_nested_inversion_outputs,
     mask_outer_merged_for_inner_domain,
 )
-from openghg_inversions.rhime.materialization import materialize_pymc_inputs
-from openghg_inversions.rhime.outputs import RhimeResult
-from openghg_inversions.rhime.params import RhimeRunnerSetup
-from openghg_inversions.rhime import params as rhime_params
-from openghg_inversions.rhime.sampling import RhimeSampler
-from openghg_inversions.rhime.specs import (
+from openghg_inversions.recipes.materialization import materialize_pymc_inputs
+from openghg_inversions.recipes.outputs import RhimeResult
+from openghg_inversions.recipes.params import RhimeRunnerSetup
+from openghg_inversions.recipes import params as rhime_params
+from openghg_inversions.recipes.sampling import RhimeSampler
+from openghg_inversions.recipes.specs import (
     FixedErrorSettings,
     RhimeModelSpec,
     RhimeOutputSpec,
@@ -452,7 +452,7 @@ def test_cli_run_rhime_nested_passes_config(monkeypatch, tmp_path: Path) -> None
         seen["config_file"] = config_file
         seen["kwargs"] = kwargs
 
-    monkeypatch.setattr("openghg_inversions.rhime.run_rhime_nested", fake_run_rhime_nested)
+    monkeypatch.setattr("openghg_inversions.recipes.run_rhime_nested", fake_run_rhime_nested)
 
     main(["run-rhime-nested", "-c", str(config_file)])
 

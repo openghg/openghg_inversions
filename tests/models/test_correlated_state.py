@@ -11,7 +11,7 @@ import pytest
 import xarray as xr
 
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
-from openghg_inversions.models import (
+from openghg_inversions.model_components import (
     CoordRegistry,
     add_correlated_lognormal_state,
     add_correlated_lognormal_state_with_activity,
@@ -23,7 +23,7 @@ from openghg_inversions.models import (
     restore_inferencedata_coords,
     StateActivity,
 )
-from openghg_inversions.models.priors import lognormal_mu_sigma
+from openghg_inversions.model_components.priors import lognormal_mu_sigma
 from openghg_inversions.serialization import (
     encode_multiindexes_for_storage,
     load_inferencedata,

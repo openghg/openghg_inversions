@@ -78,13 +78,13 @@ For complete prerequisite-to-output walkthroughs, start with
 
 The stable package imports below are unchanged. Scientists who want to inspect
 or copy a complete implementation can read
-``openghg_inversions.rhime.standard`` or
-``openghg_inversions.rhime.multisector`` directly; each module shows its whole
+``openghg_inversions.recipes.standard`` or
+``openghg_inversions.recipes.multisector`` directly; each module shows its whole
 scientific process from option resolution through output construction.
 
 .. code-block:: python
 
-   from openghg_inversions.rhime import run_rhime, run_rhime_multisector
+   from openghg_inversions.recipes import run_rhime, run_rhime_multisector
 
    result = run_rhime(
        species="ch4",
@@ -172,13 +172,13 @@ model, output, and sampler specifications:
 
 .. code-block:: python
 
-   from openghg_inversions.rhime import (
+   from openghg_inversions.recipes import (
        PollutionEventSettings,
        RhimeModelSpec,
        SectorSpec,
    )
    from openghg_inversions.inversion_data import RhimePreparedInputs
-   from openghg_inversions.rhime import (
+   from openghg_inversions.recipes import (
        RhimeOutputSpec,
        RhimeRunSpec,
        RhimeSampler,
@@ -437,8 +437,8 @@ prepared object:
 
 .. code-block:: python
 
-   from openghg_inversions.rhime import RhimeModelSpec, SectorSpec
-   from openghg_inversions.rhime import (
+   from openghg_inversions.recipes import RhimeModelSpec, SectorSpec
+   from openghg_inversions.recipes import (
        RhimeOutputSpec,
        RhimeRunSpec,
        RhimeSampler,
@@ -702,10 +702,10 @@ containing the value ``"outer"``:
 
 .. code-block:: python
 
-   from openghg_inversions.models import StateActivity
+   from openghg_inversions.model_components import StateActivity
    from openghg_inversions.observation_error import resolve_aggregation_error
-   from openghg_inversions.rhime import PollutionEventSettings
-   from openghg_inversions.rhime.standard import build_standard_rhime_model
+   from openghg_inversions.recipes import PollutionEventSettings
+   from openghg_inversions.recipes.standard import build_standard_rhime_model
 
    state_policy = StateActivity(
        fixed_groups=("outer",),
@@ -778,7 +778,7 @@ public state ``<name>``.
    import numpy as np
    import xarray as xr
 
-   from openghg_inversions.models import (
+   from openghg_inversions.model_components import (
        CorrelatedLognormalPrior,
        add_correlated_lognormal_state,
        registered_model,
@@ -863,8 +863,8 @@ retain their gathered ``(source, region_in_source)`` state coordinate.
        project_basis_prior_stdev,
    )
    from openghg_inversions.observation_error import resolve_aggregation_error
-   from openghg_inversions.rhime import PollutionEventSettings
-   from openghg_inversions.rhime.standard import build_standard_rhime_model
+   from openghg_inversions.recipes import PollutionEventSettings
+   from openghg_inversions.recipes.standard import build_standard_rhime_model
 
    x_prior_stdev = project_basis_prior_stdev(
        basis_functions,

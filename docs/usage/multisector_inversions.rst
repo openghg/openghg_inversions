@@ -6,7 +6,7 @@ flux components independently. Surface-site and satellite inversions use the
 same public runner and model. They differ only in their observation and
 footprint acquisition options.
 
-Use :func:`openghg_inversions.rhime.run_rhime_multisector` when every flux
+Use :func:`openghg_inversions.recipes.run_rhime_multisector` when every flux
 component should have its own scaling state. The ``flux_sources`` values are
 the OpenGHG ``source`` metadata used for retrieval. Optional
 ``sector_sources`` entries give those sources shorter model-facing names.
@@ -32,7 +32,7 @@ paths with values available in your OpenGHG installation.
 
 .. code-block:: python
 
-   from openghg_inversions.rhime import run_rhime_multisector
+   from openghg_inversions.recipes import run_rhime_multisector
 
    site_result = run_rhime_multisector(
        species="ch4",
@@ -82,7 +82,7 @@ high-time-resolution footprints.
 
 .. code-block:: python
 
-   from openghg_inversions.rhime import run_rhime_multisector
+   from openghg_inversions.recipes import run_rhime_multisector
 
    satellite_result = run_rhime_multisector(
        species="co2",
@@ -143,7 +143,7 @@ multisector model used for surface sites.
 Inspecting and processing results
 ---------------------------------
 
-Both calls return a :class:`openghg_inversions.rhime.RhimeResult`. Inspect the
+Both calls return a :class:`openghg_inversions.recipes.RhimeResult`. Inspect the
 canonical inputs before interpreting the posterior:
 
 .. code-block:: python

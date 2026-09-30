@@ -56,7 +56,7 @@ from openghg_inversions.inversion_data.acquisition import (
 )
 # Preserve the established preparation imports while the durable contract has
 # an owner independent of retrieval and preparation mechanics.
-from openghg_inversions.inversion_data.prepared import (
+from openghg_inversions.inversion_data.prepared_inputs import (
     RHIME_PREPARED_INPUTS_SCHEMA as RHIME_PREPARED_INPUTS_SCHEMA,
     RHIME_PREPARED_INPUTS_SCHEMA_VERSION as RHIME_PREPARED_INPUTS_SCHEMA_VERSION,
     RhimePreparedInputs as RhimePreparedInputs,

@@ -4,7 +4,7 @@ import pymc as pm
 import xarray as xr
 import pytest
 
-from openghg_inversions.models.coords import (
+from openghg_inversions.model_components.coords import (
     CoordRegistry,
     add_coords,
     attach_coord_registry,

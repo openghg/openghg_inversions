@@ -8,10 +8,10 @@ import pymc as pm
 import xarray as xr
 
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
-from openghg_inversions.models.coords import get_coord_registry
-from openghg_inversions.models.state_activity import StateActivity
+from openghg_inversions.model_components.coords import get_coord_registry
+from openghg_inversions.model_components.state_activity import StateActivity
 from openghg_inversions.observation_error import resolve_aggregation_error
-from openghg_inversions.rhime.co2 import build_co2_model
+from openghg_inversions.recipes.co2 import build_co2_model
 
 
 def _grouped_inputs() -> tuple[xr.Dataset, CorrelatedLognormalPrior]:

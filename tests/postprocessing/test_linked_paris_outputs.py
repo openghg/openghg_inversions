@@ -6,12 +6,12 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from openghg_inversions.postprocessing.linked_paris_outputs import (
+from openghg_inversions.recipes.co2.outputs import (
     make_co2_o2_paris_outputs,
     reconstruct_co2_o2_concentrations,
 )
-from openghg_inversions.rhime.co2 import prepare_co2_o2_inputs
-from openghg_inversions.rhime.co2.co2_o2_model import _gather_co2_o2_sensitivity
+from openghg_inversions.recipes.co2 import prepare_co2_o2_inputs
+from openghg_inversions.recipes.co2.co2_o2_model import _gather_co2_o2_sensitivity
 from test_rhime_co2_o2 import _inputs
 
 
@@ -273,8 +273,8 @@ def test_native_flux_rejects_uppercase_private_states_without_concentration_sign
 
 @pytest.mark.parametrize("native_multiindex", [False, True])
 def test_cached_joint_posterior_with_baseline_emits_paris(tmp_path, native_multiindex):
-    from openghg_inversions.rhime.co2 import run_rhime_co2_o2_cached_sigma_from_prepared_inputs
-    from openghg_inversions.rhime.sampling import RhimeSampler
+    from openghg_inversions.recipes.co2 import run_rhime_co2_o2_cached_sigma_from_prepared_inputs
+    from openghg_inversions.recipes.sampling import RhimeSampler
     from openghg_inversions.serialization import load_trace, save_trace
     from test_rhime_co2_o2 import _independent_error
     from test_rhime_co2_o2_baselines import _native_multiindex_inputs, _prepared

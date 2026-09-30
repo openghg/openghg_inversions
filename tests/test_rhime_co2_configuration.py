@@ -12,26 +12,26 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
-from openghg_inversions.models.scalar_sigma import add_scalar_sigma_eigen_likelihood
-from openghg_inversions.models.site_sigma import add_site_sigma_gaussian_likelihood
-from openghg_inversions.rhime.co2.configuration import (
+from openghg_inversions.model_components.fixed_ou import add_fixed_ou_gaussian_likelihood
+from openghg_inversions.model_components.scalar_sigma import add_scalar_sigma_eigen_likelihood
+from openghg_inversions.model_components.site_sigma import add_site_sigma_gaussian_likelihood
+from openghg_inversions.recipes.co2.configuration import (
     Co2O2RunSetup,
     Co2RunSetup,
     co2_config_templates,
     load_co2_family_config,
     resolve_co2_family_config,
 )
-from openghg_inversions.rhime.co2.co2_cached_sigma_runner import (
+from openghg_inversions.recipes.co2.co2_cached_sigma_runner import (
     run_rhime_co2_cached_sigma,
 )
-from openghg_inversions.rhime.co2.co2_o2_preparation import Co2O2PreparedInputs
-from openghg_inversions.rhime.co2.co2_o2_runner import (
+from openghg_inversions.recipes.co2.co2_o2_preparation import Co2O2PreparedInputs
+from openghg_inversions.recipes.co2.co2_o2_runner import (
     run_rhime_co2_o2_from_prepared_inputs,
 )
-from openghg_inversions.rhime.co2.co2_runner import run_rhime_co2
-from openghg_inversions.rhime.outputs import annotate_likelihood_trace
-from openghg_inversions.rhime.sampling import RhimeSampler
+from openghg_inversions.recipes.co2.co2_runner import run_rhime_co2
+from openghg_inversions.recipes.outputs import annotate_likelihood_trace
+from openghg_inversions.recipes.sampling import RhimeSampler
 from tests.helpers import make_trace
 
 

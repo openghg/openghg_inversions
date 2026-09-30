@@ -2,8 +2,8 @@ import numpy as np
 import pytest
 from scipy.stats import multivariate_normal
 
-from openghg_inversions.models.cached_sigma import FixedOuCachedSigmaTarget
-from openghg_inversions.models.fixed_ou import prepare_fixed_ou_low_rank
+from openghg_inversions.model_components.cached_sigma import FixedOuCachedSigmaTarget
+from openghg_inversions.model_components.fixed_ou import prepare_fixed_ou_low_rank
 
 
 def _target() -> tuple[FixedOuCachedSigmaTarget, np.ndarray, np.ndarray]:

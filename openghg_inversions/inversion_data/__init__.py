@@ -3,7 +3,7 @@ from .get_data import data_processing_surface_notracer
 from .preparation import (
     prepare_rhime_inputs,
 )
-from .prepared import RhimePreparedInputs
+from .prepared_inputs import RhimePreparedInputs
 from .serialise import load_merged_data, _save_merged_data
 from .xarray_adapter import prepare_rhime_inputs_from_xarray
 

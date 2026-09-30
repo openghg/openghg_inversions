@@ -37,9 +37,11 @@ def _probe_pytensor_config(code: str, *, flags: str | None = None) -> dict[str, 
     return dict(line.split("=", 1) for line in completed.stdout.strip().splitlines())
 
 
-@pytest.mark.parametrize("module", ["rhime", "inference"])
+@pytest.mark.parametrize(
+    "module", ["rhime", "recipes", "inference.sampling", "inference.cached_sigma", "model_components"]
+)
 def test_fresh_backend_import_defaults_pytensor_to_float32(module: str) -> None:
-    """Either public backend entry point installs defaults before loading PyTensor."""
+    """Backend entry points install defaults before loading PyTensor."""
     values = _probe_pytensor_config(
         f"import openghg_inversions.{module}; "
         "import pytensor; "
@@ -54,7 +56,7 @@ def test_fresh_backend_import_defaults_pytensor_to_float32(module: str) -> None:
 def test_rhime_import_honours_explicit_pytensor_float64() -> None:
     """A process-level PyTensor precision selection overrides the default."""
     values = _probe_pytensor_config(
-        "import openghg_inversions.rhime; "
+        "import openghg_inversions.recipes; "
         "import pytensor; "
         "print('floatX=' + pytensor.config.floatX); "
         "print('warn=' + pytensor.config.warn_float64)",
@@ -71,7 +73,7 @@ def test_rhime_import_does_not_mutate_initialized_pytensor() -> None:
         "import pytensor; "
         "pytensor.config.floatX = 'float64'; "
         "pytensor.config.warn_float64 = 'ignore'; "
-        "import openghg_inversions.rhime; "
+        "import openghg_inversions.recipes; "
         "print('floatX=' + pytensor.config.floatX); "
         "print('warn=' + pytensor.config.warn_float64)"
     )

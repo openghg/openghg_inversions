@@ -29,9 +29,9 @@ The current builders
 --------------------
 
 Each recipe directly composes one readable concrete graph. The standard graph
-lives beside :func:`run_rhime` in ``openghg_inversions.rhime.standard``; the
+lives beside :func:`run_rhime` in ``openghg_inversions.recipes.standard``; the
 multisector graph lives beside :func:`run_rhime_multisector` in
-``openghg_inversions.rhime.multisector``:
+``openghg_inversions.recipes.multisector``:
 
 .. code-block:: text
 
@@ -230,12 +230,12 @@ helpers:
 
 .. code-block:: python
 
-   from openghg_inversions.models import (
+   from openghg_inversions.model_components import (
        add_linear_component,
        prepare_linear_sensitivity,
        registered_model,
    )
-   from openghg_inversions.models.pollution_event import add_pollution_event_likelihood
+   from openghg_inversions.model_components.pollution_event import add_pollution_event_likelihood
    from openghg_inversions.observation_error import resolve_aggregation_error
    from openghg_inversions.sigma import SigmaAlignment
 
@@ -385,7 +385,7 @@ ordinary runner:
 .. code-block:: python
 
    from my_project.likelihoods import likelihood_builder
-   from openghg_inversions.rhime import run_rhime
+   from openghg_inversions.recipes import run_rhime
 
    result = run_rhime(
        config_file="config.ini",
@@ -415,7 +415,7 @@ Labelled per-site IID mismatch
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 The built-in
-:func:`openghg_inversions.models.site_sigma.add_site_sigma_gaussian_likelihood`
+:func:`openghg_inversions.model_components.site_sigma.add_site_sigma_gaussian_likelihood`
 provides a labelled, run-level IID site-mismatch component. It derives stable
 site labels in first-observation order and uses exactly one standard deviation
 per site:
@@ -436,8 +436,8 @@ amplitudes, pass an explicit positive prior:
 
 .. code-block:: python
 
-   from openghg_inversions.models import add_site_sigma_gaussian_likelihood
-   from openghg_inversions.rhime import run_rhime
+   from openghg_inversions.model_components import add_site_sigma_gaussian_likelihood
+   from openghg_inversions.recipes import run_rhime
 
    result = run_rhime(
        config_file="config.ini",
@@ -480,12 +480,12 @@ materialize any lazy arrays they consume:
 
    import pymc as pm
 
-   from openghg_inversions.rhime import (
+   from openghg_inversions.recipes import (
        RhimeModelBuilderContext,
        RhimeModelBuildResult,
        run_rhime_from_prepared_inputs,
    )
-   from openghg_inversions.models import (
+   from openghg_inversions.model_components import (
        add_coords,
        registered_model,
    )
@@ -569,11 +569,11 @@ Supported high-level options
    options supplied through the public RHIME builders and model spec.
 
 Supported low-level components
-   Public functions in ``openghg_inversions.models`` can be composed inside a
+   Public functions in ``openghg_inversions.model_components`` can be composed inside a
    user-owned ``pm.Model`` as shown above.
 
 Recipe-local model composition
    Copy or modify the readable concrete builder in
-   ``openghg_inversions.rhime.standard`` or
-   ``openghg_inversions.rhime.multisector`` when an existing option or shared
+   ``openghg_inversions.recipes.standard`` or
+   ``openghg_inversions.recipes.multisector`` when an existing option or shared
    component is insufficient.

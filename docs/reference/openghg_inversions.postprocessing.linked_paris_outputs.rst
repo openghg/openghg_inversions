@@ -1,7 +1,6 @@
-openghg_inversions.postprocessing.linked_paris_outputs
-======================================================
+openghg\_inversions.postprocessing.linked\_paris\_outputs
+=========================================================
 
 .. automodule:: openghg_inversions.postprocessing.linked_paris_outputs
    :members:
-   :undoc-members:
    :show-inheritance:

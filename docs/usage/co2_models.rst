@@ -11,7 +11,7 @@ interfaces.
 CO2 coherent-reduction model
 ----------------------------
 
-The public :func:`openghg_inversions.rhime.build_co2_model` recipe
+The public :func:`openghg_inversions.recipes.build_co2_model` recipe
 consumes the labelled products of a coherent state reduction. Let
 ``H_alpha`` be the retained-state sensitivity, ``m_alpha`` and ``C_alpha`` its
 arithmetic prior mean and covariance, and ``b_fixed`` the fixed affine prior
@@ -50,7 +50,7 @@ mismatch ``sigma``, its covariance is
        (s_y^2 + s_{fixed}^2 + \sigma^2).
 
 The lower-level builder adds inferred ``sigma`` only when the caller supplies a
-``sigma_alignment``. The public :func:`~openghg_inversions.rhime.run_rhime_co2`
+``sigma_alignment``. The public :func:`~openghg_inversions.recipes.run_rhime_co2`
 runner creates a site-specific alignment over one shared time period by
 default, and uses an independent HalfNormal prior with ``sigma=1.0`` in the
 observations' concentration units unless ``sigma_prior`` overrides it. Override
@@ -83,7 +83,7 @@ component. The state axis retains ``basis_group``, ``basis_partition``, and
 than inferring outer entries from integer ranges or positions.
 
 Fixed versus inferred outer entries use the ordinary
-:class:`~openghg_inversions.models.StateActivity` contract. To preserve the
+:class:`~openghg_inversions.model_components.StateActivity` contract. To preserve the
 fixed-at-one behavior, pass
 ``StateActivity(fixed_groups=("outer",), fixed_value=1.0)``. Leaving the outer
 group active infers those entries with the same correlated LogNormal state as
@@ -130,9 +130,9 @@ Run the ordinary prepared-input CO2 runner
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 The model builder accepts explicit scientific arrays rather than a dataset.
-For durable prepared artifacts, :func:`openghg_inversions.rhime.run_rhime_co2`
+For durable prepared artifacts, :func:`openghg_inversions.recipes.run_rhime_co2`
 is the public replay seam. It accepts only a
-:class:`~openghg_inversions.rhime.co2.Co2PreparedInputs` artifact, validates
+:class:`~openghg_inversions.recipes.co2.Co2PreparedInputs` artifact, validates
 and materializes its selected arrays, resolves its declared aggregation-error
 representation, calls the explicit builder, samples, and stores a JSON
 variable-role and model-provenance manifest on the returned xarray
@@ -167,19 +167,19 @@ Configure prepared-input replay from TOML
 
 The CO2 family provides three installed TOML templates:
 ``co2.toml``, ``co2_cached_sigma.toml``, and ``co2_o2.toml``. Use
-:func:`openghg_inversions.rhime.co2.co2_config_templates` to discover their
+:func:`openghg_inversions.recipes.co2.co2_config_templates` to discover their
 installed paths. Copy the closest template for a run; do not edit the installed
 resource. The templates configure the existing prepared-input Python seams.
 They do not make CO2 available through the staged CLI.
 
-:func:`openghg_inversions.rhime.co2.load_co2_family_config` reads TOML, while
-:func:`openghg_inversions.rhime.co2.resolve_co2_family_config` accepts an
+:func:`openghg_inversions.recipes.co2.load_co2_family_config` reads TOML, while
+:func:`openghg_inversions.recipes.co2.resolve_co2_family_config` accepts an
 ordinary mapping and returns a frozen
-:class:`~openghg_inversions.rhime.co2.Co2RunSetup` or
-:class:`~openghg_inversions.rhime.co2.Co2O2RunSetup`. Keeping parsing separate
+:class:`~openghg_inversions.recipes.co2.Co2RunSetup` or
+:class:`~openghg_inversions.recipes.co2.Co2O2RunSetup`. Keeping parsing separate
 from resolution makes the scientific choices independent of the file format.
 The setup identifies the runner and contains explicit ``preparation_kwargs``,
-``runner_kwargs``, and :class:`~openghg_inversions.rhime.RhimeSampler` values;
+``runner_kwargs``, and :class:`~openghg_inversions.recipes.RhimeSampler` values;
 it does not retain an ambient configuration mapping. After preparing or
 loading the appropriate artifact, ``setup.runner_arguments(prepared)`` binds
 it to the exact arguments accepted by ``setup.runner``. For the linked recipe,
@@ -207,8 +207,8 @@ For example, the ordinary TOML settings::
 
 resolve to the same scientific runner choices as this direct Python call::
 
-   from openghg_inversions.rhime import RhimeSampler, run_rhime_co2
-   from openghg_inversions.rhime.co2 import Co2PreparedInputs
+   from openghg_inversions.recipes import RhimeSampler, run_rhime_co2
+   from openghg_inversions.recipes.co2 import Co2PreparedInputs
 
    prepared = Co2PreparedInputs.load("co2-coherent-dense.zarr")
    idata = run_rhime_co2(
@@ -225,7 +225,7 @@ resolve to the same scientific runner choices as this direct Python call::
 The resolved ordinary setup can execute that same call through its explicit
 binding method::
 
-   from openghg_inversions.rhime.co2 import (
+   from openghg_inversions.recipes.co2 import (
        Co2PreparedInputs,
        load_co2_family_config,
        resolve_co2_family_config,
@@ -455,7 +455,7 @@ configuring a heterogeneous ppm/per-meg
 run is deferred until the scaling contract tracked in `OPE-86
 <https://linear.app/openghg-inversions/issue/OPE-86>`_ is available. Use the
 direct Python interfaces for experimental combinations outside this matrix.
-The linked :class:`~openghg_inversions.rhime.co2.Co2O2PreparedInputs` artifact
+The linked :class:`~openghg_inversions.recipes.co2.Co2O2PreparedInputs` artifact
 does not yet have a durable ``load`` method. Construct it through the documented
 preparation boundary and bind the resulting in-memory artifact; linked staged
 artifact loading remains follow-up work in `OPE-165
@@ -463,12 +463,12 @@ artifact loading remains follow-up work in `OPE-165
 
 The linked template therefore follows a prepare, bind, and run sequence. The
 scientific array names below are the labelled inputs documented by
-:func:`~openghg_inversions.rhime.co2.prepare_co2_o2_inputs`; replace them with
+:func:`~openghg_inversions.recipes.co2.prepare_co2_o2_inputs`; replace them with
 the products from one coherent reduction. Exactly one of
 ``o2_co2_flux_ratio`` and ``o2_co2_flux_ratio_unavailable_reason`` must be
 non-null::
 
-   from openghg_inversions.rhime.co2 import (
+   from openghg_inversions.recipes.co2 import (
        load_co2_family_config,
        prepare_co2_o2_inputs,
        resolve_co2_family_config,
@@ -513,8 +513,8 @@ Pass ``aggregation_error_rank=None`` to keep the reduction's exact dense
 unresolved covariance::
 
    from openghg_inversions.inversion_data import RhimePreparedInputs
-   from openghg_inversions.rhime.co2 import prepare_co2_inputs
-   from openghg_inversions.rhime import run_rhime_co2
+   from openghg_inversions.recipes.co2 import prepare_co2_inputs
+   from openghg_inversions.recipes import run_rhime_co2
 
    canonical_inputs = RhimePreparedInputs.load("base-prepared-inputs.zarr")
    prepared = prepare_co2_inputs(
@@ -538,15 +538,15 @@ unresolved covariance::
    )
 
 Reload a durable artifact with
-:meth:`openghg_inversions.rhime.co2.Co2PreparedInputs.load`. The loaded
+:meth:`openghg_inversions.recipes.co2.Co2PreparedInputs.load`. The loaded
 artifact retains the selected representation, so replay does not require or
 accept ``aggregation_error_mode``.
 
 The CO2 builder and prepared-input runner also accept one ordinary
 ``likelihood_builder`` with explicit ``likelihood_kwargs``. This selects
 package components such as
-:func:`openghg_inversions.models.fixed_ou.add_fixed_ou_gaussian_likelihood` and
-:func:`openghg_inversions.models.add_site_sigma_gaussian_likelihood` after
+:func:`openghg_inversions.model_components.fixed_ou.add_fixed_ou_gaussian_likelihood` and
+:func:`openghg_inversions.model_components.add_site_sigma_gaussian_likelihood` after
 ``modelled_concentration`` has been completed. Selecting one replaces the
 default additive-sigma likelihood; its scientific options belong in
 ``likelihood_kwargs`` rather than the default ``sigma_*`` or
@@ -579,8 +579,8 @@ external numerical preparation artifact used through the ordinary
 Prepare and save that artifact once from the same prepared CO2 inputs that
 sampling will use::
 
-   from openghg_inversions.models import save_scalar_sigma_eigenbasis
-   from openghg_inversions.rhime.co2 import (
+   from openghg_inversions.model_components import save_scalar_sigma_eigenbasis
+   from openghg_inversions.recipes.co2 import (
        Co2PreparedInputs,
        prepare_co2_scalar_sigma_eigenbasis,
    )
@@ -591,8 +591,8 @@ sampling will use::
 
 Select the package likelihood through the CO2 runner::
 
-   from openghg_inversions.models import add_scalar_sigma_eigen_likelihood
-   from openghg_inversions.rhime.co2 import run_rhime_co2
+   from openghg_inversions.model_components import add_scalar_sigma_eigen_likelihood
+   from openghg_inversions.recipes.co2 import run_rhime_co2
 
    trace = run_rhime_co2(
        prepared_inputs=prepared,
@@ -627,11 +627,11 @@ fingerprinted.
 
 This is a same-unit CO2-only likelihood; it does not support the linked
 mixed-unit CO2/O2 vector. A direct
-:func:`openghg_inversions.rhime.co2.build_co2_model` caller may load the cache
-with :func:`openghg_inversions.models.load_scalar_sigma_eigenbasis` and pass
+:func:`openghg_inversions.recipes.co2.build_co2_model` caller may load the cache
+with :func:`openghg_inversions.model_components.load_scalar_sigma_eigenbasis` and pass
 the resulting ``eigenbasis`` in ``likelihood_kwargs``. See the
 :doc:`scalar-sigma API reference
-<../reference/openghg_inversions.models.scalar_sigma>` for signatures and
+<../reference/openghg_inversions.model_components.scalar_sigma>` for signatures and
 object contracts.
 
 .. _linked-co2-o2-model:
@@ -641,10 +641,10 @@ CO2/O2 shared-state model
 
 The CO2/O2 recipe applies one retained state to both observation channels.
 Its public boundaries are
-:func:`openghg_inversions.rhime.co2.prepare_co2_o2_inputs` for labelled
-preparation, :func:`openghg_inversions.rhime.co2.build_co2_o2_model` for graph
+:func:`openghg_inversions.recipes.co2.prepare_co2_o2_inputs` for labelled
+preparation, :func:`openghg_inversions.recipes.co2.build_co2_o2_model` for graph
 construction, and
-:func:`openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs` for
+:func:`openghg_inversions.recipes.co2.run_rhime_co2_o2_from_prepared_inputs` for
 materialization, sampling, and trace metadata.
 
 The default joint recipe uses fixed, row-labelled independent error. The
@@ -744,13 +744,13 @@ coherent-reduction contract. See the :doc:`full derivation
 Preparation accepts separate native channel arrays, then gathers their rows on
 one ``(species, channel_observation)`` observation index before the model
 applies the joint sensitivity once. Before calling
-:func:`~openghg_inversions.rhime.co2.prepare_co2_o2_inputs`, callers must
+:func:`~openghg_inversions.recipes.co2.prepare_co2_o2_inputs`, callers must
 numerically convert observations, prior-forward means, sensitivities, and every
 covariance block into mutually consistent channel units. The ``co2_units`` and
 ``o2_units`` arguments only attach labels; they do not convert or validate
 numerical scales, so incorrectly scaled values can pass preparation. Before
 calling
-:func:`~openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs`,
+:func:`~openghg_inversions.recipes.co2.run_rhime_co2_o2_from_prepared_inputs`,
 callers must separately convert ``independent_error_sd`` into the corresponding
 observation-row units and attach matching ``observation_units`` labels. Each
 row then retains its declared native units and numerical scale.
@@ -892,7 +892,7 @@ and stock state NUTS reads that cache without refactorizing the observation
 covariance during its trajectory.
 
 The runner begins from an already assembled coherent-reduction
-:class:`~openghg_inversions.rhime.co2.Co2PreparedInputs` artifact; it does not
+:class:`~openghg_inversions.recipes.co2.Co2PreparedInputs` artifact; it does not
 perform coherent reduction. Its ``inv_inputs`` must contain ``H``,
 ``alpha_prior_mean``,
 ``alpha_prior_covariance``, ``fixed_prior_contribution``, ``mf``, and
@@ -920,7 +920,7 @@ remain separate.
 
 :doc:`coherent_reduction` describes the linked retained prior, effective
 operator, affine contribution, and unresolved covariance.
-:func:`openghg_inversions.rhime.co2.prepare_co2_inputs` assembles those
+:func:`openghg_inversions.recipes.co2.prepare_co2_inputs` assembles those
 products with canonical observations and metadata at the durable CO2 boundary.
 
 The reduction itself is exact under its stated Gaussian assumptions. An LRPD
@@ -932,7 +932,7 @@ generally produces a full numerical-rank factor and is not the intended
 scaling path. The default retains at most 512 modes; override it when a
 different retained rank is scientifically justified::
 
-   from openghg_inversions.rhime.co2 import prepare_co2_inputs
+   from openghg_inversions.recipes.co2 import prepare_co2_inputs
 
    prepared = prepare_co2_inputs(
        canonical_inputs,
@@ -952,8 +952,8 @@ other retained-spectrum and reconstruction diagnostics.
 
 For example::
 
-   from openghg_inversions.rhime import RhimeSampler
-   from openghg_inversions.rhime.co2 import (
+   from openghg_inversions.recipes import RhimeSampler
+   from openghg_inversions.recipes.co2 import (
        Co2PreparedInputs,
        run_rhime_co2_cached_sigma,
    )
@@ -1058,12 +1058,12 @@ For example, the ordinary linked configuration can include:
 
 Replace ``fixed_site_amplitudes`` with a ``site_amplitude_prior`` table to infer
 amplitudes with stock PyMC. The optimized runner
-:func:`openghg_inversions.rhime.co2.run_rhime_co2_o2_cached_sigma_from_prepared_inputs`
+:func:`openghg_inversions.recipes.co2.run_rhime_co2_o2_cached_sigma_from_prepared_inputs`
 uses independent HalfNormal amplitude priors and the existing CO2
 sigma-then-state ``CompoundStep``. It refreshes the exact state quadratic only
 when returned amplitude values change, then updates all active flux, boundary,
 and offset coefficients against that cache. Its builder is
-:func:`openghg_inversions.rhime.co2.build_co2_o2_cached_sigma_model`.
+:func:`openghg_inversions.recipes.co2.build_co2_o2_cached_sigma_model`.
 
 Select ``variant = "cached_fixed_ou"`` and supply ``site_amplitude_prior_scale``
 in ``[likelihood]`` in place of fixed amplitudes. Optional

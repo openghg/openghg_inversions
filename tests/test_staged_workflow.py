@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from openghg_inversions.inference import diagnostics as inference_diagnostics
+
 from contextlib import nullcontext
 import json
 from pathlib import Path
@@ -16,7 +18,7 @@ import xarray as xr
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.cli import build_parser
 from openghg_inversions.inversion_data import RhimePreparedInputs
-from openghg_inversions.rhime.stages import (
+from openghg_inversions.recipes.stages import (
     CONVERGENCE_CHECK_NAME,
     PREPARATION_CHECK_NAME,
     configuration_identity,
@@ -200,7 +202,7 @@ def test_prepare_is_independent_and_writes_inspectable_contract(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    from openghg_inversions.rhime import stages
+    from openghg_inversions.recipes import stages
 
     prepared = _prepared()
     sentinel = SimpleNamespace(sites=("TAC",), fp_all={})
@@ -247,7 +249,7 @@ def test_prepare_fails_when_a_requested_site_was_dropped(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    from openghg_inversions.rhime import stages
+    from openghg_inversions.recipes import stages
 
     prepared = _prepared()
     merged = SimpleNamespace(sites=("TAC",), fp_all={})
@@ -273,7 +275,7 @@ def test_prepare_accepts_canonicalised_site_labels(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    from openghg_inversions.rhime import stages
+    from openghg_inversions.recipes import stages
 
     prepared = _prepared()
     merged = SimpleNamespace(sites=("TAC",), fp_all={})
@@ -314,7 +316,7 @@ def test_prior_predictive_failure_writes_gate_compatible_check(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    from openghg_inversions.rhime import stages
+    from openghg_inversions.recipes import stages
 
     setup = resolve_stage_setup(_params(), model="standard")
     monkeypatch.setattr(stages, "_load_prepared", lambda *args, **kwargs: (_prepared(), setup))
@@ -345,7 +347,7 @@ def test_prior_predictive_does_not_hide_serialisation_failures(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    from openghg_inversions.rhime import stages
+    from openghg_inversions.recipes import stages
 
     setup = resolve_stage_setup(_params(), model="standard")
     prior = make_trace(prior=xr.Dataset({"x": (("chain", "draw"), [[1.0]])}))
@@ -391,7 +393,7 @@ def test_preparation_manifest_authenticates_supplied_prepared_inputs(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    from openghg_inversions.rhime import stages
+    from openghg_inversions.recipes import stages
 
     prepared = _prepared()
     merged = SimpleNamespace(sites=("TAC",), fp_all={})
@@ -472,7 +474,6 @@ def test_diagnostics_preserve_threshold_edge_values(
     tmp_path: Path,
 ) -> None:
     """Unrounded diagnostics just beyond convergence thresholds must fail."""
-    from openghg_inversions.rhime import stages
 
     idata = make_trace(
         posterior=xr.Dataset({"x": (("chain", "draw"), np.ones((2, 4)))}),
@@ -489,7 +490,7 @@ def test_diagnostics_preserve_threshold_edge_values(
             coords={"metric": ["r_hat", "ess_bulk", "ess_tail"]},
         )
 
-    monkeypatch.setattr(stages.az, "summary", fake_summary)
+    monkeypatch.setattr(inference_diagnostics.az, "summary", fake_summary)
 
     result = diagnose_rhime_stage(posterior=posterior_path, output_dir=tmp_path / "diagnose")
 
@@ -506,7 +507,6 @@ def test_diagnostics_preserve_finite_failures_when_one_metric_is_nonfinite(
     finite_rhat: float,
     expected_status: str,
 ) -> None:
-    from openghg_inversions.rhime import stages
 
     idata = make_trace(
         posterior=xr.Dataset(
@@ -529,7 +529,7 @@ def test_diagnostics_preserve_finite_failures_when_one_metric_is_nonfinite(
         },
         coords={"metric": ["r_hat", "ess_bulk", "ess_tail"], "region": ["known", "undefined"]},
     )
-    monkeypatch.setattr(stages.az, "summary", lambda *args, **kwargs: summary)
+    monkeypatch.setattr(inference_diagnostics.az, "summary", lambda *args, **kwargs: summary)
 
     result = diagnose_rhime_stage(posterior=posterior_path, output_dir=tmp_path / "diagnose")
 
@@ -543,7 +543,6 @@ def test_diagnostics_handle_unassessable_scalar_metric(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    from openghg_inversions.rhime import stages
 
     idata = make_trace(
         posterior=xr.Dataset({"x": (("chain", "draw"), np.ones((2, 4)))}),
@@ -552,7 +551,7 @@ def test_diagnostics_handle_unassessable_scalar_metric(
     posterior_path = tmp_path / "posterior.nc"
     save_trace(idata, posterior_path)
     monkeypatch.setattr(
-        stages.az,
+        inference_diagnostics.az,
         "summary",
         lambda *args, **kwargs: xr.Dataset(
             {"x": ("metric", [np.nan, 800.0, 700.0])},
@@ -599,7 +598,7 @@ def test_diagnostics_reject_empty_check_stage_before_loading(tmp_path: Path) -> 
 
 
 def test_diagnostics_authenticate_posterior_with_sample_manifest(tmp_path: Path) -> None:
-    from openghg_inversions.rhime import stages
+    from openghg_inversions.recipes import stages
 
     posterior = make_trace(
         posterior=xr.Dataset({"x": (("chain", "draw"), np.ones((2, 4)))})
@@ -673,7 +672,7 @@ def test_synthetic_staged_tracer_bullet(
     tmp_path: Path,
 ) -> None:
     """Exercise prepare -> prior -> sample -> diagnose -> postprocess without SLURM."""
-    from openghg_inversions.rhime import stages
+    from openghg_inversions.recipes import stages
 
     prepared = _prepared()
     sentinel = SimpleNamespace(sites=("TAC",), fp_all={})
@@ -766,7 +765,7 @@ def test_synthetic_staged_tracer_bullet(
 def _saved_output_binding(tmp_path: Path) -> dict[str, Any]:
     """Save a small two-chain scientific handoff without executing inference."""
     from openghg_inversions.postprocessing.contracts import OutputContract
-    from openghg_inversions.rhime import stages
+    from openghg_inversions.recipes import stages
 
     prepared = _prepared()
     prepared_path = tmp_path / "prepared.nc"
@@ -847,7 +846,7 @@ def test_graph_free_replay_in_fresh_process_preserves_distinct_chains(tmp_path: 
 import json
 import sys
 from pathlib import Path
-from openghg_inversions.rhime import stages
+from openghg_inversions.recipes import stages
 root = Path(sys.argv[1])
 def forbidden(*args, **kwargs):
     raise AssertionError('replay attempted acquisition, materialization, or model construction')
@@ -874,7 +873,7 @@ assert result.output_contract.variable_roles['flux_scale'] == 'x'
 def test_new_replay_rejects_invalid_output_binding_without_graph_fallback(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, corruption: str
 ) -> None:
-    from openghg_inversions.rhime import stages
+    from openghg_inversions.recipes import stages
 
     arguments = _saved_output_binding(tmp_path)
     manifest_path = arguments["sample_manifest"]
@@ -912,7 +911,7 @@ def test_legacy_sample_manifest_retains_explicit_graph_compatibility(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from openghg_inversions.postprocessing.contracts import OutputContract
-    from openghg_inversions.rhime import stages
+    from openghg_inversions.recipes import stages
 
     arguments = _saved_output_binding(tmp_path)
     path = arguments["sample_manifest"]

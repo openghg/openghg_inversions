@@ -58,7 +58,7 @@ Python workflows
 Replace ``fixedbasisMCMC(...)`` with ``run_rhime(...)`` and use the names in
 the table below::
 
-   from openghg_inversions.rhime import run_rhime
+   from openghg_inversions.recipes import run_rhime
 
    result = run_rhime(
        species="ch4",
@@ -74,7 +74,7 @@ the table below::
        output_name="ch4_TAC",
    )
 
-``run_rhime`` returns a :class:`~openghg_inversions.rhime.RhimeResult`, not a
+``run_rhime`` returns a :class:`~openghg_inversions.recipes.RhimeResult`, not a
 legacy tuple or sampler dictionary. Its principal attributes are ``idata``
 (an xarray ``DataTree`` with ArviZ-compatible groups), ``inv_inputs`` (the labelled model inputs),
 ``inv_out`` (the modern ``InversionOutput`` when constructed), and ``outputs``

@@ -1,1 +1,1 @@
-"""Shared artifact mechanics for explicit scientific workflows."""
+"""Compatibility namespace for recipe-local stage artifact helpers."""

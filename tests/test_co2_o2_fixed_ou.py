@@ -5,22 +5,22 @@ from dataclasses import replace
 import numpy as np
 import pandas as pd
 import xarray as xr
-from openghg_inversions.models import StateActivity
+from openghg_inversions.model_components import StateActivity
 import pytensor
 import pytensor.tensor as pt
 import pytest
 from scipy.stats import multivariate_normal
 
-from openghg_inversions.rhime.co2 import prepare_co2_o2_inputs
-from openghg_inversions.rhime.co2.co2_o2_model import build_co2_o2_model
-from openghg_inversions.rhime.co2.co2_o2_fixed_ou import linked_fixed_ou_alignment
-from openghg_inversions.rhime.co2.co2_o2_cached_sigma_model import build_co2_o2_cached_sigma_model
-from openghg_inversions.rhime.co2.co2_o2_cached_sigma_runner import (
+from openghg_inversions.recipes.co2 import prepare_co2_o2_inputs
+from openghg_inversions.recipes.co2.co2_o2_model import build_co2_o2_model
+from openghg_inversions.recipes.co2.co2_o2_fixed_ou import linked_fixed_ou_alignment
+from openghg_inversions.recipes.co2.co2_o2_cached_sigma_model import build_co2_o2_cached_sigma_model
+from openghg_inversions.recipes.co2.co2_o2_cached_sigma_runner import (
     run_rhime_co2_o2_cached_sigma_from_prepared_inputs,
 )
-from openghg_inversions.rhime.co2.co2_o2_runner import run_rhime_co2_o2_from_prepared_inputs
-from openghg_inversions.rhime.co2.co2_cached_sigma_runner import _sampler_for_cached_graph
-from openghg_inversions.rhime.sampling import RhimeSampler
+from openghg_inversions.recipes.co2.co2_o2_runner import run_rhime_co2_o2_from_prepared_inputs
+from openghg_inversions.recipes.co2.co2_cached_sigma_runner import _sampler_for_cached_graph
+from openghg_inversions.recipes.sampling import RhimeSampler
 from openghg_inversions.serialization import save_trace, load_trace
 
 from test_rhime_co2_o2 import _inputs, _independent_error
@@ -307,7 +307,7 @@ def test_linked_sampling_serializes_group_labels_and_joint_outputs(tmp_path, cac
 
 
 def test_padded_boundary_design_follows_reordered_native_labels():
-    from openghg_inversions.rhime.co2.co2_o2_model import _pad_channel_design
+    from openghg_inversions.recipes.co2.co2_o2_model import _pad_channel_design
     from test_rhime_co2_o2_baselines import _prepared as prepared_with_baselines
 
     prepared = prepared_with_baselines(("co2", "o2"))

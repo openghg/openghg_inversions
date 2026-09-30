@@ -60,12 +60,12 @@ distinct observation-space sensitivities.
 Surface-site example
 --------------------
 
-Use :func:`openghg_inversions.rhime.run_rhime_nested` with the ordinary modern
+Use :func:`openghg_inversions.recipes.run_rhime_nested` with the ordinary modern
 RHIME arguments plus the inner-domain options:
 
 .. code-block:: python
 
-   from openghg_inversions.rhime import run_rhime_nested
+   from openghg_inversions.recipes import run_rhime_nested
 
    result = run_rhime_nested(
        species="ch4",
@@ -264,7 +264,7 @@ explicit acknowledgement shown below and run from that boundary:
 
 .. code-block:: python
 
-   from openghg_inversions.rhime import (
+   from openghg_inversions.recipes import (
        combine_nested_rhime_inputs,
        run_rhime_nested_from_prepared_inputs,
    )
