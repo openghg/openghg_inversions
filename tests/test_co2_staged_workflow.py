@@ -163,6 +163,10 @@ def test_installed_co2_stages_preserve_scientific_and_file_contracts(tmp_path: P
     _cli("sample", *common, *handoff, "--output-dir", tmp_path / "sample")
     trace = load_trace(posterior)
     roles = json.loads(trace.attrs["rhime_variable_roles"])
+    saved_prior = trace["prior_predictive"].to_dataset()[roles["concentration"]]
+    assert saved_prior.sizes["draw"] == 8
+    assert saved_prior.indexes["nmeasure"].equals(original.inv_inputs.indexes["nmeasure"])
+    assert np.isfinite(saved_prior).all()
     draws = trace["posterior"].to_dataset()
     state = draws[roles["flux_scale"]]
     np.testing.assert_allclose(state.sel(region=1), 0.9)
@@ -239,6 +243,7 @@ def test_installed_co2_stages_preserve_scientific_and_file_contracts(tmp_path: P
             )
     with xr.open_dataset(tmp_path / "postprocess" / "concentration_components.nc") as components:
         assert "predictive_posterior" in components
+        assert components.predictive_prior.sizes["prior_draw"] == 8
         assert "active_flux_scale_posterior" in components
         assert "residual_posterior" in components
         assert components["predictive_posterior"].attrs["units"] == "ppm"

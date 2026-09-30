@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, replace
 from datetime import date, datetime
-from hashlib import sha256
+from hashlib import file_digest, sha256
 import json
 from numbers import Integral, Real
 import os
@@ -139,10 +139,8 @@ def _artifact_path(path: Path) -> str:
 
 def _file_identity(path: Path) -> str:
     """Return the content identity used in compact stage manifests."""
-    digest = sha256()
     with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
+        digest = file_digest(stream, "sha256")
     return f"sha256:{digest.hexdigest()}"
 
 

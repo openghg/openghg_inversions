@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any, cast
 
 import numpy as np
@@ -24,6 +25,7 @@ from openghg_inversions.rhime.co2 import (
 from openghg_inversions.rhime.co2 import co2_cached_sigma_runner
 from openghg_inversions.rhime.co2 import co2_cached_sigma_model
 from openghg_inversions.rhime.sampling import RhimeSampler
+from openghg_inversions.serialization import load_trace, save_trace
 
 
 def _inputs() -> xr.Dataset:
@@ -721,8 +723,11 @@ def test_joint_outputs_are_exact_and_predict_complete_correlated_vectors() -> No
     )
 
 
+@pytest.mark.parametrize("prior_predictive", [8, True, False])
 def test_named_runner_samples_real_graph_and_labels_cached_outputs(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    prior_predictive: bool | int,
 ) -> None:
     """The named runner samples the real graph and labels every cached output."""
     inputs = _boundary_inputs()
@@ -768,7 +773,7 @@ def test_named_runner_samples_real_graph_and_labels_cached_outputs(
             "cores": 1,
             "compute_convergence_checks": False,
         },
-        sample_prior_predictive=False,
+        sample_prior_predictive=prior_predictive,
         posterior_predictive_kwargs={"random_seed": 148},
     )
 
@@ -842,6 +847,23 @@ def test_named_runner_samples_real_graph_and_labels_cached_outputs(
         "joint_log_likelihood"
     ]
     assert result.posterior.attrs["rhime_recipe"] == "co2_cached_sigma_fixed_ou"
+
+    if not prior_predictive:
+        assert "prior" not in result.children
+        assert "prior_predictive" not in result.children
+        return
+    prior_count = 2 if prior_predictive is True else int(prior_predictive)
+    assert result.prior.sizes["draw"] == prior_count
+    assert result.prior_predictive["y"].shape == (1, prior_count, 4)
+    assert result.prior_predictive["y"].attrs["rhime_predictive_scope"] == "joint_observation_vector"
+    assert result.prior_predictive["y"].attrs["units"] == "ppm"
+    np.testing.assert_array_equal(result.prior["site"], inputs["site"])
+    path = tmp_path / "cached-prior-posterior.nc"
+    save_trace(result, path)
+    replay = load_trace(path)
+    xr.testing.assert_identical(replay.prior.to_dataset(), result.prior.to_dataset())
+    xr.testing.assert_identical(replay.prior_predictive.to_dataset(), result.prior_predictive.to_dataset())
+    assert replay.posterior.sizes["draw"] == 2
 
 
 def test_cached_runner_rejects_generic_target_accept() -> None:

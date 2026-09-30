@@ -553,7 +553,9 @@ def run_rhime_co2_cached_sigma(
     Returns:
         Sampled DataTree with the normalized joint log likelihood as one
         value per complete observation vector and, when requested, correlated
-        joint posterior-predictive vectors.
+        joint prior- and posterior-predictive vectors. A true prior-predictive
+        setting uses the retained posterior draw count; an integer requests
+        exactly that many prior draws.
 
     Raises:
         ValueError: If prepared arrays, labels, numerical inputs, or model
@@ -580,7 +582,21 @@ def run_rhime_co2_cached_sigma(
         sigma_target_accept=sigma_target_accept,
         state_target_accept=state_target_accept,
     )
+    sampling_sampler.sample_prior_predictive = False
     trace = sample_rhime_model(built, sampling_sampler)
+    if requested_sampler.sample_prior_predictive:
+        prior_draws = (
+            trace["posterior"].sizes["draw"]
+            if requested_sampler.sample_prior_predictive is True
+            else int(requested_sampler.sample_prior_predictive)
+        )
+        prior = sample_co2_cached_prior_predictive(
+            cached_model,
+            prepared_inputs,
+            draws=prior_draws,
+            random_seed=dict(requested_sampler.sample_kwargs or {}).get("random_seed"),
+        )
+        trace.update(prior)
     trace = _append_joint_outputs(
         trace,
         cached_model=cached_model,

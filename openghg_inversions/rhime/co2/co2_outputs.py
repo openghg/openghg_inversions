@@ -105,14 +105,15 @@ def make_co2_rhime_result(
     prepared: Co2PreparedInputs,
     run_spec: RhimeRunSpec,
     sampler: RhimeSampler,
-    model_build_result: RhimeModelBuildResult,
+    model_build_result: RhimeModelBuildResult | None = None,
     idata: xr.DataTree,
     build_and_sample_seconds: float = 0.0,
 ) -> RhimeResult:
-    """Join an annotated CO2 posterior with its rebuilt graph and preparation.
+    """Join a saved annotated CO2 posterior with its validated preparation.
 
     Artifact identity checks belong to the stage loader. The adapter borrows
-    the validated trace and scientific inputs and performs no serialization.
+    the trace and scientific inputs without rebuilding a graph or serializing.
+    An in-memory runner may additionally retain its existing model build.
     """
     return RhimeResult(
         run_spec=run_spec,
@@ -121,7 +122,7 @@ def make_co2_rhime_result(
         inv_inputs=prepared.inv_inputs,
         idata=idata,
         sampler=sampler,
-        model=model_build_result.model,
+        model=None if model_build_result is None else model_build_result.model,
         basis_functions=prepared.basis_functions,
         model_build_result=model_build_result,
         output_metadata={"build_and_sample_seconds": build_and_sample_seconds},
@@ -305,6 +306,12 @@ def _paris_products(components, native, country, countries, result, source_to_se
     )
     kwargs = result.output_spec.paris_postprocessing_kwargs or {}
     sectors = sorted(set(source_to_sector.values())) if source_to_sector else []
+    # Affine flux artifacts may retain the producer's ordinary time axis.
+    # Normalize it before adding a static interval or inferring its frequency.
+    if "time" in native.dims:
+        native = native.rename(time="flux_time")
+    if "time" in country.dims:
+        country = country.rename(time="flux_time")
     arrays = {}
     for prefix, dataset in (("flux", native), ("country", country)):
         for name, value in dataset.data_vars.items():

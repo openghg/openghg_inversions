@@ -26,7 +26,7 @@ from openghg_inversions.coherent_reduction import CoherentGaussianReduction
 from openghg_inversions.inversion_data import RhimePreparedInputs
 from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
 from openghg_inversions.postprocessing.countries import Countries
-from openghg_inversions.rhime.builders import RhimeModelBuildResult, callable_metadata
+from openghg_inversions.rhime.builders import callable_metadata
 from openghg_inversions.rhime.outputs import RhimeResult
 from openghg_inversions.rhime.specs import RhimeModelSpec, RhimeOutputSpec, RhimeRunSpec
 from openghg_inversions.rhime.stages import (
@@ -50,7 +50,6 @@ from openghg_inversions.utils import write_netcdf_preserving_bounds_attrs
 from .co2_affine_output import BoundCo2AffineFluxMap, load_and_bind_affine_flux_map
 from .co2_cached_sigma_runner import (
     build_rhime_co2_cached_sigma,
-    co2_cached_sigma_build_result,
     co2_cached_sigma_input_names,
     run_rhime_co2_cached_sigma,
     sample_co2_cached_prior_predictive,
@@ -158,7 +157,12 @@ def effective_co2_configuration(setup: Co2StageSetup) -> dict[str, Any]:
 
 
 def co2_configuration_identity(setup: Co2StageSetup) -> str:
-    """Bind stages to preparation and science while allowing output/sampler changes."""
+    """Hash resolved recipe settings needed for scientific replay.
+
+    Prepared data are authenticated separately by artifact content hashes.
+    Transport paths, output settings, and sampler tuning may change without
+    changing this configuration identity.
+    """
     science = effective_co2_configuration(setup)
     science.pop("preparation")
     for key in ("sigma_target_accept", "state_target_accept"):
@@ -321,16 +325,6 @@ def _load_prepared(
     return prepared, bound, manifest
 
 
-def _build_model(setup: Co2StageSetup, prepared: Co2PreparedInputs) -> RhimeModelBuildResult:
-    kwargs = dict(cast(Mapping[str, Any], setup.recipe.runner_kwargs))
-    if setup.recipe.runner is run_rhime_co2_cached_sigma:
-        kwargs.pop("sigma_target_accept", None)
-        kwargs.pop("state_target_accept", None)
-        cached = build_rhime_co2_cached_sigma(prepared_inputs=prepared, **kwargs)
-        return co2_cached_sigma_build_result(cached, prepared)
-    return build_rhime_co2(prepared_inputs=prepared, **kwargs)
-
-
 def prior_predictive_co2_stage(
     *,
     setup: Co2StageSetup,
@@ -455,14 +449,12 @@ def postprocess_co2_stage(
     ].get("affine_reconstruction"):
         raise ValueError("Posterior and preparation disagree on the affine reconstruction identity.")
     sampler = _sampler_from_sample_manifest(sample, path=sample_manifest)
-    built = _build_model(setup, prepared)
     trace = load_trace(posterior)
     destination = Path(output_dir).resolve()
     result = make_co2_rhime_result(
         prepared=prepared,
         run_spec=_run_spec(setup, prepared, destination),
         sampler=sampler,
-        model_build_result=built,
         idata=trace,
     )
     # Build all requested products before opening any output destination.

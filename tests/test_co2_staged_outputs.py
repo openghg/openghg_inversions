@@ -210,3 +210,42 @@ def test_concentration_only_basic_accepts_posterior_without_prior_predictions():
     summary = _basic_product(reconstruct_co2_concentrations(trace, prepared))
     assert "modelled_posterior_mean" in summary
     assert "modelled_prior_mean" not in summary
+
+
+@pytest.mark.parametrize("time_axis", ["time", "flux_time"])
+def test_paris_two_month_affine_flux_infers_frequency_and_preserves_bounds(time_axis):
+    from types import SimpleNamespace
+
+    from postprocessing.test_co2_flux_outputs import _fixture
+    from openghg_inversions.rhime.co2.co2_outputs import _paris_products
+
+    prepared, concentration_trace = _components_fixture()
+    components = reconstruct_co2_concentrations(concentration_trace, prepared)
+    bound, flux_trace, countries = _fixture()
+    timestamps = np.asarray(["2020-01-01", "2020-02-01"], dtype="datetime64[ns]")
+    time_scale = xr.DataArray([1.0, 2.0], dims=time_axis, coords={time_axis: timestamps})
+    signed_flux = bound.affine_map.flux * time_scale
+    signed_flux.attrs = dict(bound.affine_map.flux.attrs)
+    bound = replace(
+        bound, artifact=replace(bound.artifact, affine_map=replace(bound.affine_map, flux=signed_flux))
+    )
+    native, country = _affine_products(flux_trace, bound, countries, None)
+    result = SimpleNamespace(
+        model_spec=SimpleNamespace(domain="EUROPE"),
+        output_spec=RhimeOutputSpec(output_format="paris", save_inversion_output=False),
+        run_spec=SimpleNamespace(start_date="2020-01-01", end_date="2020-03-01", averaging_period=("1h",)),
+    )
+    _, exported = _paris_products(components, native, country, countries, result, None)
+    assert exported.sizes["time"] == 2
+    np.testing.assert_allclose(
+        exported.flux_total_posterior.transpose("time", "latitude", "longitude"),
+        native.flux_total_posterior_mean.transpose(time_axis, "lat", "lon"),
+        rtol=1e-6,
+    )
+    epoch = np.datetime64("1970-01-01")
+    expected_bounds = np.asarray(
+        [["2020-01-01", "2020-02-01"], ["2020-02-01", "2020-03-01"]], dtype="datetime64[ns]"
+    )
+    expected_days = (expected_bounds - epoch) / np.timedelta64(1, "D")
+    np.testing.assert_allclose(exported.time_bnds, expected_days)
+    np.testing.assert_allclose(exported.time, expected_days.mean(axis=1))
