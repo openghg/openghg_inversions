@@ -14,13 +14,14 @@ import xarray as xr
 from openghg_inversions._timing import log_timing, timer_seconds, timer_start
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs
-from openghg_inversions.postprocessing.contracts import OutputContract
+from openghg_inversions.inversion_data.acquisition import retrieve_or_reload_rhime_data
 from openghg_inversions.models.components import (
     add_linear_component,
     add_offset_component,
 )
 from openghg_inversions.models.coords import registered_model
 from openghg_inversions.models.priors import PriorArgs
+from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.models._flux import (
     _namespace_sector_state_coords,
     _prepared_sources,
@@ -70,7 +71,6 @@ from .preparation import (
     build_rhime_basis,
     build_rhime_sensitivities,
     filter_rhime_observations,
-    retrieve_or_reload_rhime_data,
     with_prepared_rhime_sites,
 )
 from .sampling import RhimeSampler, sample_rhime_model
@@ -691,12 +691,14 @@ def run_rhime_multisector(
     if likelihood_builder is None and setup.run_spec.model.likelihood is None:
         raise ValueError("A multisector RHIME run requires a built-in or custom likelihood.")
 
+    # 1. Resolve acquisition through the data owner.
     preparation_start = timer_start()
     merged = retrieve_or_reload_rhime_data(
         setup.data_args,
         multisector=True,
         merged_data=merged_data,
     )
+    # 2. Keep the scientific preparation order visible in this recipe.
     filtered = filter_rhime_observations(merged, setup.data_args)
     basis_functions = build_rhime_basis(filtered, setup.data_args)
     site_data = build_rhime_sensitivities(
@@ -718,6 +720,7 @@ def run_rhime_multisector(
     )
     run_spec = with_prepared_rhime_sites(setup.run_spec, prepared)
 
+    # 3. Cross the explicit numerical/backend boundary, then build the graph.
     model_inputs = materialize_pymc_inputs(
         prepared,
         variable_names=multisector_model_input_names(
@@ -733,10 +736,12 @@ def run_rhime_multisector(
         likelihood_builder=likelihood_builder,
         likelihood_kwargs=likelihood_kwargs,
     )
+    # 4. Inference receives the completed graph and its variable roles.
     idata = sample_rhime_model(
         model_build_result,
         setup.sampler,
     )
+    # 5. Bind the samples to durable scientific output information.
     result = make_multisector_rhime_result(
         prepared=prepared,
         run_spec=run_spec,
@@ -747,6 +752,7 @@ def run_rhime_multisector(
         likelihood_builder=likelihood_builder,
         likelihood_kwargs=likelihood_kwargs,
     )
+    # 6. The recipe adapter passes scientific views to product writers.
     output_start = timer_start()
     make_multisector_rhime_outputs(result=result, prepared=prepared)
     log_timing(

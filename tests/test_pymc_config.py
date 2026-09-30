@@ -6,6 +6,8 @@ import os
 import subprocess
 import sys
 
+import pytest
+
 
 def _probe_pytensor_config(code: str, *, flags: str | None = None) -> dict[str, str]:
     """Inspect PyTensor configuration in an isolated Python process."""
@@ -35,10 +37,13 @@ def _probe_pytensor_config(code: str, *, flags: str | None = None) -> dict[str, 
     return dict(line.split("=", 1) for line in completed.stdout.strip().splitlines())
 
 
-def test_fresh_rhime_import_defaults_pytensor_to_float32() -> None:
-    """A fresh RHIME process uses the memory-conscious graph default."""
+@pytest.mark.parametrize(
+    "module", ["rhime", "models"]
+)
+def test_fresh_backend_import_defaults_pytensor_to_float32(module: str) -> None:
+    """Backend entry points install defaults before loading PyTensor."""
     values = _probe_pytensor_config(
-        "import openghg_inversions.rhime; "
+        f"import openghg_inversions.{module}; "
         "import pytensor; "
         "print('floatX=' + pytensor.config.floatX); "
         "print('warn=' + pytensor.config.warn_float64)"

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from openghg_inversions.rhime import stages
+
 from contextlib import nullcontext
 import json
 from pathlib import Path
@@ -472,7 +474,6 @@ def test_diagnostics_preserve_threshold_edge_values(
     tmp_path: Path,
 ) -> None:
     """Unrounded diagnostics just beyond convergence thresholds must fail."""
-    from openghg_inversions.rhime import stages
 
     idata = make_trace(
         posterior=xr.Dataset({"x": (("chain", "draw"), np.ones((2, 4)))}),
@@ -506,7 +507,6 @@ def test_diagnostics_preserve_finite_failures_when_one_metric_is_nonfinite(
     finite_rhat: float,
     expected_status: str,
 ) -> None:
-    from openghg_inversions.rhime import stages
 
     idata = make_trace(
         posterior=xr.Dataset(
@@ -543,7 +543,6 @@ def test_diagnostics_handle_unassessable_scalar_metric(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    from openghg_inversions.rhime import stages
 
     idata = make_trace(
         posterior=xr.Dataset({"x": (("chain", "draw"), np.ones((2, 4)))}),
