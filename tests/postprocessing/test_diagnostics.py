@@ -52,7 +52,7 @@ def test_summary_preserves_unrounded_diagnostics(
             coords={"summary": ["r_hat", "ess_bulk", "ess_tail", "mcse_mean", "mcse_sd"]},
         )
 
-    monkeypatch.setattr("openghg_inversions.postprocessing.diagnostics.az.summary", fake_summary)
+    monkeypatch.setattr("openghg_inversions.inference.diagnostics.az.summary", fake_summary)
 
     result = summary(inv_out)
 
@@ -76,3 +76,19 @@ def test_bayesian_r2_preserves_removed_arviz_score_semantics() -> None:
 
     np.testing.assert_allclose(result["r2_bayes"], [samples.mean()])
     np.testing.assert_allclose(result["r2_bayes_std"], [samples.std()])
+
+
+def test_scientific_metrics_preserve_diagnostic_registry() -> None:
+    """Canonical metrics and compatibility entry points use the same functions."""
+    from openghg_inversions.postprocessing import diagnostics, metrics
+
+    assert list(diagnostics.diagnostics) == ["summary", "bayes_r2_by_site", "bayes_r2_by_site_resample"]
+    assert diagnostics._r2_by_site is metrics._r2_by_site
+    for name, params in [
+        ("bayes_r2_by_site", ["inv_out", "report_prior"]),
+        ("bayes_r2_by_site_resample", ["inv_out", "freq", "report_prior"]),
+    ]:
+        entry = diagnostics.diagnostics[name]
+        assert entry.func is getattr(metrics, name)
+        assert getattr(diagnostics, name) is entry.func
+        assert entry.params == params
