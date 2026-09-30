@@ -114,7 +114,7 @@ locally, outputs go to ``outputs/prior-check``:
 
 .. jupyter-output::
 
-   {'OpenGHG Inversions commit': 'b1dbf67d9267067d8633204c01ea1e4cc30c4ed0',
+   {'OpenGHG Inversions commit': 'ca468831c6603e4b368680953086c69a6b490d03',
     'tutorial data': 'v1.0.0',
     'prepared inputs written': True}
 
