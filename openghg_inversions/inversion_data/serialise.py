@@ -540,7 +540,11 @@ def fp_all_to_datatree(fp_all: dict, netcdf_safe_attrs: bool = False) -> xr.Data
         elif not k.startswith(".") and isinstance(v, xr.Dataset):
             scenario_dict[k] = v
         else:
-            dt_attrs[k] = v
+            if netcdf_safe_attrs and k == ".split_by_sectors":
+                # NetCDF forbids leading dots in names and Boolean attributes.
+                dt_attrs["split_by_sectors"] = int(v)
+            else:
+                dt_attrs[k] = v
 
     dt_dict["scenarios"] = xr.DataTree.from_dict(scenario_dict)
 
@@ -572,6 +576,8 @@ def datatree_to_fp_all(dt: xr.DataTree) -> dict:
             if str(k) not in _OBSOLETE_FP_ALL_METADATA
         }
     )
+    if "split_by_sectors" in fp_all:
+        fp_all[".split_by_sectors"] = bool(fp_all.pop("split_by_sectors"))
 
     return fp_all
 
