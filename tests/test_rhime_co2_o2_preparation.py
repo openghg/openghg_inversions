@@ -2,16 +2,19 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+from pathlib import Path
 import warnings
 
 from dask import array as da
+from dask import delayed
 import numpy as np
 import pandas as pd
 import pytest
 import xarray as xr
 
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
-from openghg_inversions.rhime.co2 import prepare_co2_o2_inputs
+from openghg_inversions.rhime.co2 import Co2O2PreparedInputs, prepare_co2_o2_inputs
 from openghg_inversions.rhime.co2.co2_o2_preparation import _stack
 from openghg_inversions.serialization import decode_cf_multiindexes, encode_cf_multiindexes
 
@@ -152,9 +155,7 @@ def test_preparation_preserves_lazy_channels_with_staggered_unequal_times(tmp_pa
     ]
     covariance = prepared.aggregation_error.covariance
     assert covariance is not None
-    assert covariance.indexes["observation"].equals(
-        prepared.observations.indexes["observation"]
-    )
+    assert covariance.indexes["observation"].equals(prepared.observations.indexes["observation"])
     np.testing.assert_array_equal(
         covariance.indexes["observation_cov"].values,
         prepared.observations.indexes["observation"].values,
@@ -167,16 +168,10 @@ def test_preparation_preserves_lazy_channels_with_staggered_unequal_times(tmp_pa
         }
     )
     path = tmp_path / "prepared_observations.nc"
-    encode_cf_multiindexes(
-        artifact, ("observation", "observation_cov")
-    ).to_netcdf(path, engine="scipy")
+    encode_cf_multiindexes(artifact, ("observation", "observation_cov")).to_netcdf(path, engine="scipy")
     with xr.open_dataset(path, engine="scipy") as stored:
-        restored = decode_cf_multiindexes(
-            stored.load(), ("observation", "observation_cov")
-        )
-    assert restored.indexes["observation"].equals(
-        prepared.observations.indexes["observation"]
-    )
+        restored = decode_cf_multiindexes(stored.load(), ("observation", "observation_cov"))
+    assert restored.indexes["observation"].equals(prepared.observations.indexes["observation"])
     np.testing.assert_array_equal(
         restored.indexes["observation_cov"].values,
         prepared.observations.indexes["observation"].values,
@@ -192,9 +187,7 @@ def test_preparation_preserves_lazy_channels_with_staggered_unequal_times(tmp_pa
         prepared.fixed_prior_contribution,
         [-8.25, -2.25, -2.5, -4.0, -5.3],
     )
-    assert prepared.fixed_prior_contribution.attrs["mathematical_name"] == (
-        "H m - H_alpha Pi m"
-    )
+    assert prepared.fixed_prior_contribution.attrs["mathematical_name"] == ("H m - H_alpha Pi m")
     ratio_provenance = prepared.o2_sensitivity.attrs["oxidation_ratio_provenance"]
     assert '"state": ["gpp:1", "ter:1", "ff:1"]' in ratio_provenance
     assert '"value": [-1.1, -1.0, -1.4]' in ratio_provenance
@@ -221,9 +214,7 @@ def test_canonicalizes_sensitivity_state_metadata_without_mutating_inputs() -> N
         ("o2_sensitivity", prepared.o2_sensitivity),
     ):
         np.testing.assert_array_equal(prepared_sensitivity["source"], prior.mean["source"])
-        np.testing.assert_array_equal(
-            prepared_sensitivity["tracer_scope"], prior.mean["tracer_scope"]
-        )
+        np.testing.assert_array_equal(prepared_sensitivity["tracer_scope"], prior.mean["tracer_scope"])
         xr.testing.assert_identical(inputs[name], originals[name])
 
 
@@ -233,14 +224,14 @@ def test_source_spelling_is_consistent_across_retained_states(gpp_sources) -> No
     state = ["gpp:1", "gpp:2", "ter:1", "ff:1", "co2-ocean:1", "o2-ocean:1"]
     sources = [*gpp_sources, "TER", "FF", "ocean", "ocean"]
     prior = inputs["retained_prior"]
-    mean = prior.mean.isel(state=[0, 0, 1, 2, 3, 4]).assign_coords(
-        state=state, source=("state", sources)
-    )
+    mean = prior.mean.isel(state=[0, 0, 1, 2, 3, 4]).assign_coords(state=state, source=("state", sources))
     inputs["retained_prior"] = CorrelatedLognormalPrior(mean, np.eye(6) * 0.01)
     for name in ("co2_sensitivity", "o2_sensitivity"):
         inputs[name] = inputs[name].isel(state=[0, 0, 1, 2, 3, 4]).assign_coords(state=state)
-    inputs["o2_co2_flux_ratio"] = inputs["o2_co2_flux_ratio"].isel(state=[0, 0, 1, 2]).assign_coords(
-        state=state[:4], source=("state", sources[:4])
+    inputs["o2_co2_flux_ratio"] = (
+        inputs["o2_co2_flux_ratio"]
+        .isel(state=[0, 0, 1, 2])
+        .assign_coords(state=state[:4], source=("state", sources[:4]))
     )
 
     if gpp_sources[0] != gpp_sources[1]:
@@ -426,9 +417,7 @@ def test_requires_exactly_one_ratio_values_or_unavailable_reason(
     reason: str,
 ) -> None:
     with pytest.raises(ValueError, match="exactly one"):
-        prepare_co2_o2_inputs(
-            **_inputs(ratio_available=ratio_available, unavailable_reason=reason)
-        )
+        prepare_co2_o2_inputs(**_inputs(ratio_available=ratio_available, unavailable_reason=reason))
 
 
 def test_rejects_co2_loading_on_o2_ocean_state() -> None:
@@ -471,3 +460,203 @@ def test_rejects_ambiguous_ratio_direction_or_sign(
 ) -> None:
     with pytest.raises(ValueError, match=message):
         prepare_co2_o2_inputs(**_inputs(ratio_direction=direction, ratio_sign=sign))
+
+
+def _durable_inputs(*, ratio_available: bool = True) -> dict[str, object]:
+    """Build unequal native MultiIndexes and a correlated, nonunit state prior."""
+    inputs = _inputs(
+        ratio_available=ratio_available,
+        unavailable_reason="Ratios embedded in native paired flux." if not ratio_available else "",
+    )
+    inputs["o2_units"] = "ppm"
+    indexes = {
+        "co2": pd.MultiIndex.from_tuples(
+            [("TAC", pd.Timestamp("2021-01-03")), ("MHD", pd.Timestamp("2021-01-01"))],
+            names=("site", "time"),
+        ),
+        "o2": pd.MultiIndex.from_tuples(
+            [
+                ("MHD", pd.Timestamp("2021-01-04")),
+                ("TAC", pd.Timestamp("2021-01-02")),
+                ("TAC", pd.Timestamp("2021-01-05")),
+            ],
+            names=("site", "time"),
+        ),
+    }
+
+    def native_index(array: xr.DataArray, dim: str, index: pd.MultiIndex) -> xr.DataArray:
+        result = array.drop_vars([name for name, coord in array.coords.items() if coord.dims == (dim,)])
+        return result.assign_coords(xr.Coordinates.from_pandas_multiindex(index, dim))
+
+    for channel, index in indexes.items():
+        dim = f"{channel}_measure"
+        for suffix in ("observations", "prior_forward_mean", "sensitivity", "aggregation_covariance"):
+            name = f"{channel}_{suffix}"
+            inputs[name] = native_index(inputs[name], dim, index)
+        name = f"{channel}_aggregation_covariance"
+        inputs[name] = native_index(inputs[name], f"{dim}_cov", index.set_names(("site_cov", "time_cov")))
+    cross = xr.full_like(inputs["co2_o2_aggregation_covariance"], 0.08)
+    cross = native_index(cross, "co2_measure", indexes["co2"])
+    inputs["co2_o2_aggregation_covariance"] = native_index(
+        cross, "o2_measure", indexes["o2"].set_names(("site_cross", "time_cross"))
+    )
+    state_index = pd.MultiIndex.from_arrays(
+        [
+            ["GPP", "TER", "FF", "ocean", "ocean"],
+            ["shared", "shared", "shared", "co2", "o2"],
+            [2, 1, 3, 1, 2],
+        ],
+        names=("source", "tracer_scope", "region_in_source"),
+    )
+    mean = _with_state_index(inputs["retained_prior"].mean, state_index).copy(
+        data=np.array([0.8, 1.2, 0.9, 1.1, 0.7])
+    )
+    inputs["retained_prior"] = CorrelatedLognormalPrior(mean, np.eye(5) * 0.01 + 0.002)
+    for name in ("co2_sensitivity", "o2_sensitivity"):
+        inputs[name] = _with_state_index(inputs[name], state_index)
+    if ratio_available:
+        inputs["o2_co2_flux_ratio"] = _with_state_index(inputs["o2_co2_flux_ratio"], state_index[:3])
+    inputs["boundary_sensitivity"] = {
+        channel: xr.DataArray(
+            np.arange(1, len(index) + 1, dtype=float)[:, None],
+            dims=(f"{channel}_measure", "boundary_state"),
+            coords={
+                **xr.Coordinates.from_pandas_multiindex(index, f"{channel}_measure"),
+                "boundary_state": [f"{channel}:north"],
+            },
+            attrs={"units": "ppm"},
+        )
+        for channel, index in indexes.items()
+    }
+    inputs["provenance"] = {"producer": "public linked fixture", "input_revision": "fixture-v1"}
+    return inputs
+
+
+@pytest.mark.parametrize("suffix", [".nc", ".zarr"])
+@pytest.mark.parametrize("ratio_available", [True, False])
+@pytest.mark.parametrize("saved_error", [True, False])
+def test_complete_linked_prepared_round_trip(
+    tmp_path: Path, suffix: str, ratio_available: bool, saved_error: bool
+) -> None:
+    prepared = prepare_co2_o2_inputs(**_durable_inputs(ratio_available=ratio_available))
+    prepared = replace(
+        prepared,
+        aggregation_error=replace(
+            prepared.aggregation_error,
+            covariance=prepared.aggregation_error.covariance.rename("joint_covariance"),
+        ),
+    )
+    if saved_error:
+        error = xr.full_like(prepared.observations, 0.4).rename("reported_sd")
+        prepared = replace(prepared, independent_error_sd=error)
+    originals = {
+        name: getattr(prepared, name).compute().copy(deep=True)
+        for name in ("observations", "fixed_prior_contribution", "co2_sensitivity", "o2_sensitivity")
+    }
+    path = tmp_path / f"linked{suffix}"
+    prepared.save(path)
+    restored = Co2O2PreparedInputs.load(path)
+
+    for name, expected in originals.items():
+        xr.testing.assert_identical(getattr(restored, name), expected)
+        xr.testing.assert_identical(getattr(prepared, name), expected)
+    xr.testing.assert_identical(restored.aggregation_error.covariance, prepared.aggregation_error.covariance)
+    xr.testing.assert_identical(restored.retained_prior.mean, prepared.retained_prior.mean)
+    xr.testing.assert_identical(
+        restored.retained_prior.arithmetic_covariance, prepared.retained_prior.arithmetic_covariance
+    )
+    assert restored.provenance == prepared.provenance
+    assert restored.o2_co2_flux_ratio_unavailable_reason == prepared.o2_co2_flux_ratio_unavailable_reason
+    if ratio_available:
+        xr.testing.assert_identical(restored.o2_co2_flux_ratio, prepared.o2_co2_flux_ratio)
+        assert restored.o2_co2_flux_ratio.sizes["state"] == 3
+    else:
+        assert restored.o2_co2_flux_ratio is None
+    if saved_error:
+        xr.testing.assert_identical(restored.independent_error_sd, prepared.independent_error_sd)
+    else:
+        assert restored.independent_error_sd is None
+    for channel, boundary in prepared.boundary_sensitivity.items():
+        xr.testing.assert_identical(restored.boundary_sensitivity[channel], boundary)
+    np.testing.assert_array_equal(restored.aggregation_error.covariance.values[:2, 2:], np.full((2, 3), 0.08))
+    assert isinstance(prepared.co2_sensitivity.data, da.Array)
+    assert isinstance(restored.observations.indexes["observation"], pd.MultiIndex)
+    assert restored.observations.indexes["observation"].names == ["species", "site", "time"]
+    assert (
+        restored.retained_prior.mean.indexes["state"].names
+        == prepared.retained_prior.mean.indexes["state"].names
+    )
+
+
+def test_linked_save_computes_shared_payloads_together(tmp_path: Path) -> None:
+    prepared = prepare_co2_o2_inputs(**_inputs())
+    executions = []
+
+    @delayed
+    def shared_payload() -> np.ndarray:
+        executions.append("payload")
+        return np.array([2.0, 3.0, -4.0, -5.0, -6.0])
+
+    data = da.from_delayed(shared_payload(), shape=(5,), dtype=float)
+    scale = data[0] / 2.0
+    prepared = replace(
+        prepared,
+        observations=prepared.observations.copy(data=data),
+        fixed_prior_contribution=prepared.fixed_prior_contribution.copy(data=data + 1.0),
+        co2_sensitivity=prepared.co2_sensitivity.copy(data=prepared.co2_sensitivity.data * scale),
+        o2_sensitivity=prepared.o2_sensitivity.copy(data=prepared.o2_sensitivity.data * scale),
+        o2_co2_flux_ratio=prepared.o2_co2_flux_ratio.copy(data=prepared.o2_co2_flux_ratio.data * scale),
+        independent_error_sd=xr.full_like(prepared.observations, 0.4).copy(data=da.ones(5) * scale),
+    )
+    tree = prepared.to_datatree()
+    assert executions == []
+    assert tree.attrs["schema_version"] == 1
+    prepared.save(tmp_path / "shared.nc")
+    assert executions == ["payload"]
+    assert isinstance(prepared.observations.data, da.Array)
+    restored = Co2O2PreparedInputs.load(tmp_path / "shared.nc")
+    assert restored.observations.observation_units.values.tolist() == [
+        "ppm",
+        "ppm",
+        "per meg",
+        "per meg",
+        "per meg",
+    ]
+    np.testing.assert_array_equal(restored.independent_error_sd.values, np.ones(5))
+
+
+@pytest.mark.parametrize("corruption", ["version", "covariance_units", "error", "ratio", "index_metadata"])
+def test_linked_loader_rejects_corrupt_scientific_artifacts(corruption: str) -> None:
+    prepared = prepare_co2_o2_inputs(**_durable_inputs())
+    prepared = replace(prepared, independent_error_sd=xr.full_like(prepared.observations, 0.4))
+    tree = prepared.to_datatree().copy(deep=True)
+    if corruption == "version":
+        tree.attrs["schema_version"] = True
+    elif corruption == "covariance_units":
+        units = tree["joint"]["observation_units_cov"]
+        tree["joint"]["observation_units_cov"] = units.copy(data=np.full(units.size, "per meg"))
+    elif corruption == "error":
+        error = tree["independent_error"]["independent_error_sd"]
+        tree["independent_error"]["independent_error_sd"] = error.copy(data=np.full(error.size, -0.4))
+    elif corruption == "ratio":
+        ratio = tree["flux_ratio"]["o2_co2_flux_ratio"]
+        tree["flux_ratio"]["o2_co2_flux_ratio"] = ratio.copy(data=np.array([-1.2, -1.0, -1.4]))
+    else:
+        tree["joint"].attrs["multiindex_dims_json"] = "[]"
+
+    with pytest.raises(ValueError):
+        Co2O2PreparedInputs.from_datatree(tree)
+
+
+def test_linked_preparation_accepts_labelled_independent_error() -> None:
+    inputs = _inputs()
+    prepared = prepare_co2_o2_inputs(**inputs)
+    error = xr.full_like(prepared.observations, 0.4).rename("reported_sd")
+    with_error = prepare_co2_o2_inputs(**inputs, independent_error_sd=error)
+    assert with_error.independent_error_sd is error
+    with pytest.raises(ValueError, match="positive"):
+        prepare_co2_o2_inputs(**inputs, independent_error_sd=error.copy(data=np.zeros(error.size)))
+    with pytest.raises(ValueError, match="units"):
+        prepare_co2_o2_inputs(
+            **inputs, independent_error_sd=error.assign_coords(observation_units=("observation", ["ppm"] * 5))
+        )

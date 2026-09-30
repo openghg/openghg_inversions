@@ -96,6 +96,44 @@ def _validate_independent_error_values(array: xr.DataArray) -> None:
         raise ValueError("independent_error_sd must contain only finite positive real numeric values.")
 
 
+def _materialize_co2_o2_replay_inputs(
+    prepared: Co2O2PreparedInputs,
+    independent_error_sd: xr.DataArray | None,
+    boundaries: Mapping[str, xr.DataArray],
+) -> tuple[tuple[xr.DataArray, ...], dict[str, xr.DataArray]]:
+    """Resolve fixed errors and jointly materialize the linked replay payloads."""
+    saved_error = getattr(prepared, "independent_error_sd", None)
+    if independent_error_sd is None:
+        independent_error_sd = saved_error
+    if independent_error_sd is None:
+        raise ValueError("Supply independent_error_sd explicitly or in the prepared artifact.")
+    errors = [independent_error_sd]
+    if saved_error is not None and saved_error is not independent_error_sd:
+        errors.append(saved_error)
+    for error in errors:
+        _validate_independent_error_labels(prepared.observations, error)
+    materialized = _materialize_co2_o2_pymc_inputs(
+        prepared.observations,
+        prepared.fixed_prior_contribution,
+        prepared.co2_sensitivity,
+        prepared.o2_sensitivity,
+        *errors,
+        *boundaries.values(),
+    )
+    observations = materialized[0]
+    dense_errors = materialized[4 : 4 + len(errors)]
+    for error in dense_errors:
+        if not np.array_equal(error["observation_units"].data, observations["observation_units"].data):
+            raise ValueError("independent_error_sd observation_units must match the prepared observations.")
+        _validate_independent_error_values(error)
+    if len(dense_errors) == 2 and not np.array_equal(dense_errors[0].data, dense_errors[1].data):
+        raise ValueError("Explicit independent_error_sd must match the prepared artifact values.")
+    return (
+        (*materialized[:4], dense_errors[0]),
+        dict(zip(boundaries, materialized[4 + len(errors) :], strict=True)),
+    )
+
+
 def _co2_o2_metadata(
     prepared: Co2O2PreparedInputs,
     *,
@@ -194,7 +232,7 @@ def _annotate_co2_o2_trace(
 def run_rhime_co2_o2_from_prepared_inputs(
     *,
     prepared_inputs: Co2O2PreparedInputs,
-    independent_error_sd: xr.DataArray,
+    independent_error_sd: xr.DataArray | None = None,
     state_activity: StateActivity | None = None,
     use_bc: Mapping[str, bool] | None = None,
     bc_prior: Mapping[str, PriorArgs] | None = None,
@@ -212,7 +250,9 @@ def run_rhime_co2_o2_from_prepared_inputs(
     ``run_rhime_co2_o2`` name is reserved for the future complete production
     recipe, including acquisition, preparation, materialization, and outputs.
 
-    The fixed independent channel error is required and remains labelled. Run
+    The fixed independent channel error is required and remains labelled. It
+    may be stored in the prepared artifact or supplied explicitly; when both
+    are present their labels, units, and values must agree. Run
     policy, such as the UOB prototype's one ppm value for both channels, belongs
     to the caller rather than the model API.
 
@@ -222,10 +262,12 @@ def run_rhime_co2_o2_from_prepared_inputs(
             channel sensitivities on their native observation axes and the retained
             state axis, a dense joint aggregation covariance, retained prior,
             ratio provenance, units, labels, and scientific provenance.
-        independent_error_sd: Positive finite fixed standard deviations on
+        independent_error_sd: Optional positive finite fixed standard deviations on
             ``("observation",)``. Labels and ``observation_units`` must match
             ``prepared_inputs.observations`` exactly. These values remain fixed
-            data and are not an inferred mismatch amplitude.
+            data and are not an inferred mismatch amplitude. Defaults to the
+            artifact's saved error vector. An explicit vector must agree with
+            saved errors when the artifact contains them.
         state_activity: Optional labelled active/fixed policy on the retained
             state dimension. Omitted states use the model's structural activity
             policy.
@@ -278,32 +320,10 @@ def run_rhime_co2_o2_from_prepared_inputs(
             if not enabled:
                 boundaries.pop(channel, None)
     _validate_channel_baseline_options(boundaries, bc_prior, bc_state_activity, offset_prior, offset_args)
-    _validate_independent_error_labels(
-        prepared.observations,
-        independent_error_sd,
+    materialized, boundaries = _materialize_co2_o2_replay_inputs(
+        prepared, independent_error_sd, boundaries
     )
-    (
-        observations,
-        fixed_prior_contribution,
-        co2_sensitivity,
-        o2_sensitivity,
-        independent_error_sd,
-        *boundary_arrays,
-    ) = _materialize_co2_o2_pymc_inputs(
-        prepared.observations,
-        prepared.fixed_prior_contribution,
-        prepared.co2_sensitivity,
-        prepared.o2_sensitivity,
-        independent_error_sd,
-        *boundaries.values(),
-    )
-    boundaries = dict(zip(boundaries, boundary_arrays, strict=True))
-    if not np.array_equal(
-        independent_error_sd["observation_units"].data,
-        observations["observation_units"].data,
-    ):
-        raise ValueError("independent_error_sd observation_units must match the prepared observations.")
-    _validate_independent_error_values(independent_error_sd)
+    observations, fixed_prior_contribution, co2_sensitivity, o2_sensitivity, independent_error_sd = materialized
     model = build_co2_o2_model(
         observations=observations,
         fixed_prior_contribution=fixed_prior_contribution,

@@ -99,6 +99,9 @@ class Co2O2RunSetup:
         Returns:
             Exact keyword arguments for :attr:`runner`, including a labelled
             ``independent_error_sd`` array expanded over the observation axis.
+            When both channel error settings are omitted, the artifact must
+            contain that error vector. Explicit settings are checked against
+            any saved errors at the runner's materialization boundary.
 
         Raises:
             ValueError: If the required coordinates are absent or misaligned,
@@ -120,14 +123,22 @@ class Co2O2RunSetup:
         observation_units = np.asarray(observations["observation_units"].values).astype(str)
         if set(species) != {"co2", "o2"}:
             raise ValueError("Linked prepared observations must contain exactly CO2 and O2 channels.")
-        error_values = np.empty(observations.size, dtype=np.float64)
+        error_values = np.empty(observations.size, dtype=np.float64) if configured_errors else None
         for name in ("co2", "o2"):
             selected = species == name
             if not np.all(observation_units[selected] == self.preparation_kwargs[f"{name}_units"]):
                 raise ValueError(f"Configured channels.{name}.units do not match prepared observation_units.")
-            error_values[selected] = configured_errors[name]
-        independent_error = observations.copy(data=error_values).rename("independent_error_sd")
-        independent_error.attrs = {"units": "mixed; see observation_units coordinate"}
+            if error_values is not None:
+                error_values[selected] = configured_errors[name]
+        if error_values is None:
+            independent_error = getattr(prepared_inputs, "independent_error_sd", None)
+            if independent_error is None:
+                raise ValueError(
+                    "Omitted channel independent_error_sd requires errors in the prepared artifact."
+                )
+        else:
+            independent_error = observations.copy(data=error_values).rename("independent_error_sd")
+            independent_error.attrs = {"units": "mixed; see observation_units coordinate"}
         return _frozen(
             {
                 "prepared_inputs": prepared_inputs,
@@ -544,11 +555,12 @@ def _resolve_linked(options: dict[str, object], variant: str) -> Co2O2RunSetup:
         channel = _table(_take(channels, name, "channels"), f"channels.{name}")
         channel_units = _string(_take(channel, "units", f"channels.{name}"), f"channels.{name}.units")
         mole_fraction_unit_scale(channel_units, context=f"channels.{name}.units")
-        error = _number(
-            _take(channel, "independent_error_sd", f"channels.{name}"),
-            f"channels.{name}.independent_error_sd",
-            positive=True,
-        )
+        if "independent_error_sd" in channel:
+            errors[name] = _number(
+                channel.pop("independent_error_sd"),
+                f"channels.{name}.independent_error_sd",
+                positive=True,
+            )
         model_options = {key: channel.pop(key) for key in ("boundary", "offset") if key in channel}
         if "boundary" in model_options:
             boundary = _table(model_options["boundary"], f"channels.{name}.boundary")
@@ -569,8 +581,9 @@ def _resolve_linked(options: dict[str, object], variant: str) -> Co2O2RunSetup:
             channel_model.setdefault(key, {})[name] = value
         _reject_unknown(channel, f"channels.{name}")
         units[name] = channel_units
-        errors[name] = error
     _reject_unknown(channels, "channels")
+    if errors and len(errors) != 2:
+        raise ValueError("Configure independent_error_sd for both linked channels or omit it for both.")
     if units["co2"] != units["o2"]:
         raise ValueError(
             "The linked configuration currently requires identical CO2 and O2 channel units."

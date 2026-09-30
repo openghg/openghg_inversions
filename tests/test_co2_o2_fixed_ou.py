@@ -11,7 +11,7 @@ import pytensor.tensor as pt
 import pytest
 from scipy.stats import multivariate_normal
 
-from openghg_inversions.rhime.co2 import prepare_co2_o2_inputs
+from openghg_inversions.rhime.co2 import Co2O2PreparedInputs, prepare_co2_o2_inputs
 from openghg_inversions.rhime.co2.co2_o2_model import build_co2_o2_model
 from openghg_inversions.rhime.co2.co2_o2_fixed_ou import linked_fixed_ou_alignment
 from openghg_inversions.rhime.co2.co2_o2_cached_sigma_model import build_co2_o2_cached_sigma_model
@@ -254,6 +254,10 @@ def test_linked_ou_requires_same_units():
 @pytest.mark.parametrize("cached", [False, True])
 def test_linked_sampling_serializes_group_labels_and_joint_outputs(tmp_path, cached):
     prepared = _prepared()
+    prepared = replace(prepared, independent_error_sd=_independent_error(prepared))
+    prepared_path = tmp_path / "prepared.nc"
+    prepared.save(prepared_path)
+    prepared = Co2O2PreparedInputs.load(prepared_path)
     runner = (
         run_rhime_co2_o2_cached_sigma_from_prepared_inputs
         if cached
@@ -266,7 +270,6 @@ def test_linked_sampling_serializes_group_labels_and_joint_outputs(tmp_path, cac
     )
     trace = runner(
         prepared_inputs=prepared,
-        independent_error_sd=_independent_error(prepared),
         tau_hours={"co2:A": 6.0, "o2:A": 8.0, "o2:B": 2.0},
         **options,
         sampler=RhimeSampler(

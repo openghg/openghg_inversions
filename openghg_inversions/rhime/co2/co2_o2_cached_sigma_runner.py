@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-import numpy as np
 import xarray as xr
 
 from openghg_inversions.models import StateActivity
@@ -26,16 +25,14 @@ from .co2_o2_runner import (
     _annotate_co2_o2_trace,
     _annotate_linked_fixed_ou_trace,
     _co2_o2_metadata,
-    _materialize_co2_o2_pymc_inputs,
-    _validate_independent_error_labels,
-    _validate_independent_error_values,
+    _materialize_co2_o2_replay_inputs,
 )
 
 
 def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
     *,
     prepared_inputs: Co2O2PreparedInputs,
-    independent_error_sd: xr.DataArray,
+    independent_error_sd: xr.DataArray | None = None,
     tau_hours: float | Mapping[str, float],
     site_amplitude_prior_scale: float,
     initial_site_amplitudes: float | Mapping[str, float] | None = None,
@@ -53,7 +50,9 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
 
     Uses the prepared-input, independent-error and channel baseline contracts
     of :func:`run_rhime_co2_o2_from_prepared_inputs`. Both channels must use the
-    same concentration units. Fixed ``tau_hours`` and optional positive initial
+    same concentration units. Omitted ``independent_error_sd`` uses the saved
+    artifact errors; explicit and saved errors must agree when both are present.
+    Fixed ``tau_hours`` and optional positive initial
     amplitudes accept scalars or mappings keyed by ``co2:SITE``/``o2:SITE``.
     The HalfNormal ``site_amplitude_prior_scale`` is in concentration units.
     The two target-accept settings tune the amplitude and state NUTS steps.
@@ -68,7 +67,6 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
     if requested_sampler.nuts_sampler != "pymc":
         raise ValueError("Linked cached fixed-OU requires nuts_sampler='pymc'.")
     prepared = prepared_inputs
-    _validate_independent_error_labels(prepared.observations, independent_error_sd)
     boundaries = dict(getattr(prepared, "boundary_sensitivity", {}))
     if use_bc is not None:
         if (
@@ -82,19 +80,10 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
                 raise ValueError(f"{channel} use_bc requires prepared boundary_sensitivity.")
             if not enabled:
                 boundaries.pop(channel, None)
-    materialized = _materialize_co2_o2_pymc_inputs(
-        prepared.observations,
-        prepared.fixed_prior_contribution,
-        prepared.co2_sensitivity,
-        prepared.o2_sensitivity,
-        independent_error_sd,
-        *boundaries.values(),
+    materialized, boundaries = _materialize_co2_o2_replay_inputs(
+        prepared, independent_error_sd, boundaries
     )
-    observations, fixed, co2, o2, error = materialized[:5]
-    boundaries = dict(zip(boundaries, materialized[5:], strict=True))
-    if not np.array_equal(error.observation_units.values, observations.observation_units.values):
-        raise ValueError("independent_error_sd observation_units must match the prepared observations.")
-    _validate_independent_error_values(error)
+    observations, fixed, co2, o2, error = materialized
     cached = build_co2_o2_cached_sigma_model(
         observations=observations,
         fixed_prior_contribution=fixed,
