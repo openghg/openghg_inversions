@@ -24,8 +24,8 @@ Current support
      - One emissions source represented by overlapping outer and inner
        footprint grids at different spatial resolutions.
    * - Public entry points
-     - :func:`openghg_inversions.rhime.run_rhime_nested` for a complete run,
-       and :func:`openghg_inversions.rhime.run_rhime_nested_from_prepared_inputs`
+     - :func:`openghg_inversions.recipes.run_rhime_nested` for a complete run,
+       and :func:`openghg_inversions.recipes.run_rhime_nested_from_prepared_inputs`
        for explicit prepared outer and inner inputs.
    * - Configuration and command line
      - Supports the RHIME INI schema and

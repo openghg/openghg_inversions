@@ -42,24 +42,24 @@ import xarray as xr
 
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.inversion_inputs import DatetimeLike
-from openghg_inversions.models._flux import (
+from openghg_inversions.model_components._flux import (
     _namespace_sector_state_coords,
     _select_sector_design,
     safe_pymc_name,
 )
-from openghg_inversions.models.components import (
+from openghg_inversions.model_components.components import (
     add_linked_linear_component,
     add_linear_component,
     add_model_data,
     apply_linear_sensitivity,
 )
-from openghg_inversions.models.coords import add_coords, registered_model
-from openghg_inversions.models.priors import parse_prior
-from openghg_inversions.models.state_activity import (
+from openghg_inversions.model_components.coords import add_coords, registered_model
+from openghg_inversions.model_components.priors import parse_prior
+from openghg_inversions.model_components.state_activity import (
     PreparedLinearSensitivity,
     prepare_linear_sensitivity,
 )
-from openghg_inversions.rhime.sampling import RhimeSampler
+from openghg_inversions.recipes.sampling import RhimeSampler
 from openghg_inversions.sigma import SigmaAlignment
 
 RatioResolution = Literal["scalar", "spatial"]
@@ -110,7 +110,7 @@ class RamsdenChannelSpec:
             Supported dataset unit attributes are checked by mol/mol scale;
             values are not converted.
         sigma_prior: PyMC prior mapping accepted by
-            :func:`~openghg_inversions.models.priors.parse_prior` for absolute
+            :func:`~openghg_inversions.model_components.priors.parse_prior` for absolute
             model error. The prior is expanded by site and period, not
             multiplied by the modelled enhancement.
         sigma_per_site: Whether model error is independent by observation site.
@@ -795,7 +795,7 @@ def build_ramsden_model(
 
     Returns:
         Built PyMC model ready for
-        :class:`~openghg_inversions.rhime.sampling.RhimeSampler`.
+        :class:`~openghg_inversions.recipes.sampling.RhimeSampler`.
 
     Raises:
         ValueError: If model metadata, required input variables, source labels,
@@ -948,7 +948,7 @@ def run_ramsden_from_prepared_inputs(
         This function samples the model and may run multiple chains. It does
         not retrieve data, convert units, or write postprocessed products.
         Sampling exceptions raised by
-        :class:`~openghg_inversions.rhime.sampling.RhimeSampler` are
+        :class:`~openghg_inversions.recipes.sampling.RhimeSampler` are
         propagated.
     """
     model = build_ramsden_model(prepared_inputs, model_spec)

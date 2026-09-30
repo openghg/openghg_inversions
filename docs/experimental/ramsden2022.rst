@@ -12,7 +12,7 @@ work. It is not a stable public API.
 
 The model starts at the prepared-input boundary. It accepts two canonical
 RHIME-style datasets and uses the current PyMC model components and
-:class:`~openghg_inversions.rhime.sampling.RhimeSampler`. It deliberately does
+:class:`~openghg_inversions.inference.sampling.RhimeSampler`. It deliberately does
 not port the historical ACRG/OpenGHG retrieval layer, pickle cache,
 configuration parser, custom Metropolis-Hastings sampler, isotope extensions,
 or bespoke country/NetCDF post-processing.

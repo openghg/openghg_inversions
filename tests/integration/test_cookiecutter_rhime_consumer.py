@@ -12,7 +12,7 @@ import xarray as xr
 
 from examples.rhime_cookiecutter.my_inversion import likelihoods
 from examples.rhime_cookiecutter.my_inversion import runner as consumer_runner
-import openghg_inversions.rhime.standard as rhime_runner
+import openghg_inversions.recipes.standard as rhime_runner
 
 
 def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PLR0915
@@ -225,10 +225,10 @@ def test_consumer_imports_only_public_supported_modules(module_path: str | None)
     for node in imports:
         if isinstance(node, ast.ImportFrom) and (node.module or "").startswith("openghg_inversions"):
             assert node.module in {
-                "openghg_inversions.models.additive_sigma",
-                "openghg_inversions.models.pollution_event",
+                "openghg_inversions.model_components.additive_sigma",
+                "openghg_inversions.model_components.pollution_event",
                 "openghg_inversions.observation_error",
-                "openghg_inversions.rhime",
+                "openghg_inversions.recipes",
                 "openghg_inversions.sigma",
             }
             assert all(not alias.name.startswith("_") for alias in node.names)

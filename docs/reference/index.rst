@@ -6,7 +6,9 @@ composing OpenGHG Inversions workflows. Start with the
 :doc:`model recipe chooser </usage/model_recipes>` if you need to decide which
 workflow fits a scientific question. The tutorials and guides explain how the
 objects fit together; the tables below link to signatures and detailed API
-documentation.
+documentation. Complete scientific recipes live in ``recipes``; reusable
+model-building functions live in ``model_components``. Established ``rhime``
+and ``models`` imports remain compatibility aliases to those implementations.
 
 Run an inversion
 ----------------
@@ -24,35 +26,36 @@ runner.
 .. autosummary::
    :nosignatures:
 
-   openghg_inversions.rhime.run_rhime
-   openghg_inversions.rhime.run_rhime_multisector
-   openghg_inversions.rhime.run_rhime_nested
-   openghg_inversions.rhime.run_rhime_from_prepared_inputs
-   openghg_inversions.rhime.run_rhime_nested_from_prepared_inputs
-   openghg_inversions.rhime.run_rhime_co2
-   openghg_inversions.rhime.co2.run_rhime_co2_cached_sigma
-   openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs
-   openghg_inversions.rhime.co2.run_rhime_co2_o2_cached_sigma_from_prepared_inputs
+   openghg_inversions.recipes.run_rhime
+   openghg_inversions.recipes.run_rhime_multisector
+   openghg_inversions.recipes.run_rhime_nested
+   openghg_inversions.recipes.run_rhime_from_prepared_inputs
+   openghg_inversions.recipes.run_rhime_nested_from_prepared_inputs
+   openghg_inversions.recipes.run_rhime_co2
+   openghg_inversions.recipes.co2.run_rhime_co2_cached_sigma
+   openghg_inversions.recipes.co2.run_rhime_co2_o2_from_prepared_inputs
+   openghg_inversions.recipes.co2.run_rhime_co2_o2_cached_sigma_from_prepared_inputs
 
 Run specifications and results
 ------------------------------
 
 These objects describe the model, sampling, and output settings accepted by
-the RHIME runners.
+the RHIME runners. The sampler's former ``rhime`` imports remain compatible;
+its implementation is owned by ``inference``.
 
 .. autosummary::
    :nosignatures:
 
-   openghg_inversions.rhime.RhimeRunSpec
-   openghg_inversions.rhime.RhimeModelSpec
-   openghg_inversions.rhime.RhimeOutputSpec
-   openghg_inversions.rhime.RhimeSampler
-   openghg_inversions.rhime.RhimeResult
-   openghg_inversions.rhime.NestedRhimeResult
-   openghg_inversions.rhime.SectorSpec
-   openghg_inversions.rhime.AdditiveSigmaSettings
-   openghg_inversions.rhime.FixedErrorSettings
-   openghg_inversions.rhime.PollutionEventSettings
+   openghg_inversions.recipes.RhimeRunSpec
+   openghg_inversions.recipes.RhimeModelSpec
+   openghg_inversions.recipes.RhimeOutputSpec
+   openghg_inversions.inference.RhimeSampler
+   openghg_inversions.recipes.RhimeResult
+   openghg_inversions.recipes.NestedRhimeResult
+   openghg_inversions.recipes.SectorSpec
+   openghg_inversions.recipes.AdditiveSigmaSettings
+   openghg_inversions.recipes.FixedErrorSettings
+   openghg_inversions.recipes.PollutionEventSettings
 
 Prepared inversion data
 -----------------------
@@ -70,17 +73,18 @@ documents the expected variables, dimensions, and coordinates.
    openghg_inversions.inversion_data.prepare_rhime_inputs
    openghg_inversions.inversion_data.prepare_rhime_inputs_from_xarray
    openghg_inversions.inversion_data.load_merged_data
-   openghg_inversions.rhime.NestedRhimePreparedInputs
-   openghg_inversions.rhime.combine_nested_rhime_inputs
-   openghg_inversions.rhime.co2.Co2PreparedInputs
-   openghg_inversions.rhime.co2.BoundCo2AffineFluxMap
-   openghg_inversions.rhime.co2.produce_bucket_affine_flux_map
-   openghg_inversions.rhime.co2.import_explicit_affine_flux_map
-   openghg_inversions.rhime.co2.load_and_bind_affine_flux_map
-   openghg_inversions.rhime.co2.prepared_inputs_content_id
-   openghg_inversions.rhime.co2.Co2O2PreparedInputs
-   openghg_inversions.rhime.co2.prepare_co2_inputs
-   openghg_inversions.rhime.co2.prepare_co2_o2_inputs
+   openghg_inversions.inversion_data.acquisition.retrieve_or_reload_rhime_data
+   openghg_inversions.recipes.NestedRhimePreparedInputs
+   openghg_inversions.recipes.combine_nested_rhime_inputs
+   openghg_inversions.recipes.co2.Co2PreparedInputs
+   openghg_inversions.recipes.co2.BoundCo2AffineFluxMap
+   openghg_inversions.recipes.co2.produce_bucket_affine_flux_map
+   openghg_inversions.recipes.co2.import_explicit_affine_flux_map
+   openghg_inversions.recipes.co2.load_and_bind_affine_flux_map
+   openghg_inversions.recipes.co2.prepared_inputs_content_id
+   openghg_inversions.recipes.co2.Co2O2PreparedInputs
+   openghg_inversions.recipes.co2.prepare_co2_inputs
+   openghg_inversions.recipes.co2.prepare_co2_o2_inputs
 
 Basis construction and state geometry
 -------------------------------------
@@ -155,18 +159,18 @@ component boundary and when to copy a complete recipe instead.
 .. autosummary::
    :nosignatures:
 
-   openghg_inversions.models.StateActivity
-   openghg_inversions.models.PreparedLinearSensitivity
-   openghg_inversions.models.prepare_linear_sensitivity
-   openghg_inversions.models.CorrelatedLognormalPrior
-   openghg_inversions.models.parse_prior
-   openghg_inversions.models.add_model_data
-   openghg_inversions.models.add_linear_component
-   openghg_inversions.models.add_linked_linear_component
-   openghg_inversions.models.add_correlated_lognormal_state
-   openghg_inversions.models.add_offset_component
-   openghg_inversions.models.add_sigma_component
-   openghg_inversions.models.add_site_sigma_gaussian_likelihood
+   openghg_inversions.model_components.StateActivity
+   openghg_inversions.model_components.PreparedLinearSensitivity
+   openghg_inversions.model_components.prepare_linear_sensitivity
+   openghg_inversions.model_components.CorrelatedLognormalPrior
+   openghg_inversions.model_components.parse_prior
+   openghg_inversions.model_components.add_model_data
+   openghg_inversions.model_components.add_linear_component
+   openghg_inversions.model_components.add_linked_linear_component
+   openghg_inversions.model_components.add_correlated_lognormal_state
+   openghg_inversions.model_components.add_offset_component
+   openghg_inversions.model_components.add_sigma_component
+   openghg_inversions.model_components.add_site_sigma_gaussian_likelihood
 
 Outputs and serialisation
 -------------------------
@@ -175,14 +179,22 @@ Outputs and serialisation
 helpers. Serialisation helpers preserve the labelled indexes required by
 prepared inputs and inference data.
 
+``OutputContract`` records model roles and explicit state mappings without a
+live graph. The output-view factory binds that metadata to prepared values
+and samples; it does not write products. See the
+:doc:`six-layer prototype </development/rhime_six_layer_prototype>` for the
+current scope and :doc:`staged replay </usage/staged_workflow>` for persistence.
+
 .. autosummary::
    :nosignatures:
 
    openghg_inversions.postprocessing.inversion_output.InversionOutput
+   openghg_inversions.postprocessing.contracts.OutputContract
+   openghg_inversions.postprocessing.output_views.make_inversion_output
    openghg_inversions.postprocessing.co2_flux_outputs.co2_native_flux_outputs
    openghg_inversions.postprocessing.co2_flux_outputs.co2_country_flux_outputs
-   openghg_inversions.postprocessing.linked_paris_outputs.make_co2_o2_paris_outputs
-   openghg_inversions.postprocessing.linked_paris_outputs.reconstruct_co2_o2_concentrations
+   openghg_inversions.recipes.co2.outputs.make_co2_o2_paris_outputs
+   openghg_inversions.recipes.co2.outputs.reconstruct_co2_o2_concentrations
    openghg_inversions.postprocessing.countries.Countries
    openghg_inversions.postprocessing.make_outputs.basic_output
    openghg_inversions.postprocessing.make_outputs.make_flux_outputs
@@ -191,6 +203,22 @@ prepared inputs and inference data.
    openghg_inversions.serialization.open_datatree_loaded
    openghg_inversions.serialization.save_inferencedata
    openghg_inversions.serialization.load_inferencedata
+
+Inference diagnostics and scientific metrics
+--------------------------------------------
+
+Neutral convergence summaries consume posterior samples while preserving
+chain/draw structure. Scientific metrics compare observations with predictions
+at their stated sampling support. The established
+``postprocessing.diagnostics`` module remains an output compatibility adapter;
+calculating a score does not apply a scientific acceptance threshold.
+
+.. autosummary::
+   :nosignatures:
+
+   openghg_inversions.inference.diagnostics.posterior_summary
+   openghg_inversions.postprocessing.metrics.bayes_r2_by_site
+   openghg_inversions.postprocessing.metrics.bayes_r2_by_site_resample
 
 Legacy compatibility APIs
 -------------------------

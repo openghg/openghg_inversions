@@ -4,7 +4,7 @@ The public :func:`prepare_rhime_inputs_from_xarray` adapter starts after data
 acquisition. It accepts site data already held in xarray objects, applies a
 retained :class:`~openghg_inversions.basis.basis_functions.BasisFunctions`
 object when only footprint-times-flux caches are available, and returns the
-same :class:`~openghg_inversions.inversion_data.preparation.RhimePreparedInputs`
+same :class:`~openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs`
 contract used by the OpenGHG-backed preparation path.
 
 Each site-local input dataset must contain a ``time`` dimension and the
@@ -49,8 +49,8 @@ non-string labels are not coerced. Repeated source values inside a gathered
 ``(source, region_in_source)`` state MultiIndex are valid.
 
 Use :meth:`RhimePreparedInputs.save
-<openghg_inversions.inversion_data.preparation.RhimePreparedInputs.save>` and
-:meth:`~openghg_inversions.inversion_data.preparation.RhimePreparedInputs.load`
+<openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs.save>` and
+:meth:`~openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs.load`
 for durable canonical artifacts. Serialized or otherwise pre-stacked
 ``nmeasure`` data should not be passed back through this adapter.
 """
@@ -65,7 +65,7 @@ import pandas as pd
 import xarray as xr
 
 from openghg_inversions.basis.basis_functions import BasisFunctions
-from openghg_inversions.inversion_data.preparation import RhimePreparedInputs
+from openghg_inversions.inversion_data.prepared_inputs import RhimePreparedInputs
 from openghg_inversions.inversion_inputs import DatetimeLike, make_inv_inputs
 
 _CACHE_VARIABLES = ("fp_x_flux", "fp_x_flux_sectoral")
@@ -900,9 +900,9 @@ def prepare_rhime_inputs_from_xarray(
 
     Persist and reopen canonical artifacts with
     :meth:`RhimePreparedInputs.save
-    <openghg_inversions.inversion_data.preparation.RhimePreparedInputs.save>`
+    <openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs.save>`
     and
-    :meth:`~openghg_inversions.inversion_data.preparation.RhimePreparedInputs.load`;
+    :meth:`~openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs.load`;
     do not pass serialized ``nmeasure`` data back to this adapter.
     The reserved ``fixed_baseline`` input is rejected until a reusable
     semantic Baseline component is available; use sampled ``H_bc`` or omit it.
@@ -925,7 +925,7 @@ def prepare_rhime_inputs_from_xarray(
 
     Returns:
         Canonical prepared inputs accepted by
-        :func:`openghg_inversions.rhime.run_rhime_from_prepared_inputs`.
+        :func:`openghg_inversions.recipes.run_rhime_from_prepared_inputs`.
 
     Raises:
         TypeError: If the input container or mapping values are unsupported,

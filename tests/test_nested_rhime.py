@@ -7,22 +7,25 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import dask.array as da
+from dask.callbacks import Callback
 import numpy as np
 import pandas as pd
 import pytest
 import xarray as xr
 
-import openghg_inversions.rhime.nested as nested_module
+import openghg_inversions.recipes.nested as nested_module
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.cli import main
+from openghg_inversions.recipes._domain_support import rectangular_extent_mask, remove_domain_overlap
 from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs
 from openghg_inversions.inversion_data.preparation import _SiteOptions
+from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.postprocessing.nested_paris_outputs import (
     _regridded_inner_country_file,
 )
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.postprocessing.make_outputs import make_flux_outputs
-from openghg_inversions.rhime.nested import (
+from openghg_inversions.recipes.nested import (
     NestedRhimeResult,
     _domain_variable_roles,
     align_inner_merged_to_outer_observations,
@@ -31,12 +34,12 @@ from openghg_inversions.rhime.nested import (
     make_nested_inversion_outputs,
     mask_outer_merged_for_inner_domain,
 )
-from openghg_inversions.rhime.materialization import materialize_pymc_inputs
-from openghg_inversions.rhime.outputs import RhimeResult
-from openghg_inversions.rhime.params import RhimeRunnerSetup
-from openghg_inversions.rhime import params as rhime_params
-from openghg_inversions.rhime.sampling import RhimeSampler
-from openghg_inversions.rhime.specs import (
+from openghg_inversions.recipes.materialization import materialize_pymc_inputs
+from openghg_inversions.recipes.outputs import RhimeResult
+from openghg_inversions.recipes.params import RhimeRunnerSetup
+from openghg_inversions.recipes import params as rhime_params
+from openghg_inversions.recipes.sampling import RhimeSampler
+from openghg_inversions.recipes.specs import (
     FixedErrorSettings,
     RhimeModelSpec,
     RhimeOutputSpec,
@@ -281,6 +284,44 @@ def test_mask_outer_merged_zeroes_overlap_lazily_without_mutating_inputs() -> No
     assert float(outer.fp_all["TAC"]["fp"].isel(time=0, lat=1, lon=1).compute()) == 1.0
 
 
+def test_domain_support_preserves_native_order_sources_and_lazy_payloads() -> None:
+    """A nonmatching inner grid removes only native cells within its rectangle."""
+    native = xr.DataArray(
+        da.ones((2, 3, 4), chunks=(1, 3, 2)),
+        dims=("source", "lat", "lon"),
+        coords={"source": ["a", "b"], "lat": [3.0, 0.0, 1.0], "lon": [4.0, 2.0, -1.0, 0.0]},
+        attrs={"units": "mol m-2 s-1"},
+    )
+    inner = xr.Dataset(coords={"lat": [1.5, 0.0], "lon": [0.0, 0.5, 2.5]})
+    tasks: list[object] = []
+    with Callback(pretask=lambda key, *_: tasks.append(key)):
+        mask = rectangular_extent_mask(inner, target_lat=native.lat, target_lon=native.lon)
+        masked = remove_domain_overlap(native, mask)
+
+    assert not tasks
+    assert isinstance(masked.data, da.Array)
+    assert masked.dims == native.dims
+    assert masked.attrs == native.attrs
+    xr.testing.assert_identical(masked.coords.to_dataset(), native.coords.to_dataset())
+    expected = np.array([[1, 1, 1, 1], [1, 0, 1, 0], [1, 0, 1, 0]])
+    np.testing.assert_array_equal(masked.compute(), np.broadcast_to(expected, (2, 3, 4)))
+    np.testing.assert_array_equal(native.compute(), np.ones((2, 3, 4)))
+
+
+def test_domain_support_rejects_misaligned_mask_instead_of_intersecting() -> None:
+    native = xr.DataArray([1.0, 2.0], dims="lat", coords={"lat": [0.0, 1.0]})
+    mask = xr.DataArray([True, False], dims="lat", coords={"lat": [1.0, 2.0]})
+    with pytest.raises(ValueError, match="align.*exact"):
+        remove_domain_overlap(native, mask)
+
+
+@pytest.mark.parametrize("inner", [xr.Dataset(), xr.Dataset(coords={"lat": [], "lon": [0.0]})])
+def test_domain_support_rejects_missing_or_empty_inner_grid(inner: xr.Dataset) -> None:
+    target = xr.Dataset(coords={"lat": [0.0], "lon": [0.0]})
+    with pytest.raises(ValueError, match="coordinates"):
+        rectangular_extent_mask(inner, target_lat=target.lat, target_lon=target.lon)
+
+
 def test_inner_merged_alignment_mirrors_filtered_outer_times_with_tolerance() -> None:
     outer_times = pd.to_datetime(["2019-01-01T00:00", "2019-01-01T02:00"])
     inner_times = pd.to_datetime(["2019-01-01T00:10", "2019-01-01T01:10", "2019-01-01T02:10"])
@@ -411,7 +452,7 @@ def test_cli_run_rhime_nested_passes_config(monkeypatch, tmp_path: Path) -> None
         seen["config_file"] = config_file
         seen["kwargs"] = kwargs
 
-    monkeypatch.setattr("openghg_inversions.rhime.run_rhime_nested", fake_run_rhime_nested)
+    monkeypatch.setattr("openghg_inversions.recipes.run_rhime_nested", fake_run_rhime_nested)
 
     main(["run-rhime-nested", "-c", str(config_file)])
 
@@ -701,7 +742,8 @@ def test_regridded_inner_country_cache_uses_writable_identity_key(
         assert "nested_country_target_grid_sha256" in cached.attrs
 
 
-def test_make_nested_inversion_outputs_builds_per_domain_views() -> None:
+@pytest.mark.parametrize("retain_graph", [True, False])
+def test_make_nested_inversion_outputs_builds_per_domain_views(retain_graph: bool) -> None:
     """Outer/inner InversionOutput views must read distinct bases and trace variables.
 
     The two views exist so ordinary, single-grid PARIS/flux/country postprocessing
@@ -742,11 +784,14 @@ def test_make_nested_inversion_outputs_builds_per_domain_views() -> None:
         idata=make_trace(
             posterior=xr.Dataset(
                 {
-                    "x_outer": (("chain", "draw", "region"), np.ones((1, 2, 2))),
-                    "x_inner": (("chain", "draw", "inner_region"), np.ones((1, 2, 2))),
+                    "x_outer": (("chain", "draw", "region"), np.broadcast_to([[[1]], [[3]]], (2, 2, 2))),
+                    "x_inner": (
+                        ("chain", "draw", "inner_region"),
+                        np.broadcast_to([[[2]], [[6]]], (2, 2, 2)),
+                    ),
                 },
                 coords={
-                    "chain": [0],
+                    "chain": [0, 1],
                     "draw": [0, 1],
                     "region": [0, 1],
                     "inner_region": [0, 1],
@@ -754,8 +799,9 @@ def test_make_nested_inversion_outputs_builds_per_domain_views() -> None:
             )
         ),
         basis_functions=prepared.combined.basis_functions,
-        model=build_result.model,
-        model_build_result=build_result,
+        model=build_result.model if retain_graph else None,
+        model_build_result=build_result if retain_graph else None,
+        output_contract=OutputContract.from_dict(build_result.output_contract.to_dict()),
         sampler=RhimeSampler(),
     )
     nested_result = NestedRhimeResult(rhime_result=result, prepared_inputs=prepared)
@@ -781,8 +827,10 @@ def test_make_nested_inversion_outputs_builds_per_domain_views() -> None:
     assert inner_inv_out.trace_dataset(var_roles="flux_scale").sizes["region"] == 2
     assert "inner_region" not in inner_inv_out.trace_dataset(var_roles="flux_scale").dims
     assert "inner_region" in nested_result.idata.posterior["x_inner"].dims
+    assert outer_inv_out.trace.posterior.sizes["chain"] == inner_inv_out.trace.posterior.sizes["chain"] == 2
     inner_flux = make_flux_outputs(inner_inv_out, stats=["mean"])
     assert inner_flux["flux_posterior_mean"].dims == ("lat", "lon", "flux_time")
+    np.testing.assert_allclose(inner_flux["flux_posterior_mean"], 4.0)
 
     outer_nested = outer_inv_out.output_metadata["nested_domain"]
     inner_nested = inner_inv_out.output_metadata["nested_domain"]

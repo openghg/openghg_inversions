@@ -4,7 +4,7 @@ import pytest
 import xarray as xr
 from pymc.distributions import continuous
 
-from openghg_inversions.models.priors import (
+from openghg_inversions.model_components.priors import (
     lognormal_mu_sigma,
     parse_prior,
     positive_prior_args,

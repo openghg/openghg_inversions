@@ -16,7 +16,7 @@ import pandas as pd
 import pytest
 
 from openghg_inversions.inversion_data.preparation import RhimePreparedInputs, prepare_rhime_inputs
-from openghg_inversions.rhime import (
+from openghg_inversions.recipes import (
     RhimeSampler,
     resolve_rhime_options,
     run_rhime_from_prepared_inputs,

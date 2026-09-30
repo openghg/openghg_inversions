@@ -2,7 +2,7 @@ Multisector RHIME tutorial
 ==========================
 
 This tutorial runs the supported
-:func:`openghg_inversions.rhime.run_rhime_multisector` recipe and inspects its
+:func:`openghg_inversions.recipes.run_rhime_multisector` recipe and inspects its
 sector-labelled state and persisted sector/source diagnostics. It uses the
 current production multisector runner.
 
@@ -31,7 +31,7 @@ the sector keys without also changing ``sector_priors``.
 Configuration
 -------------
 
-.. literalinclude:: ../../openghg_inversions/rhime/config/multisector_tutorial.ini
+.. literalinclude:: ../../openghg_inversions/recipes/config/multisector_tutorial.ini
    :language: ini
 
 Each prior describes a multiplicative scale factor for one sector. The explicit
@@ -47,7 +47,7 @@ The supported CLI route differs from the standard tutorial only by subcommand:
 .. code-block:: console
 
    $ pixi run -e dev openghg-inversions run-rhime-multisector \
-       --config openghg_inversions/rhime/config/multisector_tutorial.ini \
+       --config openghg_inversions/recipes/config/multisector_tutorial.ini \
        --output-path outputs
 
 The :doc:`cli` page documents the equivalent ``uv run`` command for
@@ -61,10 +61,10 @@ The supported Python route is:
    import os
    from pathlib import Path
 
-   from openghg_inversions.rhime import run_rhime_multisector
+   from openghg_inversions.recipes import run_rhime_multisector
 
    tutorial_output_path = Path(os.environ.get("OPENGHG_TUTORIAL_OUTPUT_PATH", "outputs"))
-   resource = files("openghg_inversions.rhime").joinpath("config/multisector_tutorial.ini")
+   resource = files("openghg_inversions.recipes").joinpath("config/multisector_tutorial.ini")
    with as_file(resource) as config:
        result = run_rhime_multisector(config_file=config, output_path=tutorial_output_path)
 

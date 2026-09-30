@@ -8,9 +8,9 @@ import pytensor
 import pytensor.tensor as pt
 import pytest
 
-from openghg_inversions.models.cached_sigma import FixedOuCachedSigmaTarget
-from openghg_inversions.models.fixed_ou import prepare_fixed_ou_low_rank
-from openghg_inversions.rhime.cached_sigma import (
+from openghg_inversions.model_components.cached_sigma import FixedOuCachedSigmaTarget
+from openghg_inversions.model_components.fixed_ou import prepare_fixed_ou_low_rank
+from openghg_inversions.inference.cached_sigma import (
     PymcCachedSigmaNutsStep,
     PytensorMarginalQuadraticCache,
     make_cached_sigma_compound_step,

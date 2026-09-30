@@ -19,7 +19,7 @@ from openghg_inversions.postprocessing.co2_flux_outputs import (
     co2_native_flux_outputs,
 )
 from openghg_inversions.postprocessing.countries import Countries
-from openghg_inversions.rhime.co2.co2_affine_output import (
+from openghg_inversions.recipes.co2.co2_affine_output import (
     BoundCo2AffineFluxMap,
     import_explicit_affine_flux_map,
     load_and_bind_affine_flux_map,

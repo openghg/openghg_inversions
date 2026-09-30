@@ -14,8 +14,8 @@ import pytest
 from scipy.stats import multivariate_normal
 import xarray as xr
 
-from openghg_inversions.models.coords import registered_model
-from openghg_inversions.models.scalar_sigma import (
+from openghg_inversions.model_components.coords import registered_model
+from openghg_inversions.model_components.scalar_sigma import (
     SCALAR_SIGMA_CACHE_SCHEMA,
     ScalarSigmaEigenbasis,
     add_scalar_sigma_eigen_likelihood,
@@ -175,7 +175,7 @@ def test_base_covariance_materializes_aligned_payloads_once(
         aggregation = AggregationError(mode="none", marginal_variance=np.zeros(3))
         expected_aggregation = np.zeros((3, 3))
 
-    import openghg_inversions.models.scalar_sigma as scalar_sigma
+    import openghg_inversions.model_components.scalar_sigma as scalar_sigma
 
     real_compute = scalar_sigma.dask_compute
     calls = 0

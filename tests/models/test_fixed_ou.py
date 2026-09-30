@@ -7,7 +7,7 @@ import pytensor.tensor as pt
 import pytest
 from scipy.stats import multivariate_normal
 
-from openghg_inversions.models.fixed_ou import prepare_fixed_ou_low_rank
+from openghg_inversions.model_components.fixed_ou import prepare_fixed_ou_low_rank
 
 
 def _prepared(*, rank: int = 2):

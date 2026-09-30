@@ -22,19 +22,19 @@ Current support
      - CO₂ and O₂ channels with shared and tracer-specific retained states and
        cross-channel covariance.
    * - Public entry point
-     - :func:`openghg_inversions.rhime.run_rhime_co2`; see the
+     - :func:`openghg_inversions.recipes.run_rhime_co2`; see the
        :ref:`package-supported cached-sigma specialization
        <co2-cached-sigma-recipe>` for its prepared-input runner.
-     - :func:`openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs`
+     - :func:`openghg_inversions.recipes.co2.run_rhime_co2_o2_from_prepared_inputs`
        and the matched fixed-OU
-       :func:`~openghg_inversions.rhime.co2.run_rhime_co2_o2_cached_sigma_from_prepared_inputs`.
+       :func:`~openghg_inversions.recipes.co2.run_rhime_co2_o2_cached_sigma_from_prepared_inputs`.
        A complete ``run_rhime_co2_o2`` entry point is not available.
    * - Acquisition and preparation
-     - :func:`openghg_inversions.rhime.co2.prepare_co2_inputs` combines
+     - :func:`openghg_inversions.recipes.co2.prepare_co2_inputs` combines
        canonical RHIME observations and metadata with one coherent reduction
        in a dedicated
-       :class:`~openghg_inversions.rhime.co2.Co2PreparedInputs` artifact.
-     - :func:`openghg_inversions.rhime.co2.prepare_co2_o2_inputs` gathers
+       :class:`~openghg_inversions.recipes.co2.Co2PreparedInputs` artifact.
+     - :func:`openghg_inversions.recipes.co2.prepare_co2_o2_inputs` gathers
        caller-supplied, channel-native prepared arrays; it does not acquire
        OpenGHG data.
    * - Configuration

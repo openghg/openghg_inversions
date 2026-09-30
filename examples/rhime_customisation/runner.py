@@ -19,7 +19,7 @@ from pathlib import Path
 from time import perf_counter
 from typing import Any
 
-from openghg_inversions.rhime import (
+from openghg_inversions.recipes import (
     RhimeResult,
     assemble_rhime_inputs,
     build_rhime_basis,

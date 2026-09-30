@@ -4,8 +4,8 @@ import pymc as pm
 import pytest
 import xarray as xr
 
-from openghg_inversions.models import add_coherent_affine_component
-from openghg_inversions.models.components import (
+from openghg_inversions.model_components import add_coherent_affine_component
+from openghg_inversions.model_components.components import (
     LinearComponentResult,
     add_linked_linear_component,
     add_linear_component,
@@ -14,12 +14,12 @@ from openghg_inversions.models.components import (
     add_sigma_component,
     resolve_model_variable,
 )
-from openghg_inversions.models.coords import (
+from openghg_inversions.model_components.coords import (
     CoordRegistry,
     attach_coord_registry,
     get_coord_registry,
 )
-from openghg_inversions.models.state_activity import prepare_linear_sensitivity
+from openghg_inversions.model_components.state_activity import prepare_linear_sensitivity
 from openghg_inversions.sigma import SigmaAlignment
 
 

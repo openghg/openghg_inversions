@@ -15,9 +15,9 @@ import pymc as pm
 import pytest
 import xarray as xr
 
-from openghg_inversions.rhime import co2 as co2_public
-from openghg_inversions.rhime.co2 import co2_o2_runner
-from openghg_inversions.rhime.co2.co2_o2_runner import (
+from openghg_inversions.recipes import co2 as co2_public
+from openghg_inversions.recipes.co2 import co2_o2_runner
+from openghg_inversions.recipes.co2.co2_o2_runner import (
     _CO2_O2_VARIABLE_ROLES,
     _materialize_co2_o2_pymc_inputs,
     run_rhime_co2_o2_from_prepared_inputs,

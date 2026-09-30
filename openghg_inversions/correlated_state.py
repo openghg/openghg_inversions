@@ -4,7 +4,7 @@ This backend-neutral module validates an already-reduced state coordinate and
 an explicitly dense arithmetic covariance, then derives the latent Gaussian
 moments required to represent those moments with a multivariate LogNormal
 distribution. PyMC graph construction lives in
-``openghg_inversions.models.components``.
+``openghg_inversions.model_components.components``.
 
 The covariance accepted here is for the reduced inversion state, not a native
 grid. The implementation materializes dense covariance, latent-covariance, and

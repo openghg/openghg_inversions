@@ -11,8 +11,8 @@ import pytest
 import xarray as xr
 
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
-from openghg_inversions.rhime.co2 import prepare_co2_o2_inputs
-from openghg_inversions.rhime.co2.co2_o2_preparation import _stack
+from openghg_inversions.recipes.co2 import prepare_co2_o2_inputs
+from openghg_inversions.recipes.co2.co2_o2_preparation import _stack
 from openghg_inversions.serialization import decode_cf_multiindexes, encode_cf_multiindexes
 
 

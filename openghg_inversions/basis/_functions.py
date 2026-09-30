@@ -1255,7 +1255,7 @@ def fixed_outer_regions_basis(
     A modern nested-domain run is a legitimate exception -- its outer
     footprint response and prior flux are deliberately zeroed over the same
     extent the fine inner grid already covers (see
-    ``openghg_inversions.rhime.nested.mask_outer_merged_for_inner_domain``),
+    ``openghg_inversions.recipes.nested.mask_outer_merged_for_inner_domain``),
     so an inner-region map built to mark that same extent will correctly find
     nothing left to subdivide there. Only nested outer-domain preparation
     should pass ``allow_empty_inner_region=True``; every other caller keeps

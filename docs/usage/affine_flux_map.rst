@@ -65,7 +65,7 @@ Save the prepared inputs first. The saved file or Zarr store supplies the
 content identity used by the affine artifact::
 
    from openghg_inversions.basis import save_affine_flux_map
-   from openghg_inversions.rhime.co2 import (
+   from openghg_inversions.recipes.co2 import (
        load_and_bind_affine_flux_map,
        prepared_inputs_content_id,
        produce_bucket_affine_flux_map,

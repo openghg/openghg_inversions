@@ -41,7 +41,7 @@ Run a standard inversion
 
 Python scripts and notebooks should call ``run_rhime``::
 
-   from openghg_inversions.rhime import run_rhime
+   from openghg_inversions.recipes import run_rhime
 
    result = run_rhime(
        species="ch4",
