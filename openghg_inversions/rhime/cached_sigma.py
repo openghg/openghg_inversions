@@ -11,7 +11,7 @@ evaluations do not refactor the observation covariance.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Any, Literal, cast
+from typing import Any, ClassVar, Literal, cast
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
@@ -162,7 +162,7 @@ class PymcCachedSigmaNutsStep(BlockedStep):
 
     name = "cached_sigma_nuts"
     default_blocked = True
-    stats_dtypes_shapes = {
+    stats_dtypes_shapes: ClassVar[dict[str, tuple[type, list[int]]]] = {
         "tune": (bool, []),
         "sigma_nuts_tree_steps": (int, []),
         "sigma_nuts_tree_depth": (int, []),
