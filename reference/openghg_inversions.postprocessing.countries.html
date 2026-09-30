@@ -507,15 +507,15 @@ the area of each grid cell centered on the coordinates.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>lat</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – latitude values</p></li>
-<li><p><strong>lon</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – longitude values</p></li>
+<li><p><strong>lat</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – latitude values</p></li>
+<li><p><strong>lon</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – longitude values</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>xr.DataArray with grid cell areas.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a></p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -533,11 +533,11 @@ legacy inner-domain implementation.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>countries_ds</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><em>Dataset</em></a>) – Loaded country dataset (see <code class="docutils literal notranslate"><span class="pre">load_country_dataset</span></code>),
+<li><p><strong>countries_ds</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>) – Loaded country dataset (see <code class="docutils literal notranslate"><span class="pre">load_country_dataset</span></code>),
 with a <code class="docutils literal notranslate"><span class="pre">country</span></code> variable on <code class="docutils literal notranslate"><span class="pre">(lat,</span> <span class="pre">lon)</span></code> and a <code class="docutils literal notranslate"><span class="pre">name</span></code>
 variable.</p></li>
-<li><p><strong>lat</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – Target grid latitude coordinate.</p></li>
-<li><p><strong>lon</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – Target grid longitude coordinate.</p></li>
+<li><p><strong>lat</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Target grid latitude coordinate.</p></li>
+<li><p><strong>lon</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Target grid longitude coordinate.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -545,7 +545,7 @@ variable.</p></li>
 <code class="docutils literal notranslate"><span class="pre">name</span></code>/<code class="docutils literal notranslate"><span class="pre">country_code</span></code> variables are carried over unchanged.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><em>Dataset</em></a></p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -732,7 +732,7 @@ countries in region definitions raise a ValueError.</p></li>
 <dd class="field-even"><p>xr.DataArray with coordinate dimensions (“country”, “basis_region”)</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a></p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -752,7 +752,7 @@ countries in region definitions raise a ValueError.</p></li>
 <dd class="field-even"><p>xr.Dataset with coordinate dimensions (“country”, “draw”)</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><em>Dataset</em></a></p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a></p>
 </dd>
 </dl>
 <dl class="simple">

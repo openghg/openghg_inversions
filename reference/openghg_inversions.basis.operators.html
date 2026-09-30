@@ -516,7 +516,7 @@ Multisource operators represent ragged per-source region counts with a
 MultiIndex over source and region-within-source, avoiding padded state arrays.
 <a class="reference internal" href="#openghg_inversions.basis.operators.BasisMeta" title="openghg_inversions.basis.operators.BasisMeta"><code class="xref py py-class docutils literal notranslate"><span class="pre">BasisMeta</span></code></a> records only the grid dimensions and state-dimension name;
 concrete operators perform any source-label alignment.</p>
-<p>Serialization uses self-describing <a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">xarray.DataTree</span></code></a> objects with
+<p>Serialization uses self-describing <a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.9.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">xarray.DataTree</span></code></a> objects with
 schema, kind, and version metadata. Multisource operators store one
 source-labelled <code class="docutils literal notranslate"><span class="pre">basis_flat</span></code> array while readers retain compatibility with
 the earlier per-source child layout.</p>
@@ -617,7 +617,7 @@ the grid dimensions and preserves extra dimensions such as time or source.</p>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="openghg_inversions.basis.operators.BasisOperator.basis_matrix">
-<span class="property"><span class="k"><span class="pre">abstract</span></span><span class="w"> </span><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">basis_matrix</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span><a class="headerlink" href="#openghg_inversions.basis.operators.BasisOperator.basis_matrix" title="Link to this definition">#</a></dt>
+<span class="property"><span class="k"><span class="pre">abstract</span></span><span class="w"> </span><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">basis_matrix</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><span class="pre">DataArray</span></a></span><a class="headerlink" href="#openghg_inversions.basis.operators.BasisOperator.basis_matrix" title="Link to this definition">#</a></dt>
 <dd><p>Return the coarse-to-fine map (prolongation) <code class="docutils literal notranslate"><span class="pre">U_bucket</span></code>.</p>
 <p>Its ordered dimensions are the configured grid dimensions followed by
 the state dimension, which may carry a MultiIndex coordinate.</p>
@@ -642,7 +642,7 @@ the reduced state dimension <cite>meta.state_dim</cite>.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>fp_x_flux</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – Footprint x flux array to reduce. Must contain all
+<li><p><strong>fp_x_flux</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Footprint x flux array to reduce. Must contain all
 <cite>meta.grid_dims</cite>.</p></li>
 <li><p><strong>fillna</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – if True, fill NaNs in fp_x_flux with 0.0.</p></li>
 </ul>
@@ -652,7 +652,7 @@ the reduced state dimension <cite>meta.state_dim</cite>.</p>
 non-grid dimensions (e.g. <cite>time</cite>).</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a></p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -665,7 +665,7 @@ non-grid dimensions (e.g. <cite>time</cite>).</p>
 (prolongation). The input is borrowed and Dask data remains lazy.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a></p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -682,8 +682,8 @@ using a flux-weighted interpolation operator.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>state</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – State vector with dimension <cite>meta.state_dim</cite>.</p></li>
-<li><p><strong>weights</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a><em> | </em><em>None</em>) – Optional gridded weights with dimensions matching <cite>meta.grid_dims</cite>
+<li><p><strong>state</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – State vector with dimension <cite>meta.state_dim</cite>.</p></li>
+<li><p><strong>weights</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a><em> | </em><em>None</em>) – Optional gridded weights with dimensions matching <cite>meta.grid_dims</cite>
 (and broadcastable to <cite>basis_matrix</cite>).</p></li>
 </ul>
 </dd>
@@ -694,7 +694,7 @@ using a flux-weighted interpolation operator.</p>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If <cite>meta.state_dim</cite> is not a dimension of <cite>state</cite>.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a></p>
+<dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -710,7 +710,7 @@ information to allow round-tripping via <cite>BasisOperator.decode_datatree()</c
 <dd class="field-odd"><p>DataTree representation of the operator.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><em>DataTree</em></a></p>
+<dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.9.0)"><em>DataTree</em></a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -723,7 +723,7 @@ information to allow round-tripping via <cite>BasisOperator.decode_datatree()</c
 they write in <cite>to_datatree()</cite>.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>dt</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><em>DataTree</em></a>) – DataTree created by <cite>to_datatree()</cite>.</p>
+<dd class="field-odd"><p><strong>dt</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.9.0)"><em>DataTree</em></a>) – DataTree created by <cite>to_datatree()</cite>.</p>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>An instance of the operator.</p>
@@ -740,7 +740,7 @@ they write in <cite>to_datatree()</cite>.</p>
 <dd><p>Dispatches a DataTree to the correct registered operator subclass.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>dt</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><em>DataTree</em></a>) – DataTree representation of a basis operator.</p>
+<dd class="field-odd"><p><strong>dt</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.9.0)"><em>DataTree</em></a>) – DataTree representation of a basis operator.</p>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>A concrete <cite>BasisOperator</cite> instance.</p>
@@ -768,7 +768,7 @@ the grid dims. It avoids silently discarding time-varying basis information.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>da</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – Input DataArray which may or may not have a <code class="docutils literal notranslate"><span class="pre">time</span></code> dimension.</p></li>
+<li><p><strong>da</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Input DataArray which may or may not have a <code class="docutils literal notranslate"><span class="pre">time</span></code> dimension.</p></li>
 <li><p><strong>name</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Label used in error messages to identify what is being checked.</p></li>
 </ul>
 </dd>
@@ -780,7 +780,7 @@ unchanged.</p>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If <code class="docutils literal notranslate"><span class="pre">time</span></code> exists and has length not equal to 1.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a></p>
+<dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -872,7 +872,7 @@ from the flat basis:</p>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="openghg_inversions.basis.operators.BucketBasisOperator.basis_matrix">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">basis_matrix</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span><a class="headerlink" href="#openghg_inversions.basis.operators.BucketBasisOperator.basis_matrix" title="Link to this definition">#</a></dt>
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">basis_matrix</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><span class="pre">DataArray</span></a></span><a class="headerlink" href="#openghg_inversions.basis.operators.BucketBasisOperator.basis_matrix" title="Link to this definition">#</a></dt>
 <dd><p>Return <code class="docutils literal notranslate"><span class="pre">U_bucket</span></code>, mapping retained scalings to native scalings.</p>
 <p>The dimensions are native grid by retained state. Its transpose is not
 generally the compatible retained restriction <code class="docutils literal notranslate"><span class="pre">Pi</span></code>.</p>
@@ -880,7 +880,7 @@ generally the compatible retained restriction <code class="docutils literal notr
 
 <dl class="py property">
 <dt class="sig sig-object py" id="openghg_inversions.basis.operators.BucketBasisOperator.state_metadata">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">state_metadata</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><a class="headerlink" href="#openghg_inversions.basis.operators.BucketBasisOperator.state_metadata" title="Link to this definition">#</a></dt>
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">state_metadata</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><span class="pre">Dataset</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><a class="headerlink" href="#openghg_inversions.basis.operators.BucketBasisOperator.state_metadata" title="Link to this definition">#</a></dt>
 <dd><p>Semantic metadata coordinates carried on the state dimension.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Returns<span class="colon">:</span></dt>
@@ -901,7 +901,7 @@ when no grouped metadata was supplied.</p>
 to reconstruct the operator.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><em>DataTree</em></a></p>
+<dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.9.0)"><em>DataTree</em></a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -912,7 +912,7 @@ to reconstruct the operator.</p>
 <dd><p>Deserialises a <cite>BucketBasisOperator</cite> from a DataTree.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>dt</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><em>DataTree</em></a>) – DataTree produced by <cite>BucketBasisOperator.to_datatree()</cite>.</p>
+<dd class="field-odd"><p><strong>dt</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.9.0)"><em>DataTree</em></a>) – DataTree produced by <cite>BucketBasisOperator.to_datatree()</cite>.</p>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>A reconstructed <cite>BucketBasisOperator</cite>.</p>
@@ -1020,7 +1020,7 @@ basis array on the configured grid, typically with dimensions
 
 <dl class="py property">
 <dt class="sig sig-object py" id="openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.basis_matrix">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">basis_matrix</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span><a class="headerlink" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.basis_matrix" title="Link to this definition">#</a></dt>
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">basis_matrix</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><span class="pre">DataArray</span></a></span><a class="headerlink" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.basis_matrix" title="Link to this definition">#</a></dt>
 <dd><p>Return the gathered spatial template for multisource <code class="docutils literal notranslate"><span class="pre">U_bucket</span></code>.</p>
 <p>The dimensions are spatial grid by retained state; source identity is
 carried by the ragged state coordinate. <code class="xref py py-meth docutils literal notranslate"><span class="pre">_native_prolongation()</span></code>
@@ -1078,7 +1078,7 @@ contracting. This avoids broadcasting the full spatial cache across
 every retained state while keeping the source pairing sparse.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a></p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -1091,7 +1091,7 @@ every retained state while keeping the source pairing sparse.</p>
 Each source contracts only its own ragged retained-state slice.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a></p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -1109,8 +1109,8 @@ include a separate coordinate named like a MultiIndex level (e.g. <cite>source_d
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>state</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – State vector defined on <cite>meta.state_dim</cite>.</p></li>
-<li><p><strong>weights</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a><em> | </em><em>None</em>) – Optional gridded weights (e.g. prior fluxes) on <cite>meta.grid_dims</cite>. May
+<li><p><strong>state</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – State vector defined on <cite>meta.state_dim</cite>.</p></li>
+<li><p><strong>weights</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a><em> | </em><em>None</em>) – Optional gridded weights (e.g. prior fluxes) on <cite>meta.grid_dims</cite>. May
 optionally include <cite>source_dim</cite> for per-source weights.</p></li>
 </ul>
 </dd>
@@ -1118,7 +1118,7 @@ optionally include <cite>source_dim</cite> for per-source weights.</p></li>
 <dd class="field-even"><p>Gridded reconstructed field on <cite>meta.grid_dims</cite>.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a></p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -1138,7 +1138,7 @@ source names in storage paths and redundant JSON metadata.</p>
 <dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If source bases do not have compatible labeled grids.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><em>DataTree</em></a></p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.9.0)"><em>DataTree</em></a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -1149,7 +1149,7 @@ source names in storage paths and redundant JSON metadata.</p>
 <dd><p>Deserialises a <cite>MultiSourceBucketBasisOperator</cite> from a DataTree.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>dt</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><em>DataTree</em></a>) – DataTree produced by <cite>MultiSourceBucketBasisOperator.to_datatree()</cite>.</p>
+<dd class="field-odd"><p><strong>dt</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.9.0)"><em>DataTree</em></a>) – DataTree produced by <cite>MultiSourceBucketBasisOperator.to_datatree()</cite>.</p>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>A reconstructed <cite>MultiSourceBucketBasisOperator</cite>. The canonical

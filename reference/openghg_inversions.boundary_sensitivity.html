@@ -502,7 +502,7 @@
 <p>Resolved alignment of sampled boundary states to fitted periods.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>data</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – Prepared <code class="docutils literal notranslate"><span class="pre">H_bc</span></code> with a <code class="docutils literal notranslate"><span class="pre">bc_region</span></code> MultiIndex whose levels
+<dd class="field-odd"><p><strong>data</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Prepared <code class="docutils literal notranslate"><span class="pre">H_bc</span></code> with a <code class="docutils literal notranslate"><span class="pre">bc_region</span></code> MultiIndex whose levels
 are <code class="docutils literal notranslate"><span class="pre">bc_curtain</span></code> and <code class="docutils literal notranslate"><span class="pre">bc_period</span></code>, plus one observation axis.</p>
 </dd>
 <dt class="field-even">Raises<span class="colon">:</span></dt>
@@ -526,12 +526,12 @@ are <code class="docutils literal notranslate"><span class="pre">bc_curtain</spa
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>sensitivity</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – Boundary sensitivity with exactly <code class="docutils literal notranslate"><span class="pre">bc_region</span></code> and
+<li><p><strong>sensitivity</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Boundary sensitivity with exactly <code class="docutils literal notranslate"><span class="pre">bc_region</span></code> and
 an observation dimension named <code class="docutils literal notranslate"><span class="pre">time</span></code> or <code class="docutils literal notranslate"><span class="pre">nmeasure</span></code>.</p></li>
 <li><p><strong>frequency</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Optional fitted boundary-period frequency. <code class="docutils literal notranslate"><span class="pre">None</span></code>
 creates one period; <code class="docutils literal notranslate"><span class="pre">&quot;monthly&quot;</span></code> follows calendar months.</p></li>
 <li><p><strong>anchor_time</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/datetime.html#datetime.datetime" title="(in Python v3.14)"><em>datetime</em></a><em> | </em><a class="reference external" href="https://numpy.org/doc/stable/reference/arrays.scalars.html#numpy.datetime64" title="(in NumPy v2.5)"><em>datetime64</em></a><em> | </em><em>Timestamp</em><em> | </em><em>None</em>) – Optional anchor for fixed-duration periods.</p></li>
-<li><p><strong>observation_labels</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a><em> | </em><em>None</em>) – Optional authoritative observation coordinate;
+<li><p><strong>observation_labels</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a><em> | </em><em>None</em>) – Optional authoritative observation coordinate;
 values are selected and reordered to these exact labels.</p></li>
 </ul>
 </dd>
@@ -564,7 +564,7 @@ values are selected and reordered to these exact labels.</p></li>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>inputs</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><em>Dataset</em></a>) – Gathered inversion inputs containing <code class="docutils literal notranslate"><span class="pre">H_bc</span></code> and observation
+<li><p><strong>inputs</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>) – Gathered inversion inputs containing <code class="docutils literal notranslate"><span class="pre">H_bc</span></code> and observation
 arrays. The dataset is borrowed and never mutated.</p></li>
 <li><p><strong>sites</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.14)"><em>Sequence</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>]</em>) – Site labels in the same order as <code class="docutils literal notranslate"><span class="pre">platform</span></code>.</p></li>
 <li><p><strong>platform</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.14)"><em>Sequence</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em><em>]</em>) – Platform values aligned to <code class="docutils literal notranslate"><span class="pre">sites</span></code>.</p></li>
@@ -581,7 +581,7 @@ copy whose satellite <code class="docutils literal notranslate"><span class="pre
 transform provenance.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><em>Dataset</em></a></p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a></p>
 </dd>
 </dl>
 </dd></dl>

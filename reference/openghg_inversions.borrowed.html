@@ -544,7 +544,7 @@ until its coverage and first production uses have been evaluated.</p>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.borrowed.BorrowedDataArray" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataArray</span></code></a></p>
+<dd><p>Bases: <a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataArray</span></code></a></p>
 <p>Type-only xarray <code class="docutils literal notranslate"><span class="pre">DataArray</span></code> subtype marking common mutations.</p>
 <p><code class="docutils literal notranslate"><span class="pre">values</span></code> and <code class="docutils literal notranslate"><span class="pre">to_numpy</span></code> return <a class="reference internal" href="#openghg_inversions.borrowed.BorrowedNDArray" title="openghg_inversions.borrowed.BorrowedNDArray"><code class="xref py py-class docutils literal notranslate"><span class="pre">BorrowedNDArray</span></code></a> statically.
 <code class="docutils literal notranslate"><span class="pre">data</span></code> returns a narrow duck-array facade that marks direct indexed
@@ -661,7 +661,7 @@ array using Python’s optimized math.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><span class="pre">Any</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 </dl>
 
-<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></span><a class="headerlink" href="#openghg_inversions.borrowed.BorrowedDataArray.copy" title="Link to this definition">#</a></dt>
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><span class="pre">DataArray</span></a></span></span><a class="headerlink" href="#openghg_inversions.borrowed.BorrowedDataArray.copy" title="Link to this definition">#</a></dt>
 <dt class="sig sig-object py">
 <span class="sig-name descname"><span class="pre">copy</span></span><span class="sig-paren">(</span>
 
@@ -679,7 +679,7 @@ array using Python’s optimized math.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><span class="pre">Any</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 </dl>
 
-<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference internal" href="#openghg_inversions.borrowed.BorrowedDataArray" title="openghg_inversions.borrowed.BorrowedDataArray"><span class="pre">BorrowedDataArray</span></a></span></span></dt>
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><span class="pre">DataArray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference internal" href="#openghg_inversions.borrowed.BorrowedDataArray" title="openghg_inversions.borrowed.BorrowedDataArray"><span class="pre">BorrowedDataArray</span></a></span></span></dt>
 <dd><p>Relinquish borrowing after a deep copy; retain it if shallow.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -693,7 +693,7 @@ array using Python’s optimized math.</p>
 true, otherwise another borrowed static reference.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a> | <a class="reference internal" href="#openghg_inversions.borrowed.BorrowedDataArray" title="openghg_inversions.borrowed.BorrowedDataArray"><em>BorrowedDataArray</em></a></p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a> | <a class="reference internal" href="#openghg_inversions.borrowed.BorrowedDataArray" title="openghg_inversions.borrowed.BorrowedDataArray"><em>BorrowedDataArray</em></a></p>
 </dd>
 </dl>
 <p>Note:
@@ -799,14 +799,14 @@ objects at runtime.  Do not construct this class or use it for runtime
 <span class="sig-name descname"><span class="pre">borrow</span></span><span class="sig-paren">(</span>
 
 <dl>
-<dd><em class="sig-param"><span class="n"><span class="pre">value</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">value</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><span class="pre">DataArray</span></a></span></em>,</dd>
 </dl>
 
 <span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#openghg_inversions.borrowed.BorrowedDataArray" title="openghg_inversions.borrowed.BorrowedDataArray"><span class="pre">BorrowedDataArray</span></a></span></span></dt>
 <dd><p>Mark a NumPy or xarray array as borrowed for static checking.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>value</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><em>Any</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><em>Any</em></a><em>] </em><em>| </em><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – NumPy array or xarray <code class="docutils literal notranslate"><span class="pre">DataArray</span></code> whose existing object
+<dd class="field-odd"><p><strong>value</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><em>Any</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><em>Any</em></a><em>] </em><em>| </em><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – NumPy array or xarray <code class="docutils literal notranslate"><span class="pre">DataArray</span></code> whose existing object
 identity and lazy backend must be preserved.</p>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>

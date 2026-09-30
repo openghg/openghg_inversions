@@ -534,13 +534,13 @@ eager-compute boundaries for lazy or Dask-backed inputs during model building.</
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>active</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> | </em><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a><em> | </em><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – Boolean scalar, positional one-dimensional mask in canonical
+<li><p><strong>active</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> | </em><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a><em> | </em><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Boolean scalar, positional one-dimensional mask in canonical
 state order, or labelled one-dimensional mask. A labelled mask is
 aligned to the canonical state coordinate carried by the
 zero-sensitivity mask, so its input order need not match the
 canonical order. Set this to <code class="docutils literal notranslate"><span class="pre">False</span></code> to freeze a whole component
 or sector.</p></li>
-<li><p><strong>fixed_value</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em> | </em><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a><em> | </em><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – Scalar or one-dimensional state-aligned values used for
+<li><p><strong>fixed_value</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em> | </em><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a><em> | </em><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Scalar or one-dimensional state-aligned values used for
 inactive states. Multiplicative scaling states default to one.</p></li>
 <li><p><strong>fixed_groups</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><em>tuple</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><em>...</em><em>]</em>) – <code class="docutils literal notranslate"><span class="pre">basis_group</span></code> labels to freeze. Group selection is by
 coordinate value, never by state-number ranges.</p></li>
@@ -598,9 +598,9 @@ auxiliary state metadata for reconstruction and provenance.</p>
 <dt class="field-odd">Variables<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>state_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Canonical state dimension name from the detection mask.</p></li>
-<li><p><strong>active</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>xarray.core.dataarray.DataArray</em></a>) – Boolean mask in canonical state order.</p></li>
-<li><p><strong>fixed_value</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>xarray.core.dataarray.DataArray</em></a>) – Fixed values in canonical state order.</p></li>
-<li><p><strong>zero_sensitivity</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>xarray.core.dataarray.DataArray</em></a>) – Labelled mask identifying exactly-zero design
+<li><p><strong>active</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>xarray.core.dataarray.DataArray</em></a>) – Boolean mask in canonical state order.</p></li>
+<li><p><strong>fixed_value</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>xarray.core.dataarray.DataArray</em></a>) – Fixed values in canonical state order.</p></li>
+<li><p><strong>zero_sensitivity</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>xarray.core.dataarray.DataArray</em></a>) – Labelled mask identifying exactly-zero design
 columns and carrying the state coordinates used for graph
 construction.</p></li>
 </ul>
@@ -639,7 +639,7 @@ construction.</p></li>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>sensitivity</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – Finite two-dimensional sensitivity matrix containing
+<li><p><strong>sensitivity</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Finite two-dimensional sensitivity matrix containing
 <code class="docutils literal notranslate"><span class="pre">output_dim</span></code> and one uniquely labelled state dimension.</p></li>
 <li><p><strong>output_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Name of the observation/output dimension.</p></li>
 </ul>
@@ -653,7 +653,7 @@ auxiliary state coordinates are retained from <code class="docutils literal notr
     with the required output dimension and unique state labels.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a></p>
+<dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a></p>
 </dd>
 </dl>
 <p class="rubric">Notes</p>
@@ -668,7 +668,7 @@ during model construction.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>zero_sensitivity</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – One-dimensional, strictly boolean mask identifying
+<li><p><strong>zero_sensitivity</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – One-dimensional, strictly boolean mask identifying
 exactly-zero design columns. It must have a unique labelled state
 coordinate and may carry auxiliary state coordinates used by the
 policy.</p></li>

@@ -526,9 +526,9 @@ metadata; it only takes an immutable eager copy of the numerical payloads.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>eigenvectors</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – Square labelled matrix with dimensions <code class="docutils literal notranslate"><span class="pre">(output_dim,</span>
+<li><p><strong>eigenvectors</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Square labelled matrix with dimensions <code class="docutils literal notranslate"><span class="pre">(output_dim,</span>
 <span class="pre">scalar_sigma_mode)</span></code>.</p></li>
-<li><p><strong>eigenvalues</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – Non-negative values on <code class="docutils literal notranslate"><span class="pre">scalar_sigma_mode</span></code>.</p></li>
+<li><p><strong>eigenvalues</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Non-negative values on <code class="docutils literal notranslate"><span class="pre">scalar_sigma_mode</span></code>.</p></li>
 <li><p><strong>concentration_units</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Physical concentration units shared by the
 observations, reported errors, and scalar mismatch amplitude.</p></li>
 <li><p><strong>base_covariance_sha256</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – SHA-256 fingerprint of the resolved
@@ -556,7 +556,7 @@ units, base-covariance fingerprint, aggregation-error mode, and
 observation-dimension name.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><em>Dataset</em></a></p>
+<dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -649,8 +649,8 @@ observation-dimension name.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>observations</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – CO2 observations represented by <code class="docutils literal notranslate"><span class="pre">eigenbasis</span></code>.</p></li>
-<li><p><strong>observation_error</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – Reported observation standard deviations with the
+<li><p><strong>observations</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – CO2 observations represented by <code class="docutils literal notranslate"><span class="pre">eigenbasis</span></code>.</p></li>
+<li><p><strong>observation_error</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Reported observation standard deviations with the
 labels, units, and values used to prepare <code class="docutils literal notranslate"><span class="pre">eigenbasis</span></code>. Their
 variance is already represented in the eigenvalues; they are also
 registered as model data and contribute to <code class="docutils literal notranslate"><span class="pre">epsilon</span></code>.</p></li>
@@ -701,8 +701,8 @@ before model construction.</p>
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>path</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><em>Path</em></a>) – NetCDF cache created by <a class="reference internal" href="#openghg_inversions.models.scalar_sigma.save_scalar_sigma_eigenbasis" title="openghg_inversions.models.scalar_sigma.save_scalar_sigma_eigenbasis"><code class="xref py py-func docutils literal notranslate"><span class="pre">save_scalar_sigma_eigenbasis()</span></code></a>.</p></li>
-<li><p><strong>observations</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – Observations that will consume the cache.</p></li>
-<li><p><strong>observation_error</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – Reported errors that will consume the cache, with
+<li><p><strong>observations</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Observations that will consume the cache.</p></li>
+<li><p><strong>observation_error</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Reported errors that will consume the cache, with
 the same ordered labels and concentration units as <code class="docutils literal notranslate"><span class="pre">observations</span></code>.</p></li>
 <li><p><strong>aggregation_error</strong> (<a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.AggregationError" title="openghg_inversions.observation_error.AggregationError"><em>AggregationError</em></a>) – Currently resolved aggregation-error representation
 that will consume the cache.</p></li>
@@ -741,9 +741,9 @@ that will consume the cache.</p></li>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>observations</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – CO2 observations carrying an indexed observation
+<li><p><strong>observations</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – CO2 observations carrying an indexed observation
 coordinate and explicit concentration units.</p></li>
-<li><p><strong>observation_error</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – Reported standard deviations in the same units and
+<li><p><strong>observation_error</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Reported standard deviations in the same units and
 exact observation order.</p></li>
 <li><p><strong>aggregation_error</strong> (<a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.AggregationError" title="openghg_inversions.observation_error.AggregationError"><em>AggregationError</em></a>) – Validated fixed aggregation-error representation.</p></li>
 <li><p><strong>output_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Observation dimension name.</p></li>
@@ -809,9 +809,9 @@ together before forming <code class="docutils literal notranslate"><span class="
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>observations</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – One-dimensional observations carrying the canonical
+<li><p><strong>observations</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – One-dimensional observations carrying the canonical
 ordered observation coordinate and a non-empty <code class="docutils literal notranslate"><span class="pre">units</span></code> attribute.</p></li>
-<li><p><strong>observation_error</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – Non-negative reported standard deviations in the
+<li><p><strong>observation_error</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Non-negative reported standard deviations in the
 same units and observation order as <code class="docutils literal notranslate"><span class="pre">observations</span></code>.</p></li>
 <li><p><strong>aggregation_error</strong> (<a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.AggregationError" title="openghg_inversions.observation_error.AggregationError"><em>AggregationError</em></a>) – Validated aggregation-error representation for the
 same observations.</p></li>

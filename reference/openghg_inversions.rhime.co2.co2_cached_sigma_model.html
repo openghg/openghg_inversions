@@ -563,16 +563,16 @@ graph.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>flux_sensitivity</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – Reduced sensitivity with the output dimension and
+<li><p><strong>flux_sensitivity</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Reduced sensitivity with the output dimension and
 one labelled retained-state dimension, in concentration units per
 unit dimensionless flux scaling.</p></li>
 <li><p><strong>retained_prior</strong> (<a class="reference internal" href="openghg_inversions.correlated_state.html#openghg_inversions.correlated_state.CorrelatedLognormalPrior" title="openghg_inversions.correlated_state.CorrelatedLognormalPrior"><em>CorrelatedLognormalPrior</em></a>) – Complete labelled arithmetic-moment prior for the
 positive, dimensionless retained flux-scaling state.</p></li>
-<li><p><strong>fixed_prior_contribution</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – Fixed coherent-reduction affine contribution
+<li><p><strong>fixed_prior_contribution</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Fixed coherent-reduction affine contribution
 on the output dimension, in the observations’ concentration units.</p></li>
-<li><p><strong>observations</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – Observed CO2 concentrations on the output dimension,
+<li><p><strong>observations</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Observed CO2 concentrations on the output dimension,
 with observation-aligned <code class="docutils literal notranslate"><span class="pre">site</span></code> and <code class="docutils literal notranslate"><span class="pre">time</span></code> coordinates.</p></li>
-<li><p><strong>observation_error</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – Reported observation standard deviation, in the
+<li><p><strong>observation_error</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Reported observation standard deviation, in the
 observations’ concentration units.</p></li>
 <li><p><strong>aggregation_error</strong> (<a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.AggregationError" title="openghg_inversions.observation_error.AggregationError"><em>AggregationError</em></a>) – Prepared fixed aggregation-error covariance, in
 squared concentration units.</p></li>
@@ -585,7 +585,7 @@ same units, supplied as one scalar or a mapping covering every
 observed site. Defaults to <code class="docutils literal notranslate"><span class="pre">site_amplitude_prior_scale</span></code>.</p></li>
 <li><p><strong>state_activity</strong> (<a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.StateActivity" title="openghg_inversions.models.state_activity.StateActivity"><em>StateActivity</em></a><em> | </em><em>None</em>) – Optional labelled active/fixed policy for retained flux
 states. Fixed values are dimensionless flux scalings.</p></li>
-<li><p><strong>boundary_sensitivity</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a><em> | </em><em>None</em>) – Optional atmospheric boundary-condition
+<li><p><strong>boundary_sensitivity</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a><em> | </em><em>None</em>) – Optional atmospheric boundary-condition
 sensitivity, in concentration units per unit dimensionless
 boundary scaling.</p></li>
 <li><p><strong>bc_prior</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Optional prior for dimensionless boundary-scaling

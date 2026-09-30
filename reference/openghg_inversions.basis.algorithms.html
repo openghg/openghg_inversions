@@ -857,7 +857,7 @@ metres. Must be positive and finite.</p></li>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>data</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – Two-dimensional grid with latitude and longitude coordinates,
+<li><p><strong>data</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Two-dimensional grid with latitude and longitude coordinates,
 ordered as <code class="docutils literal notranslate"><span class="pre">(lat_name,</span> <span class="pre">lon_name)</span></code> so node axes align with the
 returned north-south and east-west metre offsets.</p></li>
 <li><p><strong>lat_name</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Name of the latitude coordinate and first dimension.</p></li>
@@ -1142,8 +1142,8 @@ unavailable and index-space fallback should be used.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>weights</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – Two-dimensional non-negative weight field.</p></li>
-<li><p><strong>region_classes</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – Two-dimensional class field aligned to <code class="docutils literal notranslate"><span class="pre">weights</span></code>.</p></li>
+<li><p><strong>weights</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Two-dimensional non-negative weight field.</p></li>
+<li><p><strong>region_classes</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Two-dimensional class field aligned to <code class="docutils literal notranslate"><span class="pre">weights</span></code>.</p></li>
 <li><p><strong>nbasis</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.14)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Hashable" title="(in Python v3.14)"><em>Hashable</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em>]</em>) – Total number of regions to distribute, or an explicit mapping
 from class value to class-local region target.</p></li>
 <li><p><strong>allocation</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><em>Literal</em></a><em>[</em><em>'weight'</em><em>, </em><em>'area'</em><em>]</em>) – Automatic allocation mode. <code class="docutils literal notranslate"><span class="pre">&quot;weight&quot;</span></code> uses class total
@@ -1162,7 +1162,7 @@ mapped class.</p></li>
 <li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If either input is not two-dimensional, the dimension names
     differ, weights are invalid, or the requested allocation is
     impossible.</p></li>
-<li><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.AlignmentError.html#xarray.AlignmentError" title="(in xarray v2026.7.0)"><strong>xarray.AlignmentError</strong></a> – If the inputs do not describe physically
+<li><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.AlignmentError.html#xarray.AlignmentError" title="(in xarray v2026.9.0)"><strong>xarray.AlignmentError</strong></a> – If the inputs do not describe physically
     compatible spatial grids after transposition.</p></li>
 </ul>
 </dd>
@@ -1190,10 +1190,10 @@ mapped class.</p></li>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>inner_mask</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – Two-dimensional Boolean field selecting cells from
+<li><p><strong>inner_mask</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Two-dimensional Boolean field selecting cells from
 <code class="docutils literal notranslate"><span class="pre">inner_classes</span></code>. False cells select from <code class="docutils literal notranslate"><span class="pre">outer_classes</span></code>.</p></li>
-<li><p><strong>inner_classes</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – Two-dimensional class field for inner-domain cells.</p></li>
-<li><p><strong>outer_classes</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – Two-dimensional class field for outer-domain cells.</p></li>
+<li><p><strong>inner_classes</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Two-dimensional class field for inner-domain cells.</p></li>
+<li><p><strong>outer_classes</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Two-dimensional class field for outer-domain cells.</p></li>
 <li><p><strong>unmapped_values</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Iterable" title="(in Python v3.14)"><em>Iterable</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Hashable" title="(in Python v3.14)"><em>Hashable</em></a><em>]</em>) – Selected class values that should leave the output
 cell unmapped. Selected null values are always unmapped.</p></li>
 <li><p><strong>name</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Name for the returned <code class="docutils literal notranslate"><span class="pre">DataArray</span></code>.</p></li>
@@ -1210,13 +1210,13 @@ cells contain <code class="docutils literal notranslate"><span class="pre">NaN</
 <li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If any input is not two-dimensional, dimension-name sets
     differ, <code class="docutils literal notranslate"><span class="pre">inner_mask</span></code> is not Boolean, or a selected class value is
     not hashable.</p></li>
-<li><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.AlignmentError.html#xarray.AlignmentError" title="(in xarray v2026.7.0)"><strong>xarray.AlignmentError</strong></a> – If, after transposition to <code class="docutils literal notranslate"><span class="pre">inner_mask</span></code>
+<li><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.AlignmentError.html#xarray.AlignmentError" title="(in xarray v2026.9.0)"><strong>xarray.AlignmentError</strong></a> – If, after transposition to <code class="docutils literal notranslate"><span class="pre">inner_mask</span></code>
     dimension order, an input does not describe a physically compatible
     spatial grid.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a></p>
+<dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a></p>
 </dd>
 </dl>
 <p class="rubric">Notes</p>
@@ -1298,7 +1298,7 @@ reject the remaining candidates.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>layers</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.14)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Hashable" title="(in Python v3.14)"><em>Hashable</em></a><em>, </em><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a><em>]</em>) – Ordered mapping from layer name to two-dimensional class field.
+<li><p><strong>layers</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.14)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Hashable" title="(in Python v3.14)"><em>Hashable</em></a><em>, </em><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a><em>]</em>) – Ordered mapping from layer name to two-dimensional class field.
 Mapping insertion order defines the order of values in each output
 class tuple.</p></li>
 <li><p><strong>unmapped_values</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Iterable" title="(in Python v3.14)"><em>Iterable</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Hashable" title="(in Python v3.14)"><em>Hashable</em></a><em>]</em>) – Layer values that should leave the output cell
@@ -1318,13 +1318,13 @@ names in mapping insertion order.</p>
 <li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If no layers are supplied, any layer is not two-dimensional,
     layer dimension names differ, or a mapped layer value is not
     hashable.</p></li>
-<li><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.AlignmentError.html#xarray.AlignmentError" title="(in xarray v2026.7.0)"><strong>xarray.AlignmentError</strong></a> – If, after transposition to the first layer’s
+<li><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.AlignmentError.html#xarray.AlignmentError" title="(in xarray v2026.9.0)"><strong>xarray.AlignmentError</strong></a> – If, after transposition to the first layer’s
     dimension order, any layer does not describe a physically
     compatible spatial grid.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a></p>
+<dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a></p>
 </dd>
 </dl>
 <p class="rubric">Notes</p>
@@ -1352,9 +1352,9 @@ xarray equality when selecting a tuple label.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>reference</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – Two-dimensional field whose dimension order, coordinate
+<li><p><strong>reference</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Two-dimensional field whose dimension order, coordinate
 values, and nonconflicting metadata define the output grid.</p></li>
-<li><p><strong>candidate</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – Two-dimensional field to validate and normalize.</p></li>
+<li><p><strong>candidate</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Two-dimensional field to validate and normalize.</p></li>
 <li><p><strong>reference_name</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Name used for <code class="docutils literal notranslate"><span class="pre">reference</span></code> in validation errors.</p></li>
 <li><p><strong>candidate_name</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Name used for <code class="docutils literal notranslate"><span class="pre">candidate</span></code> in validation errors.</p></li>
 </ul>
@@ -1368,12 +1368,12 @@ retained from both fields.</p>
 <dd class="field-odd"><ul class="simple">
 <li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If either field is not two-dimensional or their dimension
     names differ.</p></li>
-<li><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.AlignmentError.html#xarray.AlignmentError" title="(in xarray v2026.7.0)"><strong>xarray.AlignmentError</strong></a> – If grid coordinates, grid-defining metadata, or
+<li><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.AlignmentError.html#xarray.AlignmentError" title="(in xarray v2026.9.0)"><strong>xarray.AlignmentError</strong></a> – If grid coordinates, grid-defining metadata, or
     CRS definitions are physically incompatible.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a></p>
+<dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a></p>
 </dd>
 </dl>
 <p class="rubric">Notes</p>
@@ -1420,7 +1420,7 @@ the quadtree algorithm.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>region_classes</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – Region-class values to compare with <code class="docutils literal notranslate"><span class="pre">class_value</span></code>.
+<li><p><strong>region_classes</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Region-class values to compare with <code class="docutils literal notranslate"><span class="pre">class_value</span></code>.
 Dimensions and all attached coordinates are preserved on the
 returned mask.</p></li>
 <li><p><strong>class_value</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Hashable" title="(in Python v3.14)"><em>Hashable</em></a>) – Scalar or tuple-valued class label to select.</p></li>
@@ -1432,7 +1432,7 @@ returned mask.</p></li>
 contains <code class="docutils literal notranslate"><span class="pre">class_value</span></code>.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a></p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a></p>
 </dd>
 </dl>
 <p class="rubric">Notes</p>
@@ -1466,8 +1466,8 @@ in the returned mask.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>weights</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – Two-dimensional non-negative weight field.</p></li>
-<li><p><strong>region_classes</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a>) – Two-dimensional class field on the same grid as
+<li><p><strong>weights</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Two-dimensional non-negative weight field.</p></li>
+<li><p><strong>region_classes</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Two-dimensional class field on the same grid as
 <code class="docutils literal notranslate"><span class="pre">weights</span></code>. Each non-null value is treated as a mapped class unless
 listed in <code class="docutils literal notranslate"><span class="pre">unmapped_values</span></code>.</p></li>
 <li><p><strong>nbasis</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.14)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Hashable" title="(in Python v3.14)"><em>Hashable</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em>]</em>) – Either a total number of basis regions to allocate across
@@ -1502,12 +1502,12 @@ labels; unmapped cells receive <code class="docutils literal notranslate"><span 
     impossible, or a split strategy returns labels with the wrong shape
     or dtype, non-positive labels inside its class mask, or nonzero
     labels outside its class mask.</p></li>
-<li><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.AlignmentError.html#xarray.AlignmentError" title="(in xarray v2026.7.0)"><strong>xarray.AlignmentError</strong></a> – If the inputs do not describe physically
+<li><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.AlignmentError.html#xarray.AlignmentError" title="(in xarray v2026.9.0)"><strong>xarray.AlignmentError</strong></a> – If the inputs do not describe physically
     compatible spatial grids after transposition.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>DataArray</em></a></p>
+<dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a></p>
 </dd>
 </dl>
 <p class="rubric">Notes</p>
