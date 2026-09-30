@@ -81,7 +81,7 @@ def filter_data_vars_by_prefix(
     """Select data variables that match the specified filters.
 
     For instance, if var_name_prefixes = 'prior', then any data variable
-    whose name begins with 'prior_' will be selected. The underscore '_' is
+    whose name begins with ``prior_`` will be selected. The underscore '_' is
     added by default, but can be changed by specifying sep.
 
     Args:

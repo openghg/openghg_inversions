@@ -783,7 +783,7 @@ with :func:`openghg_inversions.serialization.load_trace`; this is the
 declared boundary for preserving gathered MultiIndex coordinates.
 
 Separate linked PARIS products
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 :func:`~openghg_inversions.postprocessing.linked_paris_outputs.make_co2_o2_paris_outputs`
 projects one linked posterior into separate CO2 and O2 products. It supports
@@ -850,7 +850,7 @@ contract and are outside this bounded adapter. No combined two-tracer PARIS
 schema is emitted.
 
 Signed oxidation ratios
-~~~~~~~~~~~~~~~~~~~~~~~
+^^^^^^^^^^^^^^^^^^^^^^^
 
 The signed oxidation ratio is fixed in this recipe and already folded into the
 shared-state O2 sensitivity. When it is representable by retained-state or
@@ -1019,7 +1019,7 @@ there is no separate public complete-covariance validator.
 
 
 Linked fixed-OU mismatch and cached sampling
--------------------------------------------
+--------------------------------------------
 
 The linked prepared-input runner accepts ``tau_hours`` together with either
 ``fixed_site_amplitudes`` or ``site_amplitude_prior``. It uses the same fixed-OU
