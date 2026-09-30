@@ -12,7 +12,7 @@ import pytest
 import xarray as xr
 
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
-from openghg_inversions.models import (
+from openghg_inversions.model_components import (
     StateActivity,
     get_coord_registry,
     prepare_linear_sensitivity,

@@ -702,7 +702,7 @@ containing the value ``"outer"``:
 
 .. code-block:: python
 
-   from openghg_inversions.models import StateActivity
+   from openghg_inversions.model_components import StateActivity
    from openghg_inversions.observation_error import resolve_aggregation_error
    from openghg_inversions.rhime import PollutionEventSettings
    from openghg_inversions.rhime.standard import build_standard_rhime_model
@@ -778,7 +778,7 @@ public state ``<name>``.
    import numpy as np
    import xarray as xr
 
-   from openghg_inversions.models import (
+   from openghg_inversions.model_components import (
        CorrelatedLognormalPrior,
        add_correlated_lognormal_state,
        registered_model,

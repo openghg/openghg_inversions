@@ -5,7 +5,7 @@ from dataclasses import replace
 import numpy as np
 import pandas as pd
 import xarray as xr
-from openghg_inversions.models import StateActivity
+from openghg_inversions.model_components import StateActivity
 import pytensor
 import pytensor.tensor as pt
 import pytest

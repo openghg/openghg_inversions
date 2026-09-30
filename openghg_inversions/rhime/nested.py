@@ -27,10 +27,10 @@ from openghg_inversions._timing import log_timing, timer_seconds, timer_start
 from openghg_inversions.array_ops import to_dense
 from ._domain_support import rectangular_extent_mask, remove_domain_overlap
 from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs
-from openghg_inversions.models.components import add_linear_component, add_offset_component
-from openghg_inversions.models.coords import registered_model
-from openghg_inversions.models.priors import PriorArgs
-from openghg_inversions.models.state_activity import StateActivity, prepare_linear_sensitivity
+from openghg_inversions.model_components.components import add_linear_component, add_offset_component
+from openghg_inversions.model_components.coords import registered_model
+from openghg_inversions.model_components.priors import PriorArgs
+from openghg_inversions.model_components.state_activity import StateActivity, prepare_linear_sensitivity
 from openghg_inversions.observation_error import (
     AggregationError,
     resolve_aggregation_error,

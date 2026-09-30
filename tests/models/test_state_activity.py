@@ -16,7 +16,7 @@ import xarray as xr
 
 from openghg_inversions.basis import project_basis_prior_stdev
 from openghg_inversions.basis.basis_functions import BasisFunctions
-from openghg_inversions.models import (
+from openghg_inversions.model_components import (
     CoordRegistry,
     StateActivity,
     active_prior_args,
@@ -28,8 +28,8 @@ from openghg_inversions.models import (
     resolve_state_activity,
     restore_inferencedata_coords,
 )
-from openghg_inversions.models.components import add_linear_component, resolve_model_variable
-from openghg_inversions.models.components import add_state_vector
+from openghg_inversions.model_components.components import add_linear_component, resolve_model_variable
+from openghg_inversions.model_components.components import add_state_vector
 from openghg_inversions.observation_error import resolve_aggregation_error
 from openghg_inversions.rhime.multisector import (
     _prepare_multisector_flux_components,

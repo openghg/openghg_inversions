@@ -35,7 +35,7 @@ from pytensor.graph.basic import Apply, Variable
 from pytensor.graph.op import Op
 from pytensor.tensor.variable import TensorVariable
 
-from openghg_inversions.models.cached_sigma import (
+from openghg_inversions.model_components.cached_sigma import (
     FixedOuCachedSigmaTarget,
     MarginalQuadraticCache,
 )

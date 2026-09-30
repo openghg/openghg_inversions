@@ -21,7 +21,7 @@ from typing import Any, cast
 from openghg_inversions._timing import log_timing, timer_seconds, timer_start
 from openghg_inversions.config import config
 from openghg_inversions.model_error import normalise_min_error_options
-from openghg_inversions.models._flux import safe_pymc_name
+from openghg_inversions.model_components._flux import safe_pymc_name
 from openghg_inversions.observation_error import AggregationErrorMode
 from openghg_inversions.rhime.sampling import RhimeSampler
 from openghg_inversions.rhime.specs import (

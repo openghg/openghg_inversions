@@ -42,20 +42,20 @@ import xarray as xr
 
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.inversion_inputs import DatetimeLike
-from openghg_inversions.models._flux import (
+from openghg_inversions.model_components._flux import (
     _namespace_sector_state_coords,
     _select_sector_design,
     safe_pymc_name,
 )
-from openghg_inversions.models.components import (
+from openghg_inversions.model_components.components import (
     add_linked_linear_component,
     add_linear_component,
     add_model_data,
     apply_linear_sensitivity,
 )
-from openghg_inversions.models.coords import add_coords, registered_model
-from openghg_inversions.models.priors import parse_prior
-from openghg_inversions.models.state_activity import (
+from openghg_inversions.model_components.coords import add_coords, registered_model
+from openghg_inversions.model_components.priors import parse_prior
+from openghg_inversions.model_components.state_activity import (
     PreparedLinearSensitivity,
     prepare_linear_sensitivity,
 )
@@ -110,7 +110,7 @@ class RamsdenChannelSpec:
             Supported dataset unit attributes are checked by mol/mol scale;
             values are not converted.
         sigma_prior: PyMC prior mapping accepted by
-            :func:`~openghg_inversions.models.priors.parse_prior` for absolute
+            :func:`~openghg_inversions.model_components.priors.parse_prior` for absolute
             model error. The prior is expanded by site and period, not
             multiplied by the modelled enhancement.
         sigma_per_site: Whether model error is independent by observation site.

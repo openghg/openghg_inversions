@@ -14,11 +14,11 @@ import tomllib
 
 import numpy as np
 
-from openghg_inversions.models import StateActivity
-from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
-from openghg_inversions.models.priors import positive_prior_args
-from openghg_inversions.models.scalar_sigma import add_scalar_sigma_eigen_likelihood
-from openghg_inversions.models.site_sigma import add_site_sigma_gaussian_likelihood
+from openghg_inversions.model_components import StateActivity
+from openghg_inversions.model_components.fixed_ou import add_fixed_ou_gaussian_likelihood
+from openghg_inversions.model_components.priors import positive_prior_args
+from openghg_inversions.model_components.scalar_sigma import add_scalar_sigma_eigen_likelihood
+from openghg_inversions.model_components.site_sigma import add_site_sigma_gaussian_likelihood
 from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
 from openghg_inversions.rhime.sampling import RhimeSampler
 

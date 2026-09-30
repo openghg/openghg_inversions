@@ -6,7 +6,9 @@ composing OpenGHG Inversions workflows. Start with the
 :doc:`model recipe chooser </usage/model_recipes>` if you need to decide which
 workflow fits a scientific question. The tutorials and guides explain how the
 objects fit together; the tables below link to signatures and detailed API
-documentation.
+documentation. Reusable model-building functions now live in
+``model_components``; established ``models`` imports remain compatibility
+aliases to the same implementations.
 
 Run an inversion
 ----------------
@@ -161,18 +163,18 @@ component boundary and when to copy a complete recipe instead.
 .. autosummary::
    :nosignatures:
 
-   openghg_inversions.models.StateActivity
-   openghg_inversions.models.PreparedLinearSensitivity
-   openghg_inversions.models.prepare_linear_sensitivity
-   openghg_inversions.models.CorrelatedLognormalPrior
-   openghg_inversions.models.parse_prior
-   openghg_inversions.models.add_model_data
-   openghg_inversions.models.add_linear_component
-   openghg_inversions.models.add_linked_linear_component
-   openghg_inversions.models.add_correlated_lognormal_state
-   openghg_inversions.models.add_offset_component
-   openghg_inversions.models.add_sigma_component
-   openghg_inversions.models.add_site_sigma_gaussian_likelihood
+   openghg_inversions.model_components.StateActivity
+   openghg_inversions.model_components.PreparedLinearSensitivity
+   openghg_inversions.model_components.prepare_linear_sensitivity
+   openghg_inversions.model_components.CorrelatedLognormalPrior
+   openghg_inversions.model_components.parse_prior
+   openghg_inversions.model_components.add_model_data
+   openghg_inversions.model_components.add_linear_component
+   openghg_inversions.model_components.add_linked_linear_component
+   openghg_inversions.model_components.add_correlated_lognormal_state
+   openghg_inversions.model_components.add_offset_component
+   openghg_inversions.model_components.add_sigma_component
+   openghg_inversions.model_components.add_site_sigma_gaussian_likelihood
 
 Outputs and serialisation
 -------------------------

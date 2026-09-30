@@ -15,11 +15,11 @@ from pytensor.tensor.variable import TensorVariable
 
 from openghg_inversions.array_ops import expand_mapping
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
-from openghg_inversions.models.cached_sigma import (
+from openghg_inversions.model_components.cached_sigma import (
     FixedOuCachedSigmaTarget,
     MarginalQuadraticCache,
 )
-from openghg_inversions.models.components import (
+from openghg_inversions.model_components.components import (
     _add_offset_component_result,
     _add_prepared_correlated_lognormal_state_with_activity,
     add_model_data,
@@ -28,10 +28,10 @@ from openghg_inversions.models.components import (
     apply_linear_sensitivity,
     prepare_active_correlated_lognormal_prior,
 )
-from openghg_inversions.models.coords import add_coords, registered_model
-from openghg_inversions.models.fixed_ou import FixedOuLowRank, prepare_fixed_ou_low_rank
-from openghg_inversions.models.priors import PriorArgs
-from openghg_inversions.models.state_activity import (
+from openghg_inversions.model_components.coords import add_coords, registered_model
+from openghg_inversions.model_components.fixed_ou import FixedOuLowRank, prepare_fixed_ou_low_rank
+from openghg_inversions.model_components.priors import PriorArgs
+from openghg_inversions.model_components.state_activity import (
     PreparedLinearSensitivity,
     ResolvedStateActivity,
     StateActivity,

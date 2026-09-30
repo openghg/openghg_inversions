@@ -20,7 +20,7 @@ import pymc as pm
 import xarray as xr
 
 from openghg_inversions._timing import log_timing, timer_seconds, timer_start
-from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
+from openghg_inversions.model_components.coords import get_coord_registry, restore_inferencedata_coords
 
 NutsSampler = Literal["pymc", "nutpie", "numpyro", "blackjax"]
 
