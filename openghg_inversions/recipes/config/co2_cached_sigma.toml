@@ -1,0 +1,22 @@
+# CO2 replay with inferred site amplitudes and a fixed OU timescale.
+# Replace this path with an artifact written by Co2PreparedInputs.save().
+format_version = 1
+recipe = "co2"
+variant = "cached_fixed_ou"
+
+[prepared_inputs]
+path = "prepared-co2.zarr"
+
+[likelihood]
+kind = "fixed_ou"
+tau_hours = 24.0
+site_amplitude_prior_scale = 1.0
+sigma_target_accept = 0.8
+state_target_accept = 0.9
+
+[sampling]
+draws = 1000
+tune = 1000
+chains = 4
+nuts_sampler = "pymc"
+random_seed = 12345

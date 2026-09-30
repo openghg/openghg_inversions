@@ -6,7 +6,7 @@ import pytest
 import xarray as xr
 
 from openghg_inversions.model_components import registered_model
-from openghg_inversions.rhime.builders import (
+from openghg_inversions.recipes.builders import (
     RhimeModelBuildResult,
     RhimeModelBuilderContext,
     validate_model_build_result,

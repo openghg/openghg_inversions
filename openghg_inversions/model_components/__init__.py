@@ -5,7 +5,7 @@ construction; state activity then controls scientific fixing among the full
 labelled state.
 
 Importing this package configures PyTensor before re-exporting reusable model
-primitives. Concrete scientific recipes live in ``openghg_inversions.rhime``.
+primitives. Concrete scientific recipes live in ``openghg_inversions.recipes``.
 """
 
 # ruff: noqa: E402

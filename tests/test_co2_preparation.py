@@ -17,8 +17,8 @@ from openghg_inversions._labelled_matrices import renamed_column_coordinates
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.coherent_reduction import CoherentGaussianReduction
 from openghg_inversions.inversion_data import RhimePreparedInputs
-from openghg_inversions.rhime.co2 import Co2PreparedInputs, prepare_co2_inputs
-from openghg_inversions.rhime.co2 import (
+from openghg_inversions.recipes.co2 import Co2PreparedInputs, prepare_co2_inputs
+from openghg_inversions.recipes.co2 import (
     co2_cached_sigma_runner,
     co2_runner,
     prepare_co2_scalar_sigma_eigenbasis,

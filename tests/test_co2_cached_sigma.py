@@ -17,13 +17,13 @@ from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.model_components.coords import get_coord_registry
 from openghg_inversions.model_components.state_activity import StateActivity
 from openghg_inversions.observation_error import resolve_aggregation_error
-from openghg_inversions.rhime.co2 import (
+from openghg_inversions.recipes.co2 import (
     build_co2_cached_sigma_model,
     run_rhime_co2_cached_sigma,
 )
-from openghg_inversions.rhime.co2 import co2_cached_sigma_runner
-from openghg_inversions.rhime.co2 import co2_cached_sigma_model
-from openghg_inversions.rhime.sampling import RhimeSampler
+from openghg_inversions.recipes.co2 import co2_cached_sigma_runner
+from openghg_inversions.recipes.co2 import co2_cached_sigma_model
+from openghg_inversions.recipes.sampling import RhimeSampler
 
 
 def _inputs() -> xr.Dataset:

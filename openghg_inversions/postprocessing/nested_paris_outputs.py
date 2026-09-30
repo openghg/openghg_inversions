@@ -1,6 +1,6 @@
 """PARIS output construction for nested (dual-grid) RHIME runs.
 
-Nested RHIME preparation (:mod:`openghg_inversions.rhime.nested`) keeps the
+Nested RHIME preparation (:mod:`openghg_inversions.recipes.nested`) keeps the
 outer and inner domains as independently retained basis operators and flux
 grids -- see that module's docstring for why they are never merged onto one
 grid. The nested RHIME recipe adapts its sampled result into two ordinary,
@@ -10,7 +10,7 @@ single-grid PARIS/flux/country postprocessing against each one.
 
 The outer view already has its prior flux and footprint response masked to
 zero over the inner domain's extent
-(:func:`openghg_inversions.rhime.nested.mask_outer_merged_for_inner_domain`),
+(:func:`openghg_inversions.recipes.nested.mask_outer_merged_for_inner_domain`),
 so its flux and country totals never double-count inner-domain emissions.
 The inner view reports genuine native-resolution (e.g. 6 km) flux and
 country totals on its own grid; it is a separate product and is never
@@ -280,7 +280,7 @@ def make_nested_paris_outputs(
     call :func:`make_nested_paris_products` directly. This wrapper preserves
     the original public entry point for callers holding a ``NestedRhimeResult``.
     """
-    from openghg_inversions.rhime.nested import make_nested_inversion_outputs
+    from openghg_inversions.recipes.nested import make_nested_inversion_outputs
 
     outer_inv_out, inner_inv_out = make_nested_inversion_outputs(nested_result)
     prepared = nested_result.prepared_inputs

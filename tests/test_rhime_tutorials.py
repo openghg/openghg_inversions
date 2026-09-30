@@ -11,7 +11,7 @@ import xarray as xr
 
 from openghg_inversions.cli import main
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
-from openghg_inversions.rhime import (
+from openghg_inversions.recipes import (
     RhimeSampler,
     params_from_config,
     run_rhime,
@@ -20,7 +20,7 @@ from openghg_inversions.rhime import (
 from tests.helpers import make_trace
 
 
-_CONFIG_DIRECTORY = files("openghg_inversions.rhime").joinpath("config")
+_CONFIG_DIRECTORY = files("openghg_inversions.recipes").joinpath("config")
 _STANDARD_CONFIG = _CONFIG_DIRECTORY.joinpath("standard_tutorial.ini")
 _MULTISECTOR_CONFIG = _CONFIG_DIRECTORY.joinpath("multisector_tutorial.ini")
 
@@ -176,11 +176,11 @@ def test_multisector_tutorial_runs_to_sector_diagnostics(
 @pytest.mark.parametrize(
     ("subcommand", "config", "target"),
     [
-        ("run-rhime", _STANDARD_CONFIG, "openghg_inversions.rhime.run_rhime"),
+        ("run-rhime", _STANDARD_CONFIG, "openghg_inversions.recipes.run_rhime"),
         (
             "run-rhime-multisector",
             _MULTISECTOR_CONFIG,
-            "openghg_inversions.rhime.run_rhime_multisector",
+            "openghg_inversions.recipes.run_rhime_multisector",
         ),
     ],
 )

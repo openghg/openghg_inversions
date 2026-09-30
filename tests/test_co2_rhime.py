@@ -25,11 +25,11 @@ from openghg_inversions.model_components.scalar_sigma import (
 from openghg_inversions.model_components.site_sigma import add_site_sigma_gaussian_likelihood
 from openghg_inversions.model_components.state_activity import StateActivity
 from openghg_inversions.observation_error import AggregationError, resolve_aggregation_error
-from openghg_inversions.rhime.co2 import (
+from openghg_inversions.recipes.co2 import (
     build_co2_model,
     run_rhime_co2,
 )
-from openghg_inversions.rhime.co2 import co2_runner
+from openghg_inversions.recipes.co2 import co2_runner
 from openghg_inversions.serialization import load_trace, save_trace
 
 

@@ -31,12 +31,12 @@ from openghg_inversions.model_components import (
 from openghg_inversions.model_components.components import add_linear_component, resolve_model_variable
 from openghg_inversions.model_components.components import add_state_vector
 from openghg_inversions.observation_error import resolve_aggregation_error
-from openghg_inversions.rhime.multisector import (
+from openghg_inversions.recipes.multisector import (
     _prepare_multisector_flux_components,
     build_multisector_rhime_model as _build_multisector_model,
 )
-from openghg_inversions.rhime.specs import FixedErrorSettings, PollutionEventSettings, SectorSpec
-from openghg_inversions.rhime.standard import build_standard_rhime_model as _build_standard_model
+from openghg_inversions.recipes.specs import FixedErrorSettings, PollutionEventSettings, SectorSpec
+from openghg_inversions.recipes.standard import build_standard_rhime_model as _build_standard_model
 from openghg_inversions.serialization import load_inferencedata, save_inferencedata
 from openghg_inversions.sigma import SigmaAlignment
 

@@ -156,6 +156,8 @@ openghg_inversions = [
     "config/templates/*.ini",
     "rhime/config/*.ini",
     "rhime/config/*.toml",
+    "recipes/config/*.ini",
+    "recipes/config/*.toml",
 ]
 
 [tool.uv]

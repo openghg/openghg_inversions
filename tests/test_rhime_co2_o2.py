@@ -18,17 +18,17 @@ from openghg_inversions.model_components import (
     prepare_linear_sensitivity,
     restore_inferencedata_coords,
 )
-from openghg_inversions.rhime.co2 import (
+from openghg_inversions.recipes.co2 import (
     build_co2_o2_model,
     evaluate_co2_o2_prior_forward_mean,
     prepare_co2_o2_inputs,
     run_rhime_co2_o2_from_prepared_inputs,
 )
-from openghg_inversions.rhime.co2.co2_o2_model import (
+from openghg_inversions.recipes.co2.co2_o2_model import (
     _gather_co2_o2_sensitivity,
 )
-from openghg_inversions.rhime.co2.co2_o2_runner import _co2_o2_metadata
-from openghg_inversions.rhime.sampling import RhimeSampler
+from openghg_inversions.recipes.co2.co2_o2_runner import _co2_o2_metadata
+from openghg_inversions.recipes.sampling import RhimeSampler
 from openghg_inversions.serialization import load_trace, save_trace
 
 

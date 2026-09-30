@@ -59,7 +59,7 @@ from openghg_inversions.model_components.state_activity import (
     PreparedLinearSensitivity,
     prepare_linear_sensitivity,
 )
-from openghg_inversions.rhime.sampling import RhimeSampler
+from openghg_inversions.recipes.sampling import RhimeSampler
 from openghg_inversions.sigma import SigmaAlignment
 
 RatioResolution = Literal["scalar", "spatial"]
@@ -795,7 +795,7 @@ def build_ramsden_model(
 
     Returns:
         Built PyMC model ready for
-        :class:`~openghg_inversions.rhime.sampling.RhimeSampler`.
+        :class:`~openghg_inversions.recipes.sampling.RhimeSampler`.
 
     Raises:
         ValueError: If model metadata, required input variables, source labels,
@@ -948,7 +948,7 @@ def run_ramsden_from_prepared_inputs(
         This function samples the model and may run multiple chains. It does
         not retrieve data, convert units, or write postprocessed products.
         Sampling exceptions raised by
-        :class:`~openghg_inversions.rhime.sampling.RhimeSampler` are
+        :class:`~openghg_inversions.recipes.sampling.RhimeSampler` are
         propagated.
     """
     model = build_ramsden_model(prepared_inputs, model_spec)

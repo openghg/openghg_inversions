@@ -1,0 +1,26 @@
+openghg\_inversions.recipes.co2
+===============================
+
+.. automodule:: openghg_inversions.recipes.co2
+   :members:
+   :show-inheritance:
+
+
+
+.. toctree::
+   :maxdepth: 4
+
+   openghg_inversions.recipes.co2.co2_affine_output
+   openghg_inversions.recipes.co2.co2_cached_sigma_model
+   openghg_inversions.recipes.co2.co2_cached_sigma_runner
+   openghg_inversions.recipes.co2.co2_model
+   openghg_inversions.recipes.co2.co2_o2_cached_sigma_model
+   openghg_inversions.recipes.co2.co2_o2_cached_sigma_runner
+   openghg_inversions.recipes.co2.co2_o2_fixed_ou
+   openghg_inversions.recipes.co2.co2_o2_model
+   openghg_inversions.recipes.co2.co2_o2_preparation
+   openghg_inversions.recipes.co2.co2_o2_runner
+   openghg_inversions.recipes.co2.co2_preparation
+   openghg_inversions.recipes.co2.co2_runner
+   openghg_inversions.recipes.co2.configuration
+   openghg_inversions.recipes.co2.outputs

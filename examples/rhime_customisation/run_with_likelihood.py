@@ -2,7 +2,7 @@
 
 This is the preferred low-ceremony customization route. It keeps RHIME's
 complete acquisition-to-output pipeline and changes only the direct-Python
-likelihood callable passed to :func:`openghg_inversions.rhime.run_rhime`.
+likelihood callable passed to :func:`openghg_inversions.recipes.run_rhime`.
 Use :func:`run_with_likelihood` from Python or :func:`main` from the command
 line with a normal RHIME configuration. The workflow may retrieve or reload
 data, materializes related model arrays together at the named PyMC boundary,
@@ -18,7 +18,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from openghg_inversions.rhime import RhimeResult, run_rhime
+from openghg_inversions.recipes import RhimeResult, run_rhime
 
 from .likelihoods import likelihood_builder
 

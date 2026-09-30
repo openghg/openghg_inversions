@@ -6,9 +6,9 @@ composing OpenGHG Inversions workflows. Start with the
 :doc:`model recipe chooser </usage/model_recipes>` if you need to decide which
 workflow fits a scientific question. The tutorials and guides explain how the
 objects fit together; the tables below link to signatures and detailed API
-documentation. Reusable model-building functions now live in
-``model_components``; established ``models`` imports remain compatibility
-aliases to the same implementations.
+documentation. Complete scientific recipes live in ``recipes``; reusable
+model-building functions live in ``model_components``. Established ``rhime``
+and ``models`` imports remain compatibility aliases to those implementations.
 
 Run an inversion
 ----------------
@@ -26,15 +26,15 @@ runner.
 .. autosummary::
    :nosignatures:
 
-   openghg_inversions.rhime.run_rhime
-   openghg_inversions.rhime.run_rhime_multisector
-   openghg_inversions.rhime.run_rhime_nested
-   openghg_inversions.rhime.run_rhime_from_prepared_inputs
-   openghg_inversions.rhime.run_rhime_nested_from_prepared_inputs
-   openghg_inversions.rhime.run_rhime_co2
-   openghg_inversions.rhime.co2.run_rhime_co2_cached_sigma
-   openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs
-   openghg_inversions.rhime.co2.run_rhime_co2_o2_cached_sigma_from_prepared_inputs
+   openghg_inversions.recipes.run_rhime
+   openghg_inversions.recipes.run_rhime_multisector
+   openghg_inversions.recipes.run_rhime_nested
+   openghg_inversions.recipes.run_rhime_from_prepared_inputs
+   openghg_inversions.recipes.run_rhime_nested_from_prepared_inputs
+   openghg_inversions.recipes.run_rhime_co2
+   openghg_inversions.recipes.co2.run_rhime_co2_cached_sigma
+   openghg_inversions.recipes.co2.run_rhime_co2_o2_from_prepared_inputs
+   openghg_inversions.recipes.co2.run_rhime_co2_o2_cached_sigma_from_prepared_inputs
 
 Run specifications and results
 ------------------------------
@@ -46,16 +46,16 @@ its implementation is owned by ``inference``.
 .. autosummary::
    :nosignatures:
 
-   openghg_inversions.rhime.RhimeRunSpec
-   openghg_inversions.rhime.RhimeModelSpec
-   openghg_inversions.rhime.RhimeOutputSpec
+   openghg_inversions.recipes.RhimeRunSpec
+   openghg_inversions.recipes.RhimeModelSpec
+   openghg_inversions.recipes.RhimeOutputSpec
    openghg_inversions.inference.RhimeSampler
-   openghg_inversions.rhime.RhimeResult
-   openghg_inversions.rhime.NestedRhimeResult
-   openghg_inversions.rhime.SectorSpec
-   openghg_inversions.rhime.AdditiveSigmaSettings
-   openghg_inversions.rhime.FixedErrorSettings
-   openghg_inversions.rhime.PollutionEventSettings
+   openghg_inversions.recipes.RhimeResult
+   openghg_inversions.recipes.NestedRhimeResult
+   openghg_inversions.recipes.SectorSpec
+   openghg_inversions.recipes.AdditiveSigmaSettings
+   openghg_inversions.recipes.FixedErrorSettings
+   openghg_inversions.recipes.PollutionEventSettings
 
 Prepared inversion data
 -----------------------
@@ -63,11 +63,7 @@ Prepared inversion data
 Use these interfaces to prepare, save, reload, or adapt canonical inputs
 before a separate model run. The
 :doc:`RHIME configuration and prepared-input reference </usage/rhime>`
-documents the expected variables, dimensions, and coordinates. Acquisition
-and reload mechanics live in ``inversion_data.acquisition``; the prepared
-value and its unchanged version-1 schema live in
-``inversion_data.prepared_inputs``. Existing package and preparation-module
-imports identify the same classes.
+documents the expected variables, dimensions, and coordinates.
 
 .. autosummary::
    :nosignatures:
@@ -78,17 +74,17 @@ imports identify the same classes.
    openghg_inversions.inversion_data.prepare_rhime_inputs_from_xarray
    openghg_inversions.inversion_data.load_merged_data
    openghg_inversions.inversion_data.acquisition.retrieve_or_reload_rhime_data
-   openghg_inversions.rhime.NestedRhimePreparedInputs
-   openghg_inversions.rhime.combine_nested_rhime_inputs
-   openghg_inversions.rhime.co2.Co2PreparedInputs
-   openghg_inversions.rhime.co2.BoundCo2AffineFluxMap
-   openghg_inversions.rhime.co2.produce_bucket_affine_flux_map
-   openghg_inversions.rhime.co2.import_explicit_affine_flux_map
-   openghg_inversions.rhime.co2.load_and_bind_affine_flux_map
-   openghg_inversions.rhime.co2.prepared_inputs_content_id
-   openghg_inversions.rhime.co2.Co2O2PreparedInputs
-   openghg_inversions.rhime.co2.prepare_co2_inputs
-   openghg_inversions.rhime.co2.prepare_co2_o2_inputs
+   openghg_inversions.recipes.NestedRhimePreparedInputs
+   openghg_inversions.recipes.combine_nested_rhime_inputs
+   openghg_inversions.recipes.co2.Co2PreparedInputs
+   openghg_inversions.recipes.co2.BoundCo2AffineFluxMap
+   openghg_inversions.recipes.co2.produce_bucket_affine_flux_map
+   openghg_inversions.recipes.co2.import_explicit_affine_flux_map
+   openghg_inversions.recipes.co2.load_and_bind_affine_flux_map
+   openghg_inversions.recipes.co2.prepared_inputs_content_id
+   openghg_inversions.recipes.co2.Co2O2PreparedInputs
+   openghg_inversions.recipes.co2.prepare_co2_inputs
+   openghg_inversions.recipes.co2.prepare_co2_o2_inputs
 
 Basis construction and state geometry
 -------------------------------------
@@ -185,8 +181,9 @@ prepared inputs and inference data.
 
 ``OutputContract`` records model roles and explicit state mappings without a
 live graph. The output-view factory binds that metadata to prepared values
-and samples; it does not write products. See
-:doc:`staged replay </usage/staged_workflow>` for persistence.
+and samples; it does not write products. See the
+:doc:`six-layer prototype </development/rhime_six_layer_prototype>` for the
+current scope and :doc:`staged replay </usage/staged_workflow>` for persistence.
 
 .. autosummary::
    :nosignatures:
@@ -196,8 +193,8 @@ and samples; it does not write products. See
    openghg_inversions.postprocessing.output_views.make_inversion_output
    openghg_inversions.postprocessing.co2_flux_outputs.co2_native_flux_outputs
    openghg_inversions.postprocessing.co2_flux_outputs.co2_country_flux_outputs
-   openghg_inversions.postprocessing.linked_paris_outputs.make_co2_o2_paris_outputs
-   openghg_inversions.postprocessing.linked_paris_outputs.reconstruct_co2_o2_concentrations
+   openghg_inversions.recipes.co2.outputs.make_co2_o2_paris_outputs
+   openghg_inversions.recipes.co2.outputs.reconstruct_co2_o2_concentrations
    openghg_inversions.postprocessing.countries.Countries
    openghg_inversions.postprocessing.make_outputs.basic_output
    openghg_inversions.postprocessing.make_outputs.make_flux_outputs

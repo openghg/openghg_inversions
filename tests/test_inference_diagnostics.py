@@ -45,7 +45,7 @@ def test_posterior_summary_import_is_backend_neutral() -> None:
             "import sys; import openghg_inversions.inference.diagnostics; "
             "assert 'pymc' not in sys.modules; "
             "assert 'pytensor' not in sys.modules; "
-            "assert not any(name.startswith(('openghg_inversions.rhime', "
+            "assert not any(name.startswith(('openghg_inversions.recipes', "
             "'openghg_inversions.rhime')) for name in sys.modules)",
         ],
         check=True,

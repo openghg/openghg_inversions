@@ -9,7 +9,7 @@ from openghg.util import cf_ureg, molar_mass  # pyright: ignore[reportPrivateImp
 
 from openghg_inversions.array_ops import to_dense
 from openghg_inversions.basis.affine_flux_map import _in_dimensionless_units
-from openghg_inversions.rhime.co2.co2_affine_output import BoundCo2AffineFluxMap
+from openghg_inversions.recipes.co2.co2_affine_output import BoundCo2AffineFluxMap
 
 from .countries import Countries
 from .inversion_output import trace_group

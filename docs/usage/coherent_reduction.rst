@@ -92,13 +92,13 @@ and site metadata. Load the canonical inputs from a checkpoint produced by
 the :doc:`rhime` workflow::
 
    from openghg_inversions.inversion_data import RhimePreparedInputs
-   from openghg_inversions.rhime.co2 import prepare_co2_inputs
+   from openghg_inversions.recipes.co2 import prepare_co2_inputs
 
    canonical_inputs = RhimePreparedInputs.load("base-prepared-inputs.zarr")
    co2_inputs = prepare_co2_inputs(canonical_inputs, reduction)
 
 The returned
-:class:`~openghg_inversions.rhime.co2.Co2PreparedInputs` artifact uses at most
+:class:`~openghg_inversions.recipes.co2.Co2PreparedInputs` artifact uses at most
 512 low-rank modes by default, capped at the observation count. Pass
 ``aggregation_error_rank=None`` to keep
 ``reduction.unresolved_observation_covariance`` as an exact dense aggregation

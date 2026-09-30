@@ -4,8 +4,8 @@ import importlib
 import re
 from pathlib import Path
 
-from openghg_inversions.rhime.params import resolve_rhime_options
-from openghg_inversions.rhime.specs import PollutionEventSettings
+from openghg_inversions.recipes.params import resolve_rhime_options
+from openghg_inversions.recipes.specs import PollutionEventSettings
 
 
 DOCS = Path(__file__).parents[1] / "docs" / "usage"
