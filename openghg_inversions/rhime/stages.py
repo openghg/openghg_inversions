@@ -304,7 +304,12 @@ def effective_configuration(setup: RhimeRunnerSetup | Co2StageSetup, *, model: M
 
 
 def configuration_identity(setup: RhimeRunnerSetup | Co2StageSetup, *, model: ModelKind) -> str:
-    """Hash resolved data, period, model, and prior choices."""
+    """Hash the resolved settings required for scientific replay.
+
+    Standard and multisector identities cover preparation, period, model,
+    and prior choices. CO2 identities cover recipe replay settings; separate
+    artifact content hashes authenticate the prepared data.
+    """
     if model == "co2":
         from .co2.stages import co2_configuration_identity
 
