@@ -139,12 +139,9 @@ class _PytensorSigmaLikelihoodOp(Op):
             grad_not_implemented(self, 1, inputs[1]),
         ]
 
-    def infer_shape(
-        self,
-        node: Apply,
-        input_shapes: list[tuple[Any, ...]],
-    ) -> list[tuple[Any, ...]]:
-        del node
+    def infer_shape(self, *args: Any) -> list[tuple[Any, ...]]:
+        """Accept both ``(node, shapes)`` and legacy ``(fgraph, node, shapes)`` hooks."""
+        input_shapes = args[-1]
         return [(), input_shapes[0]]
 
     def install_residual(self, residual: ArrayLike) -> None:

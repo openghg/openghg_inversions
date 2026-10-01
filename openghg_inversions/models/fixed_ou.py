@@ -122,12 +122,9 @@ class _FixedOuLogpOp(Op):
         amplitude_gradient = cast(TensorVariable, outputs[2])
         return [logp_gradient * residual_gradient, logp_gradient * amplitude_gradient]
 
-    def infer_shape(
-        self,
-        node: Apply,
-        input_shapes: list[tuple[Any, ...]],
-    ) -> list[tuple[Any, ...]]:
-        del node
+    def infer_shape(self, *args: Any) -> list[tuple[Any, ...]]:
+        """Accept both ``(node, shapes)`` and legacy ``(fgraph, node, shapes)`` hooks."""
+        input_shapes = args[-1]
         return [(), input_shapes[0], input_shapes[1]]
 
 
