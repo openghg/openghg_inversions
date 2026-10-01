@@ -99,3 +99,90 @@ def test_cached_tuning_is_sampling_configuration(tmp_path):
     first = co2_configuration_identity(resolve_co2_stage_setup(params))
     params["likelihood"].update(sigma_target_accept=0.95, state_target_accept=0.95)
     assert co2_configuration_identity(resolve_co2_stage_setup(params)) == first
+
+
+def test_shared_provenance_allows_unknown_revision_but_co2_requires_it(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from openghg_inversions import _provenance
+    from openghg_inversions.rhime.co2 import stages
+
+    monkeypatch.setattr(_provenance, "__file__", str(tmp_path / "openghg_inversions" / "_provenance.py"))
+    monkeypatch.setattr(
+        _provenance.metadata,
+        "distribution",
+        lambda name: SimpleNamespace(version="0.7.3", read_text=lambda name: None),
+    )
+    assert _provenance.installed_ogi_provenance() == {"version": "0.7.3", "revision": None, "dirty": None}
+    setup = resolve_co2_stage_setup(_config(tmp_path / "not-needed.nc"))
+    with pytest.raises(ValueError, match="identifiable installed Git revision"):
+        stages._manifest(setup, "prepare")
+
+
+def test_co2_version_one_replay_stays_graph_free_through_public_facade(tmp_path, monkeypatch):
+    from openghg_inversions.rhime import _standard_stages, stages
+    from openghg_inversions.rhime._stage_artifacts import file_identity, write_json
+    from openghg_inversions.rhime.co2 import stages as co2_stages
+    from openghg_inversions.serialization import save_trace
+    from test_co2_staged_outputs import _components_fixture
+
+    prepared, trace = _components_fixture()
+    source = tmp_path / "source.nc"
+    prepared.save(source)
+    params = _config(source)
+    params["outputs"] = {"output_format": "basic"}
+    setup = stages.resolve_stage_setup(params, model="co2")
+    preparation = stages.prepare_rhime_stage(setup=setup, model="co2", output_dir=tmp_path / "prepare")
+    prepared_path = tmp_path / "prepare" / "prepared-inputs.nc"
+    posterior = tmp_path / "posterior.nc"
+    save_trace(trace, posterior)
+    sample = {
+        "schema_version": 1,
+        "producer": "openghg_inversions",
+        "stage": "sample",
+        "configuration_identity": stages.configuration_identity(setup, model="co2"),
+        "effective_configuration": stages.effective_configuration(setup, model="co2"),
+        "artifact_identities": {
+            "prepared_inputs": file_identity(prepared_path),
+            "posterior": file_identity(posterior),
+        },
+    }
+    sampling = write_json(tmp_path / "sample-manifest.json", sample)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("CO2 version-1 replay must not build a model.")
+
+    monkeypatch.setattr(co2_stages, "build_rhime_co2", forbidden)
+    monkeypatch.setattr(co2_stages, "build_rhime_co2_cached_sigma", forbidden)
+    monkeypatch.setattr(_standard_stages, "_build_prepared_model", forbidden)
+    result = stages.postprocess_rhime_stage(
+        setup=setup,
+        model="co2",
+        prepared_inputs=prepared_path,
+        preparation_manifest=preparation["manifest_path"],
+        posterior=posterior,
+        sample_manifest=sampling,
+        output_dir=tmp_path / "replay",
+    )
+    assert result.model is None
+    assert (tmp_path / "replay" / "basic.nc").is_file()
+
+
+def test_staged_co2_authenticates_affine_content_before_replay(tmp_path):
+    from openghg_inversions.rhime.co2.stages import prior_predictive_co2_stage
+
+    source, _ = _handoff(tmp_path)
+    params = _config(source)
+    companion = tmp_path / "affine.nc"
+    params["outputs"] = {"output_format": "basic", "reconstruction_path": str(companion)}
+    setup = resolve_co2_stage_setup(params)
+    preparation = prepare_co2_stage(setup=setup, output_dir=tmp_path / "prepare")
+    companion.write_bytes(companion.read_bytes() + b"altered")
+    with pytest.raises(ValueError, match="Affine-reconstruction content does not match"):
+        prior_predictive_co2_stage(
+            setup=setup,
+            prepared_inputs=tmp_path / "prepare" / "prepared-inputs.nc",
+            preparation_manifest=preparation["manifest_path"],
+            output_dir=tmp_path / "rejected",
+        )
+    assert not (tmp_path / "rejected").exists()

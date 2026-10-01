@@ -119,11 +119,17 @@ directory.
   nonzero process exit when a scheduler policy wants that behavior.
 
 ``sample``
-  Loads the prepared artifact, builds the selected model, samples it with the
-  resolved ``RhimeSampler``, and writes ``posterior.nc`` plus
-  ``sample-manifest.json``.  The manifest records the effective sampling
-  configuration and content identities for the posterior and prepared input.
-  It never silently invokes preparation.
+  Standard and multisector workflows load the prepared artifact, build the
+  selected model, sample it with the resolved ``RhimeSampler``, and write
+  ``posterior.nc``, ``output-binding.json``, and ``sample-manifest.json``. The sample manifest
+  uses schema version 2 and records the effective sampling configuration and
+  content identities for the posterior, prepared input, and output binding.
+  The binding stores variable roles, supported formats, provenance, and any
+  explicit state-dimension mapping, together with the two numerical artifact
+  identities. Keep the binding beside its sample manifest when moving a run.
+  CO2 writes ``posterior.nc`` and a schema-version-1 sample manifest, retaining
+  saved trace roles and any authenticated affine-reconstruction identity.
+  No family silently invokes preparation.
 
 ``diagnose``
   Loads ``--posterior``, writes ``posterior-diagnostics.nc`` and emits the
@@ -136,11 +142,19 @@ directory.
   chosen process policy.
 
 ``postprocess``
-  Loads both prepared inputs and posterior, reconstructs the selected model's
-  output contract, and invokes the existing RHIME output implementation.  The
-  standard/multisector configuration's ``output_format`` controls ``inv_out``,
-  ``basic``, ``paris`` or ``legacy`` products; explicit save paths in configuration
-  are replaced so every product remains beneath the stage output directory.  For the same
+  Standard and multisector workflows load matched prepared inputs, posterior,
+  and the saved output binding, then invoke the existing RHIME output
+  implementation without constructing a PyMC model. A missing, altered, or
+  mismatched binding fails validation; it does not cause a model rebuild.
+  Genuine standard/multisector schema-version-1 sample manifests retain the
+  older graph-building compatibility route because they did not store output
+  bindings. CO2 schema-version-1 replay remains graph-free, using roles in the
+  authenticated saved trace and any separately authenticated affine artifact.
+  New posterior predictive calculations still require a separate explicit
+  model-building route. The standard/multisector configuration's
+  ``output_format`` controls ``inv_out``, ``basic``, ``paris`` or ``legacy``
+  products; explicit save paths in configuration are replaced so every product
+  remains beneath the stage output directory. For the same
   reason, staged postprocessing requires safe filename components and both the
   preparation and sample manifests.  The latter binds the posterior to its
   prepared-input digest and scientific configuration.  The sampler settings

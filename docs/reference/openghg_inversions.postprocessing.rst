@@ -10,8 +10,9 @@ openghg\_inversions.postprocessing
 .. toctree::
    :maxdepth: 4
 
-   openghg_inversions.postprocessing.countries
    openghg_inversions.postprocessing.co2_flux_outputs
+   openghg_inversions.postprocessing.contracts
+   openghg_inversions.postprocessing.countries
    openghg_inversions.postprocessing.diagnostics
    openghg_inversions.postprocessing.inversion_output
    openghg_inversions.postprocessing.legacy_outputs
@@ -20,6 +21,7 @@ openghg\_inversions.postprocessing
    openghg_inversions.postprocessing.make_paris_outputs
    openghg_inversions.postprocessing.merge_paris_outputs
    openghg_inversions.postprocessing.nested_paris_outputs
+   openghg_inversions.postprocessing.output_views
    openghg_inversions.postprocessing.sigma
    openghg_inversions.postprocessing.stats
    openghg_inversions.postprocessing.utils

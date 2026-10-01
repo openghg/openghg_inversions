@@ -10,12 +10,10 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from hashlib import sha256
-from importlib import metadata
 import json
 from numbers import Integral
 from pathlib import Path
 import shutil
-import subprocess
 from typing import Any, Mapping, cast
 
 import numpy as np
@@ -29,21 +27,22 @@ from openghg_inversions.postprocessing.countries import Countries
 from openghg_inversions.rhime.builders import callable_metadata
 from openghg_inversions.rhime.outputs import RhimeResult
 from openghg_inversions.rhime.specs import RhimeModelSpec, RhimeOutputSpec, RhimeRunSpec
-from openghg_inversions.rhime.stages import (
-    PREPARATION_CHECK_NAME,
-    _artifact_path,
-    _check_result,
-    _check_stage,
-    _file_identity,
+from openghg_inversions._provenance import installed_ogi_provenance
+from openghg_inversions.rhime._stage_artifacts import (
+    artifact_path as _artifact_path,
+    file_identity as _file_identity,
+    json_value as _json_value,
+    write_json as _write_json,
     _filename_component,
-    _json_value,
-    _load_stage_manifest,
     _output_path,
-    _sampler_from_sample_manifest,
     _stage_output_directory,
-    _verify_manifest_artifact,
-    _write_json,
 )
+from openghg_inversions.rhime._stage_authentication import (
+    _load_stage_manifest,
+    _sampler_from_sample_manifest,
+    _verify_manifest_artifact,
+)
+from openghg_inversions.rhime._stage_checks import PREPARATION_CHECK_NAME, _check_result, _check_stage
 from openghg_inversions.serialization import load_trace, reset_serialisation_multiindexes, save_trace
 from openghg_inversions.utils import write_netcdf_preserving_bounds_attrs
 
@@ -74,6 +73,31 @@ class Co2StageSetup:
     output: RhimeOutputSpec
     reconstruction_path: Path | None
     source_to_sector: Mapping[str, str] | None = None
+
+
+def load_co2_stage_params(
+    *,
+    config_file: str | Path | None = None,
+    params_file: str | Path | None = None,
+    overrides: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Load an explicit CO2 configuration and resolve paths beside its source."""
+    if (config_file is None) == (params_file is None):
+        raise ValueError("Pass exactly one of `config_file` or `params_file`.")
+    if config_file is not None:
+        from . import load_co2_family_config
+
+        source_path = Path(config_file).resolve()
+        params = dict(load_co2_family_config(source_path))
+    else:
+        source_path = Path(cast(str | Path, params_file)).resolve()
+        loaded = json.loads(source_path.read_text(encoding="utf-8"))
+        if not isinstance(loaded, dict):
+            raise ValueError(f"RHIME params file {source_path} must contain one JSON object.")
+        params = loaded
+    if overrides:
+        params.update(overrides)
+    return resolve_co2_stage_paths(params, base_dir=source_path.parent)
 
 
 def resolve_co2_stage_paths(params: Mapping[str, Any], *, base_dir: Path) -> dict[str, Any]:
@@ -173,41 +197,20 @@ def co2_configuration_identity(setup: Co2StageSetup) -> str:
     return f"sha256:{sha256(encoded).hexdigest()}"
 
 
-def installed_ogi_provenance() -> dict[str, Any]:
-    """Identify the installed code revision in stage sidecars, including editable code."""
-    distribution = metadata.distribution("openghg-inversions")
-    direct = json.loads(distribution.read_text("direct_url.json") or "{}")
-    revision = direct.get("vcs_info", {}).get("commit_id")
-    dirty = None
-    source = Path(__file__).resolve().parents[3]
-    if revision is None and (source / ".git").exists():
-        revision = subprocess.run(
-            ["git", "rev-parse", "HEAD"], cwd=source, check=True, capture_output=True, text=True
-        ).stdout.strip()
-        dirty = bool(
-            subprocess.run(
-                ["git", "status", "--porcelain", "--untracked-files=no"],
-                cwd=source,
-                check=True,
-                capture_output=True,
-                text=True,
-            ).stdout.strip()
-        )
-    if revision is None:
+def _manifest(setup: Co2StageSetup, stage: str) -> dict[str, Any]:
+    """Build a CO2 manifest requiring an identifiable installed revision."""
+    ogi = installed_ogi_provenance()
+    if ogi["revision"] is None:
         raise ValueError(
             "Staged CO2 execution requires an identifiable installed Git revision (VCS install or checkout)."
         )
-    return {"version": distribution.version, "revision": revision, "dirty": dirty}
-
-
-def _manifest(setup: Co2StageSetup, stage: str) -> dict[str, Any]:
     return {
         "schema_version": 1,
         "producer": "openghg_inversions",
         "stage": stage,
         "configuration_identity": co2_configuration_identity(setup),
         "effective_configuration": effective_co2_configuration(setup),
-        "ogi": installed_ogi_provenance(),
+        "ogi": ogi,
     }
 
 

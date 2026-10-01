@@ -4,17 +4,15 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-import json
 from typing import Any, Protocol
 
 import pymc as pm
 from pytensor.tensor.variable import TensorVariable
 from openghg_inversions.inversion_data import RhimePreparedInputs
 from openghg_inversions.models.coords import get_coord_registry
+from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.rhime.specs import OutputFormat, RhimeRunSpec
 
-
-_OUTPUT_FORMATS: frozenset[OutputFormat] = frozenset({"none", "inv_out", "basic", "paris", "legacy"})
 
 RhimeLikelihoodBuilder = Callable[..., TensorVariable]
 
@@ -75,47 +73,23 @@ class RhimeModelBuildResult:
                 f"`RhimeModelBuildResult.model` must be a `pymc.Model`; got {type(self.model).__name__}."
             )
 
-        roles = {str(role): str(name) for role, name in self.variable_roles.items()}
-        invalid_roles = [role for role, name in roles.items() if not role or not name]
-        if invalid_roles:
-            raise ValueError(
-                "`RhimeModelBuildResult.variable_roles` requires non-empty role and variable names; "
-                f"invalid roles: {invalid_roles!r}."
-            )
-        if not roles:
-            raise ValueError("`RhimeModelBuildResult.variable_roles` must not be empty.")
+        contract = self.output_contract
+        object.__setattr__(self, "variable_roles", dict(contract.variable_roles))
+        object.__setattr__(self, "supported_output_formats", contract.supported_output_formats)
+        object.__setattr__(self, "metadata", dict(contract.metadata))
 
-        output_formats = tuple(dict.fromkeys(self.supported_output_formats))
-        invalid_formats = sorted(set(output_formats) - _OUTPUT_FORMATS)
-        if invalid_formats:
-            raise ValueError(
-                "`RhimeModelBuildResult.supported_output_formats` contains unsupported values: "
-                f"{invalid_formats!r}."
-            )
-        if "none" not in output_formats:
-            raise ValueError(
-                "`RhimeModelBuildResult.supported_output_formats` must include 'none' so the "
-                "model remains usable without RHIME postprocessing."
-            )
-
-        metadata = dict(self.metadata)
-        try:
-            json.dumps(metadata)
-        except (TypeError, ValueError) as exc:
-            raise ValueError("`RhimeModelBuildResult.metadata` must be JSON serializable.") from exc
-
-        object.__setattr__(self, "variable_roles", roles)
-        object.__setattr__(self, "supported_output_formats", output_formats)
-        object.__setattr__(self, "metadata", metadata)
+    @property
+    def output_contract(self) -> OutputContract:
+        """Expose durable output information without retaining the model graph."""
+        return OutputContract(
+            variable_roles=self.variable_roles,
+            supported_output_formats=self.supported_output_formats,
+            metadata=self.metadata,
+        )
 
     def validate_requested_output(self, output_format: str) -> None:
         """Reject an output this model contract does not support."""
-        if output_format not in self.supported_output_formats:
-            raise ValueError(
-                f"RHIME model does not declare output_format={output_format!r} compatible. "
-                f"Declared formats: {list(self.supported_output_formats)!r}. Use output_format='none' or "
-                "select a model that explicitly supports the requested RHIME output contract."
-            )
+        self.output_contract.validate_requested_output(output_format)
 
 
 class RhimeModelBuilder(Protocol):

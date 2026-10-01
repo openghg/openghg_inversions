@@ -275,17 +275,17 @@ def make_nested_inversion_outputs(
 ) -> tuple[InversionOutput, InversionOutput]:
     """Adapt a nested RHIME result into durable outer and inner output views."""
     rhime_result = nested_result.rhime_result
-    build_result = rhime_result.model_build_result
-    if build_result is None:
-        raise ValueError("Nested RHIME result is missing its model build result.")
+    output_contract = rhime_result.output_contract
+    if output_contract is None:
+        raise ValueError("Nested RHIME result is missing its output contract.")
 
     prepared = nested_result.prepared_inputs
-    outer_trace_dim = str(build_result.metadata["outer_state_dimension"])
-    inner_trace_dim = str(build_result.metadata["inner_state_dimension"])
+    outer_trace_dim = str(output_contract.metadata["outer_state_dimension"])
+    inner_trace_dim = str(output_contract.metadata["inner_state_dimension"])
     outer_inv_out = _make_inversion_output(
         result=rhime_result,
         prepared=prepared.outer,
-        variable_roles=_domain_variable_roles(build_result.variable_roles, tag="outer"),
+        variable_roles=_domain_variable_roles(output_contract.variable_roles, tag="outer"),
         state_dimension_mapping={
             "trace": outer_trace_dim,
             "basis": prepared.outer.basis_functions.operator.meta.state_dim,
@@ -294,7 +294,7 @@ def make_nested_inversion_outputs(
     inner_inv_out = _make_inversion_output(
         result=rhime_result,
         prepared=prepared.inner,
-        variable_roles=_domain_variable_roles(build_result.variable_roles, tag="inner"),
+        variable_roles=_domain_variable_roles(output_contract.variable_roles, tag="inner"),
         state_dimension_mapping={
             "trace": inner_trace_dim,
             "basis": prepared.inner.basis_functions.operator.meta.state_dim,

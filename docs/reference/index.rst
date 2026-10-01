@@ -179,10 +179,17 @@ Outputs and serialisation
 helpers. Serialisation helpers preserve the labelled indexes required by
 prepared inputs and inference data.
 
+``OutputContract`` records model roles and explicit state mappings without a
+live graph. The output-view factory binds that metadata to prepared values
+and samples; it does not write products. See
+:doc:`staged replay </usage/staged_workflow>` for persistence.
+
 .. autosummary::
    :nosignatures:
 
    openghg_inversions.postprocessing.inversion_output.InversionOutput
+   openghg_inversions.postprocessing.contracts.OutputContract
+   openghg_inversions.postprocessing.output_views.make_inversion_output
    openghg_inversions.postprocessing.co2_flux_outputs.co2_native_flux_outputs
    openghg_inversions.postprocessing.co2_flux_outputs.co2_country_flux_outputs
    openghg_inversions.rhime.co2.co2_outputs.make_co2_rhime_result

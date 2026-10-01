@@ -14,6 +14,7 @@ import xarray as xr
 from openghg_inversions._timing import log_timing, timer_seconds, timer_start
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs
+from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.models.components import (
     add_linear_component,
     add_offset_component,
@@ -569,7 +570,8 @@ def make_multisector_rhime_result(
     prepared: RhimePreparedInputs,
     run_spec: RhimeRunSpec,
     sampler: RhimeSampler,
-    model_build_result: RhimeModelBuildResult,
+    model_build_result: RhimeModelBuildResult | None = None,
+    output_contract: OutputContract | None = None,
     idata: xr.DataTree,
     build_and_sample_seconds: float,
     model_builder: RhimeModelBuilder | None = None,
@@ -582,7 +584,9 @@ def make_multisector_rhime_result(
         prepared: Retained source-resolved inputs and basis functions.
         run_spec: Resolved model, output, and run settings.
         sampler: Sampler configuration used for the trace.
-        model_build_result: Concrete graph and semantic variable roles.
+        model_build_result: Concrete graph and roles, when retained in memory.
+        output_contract: Durable output information for graph-free reconstruction.
+            Defaults to the live build result's contract when supplied.
         idata: Sampled posterior and predictive groups.
         build_and_sample_seconds: Combined graph-build and sampling duration.
         model_builder: Optional complete-model callable used for provenance.
@@ -599,9 +603,10 @@ def make_multisector_rhime_result(
         inv_inputs=prepared.inv_inputs,
         idata=idata,
         sampler=sampler,
-        model=model_build_result.model,
+        model=model_build_result.model if model_build_result is not None else None,
         basis_functions=prepared.basis_functions,
         model_build_result=model_build_result,
+        output_contract=output_contract,
         output_metadata={"build_and_sample_seconds": build_and_sample_seconds},
     )
     if model_builder is not None:
