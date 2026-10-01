@@ -19,10 +19,9 @@ around NetCDF/Zarr limitations.
 """
 
 from pathlib import Path
-from collections.abc import Iterable, Mapping
-from typing_extensions import Self
+from collections.abc import Hashable, Iterable, Mapping
 from dataclasses import dataclass, field, replace
-from typing import Any, Hashable, Literal, cast
+from typing import Any, Literal, Self, cast
 import json
 
 import numpy as np
@@ -82,7 +81,7 @@ def filter_data_vars_by_prefix(
     """Select data variables that match the specified filters.
 
     For instance, if var_name_prefixes = 'prior', then any data variable
-    whose name begins with 'prior_' will be selected. The underscore '_' is
+    whose name begins with ``prior_`` will be selected. The underscore '_' is
     added by default, but can be changed by specifying sep.
 
     Args:

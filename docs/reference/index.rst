@@ -80,6 +80,10 @@ documents the expected variables, dimensions, and coordinates.
    openghg_inversions.rhime.co2.prepared_inputs_content_id
    openghg_inversions.rhime.co2.Co2O2PreparedInputs
    openghg_inversions.rhime.co2.prepare_co2_inputs
+   openghg_inversions.rhime.co2.stages.prepare_co2_stage
+   openghg_inversions.rhime.co2.build_rhime_co2
+   openghg_inversions.rhime.co2.build_rhime_co2_cached_sigma
+   openghg_inversions.rhime.co2.sample_co2_cached_prior_predictive
    openghg_inversions.rhime.co2.prepare_co2_o2_inputs
 
 Basis construction and state geometry
@@ -175,12 +179,22 @@ Outputs and serialisation
 helpers. Serialisation helpers preserve the labelled indexes required by
 prepared inputs and inference data.
 
+``OutputContract`` records model roles and explicit state mappings without a
+live graph. The output-view factory binds that metadata to prepared values
+and samples; it does not write products. See
+:doc:`staged replay </usage/staged_workflow>` for persistence.
+
 .. autosummary::
    :nosignatures:
 
    openghg_inversions.postprocessing.inversion_output.InversionOutput
+   openghg_inversions.postprocessing.contracts.OutputContract
+   openghg_inversions.postprocessing.output_views.make_inversion_output
    openghg_inversions.postprocessing.co2_flux_outputs.co2_native_flux_outputs
    openghg_inversions.postprocessing.co2_flux_outputs.co2_country_flux_outputs
+   openghg_inversions.rhime.co2.co2_outputs.make_co2_rhime_result
+   openghg_inversions.rhime.co2.co2_outputs.make_co2_rhime_outputs
+   openghg_inversions.rhime.co2.co2_outputs.reconstruct_co2_concentrations
    openghg_inversions.postprocessing.linked_paris_outputs.make_co2_o2_paris_outputs
    openghg_inversions.postprocessing.linked_paris_outputs.reconstruct_co2_o2_concentrations
    openghg_inversions.postprocessing.countries.Countries

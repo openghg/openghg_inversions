@@ -1,5 +1,6 @@
 import copy
 import logging
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 from unittest import mock
@@ -667,10 +668,13 @@ def test_merged_scenario_forwards_requested_output_units(
     assert merge_kwargs["output_units"] == "ppb"
 
 
+@pytest.mark.parametrize("footprint_max_level", [17, None])
 def test_merged_scenario_preserves_footprint_max_level_provenance(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    footprint_max_level: int | None,
 ) -> None:
-    """Footprint extent survives an OpenGHG merge that replaces ``max_level``."""
+    """Only a present footprint extent is saved alongside merged observations."""
     expected = xr.Dataset(attrs={"max_level": 3})
 
     class FakeModelScenario:
@@ -684,14 +688,14 @@ def test_merged_scenario_preserves_footprint_max_level_provenance(
             return expected
 
     monkeypatch.setattr(scenario_module, "ModelScenario", FakeModelScenario)
+    footprint_attrs: dict[str, str | int] = {
+        "model": "NAME",
+        "transport_model_version": "FLEXPART IFS (version 9.1_Empa)",
+    }
+    if footprint_max_level is not None:
+        footprint_attrs["max_level"] = footprint_max_level
     footprint = SimpleNamespace(
-        data=xr.Dataset(
-            attrs={
-                "max_level": 17,
-                "model": "NAME",
-                "transport_model_version": "FLEXPART IFS (version 9.1_Empa)",
-            }
-        ),
+        data=xr.Dataset(attrs=footprint_attrs),
         metadata={"model": "name", "met_model": "ECMWF IFS HRES"},
     )
 
@@ -703,10 +707,12 @@ def test_merged_scenario_preserves_footprint_max_level_provenance(
     )
 
     assert result.attrs["max_level"] == 3
-    assert result.attrs["footprint_max_level"] == 17
+    assert result.attrs.get("footprint_max_level") == footprint_max_level
+    assert ("footprint_max_level" in result.attrs) is (footprint_max_level is not None)
     assert result.attrs["footprint_transport_model"] == "NAME"
     assert result.attrs["footprint_transport_model_version"] == "FLEXPART IFS (version 9.1_Empa)"
     assert result.attrs["footprint_met_model"] == "ECMWF IFS HRES"
+    result.to_netcdf(tmp_path / "merged.nc")
 
 
 def test_missing_data_at_all_sites(openghg_test_store):

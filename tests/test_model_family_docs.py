@@ -81,7 +81,7 @@ def test_standard_reader_path_avoids_detailed_co2_material() -> None:
 
 
 def test_advanced_co2_reader_path_exposes_current_boundaries() -> None:
-    """A CO₂ reader can identify both recipes and every unavailable stage."""
+    """A CO₂ reader can identify installed replay and linked-route boundaries."""
     chooser = _source("model_recipes.rst")
     family = _source("co2_model_family.rst")
     recipes = _source("co2_models.rst")
@@ -93,11 +93,19 @@ def test_advanced_co2_reader_path_exposes_current_boundaries() -> None:
     assert "run_rhime_co2_o2_from_prepared_inputs" in family
     assert "co2_model_family" in _toctree_entries("usage.rst")
     assert _toctree_entries("co2_model_family.rst") == ["co2_models"]
-    assert "Not supported by the staged CLI" in family
+    workflow = family.split("   * - Staged workflow\n", 1)[1].split(
+        "   * - Outputs and postprocessing\n", 1
+    )[0]
+    assert "Installed ``--model co2`` stages support ordinary and cached fixed-OU" in workflow
+    assert "Not supported by the staged CLI" in workflow
+    for stage in ("prepare", "prior-predictive", "sample", "postprocess"):
+        assert f"openghg-inversions {stage} --model co2" in family
+    assert "openghg-inversions diagnose" in family
+    assert "Linked CO₂/O₂ staged routing is tracked separately in OPE-165" in family
     assert "packaged TOML template" in family
-    assert "configuration boundary for the existing Python runners" in family
+    assert "reuse the existing TOML configuration boundary and prepared-input Python runners" in family
     assert "scientist acceptance" in family
-    assert "remain future work" in family
+    assert "Scientist acceptance remains future work" in family
     assert "CO2 coherent-reduction model" in recipes
     assert "CO2/O2 shared-state model" in recipes
     assert ".. _co2-scalar-sigma-recipe:" in recipes

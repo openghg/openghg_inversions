@@ -356,3 +356,24 @@ def test_saved_multisource_bucket_preserves_time_and_matches_dense_oracle(tmp_pa
         _assert_summary(country, f"country_total_{group}", totals.sum(axis=2), ("country", "time"))
     np.testing.assert_array_equal(native.time, time_scale.time)
     np.testing.assert_array_equal(country.time, time_scale.time)
+
+
+def test_country_eager_sparse_membership_with_lazy_sparse_prolongation():
+    """Ordinary saved bucket maps mix eager countries and Dask prolongation."""
+    bound, trace, countries = _fixture()
+    expected = co2_country_flux_outputs(trace, bound, countries)
+    mapping = bound.affine_map
+    lazy_u = mapping.prolongation.copy(
+        data=da.from_array(
+            sparse.COO.from_numpy(mapping.prolongation.values.astype("float32")), chunks=(1, 1, 2, 2)
+        )
+    )
+    lazy_bound = replace(
+        bound, artifact=replace(bound.artifact, affine_map=replace(mapping, prolongation=lazy_u))
+    )
+    tasks = []
+    with Callback(pretask=lambda *args: tasks.append(args[0])):
+        actual = co2_country_flux_outputs(trace, lazy_bound, countries)
+    assert tasks == []
+    assert any(isinstance(value.data, da.Array) for value in actual.data_vars.values())
+    xr.testing.assert_allclose(actual.compute(), expected.compute())

@@ -149,7 +149,7 @@ class Co2O2RunSetup:
         )
 
 
-def _frozen(values: Mapping[str, object]) -> Mapping[str, object]:
+def _frozen(values: Mapping[str, Any]) -> Mapping[str, Any]:
     return MappingProxyType(
         {key: _frozen(value) if isinstance(value, Mapping) else value for key, value in values.items()}
     )
@@ -221,7 +221,7 @@ def _number_or_mapping(
     return checked(value, path)
 
 
-def _prior(value: object, path: str, *, positive: bool = False) -> Mapping[str, object]:
+def _prior(value: object, path: str, *, positive: bool = False) -> Mapping[str, Any]:
     prior = _table(value, path)
     pdf = _string(_take(prior, "pdf", path), f"{path}.pdf").casefold().replace("-", "")
     required = {
@@ -233,7 +233,7 @@ def _prior(value: object, path: str, *, positive: bool = False) -> Mapping[str, 
         "exponential": ("lam",),
         "uniform": ("lower", "upper"),
     }
-    result: dict[str, object] = {"pdf": pdf}
+    result: dict[str, Any] = {"pdf": pdf}
     if pdf == "lognormal":
         parameter_keys = {"mu", "sigma"}
         moment_keys = {"mean", "stdev"}
@@ -277,7 +277,7 @@ def _prepared_inputs(options: dict[str, object]) -> Mapping[str, object]:
 
 def _sampling(value: object, *, cached: bool) -> RhimeSampler:
     options = _table(value, "sampling")
-    kwargs: dict[str, object] = {}
+    kwargs: dict[str, Any] = {}
     for name in ("draws", "burn", "tune", "chains"):
         if name not in options:
             continue
@@ -314,7 +314,7 @@ def _sampling(value: object, *, cached: bool) -> RhimeSampler:
                 "sampling.sample_posterior_predictive must be a boolean or list of variable names."
             )
 
-    sample_kwargs: dict[str, object] = {}
+    sample_kwargs: dict[str, Any] = {}
     if "target_accept" in options:
         if cached:
             raise ValueError(
@@ -325,7 +325,7 @@ def _sampling(value: object, *, cached: bool) -> RhimeSampler:
         if not 0.0 < target_accept < 1.0:
             raise ValueError("sampling.target_accept must be between zero and one.")
         sample_kwargs["target_accept"] = target_accept
-    posterior_kwargs: dict[str, object] = {}
+    posterior_kwargs: dict[str, Any] = {}
     if "random_seed" in options:
         random_seed = options.pop("random_seed")
         if isinstance(random_seed, bool) or not isinstance(random_seed, int) or random_seed < 0:
@@ -353,9 +353,9 @@ def _sampling(value: object, *, cached: bool) -> RhimeSampler:
     return sampler
 
 
-def _model(value: object) -> dict[str, object]:
+def _model(value: object) -> dict[str, Any]:
     options = _table(value, "model")
-    result: dict[str, object] = {}
+    result: dict[str, Any] = {}
     if "boundary" in options:
         boundary = _table(options.pop("boundary"), "model.boundary")
         enabled = _bool(boundary.pop("enabled", True), "model.boundary.enabled")
@@ -369,7 +369,7 @@ def _model(value: object) -> dict[str, object]:
     if "offset" in options:
         offset = _table(options.pop("offset"), "model.offset")
         result["offset_prior"] = _prior(_take(offset, "prior", "model.offset"), "model.offset.prior")
-        offset_args: dict[str, object] = {}
+        offset_args: dict[str, Any] = {}
         if "frequency" in offset:
             frequency = offset.pop("frequency")
             if frequency is not None:
@@ -389,10 +389,10 @@ def _model(value: object) -> dict[str, object]:
     return result
 
 
-def _ordinary_likelihood(value: object) -> dict[str, object]:
+def _ordinary_likelihood(value: object) -> dict[str, Any]:
     options = _table(value, "likelihood")
     kind = _string(_take(options, "kind", "likelihood"), "likelihood.kind")
-    result: dict[str, object] = {}
+    result: dict[str, Any] = {}
     if kind == "additive_sigma":
         no_model_error = _bool(options.pop("no_model_error", False), "likelihood.no_model_error")
         result["no_model_error"] = no_model_error
@@ -411,7 +411,7 @@ def _ordinary_likelihood(value: object) -> dict[str, object]:
                 raise ValueError("likelihood.fixed_model_mismatch must be non-negative.")
             result["fixed_model_mismatch"] = fixed
     elif kind == "site_sigma":
-        kwargs: dict[str, object] = {}
+        kwargs: dict[str, Any] = {}
         if "fixed_site_amplitudes" in options:
             fixed_site_amplitudes = options.pop("fixed_site_amplitudes")
             if not isinstance(fixed_site_amplitudes, Mapping):
@@ -492,12 +492,12 @@ def _ordinary_likelihood(value: object) -> dict[str, object]:
     return result
 
 
-def _cached_likelihood(value: object) -> dict[str, object]:
+def _cached_likelihood(value: object) -> dict[str, Any]:
     options = _table(value, "likelihood")
     kind = _string(_take(options, "kind", "likelihood"), "likelihood.kind")
     if kind != "fixed_ou":
         raise ValueError("The cached_fixed_ou variant requires likelihood.kind='fixed_ou'.")
-    result: dict[str, object] = {
+    result: dict[str, Any] = {
         "tau_hours": _number_or_mapping(
             _take(options, "tau_hours", "likelihood"),
             "likelihood.tau_hours",
@@ -536,7 +536,7 @@ def _resolve_co2(options: dict[str, object], variant: str) -> Co2RunSetup:
     sampler = _sampling(options.pop("sampling", {}), cached=cached)
     _reject_unknown(options, "config")
     if cached:
-        runner = run_rhime_co2_cached_sigma
+        runner: Runner = run_rhime_co2_cached_sigma
         runner_kwargs = {**model, **_cached_likelihood(likelihood)}
     else:
         runner = run_rhime_co2
@@ -548,9 +548,9 @@ def _resolve_linked(options: dict[str, object], variant: str) -> Co2O2RunSetup:
     if variant not in ("linked", "cached_fixed_ou"):
         raise ValueError("recipe='co2_o2' requires variant='linked' or 'cached_fixed_ou'.")
     channels = _table(_take(options, "channels", "config"), "channels")
-    errors: dict[str, object] = {}
+    errors: dict[str, float] = {}
     units: dict[str, str] = {}
-    channel_model: dict[str, dict[str, object]] = {}
+    channel_model: dict[str, dict[str, Any]] = {}
     for name in ("co2", "o2"):
         channel = _table(_take(channels, name, "channels"), f"channels.{name}")
         channel_units = _string(_take(channel, "units", f"channels.{name}"), f"channels.{name}.units")
@@ -590,8 +590,8 @@ def _resolve_linked(options: dict[str, object], variant: str) -> Co2O2RunSetup:
         )
     cached = variant == "cached_fixed_ou"
     likelihood = options.pop("likelihood", None)
-    runner = run_rhime_co2_o2_from_prepared_inputs
-    likelihood_kwargs: dict[str, object] = {}
+    runner: Runner = run_rhime_co2_o2_from_prepared_inputs
+    likelihood_kwargs: dict[str, Any] = {}
     if cached:
         runner = run_rhime_co2_o2_cached_sigma_from_prepared_inputs
         likelihood_kwargs = _cached_likelihood(likelihood)

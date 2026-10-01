@@ -167,7 +167,10 @@ def test_aggregation_covariance_and_reported_error_are_counted_once(mode: str) -
     )
 
     assert _likelihood_logp(model) == pytest.approx(expected, rel=1e-6)
-    np.testing.assert_allclose(model["epsilon"].eval() ** 2, np.diag(expected_covariance))
+    epsilon_squared = model["epsilon"].eval() ** 2
+    # The labelled PyMC graph uses the configured float dtype.
+    rtol = 5e-7 if epsilon_squared.dtype == np.float32 else 1e-7
+    np.testing.assert_allclose(epsilon_squared, np.diag(expected_covariance), rtol=rtol)
 
 
 def test_low_rank_logp_matches_the_four_row_reference_fixture() -> None:

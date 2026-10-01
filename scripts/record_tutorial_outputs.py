@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import base64
 from contextlib import contextmanager
 from dataclasses import dataclass
 import os
 from pathlib import Path
 import subprocess
 import sys
-from typing import Iterator, Sequence
+from collections.abc import Iterator, Sequence
 
 import nbformat
 
@@ -24,6 +25,7 @@ _RECORDER_HOME = _RUN_DIRECTORY / "home"
 _TUTORIALS = {
     "rhime_standard_tutorial": _ROOT / "docs" / "usage" / "rhime_standard_tutorial.rst",
     "rhime_multisector_tutorial": _ROOT / "docs" / "usage" / "rhime_multisector_tutorial.rst",
+    "prior_predictive_checking": _ROOT / "docs" / "usage" / "prior_predictive_checking.rst",
 }
 
 
@@ -91,13 +93,15 @@ def _replace_outputs(document: str, outputs: Sequence[str]) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
-def _recorded_outputs(notebook: nbformat.NotebookNode) -> list[str]:
-    """Extract stable text outputs from executed code cells."""
+def _recorded_outputs(notebook: nbformat.NotebookNode, *, name: str | None = None) -> list[str]:
+    """Extract text results and save displayed PNGs beside the tutorial assets."""
     recorded: list[str] = []
     for cell in notebook.cells:
         if cell.cell_type != "code":
             continue
+        cell_number = len(recorded) + 1
         text_outputs: list[str] = []
+        image_number = 0
         for output in cell.get("outputs", []):
             output_type = output.get("output_type")
             if output_type == "error":
@@ -105,6 +109,12 @@ def _recorded_outputs(notebook: nbformat.NotebookNode) -> list[str]:
             if output_type == "stream":
                 continue
             data = output.get("data", {})
+            if "image/png" in data and name is not None:
+                image_number += 1
+                directory = _ROOT / "docs" / "_static" / "tutorials"
+                directory.mkdir(parents=True, exist_ok=True)
+                image_path = directory / f"{name}-{cell_number}-{image_number}.png"
+                image_path.write_bytes(base64.b64decode(data["image/png"]))
             if output_type == "execute_result" and "text/plain" in data:
                 text_outputs.append(str(data["text/plain"]).rstrip())
         if not text_outputs:
@@ -162,7 +172,7 @@ def _execute_notebook(name: str, code_ref: str) -> list[str]:
     executor = ExecutePreprocessor(timeout=7200, kernel_name="python3")
     with _recording_environment(code_ref, output_path):
         executor.preprocess(notebook, {"metadata": {"path": str(run_directory)}})
-    return _recorded_outputs(notebook)
+    return _recorded_outputs(notebook, name=name)
 
 
 def _build_docs() -> None:
@@ -178,17 +188,19 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     """Parse the explicit recorder command line."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data-directory", type=Path, default=_DEFAULT_DATA_DIRECTORY)
+    parser.add_argument("--tutorial", choices=list(_TUTORIALS), action="append")
     return parser.parse_args(argv)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Refresh both tutorials from one clean code commit and data release."""
+    """Refresh selected tutorials from one clean code commit and data release."""
     args = parse_args(argv)
     code_ref = _require_clean_checkout()
     _prepare_data(args.data_directory.resolve())
     _build_docs()
     refreshed: dict[Path, str] = {}
-    for name, document_path in _TUTORIALS.items():
+    for name in args.tutorial or _TUTORIALS:
+        document_path = _TUTORIALS[name]
         document = document_path.read_text(encoding="utf-8")
         refreshed[document_path] = _replace_outputs(
             document,

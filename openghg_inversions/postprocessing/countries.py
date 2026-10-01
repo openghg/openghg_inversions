@@ -7,8 +7,7 @@ import warnings
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
-from typing import cast, Literal, TypeVar
-from typing_extensions import Self
+from typing import cast, Literal, Self, TypeVar
 
 import xarray as xr
 from openghg_inversions import convert, utils
@@ -227,7 +226,7 @@ class CountryRegions:
         """
         country_list = CountryInfoList(country_list)
 
-        missing = defaultdict(CountryInfoList)
+        missing: defaultdict[str, CountryInfoList] = defaultdict(CountryInfoList)
 
         for region, region_countries in self.to_dict().items():
             for rc in region_countries:

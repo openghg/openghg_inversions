@@ -14,12 +14,17 @@ from .co2_affine_output import (
 )
 from .co2_preparation import Co2PreparedInputs, prepare_co2_inputs
 from .co2_runner import (
+    annotate_co2_trace,
+    build_rhime_co2,
     co2_model_input_names,
     prepare_co2_scalar_sigma_eigenbasis,
     run_rhime_co2,
 )
 from .co2_cached_sigma_model import Co2CachedSigmaModel, build_co2_cached_sigma_model
 from .co2_cached_sigma_runner import (
+    build_rhime_co2_cached_sigma,
+    co2_cached_sigma_build_result,
+    sample_co2_cached_prior_predictive,
     co2_cached_sigma_input_names,
     run_rhime_co2_cached_sigma,
 )
@@ -46,8 +51,13 @@ __all__ = [
     "BoundCo2AffineFluxMap",
     "Co2CachedSigmaModel",
     "Co2RunSetup",
+    "annotate_co2_trace",
+    "sample_co2_cached_prior_predictive",
     "build_co2_cached_sigma_model",
     "build_co2_model",
+    "build_rhime_co2",
+    "build_rhime_co2_cached_sigma",
+    "co2_cached_sigma_build_result",
     "build_co2_o2_model",
     "build_co2_o2_cached_sigma_model",
     "co2_model_input_names",

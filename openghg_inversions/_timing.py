@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from collections.abc import Iterator
 from time import perf_counter
-from typing import Any, Iterator
+from typing import Any
 import resource
 import sys
 

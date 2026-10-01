@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import date, datetime, time, timedelta
 import json
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 import numpy as np
 import pymc as pm
@@ -16,7 +16,9 @@ import xarray as xr
 from openghg_inversions._timing import timed
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.inversion_data import RhimePreparedInputs
+from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
+from openghg_inversions.postprocessing.output_views import make_inversion_output
 from openghg_inversions.rhime.builders import RhimeModelBuildResult
 from openghg_inversions.rhime.sampling import RhimeSampler
 from openghg_inversions.rhime.specs import (
@@ -31,7 +33,7 @@ from openghg_inversions.utils import ncdf_encoding, write_netcdf_preserving_boun
 
 @dataclass
 class RhimeResult:
-    """Complete result of a standard or multisector RHIME recipe.
+    """Complete result of a concrete RHIME recipe, including coherent CO2.
 
     Args:
         run_spec: Top-level dates, sites, model, and output settings for the run.
@@ -50,6 +52,8 @@ class RhimeResult:
             :class:`RhimeSampler` is used by default.
         model_build_result: Model, variable-role manifest, and builder metadata,
             when available.
+        output_contract: Durable scientific roles and reconstruction mapping.
+            Defaults to the live build result contract when one is supplied.
     """
 
     run_spec: RhimeRunSpec
@@ -64,6 +68,12 @@ class RhimeResult:
     inv_out: InversionOutput | None = None
     sampler: RhimeSampler = field(default_factory=RhimeSampler)
     model_build_result: RhimeModelBuildResult | None = None
+    output_contract: OutputContract | None = None
+
+    def __post_init__(self) -> None:
+        """Retain output information independently of the optional live model."""
+        if self.output_contract is None and self.model_build_result is not None:
+            self.output_contract = self.model_build_result.output_contract
 
 
 def annotate_likelihood_trace(
@@ -247,7 +257,7 @@ def _make_inversion_output(
         result: Sampled recipe result and model-owned output contract.
         prepared: Retained canonical inputs and basis functions.
         variable_roles: Optional override for the semantic role-to-variable
-            mapping. Defaults to ``result.model_build_result.variable_roles``.
+            mapping. Defaults to ``result.output_contract.variable_roles``.
             Nested RHIME passes a per-domain override here: its builder
             declares tagged roles (``"flux_scale:outer"``, ``"flux_scale:inner"``,
             etc.) so one shared trace can be viewed as two ordinary,
@@ -260,44 +270,33 @@ def _make_inversion_output(
     Returns:
         Complete modern inversion-output artifact.
     """
-    model_build_result = cast(RhimeModelBuildResult, result.model_build_result)
-    model_metadata = cast(dict[str, Any], _structured_metadata(asdict(result.model_spec)))
-    model_metadata["footprint_provenance"] = {
-        str(site): {
-            name: str(prepared.site_metadata[name].sel(site=site).item())
-            for name in ("transport_model", "transport_model_version", "met_model")
-            if name in prepared.site_metadata
-        }
-        for site in prepared.sites
-    }
-    model_metadata["variable_roles"] = (
-        dict(model_build_result.variable_roles) if variable_roles is None else dict(variable_roles)
-    )
-    if state_dimension_mapping is not None:
-        mapping = {str(key): str(value) for key, value in state_dimension_mapping.items()}
-        if set(mapping) != {"trace", "basis"}:
-            raise ValueError("State-dimension mappings require exactly the keys 'trace' and 'basis'.")
-        model_metadata["state_dimension_mapping"] = mapping
-    builder_metadata = dict(model_build_result.metadata)
+    contract = result.output_contract
+    if contract is None:
+        raise ValueError("RHIME result is missing its scientific output contract.")
+    builder_metadata = dict(contract.metadata)
     for key in ("model_builder", "likelihood_builder", "likelihood_kwargs"):
         if key in result.output_metadata:
             builder_metadata[key] = result.output_metadata[key]
-    if builder_metadata:
-        model_metadata["builder"] = _structured_metadata(builder_metadata)
-    return InversionOutput(
-        inv_inputs=prepared.inv_inputs,
-        basis_functions=prepared.basis_functions,
+    contract = replace(
+        contract,
+        variable_roles=contract.variable_roles if variable_roles is None else variable_roles,
+        state_dimension_mapping=(
+            contract.state_dimension_mapping if state_dimension_mapping is None else state_dimension_mapping
+        ),
+        metadata=_structured_metadata(builder_metadata),
+    )
+    return make_inversion_output(
+        prepared=prepared,
         trace=result.idata,
+        contract=contract,
         run_metadata={
             "start_date": result.run_spec.start_date,
             "end_date": result.run_spec.end_date,
             "sites": list(result.run_spec.sites),
             "averaging_period": list(result.run_spec.averaging_period),
             "split_by_sectors": result.run_spec.split_by_sectors,
-            "basis_artifact_source": prepared.basis_artifact_source,
-            "basis_artifact_path": prepared.basis_artifact_path,
         },
-        model_metadata=model_metadata,
+        model_metadata=_structured_metadata(asdict(result.model_spec)),
         output_metadata={
             "output_format": result.output_spec.output_format,
             "output_path": result.output_spec.output_path,
