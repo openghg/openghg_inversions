@@ -393,9 +393,11 @@
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_model.html">openghg_inversions.rhime.co2.co2_o2_model</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_preparation.html">openghg_inversions.rhime.co2.co2_o2_preparation</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_runner.html">openghg_inversions.rhime.co2.co2_o2_runner</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_outputs.html">openghg_inversions.rhime.co2.co2_outputs</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_preparation.html">openghg_inversions.rhime.co2.co2_preparation</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_runner.html">openghg_inversions.rhime.co2.co2_runner</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.configuration.html">openghg_inversions.rhime.co2.configuration</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.stages.html">openghg_inversions.rhime.co2.stages</a></li>
 </ul>
 </details></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.builders.html">openghg_inversions.rhime.builders</a></li>
@@ -877,6 +879,63 @@ configuration. <code class="docutils literal notranslate"><span class="pre">path
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.annotate_co2_trace">
+<span class="sig-name descname"><span class="pre">annotate_co2_trace</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">trace</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">built</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">concentration_units</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.annotate_co2_trace" title="Link to this definition">#</a></dt>
+<dd><p>Persist CO2 scientific roles and units on prior or posterior output.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>trace</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.9.0)"><em>DataTree</em></a>) – PyMC sample groups represented as a DataTree, annotated in place.</p></li>
+<li><p><strong>built</strong> (<a class="reference internal" href="openghg_inversions.rhime.builders.html#openghg_inversions.rhime.builders.RhimeModelBuildResult" title="openghg_inversions.rhime.builders.RhimeModelBuildResult"><em>RhimeModelBuildResult</em></a>) – Concrete model with the CO2 variable-role and provenance mapping.</p></li>
+<li><p><strong>concentration_units</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Observation concentration units, or <code class="docutils literal notranslate"><span class="pre">None</span></code> to
+omit concentration-unit attributes.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The annotated trace.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.9.0)"><em>DataTree</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.sample_co2_cached_prior_predictive">
+<span class="sig-name descname"><span class="pre">sample_co2_cached_prior_predictive</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">cached_model</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">prepared_inputs</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">draws</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">500</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">random_seed</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.sample_co2_cached_prior_predictive" title="Link to this definition">#</a></dt>
+<dd><p>Draw cached CO2 priors and exact correlated observation replicates.</p>
+<p>The cached Potential is used exclusively for the matched posterior sampler.
+Prior replicates instead use the numerical fixed-OU target with each prior
+draw’s model mean and site amplitudes, retaining the full covariance.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>cached_model</strong> (<a class="reference internal" href="openghg_inversions.rhime.co2.co2_cached_sigma_model.html#openghg_inversions.rhime.co2.co2_cached_sigma_model.Co2CachedSigmaModel" title="openghg_inversions.rhime.co2.co2_cached_sigma_model.Co2CachedSigmaModel"><em>Co2CachedSigmaModel</em></a>) – Graph built from the supplied prepared inputs.</p></li>
+<li><p><strong>prepared_inputs</strong> (<a class="reference internal" href="openghg_inversions.rhime.co2.co2_preparation.html#openghg_inversions.rhime.co2.co2_preparation.Co2PreparedInputs" title="openghg_inversions.rhime.co2.co2_preparation.Co2PreparedInputs"><em>Co2PreparedInputs</em></a>) – Prepared observations and basis provenance.</p></li>
+<li><p><strong>draws</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a>) – Number of prior draws.</p></li>
+<li><p><strong>random_seed</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em> | </em><em>None</em>) – Optional reproducible seed for priors and joint replicates.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Annotated prior, prior-predictive, observed-data, and constant groups.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.9.0)"><em>DataTree</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.co2.build_co2_cached_sigma_model">
 <span class="sig-name descname"><span class="pre">build_co2_cached_sigma_model</span></span><span class="sig-paren">(</span>
 
@@ -1075,6 +1134,149 @@ and Gaussian likelihood.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><a class="reference external" href="https://www.pymc.io/projects/docs/en/stable/api/model/generated/pymc.model.core.Model.html#pymc.model.core.Model" title="(in PyMC v6.3.2)"><em>Model</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.build_rhime_co2">
+<span class="sig-name descname"><span class="pre">build_rhime_co2</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">prepared_inputs</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">sigma_alignment</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">sigma_prior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">fixed_model_mismatch</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">likelihood_builder</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">likelihood_kwargs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">no_model_error</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">use_bc</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">bc_prior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">bc_state_activity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">offset_prior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">offset_args</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.build_rhime_co2" title="Link to this definition">#</a></dt>
+<dd><p>Materialize and build the CO2 coherent-reduction model without sampling.</p>
+<p>This callable is the public production replay seam for an already
+validated <a class="reference internal" href="#openghg_inversions.rhime.co2.Co2PreparedInputs" title="openghg_inversions.rhime.co2.Co2PreparedInputs"><code class="xref py py-class docutils literal notranslate"><span class="pre">Co2PreparedInputs</span></code></a> artifact. It alone unpacks the
+prepared dataset and constructs the complete retained prior; the model
+builder receives named scientific values.</p>
+<p><code class="docutils literal notranslate"><span class="pre">fixed_model_mismatch=None</span></code> preserves a prepared fixed-mismatch field if
+present, otherwise omits the term. An explicit scalar or labelled vector
+overrides prepared data. By default, inferred model error varies by site
+over one shared time period. An explicit <code class="docutils literal notranslate"><span class="pre">sigma_alignment</span></code> overrides
+that alignment; <code class="docutils literal notranslate"><span class="pre">no_model_error=True</span></code> disables inferred model error.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>prepared_inputs</strong> (<a class="reference internal" href="openghg_inversions.rhime.co2.co2_preparation.html#openghg_inversions.rhime.co2.co2_preparation.Co2PreparedInputs" title="openghg_inversions.rhime.co2.co2_preparation.Co2PreparedInputs"><em>Co2PreparedInputs</em></a>) – Validated coherent-reduction inputs for the CO2
+recipe.</p></li>
+<li><p><strong>sigma_alignment</strong> (<a class="reference internal" href="openghg_inversions.sigma.html#openghg_inversions.sigma.SigmaAlignment" title="openghg_inversions.sigma.SigmaAlignment"><em>SigmaAlignment</em></a><em> | </em><em>None</em>) – Optional grouping policy for inferred additive model
+error. The default is derived from the prepared site indicator.</p></li>
+<li><p><strong>sigma_prior</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Optional prior arguments for inferred additive model
+error.</p></li>
+<li><p><strong>fixed_model_mismatch</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a><em> | </em><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a><em> | </em><em>None</em>) – Optional known scalar or labelled mismatch
+standard deviation. When omitted, a prepared value is preserved.</p></li>
+<li><p><strong>likelihood_builder</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Callable" title="(in Python v3.14)"><em>Callable</em></a><em>[</em><em>[</em><em>...</em><em>]</em><em>, </em><em>TensorVariable</em><em>] </em><em>| </em><em>None</em>) – Optional ordinary likelihood component replacing
+the default additive-sigma likelihood.</p></li>
+<li><p><strong>likelihood_kwargs</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.14)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Options passed only to the selected likelihood. For
+the scalar-sigma eigen likelihood, pass an <code class="docutils literal notranslate"><span class="pre">eigenbasis_path</span></code> and
+<code class="docutils literal notranslate"><span class="pre">sigma_prior</span></code>; the cache is loaded before model construction.</p></li>
+<li><p><strong>no_model_error</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – If true, omit inferred additive model error.</p></li>
+<li><p><strong>use_bc</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – Whether to include prepared <code class="docutils literal notranslate"><span class="pre">H_bc</span></code> boundary sensitivity.</p></li>
+<li><p><strong>bc_prior</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Optional prior for boundary-condition scaling.</p></li>
+<li><p><strong>bc_state_activity</strong> (<a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.StateActivity" title="openghg_inversions.models.state_activity.StateActivity"><em>StateActivity</em></a><em> | </em><em>None</em>) – Optional active/fixed boundary-state policy.</p></li>
+<li><p><strong>offset_prior</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Optional prior for an offset component. When omitted, no
+offset is added.</p></li>
+<li><p><strong>offset_args</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.14)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Optional offset settings: <code class="docutils literal notranslate"><span class="pre">offset_freq</span></code>, <code class="docutils literal notranslate"><span class="pre">drop_first</span></code>,
+and <code class="docutils literal notranslate"><span class="pre">per_site</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Concrete model with CO2 variable roles and serializable provenance.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If model-error options contradict <code class="docutils literal notranslate"><span class="pre">no_model_error</span></code>, or
+    prepared inputs are missing, inconsistent, or fail model
+    construction.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="openghg_inversions.rhime.builders.html#openghg_inversions.rhime.builders.RhimeModelBuildResult" title="openghg_inversions.rhime.builders.RhimeModelBuildResult"><em>RhimeModelBuildResult</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.build_rhime_co2_cached_sigma">
+<span class="sig-name descname"><span class="pre">build_rhime_co2_cached_sigma</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">prepared_inputs</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">tau_hours</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">site_amplitude_prior_scale</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">initial_site_amplitudes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">use_bc</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">bc_prior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">bc_state_activity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">offset_prior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">offset_args</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.build_rhime_co2_cached_sigma" title="Link to this definition">#</a></dt>
+<dd><p>Materialize and build the matched cached fixed-OU graph without sampling.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>prepared_inputs</strong> (<a class="reference internal" href="openghg_inversions.rhime.co2.co2_preparation.html#openghg_inversions.rhime.co2.co2_preparation.Co2PreparedInputs" title="openghg_inversions.rhime.co2.co2_preparation.Co2PreparedInputs"><em>Co2PreparedInputs</em></a>) – Validated CO2 inputs with observation-aligned site and
+time coordinates and the selected aggregation-error representation.</p></li>
+<li><p><strong>tau_hours</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.14)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a><em>]</em>) – Fixed OU decorrelation time in hours, as a scalar or a
+mapping covering all observed sites.</p></li>
+<li><p><strong>site_amplitude_prior_scale</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a>) – HalfNormal site-amplitude prior scale in
+observation concentration units.</p></li>
+<li><p><strong>initial_site_amplitudes</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.14)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a><em>] </em><em>| </em><em>None</em>) – Positive scalar or site mapping in the same
+units; defaults to the prior scale.</p></li>
+<li><p><strong>use_bc</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – Include prepared boundary sensitivity <code class="docutils literal notranslate"><span class="pre">H_bc</span></code>.</p></li>
+<li><p><strong>bc_prior</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Optional boundary-scaling prior.</p></li>
+<li><p><strong>bc_state_activity</strong> (<a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.StateActivity" title="openghg_inversions.models.state_activity.StateActivity"><em>StateActivity</em></a><em> | </em><em>None</em>) – Optional active/fixed boundary-state policy.</p></li>
+<li><p><strong>offset_prior</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Optional offset prior; omit to disable the component.</p></li>
+<li><p><strong>offset_args</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.14)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Offset settings <code class="docutils literal notranslate"><span class="pre">offset_freq</span></code>, <code class="docutils literal notranslate"><span class="pre">drop_first</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">per_site</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Concrete graph and numerical target required by the matched sampler.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If component options contradict one another, prepared
+    arrays are invalid, or fixed OU mappings or parameters are invalid.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="openghg_inversions.rhime.co2.co2_cached_sigma_model.html#openghg_inversions.rhime.co2.co2_cached_sigma_model.Co2CachedSigmaModel" title="openghg_inversions.rhime.co2.co2_cached_sigma_model.Co2CachedSigmaModel"><em>Co2CachedSigmaModel</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.co2_cached_sigma_build_result">
+<span class="sig-name descname"><span class="pre">co2_cached_sigma_build_result</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cached_model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prepared_inputs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_cached_sigma_build_result" title="Link to this definition">#</a></dt>
+<dd><p>Describe a built cached graph for sampling and stored output metadata.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>cached_model</strong> (<a class="reference internal" href="openghg_inversions.rhime.co2.co2_cached_sigma_model.html#openghg_inversions.rhime.co2.co2_cached_sigma_model.Co2CachedSigmaModel" title="openghg_inversions.rhime.co2.co2_cached_sigma_model.Co2CachedSigmaModel"><em>Co2CachedSigmaModel</em></a>) – Graph returned by <a class="reference internal" href="#openghg_inversions.rhime.co2.build_rhime_co2_cached_sigma" title="openghg_inversions.rhime.co2.build_rhime_co2_cached_sigma"><code class="xref py py-func docutils literal notranslate"><span class="pre">build_rhime_co2_cached_sigma()</span></code></a>.</p></li>
+<li><p><strong>prepared_inputs</strong> (<a class="reference internal" href="openghg_inversions.rhime.co2.co2_preparation.html#openghg_inversions.rhime.co2.co2_preparation.Co2PreparedInputs" title="openghg_inversions.rhime.co2.co2_preparation.Co2PreparedInputs"><em>Co2PreparedInputs</em></a>) – Prepared inputs used to build the graph, providing
+basis provenance.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Model build result with scientific roles and serializable provenance.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="openghg_inversions.rhime.builders.html#openghg_inversions.rhime.builders.RhimeModelBuildResult" title="openghg_inversions.rhime.builders.RhimeModelBuildResult"><em>RhimeModelBuildResult</em></a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -1642,16 +1844,14 @@ runners.</p>
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.run_rhime_co2" title="Link to this definition">#</a></dt>
 <dd><p>Materialize, build, and sample the CO2 coherent-reduction model.</p>
 <p>This callable is the public production replay seam for an already
-validated <a class="reference internal" href="#openghg_inversions.rhime.co2.Co2PreparedInputs" title="openghg_inversions.rhime.co2.Co2PreparedInputs"><code class="xref py py-class docutils literal notranslate"><span class="pre">Co2PreparedInputs</span></code></a> artifact. It alone unpacks the
-prepared dataset and constructs the complete retained prior; the model
-builder receives named scientific values.</p>
+validated <a class="reference internal" href="#openghg_inversions.rhime.co2.Co2PreparedInputs" title="openghg_inversions.rhime.co2.Co2PreparedInputs"><code class="xref py py-class docutils literal notranslate"><span class="pre">Co2PreparedInputs</span></code></a> artifact. It delegates labelled input
+materialization and retained-prior construction to <a class="reference internal" href="#openghg_inversions.rhime.co2.build_rhime_co2" title="openghg_inversions.rhime.co2.build_rhime_co2"><code class="xref py py-func docutils literal notranslate"><span class="pre">build_rhime_co2()</span></code></a>,
+then samples and annotates the resulting graph.</p>
 <p><code class="docutils literal notranslate"><span class="pre">fixed_model_mismatch=None</span></code> preserves a prepared fixed-mismatch field if
 present, otherwise omits the term. An explicit scalar or labelled vector
 overrides prepared data. By default, inferred model error varies by site
 over one shared time period. An explicit <code class="docutils literal notranslate"><span class="pre">sigma_alignment</span></code> overrides
-that alignment; <code class="docutils literal notranslate"><span class="pre">no_model_error=True</span></code> disables inferred model error.
-The Verification Games fixed-likelihood harness passes 1 ppm and disables
-inferred model error.</p>
+that alignment; <code class="docutils literal notranslate"><span class="pre">no_model_error=True</span></code> disables inferred model error.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -1758,7 +1958,9 @@ and <code class="docutils literal notranslate"><span class="pre">per_site</span>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>Sampled DataTree with the normalized joint log likelihood as one
 value per complete observation vector and, when requested, correlated
-joint posterior-predictive vectors.</p>
+joint prior- and posterior-predictive vectors. A true prior-predictive
+setting uses the retained posterior draw count; an integer requests
+exactly that many prior draws.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If prepared arrays, labels, numerical inputs, or model
@@ -1917,8 +2119,11 @@ posterior, prior, observed-data and joint likelihood groups.</p>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_cached_sigma_runner.html">openghg_inversions.rhime.co2.co2_cached_sigma_runner</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_cached_sigma_runner.html#openghg_inversions.rhime.co2.co2_cached_sigma_runner.build_rhime_co2_cached_sigma"><code class="docutils literal notranslate"><span class="pre">build_rhime_co2_cached_sigma()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_cached_sigma_runner.html#openghg_inversions.rhime.co2.co2_cached_sigma_runner.co2_cached_sigma_build_result"><code class="docutils literal notranslate"><span class="pre">co2_cached_sigma_build_result()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_cached_sigma_runner.html#openghg_inversions.rhime.co2.co2_cached_sigma_runner.co2_cached_sigma_input_names"><code class="docutils literal notranslate"><span class="pre">co2_cached_sigma_input_names()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_cached_sigma_runner.html#openghg_inversions.rhime.co2.co2_cached_sigma_runner.run_rhime_co2_cached_sigma"><code class="docutils literal notranslate"><span class="pre">run_rhime_co2_cached_sigma()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_cached_sigma_runner.html#openghg_inversions.rhime.co2.co2_cached_sigma_runner.sample_co2_cached_prior_predictive"><code class="docutils literal notranslate"><span class="pre">sample_co2_cached_prior_predictive()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_model.html">openghg_inversions.rhime.co2.co2_model</a><ul>
@@ -1951,6 +2156,14 @@ posterior, prior, observed-data and joint likelihood groups.</p>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_runner.html#openghg_inversions.rhime.co2.co2_o2_runner.run_rhime_co2_o2_from_prepared_inputs"><code class="docutils literal notranslate"><span class="pre">run_rhime_co2_o2_from_prepared_inputs()</span></code></a></li>
 </ul>
 </li>
+<li class="toctree-l1"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_outputs.html">openghg_inversions.rhime.co2.co2_outputs</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_outputs.html#openghg_inversions.rhime.co2.co2_outputs.validate_co2_output_spec"><code class="docutils literal notranslate"><span class="pre">validate_co2_output_spec()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_outputs.html#openghg_inversions.rhime.co2.co2_outputs.validate_co2_outputs"><code class="docutils literal notranslate"><span class="pre">validate_co2_outputs()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_outputs.html#openghg_inversions.rhime.co2.co2_outputs.make_co2_rhime_result"><code class="docutils literal notranslate"><span class="pre">make_co2_rhime_result()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_outputs.html#openghg_inversions.rhime.co2.co2_outputs.make_co2_rhime_outputs"><code class="docutils literal notranslate"><span class="pre">make_co2_rhime_outputs()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_outputs.html#openghg_inversions.rhime.co2.co2_outputs.reconstruct_co2_concentrations"><code class="docutils literal notranslate"><span class="pre">reconstruct_co2_concentrations()</span></code></a></li>
+</ul>
+</li>
 <li class="toctree-l1"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_preparation.html">openghg_inversions.rhime.co2.co2_preparation</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_preparation.html#openghg_inversions.rhime.co2.co2_preparation.Co2PreparedInputs"><code class="docutils literal notranslate"><span class="pre">Co2PreparedInputs</span></code></a><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_preparation.html#openghg_inversions.rhime.co2.co2_preparation.Co2PreparedInputs.inv_inputs"><code class="docutils literal notranslate"><span class="pre">Co2PreparedInputs.inv_inputs</span></code></a></li>
@@ -1971,6 +2184,8 @@ posterior, prior, observed-data and joint likelihood groups.</p>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_runner.html">openghg_inversions.rhime.co2.co2_runner</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_runner.html#openghg_inversions.rhime.co2.co2_runner.annotate_co2_trace"><code class="docutils literal notranslate"><span class="pre">annotate_co2_trace()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_runner.html#openghg_inversions.rhime.co2.co2_runner.build_rhime_co2"><code class="docutils literal notranslate"><span class="pre">build_rhime_co2()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_runner.html#openghg_inversions.rhime.co2.co2_runner.co2_model_input_names"><code class="docutils literal notranslate"><span class="pre">co2_model_input_names()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_runner.html#openghg_inversions.rhime.co2.co2_runner.prepare_co2_scalar_sigma_eigenbasis"><code class="docutils literal notranslate"><span class="pre">prepare_co2_scalar_sigma_eigenbasis()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_runner.html#openghg_inversions.rhime.co2.co2_runner.run_rhime_co2"><code class="docutils literal notranslate"><span class="pre">run_rhime_co2()</span></code></a></li>
@@ -1988,6 +2203,15 @@ posterior, prior, observed-data and joint likelihood groups.</p>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.configuration.html#openghg_inversions.rhime.co2.configuration.co2_config_templates"><code class="docutils literal notranslate"><span class="pre">co2_config_templates()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.configuration.html#openghg_inversions.rhime.co2.configuration.load_co2_family_config"><code class="docutils literal notranslate"><span class="pre">load_co2_family_config()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.configuration.html#openghg_inversions.rhime.co2.configuration.resolve_co2_family_config"><code class="docutils literal notranslate"><span class="pre">resolve_co2_family_config()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="openghg_inversions.rhime.co2.stages.html">openghg_inversions.rhime.co2.stages</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.stages.html#openghg_inversions.rhime.co2.stages.Co2StageSetup"><code class="docutils literal notranslate"><span class="pre">Co2StageSetup</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.stages.html#openghg_inversions.rhime.co2.stages.resolve_co2_stage_setup"><code class="docutils literal notranslate"><span class="pre">resolve_co2_stage_setup()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.stages.html#openghg_inversions.rhime.co2.stages.prepare_co2_stage"><code class="docutils literal notranslate"><span class="pre">prepare_co2_stage()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.stages.html#openghg_inversions.rhime.co2.stages.prior_predictive_co2_stage"><code class="docutils literal notranslate"><span class="pre">prior_predictive_co2_stage()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.stages.html#openghg_inversions.rhime.co2.stages.sample_co2_stage"><code class="docutils literal notranslate"><span class="pre">sample_co2_stage()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.stages.html#openghg_inversions.rhime.co2.stages.postprocess_co2_stage"><code class="docutils literal notranslate"><span class="pre">postprocess_co2_stage()</span></code></a></li>
 </ul>
 </li>
 </ul>
@@ -2072,8 +2296,13 @@ posterior, prior, observed-data and joint likelihood groups.</p>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.Co2RunSetup.runner_arguments"><code class="docutils literal notranslate"><span class="pre">Co2RunSetup.runner_arguments()</span></code></a></li>
 </ul>
 </li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.annotate_co2_trace"><code class="docutils literal notranslate"><span class="pre">annotate_co2_trace()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.sample_co2_cached_prior_predictive"><code class="docutils literal notranslate"><span class="pre">sample_co2_cached_prior_predictive()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.build_co2_cached_sigma_model"><code class="docutils literal notranslate"><span class="pre">build_co2_cached_sigma_model()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.build_co2_model"><code class="docutils literal notranslate"><span class="pre">build_co2_model()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.build_rhime_co2"><code class="docutils literal notranslate"><span class="pre">build_rhime_co2()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.build_rhime_co2_cached_sigma"><code class="docutils literal notranslate"><span class="pre">build_rhime_co2_cached_sigma()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_cached_sigma_build_result"><code class="docutils literal notranslate"><span class="pre">co2_cached_sigma_build_result()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.build_co2_o2_model"><code class="docutils literal notranslate"><span class="pre">build_co2_o2_model()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.build_co2_o2_cached_sigma_model"><code class="docutils literal notranslate"><span class="pre">build_co2_o2_cached_sigma_model()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_model_input_names"><code class="docutils literal notranslate"><span class="pre">co2_model_input_names()</span></code></a></li>

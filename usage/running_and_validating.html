@@ -415,8 +415,10 @@
 <h1>Running and validating inversions<a class="headerlink" href="#running-and-validating-inversions" title="Link to this heading">#</a></h1>
 <p>Use the staged workflow to separate preparation, prior prediction, sampling,
 diagnosis, and postprocessing into inspectable artifacts. It currently supports
-the standard and multisector model recipes; the CO₂ model family does not have
-a staged CLI route.</p>
+standard, multisector and CO₂-only model recipes. The CO₂-only route accepts
+a saved coherent prepared-input artifact and supports ordinary and cached
+fixed-OU execution; see <a class="reference internal" href="co2_model_family.html"><span class="doc">CO₂ model family</span></a> for its commands and output
+boundary. Linked CO₂/O₂ staging remains follow-up work.</p>
 <p>Scientific validation is broader than a successful software run. Interpret
 convergence diagnostics and predictive checks using the
 <a class="reference internal" href="rhime_standard_tutorial.html#standard-rhime-diagnostics"><span class="std std-ref">standard tutorial diagnostic workflow</span></a> and

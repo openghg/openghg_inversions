@@ -393,9 +393,11 @@
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_model.html">openghg_inversions.rhime.co2.co2_o2_model</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_preparation.html">openghg_inversions.rhime.co2.co2_o2_preparation</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_runner.html">openghg_inversions.rhime.co2.co2_o2_runner</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_outputs.html">openghg_inversions.rhime.co2.co2_outputs</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_preparation.html">openghg_inversions.rhime.co2.co2_preparation</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_runner.html">openghg_inversions.rhime.co2.co2_runner</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.configuration.html">openghg_inversions.rhime.co2.configuration</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.stages.html">openghg_inversions.rhime.co2.stages</a></li>
 </ul>
 </details></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.builders.html">openghg_inversions.rhime.builders</a></li>
@@ -560,7 +562,7 @@ the RHIME runners.</p>
 <td><p>PyMC sampler configuration and execution for RHIME models.</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.RhimeResult" title="openghg_inversions.rhime.RhimeResult"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.RhimeResult</span></code></a></p></td>
-<td><p>Complete result of a standard or multisector RHIME recipe.</p></td>
+<td><p>Complete result of a concrete RHIME recipe, including coherent CO2.</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.NestedRhimeResult" title="openghg_inversions.rhime.NestedRhimeResult"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.NestedRhimeResult</span></code></a></p></td>
 <td><p>A modern RHIME result with both native-domain preparation artifacts.</p></td>
@@ -633,6 +635,18 @@ documents the expected variables, dimensions, and coordinates.</p>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.prepare_co2_inputs" title="openghg_inversions.rhime.co2.prepare_co2_inputs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.prepare_co2_inputs</span></code></a></p></td>
 <td><p>Map one coherent Gaussian reduction into the CO2 replay contract.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.rhime.co2.stages.html#openghg_inversions.rhime.co2.stages.prepare_co2_stage" title="openghg_inversions.rhime.co2.stages.prepare_co2_stage"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.stages.prepare_co2_stage</span></code></a></p></td>
+<td><p>Persist a source-neutral coherent CO2 handoff and preparation manifest.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.build_rhime_co2" title="openghg_inversions.rhime.co2.build_rhime_co2"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.build_rhime_co2</span></code></a></p></td>
+<td><p>Materialize and build the CO2 coherent-reduction model without sampling.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.build_rhime_co2_cached_sigma" title="openghg_inversions.rhime.co2.build_rhime_co2_cached_sigma"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.build_rhime_co2_cached_sigma</span></code></a></p></td>
+<td><p>Materialize and build the matched cached fixed-OU graph without sampling.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.sample_co2_cached_prior_predictive" title="openghg_inversions.rhime.co2.sample_co2_cached_prior_predictive"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.sample_co2_cached_prior_predictive</span></code></a></p></td>
+<td><p>Draw cached CO2 priors and exact correlated observation replicates.</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.prepare_co2_o2_inputs" title="openghg_inversions.rhime.co2.prepare_co2_o2_inputs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.prepare_co2_o2_inputs</span></code></a></p></td>
 <td><p>Validate coherent-reduction channel products and form one joint likelihood.</p></td>
@@ -839,34 +853,43 @@ and samples; it does not write products. See
 <tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.postprocessing.co2_flux_outputs.html#openghg_inversions.postprocessing.co2_flux_outputs.co2_country_flux_outputs" title="openghg_inversions.postprocessing.co2_flux_outputs.co2_country_flux_outputs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.postprocessing.co2_flux_outputs.co2_country_flux_outputs</span></code></a></p></td>
 <td><p>Summarize affine CO2 country flux without constructing native flux draws.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.postprocessing.linked_paris_outputs.html#openghg_inversions.postprocessing.linked_paris_outputs.make_co2_o2_paris_outputs" title="openghg_inversions.postprocessing.linked_paris_outputs.make_co2_o2_paris_outputs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.postprocessing.linked_paris_outputs.make_co2_o2_paris_outputs</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.rhime.co2.co2_outputs.html#openghg_inversions.rhime.co2.co2_outputs.make_co2_rhime_result" title="openghg_inversions.rhime.co2.co2_outputs.make_co2_rhime_result"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.co2_outputs.make_co2_rhime_result</span></code></a></p></td>
+<td><p>Join a saved annotated CO2 posterior with its validated preparation.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.rhime.co2.co2_outputs.html#openghg_inversions.rhime.co2.co2_outputs.make_co2_rhime_outputs" title="openghg_inversions.rhime.co2.co2_outputs.make_co2_rhime_outputs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.co2_outputs.make_co2_rhime_outputs</span></code></a></p></td>
+<td><p>Attach CO2 components and requested conditional products, then write.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.rhime.co2.co2_outputs.html#openghg_inversions.rhime.co2.co2_outputs.reconstruct_co2_concentrations" title="openghg_inversions.rhime.co2.co2_outputs.reconstruct_co2_concentrations"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.co2_outputs.reconstruct_co2_concentrations</span></code></a></p></td>
+<td><p>Select full scientific components and predictions through explicit roles.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.postprocessing.linked_paris_outputs.html#openghg_inversions.postprocessing.linked_paris_outputs.make_co2_o2_paris_outputs" title="openghg_inversions.postprocessing.linked_paris_outputs.make_co2_o2_paris_outputs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.postprocessing.linked_paris_outputs.make_co2_o2_paris_outputs</span></code></a></p></td>
 <td><p>Create separate CO2/O2 products using existing PARIS templates.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.postprocessing.linked_paris_outputs.html#openghg_inversions.postprocessing.linked_paris_outputs.reconstruct_co2_o2_concentrations" title="openghg_inversions.postprocessing.linked_paris_outputs.reconstruct_co2_o2_concentrations"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.postprocessing.linked_paris_outputs.reconstruct_co2_o2_concentrations</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.postprocessing.linked_paris_outputs.html#openghg_inversions.postprocessing.linked_paris_outputs.reconstruct_co2_o2_concentrations" title="openghg_inversions.postprocessing.linked_paris_outputs.reconstruct_co2_o2_concentrations"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.postprocessing.linked_paris_outputs.reconstruct_co2_o2_concentrations</span></code></a></p></td>
 <td><p>Reconstruct channel components while preserving joint sample axes.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.postprocessing.countries.html#openghg_inversions.postprocessing.countries.Countries" title="openghg_inversions.postprocessing.countries.Countries"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.postprocessing.countries.Countries</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.postprocessing.countries.html#openghg_inversions.postprocessing.countries.Countries" title="openghg_inversions.postprocessing.countries.Countries"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.postprocessing.countries.Countries</span></code></a></p></td>
 <td><p>Class to load country files and create country traces.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.postprocessing.make_outputs.html#openghg_inversions.postprocessing.make_outputs.basic_output" title="openghg_inversions.postprocessing.make_outputs.basic_output"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.postprocessing.make_outputs.basic_output</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.postprocessing.make_outputs.html#openghg_inversions.postprocessing.make_outputs.basic_output" title="openghg_inversions.postprocessing.make_outputs.basic_output"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.postprocessing.make_outputs.basic_output</span></code></a></p></td>
 <td><p>Create basic output with concentrations, flux totals, and country totals.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.postprocessing.make_outputs.html#openghg_inversions.postprocessing.make_outputs.make_flux_outputs" title="openghg_inversions.postprocessing.make_outputs.make_flux_outputs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.postprocessing.make_outputs.make_flux_outputs</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.postprocessing.make_outputs.html#openghg_inversions.postprocessing.make_outputs.make_flux_outputs" title="openghg_inversions.postprocessing.make_outputs.make_flux_outputs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.postprocessing.make_outputs.make_flux_outputs</span></code></a></p></td>
 <td><p>Return dataset of stats for fluxes and scaling factors.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.postprocessing.make_outputs.html#openghg_inversions.postprocessing.make_outputs.make_country_outputs" title="openghg_inversions.postprocessing.make_outputs.make_country_outputs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.postprocessing.make_outputs.make_country_outputs</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.postprocessing.make_outputs.html#openghg_inversions.postprocessing.make_outputs.make_country_outputs" title="openghg_inversions.postprocessing.make_outputs.make_country_outputs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.postprocessing.make_outputs.make_country_outputs</span></code></a></p></td>
 <td><p>Calculate country emission stats.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.serialization.html#openghg_inversions.serialization.save_datatree" title="openghg_inversions.serialization.save_datatree"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.serialization.save_datatree</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.serialization.html#openghg_inversions.serialization.save_datatree" title="openghg_inversions.serialization.save_datatree"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.serialization.save_datatree</span></code></a></p></td>
 <td><p>Save a DataTree to NetCDF or Zarr.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.serialization.html#openghg_inversions.serialization.open_datatree_loaded" title="openghg_inversions.serialization.open_datatree_loaded"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.serialization.open_datatree_loaded</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.serialization.html#openghg_inversions.serialization.open_datatree_loaded" title="openghg_inversions.serialization.open_datatree_loaded"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.serialization.open_datatree_loaded</span></code></a></p></td>
 <td><p>Open and eagerly load a DataTree artifact.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.serialization.html#openghg_inversions.serialization.save_inferencedata" title="openghg_inversions.serialization.save_inferencedata"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.serialization.save_inferencedata</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.serialization.html#openghg_inversions.serialization.save_inferencedata" title="openghg_inversions.serialization.save_inferencedata"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.serialization.save_inferencedata</span></code></a></p></td>
 <td><p>Forward the former trace-writer name to <code class="xref py py-func docutils literal notranslate"><span class="pre">save_trace()</span></code>.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.serialization.html#openghg_inversions.serialization.load_inferencedata" title="openghg_inversions.serialization.load_inferencedata"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.serialization.load_inferencedata</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.serialization.html#openghg_inversions.serialization.load_inferencedata" title="openghg_inversions.serialization.load_inferencedata"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.serialization.load_inferencedata</span></code></a></p></td>
 <td><p>Forward the former trace-loader name to <code class="xref py py-func docutils literal notranslate"><span class="pre">load_trace()</span></code>.</p></td>
 </tr>
 </tbody>

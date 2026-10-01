@@ -565,6 +565,18 @@ select one product when a broad input glob matches both. Inputs selected for
 one invocation must use the same template version; run the command separately
 for legacy and latest products because their variable contracts differ.</p>
 </section>
+<section id="staged-execution">
+<h2>Staged execution<a class="headerlink" href="#staged-execution" title="Link to this heading">#</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">prepare</span></code>, <code class="docutils literal notranslate"><span class="pre">prior-predictive</span></code>, <code class="docutils literal notranslate"><span class="pre">sample</span></code>, <code class="docutils literal notranslate"><span class="pre">diagnose</span></code> and <code class="docutils literal notranslate"><span class="pre">postprocess</span></code>
+separate a run into persisted handoffs. Select <code class="docutils literal notranslate"><span class="pre">--model</span> <span class="pre">standard</span></code>,
+<code class="docutils literal notranslate"><span class="pre">--model</span> <span class="pre">multisector</span></code> or <code class="docutils literal notranslate"><span class="pre">--model</span> <span class="pre">co2</span></code> explicitly on scientific stages;
+<code class="docutils literal notranslate"><span class="pre">diagnose</span></code> reads the posterior independently of the recipe. See
+<a class="reference internal" href="staged_workflow.html"><span class="doc">Staged RHIME workflows</span></a> for the shared stage interface and
+<a class="reference internal" href="co2_model_family.html"><span class="doc">CO₂ model family</span></a> for ordinary and cached fixed-OU CO2 TOML examples.
+The CO2 route starts from a saved coherent prepared-input artifact and requires
+an identifiable installed Git revision; it uses its own constrained output
+contract.</p>
+</section>
 </section>
 
 
@@ -620,6 +632,7 @@ for legacy and latest products because their variable contracts differ.</p>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#merging-paris-outputs">Merging PARIS outputs</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#staged-execution">Staged execution</a></li>
 </ul>
   </nav></div>
 

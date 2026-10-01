@@ -475,13 +475,16 @@ boundary sensitivity and add global, site, or site-by-period offsets.</p></td>
 independent global, site, or site-by-period offsets (same-unit channels).</p></td>
 </tr>
 <tr class="row-even"><td><p>Staged workflow</p></td>
-<td><p>Not supported by the staged CLI.</p></td>
+<td><p>Installed <code class="docutils literal notranslate"><span class="pre">--model</span> <span class="pre">co2</span></code> stages support ordinary and cached fixed-OU
+replay from a saved coherent prepared-input artifact; see
+<a class="reference internal" href="#staged-co2-commands">Staged CO₂ commands</a> below.</p></td>
 <td><p>Not supported by the staged CLI.</p></td>
 </tr>
 <tr class="row-odd"><td><p>Outputs and postprocessing</p></td>
 <td><p>Returns an annotated xarray <code class="docutils literal notranslate"><span class="pre">DataTree</span></code>. Use the documented serialization
 boundary. <a class="reference internal" href="affine_flux_map.html#co2-affine-flux-summaries"><span class="std std-ref">Conditional native-flux and country summaries</span></a> are available from a bound affine artifact;
-the complete RHIME output pipeline is not integrated.</p></td>
+staged basic, concentration, conditional native-flux and country products
+are available, with supported PARIS exports.</p></td>
 <td><p>Returns an annotated xarray <code class="docutils literal notranslate"><span class="pre">DataTree</span></code>. A bounded Python adapter produces
 separate CO2/O2 PARIS concentration products and supported native flux
 products; staged output integration remains future work.</p></td>
@@ -489,8 +492,8 @@ products; staged output integration remains future work.</p></td>
 <tr class="row-even"><td><p>Validation and acceptance</p></td>
 <td><p>Coherent preparation, dedicated serialization, model construction,
 configuration resolution, replay, provenance, and cached-sampler
-behavior have automated regression tests. Complete outputs, staged
-integration, and scientist acceptance remain future work.</p></td>
+behavior have automated regression tests, including installed ordinary
+and cached stage sequences. Scientist acceptance remains future work.</p></td>
 <td><p>Preparation, graph construction, mixed-unit metadata, replay, and
 provenance have automated regression tests. Configuration currently
 limits linked replay to one shared concentration-unit label. Production
@@ -508,10 +511,9 @@ in the observation likelihood. The shared pages on <a class="reference internal"
 <a class="reference internal" href="coherent_reduction.html"><span class="doc">coherent reduction</span></a> provide that background without
 making those concepts specific to CO₂.</p>
 <p>The family page records present software support, not evidence that a selected
-recipe is scientifically suitable for a particular inversion. Complete
-outputs, staged integration, and scientist acceptance are tracked in <a class="reference external" href="https://linear.app/openghg-inversions/issue/OPE-79">OPE-79</a>. The TOML resolver is a
-configuration boundary for the existing Python runners; it does not add a
-CO₂ command to the staged CLI.</p>
+recipe is scientifically suitable for a particular inversion. Linked
+staged integration and scientist acceptance are tracked in <a class="reference external" href="https://linear.app/openghg-inversions/issue/OPE-79">OPE-79</a>. The CO₂ staged commands
+reuse the existing TOML configuration boundary and prepared-input Python runners.</p>
 <p>The CO2-only handoff is intentionally separate from both the generic
 <code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code> boundary and the linked CO2/O2 preparation contract.
 It does not add coherent-reduction or aggregation-error options to the
@@ -521,6 +523,115 @@ standard and multisector runners or to <code class="docutils literal notranslate
 <li class="toctree-l1"><a class="reference internal" href="co2_models.html">CO₂ model recipes</a></li>
 </ul>
 </div>
+</section>
+<section id="staged-co2-commands">
+<h2>Staged CO₂ commands<a class="headerlink" href="#staged-co2-commands" title="Link to this heading">#</a></h2>
+<p>Use the installed <code class="docutils literal notranslate"><span class="pre">openghg-inversions</span></code> command with <code class="docutils literal notranslate"><span class="pre">--model</span> <span class="pre">co2</span></code> and a
+CO₂ TOML configuration. First construct and save a
+<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2PreparedInputs" title="openghg_inversions.rhime.co2.Co2PreparedInputs"><code class="xref py py-class docutils literal notranslate"><span class="pre">Co2PreparedInputs</span></code></a> artifact with
+<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.prepare_co2_inputs" title="openghg_inversions.rhime.co2.prepare_co2_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">prepare_co2_inputs()</span></code></a>; this is the scientific
+handoff from your observation preparation and coherent reduction. The staged
+<code class="docutils literal notranslate"><span class="pre">prepare</span></code> command validates and copies that artifact and writes a manifest.
+It does not acquire OpenGHG data or infer a coherent reduction from a gas name.</p>
+<p>CO₂ manifests record the installed package version, exact Git revision and
+checkout modification status when available. Run from a source checkout or a
+VCS installation
+whose package metadata records the commit. An installation without an
+identifiable Git revision, such as a release wheel without VCS metadata or an
+associated checkout, is rejected by these stages.</p>
+<p>For example, an ordinary configuration can contain:</p>
+<div class="highlight-toml notranslate"><div class="highlight"><pre><span></span><span class="n">format_version</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span>
+<span class="n">recipe</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"co2"</span>
+<span class="n">variant</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"ordinary"</span>
+
+<span class="k">[prepared_inputs]</span>
+<span class="n">path</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"prepared-co2.nc"</span>
+
+<span class="k">[likelihood]</span>
+<span class="n">kind</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"additive_sigma"</span>
+<span class="n">sigma_prior</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">pdf</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s2">"halfnormal"</span><span class="p">,</span><span class="w"> </span><span class="n">sigma</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="mf">1.0</span><span class="w"> </span><span class="p">}</span>
+
+<span class="k">[sampling]</span>
+<span class="n">draws</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1000</span>
+<span class="n">tune</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1000</span>
+<span class="n">chains</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">4</span>
+<span class="n">nuts_sampler</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"pymc"</span>
+<span class="n">random_seed</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">12345</span>
+<span class="n">sample_prior_predictive</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">100</span>
+<span class="n">sample_posterior_predictive</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+
+<span class="k">[outputs]</span>
+<span class="n">output_format</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"basic"</span>
+<span class="n">output_name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"co2"</span>
+</pre></div>
+</div>
+<p>Run each stage with explicit handoffs:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>openghg-inversions<span class="w"> </span>prepare<span class="w"> </span>--model<span class="w"> </span>co2<span class="w"> </span>-c<span class="w"> </span>co2.toml<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--output-dir<span class="w"> </span>run/prepare
+openghg-inversions<span class="w"> </span>prior-predictive<span class="w"> </span>--model<span class="w"> </span>co2<span class="w"> </span>-c<span class="w"> </span>co2.toml<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--prepared-inputs<span class="w"> </span>run/prepare/prepared-inputs.nc<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--preparation-manifest<span class="w"> </span>run/prepare/prepare-manifest.json<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--draws<span class="w"> </span><span class="m">100</span><span class="w"> </span>--strict<span class="w"> </span>--output-dir<span class="w"> </span>run/prior
+openghg-inversions<span class="w"> </span>sample<span class="w"> </span>--model<span class="w"> </span>co2<span class="w"> </span>-c<span class="w"> </span>co2.toml<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--prepared-inputs<span class="w"> </span>run/prepare/prepared-inputs.nc<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--preparation-manifest<span class="w"> </span>run/prepare/prepare-manifest.json<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--output-dir<span class="w"> </span>run/sample
+openghg-inversions<span class="w"> </span>diagnose<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--posterior<span class="w"> </span>run/sample/posterior.nc<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--sample-manifest<span class="w"> </span>run/sample/sample-manifest.json<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--strict<span class="w"> </span>--output-dir<span class="w"> </span>run/diagnose
+openghg-inversions<span class="w"> </span>postprocess<span class="w"> </span>--model<span class="w"> </span>co2<span class="w"> </span>-c<span class="w"> </span>co2.toml<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--prepared-inputs<span class="w"> </span>run/prepare/prepared-inputs.nc<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--preparation-manifest<span class="w"> </span>run/prepare/prepare-manifest.json<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--posterior<span class="w"> </span>run/sample/posterior.nc<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--sample-manifest<span class="w"> </span>run/sample/sample-manifest.json<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--output-dir<span class="w"> </span>run/postprocess
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">prior-predictive</span> <span class="pre">--strict</span></code> exits unsuccessfully when its readiness check
+fails. <code class="docutils literal notranslate"><span class="pre">diagnose</span> <span class="pre">--strict</span></code> exits unsuccessfully when a convergence threshold
+fails; inspect <code class="docutils literal notranslate"><span class="pre">sampler-convergence.json</span></code> and the diagnostic summary before
+using posterior summaries. A short smoke test is not evidence of convergence.</p>
+<p>For cached fixed-OU replay, use <code class="docutils literal notranslate"><span class="pre">variant</span> <span class="pre">=</span> <span class="pre">&quot;cached_fixed_ou&quot;</span></code> and replace the
+likelihood table with:</p>
+<div class="highlight-toml notranslate"><div class="highlight"><pre><span></span><span class="k">[likelihood]</span>
+<span class="n">kind</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"fixed_ou"</span>
+<span class="n">tau_hours</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">24.0</span>
+<span class="n">site_amplitude_prior_scale</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">1.0</span>
+</pre></div>
+</div>
+<p>Keep <code class="docutils literal notranslate"><span class="pre">sampling.nuts_sampler</span> <span class="pre">=</span> <span class="pre">&quot;pymc&quot;</span></code>. The same staged commands apply. The
+ordinary variant also supports its documented fixed-OU and specialized
+likelihood choices; their prepared data and cache prerequisites still apply.</p>
+<p>The preparation and sample manifests authenticate the configured recipe,
+prepared artifact and posterior. Preserve these manifests with the NetCDF
+files. Replacing an artifact with another having the same labels does not make
+it compatible with an existing posterior. Paths inside the TOML file resolve
+relative to that file.</p>
+<p>Conditional native-flux and country outputs require prior draws
+(<code class="docutils literal notranslate"><span class="pre">sampling.sample_prior_predictive</span></code>) and a saved affine reconstruction bound
+to the exact prepared artifact. Add the following to
+<code class="docutils literal notranslate"><span class="pre">[outputs]</span></code> when those artifacts are available:</p>
+<div class="highlight-toml notranslate"><div class="highlight"><pre><span></span><span class="n">reconstruction_path</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"co2-affine.nc"</span>
+<span class="n">country_file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"countries.nc"</span>
+</pre></div>
+</div>
+<p>The affine artifact is produced with the APIs described under
+<a class="reference internal" href="affine_flux_map.html#co2-affine-flux-summaries"><span class="std std-ref">Summarize conditional CO2 fluxes</span></a>. Source identities are preserved through
+reconstruction. If reporting sectors differ from native sources, supply an
+explicit <code class="docutils literal notranslate"><span class="pre">[outputs.source_to_sector]</span></code> mapping. Source sums and sector
+transforms precede uncertainty statistics. Native-flux and country products
+carry <code class="docutils literal notranslate"><span class="pre">retained_state_conditional</span></code> uncertainty scope; they do not include the
+unresolved native-state posterior uncertainty tracked separately in OPE-68.</p>
+<p><code class="docutils literal notranslate"><span class="pre">postprocess</span></code> writes <code class="docutils literal notranslate"><span class="pre">basic.nc</span></code>, concentration components and requested
+conditional products, plus <code class="docutils literal notranslate"><span class="pre">postprocess-manifest.json</span></code> listing the product
+paths. <code class="docutils literal notranslate"><span class="pre">output_format</span> <span class="pre">=</span> <span class="pre">&quot;paris&quot;</span></code> requests supported PARIS concentration and
+flux products and requires the bound reconstruction and an explicit
+<code class="docutils literal notranslate"><span class="pre">outputs.country_file</span></code>. Supported PARIS exports use the latest templates,
+mean summaries, native grids and midpoint flux
+timestamps. Legacy inversion-output formats and unsupported PARIS options are
+rejected before product writing.
+Linked CO₂/O₂ staged routing is tracked separately in OPE-165.</p>
 </section>
 </section>
 
@@ -573,6 +684,7 @@ standard and multisector runners or to <code class="docutils literal notranslate
     <ul class="pst-show_toc_level nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#current-support">Current support</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#prerequisites">Prerequisites</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#staged-co2-commands">Staged CO₂ commands</a></li>
 </ul>
   </nav></div>
 

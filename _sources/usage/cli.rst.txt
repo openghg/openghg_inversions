@@ -174,3 +174,16 @@ Use ``--type flux`` or ``--type concentration`` (also accepted as ``conc``) to
 select one product when a broad input glob matches both. Inputs selected for
 one invocation must use the same template version; run the command separately
 for legacy and latest products because their variable contracts differ.
+
+Staged execution
+----------------
+
+``prepare``, ``prior-predictive``, ``sample``, ``diagnose`` and ``postprocess``
+separate a run into persisted handoffs. Select ``--model standard``,
+``--model multisector`` or ``--model co2`` explicitly on scientific stages;
+``diagnose`` reads the posterior independently of the recipe. See
+:doc:`staged_workflow` for the shared stage interface and
+:doc:`co2_model_family` for ordinary and cached fixed-OU CO2 TOML examples.
+The CO2 route starts from a saved coherent prepared-input artifact and requires
+an identifiable installed Git revision; it uses its own constrained output
+contract.
