@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Callable, cast
+from collections.abc import Callable
+from typing import cast
 
 import numpy as np
 import pytest

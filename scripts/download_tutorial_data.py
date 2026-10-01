@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Download and verify the pinned RHIME tutorial data release."""
 
 from __future__ import annotations
@@ -8,7 +7,7 @@ import hashlib
 from pathlib import Path
 import shutil
 import tomllib
-from typing import Sequence
+from collections.abc import Sequence
 from urllib.request import urlopen
 
 

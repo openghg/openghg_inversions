@@ -1,4 +1,4 @@
-"""Functions to create basis datasets from fluxes and footprints."""
+"""Load and generate basis functions from files, fluxes, and footprints."""
 
 import getpass
 import logging
@@ -40,30 +40,21 @@ _INNER_REGION_LABEL_ATTR = "inner_region_label"
 
 
 def basis(domain: str, basis_case: str, basis_directory: str | None = None) -> xr.Dataset:
-    """Read in basis function(s) from file given basis case and domain, and return as an
-    xarray Dataset.
-
-    The basis function files should be stored as on paths of the form:
-        <basis_directory>/<domain>/<basis_case>_<domain>*.nc
-
-    For instance: domain = EUROPE, basis_directory = /group/chem/acrg/LPDM/basis_functions,
-    and basis_case = sub_transd would find files such as:
-
-        /group/chem/acrg/LPDM/basis_functions/EUROPE/sub_transd_EUROPE_2014.nc
-
-    Basis functions created by algorithms in OpenGHG inversions will be stored using
-    this path format.
+    """Load matching basis files from ``<directory>/<domain>/<basis_case>_<domain>*.nc``.
 
     Args:
-        domain: domain name. The basis files should be sub-categorised by the domain.
-        basis_case: basis case to read in. Examples of basis cases are "voronoi", "sub-transd",
-            "sub-country_mask", "INTEM".
-        basis_directory: basis_directory can be specified if files are not in the default
-            directory (i.e. `openghg_inversions/basis_functions`). Must point to a directory that
-            contains subfolders organized by domain.
+        domain: Domain subdirectory and filename suffix.
+        basis_case: Filename prefix used to select basis files.
+        basis_directory: Optional root directory. Defaults to the repository's
+            ``basis_functions`` directory.
 
     Returns:
-        xarray.Dataset: combined dataset of matching basis functions
+        Combined dataset of matching basis files.
+
+    Raises:
+        ValueError: If the default directory is missing; the directory is
+            created before this error is raised.
+        FileNotFoundError: If no files match the domain and basis case.
     """
     if basis_directory is None:
         basis_path = openghginv_path / "basis_functions"
@@ -89,26 +80,24 @@ def basis(domain: str, basis_case: str, basis_directory: str | None = None) -> x
 
 
 def basis_boundary_conditions(domain: str, basis_case: str, bc_basis_directory: str | None = None):
-    """Read in basis function(s) from file given basis case and domain, and return as an
-    xarray Dataset.
+    """Load matching boundary-condition basis files for a domain and case.
 
-    The basis function files should be stored as on paths of the form:
-        <bc_basis_directory>/<domain>/<basis_case>_<domain>*.nc
-
-    For instance: domain = "EUROPE", bc_basis_directory = /group/chem/acrg/LPDM/bc_basis_functions,
-    and basis_case = "NESW" would find files such as:
-
-        /group/chem/acrg/LPDM/bc_basis_functions/EUROPE/NESW_EUROPE_2014.nc
+    Files match ``<directory>/<domain>/<basis_case>_<domain>*.nc``.
+    Unreadable matches are reported and skipped.
 
     Args:
-        domain: domain name. The basis files should be sub-categorised by the domain.
-        basis_case: basis case to read in. Examples of BC basis cases are "NESW", "stratgrad".
-        bc_basis_directory: bc_basis_directory can be specified if files are not in the default
-            directory (i.e. `openghg_inversions/bc_basis_functions`). Must point to a directory that
-            contains subfolders organized by domain.
+        domain: Domain subdirectory and filename suffix.
+        basis_case: Filename prefix used to select boundary-condition basis files.
+        bc_basis_directory: Optional root directory. Defaults to the
+            repository's ``bc_basis_functions`` directory.
 
     Returns:
-        xarray.Dataset: combined dataset of matching basis functions
+        Combined dataset of readable matching basis files.
+
+    Raises:
+        ValueError: If the default directory is missing; the directory is
+            created before this error is raised.
+        FileNotFoundError: If no readable files match the domain and basis case.
     """
     if bc_basis_directory is None:
         bc_basis_path = openghginv_path / "bc_basis_functions"
@@ -462,7 +451,20 @@ def _sanitize_generated_basis_weights(
     algorithm: str,
     require_nonzero: bool = False,
 ) -> xr.DataArray:
-    """Replace non-finite generated-basis weights and reject empty weight fields."""
+    """Materialize weights, replace non-finite cells with zero, and reject empty fields.
+
+    Args:
+        weights: Generated-basis spatial weight field.
+        algorithm: Name included in validation errors.
+        require_nonzero: Also reject a field with no non-zero finite weights.
+
+    Returns:
+        Eager weight field with non-finite values replaced by zero.
+
+    Raises:
+        ValueError: If no finite values remain, or ``require_nonzero`` is true
+            and all finite values are zero.
+    """
     weights = weights.as_numpy()
     finite = xr.apply_ufunc(np.isfinite, weights)
     if not bool(finite.any().item()):
@@ -973,9 +975,7 @@ def quadtree_basis_function(
     more to the a priori above-baseline mole fraction. This is based on the
     average footprint over the inversion period and the a priori emissions field.
 
-    The number of basis functions is optimised using dual annealing. Probably
-    not the best or fastest method as there should only be one minimum, but it
-    does not require the Jacobian or Hessian for optimisation.
+    Dual annealing selects the split threshold to approach ``nbasis`` regions.
 
     Args:
         fp_all: Legacy merged-data dictionary produced by the data preparation
@@ -1164,7 +1164,26 @@ def _region_constrained_split_strategy(
     contrast_sigma_design: float | None,
     contrast_s_diag: xr.DataArray | None,
 ):
-    """Return the explicitly configured region-constrained split strategy."""
+    """Build the greedy split strategy with an optional contrast acceptance gate.
+
+    Args:
+        split_acceptance: ``"none"`` or ``"contrast_score"``.
+        contrast_contribution: Design contribution array required for contrast
+            scoring.
+        contrast_cell_weight: Spatial weight field used as contrast split mass.
+        min_contrast_delta_eig: Optional minimum ``delta_eig`` score.
+        min_contrast_lambda: Optional minimum ``lambda`` score.
+        contrast_tau: Optional prior standard deviation of the split contrast.
+        contrast_sigma_design: Optional scalar design standard deviation.
+        contrast_s_diag: Optional diagonal design covariance entries.
+
+    Returns:
+        Greedy split strategy configured for the requested acceptance mode.
+
+    Raises:
+        ValueError: If the acceptance mode is unknown or contrast scoring lacks
+            a design contribution array.
+    """
     if split_acceptance == "none":
         return GreedySplitStrategy(split_step=AxisParallelSplitStep())
     if split_acceptance != "contrast_score":
@@ -1249,17 +1268,10 @@ def fixed_outer_regions_basis(
     This inner mask is passed to ``basis_algorithm`` and then inserted back
     into the fixed outer map.
 
-    By default (``allow_empty_inner_region=False``), a marked inner region
-    with no non-zero footprint*flux response raises, exactly as it always
-    has: this normally means the map or footprint/flux data are mismatched.
-    A modern nested-domain run is a legitimate exception -- its outer
-    footprint response and prior flux are deliberately zeroed over the same
-    extent the fine inner grid already covers (see
-    ``openghg_inversions.rhime.nested.mask_outer_merged_for_inner_domain``),
-    so an inner-region map built to mark that same extent will correctly find
-    nothing left to subdivide there. Only nested outer-domain preparation
-    should pass ``allow_empty_inner_region=True``; every other caller keeps
-    the strict default.
+    For nested outer-domain preparation, ``allow_empty_inner_region=True``
+    keeps the inner label unsplit when its masked weights contain finite values
+    but all are zero. Otherwise the selected basis algorithm handles the inner
+    weights normally.
 
     Args:
         fp_all: Legacy merged-data dictionary produced by the data preparation
@@ -1298,15 +1310,14 @@ def fixed_outer_regions_basis(
             coefficient. If omitted, ``tau=1`` is uncalibrated.
         contrast_sigma_design: Optional scalar design standard deviation.
         contrast_s_diag: Optional diagonal design covariance entries.
-        allow_empty_inner_region: If true, a marked inner region with no
-            non-zero footprint*flux response is kept as a single fixed label
-            (like the other outer regions) instead of raising. Intended only
+        allow_empty_inner_region: If true, keep the inner label unsplit when
+            its masked weights contain finite values but all are zero. Intended
             for nested outer-domain preparation.
 
     Returns:
         Basis field with fixed outer labels and generated inner labels. When
-        ``allow_empty_inner_region`` is true and the inner region has no
-        residual response, its label is kept unsplit.
+        ``allow_empty_inner_region`` is true and finite inner weights are all
+        zero, its label is kept unsplit.
     """
     if outer_regions_path is not None:
         selected_outer_regions_path = Path(outer_regions_path)

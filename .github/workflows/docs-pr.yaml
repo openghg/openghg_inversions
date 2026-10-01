@@ -1,0 +1,41 @@
+name: Validate Docs (pull requests)
+
+on:
+  pull_request:
+    branches: [main, devel]
+    paths:
+      - 'docs/**'
+      - 'openghg_inversions/**/*.py'
+      - 'tox.ini'
+      - 'pyproject.toml'
+      - 'setup.cfg'
+      - 'setup.py'
+      - '.github/workflows/docs.yaml'
+      - '.github/workflows/docs-pr.yaml'
+
+permissions:
+  contents: read
+
+jobs:
+  docs:
+    name: Build documentation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: '0.12.5'
+          enable-cache: true
+
+      - name: Build docs using tox
+        run: uvx --with tox-uv==1.36.0 tox==4.60.0 -e docs-full

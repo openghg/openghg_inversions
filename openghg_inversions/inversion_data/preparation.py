@@ -23,12 +23,11 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from numbers import Integral
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, Literal, Self, cast
 
 import numpy as np
 import pandas as pd
 import xarray as xr
-from typing_extensions import Self
 
 from openghg_inversions._timing import log_timing, timed, timer_seconds, timer_start
 from openghg_inversions.basis import make_basis_functions

@@ -7,10 +7,9 @@ import json
 import re
 import string
 from pathlib import Path
-from typing import Any, Literal, SupportsIndex, overload
+from typing import Any, Literal, Self, SupportsIndex, overload
 from collections import UserList
 from collections.abc import Iterable
-from typing_extensions import Self
 
 
 # PREPROCESSING FUNCTIONS
