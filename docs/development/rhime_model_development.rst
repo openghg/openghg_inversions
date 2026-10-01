@@ -421,3 +421,18 @@ Further guidance is in
 ``docs/plans/numerical_data_ownership_and_execution_boundaries.md`` and the
 active ``run_rhime`` plan in
 ``docs/plans/run_rhime_readability_and_modifiability.md``.
+
+File-backed staged workflows
+---------------------------
+
+``rhime.stages`` is the public facade for file-backed execution. The concrete
+standard and multisector staged workflows remain together in
+``rhime._standard_stages`` so their preparation, sampling, and replay sequence
+can be read procedurally. Shared serialization, path, and digest mechanics
+belong to ``rhime._stage_artifacts``; manifest and saved-output binding
+authentication belongs to ``rhime._stage_authentication``. Each family owns its
+configuration identity and replay policy. Shared staged checks belong to
+``rhime._stage_checks`` and retain their existing diagnostic calculations,
+thresholds, and check schemas. Family implementations import these owners
+directly, without importing helpers from the public facade. These private
+owners can move together when complete workflows migrate to ``recipes``.
