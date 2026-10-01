@@ -16,7 +16,7 @@ import xarray as xr
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.rhime.co2 import Co2O2PreparedInputs, prepare_co2_o2_inputs
 from openghg_inversions.rhime.co2.co2_o2_preparation import _stack
-from openghg_inversions.serialization import decode_cf_multiindexes, encode_cf_multiindexes
+from openghg_inversions.serialization import decode_cf_multiindexes, encode_cf_multiindexes, save_datatree
 
 
 def _inputs(
@@ -538,6 +538,7 @@ def _durable_inputs(*, ratio_available: bool = True) -> dict[str, object]:
 def test_complete_linked_prepared_round_trip(
     tmp_path: Path, suffix: str, ratio_available: bool, saved_error: bool
 ) -> None:
+    """Persist every linked scientific field without changing labels or names."""
     prepared = prepare_co2_o2_inputs(**_durable_inputs(ratio_available=ratio_available))
     prepared = replace(
         prepared,
@@ -589,6 +590,7 @@ def test_complete_linked_prepared_round_trip(
 
 
 def test_linked_save_computes_shared_payloads_together(tmp_path: Path) -> None:
+    """Materialize shared observation, sensitivity, ratio, and error graphs once."""
     prepared = prepare_co2_o2_inputs(**_inputs())
     executions = []
 
@@ -627,6 +629,7 @@ def test_linked_save_computes_shared_payloads_together(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize("corruption", ["version", "covariance_units", "error", "ratio", "index_metadata"])
 def test_linked_loader_rejects_corrupt_scientific_artifacts(corruption: str) -> None:
+    """Reject malformed schema metadata and inconsistent scientific values."""
     prepared = prepare_co2_o2_inputs(**_durable_inputs())
     prepared = replace(prepared, independent_error_sd=xr.full_like(prepared.observations, 0.4))
     tree = prepared.to_datatree().copy(deep=True)
@@ -649,6 +652,7 @@ def test_linked_loader_rejects_corrupt_scientific_artifacts(corruption: str) -> 
 
 
 def test_linked_preparation_accepts_labelled_independent_error() -> None:
+    """Retain valid borrowed errors and reject invalid eager values or row units."""
     inputs = _inputs()
     prepared = prepare_co2_o2_inputs(**inputs)
     error = xr.full_like(prepared.observations, 0.4).rename("reported_sd")
@@ -660,3 +664,118 @@ def test_linked_preparation_accepts_labelled_independent_error() -> None:
         prepare_co2_o2_inputs(
             **inputs, independent_error_sd=error.assign_coords(observation_units=("observation", ["ppm"] * 5))
         )
+
+
+@pytest.mark.parametrize("field", ["observations", "fixed_prior_contribution"])
+@pytest.mark.parametrize("invalid", [np.nan, np.inf, 1.0 + 1.0j, "invalid"])
+@pytest.mark.parametrize("boundary", ["save", "from_datatree"])
+def test_linked_artifact_rejects_invalid_joint_values(
+    tmp_path: Path, field: str, invalid: object, boundary: str
+) -> None:
+    """Reject non-finite and non-real joint payloads at each artifact boundary."""
+    prepared = prepare_co2_o2_inputs(**_inputs())
+    original = getattr(prepared, field)
+    corrupted = original.copy(data=np.full(original.size, invalid))
+    if boundary == "save":
+        prepared = replace(prepared, **{field: corrupted})
+        with pytest.raises(ValueError, match=f"{field} must contain only finite real numeric values"):
+            prepared.save(tmp_path / "invalid.nc")
+        assert not (tmp_path / "invalid.nc").exists()
+    else:
+        tree = prepared.to_datatree()
+        variable = "observed_concentration" if field == "observations" else field
+        stored = tree["joint"][variable]
+        tree["joint"][variable] = stored.copy(data=corrupted.data)
+        with pytest.raises(ValueError, match=f"{field} must contain only finite real numeric values"):
+            Co2O2PreparedInputs.from_datatree(tree)
+
+
+@pytest.mark.parametrize("field", ["observed_concentration", "fixed_prior_contribution"])
+@pytest.mark.parametrize("invalid", [np.nan, np.inf])
+def test_linked_load_rejects_nonfinite_saved_joint_values(tmp_path: Path, field: str, invalid: float) -> None:
+    """Reject non-finite concentrations and intercepts read from an external file."""
+    tree = prepare_co2_o2_inputs(**_inputs()).to_datatree()
+    original = tree["joint"][field]
+    tree["joint"][field] = original.copy(data=np.full(original.size, invalid))
+    path = tmp_path / "corrupted.nc"
+    save_datatree(tree, path)
+    with pytest.raises(ValueError, match="finite real numeric"):
+        Co2O2PreparedInputs.load(path)
+
+
+def test_linked_serialization_rejects_mutated_boundary_channels(tmp_path: Path) -> None:
+    """Reject unsupported keys added to a borrowed boundary mapping before I/O."""
+    prepared = prepare_co2_o2_inputs(**_durable_inputs())
+    prepared.boundary_sensitivity["n2o"] = prepared.boundary_sensitivity["co2"]
+    with pytest.raises(ValueError, match="keyed only by co2 and o2"):
+        prepared.to_datatree()
+    with pytest.raises(ValueError, match="keyed only by co2 and o2"):
+        prepared.save(tmp_path / "unsupported.nc")
+    assert not (tmp_path / "unsupported.nc").exists()
+
+
+def test_linked_loader_rejects_unexpected_boundary_nodes() -> None:
+    """Reject extra serialized boundary channels instead of discarding their data."""
+    tree = prepare_co2_o2_inputs(**_durable_inputs()).to_datatree()
+    tree["n2o_boundary"] = tree["co2_boundary"].copy()
+    with pytest.raises(ValueError, match="Unsupported serialized boundary nodes.*n2o_boundary"):
+        Co2O2PreparedInputs.from_datatree(tree)
+
+
+def test_linked_preparation_preserves_shared_lazy_error_payload_and_units(tmp_path: Path) -> None:
+    """Defer lazy error data and auxiliary units, then serialize their shared graph once."""
+    inputs = _inputs()
+    reference = prepare_co2_o2_inputs(**inputs)
+    executions = []
+
+    @delayed
+    def shared_payload() -> np.ndarray:
+        executions.append("payload")
+        return np.array([2.0, 3.0, -4.0, -5.0, -6.0])
+
+    @delayed
+    def error_units() -> np.ndarray:
+        executions.append("units")
+        return np.array(["ppm", "ppm", "per meg", "per meg", "per meg"])
+
+    data = da.from_delayed(shared_payload(), shape=(5,), dtype=float)
+    for channel, rows in (("co2", slice(0, 2)), ("o2", slice(2, 5))):
+        inputs[f"{channel}_observations"] = inputs[f"{channel}_observations"].copy(data=data[rows])
+        inputs[f"{channel}_prior_forward_mean"] = inputs[f"{channel}_prior_forward_mean"].copy(
+            data=data[rows] + 0.5
+        )
+    error = reference.observations.copy(data=abs(data) * 0.1 + 0.4).assign_coords(
+        observation_units=("observation", da.from_delayed(error_units(), shape=(5,), dtype="U7"))
+    )
+    prepared = prepare_co2_o2_inputs(**inputs, independent_error_sd=error)
+    assert executions == []
+    assert prepared.independent_error_sd is error
+    assert isinstance(prepared.independent_error_sd.data, da.Array)
+    assert isinstance(prepared.independent_error_sd.observation_units.data, da.Array)
+    prepared.to_datatree()
+    assert executions == []
+    prepared.save(tmp_path / "lazy-error.nc")
+    assert sorted(executions) == ["payload", "units"]
+
+
+@pytest.mark.parametrize("invalid", [0.0, -0.4, np.nan, np.inf, 1.0 + 1.0j])
+def test_linked_save_validates_deferred_lazy_error(tmp_path: Path, invalid: float | complex) -> None:
+    """Permit lazy errors through preparation and reject invalid values before saving."""
+    inputs = _inputs()
+    reference = prepare_co2_o2_inputs(**inputs)
+    executions = []
+
+    @delayed
+    def error_payload() -> np.ndarray:
+        executions.append("error")
+        return np.full(reference.observations.size, invalid)
+
+    error = reference.observations.copy(
+        data=da.from_delayed(error_payload(), shape=(5,), dtype=np.asarray(invalid).dtype)
+    )
+    prepared = prepare_co2_o2_inputs(**inputs, independent_error_sd=error)
+    assert executions == []
+    with pytest.raises(ValueError, match="finite positive real"):
+        prepared.save(tmp_path / "invalid-error.nc")
+    assert executions == ["error"]
+    assert not (tmp_path / "invalid-error.nc").exists()

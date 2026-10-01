@@ -76,6 +76,7 @@ def _prepared_stub(array: xr.DataArray) -> SimpleNamespace:
 
 
 def _replay(cached: bool):
+    """Select the linked runner and the graph boundary intercepted by tests."""
     if cached:
         return (
             co2_o2_cached_sigma_runner,
@@ -89,6 +90,7 @@ def _replay(cached: bool):
 @pytest.mark.parametrize("cached", [False, True])
 @pytest.mark.parametrize("explicit", [False, True])
 def test_replay_uses_saved_errors_and_accepts_matching_explicit_errors(monkeypatch, cached, explicit) -> None:
+    """Both replay variants forward saved errors without changing the artifact."""
     observations = xr.DataArray(
         [400.0, -120.0],
         dims="observation",
@@ -104,6 +106,7 @@ def test_replay_uses_saved_errors_and_accepts_matching_explicit_errors(monkeypat
     captured = []
 
     def capture_error(**arguments):
+        """Record the resolved errors and stop before constructing a graph."""
         captured.append(arguments["independent_error_sd"])
         raise RuntimeError("builder reached")
 
@@ -120,6 +123,7 @@ def test_replay_uses_saved_errors_and_accepts_matching_explicit_errors(monkeypat
 @pytest.mark.parametrize("cached", [False, True])
 @pytest.mark.parametrize("mismatch", ["labels", "units", "values"])
 def test_replay_rejects_conflicting_saved_and_explicit_errors(monkeypatch, cached, mismatch) -> None:
+    """Disagreement with saved errors fails before either graph is constructed."""
     observations = xr.DataArray(
         [1.0],
         dims="observation",
@@ -146,6 +150,7 @@ def test_replay_rejects_conflicting_saved_and_explicit_errors(monkeypatch, cache
 
 @pytest.mark.parametrize("cached", [False, True])
 def test_replay_requires_saved_or_explicit_errors(cached) -> None:
+    """A replay cannot silently substitute an independent-error policy."""
     observations = xr.DataArray([1.0], dims="observation", coords={"observation": [0]})
     _, runner, _, kwargs = _replay(cached)
 
@@ -256,6 +261,7 @@ def test_replay_rejects_stale_independent_error_multiindex_level_names() -> None
 
 @pytest.mark.parametrize("error_source", ["explicit", "saved", "both"])
 def test_replay_materializes_payloads_and_auxiliary_units_in_one_graph(monkeypatch, error_source) -> None:
+    """Saved and explicit errors share computation with linked payloads and units."""
     executions: list[str] = []
 
     @delayed

@@ -263,6 +263,7 @@ def test_linked_channels_remain_distinct_and_bind_to_labelled_errors() -> None:
 
 
 def test_linked_omitted_channel_errors_bind_saved_vector_without_computing() -> None:
+    """Omitting both channel errors requires and preserves the lazy saved vector."""
     config = _linked()
     channels = cast(dict[str, dict[str, object]], config["channels"])
     for channel in channels.values():
@@ -293,6 +294,7 @@ def test_linked_omitted_channel_errors_bind_saved_vector_without_computing() -> 
 
 @pytest.mark.parametrize("channel", ["co2", "o2"])
 def test_linked_partial_channel_error_omission_is_rejected(channel: str) -> None:
+    """Configuration rejects mixing one channel error with implicit saved errors."""
     config = _linked()
     channels = cast(dict[str, dict[str, object]], config["channels"])
     channels[channel].pop("independent_error_sd")

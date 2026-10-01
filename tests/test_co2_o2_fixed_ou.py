@@ -1,6 +1,7 @@
 """Dense two-tracer oracle and matched linked fixed-OU sampler contracts."""
 
 from dataclasses import replace
+import json
 
 import numpy as np
 import pandas as pd
@@ -253,6 +254,7 @@ def test_linked_ou_requires_same_units():
 
 @pytest.mark.parametrize("cached", [False, True])
 def test_linked_sampling_serializes_group_labels_and_joint_outputs(tmp_path, cached):
+    """Replay saved errors and preserve joint outputs and provenance through trace storage."""
     prepared = _prepared()
     prepared = replace(prepared, independent_error_sd=_independent_error(prepared))
     prepared_path = tmp_path / "prepared.nc"
@@ -294,6 +296,9 @@ def test_linked_sampling_serializes_group_labels_and_joint_outputs(tmp_path, cac
         assert encoded.constant_data.ou_tau_hours.attrs["dtype"] == "timedelta64[ns]"
     restored = load_trace(path)
     assert isinstance(restored, xr.DataTree)
+    assert json.loads(restored.attrs["rhime_model_metadata"])["independent_error"] == (
+        "fixed labelled standard deviation resolved from prepared or explicit inputs"
+    )
     assert restored.posterior.ou_site.values.tolist() == ["co2:A", "o2:A", "o2:B"]
     assert restored.posterior.ou_species.values.tolist() == ["co2", "o2", "o2"]
     assert restored.posterior.ou_station.values.tolist() == ["A", "A", "B"]

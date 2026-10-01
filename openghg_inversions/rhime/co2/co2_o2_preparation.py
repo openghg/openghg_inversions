@@ -3,6 +3,13 @@
 CO2 and O2 keep distinct, potentially unequal observation axes at this public
 boundary. They are stacked only after their labels, state meanings, covariance
 blocks, and units have been checked.
+
+Prepared inputs support a versioned DataTree handoff and NetCDF or Zarr
+persistence. In-memory conversion preserves borrowed lazy payloads. Saving
+materializes related payloads and auxiliary coordinates together, then validates
+them before writing; loading eagerly restores and validates the saved artifact.
+Preparation checks independent-error labels and eager values while leaving lazy
+error payloads and unit coordinates for the serialization or model boundary.
 """
 
 from __future__ import annotations
@@ -15,6 +22,7 @@ from pathlib import Path
 from typing import Any, Literal, Self, cast
 
 from dask import compute as dask_compute
+from dask.array import Array as DaskArray
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -107,12 +115,14 @@ class Co2O2PreparedInputs:
             A versioned DataTree retaining borrowed lazy array payloads.
 
         Raises:
-            ValueError: If dense aggregation covariance is absent or metadata
-                cannot be serialized.
+            ValueError: If dense aggregation covariance is absent, boundary
+                channels are unsupported, or metadata cannot be serialized.
         """
         covariance = self.aggregation_error.covariance
         if self.aggregation_error.mode != "dense" or covariance is None:
             raise ValueError("CO2/O2 prepared inputs require dense aggregation error.")
+        if set(self.boundary_sensitivity) - {"co2", "o2"}:
+            raise ValueError("boundary_sensitivity must be keyed only by co2 and o2.")
         arrays = {
             "joint": {
                 "observed_concentration": self.observations,
@@ -164,9 +174,10 @@ class Co2O2PreparedInputs:
             tree: Tree using the dedicated CO2/O2 prepared-input schema.
 
         Returns:
-            Validated scientific inputs. Dense covariance, prior moments,
-            ocean-loading slices, available ratio values, and independent error
-            are materialized for validation; other payloads may remain lazy.
+            Validated scientific inputs. Observations, fixed intercept, dense
+            covariance, prior moments, ocean-loading slices, available ratio
+            values, and independent error are materialized for validation;
+            sensitivity payloads may otherwise remain lazy.
 
         Raises:
             KeyError: If a required node or scientific variable is absent.
@@ -177,6 +188,13 @@ class Co2O2PreparedInputs:
         version = tree.attrs.get("schema_version")
         if isinstance(version, bool) or not isinstance(version, Integral) or version != 1:
             raise ValueError(f"Expected Co2O2PreparedInputs schema_version 1; got {version!r}.")
+        unexpected_boundaries = {
+            name
+            for name in tree.children
+            if name.endswith("_boundary") and name not in {"co2_boundary", "o2_boundary"}
+        }
+        if unexpected_boundaries:
+            raise ValueError(f"Unsupported serialized boundary nodes: {sorted(unexpected_boundaries)!r}.")
         datasets: dict[str, xr.Dataset] = {}
         for name, node in tree.children.items():
             dataset = node.to_dataset()
@@ -308,7 +326,19 @@ def _axis(array: xr.DataArray, name: str) -> str:
 
 
 def _stored_array(dataset: xr.Dataset, variable: str) -> xr.DataArray:
-    """Restore a scientific array's original name from its storage field."""
+    """Restore a scientific array's name without altering its borrowed payload.
+
+    Args:
+        dataset: Decoded node containing array_names_json metadata.
+        variable: Schema field whose original name should be restored.
+
+    Returns:
+        The selected array with its recorded original name and existing data.
+
+    Raises:
+        KeyError: If the required scientific field is absent.
+        ValueError: If its name metadata is missing, malformed, or unsupported.
+    """
     try:
         names = json.loads(dataset.attrs["array_names_json"])
         name = names[variable]
@@ -333,22 +363,42 @@ def _same_index(left: pd.Index, right: pd.Index) -> bool:
 def _validate_independent_error(
     observations: xr.DataArray,
     independent_error_sd: xr.DataArray | None,
+    *,
+    materialize: bool = False,
 ) -> None:
-    """Validate optional external measurement error at its owning boundary."""
+    """Check error structure, deferring borrowed lazy values until requested.
+
+    Args:
+        observations: Canonical gathered observation labels and row units.
+        independent_error_sd: Optional labelled error standard deviations.
+        materialize: Compute payload and unit coordinates together to validate
+            their values at the artifact materialization boundary. Otherwise,
+            inspect only already-eager values and preserve lazy execution.
+
+    Raises:
+        ValueError: If labels, row-unit structure, or available values disagree,
+            or error values are not finite positive real numbers.
+    """
     if independent_error_sd is None:
         return
     _same_axis(observations, independent_error_sd, "independent_error_sd")
     coordinate = independent_error_sd.coords.get("observation_units")
     if coordinate is None or coordinate.dims != observations.dims:
         raise ValueError("independent_error_sd requires observation-aligned observation_units.")
-    values, units, expected_units = dask_compute(
-        to_dense(independent_error_sd).data,
-        coordinate.data,
-        observations["observation_units"].data,
-    )
-    values = np.asarray(values)
-    if not np.array_equal(units, expected_units):
+    values = to_dense(independent_error_sd).data
+    units = coordinate.data
+    expected_units = observations["observation_units"].data
+    if materialize:
+        values, units, expected_units = dask_compute(values, units, expected_units)
+    if (
+        not isinstance(units, DaskArray)
+        and not isinstance(expected_units, DaskArray)
+        and not np.array_equal(units, expected_units)
+    ):
         raise ValueError("independent_error_sd observation_units must match prepared observations.")
+    if isinstance(values, DaskArray):
+        return
+    values = np.asarray(values)
     if (
         not np.issubdtype(values.dtype, np.number)
         or np.iscomplexobj(values)
@@ -359,12 +409,41 @@ def _validate_independent_error(
 
 
 def _validate_prepared_inputs(prepared: Co2O2PreparedInputs) -> None:
-    """Validate externally cached scientific arrays without rebuilding the intercept."""
+    """Validate the external scientific handoff without rebuilding its intercept.
+
+    Args:
+        prepared: Restored inputs whose dense covariance and correlated prior
+            have already been validated by their owning constructors.
+
+    Raises:
+        ValueError: If numeric payloads, labels, row units, state meanings,
+            signed-ratio provenance, or boundary channels violate the schema.
+
+    Notes:
+        Called at save/load validation boundaries. Observation and intercept
+        payloads are computed together for finite real-number checks. Ocean
+        slices, available ratios, independent error, and auxiliary units are
+        materialized explicitly for their remaining scientific checks.
+    """
     observations = prepared.observations
     _axis(observations, "Joint observations")
     index = observations.indexes.get("observation")
     if observations.dims != ("observation",) or not isinstance(index, pd.MultiIndex):
         raise ValueError("Joint observations require the observation MultiIndex.")
+    observation_values, intercept_values = dask_compute(
+        to_dense(observations).data, to_dense(prepared.fixed_prior_contribution).data
+    )
+    for name, values in (
+        ("observations", observation_values),
+        ("fixed_prior_contribution", intercept_values),
+    ):
+        values = np.asarray(values)
+        if (
+            not np.issubdtype(values.dtype, np.number)
+            or np.iscomplexobj(values)
+            or not np.isfinite(values).all()
+        ):
+            raise ValueError(f"{name} must contain only finite real numeric values.")
     if index.names[0] != "species" or set(index.get_level_values("species")) != {"co2", "o2"}:
         raise ValueError("Joint observation labels must gather exactly CO2 and O2 by species.")
     species = index.get_level_values("species").to_numpy()
@@ -450,7 +529,7 @@ def _validate_prepared_inputs(prepared: Co2O2PreparedInputs) -> None:
             raise ValueError(f"{channel} boundary states require unique labels.")
         if boundary.attrs.get("units") != f"{channel_units[channel]} per dimensionless boundary scale":
             raise ValueError(f"{channel} boundary sensitivity units must match its channel units.")
-    _validate_independent_error(observations, prepared.independent_error_sd)
+    _validate_independent_error(observations, prepared.independent_error_sd, materialize=True)
     try:
         json.dumps(dict(prepared.provenance), allow_nan=False)
     except (TypeError, ValueError) as exc:
@@ -767,12 +846,14 @@ def prepare_co2_o2_inputs(
             Channels must currently have identical units. Payloads remain borrowed.
         independent_error_sd: Optional finite positive independent-error standard
             deviations on the gathered observation axis, with matching labels
-            and observation_units. This borrowed array is retained for replay.
+            and observation_units. Eager values are checked here; lazy payloads
+            and unit coordinates are checked at the serialization or model
+            boundary. This borrowed array is retained for replay.
 
     Returns:
         Labelled, backend-neutral joint inputs. Observation vectors, affine
-        intercept, sensitivities, and available ratio provenance retain borrowed
-        lazy payloads; dense covariance validation is the explicit eager
+        intercept, sensitivities, independent error, and available ratio
+        provenance retain borrowed lazy payloads; dense covariance validation is the explicit eager
         aggregation-error boundary.
 
     Raises:

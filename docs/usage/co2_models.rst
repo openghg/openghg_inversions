@@ -798,8 +798,32 @@ use the gathered ``observation`` axis, including its exact index labels and
 level names, and matching observation-aligned ``observation_units``. Its values
 must be finite, positive standard deviations already expressed in each row's
 declared units; preparation does not convert their numerical scale.
+Preparation checks the error vector's index and unit-coordinate structure,
+and validates any already eager values. Dask error payloads and auxiliary
+unit coordinates remain lazy. Artifact validation and the runners' model-input
+materialization boundary check their values and row-unit agreement.
 
-With that vector included in ``prepared``, save and replay the linked inputs::
+For an existing ``prepared`` object, construct the vector from its gathered
+observations and attach it with ``dataclasses.replace``. This example uses
+0.5 in the CO2 row units and 1.0 in the O2 row units; choose scales appropriate
+to the measurements::
+
+   from dataclasses import replace
+
+   import xarray as xr
+
+   observations = prepared.observations
+   independent_error_sd = xr.where(
+       observations["species"] == "co2", 0.5, 1.0,
+   ).assign_coords(
+       observation_units=observations["observation_units"],
+   ).rename("independent_error_sd")
+   prepared = replace(prepared, independent_error_sd=independent_error_sd)
+
+The vector retains the joint observation index and row-unit labels. Constructing
+it uses the species labels and leaves the observation payload unread.
+
+With that vector included, save and replay the linked inputs::
 
    from openghg_inversions.rhime.co2 import (
        Co2O2PreparedInputs,

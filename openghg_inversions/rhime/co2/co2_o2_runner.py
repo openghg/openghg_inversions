@@ -101,7 +101,26 @@ def _materialize_co2_o2_replay_inputs(
     independent_error_sd: xr.DataArray | None,
     boundaries: Mapping[str, xr.DataArray],
 ) -> tuple[tuple[xr.DataArray, ...], dict[str, xr.DataArray]]:
-    """Resolve fixed errors and jointly materialize the linked replay payloads."""
+    """Resolve fixed errors and jointly materialize the linked replay payloads.
+
+    Args:
+        prepared: Borrowed joint observations, affine intercept, native-channel
+            sensitivities, and optional saved independent-error vector.
+        independent_error_sd: Explicit error vector, or None to use saved errors.
+            When both exist, their labels, row units, and values must agree.
+        boundaries: Selected channel-native boundary sensitivities.
+
+    Returns:
+        Materialized observations, intercept, CO2 and O2 sensitivities, and
+        resolved error vector, followed by the materialized boundary mapping.
+        Payloads and lazy auxiliary coordinates share one computation; borrowed
+        arrays are not mutated.
+
+    Raises:
+        ValueError: If no error vector is available, labels or row units differ,
+            values are not finite positive real numbers, or saved and explicit
+            errors disagree.
+    """
     saved_error = getattr(prepared, "independent_error_sd", None)
     if independent_error_sd is None:
         independent_error_sd = saved_error
@@ -151,7 +170,7 @@ def _co2_o2_metadata(
         "recipe": "co2_o2",
         "prior": "correlated arithmetic-moment lognormal",
         "likelihood": "joint Gaussian with fixed independent channel error",
-        "independent_error": "fixed labelled standard deviation supplied by caller",
+        "independent_error": "fixed labelled standard deviation resolved from prepared or explicit inputs",
         "o2_sensitivity_ratio": {
             "convention": "embedded_signed_o2_per_co2",
             "application": "embedded in the O2 rows of the supplied joint sensitivity; no model multiplier",
