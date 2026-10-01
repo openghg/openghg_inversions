@@ -14,7 +14,7 @@ import pytensor.tensor as pt
 import xarray as xr
 from pytensor.gradient import DisconnectedType, grad_not_implemented
 from pytensor.graph.basic import Apply, Variable
-from pytensor.graph.op import Op
+from pytensor.graph.op import Op, OutputStorageType
 from pytensor.tensor.variable import TensorVariable
 from scipy.linalg import cho_solve, eigh, solve_triangular
 from scipy.sparse import csr_matrix
@@ -75,7 +75,8 @@ class _FixedOuLogpOp(Op):
     def __init__(self, target: FixedOuLowRank) -> None:
         self.target = target
 
-    def make_node(self, residual: Any, site_amplitude: Any) -> Apply:
+    def make_node(self, *inputs: Any) -> Apply:
+        residual, site_amplitude = inputs
         residual_variable = pt.as_tensor_variable(residual)
         amplitude_variable = pt.as_tensor_variable(site_amplitude)
         if residual_variable.ndim != 1:
@@ -91,8 +92,8 @@ class _FixedOuLogpOp(Op):
     def perform(
         self,
         node: Apply,
-        inputs: list[NDArray[Any]],
-        output_storage: list[list[NDArray[Any] | None]],
+        inputs: Sequence[Any],
+        output_storage: OutputStorageType,
     ) -> None:
         del node
         evaluation = self.target.evaluate(inputs[0], inputs[1])
@@ -104,9 +105,9 @@ class _FixedOuLogpOp(Op):
 
     def L_op(
         self,
-        inputs: list[Variable],
-        outputs: list[Variable],
-        output_grads: list[Variable],
+        inputs: Sequence[Variable],
+        outputs: Sequence[Variable],
+        output_grads: Sequence[Variable],
     ) -> list[Variable]:
         """Reuse analytic outputs when differentiating the likelihood value."""
         if not isinstance(output_grads[1].type, DisconnectedType) or not isinstance(
@@ -116,7 +117,10 @@ class _FixedOuLogpOp(Op):
                 grad_not_implemented(self, 0, inputs[0]),
                 grad_not_implemented(self, 1, inputs[1]),
             ]
-        return [output_grads[0] * outputs[1], output_grads[0] * outputs[2]]
+        logp_gradient = cast(TensorVariable, output_grads[0])
+        residual_gradient = cast(TensorVariable, outputs[1])
+        amplitude_gradient = cast(TensorVariable, outputs[2])
+        return [logp_gradient * residual_gradient, logp_gradient * amplitude_gradient]
 
     def infer_shape(
         self,

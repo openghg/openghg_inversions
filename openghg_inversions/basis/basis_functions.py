@@ -470,10 +470,10 @@ class FluxWeightedBasis:
         """
         flux = self.flux
         state_dim = self.operator.meta.state_dim
-        for dim in self.operator.meta.grid_dims:
-            expected = require_unique_index(self.operator.basis_matrix, dim, name="basis")
-            if not same_index(require_unique_index(flux, dim, name="flux"), expected):
-                raise ValueError(f"flux {dim!r} labels must exactly match the basis.")
+        for grid_dim in self.operator.meta.grid_dims:
+            expected = require_unique_index(self.operator.basis_matrix, grid_dim, name="basis")
+            if not same_index(require_unique_index(flux, grid_dim, name="flux"), expected):
+                raise ValueError(f"flux {grid_dim!r} labels must exactly match the basis.")
 
         native_source_dim = None
         if isinstance(self.operator, MultiSourceBucketBasisOperator) and self.operator.source_dim in flux.dims:

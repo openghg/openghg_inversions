@@ -26,7 +26,7 @@ from pymc.step_methods.state import dataclass_state
 from pymc.util import RandomGenerator, get_random_generator, get_value_vars_from_user_vars
 from pytensor.gradient import DisconnectedType, grad_not_implemented
 from pytensor.graph.basic import Apply, Variable
-from pytensor.graph.op import Op
+from pytensor.graph.op import Op, OutputStorageType
 from pytensor.tensor.variable import TensorVariable
 
 from openghg_inversions.models.cached_sigma import (
@@ -88,7 +88,8 @@ class _PytensorSigmaLikelihoodOp(Op):
             name="sigma_conditional_residual",
         )
 
-    def make_node(self, sigma: Any, residual: Any) -> Apply:
+    def make_node(self, *inputs: Any) -> Apply:
+        sigma, residual = inputs
         sigma_variable = pt.as_tensor_variable(sigma)
         residual_variable = pt.as_tensor_variable(residual)
         if sigma_variable.ndim != 1:
@@ -104,8 +105,8 @@ class _PytensorSigmaLikelihoodOp(Op):
     def perform(
         self,
         node: Apply,
-        inputs: list[NDArray[Any]],
-        output_storage: list[list[NDArray[Any] | None]],
+        inputs: Sequence[Any],
+        output_storage: OutputStorageType,
     ) -> None:
         del node
         sigma = np.asarray(inputs[0], dtype=np.float64)
@@ -122,17 +123,19 @@ class _PytensorSigmaLikelihoodOp(Op):
 
     def L_op(
         self,
-        inputs: list[Variable],
-        outputs: list[Variable],
-        output_grads: list[Variable],
+        inputs: Sequence[Variable],
+        outputs: Sequence[Variable],
+        output_grads: Sequence[Variable],
     ) -> list[Variable]:
         if not isinstance(output_grads[1].type, DisconnectedType):
             return [
                 grad_not_implemented(self, 0, inputs[0]),
                 grad_not_implemented(self, 1, inputs[1]),
             ]
+        logp_gradient = cast(TensorVariable, output_grads[0])
+        amplitude_gradient = cast(TensorVariable, outputs[1])
         return [
-            output_grads[0] * outputs[1],
+            logp_gradient * amplitude_gradient,
             grad_not_implemented(self, 1, inputs[1]),
         ]
 

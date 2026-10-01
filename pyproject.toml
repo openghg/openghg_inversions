@@ -60,6 +60,8 @@ dev = [
   "ruff==0.16.0",
   "pyright",
   "mypy",
+  "pandas-stubs==2.3.3.*",
+  "scipy-stubs==1.15.3.*",
   "towncrier>=24.8",
 ]
 

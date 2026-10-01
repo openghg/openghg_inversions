@@ -380,7 +380,7 @@ def fp_all_from_dataset(ds: xr.Dataset) -> dict:
         ds.mf.attrs.get("units", "mol/mol"),
         context="serialized merged observations",
     )
-    fp_all = {}
+    fp_all: dict[str, Any] = {}
 
     # get scenarios
     bc_vars = ["vmr_n", "vmr_e", "vmr_s", "vmr_w"]
@@ -554,7 +554,7 @@ def datatree_to_fp_all(dt: xr.DataTree) -> dict:
     if "scenarios" not in dt:
         raise ValueError("Can only convert DataTree to fp_all if 'scenarios' group is present.")
 
-    fp_all = {}
+    fp_all: dict[str, Any] = {}
 
     if "fluxes" in dt:
         fp_all[".flux"] = datatree_to_flux_dict(dt.fluxes)
