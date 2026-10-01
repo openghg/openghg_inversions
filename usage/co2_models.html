@@ -1152,6 +1152,8 @@ model-variable vocabulary,</p>
 <a class="reference internal" href="../reference/openghg_inversions.serialization.html#openghg_inversions.serialization.save_trace" title="openghg_inversions.serialization.save_trace"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.serialization.save_trace()</span></code></a> and restore them
 with <a class="reference internal" href="../reference/openghg_inversions.serialization.html#openghg_inversions.serialization.load_trace" title="openghg_inversions.serialization.load_trace"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.serialization.load_trace()</span></code></a>; this is the
 declared boundary for preserving gathered MultiIndex coordinates.</p>
+<section id="separate-linked-paris-products">
+<h3>Separate linked PARIS products<a class="headerlink" href="#separate-linked-paris-products" title="Link to this heading">#</a></h3>
 <p><a class="reference internal" href="../reference/openghg_inversions.postprocessing.linked_paris_outputs.html#openghg_inversions.postprocessing.linked_paris_outputs.make_co2_o2_paris_outputs" title="openghg_inversions.postprocessing.linked_paris_outputs.make_co2_o2_paris_outputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">make_co2_o2_paris_outputs()</span></code></a>
 projects one linked posterior into separate CO2 and O2 products. It supports
 <code class="docutils literal notranslate"><span class="pre">template_version=&quot;latest&quot;</span></code>: concentration v04 and native flux v03. The
@@ -1211,6 +1213,9 @@ conditional covariance, overlapping source grids, or a coherent conditional
 native map. Those representations require an explicit native reconstruction
 contract and are outside this bounded adapter. No combined two-tracer PARIS
 schema is emitted.</p>
+</section>
+<section id="signed-oxidation-ratios">
+<h3>Signed oxidation ratios<a class="headerlink" href="#signed-oxidation-ratios" title="Link to this heading">#</a></h3>
 <p>The signed oxidation ratio is fixed in this recipe and already folded into the
 shared-state O2 sensitivity. When it is representable by retained-state or
 source-resolved values <span class="math notranslate nohighlight">\(R\)</span>,</p>
@@ -1229,6 +1234,7 @@ inferred oxidation ratio were instead explicit model state, the recipe would
 visibly form <code class="docutils literal notranslate"><span class="pre">o2_state</span> <span class="pre">=</span> <span class="pre">oxidation_ratio</span> <span class="pre">*</span> <span class="pre">co2_state</span></code> before applying the
 ratio-free O2 sensitivity. The <a class="reference internal" href="../experimental/ramsden2022.html"><span class="doc">Ramsden methane/ethane model</span></a> follows that explicit pattern for its emission
 ratio. That future CO2/O2 coupling work is tracked in <a class="reference external" href="https://linear.app/openghg-inversions/issue/OPE-118">OPE-118</a>.</p>
+</section>
 </section>
 <section id="run-the-package-supported-cached-sigma-co2-runner">
 <span id="co2-cached-sigma-recipe"></span><h2>Run the package-supported cached-sigma CO2 runner<a class="headerlink" href="#run-the-package-supported-cached-sigma-co2-runner" title="Link to this heading">#</a></h2>
@@ -1467,7 +1473,11 @@ independent per-observation likelihoods.</p>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#run-the-global-scalar-sigma-co2-likelihood">Run the global scalar-sigma CO2 likelihood</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#co2-o2-shared-state-model">CO2/O2 shared-state model</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#co2-o2-shared-state-model">CO2/O2 shared-state model</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#separate-linked-paris-products">Separate linked PARIS products</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#signed-oxidation-ratios">Signed oxidation ratios</a></li>
+</ul>
+</li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#run-the-package-supported-cached-sigma-co2-runner">Run the package-supported cached-sigma CO2 runner</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#linked-fixed-ou-mismatch-and-cached-sampling">Linked fixed-OU mismatch and cached sampling</a></li>
 </ul>

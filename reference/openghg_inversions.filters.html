@@ -560,7 +560,7 @@ to look at daytime values the filters list should be
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>datasets_in</strong> (<em>dict</em>) – dictionary of datasets containing output from ModelScenario.footprints_merge().</p></li>
-<li><p><strong>filters</strong> (<em>str</em><em> | </em><em>None</em><em> | </em><em>dict</em><em>[</em><em>str</em><em>, </em><em>list</em><em>[</em><em>str</em><em> | </em><em>None</em><em>]</em><em>] </em><em>| </em><em>list</em><em>[</em><em>str</em><em> | </em><em>None</em><em>]</em>) – filters to apply to the datasets. Either a list of filters, which will be applied to every site,
+<li><p><strong>filters</strong> (<em>str</em><em> | </em><em>None</em><em> | </em><em>dict</em><em>[</em><em>str</em><em>, </em><em>str</em><em> | </em><em>None</em><em> | </em><em>list</em><em>[</em><em>str</em><em> | </em><em>None</em><em>]</em><em>] </em><em>| </em><em>list</em><em>[</em><em>str</em><em> | </em><em>None</em><em>]</em>) – filters to apply to the datasets. Either a list of filters, which will be applied to every site,
 or a dictionary of lists of the form  {&lt;site code&gt;: [filter1, filter2, …]}, with specific filters to
 be applied at each site. Use the <cite>list_filters</cite> function to list available filters.</p></li>
 <li><p><strong>keep_missing</strong> (<em>bool</em>) – if True, drop missing data</p></li>

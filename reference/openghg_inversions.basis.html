@@ -855,17 +855,10 @@ dimension, and integer region labels.</p>
 legacy files without that metadata continue to use their largest label.
 This inner mask is passed to <code class="docutils literal notranslate"><span class="pre">basis_algorithm</span></code> and then inserted back
 into the fixed outer map.</p>
-<p>By default (<code class="docutils literal notranslate"><span class="pre">allow_empty_inner_region=False</span></code>), a marked inner region
-with no non-zero footprint*flux response raises, exactly as it always
-has: this normally means the map or footprint/flux data are mismatched.
-A modern nested-domain run is a legitimate exception – its outer
-footprint response and prior flux are deliberately zeroed over the same
-extent the fine inner grid already covers (see
-<code class="docutils literal notranslate"><span class="pre">openghg_inversions.rhime.nested.mask_outer_merged_for_inner_domain</span></code>),
-so an inner-region map built to mark that same extent will correctly find
-nothing left to subdivide there. Only nested outer-domain preparation
-should pass <code class="docutils literal notranslate"><span class="pre">allow_empty_inner_region=True</span></code>; every other caller keeps
-the strict default.</p>
+<p>For nested outer-domain preparation, <code class="docutils literal notranslate"><span class="pre">allow_empty_inner_region=True</span></code>
+keeps the inner label unsplit when its masked weights contain finite values
+but all are zero. Otherwise the selected basis algorithm handles the inner
+weights normally.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -905,16 +898,15 @@ contrast scoring.</p></li>
 coefficient. If omitted, <code class="docutils literal notranslate"><span class="pre">tau=1</span></code> is uncalibrated.</p></li>
 <li><p><strong>contrast_sigma_design</strong> (<em>float</em><em> | </em><em>None</em>) – Optional scalar design standard deviation.</p></li>
 <li><p><strong>contrast_s_diag</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a><em> | </em><em>None</em>) – Optional diagonal design covariance entries.</p></li>
-<li><p><strong>allow_empty_inner_region</strong> (<em>bool</em>) – If true, a marked inner region with no
-non-zero footprint*flux response is kept as a single fixed label
-(like the other outer regions) instead of raising. Intended only
+<li><p><strong>allow_empty_inner_region</strong> (<em>bool</em>) – If true, keep the inner label unsplit when
+its masked weights contain finite values but all are zero. Intended
 for nested outer-domain preparation.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>Basis field with fixed outer labels and generated inner labels. When
-<code class="docutils literal notranslate"><span class="pre">allow_empty_inner_region</span></code> is true and the inner region has no
-residual response, its label is kept unsplit.</p>
+<code class="docutils literal notranslate"><span class="pre">allow_empty_inner_region</span></code> is true and finite inner weights are all
+zero, its label is kept unsplit.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a></p>
@@ -1480,9 +1472,7 @@ dimension, and integer region labels.</p>
 <p>The domain is split with smaller grid cells for regions which contribute
 more to the a priori above-baseline mole fraction. This is based on the
 average footprint over the inversion period and the a priori emissions field.</p>
-<p>The number of basis functions is optimised using dual annealing. Probably
-not the best or fastest method as there should only be one minimum, but it
-does not require the Jacobian or Hessian for optimisation.</p>
+<p>Dual annealing selects the split threshold to approach <code class="docutils literal notranslate"><span class="pre">nbasis</span></code> regions.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
