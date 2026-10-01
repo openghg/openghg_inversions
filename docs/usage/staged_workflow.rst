@@ -153,6 +153,7 @@ directory.
   older graph-building compatibility route because they did not store output
   bindings. CO2 schema-version-1 replay remains graph-free, using roles in the
   authenticated saved trace and any separately authenticated affine artifact.
+  CO2 postprocessing rejects other sample-manifest versions before replay.
   New posterior predictive calculations still require a separate explicit
   model-building route. The standard/multisector configuration's
   ``output_format`` controls ``inv_out``, ``basic``, ``paris`` or ``legacy``

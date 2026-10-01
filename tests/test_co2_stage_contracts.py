@@ -119,7 +119,8 @@ def test_shared_provenance_allows_unknown_revision_but_co2_requires_it(tmp_path,
         stages._manifest(setup, "prepare")
 
 
-def test_co2_version_one_replay_stays_graph_free_through_public_facade(tmp_path, monkeypatch):
+@pytest.mark.parametrize("binding", [None, "absent", "malformed", "incorrect_digest"])
+def test_co2_replay_requires_version_one_and_stays_graph_free(tmp_path, monkeypatch, binding):
     from openghg_inversions.rhime import _standard_stages, stages
     from openghg_inversions.rhime._stage_artifacts import file_identity, write_json
     from openghg_inversions.rhime.co2 import stages as co2_stages
@@ -147,6 +148,15 @@ def test_co2_version_one_replay_stays_graph_free_through_public_facade(tmp_path,
             "posterior": file_identity(posterior),
         },
     }
+    if binding is not None:
+        sample["schema_version"] = 2
+        if binding != "absent":
+            binding_path = tmp_path / "output-binding.json"
+            binding_path.write_text("{" if binding == "malformed" else "{}")
+            sample["artifacts"] = {"output_binding": binding_path.name}
+            sample["artifact_identities"]["output_binding"] = (
+                file_identity(binding_path) if binding == "malformed" else "sha256:" + "0" * 64
+            )
     sampling = write_json(tmp_path / "sample-manifest.json", sample)
 
     def forbidden(*args, **kwargs):
@@ -155,6 +165,20 @@ def test_co2_version_one_replay_stays_graph_free_through_public_facade(tmp_path,
     monkeypatch.setattr(co2_stages, "build_rhime_co2", forbidden)
     monkeypatch.setattr(co2_stages, "build_rhime_co2_cached_sigma", forbidden)
     monkeypatch.setattr(_standard_stages, "_build_prepared_model", forbidden)
+    if binding is not None:
+        monkeypatch.setattr(co2_stages, "load_trace", forbidden)
+        with pytest.raises(ValueError, match="CO2 postprocessing requires schema_version=1"):
+            stages.postprocess_rhime_stage(
+                setup=setup,
+                model="co2",
+                prepared_inputs=prepared_path,
+                preparation_manifest=preparation["manifest_path"],
+                posterior=posterior,
+                sample_manifest=sampling,
+                output_dir=tmp_path / "replay",
+            )
+        assert not (tmp_path / "replay").exists()
+        return
     result = stages.postprocess_rhime_stage(
         setup=setup,
         model="co2",

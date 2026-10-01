@@ -439,11 +439,13 @@ def postprocess_co2_stage(
     sample_manifest: str | Path,
     output_dir: str | Path,
 ) -> RhimeResult:
-    """Authenticate saved CO2 artifacts and create role-selected common products."""
+    """Authenticate version-1 CO2 artifacts and create role-selected common products."""
     from .co2_outputs import make_co2_rhime_outputs, make_co2_rhime_result
 
     prepared, bound, preparation = _load_prepared(setup, prepared_inputs, preparation_manifest)
     path, sample = _load_stage_manifest(sample_manifest, stage="sample")
+    if sample["schema_version"] != 1:
+        raise ValueError("CO2 postprocessing requires schema_version=1 sample manifests.")
     if sample.get("configuration_identity") != co2_configuration_identity(setup):
         raise ValueError("Posterior does not match the effective CO2 configuration.")
     for name, artifact in (("posterior", posterior), ("prepared_inputs", prepared_inputs)):
