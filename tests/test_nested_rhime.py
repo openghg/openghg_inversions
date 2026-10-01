@@ -16,6 +16,7 @@ import openghg_inversions.rhime.nested as nested_module
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.cli import main
 from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs
+from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.inversion_data.preparation import _SiteOptions
 from openghg_inversions.postprocessing.nested_paris_outputs import (
     _regridded_inner_country_file,
@@ -701,7 +702,8 @@ def test_regridded_inner_country_cache_uses_writable_identity_key(
         assert "nested_country_target_grid_sha256" in cached.attrs
 
 
-def test_make_nested_inversion_outputs_builds_per_domain_views() -> None:
+@pytest.mark.parametrize("retain_graph", [True, False])
+def test_make_nested_inversion_outputs_builds_per_domain_views(retain_graph: bool) -> None:
     """Outer/inner InversionOutput views must read distinct bases and trace variables.
 
     The two views exist so ordinary, single-grid PARIS/flux/country postprocessing
@@ -742,11 +744,14 @@ def test_make_nested_inversion_outputs_builds_per_domain_views() -> None:
         idata=make_trace(
             posterior=xr.Dataset(
                 {
-                    "x_outer": (("chain", "draw", "region"), np.ones((1, 2, 2))),
-                    "x_inner": (("chain", "draw", "inner_region"), np.ones((1, 2, 2))),
+                    "x_outer": (("chain", "draw", "region"), np.broadcast_to([[[1]], [[3]]], (2, 2, 2))),
+                    "x_inner": (
+                        ("chain", "draw", "inner_region"),
+                        np.broadcast_to([[[2]], [[6]]], (2, 2, 2)),
+                    ),
                 },
                 coords={
-                    "chain": [0],
+                    "chain": [0, 1],
                     "draw": [0, 1],
                     "region": [0, 1],
                     "inner_region": [0, 1],
@@ -754,8 +759,9 @@ def test_make_nested_inversion_outputs_builds_per_domain_views() -> None:
             )
         ),
         basis_functions=prepared.combined.basis_functions,
-        model=build_result.model,
-        model_build_result=build_result,
+        model=build_result.model if retain_graph else None,
+        model_build_result=build_result if retain_graph else None,
+        output_contract=OutputContract.from_dict(build_result.output_contract.to_dict()),
         sampler=RhimeSampler(),
     )
     nested_result = NestedRhimeResult(rhime_result=result, prepared_inputs=prepared)
@@ -781,8 +787,10 @@ def test_make_nested_inversion_outputs_builds_per_domain_views() -> None:
     assert inner_inv_out.trace_dataset(var_roles="flux_scale").sizes["region"] == 2
     assert "inner_region" not in inner_inv_out.trace_dataset(var_roles="flux_scale").dims
     assert "inner_region" in nested_result.idata.posterior["x_inner"].dims
+    assert outer_inv_out.trace.posterior.sizes["chain"] == inner_inv_out.trace.posterior.sizes["chain"] == 2
     inner_flux = make_flux_outputs(inner_inv_out, stats=["mean"])
     assert inner_flux["flux_posterior_mean"].dims == ("lat", "lon", "flux_time")
+    np.testing.assert_allclose(inner_flux["flux_posterior_mean"], 4.0)
 
     outer_nested = outer_inv_out.output_metadata["nested_domain"]
     inner_nested = inner_inv_out.output_metadata["nested_domain"]
