@@ -508,7 +508,7 @@ NetCDF serialisation.</p>
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.postprocessing.stats.StatsFunction">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">StatsFunction</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">func</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">params</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.postprocessing.stats.StatsFunction" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">tuple</span></code></p>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">tuple</span></code></a></p>
 <p>Tuple holding a stats function and the parameters it accepts.</p>
 <p>Storing the parameters the stats function accepts helps with passing
 optional arguments to the stats functions without having to specify
@@ -539,13 +539,13 @@ extra parameters for each stats function separately.</p>
 <dd><p>Decorator function to register stats functions.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>stat</strong> (<em>Callable</em>) – stats function to register</p>
+<dd class="field-odd"><p><strong>stat</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Callable" title="(in Python v3.14)"><em>Callable</em></a>) – stats function to register</p>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>stat, the input function (no modifications made)</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><em>Callable</em></p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Callable" title="(in Python v3.14)"><em>Callable</em></a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -556,7 +556,7 @@ extra parameters for each stats function separately.</p>
 <dd><p>Combine MCMC chains only when samples are about to be reduced.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>tuple[<em>XarrayObject</em>, str]</p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)">tuple</a>[<em>XarrayObject</em>, <a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)">str</a>]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -570,9 +570,9 @@ extra parameters for each stats function separately.</p>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>ds</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>) – input dataset; must have dimension specified by <cite>sample_dim</cite>
 (default is “draw”)</p></li>
-<li><p><strong>quantiles</strong> (<em>Sequence</em><em>[</em><em>float</em><em>]</em>) – sequence of quantiles to compute; default values correspond
+<li><p><strong>quantiles</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.14)"><em>Sequence</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a><em>]</em>) – sequence of quantiles to compute; default values correspond
 to mean +/- 1 stdev for a normally distributed sequence.</p></li>
-<li><p><strong>sample_dim</strong> (<em>str</em>) – dimension to compute quantiles over; defaults to “draw”,
+<li><p><strong>sample_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – dimension to compute quantiles over; defaults to “draw”,
 which is the default sample dimension for PyMC outputs.</p></li>
 </ul>
 </dd>
@@ -597,8 +597,8 @@ if <cite>thin = 2</cite> is passed, then the running time will be roughly half.<
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>ds</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>) – Dataset containing samples.</p></li>
-<li><p><strong>sample_dim</strong> (<em>str</em>) – Dimension containing the samples.</p></li>
-<li><p><strong>thin</strong> (<em>int</em>) – Integer stride used to thin samples before estimating the mode.</p></li>
+<li><p><strong>sample_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Dimension containing the samples.</p></li>
+<li><p><strong>thin</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a>) – Integer stride used to thin samples before estimating the mode.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -620,9 +620,9 @@ if <cite>thin = 2</cite> is passed, then the running time will be roughly half.<
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>ds</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>) – Dataset containing samples.</p></li>
-<li><p><strong>sample_dim</strong> (<em>str</em>) – Dimension containing the samples.</p></li>
-<li><p><strong>chunk_dim</strong> (<em>str</em><em> | </em><em>None</em>) – Optional non-sample dimension to chunk for parallel execution.</p></li>
-<li><p><strong>chunk_size</strong> (<em>int</em>) – Chunk size to use along <code class="docutils literal notranslate"><span class="pre">chunk_dim</span></code>.</p></li>
+<li><p><strong>sample_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Dimension containing the samples.</p></li>
+<li><p><strong>chunk_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Optional non-sample dimension to chunk for parallel execution.</p></li>
+<li><p><strong>chunk_size</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a>) – Chunk size to use along <code class="docutils literal notranslate"><span class="pre">chunk_dim</span></code>.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -642,8 +642,8 @@ if <cite>thin = 2</cite> is passed, then the running time will be roughly half.<
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>ds</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>) – Dataset containing samples.</p></li>
-<li><p><strong>hdi_prob</strong> (<em>float</em><em> | </em><em>Iterable</em><em>[</em><em>float</em><em>]</em>) – Probability or probabilities contained by each interval.</p></li>
-<li><p><strong>sample_dim</strong> (<em>str</em>) – Dimension containing the samples.</p></li>
+<li><p><strong>hdi_prob</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Iterable" title="(in Python v3.14)"><em>Iterable</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a><em>]</em>) – Probability or probabilities contained by each interval.</p></li>
+<li><p><strong>sample_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Dimension containing the samples.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -679,7 +679,7 @@ if <cite>thin = 2</cite> is passed, then the running time will be roughly half.<
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>ds</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>) – Dataset containing samples.</p></li>
-<li><p><strong>sample_dim</strong> (<em>str</em>) – Dimension containing the samples.</p></li>
+<li><p><strong>sample_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Dimension containing the samples.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -699,7 +699,7 @@ if <cite>thin = 2</cite> is passed, then the running time will be roughly half.<
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>ds</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>) – dataset to calculate stats on.</p></li>
-<li><p><strong>stats</strong> (<em>Sequence</em><em>[</em><em>str</em><em>]</em>) – list of stats to calculate.</p></li>
+<li><p><strong>stats</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.14)"><em>Sequence</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>]</em>) – list of stats to calculate.</p></li>
 <li><p><strong>**kwargs</strong> – arguments to pass to stats functions. If a parameter can be passed to a stats function,
 it will be passed. To pass to a specific stats function, use <cite>&lt;stats func name&gt;__&lt;key&gt; = &lt;value&gt;</cite>.
 Note: that is a double underscore. For instance <cite>mode_kde__chunk_dim=”country”</cite> would specify <cite>chunk_dim</cite>
@@ -712,7 +712,7 @@ When both chain and draw dimensions are present, every chain is pooled
 at this reduction boundary.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>ValueError</strong> – if a statistic in <cite>stats</cite> is not found in the registry.</p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – if a statistic in <cite>stats</cite> is not found in the registry.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a></p>

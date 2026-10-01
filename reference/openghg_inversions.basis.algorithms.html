@@ -508,7 +508,7 @@ acceptance policies, and split steps for composing group-local strategies.</p>
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.basis.algorithms.AllSplitAcceptancePolicies">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">AllSplitAcceptancePolicies</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">policies</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.algorithms.AllSplitAcceptancePolicies" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
 <p>Accept a split only when every policy accepts it.</p>
 <dl class="field-list simple">
 </dl>
@@ -518,7 +518,7 @@ acceptance policies, and split steps for composing group-local strategies.</p>
 <dd><p>Return true when all component policies accept the split.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>bool</p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)">bool</a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -528,7 +528,7 @@ acceptance policies, and split steps for composing group-local strategies.</p>
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.basis.algorithms.AxisAlignedWeightedSplitStrategy">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">AxisAlignedWeightedSplitStrategy</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">max_iter</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">32</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.algorithms.AxisAlignedWeightedSplitStrategy" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
 <p>Class-local strategy derived from recursive weighted bucket splitting.</p>
 <p>This applies the existing bucket splitter independently to the masked
 weights for one class. It recursively splits rectangles along the longer
@@ -541,7 +541,7 @@ with <a class="reference internal" href="#openghg_inversions.basis.algorithms.Ax
 instead.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Variables<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>max_iter</strong> (<em>int</em>) – Maximum number of threshold-search iterations.</p>
+<dd class="field-odd"><p><strong>max_iter</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a>) – Maximum number of threshold-search iterations.</p>
 </dd>
 </dl>
 </dd></dl>
@@ -549,7 +549,7 @@ instead.</p>
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.basis.algorithms.AxisParallelSplitStep">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">AxisParallelSplitStep</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">balanced</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">clean_splits</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">geometry</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.algorithms.AxisParallelSplitStep" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
 <p>Split one partition along an axis-parallel line.</p>
 <p>This is a cleaned-up version of the prototype’s axis-parallel split step.
 Greedy orchestration is handled separately by
@@ -557,10 +557,10 @@ Greedy orchestration is handled separately by
 <dl class="field-list simple">
 <dt class="field-odd">Variables<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>balanced</strong> (<em>bool</em>) – If true, choose the weighted long axis and split near half
+<li><p><strong>balanced</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – If true, choose the weighted long axis and split near half
 total node weight. If false, choose the geometric long axis and
 split by cell count.</p></li>
-<li><p><strong>clean_splits</strong> (<em>bool</em>) – If true, keep all cells with the same selected-axis
+<li><p><strong>clean_splits</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – If true, keep all cells with the same selected-axis
 coordinate on the same side of the split.</p></li>
 <li><p><strong>geometry</strong> (<a class="reference internal" href="#openghg_inversions.basis.algorithms.SplitGeometry" title="openghg_inversions.basis.algorithms._partition.SplitGeometry"><em>openghg_inversions.basis.algorithms._partition.SplitGeometry</em></a><em> | </em><em>None</em>) – Optional geometry used to choose the split axis. The split
 itself remains a row- or column-aligned cut.</p></li>
@@ -572,14 +572,14 @@ itself remains a row- or column-aligned cut.</p></li>
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.basis.algorithms.ComponentConsolidationPolicy">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">ComponentConsolidationPolicy</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.algorithms.ComponentConsolidationPolicy" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Protocol</span></code></p>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Protocol" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Protocol</span></code></a></p>
 <p>Policy protocol for optional post-construction region consolidation.</p>
 </dd></dl>
 
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.basis.algorithms.ConnectedBinaryPartitionStep">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">ConnectedBinaryPartitionStep</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">split_step</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">connectivity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.algorithms.ConnectedBinaryPartitionStep" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
 <p>Repair a provisional binary split into two connected child partitions.</p>
 <p>This opt-in wrapper preserves binary arity when disconnected cut fragments
 can be reassigned safely. It labels the connected components on both sides,
@@ -597,7 +597,7 @@ back to the same multi-child component decomposition as
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>split_step</strong> (<a class="reference internal" href="#openghg_inversions.basis.algorithms.PartitionStep" title="openghg_inversions.basis.algorithms._partition.PartitionStep"><em>openghg_inversions.basis.algorithms._partition.PartitionStep</em></a>) – Partition step whose provisional binary children should be
 repaired.</p></li>
-<li><p><strong>connectivity</strong> (<em>int</em>) – Two-dimensional neighbourhood definition. <code class="docutils literal notranslate"><span class="pre">1</span></code> uses
+<li><p><strong>connectivity</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a>) – Two-dimensional neighbourhood definition. <code class="docutils literal notranslate"><span class="pre">1</span></code> uses
 edge-sharing (four-neighbour) connectivity and <code class="docutils literal notranslate"><span class="pre">2</span></code> additionally
 includes corner-sharing (eight-neighbour) connectivity.</p></li>
 </ul>
@@ -608,7 +608,7 @@ includes corner-sharing (eight-neighbour) connectivity.</p></li>
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.basis.algorithms.ConnectedComponentPartitionStep">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">ConnectedComponentPartitionStep</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">split_step</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">connectivity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.algorithms.ConnectedComponentPartitionStep" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
 <p>Make every child from another partition step spatially connected.</p>
 <p>This wrapper is useful for partition steps such as
 <a class="reference internal" href="#openghg_inversions.basis.algorithms.InertialSplitStep" title="openghg_inversions.basis.algorithms.InertialSplitStep"><code class="xref py py-class docutils literal notranslate"><span class="pre">InertialSplitStep</span></code></a>, whose one-dimensional projection can assign
@@ -619,7 +619,7 @@ orchestrator accepts it.</p>
 <dt class="field-odd">Variables<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>split_step</strong> (<a class="reference internal" href="#openghg_inversions.basis.algorithms.PartitionStep" title="openghg_inversions.basis.algorithms._partition.PartitionStep"><em>openghg_inversions.basis.algorithms._partition.PartitionStep</em></a>) – Partition step whose children should be made connected.</p></li>
-<li><p><strong>connectivity</strong> (<em>int</em>) – Two-dimensional neighbourhood definition. <code class="docutils literal notranslate"><span class="pre">1</span></code> uses
+<li><p><strong>connectivity</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a>) – Two-dimensional neighbourhood definition. <code class="docutils literal notranslate"><span class="pre">1</span></code> uses
 edge-sharing (four-neighbour) connectivity and <code class="docutils literal notranslate"><span class="pre">2</span></code> additionally
 includes corner-sharing (eight-neighbour) connectivity.</p></li>
 </ul>
@@ -630,7 +630,7 @@ includes corner-sharing (eight-neighbour) connectivity.</p></li>
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.basis.algorithms.ConnectedComponentSplitStrategy">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">ConnectedComponentSplitStrategy</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">split_strategy</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">connectivity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.algorithms.ConnectedComponentSplitStrategy" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
 <p>Allocate and split each connected piece of a class independently.</p>
 <p>A disconnected class requires at least one label per connected component.
 If <code class="docutils literal notranslate"><span class="pre">target_regions</span></code> is below that geographic minimum, the effective
@@ -642,10 +642,10 @@ the existing area fallback for all-zero weights.</p>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>split_strategy</strong> (<a class="reference internal" href="#openghg_inversions.basis.algorithms.SplitStrategy" title="openghg_inversions.basis.algorithms._constrained.SplitStrategy"><em>openghg_inversions.basis.algorithms._constrained.SplitStrategy</em></a>) – Class-local strategy applied separately to each
 connected component.</p></li>
-<li><p><strong>connectivity</strong> (<em>int</em>) – Two-dimensional neighbourhood definition. <code class="docutils literal notranslate"><span class="pre">1</span></code> uses
+<li><p><strong>connectivity</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a>) – Two-dimensional neighbourhood definition. <code class="docutils literal notranslate"><span class="pre">1</span></code> uses
 edge-sharing (four-neighbour) connectivity and <code class="docutils literal notranslate"><span class="pre">2</span></code> additionally
 includes corner-sharing (eight-neighbour) connectivity.</p></li>
-<li><p><strong>diagnostics</strong> (<em>list</em><em>[</em><em>dict</em><em>[</em><em>str</em><em>, </em><em>int</em><em>]</em><em>]</em>) – Per-call requested, minimum, effective, and actual region
+<li><p><strong>diagnostics</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.14)"><em>list</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em>]</em><em>]</em>) – Per-call requested, minimum, effective, and actual region
 counts.</p></li>
 </ul>
 </dd>
@@ -674,7 +674,7 @@ counts.</p></li>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.algorithms.ContrastProximityComponentConsolidation" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
 <p>Merge weak, nearby regions created solely by disconnected components.</p>
 <p>The input labels must already satisfy the requested strict connectivity.
 For each source/class group, the largest connected component is treated as
@@ -694,21 +694,21 @@ design-observation dimensions followed by the two spatial
 dimensions.</p></li>
 <li><p><strong>cell_weight</strong> (<em>xr.DataArray</em><em> | </em><em>npt.ArrayLike</em>) – Non-negative prior mass field used by contrast scoring.</p></li>
 <li><p><strong>geometry</strong> (<a class="reference internal" href="#openghg_inversions.basis.algorithms.LatLonGridGeometry" title="openghg_inversions.basis.algorithms.LatLonGridGeometry"><em>LatLonGridGeometry</em></a>) – Latitude/longitude geometry aligned to the label grid.</p></li>
-<li><p><strong>max_merge_distance_km</strong> (<em>float</em>) – Maximum nearest-cell separation for a candidate.</p></li>
-<li><p><strong>max_merge_delta_eig</strong> (<em>float</em><em> | </em><em>None</em>) – Optional maximum reverse-split <code class="docutils literal notranslate"><span class="pre">delta_eig</span></code>.</p></li>
-<li><p><strong>max_merge_lambda</strong> (<em>float</em><em> | </em><em>None</em>) – Optional maximum reverse-split <code class="docutils literal notranslate"><span class="pre">lambda</span></code>.</p></li>
-<li><p><strong>contrast_tau</strong> (<em>float</em><em> | </em><em>None</em>) – Prior standard deviation of the split contrast
+<li><p><strong>max_merge_distance_km</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a>) – Maximum nearest-cell separation for a candidate.</p></li>
+<li><p><strong>max_merge_delta_eig</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a><em> | </em><em>None</em>) – Optional maximum reverse-split <code class="docutils literal notranslate"><span class="pre">delta_eig</span></code>.</p></li>
+<li><p><strong>max_merge_lambda</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a><em> | </em><em>None</em>) – Optional maximum reverse-split <code class="docutils literal notranslate"><span class="pre">lambda</span></code>.</p></li>
+<li><p><strong>contrast_tau</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a><em> | </em><em>None</em>) – Prior standard deviation of the split contrast
 coefficient. <code class="docutils literal notranslate"><span class="pre">None</span></code> uses the uncalibrated value <code class="docutils literal notranslate"><span class="pre">1</span></code>.</p></li>
-<li><p><strong>contrast_sigma_design</strong> (<em>float</em><em> | </em><em>None</em>) – Optional scalar design standard deviation.</p></li>
+<li><p><strong>contrast_sigma_design</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a><em> | </em><em>None</em>) – Optional scalar design standard deviation.</p></li>
 <li><p><strong>contrast_s_diag</strong> (<em>xr.DataArray</em><em> | </em><em>npt.ArrayLike</em><em> | </em><em>None</em>) – Optional diagonal design covariance.</p></li>
 <li><p><strong>source_classes</strong> (<em>xr.DataArray</em><em> | </em><em>npt.ArrayLike</em><em> | </em><em>None</em>) – Optional source field. When omitted, all cells are
 treated as belonging to one source.</p></li>
 <li><p><strong>inactive_component_policy</strong> (<em>InactiveComponentPolicy</em>) – <code class="docutils literal notranslate"><span class="pre">&quot;keep&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;merge_nearest&quot;</span></code>.</p></li>
-<li><p><strong>connectivity</strong> (<em>int</em>) – <code class="docutils literal notranslate"><span class="pre">1</span></code> for four-neighbour or <code class="docutils literal notranslate"><span class="pre">2</span></code> for eight-neighbour
+<li><p><strong>connectivity</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a>) – <code class="docutils literal notranslate"><span class="pre">1</span></code> for four-neighbour or <code class="docutils literal notranslate"><span class="pre">2</span></code> for eight-neighbour
 input components.</p></li>
-<li><p><strong>min_regions</strong> (<em>int</em><em> | </em><em>None</em>) – Optional global region-count floor.</p></li>
-<li><p><strong>spatial_dims</strong> (<em>tuple</em><em>[</em><em>Hashable</em><em>, </em><em>Hashable</em><em>] </em><em>| </em><em>None</em>) – Optional contribution spatial dimensions.</p></li>
-<li><p><strong>diagnostics</strong> (<em>list</em><em>[</em><em>dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em><em>]</em>) – Per-call JSON-compatible consolidation diagnostics.</p></li>
+<li><p><strong>min_regions</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em> | </em><em>None</em>) – Optional global region-count floor.</p></li>
+<li><p><strong>spatial_dims</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><em>tuple</em></a><em>[</em><em>Hashable</em><em>, </em><em>Hashable</em><em>] </em><em>| </em><em>None</em>) – Optional contribution spatial dimensions.</p></li>
+<li><p><strong>diagnostics</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.14)"><em>list</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><em>Any</em><em>]</em><em>]</em>) – Per-call JSON-compatible consolidation diagnostics.</p></li>
 </ul>
 </dd>
 </dl>
@@ -730,7 +730,7 @@ input components.</p></li>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.algorithms.ContrastScoreSplitAcceptance" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
 <p>Accept proposed binary splits using an observation-space contrast score.</p>
 <p><code class="docutils literal notranslate"><span class="pre">contribution</span></code> is a design sensitivity/contribution array with at least
 one design-observation dimension and native spatial cell dimensions. It is
@@ -764,7 +764,7 @@ row space; observed mole-fraction values must not be used here.</p>
 <dd><p>Return true when <code class="docutils literal notranslate"><span class="pre">score</span></code> satisfies all configured thresholds.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>bool</p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)">bool</a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -774,7 +774,7 @@ row space; observed mole-fraction values must not be used here.</p>
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.basis.algorithms.GreedySplitStrategy">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">GreedySplitStrategy</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">split_step</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">split_acceptance</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.algorithms.GreedySplitStrategy" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
 <p>Adapt generic greedy partitioning to one class mask.</p>
 <p>The strategy converts the selected cells to grid nodes, applies the
 explicitly supplied partition step through <a class="reference internal" href="#openghg_inversions.basis.algorithms.greedy_partitioning" title="openghg_inversions.basis.algorithms.greedy_partitioning"><code class="xref py py-func docutils literal notranslate"><span class="pre">greedy_partitioning()</span></code></a>,
@@ -795,7 +795,7 @@ split and freeze its parent.</p></li>
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.basis.algorithms.InertialSplitStep">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">InertialSplitStep</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">balanced</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">geometry</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.algorithms.InertialSplitStep" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
 <p>Experimental split step using a weighted principal inertial axis.</p>
 <p>The split projects partition cells onto the principal axis of their
 weighted covariance, then cuts that one-dimensional ordering by weight or by
@@ -812,7 +812,7 @@ numerically unstable cases fall back to an axis-parallel split.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Variables<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>balanced</strong> (<em>bool</em>) – If true, split the inertial projection near half total node
+<li><p><strong>balanced</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – If true, split the inertial projection near half total node
 weight. If false, split by cell count.</p></li>
 <li><p><strong>geometry</strong> (<a class="reference internal" href="#openghg_inversions.basis.algorithms.SplitGeometry" title="openghg_inversions.basis.algorithms._partition.SplitGeometry"><em>openghg_inversions.basis.algorithms._partition.SplitGeometry</em></a><em> | </em><em>None</em>) – Optional geometry used for the covariance and projection. The
 fallback split uses the same geometry for axis choice.</p></li>
@@ -824,7 +824,7 @@ fallback split uses the same geometry for axis choice.</p></li>
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.basis.algorithms.LatLonGridGeometry">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">LatLonGridGeometry</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">latitudes</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">longitudes</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">earth_radius_m</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">6371008.8</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.algorithms.LatLonGridGeometry" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
 <p>Local tangent-plane geometry for latitude/longitude grids.</p>
 <p>Coordinates are computed per partition in metres using a local
 equirectangular approximation centered on the weighted latitude/longitude of
@@ -838,7 +838,7 @@ row/column split decisions.</p>
 aligned to grid node <code class="docutils literal notranslate"><span class="pre">(row,</span> <span class="pre">col)</span></code> indexing.</p></li>
 <li><p><strong>longitudes</strong> (<em>numpy._typing._array_like.NDArray</em><em>[</em><em>numpy.float64</em><em>]</em>) – Finite two-dimensional longitude coordinate grid in
 degrees, with the same shape and node alignment as <code class="docutils literal notranslate"><span class="pre">latitudes</span></code>.</p></li>
-<li><p><strong>earth_radius_m</strong> (<em>float</em>) – Earth radius used for converting angular differences to
+<li><p><strong>earth_radius_m</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a>) – Earth radius used for converting angular differences to
 metres. Must be positive and finite.</p></li>
 </ul>
 </dd>
@@ -863,16 +863,16 @@ metres. Must be positive and finite.</p></li>
 <li><p><strong>data</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Two-dimensional grid with latitude and longitude coordinates,
 ordered as <code class="docutils literal notranslate"><span class="pre">(lat_name,</span> <span class="pre">lon_name)</span></code> so node axes align with the
 returned north-south and east-west metre offsets.</p></li>
-<li><p><strong>lat_name</strong> (<em>str</em>) – Name of the latitude coordinate and first dimension.</p></li>
-<li><p><strong>lon_name</strong> (<em>str</em>) – Name of the longitude coordinate and second dimension.</p></li>
-<li><p><strong>earth_radius_m</strong> (<em>float</em>) – Earth radius used for metre scaling.</p></li>
+<li><p><strong>lat_name</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Name of the latitude coordinate and first dimension.</p></li>
+<li><p><strong>lon_name</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Name of the longitude coordinate and second dimension.</p></li>
+<li><p><strong>earth_radius_m</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a>) – Earth radius used for metre scaling.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>Geometry aligned to <code class="docutils literal notranslate"><span class="pre">data</span></code>.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>ValueError</strong> – If dimensions are not ordered as <code class="docutils literal notranslate"><span class="pre">(lat_name,</span>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If dimensions are not ordered as <code class="docutils literal notranslate"><span class="pre">(lat_name,</span>
 &#160;&#160;&#160; <span class="pre">lon_name)</span></code> or coordinates cannot be broadcast to the data grid.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -888,7 +888,7 @@ returned north-south and east-west metre offsets.</p></li>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>nodes</strong> (<em>list</em><em>[</em><em>tuple</em><em>[</em><em>int</em><em>, </em><em>int</em><em>]</em><em>]</em>) – Grid nodes in the selected partition.</p></li>
+<li><p><strong>nodes</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.14)"><em>list</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><em>tuple</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em>]</em><em>]</em>) – Grid nodes in the selected partition.</p></li>
 <li><p><strong>node_weights</strong> (<em>NDArray</em><em>[</em><em>float64</em><em>] </em><em>| </em><em>None</em>) – Optional non-negative weights for the same nodes.
 These weights set the local projection center. Equal weights are
 used when weights are omitted or all zero.</p></li>
@@ -923,7 +923,7 @@ coordinates, out-of-bounds nodes, or invalid <code class="docutils literal notra
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.algorithms.MaxChildPCAEccentricity" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
 <p>Reject splits that create child partitions above a PCA eccentricity limit.</p>
 <p>The eccentricity is computed from each child partition’s unweighted node
 coordinates. If <code class="docutils literal notranslate"><span class="pre">geometry</span></code> is supplied, its physical coordinates are used;
@@ -958,7 +958,7 @@ threshold, the strict guard is retained rather than accepting
 vacuously.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>bool</p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)">bool</a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -968,7 +968,7 @@ vacuously.</p>
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.basis.algorithms.MinChildTargetWeightShare">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">MinChildTargetWeightShare</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">min_child_target_weight_share</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.algorithms.MinChildTargetWeightShare" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
 <p>Reject splits whose lightest child is below an equal-target share.</p>
 <p><code class="docutils literal notranslate"><span class="pre">min_child_target_weight_share</span></code> is compared with
 <code class="docutils literal notranslate"><span class="pre">min(child_weight)</span> <span class="pre">/</span> <span class="pre">(weights.sum()</span> <span class="pre">/</span> <span class="pre">target_regions)</span></code> for the
@@ -989,7 +989,7 @@ already converts all-zero classes to an area surrogate before policies
 are evaluated.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>bool</p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)">bool</a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -999,7 +999,7 @@ are evaluated.</p>
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.basis.algorithms.MinChildWeightShare">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">MinChildWeightShare</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">min_child_weight_share</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.algorithms.MinChildWeightShare" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
 <p>Reject splits whose lightest child is below a parent-weight share.</p>
 <p>This is a split-balance guard. It compares children with their current
 parent partition, not with the total class/source weight being partitioned.</p>
@@ -1010,14 +1010,14 @@ parent partition, not with the total class/source weight being partitioned.</p>
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.basis.algorithms.PartitionStep">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">PartitionStep</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.algorithms.PartitionStep" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Protocol</span></code></p>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Protocol" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Protocol</span></code></a></p>
 <p>Strategy protocol for splitting one partition into child partitions.</p>
 </dd></dl>
 
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.basis.algorithms.SplitAcceptancePolicy">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">SplitAcceptancePolicy</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.algorithms.SplitAcceptancePolicy" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Protocol</span></code></p>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Protocol" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Protocol</span></code></a></p>
 <p>Policy protocol for accepting proposed child partitions.</p>
 </dd></dl>
 
@@ -1037,20 +1037,20 @@ parent partition, not with the total class/source weight being partitioned.</p>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.algorithms.SplitContrastScore" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
 <p>Diagnostics for one mass-preserving split contrast.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Variables<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>contrast</strong> (<em>numpy._typing._array_like.NDArray</em><em>[</em><em>numpy.float64</em><em>]</em>) – The contrast column <code class="docutils literal notranslate"><span class="pre">f_ab</span></code> in design-observation space.</p></li>
-<li><p><strong>lambda_value</strong> (<em>float</em>) – <code class="docutils literal notranslate"><span class="pre">tau**2</span> <span class="pre">*</span> <span class="pre">f_ab.T</span> <span class="pre">&#64;</span> <span class="pre">S^{-1}</span> <span class="pre">&#64;</span> <span class="pre">f_ab</span></code>.</p></li>
-<li><p><strong>delta_dfs</strong> (<em>float</em>) – Incremental DFS proxy <code class="docutils literal notranslate"><span class="pre">lambda</span> <span class="pre">/</span> <span class="pre">(1</span> <span class="pre">+</span> <span class="pre">lambda)</span></code>.</p></li>
-<li><p><strong>delta_eig</strong> (<em>float</em>) – Incremental EIG proxy <code class="docutils literal notranslate"><span class="pre">0.5</span> <span class="pre">*</span> <span class="pre">log(1</span> <span class="pre">+</span> <span class="pre">lambda)</span></code>.</p></li>
-<li><p><strong>mu_a</strong> (<em>float</em>) – Prior mass in child <code class="docutils literal notranslate"><span class="pre">A</span></code>.</p></li>
-<li><p><strong>mu_b</strong> (<em>float</em>) – Prior mass in child <code class="docutils literal notranslate"><span class="pre">B</span></code>.</p></li>
-<li><p><strong>tau</strong> (<em>float</em>) – Prior standard deviation of the split contrast coefficient
+<li><p><strong>lambda_value</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a>) – <code class="docutils literal notranslate"><span class="pre">tau**2</span> <span class="pre">*</span> <span class="pre">f_ab.T</span> <span class="pre">&#64;</span> <span class="pre">S^{-1}</span> <span class="pre">&#64;</span> <span class="pre">f_ab</span></code>.</p></li>
+<li><p><strong>delta_dfs</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a>) – Incremental DFS proxy <code class="docutils literal notranslate"><span class="pre">lambda</span> <span class="pre">/</span> <span class="pre">(1</span> <span class="pre">+</span> <span class="pre">lambda)</span></code>.</p></li>
+<li><p><strong>delta_eig</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a>) – Incremental EIG proxy <code class="docutils literal notranslate"><span class="pre">0.5</span> <span class="pre">*</span> <span class="pre">log(1</span> <span class="pre">+</span> <span class="pre">lambda)</span></code>.</p></li>
+<li><p><strong>mu_a</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a>) – Prior mass in child <code class="docutils literal notranslate"><span class="pre">A</span></code>.</p></li>
+<li><p><strong>mu_b</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a>) – Prior mass in child <code class="docutils literal notranslate"><span class="pre">B</span></code>.</p></li>
+<li><p><strong>tau</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a>) – Prior standard deviation of the split contrast coefficient
 <code class="docutils literal notranslate"><span class="pre">delta</span> <span class="pre">=</span> <span class="pre">alpha_A</span> <span class="pre">-</span> <span class="pre">alpha_B</span></code>.</p></li>
-<li><p><strong>uncalibrated</strong> (<em>bool</em>) – True when the score used the default <code class="docutils literal notranslate"><span class="pre">tau=1</span></code> or
+<li><p><strong>uncalibrated</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – True when the score used the default <code class="docutils literal notranslate"><span class="pre">tau=1</span></code> or
 identity covariance. Such scores are useful for ranking/debugging
 but not calibrated expected information gain.</p></li>
 </ul>
@@ -1061,7 +1061,7 @@ but not calibrated expected information gain.</p></li>
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.basis.algorithms.SplitGeometry">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">SplitGeometry</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.algorithms.SplitGeometry" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Protocol</span></code></p>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Protocol" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Protocol</span></code></a></p>
 <p>Geometry protocol for mapping grid nodes into physical coordinates.</p>
 <dl class="py method">
 <dt class="sig sig-object py" id="openghg_inversions.basis.algorithms.SplitGeometry.coordinates">
@@ -1070,7 +1070,7 @@ but not calibrated expected information gain.</p></li>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>nodes</strong> (<em>list</em><em>[</em><em>tuple</em><em>[</em><em>int</em><em>, </em><em>int</em><em>]</em><em>]</em>) – Grid nodes in the partition being split.</p></li>
+<li><p><strong>nodes</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.14)"><em>list</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><em>tuple</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em>]</em><em>]</em>) – Grid nodes in the partition being split.</p></li>
 <li><p><strong>node_weights</strong> (<em>NDArray</em><em>[</em><em>float64</em><em>] </em><em>| </em><em>None</em>) – Optional non-negative weights for the same nodes.</p></li>
 </ul>
 </dd>
@@ -1091,14 +1091,14 @@ unavailable and index-space fallback should be used.</p>
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.basis.algorithms.SplitStrategy">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">SplitStrategy</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.algorithms.SplitStrategy" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Protocol</span></code></p>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Protocol" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Protocol</span></code></a></p>
 <p>Strategy protocol for class-local basis splitting.</p>
 </dd></dl>
 
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.basis.algorithms.TargetSplitAcceptancePolicy">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">TargetSplitAcceptancePolicy</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.algorithms.TargetSplitAcceptancePolicy" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <a class="reference internal" href="#openghg_inversions.basis.algorithms.SplitAcceptancePolicy" title="openghg_inversions.basis.algorithms._partition.SplitAcceptancePolicy"><code class="xref py py-class docutils literal notranslate"><span class="pre">SplitAcceptancePolicy</span></code></a>, <code class="xref py py-class docutils literal notranslate"><span class="pre">Protocol</span></code></p>
+<dd><p>Bases: <a class="reference internal" href="#openghg_inversions.basis.algorithms.SplitAcceptancePolicy" title="openghg_inversions.basis.algorithms._partition.SplitAcceptancePolicy"><code class="xref py py-class docutils literal notranslate"><span class="pre">SplitAcceptancePolicy</span></code></a>, <a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Protocol" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Protocol</span></code></a></p>
 <p>Policy protocol for accepting splits using the target count.</p>
 <dl class="py method">
 <dt class="sig sig-object py" id="openghg_inversions.basis.algorithms.TargetSplitAcceptancePolicy.accept_split">
@@ -1107,11 +1107,11 @@ unavailable and index-space fallback should be used.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>parent</strong> (<em>list</em><em>[</em><em>tuple</em><em>[</em><em>int</em><em>, </em><em>int</em><em>]</em><em>]</em>) – Parent partition selected by greedy orchestration.</p></li>
-<li><p><strong>children</strong> (<em>list</em><em>[</em><em>list</em><em>[</em><em>tuple</em><em>[</em><em>int</em><em>, </em><em>int</em><em>]</em><em>]</em><em>]</em>) – Valid child partitions proposed by a
+<li><p><strong>parent</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.14)"><em>list</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><em>tuple</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em>]</em><em>]</em>) – Parent partition selected by greedy orchestration.</p></li>
+<li><p><strong>children</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.14)"><em>list</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.14)"><em>list</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><em>tuple</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em>]</em><em>]</em><em>]</em>) – Valid child partitions proposed by a
 <a class="reference internal" href="#openghg_inversions.basis.algorithms.PartitionStep" title="openghg_inversions.basis.algorithms.PartitionStep"><code class="xref py py-class docutils literal notranslate"><span class="pre">PartitionStep</span></code></a>.</p></li>
 <li><p><strong>weights</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a>) – Non-negative weight field aligned to the source grid.</p></li>
-<li><p><strong>target_regions</strong> (<em>int</em>) – Requested upper target count.</p></li>
+<li><p><strong>target_regions</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a>) – Requested upper target count.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -1119,7 +1119,7 @@ unavailable and index-space fallback should be used.</p>
 <code class="docutils literal notranslate"><span class="pre">children</span></code>. False freezes <code class="docutils literal notranslate"><span class="pre">parent</span></code> as a completed partition.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>bool</p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)">bool</a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -1147,14 +1147,14 @@ unavailable and index-space fallback should be used.</p>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>weights</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Two-dimensional non-negative weight field.</p></li>
 <li><p><strong>region_classes</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Two-dimensional class field aligned to <code class="docutils literal notranslate"><span class="pre">weights</span></code>.</p></li>
-<li><p><strong>nbasis</strong> (<em>int</em><em> | </em><em>Mapping</em><em>[</em><em>Hashable</em><em>, </em><em>int</em><em>]</em>) – Total number of regions to distribute, or an explicit mapping
+<li><p><strong>nbasis</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.14)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Hashable" title="(in Python v3.14)"><em>Hashable</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em>]</em>) – Total number of regions to distribute, or an explicit mapping
 from class value to class-local region target.</p></li>
-<li><p><strong>allocation</strong> (<em>Literal</em><em>[</em><em>'weight'</em><em>, </em><em>'area'</em><em>]</em>) – Automatic allocation mode. <code class="docutils literal notranslate"><span class="pre">&quot;weight&quot;</span></code> uses class total
+<li><p><strong>allocation</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><em>Literal</em></a><em>[</em><em>'weight'</em><em>, </em><em>'area'</em><em>]</em>) – Automatic allocation mode. <code class="docutils literal notranslate"><span class="pre">&quot;weight&quot;</span></code> uses class total
 weight, falling back to area if all mapped weights are zero.
 <code class="docutils literal notranslate"><span class="pre">&quot;area&quot;</span></code> uses mapped cell count.</p></li>
-<li><p><strong>min_regions_per_class</strong> (<em>int</em>) – Minimum automatic allocation for each non-empty
+<li><p><strong>min_regions_per_class</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a>) – Minimum automatic allocation for each non-empty
 mapped class.</p></li>
-<li><p><strong>unmapped_values</strong> (<em>Iterable</em><em>[</em><em>Hashable</em><em>]</em>) – Additional class values to leave unallocated.</p></li>
+<li><p><strong>unmapped_values</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Iterable" title="(in Python v3.14)"><em>Iterable</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Hashable" title="(in Python v3.14)"><em>Hashable</em></a><em>]</em>) – Additional class values to leave unallocated.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -1162,7 +1162,7 @@ mapped class.</p></li>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>ValueError</strong> – If either input is not two-dimensional, the dimension names
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If either input is not two-dimensional, the dimension names
     differ, weights are invalid, or the requested allocation is
     impossible.</p></li>
 <li><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.AlignmentError.html#xarray.AlignmentError" title="(in xarray v2026.9.0)"><strong>xarray.AlignmentError</strong></a> – If the inputs do not describe physically
@@ -1170,7 +1170,7 @@ mapped class.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p>dict[<em>Hashable</em>, int]</p>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)">dict</a>[<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Hashable" title="(in Python v3.14)"><em>Hashable</em></a>, <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)">int</a>]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -1197,9 +1197,9 @@ mapped class.</p></li>
 <code class="docutils literal notranslate"><span class="pre">inner_classes</span></code>. False cells select from <code class="docutils literal notranslate"><span class="pre">outer_classes</span></code>.</p></li>
 <li><p><strong>inner_classes</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Two-dimensional class field for inner-domain cells.</p></li>
 <li><p><strong>outer_classes</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Two-dimensional class field for outer-domain cells.</p></li>
-<li><p><strong>unmapped_values</strong> (<em>Iterable</em><em>[</em><em>Hashable</em><em>]</em>) – Selected class values that should leave the output
+<li><p><strong>unmapped_values</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Iterable" title="(in Python v3.14)"><em>Iterable</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Hashable" title="(in Python v3.14)"><em>Hashable</em></a><em>]</em>) – Selected class values that should leave the output
 cell unmapped. Selected null values are always unmapped.</p></li>
-<li><p><strong>name</strong> (<em>str</em>) – Name for the returned <code class="docutils literal notranslate"><span class="pre">DataArray</span></code>.</p></li>
+<li><p><strong>name</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Name for the returned <code class="docutils literal notranslate"><span class="pre">DataArray</span></code>.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -1210,7 +1210,7 @@ cells contain <code class="docutils literal notranslate"><span class="pre">NaN</
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>ValueError</strong> – If any input is not two-dimensional, dimension-name sets
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If any input is not two-dimensional, dimension-name sets
     differ, <code class="docutils literal notranslate"><span class="pre">inner_mask</span></code> is not Boolean, or a selected class value is
     not hashable.</p></li>
 <li><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.AlignmentError.html#xarray.AlignmentError" title="(in xarray v2026.9.0)"><strong>xarray.AlignmentError</strong></a> – If, after transposition to <code class="docutils literal notranslate"><span class="pre">inner_mask</span></code>
@@ -1238,7 +1238,7 @@ The additive approximation uses <code class="docutils literal notranslate"><span
 approximation uses <code class="docutils literal notranslate"><span class="pre">sqrt(2)</span> <span class="pre">*</span> <span class="pre">sqrt(log1p(multiplier_cv**2))</span></code>.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>float</p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)">float</a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -1261,8 +1261,8 @@ approximation uses <code class="docutils literal notranslate"><span class="pre">
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>init_partition</strong> (<em>list</em><em>[</em><em>list</em><em>[</em><em>tuple</em><em>[</em><em>int</em><em>, </em><em>int</em><em>]</em><em>]</em><em>]</em>) – Initial partitions to refine.</p></li>
-<li><p><strong>target_regions</strong> (<em>int</em>) – Refinement ceiling for the number of output partitions.
+<li><p><strong>init_partition</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.14)"><em>list</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.14)"><em>list</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><em>tuple</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em>]</em><em>]</em><em>]</em>) – Initial partitions to refine.</p></li>
+<li><p><strong>target_regions</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a>) – Refinement ceiling for the number of output partitions.
 Must be at least one. The function never coarsens an initial
 partition whose count already exceeds this value.</p></li>
 <li><p><strong>weights</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a>) – Two-dimensional non-negative weight field used for partition
@@ -1284,12 +1284,12 @@ accepted proposal would overshoot the target, or acceptance policies
 reject the remaining candidates.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>ValueError</strong> – If <code class="docutils literal notranslate"><span class="pre">target_regions</span></code> is less than one, or a multi-child
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If <code class="docutils literal notranslate"><span class="pre">target_regions</span></code> is less than one, or a multi-child
     proposal contains an empty child, duplicate or overlapping nodes,
     nodes outside its parent, or does not exactly cover its parent.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p>list[list[tuple[int, int]]]</p>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.14)">list</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.14)">list</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)">tuple</a>[<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)">int</a>, <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)">int</a>]]]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -1301,12 +1301,12 @@ reject the remaining candidates.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>layers</strong> (<em>Mapping</em><em>[</em><em>Hashable</em><em>, </em><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a><em>]</em>) – Ordered mapping from layer name to two-dimensional class field.
+<li><p><strong>layers</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.14)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Hashable" title="(in Python v3.14)"><em>Hashable</em></a><em>, </em><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a><em>]</em>) – Ordered mapping from layer name to two-dimensional class field.
 Mapping insertion order defines the order of values in each output
 class tuple.</p></li>
-<li><p><strong>unmapped_values</strong> (<em>Iterable</em><em>[</em><em>Hashable</em><em>]</em>) – Layer values that should leave the output cell
+<li><p><strong>unmapped_values</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Iterable" title="(in Python v3.14)"><em>Iterable</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Hashable" title="(in Python v3.14)"><em>Hashable</em></a><em>]</em>) – Layer values that should leave the output cell
 unmapped. Null values in any layer are always unmapped.</p></li>
-<li><p><strong>name</strong> (<em>str</em>) – Name for the returned <code class="docutils literal notranslate"><span class="pre">DataArray</span></code>.</p></li>
+<li><p><strong>name</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Name for the returned <code class="docutils literal notranslate"><span class="pre">DataArray</span></code>.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -1318,7 +1318,7 @@ names in mapping insertion order.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>ValueError</strong> – If no layers are supplied, any layer is not two-dimensional,
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If no layers are supplied, any layer is not two-dimensional,
     layer dimension names differ, or a mapped layer value is not
     hashable.</p></li>
 <li><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.AlignmentError.html#xarray.AlignmentError" title="(in xarray v2026.9.0)"><strong>xarray.AlignmentError</strong></a> – If, after transposition to the first layer’s
@@ -1358,8 +1358,8 @@ xarray equality when selecting a tuple label.</p>
 <li><p><strong>reference</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Two-dimensional field whose dimension order, coordinate
 values, and nonconflicting metadata define the output grid.</p></li>
 <li><p><strong>candidate</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Two-dimensional field to validate and normalize.</p></li>
-<li><p><strong>reference_name</strong> (<em>str</em>) – Name used for <code class="docutils literal notranslate"><span class="pre">reference</span></code> in validation errors.</p></li>
-<li><p><strong>candidate_name</strong> (<em>str</em>) – Name used for <code class="docutils literal notranslate"><span class="pre">candidate</span></code> in validation errors.</p></li>
+<li><p><strong>reference_name</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Name used for <code class="docutils literal notranslate"><span class="pre">reference</span></code> in validation errors.</p></li>
+<li><p><strong>candidate_name</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Name used for <code class="docutils literal notranslate"><span class="pre">candidate</span></code> in validation errors.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -1369,7 +1369,7 @@ retained from both fields.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>ValueError</strong> – If either field is not two-dimensional or their dimension
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If either field is not two-dimensional or their dimension
     names differ.</p></li>
 <li><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.AlignmentError.html#xarray.AlignmentError" title="(in xarray v2026.9.0)"><strong>xarray.AlignmentError</strong></a> – If grid coordinates, grid-defining metadata, or
     CRS definitions are physically incompatible.</p></li>
@@ -1403,8 +1403,8 @@ the quadtree algorithm.</p>
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>fps</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a>) – array (mean flux times mean footprints) to use to calculate basis regions</p></li>
-<li><p><strong>nbasis</strong> (<em>int</em>) – target number of basis regions</p></li>
-<li><p><strong>seed</strong> (<em>int</em><em> | </em><em>None</em>) – optional random seed to use (for testing or reproducing results)</p></li>
+<li><p><strong>nbasis</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a>) – target number of basis regions</p></li>
+<li><p><strong>seed</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em> | </em><em>None</em>) – optional random seed to use (for testing or reproducing results)</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -1426,8 +1426,8 @@ the quadtree algorithm.</p>
 <li><p><strong>region_classes</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Region-class values to compare with <code class="docutils literal notranslate"><span class="pre">class_value</span></code>.
 Dimensions and all attached coordinates are preserved on the
 returned mask.</p></li>
-<li><p><strong>class_value</strong> (<em>Hashable</em>) – Scalar or tuple-valued class label to select.</p></li>
-<li><p><strong>name</strong> (<em>str</em>) – Name for the returned Boolean <code class="docutils literal notranslate"><span class="pre">DataArray</span></code>.</p></li>
+<li><p><strong>class_value</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Hashable" title="(in Python v3.14)"><em>Hashable</em></a>) – Scalar or tuple-valued class label to select.</p></li>
+<li><p><strong>name</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Name for the returned Boolean <code class="docutils literal notranslate"><span class="pre">DataArray</span></code>.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -1473,14 +1473,14 @@ in the returned mask.</p>
 <li><p><strong>region_classes</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Two-dimensional class field on the same grid as
 <code class="docutils literal notranslate"><span class="pre">weights</span></code>. Each non-null value is treated as a mapped class unless
 listed in <code class="docutils literal notranslate"><span class="pre">unmapped_values</span></code>.</p></li>
-<li><p><strong>nbasis</strong> (<em>int</em><em> | </em><em>Mapping</em><em>[</em><em>Hashable</em><em>, </em><em>int</em><em>]</em>) – Either a total number of basis regions to allocate across
+<li><p><strong>nbasis</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.14)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Hashable" title="(in Python v3.14)"><em>Hashable</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em>]</em>) – Either a total number of basis regions to allocate across
 classes, or an explicit mapping from class value to class-local
 region target.</p></li>
-<li><p><strong>allocation</strong> (<em>Literal</em><em>[</em><em>'weight'</em><em>, </em><em>'area'</em><em>]</em>) – Automatic allocation mode used when <code class="docutils literal notranslate"><span class="pre">nbasis</span></code> is an
+<li><p><strong>allocation</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><em>Literal</em></a><em>[</em><em>'weight'</em><em>, </em><em>'area'</em><em>]</em>) – Automatic allocation mode used when <code class="docutils literal notranslate"><span class="pre">nbasis</span></code> is an
 integer. <code class="docutils literal notranslate"><span class="pre">&quot;weight&quot;</span></code> allocates proportional to class total weight,
 falling back to area if all class weights are zero. <code class="docutils literal notranslate"><span class="pre">&quot;area&quot;</span></code>
 allocates proportional to mapped cell count.</p></li>
-<li><p><strong>min_regions_per_class</strong> (<em>int</em>) – Minimum automatic allocation for each non-empty
+<li><p><strong>min_regions_per_class</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a>) – Minimum automatic allocation for each non-empty
 mapped class. If the requested total is smaller than this minimum
 requires, a <code class="docutils literal notranslate"><span class="pre">ValueError</span></code> is raised.</p></li>
 <li><p><strong>split_strategy</strong> (<a class="reference internal" href="#openghg_inversions.basis.algorithms.SplitStrategy" title="openghg_inversions.basis.algorithms._constrained.SplitStrategy"><em>SplitStrategy</em></a><em> | </em><em>None</em>) – Class-local splitting strategy. Defaults to an explicit
@@ -1490,7 +1490,7 @@ requires, a <code class="docutils literal notranslate"><span class="pre">ValueEr
 relabelled basis after class-local construction. Policies that
 deliberately combine disconnected components must preserve class
 boundaries and report that strict connectivity no longer holds.</p></li>
-<li><p><strong>unmapped_values</strong> (<em>Iterable</em><em>[</em><em>Hashable</em><em>]</em>) – Additional class values to leave as output label <code class="docutils literal notranslate"><span class="pre">0</span></code>.</p></li>
+<li><p><strong>unmapped_values</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Iterable" title="(in Python v3.14)"><em>Iterable</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Hashable" title="(in Python v3.14)"><em>Hashable</em></a><em>]</em>) – Additional class values to leave as output label <code class="docutils literal notranslate"><span class="pre">0</span></code>.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -1500,7 +1500,7 @@ labels; unmapped cells receive <code class="docutils literal notranslate"><span 
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>ValueError</strong> – If either input is not two-dimensional, the dimension names
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If either input is not two-dimensional, the dimension names
     differ, weights are invalid, or the requested allocation is
     impossible, or a split strategy returns labels with the wrong shape
     or dtype, non-positive labels inside its class mask, or nonzero
@@ -1574,15 +1574,15 @@ residuals are not inputs.</p>
 <li><p><strong>grid</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a>) – 2D grid of footprints * flux, or whatever
 grid you want to split. Could be: population
 data, spatial distribution of bakeries, you choose!</p></li>
-<li><p><strong>bucket</strong> (<em>float</em>) – Initial bucket value for each basis function region.
+<li><p><strong>bucket</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a>) – Initial bucket value for each basis function region.
 Defaults to 1</p></li>
-<li><p><strong>nregion</strong> (<em>int</em>) – Number of desired basis function regions
+<li><p><strong>nregion</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a>) – Number of desired basis function regions
 Defaults to 100</p></li>
-<li><p><strong>tol</strong> (<em>int</em>) – Tolerance to find number of basis function regions.
+<li><p><strong>tol</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a>) – Tolerance to find number of basis function regions.
 i.e. optimizes nregions to +/- tol
 Defaults to 1</p></li>
-<li><p><strong>domain</strong> (<em>str</em>) – Domain across which to calculate basis functions.</p></li>
-<li><p><strong>country_directory</strong> (<em>str</em><em> | </em><em>None</em>) – Directory containing land-sea files. If None, will use default files.</p></li>
+<li><p><strong>domain</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Domain across which to calculate basis functions.</p></li>
+<li><p><strong>country_directory</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Directory containing land-sea files. If None, will use default files.</p></li>
 <li><p><strong>landsea_indices</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a><em> | </em><em>None</em>) – Optional pre-aligned land/sea mask for <code class="docutils literal notranslate"><span class="pre">grid</span></code>.</p></li>
 </ul>
 </dd>

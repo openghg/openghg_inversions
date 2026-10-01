@@ -537,7 +537,7 @@ labels the multisource operator aligns to the state MultiIndex.</p>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
 <p>Basis geometry cannot currently vary through time. A singleton time
-dimension is dropped; a longer time dimension raises <code class="xref py py-class docutils literal notranslate"><span class="pre">ValueError</span></code>.</p>
+dimension is dropped; a longer time dimension raises <a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">ValueError</span></code></a>.</p>
 </div>
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.basis.operators.register_basis_operator">
@@ -547,7 +547,7 @@ dimension is dropped; a longer time dimension raises <code class="xref py py-cla
 string (stored in <cite>dt.attrs[“kind”]</cite>) to a concrete <cite>BasisOperator</cite> subclass.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>kind</strong> (<em>str</em>) – Stable key identifying the operator type on disk. This is written to
+<dd class="field-odd"><p><strong>kind</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Stable key identifying the operator type on disk. This is written to
 <cite>dt.attrs[“kind”]</cite> by <cite>BasisOperator.to_datatree()</cite> and used by
 <cite>BasisOperator.decode_datatree()</cite>.</p>
 </dd>
@@ -555,10 +555,10 @@ string (stored in <cite>dt.attrs[“kind”]</cite>) to a concrete <cite>BasisOp
 <dd class="field-even"><p>A class decorator that registers the decorated class under <cite>kind</cite>.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>ValueError</strong> – If <cite>kind</cite> is already registered to a different class.</p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If <cite>kind</cite> is already registered to a different class.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><em>Callable</em>[[type[<em>BasisOperatorT</em>]], type[<em>BasisOperatorT</em>]]</p>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Callable" title="(in Python v3.14)"><em>Callable</em></a>[[<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#type" title="(in Python v3.14)">type</a>[<em>BasisOperatorT</em>]], <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#type" title="(in Python v3.14)">type</a>[<em>BasisOperatorT</em>]]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -569,16 +569,16 @@ string (stored in <cite>dt.attrs[“kind”]</cite>) to a concrete <cite>BasisOp
 <dd><p>Looks up a registered <cite>BasisOperator</cite> subclass.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>kind</strong> (<em>str</em>) – Registry key for the operator type (e.g. <cite>“bucket”</cite>).</p>
+<dd class="field-odd"><p><strong>kind</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Registry key for the operator type (e.g. <cite>“bucket”</cite>).</p>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>The registered <cite>BasisOperator</cite> subclass.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>KeyError</strong> – If <cite>kind</cite> is not registered.</p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#KeyError" title="(in Python v3.14)"><strong>KeyError</strong></a> – If <cite>kind</cite> is not registered.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p>type[<a class="reference internal" href="#openghg_inversions.basis.operators.BasisOperator" title="openghg_inversions.basis.operators.BasisOperator"><em>BasisOperator</em></a>]</p>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#type" title="(in Python v3.14)">type</a>[<a class="reference internal" href="#openghg_inversions.basis.operators.BasisOperator" title="openghg_inversions.basis.operators.BasisOperator"><em>BasisOperator</em></a>]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -586,7 +586,7 @@ string (stored in <cite>dt.attrs[“kind”]</cite>) to a concrete <cite>BasisOp
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.basis.operators.BasisMeta">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">BasisMeta</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">grid_dims</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">('lat',</span> <span class="pre">'lon')</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">state_dim</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'state'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.operators.BasisMeta" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
 <p>Metadata describing how to apply a basis operator.</p>
 <p>The intent is to keep this minimal: we only store what is needed for the
 default implementations of <cite>BasisOperator.sensitivity</cite> and
@@ -594,9 +594,9 @@ default implementations of <cite>BasisOperator.sensitivity</cite> and
 <dl class="field-list simple">
 <dt class="field-odd">Variables<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>grid_dims</strong> (<em>tuple</em><em>[</em><em>str</em><em>, </em><em>...</em><em>]</em>) – Dimensions to dot over when reducing a gridded quantity to the
+<li><p><strong>grid_dims</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><em>tuple</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><em>...</em><em>]</em>) – Dimensions to dot over when reducing a gridded quantity to the
 reduced state (typically <cite>(“lat”, “lon”)</cite>).</p></li>
-<li><p><strong>state_dim</strong> (<em>str</em>) – Canonical dimension name for the reduced state axis.</p></li>
+<li><p><strong>state_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Canonical dimension name for the reduced state axis.</p></li>
 </ul>
 </dd>
 </dl>
@@ -605,7 +605,7 @@ reduced state (typically <cite>(“lat”, “lon”)</cite>).</p></li>
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.basis.operators.BasisOperator">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">BasisOperator</span></span><a class="headerlink" href="#openghg_inversions.basis.operators.BasisOperator" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">ABC</span></code></p>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/abc.html#abc.ABC" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">ABC</span></code></a></p>
 <p>Abstract basis operator.</p>
 <p>Concrete subclasses provide operator metadata, a bucket prolongation
 <code class="docutils literal notranslate"><span class="pre">U_bucket</span></code> whose ordered dimensions are the grid dimensions followed by
@@ -647,7 +647,7 @@ the reduced state dimension <cite>meta.state_dim</cite>.</p>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>fp_x_flux</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Footprint x flux array to reduce. Must contain all
 <cite>meta.grid_dims</cite>.</p></li>
-<li><p><strong>fillna</strong> (<em>bool</em>) – if True, fill NaNs in fp_x_flux with 0.0.</p></li>
+<li><p><strong>fillna</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – if True, fill NaNs in fp_x_flux with 0.0.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -694,7 +694,7 @@ using a flux-weighted interpolation operator.</p>
 <dd class="field-even"><p>Reconstructed gridded field with dimensions including <cite>meta.grid_dims</cite>.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>ValueError</strong> – If <cite>meta.state_dim</cite> is not a dimension of <cite>state</cite>.</p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If <cite>meta.state_dim</cite> is not a dimension of <cite>state</cite>.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a></p>
@@ -732,7 +732,7 @@ they write in <cite>to_datatree()</cite>.</p>
 <dd class="field-even"><p>An instance of the operator.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><em>Self</em></p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Self" title="(in Python v3.14)"><em>Self</em></a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -750,8 +750,8 @@ they write in <cite>to_datatree()</cite>.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>ValueError</strong> – If the schema or schema version is unsupported.</p></li>
-<li><p><strong>KeyError</strong> – If the <cite>kind</cite> is not registered.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If the schema or schema version is unsupported.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#KeyError" title="(in Python v3.14)"><strong>KeyError</strong></a> – If the <cite>kind</cite> is not registered.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -772,7 +772,7 @@ the grid dims. It avoids silently discarding time-varying basis information.</p>
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>da</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Input DataArray which may or may not have a <code class="docutils literal notranslate"><span class="pre">time</span></code> dimension.</p></li>
-<li><p><strong>name</strong> (<em>str</em>) – Label used in error messages to identify what is being checked.</p></li>
+<li><p><strong>name</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Label used in error messages to identify what is being checked.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -780,7 +780,7 @@ the grid dims. It avoids silently discarding time-varying basis information.</p>
 unchanged.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>ValueError</strong> – If <code class="docutils literal notranslate"><span class="pre">time</span></code> exists and has length not equal to 1.</p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If <code class="docutils literal notranslate"><span class="pre">time</span></code> exists and has length not equal to 1.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a></p>
@@ -830,11 +830,11 @@ typically with dimensions <code class="docutils literal notranslate"><span class
 <code class="docutils literal notranslate"><span class="pre">time</span></code> dimension is allowed and removed.</p></li>
 <li><p><strong>meta</strong> (<a class="reference internal" href="#openghg_inversions.basis.operators.BasisMeta" title="openghg_inversions.basis.operators.BasisMeta"><em>BasisMeta</em></a><em> | </em><em>None</em>) – Grid dimensions and retained-state dimension name. Defaults to
 <a class="reference internal" href="#openghg_inversions.basis.operators.BasisMeta" title="openghg_inversions.basis.operators.BasisMeta"><code class="xref py py-class docutils literal notranslate"><span class="pre">BasisMeta</span></code></a>.</p></li>
-<li><p><strong>state_dim</strong> (<em>str</em><em> | </em><em>None</em>) – Optional override for <code class="docutils literal notranslate"><span class="pre">meta.state_dim</span></code>.</p></li>
+<li><p><strong>state_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Optional override for <code class="docutils literal notranslate"><span class="pre">meta.state_dim</span></code>.</p></li>
 <li><p><strong>region_labels</strong> (<em>RegionLabels</em>) – Policy for the retained-state coordinate labels.</p></li>
 <li><p><strong>state_metadata</strong> (<em>xr.Dataset</em><em> | </em><a class="reference internal" href="openghg_inversions.basis.layout.html#openghg_inversions.basis.layout.BasisStateMetadata" title="openghg_inversions.basis.layout.BasisStateMetadata"><em>BasisStateMetadata</em></a><em> | </em><em>None</em>) – Optional state-axis metadata indexed either by raw
 <code class="docutils literal notranslate"><span class="pre">basis_label</span></code> values or by the final state dimension.</p></li>
-<li><p><strong>chunks</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>int</em><em>] </em><em>| </em><em>None</em>) – Optional chunk sizes for the generated basis matrix.</p></li>
+<li><p><strong>chunks</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em>] </em><em>| </em><em>None</em>) – Optional chunk sizes for the generated basis matrix.</p></li>
 </ul>
 </dd>
 </dl>
@@ -883,7 +883,7 @@ generally the compatible retained restriction <code class="docutils literal notr
 
 <dl class="py property">
 <dt class="sig sig-object py" id="openghg_inversions.basis.operators.BucketBasisOperator.state_metadata">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">state_metadata</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><span class="pre">Dataset</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#openghg_inversions.basis.operators.BucketBasisOperator.state_metadata" title="Link to this definition">#</a></dt>
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">state_metadata</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><span class="pre">Dataset</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><a class="headerlink" href="#openghg_inversions.basis.operators.BucketBasisOperator.state_metadata" title="Link to this definition">#</a></dt>
 <dd><p>Semantic metadata coordinates carried on the state dimension.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Returns<span class="colon">:</span></dt>
@@ -922,13 +922,13 @@ to reconstruct the operator.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>KeyError</strong> – If the serialized <code class="docutils literal notranslate"><span class="pre">basis_flat</span></code> variable is missing.</p></li>
-<li><p><strong>ValueError</strong> – If serialized labels, metadata, or state coordinates
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#KeyError" title="(in Python v3.14)"><strong>KeyError</strong></a> – If the serialized <code class="docutils literal notranslate"><span class="pre">basis_flat</span></code> variable is missing.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If serialized labels, metadata, or state coordinates
     are invalid.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><em>Self</em></p>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Self" title="(in Python v3.14)"><em>Self</em></a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -972,19 +972,19 @@ order through the stored source coordinate.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>basis_flat</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>xr.DataArray</em><em>]</em>) – Non-empty mapping from source name to an integer-labelled
+<li><p><strong>basis_flat</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><em>xr.DataArray</em><em>]</em>) – Non-empty mapping from source name to an integer-labelled
 basis array on the configured grid, typically with dimensions
 <code class="docutils literal notranslate"><span class="pre">(&quot;lat&quot;,</span> <span class="pre">&quot;lon&quot;)</span></code>.</p></li>
 <li><p><strong>meta</strong> (<a class="reference internal" href="#openghg_inversions.basis.operators.BasisMeta" title="openghg_inversions.basis.operators.BasisMeta"><em>BasisMeta</em></a><em> | </em><em>None</em>) – Grid dimensions and retained-state dimension name. Defaults to
 <a class="reference internal" href="#openghg_inversions.basis.operators.BasisMeta" title="openghg_inversions.basis.operators.BasisMeta"><code class="xref py py-class docutils literal notranslate"><span class="pre">BasisMeta</span></code></a>.</p></li>
-<li><p><strong>source_dim</strong> (<em>str</em>) – Name of the source MultiIndex level.</p></li>
-<li><p><strong>region_in_source_dim</strong> (<em>str</em>) – Name of the per-source region MultiIndex level.</p></li>
-<li><p><strong>state_dim</strong> (<em>str</em><em> | </em><em>None</em>) – Optional override for <code class="docutils literal notranslate"><span class="pre">meta.state_dim</span></code>.</p></li>
-<li><p><strong>chunks</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>int</em><em>] </em><em>| </em><em>None</em>) – Optional chunk sizes for the gathered basis matrix.</p></li>
+<li><p><strong>source_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Name of the source MultiIndex level.</p></li>
+<li><p><strong>region_in_source_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Name of the per-source region MultiIndex level.</p></li>
+<li><p><strong>state_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Optional override for <code class="docutils literal notranslate"><span class="pre">meta.state_dim</span></code>.</p></li>
+<li><p><strong>chunks</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em>] </em><em>| </em><em>None</em>) – Optional chunk sizes for the gathered basis matrix.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Raises<span class="colon">:</span></dt>
-<dd class="field-even"><p><strong>ValueError</strong> – If <code class="docutils literal notranslate"><span class="pre">basis_flat</span></code> is empty, a source label is not a string,
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If <code class="docutils literal notranslate"><span class="pre">basis_flat</span></code> is empty, a source label is not a string,
     or source arrays have incompatible dimensions, non-unique grid
     labels, or different grid labels.</p>
 </dd>
@@ -1034,7 +1034,7 @@ restriction <code class="docutils literal notranslate"><span class="pre">Pi</spa
 
 <dl class="py property">
 <dt class="sig sig-object py" id="openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.source_labels">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">source_labels</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.source_labels" title="Link to this definition">#</a></dt>
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">source_labels</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.source_labels" title="Link to this definition">#</a></dt>
 <dd><p>Return canonical source labels in operator/state insertion order.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Returns<span class="colon">:</span></dt>
@@ -1054,9 +1054,9 @@ modern postprocessing code.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>source</strong> (<em>str</em>) – Source label to select from the source-specific basis
+<li><p><strong>source</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Source label to select from the source-specific basis
 mapping.</p></li>
-<li><p><strong>state_dim</strong> (<em>str</em><em> | </em><em>None</em>) – Optional state dimension for the returned single-source
+<li><p><strong>state_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Optional state dimension for the returned single-source
 operator. If omitted, the per-source region dimension is used.</p></li>
 </ul>
 </dd>
@@ -1064,7 +1064,7 @@ operator. If omitted, the per-source region dimension is used.</p></li>
 <dd class="field-even"><p>A single-source bucket operator for <code class="docutils literal notranslate"><span class="pre">source</span></code>.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>ValueError</strong> – If <code class="docutils literal notranslate"><span class="pre">source</span></code> is not present in this operator.</p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If <code class="docutils literal notranslate"><span class="pre">source</span></code> is not present in this operator.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><a class="reference internal" href="#openghg_inversions.basis.operators.BucketBasisOperator" title="openghg_inversions.basis.operators.BucketBasisOperator"><em>BucketBasisOperator</em></a></p>
@@ -1138,7 +1138,7 @@ source names in storage paths and redundant JSON metadata.</p>
 <dd class="field-odd"><p>DataTree representation of the operator.</p>
 </dd>
 <dt class="field-even">Raises<span class="colon">:</span></dt>
-<dd class="field-even"><p><strong>ValueError</strong> – If source bases do not have compatible labeled grids.</p>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If source bases do not have compatible labeled grids.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.9.0)"><em>DataTree</em></a></p>
@@ -1162,12 +1162,12 @@ legacy <code class="docutils literal notranslate"><span class="pre">source_order
 when present.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>ValueError</strong> – If required basis data or source coordinates are
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If required basis data or source coordinates are
     missing, or legacy source-order metadata is malformed or
     inconsistent with stored source children.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><em>Self</em></p>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Self" title="(in Python v3.14)"><em>Self</em></a></p>
 </dd>
 </dl>
 </dd></dl>

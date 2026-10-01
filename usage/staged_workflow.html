@@ -51,7 +51,7 @@
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="Shared scientific concepts" href="shared_scientific_concepts.html" />
+    <link rel="next" title="Prior predictive checking tutorial" href="prior_predictive_checking.html" />
     <link rel="prev" title="Running and validating inversions" href="running_and_validating.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
@@ -339,6 +339,7 @@
 </details></li>
 <li class="toctree-l1 current active has-children"><a class="reference internal" href="running_and_validating.html">Running and validating inversions</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
 <li class="toctree-l2 current active"><a class="current reference internal" href="#">Staged RHIME workflows</a></li>
+<li class="toctree-l2"><a class="reference internal" href="prior_predictive_checking.html">Prior predictive checking tutorial</a></li>
 </ul>
 </details></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="shared_scientific_concepts.html">Shared scientific concepts</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -505,7 +506,10 @@ PyMC graph or samples a posterior.  The NetCDF is a versioned
 configuration, builds the selected model, draws from its prior predictive,
 and writes <code class="docutils literal notranslate"><span class="pre">prior-predictive.nc</span></code> plus a readiness CheckResult.  It never
 runs posterior sampling.  <code class="docutils literal notranslate"><span class="pre">--strict</span></code> converts a readiness <code class="docutils literal notranslate"><span class="pre">fail</span></code> to a
-nonzero process exit when a scheduler policy wants that behavior.</p>
+nonzero process exit when a scheduler policy wants that behavior. The
+readiness result checks construction and finite values; it does not assess
+scientific plausibility. Follow <a class="reference internal" href="prior_predictive_checking.html"><span class="doc">Prior predictive checking tutorial</span></a> to inspect
+the artifact and then sample the posterior from the same prepared data.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">sample</span></code></dt><dd><p>Loads the prepared artifact, builds the selected model, samples it with the
 resolved <code class="docutils literal notranslate"><span class="pre">RhimeSampler</span></code>, and writes <code class="docutils literal notranslate"><span class="pre">posterior.nc</span></code>,
@@ -561,6 +565,8 @@ It reports <code class="docutils literal notranslate"><span class="pre">draws</s
 <code class="docutils literal notranslate"><span class="pre">max_non_finite_values</span> <span class="pre">=</span> <span class="pre">0</span></code>.  Construction, input and sampling exceptions
 become a readable <code class="docutils literal notranslate"><span class="pre">fail</span></code> result.</p>
 </dd>
+</dl>
+<dl class="simple" id="staged-convergence-check">
 <dt><code class="docutils literal notranslate"><span class="pre">sampler-convergence</span></code></dt><dd><p>Reports retained chain and draw counts, maximum R-hat and its variable,
 minimum bulk ESS and its variable, minimum tail ESS and its variable, total
 divergences, divergences per chain, and labels for unassessable R-hat/ESS
@@ -685,11 +691,11 @@ predictable explicit paths above work in both modes.</p>
       </div>
     </a>
     <a class="right-next"
-       href="shared_scientific_concepts.html"
+       href="prior_predictive_checking.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">Shared scientific concepts</p>
+        <p class="prev-next-title">Prior predictive checking tutorial</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>

@@ -534,19 +534,19 @@ loaded before the zip file is closed.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>merged_data_dir</strong> (<em>str</em><em> | </em><em>Path</em>) – path to directory where merged data will be saved</p></li>
-<li><p><strong>species</strong> (<em>str</em><em> | </em><em>None</em>) – species of inversion</p></li>
-<li><p><strong>start_date</strong> (<em>str</em><em> | </em><em>None</em>) – start date of inversion period</p></li>
-<li><p><strong>output_name</strong> (<em>str</em><em> | </em><em>None</em>) – output name parameter used for inversion run</p></li>
-<li><p><strong>merged_data_name</strong> (<em>str</em><em> | </em><em>None</em>) – name to use for saved data.</p></li>
-<li><p><strong>output_format</strong> (<em>Literal</em><em>[</em><em>'netcdf'</em><em>, </em><em>'zarr'</em><em>, </em><em>'zarr.zip'</em><em>] </em><em>| </em><em>None</em>) – format of data to load (if not specified, this will be inferred).</p></li>
+<li><p><strong>merged_data_dir</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><em>Path</em></a>) – path to directory where merged data will be saved</p></li>
+<li><p><strong>species</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – species of inversion</p></li>
+<li><p><strong>start_date</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – start date of inversion period</p></li>
+<li><p><strong>output_name</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – output name parameter used for inversion run</p></li>
+<li><p><strong>merged_data_name</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – name to use for saved data.</p></li>
+<li><p><strong>output_format</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><em>Literal</em></a><em>[</em><em>'netcdf'</em><em>, </em><em>'zarr'</em><em>, </em><em>'zarr.zip'</em><em>] </em><em>| </em><em>None</em>) – format of data to load (if not specified, this will be inferred).</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p><cite>fp_all</cite> dictionary.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>dict</p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)">dict</a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -565,7 +565,7 @@ the data variable attributes differently.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>attrs_list</strong> (<em>list</em><em>[</em><em>dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em><em>]</em>) – list of attributes from datasets being concatenated</p></li>
+<li><p><strong>attrs_list</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.14)"><em>list</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><em>Any</em></a><em>]</em><em>]</em>) – list of attributes from datasets being concatenated</p></li>
 <li><p><strong>context</strong> – additional parameter supplied by concatenate (this is required/supplied by xarray)</p></li>
 </ul>
 </dd>
@@ -573,7 +573,7 @@ the data variable attributes differently.</p>
 <dd class="field-even"><p>dict that will be used as attributes for concatenated dataset</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>dict[str, <em>Any</em>]</p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)">str</a>, <a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><em>Any</em></a>]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -588,7 +588,7 @@ beginning before the observations and all-NaN slices are preserved.
 Singleton boundary-condition time dimensions are still dropped.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>fp_all</strong> (<em>dict</em>) – Inversion data keyed by site, with flux sources under
+<dd class="field-odd"><p><strong>fp_all</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a>) – Inversion data keyed by site, with flux sources under
 <code class="docutils literal notranslate"><span class="pre">&quot;.flux&quot;</span></code> and optional boundary conditions under <code class="docutils literal notranslate"><span class="pre">&quot;.bc&quot;</span></code>.</p>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -618,11 +618,11 @@ fall back to the first observation time for compatibility.</p>
 <dd class="field-even"><p>dictionary containing model scenarios keyed by site, as well as flux and boundary conditions.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>ValueError</strong> – If serialized <code class="docutils literal notranslate"><span class="pre">mf</span></code> units are invalid or are not a molar
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If serialized <code class="docutils literal notranslate"><span class="pre">mf</span></code> units are invalid or are not a molar
     mixing ratio. Missing units default to <code class="docutils literal notranslate"><span class="pre">mol/mol</span></code>.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p>dict</p>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)">dict</a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -639,7 +639,7 @@ fall back to the first observation time for compatibility.</p>
 <dd class="field-even"><p>Mapping from node keys (as strings) to FluxData instances.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>dict[str, <a class="reference external" href="https://docs.openghg.org/api/devapi_dataobjects.html#openghg.dataobjects.FluxData" title="(in OpenGHG v0.19.0)"><em>FluxData</em></a>]</p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)">str</a>, <a class="reference external" href="https://docs.openghg.org/api/devapi_dataobjects.html#openghg.dataobjects.FluxData" title="(in OpenGHG v0.19.0)"><em>FluxData</em></a>]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -650,7 +650,7 @@ fall back to the first observation time for compatibility.</p>
 <dd><p>Creating encoding dictionary for saving DataTree to zarr.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>dict</p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)">dict</a></p>
 </dd>
 </dl>
 </dd></dl>

@@ -1,0 +1,1041 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Prior predictive checking tutorial &#8212; openghg_inversions  documentation</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../_static/styles/theme.css?digest=cb8930eaaf36d9849b67" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=cb8930eaaf36d9849b67" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../_static/jupyter-sphinx.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/thebelab.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=5f08cb77" />
+  
+  <!-- So that users can add custom icons -->
+  <script defer src="../_static/scripts/fontawesome.js?digest=cb8930eaaf36d9849b67"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=cb8930eaaf36d9849b67" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=cb8930eaaf36d9849b67" />
+
+    <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../_static/thebelab-helper.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'usage/prior_predictive_checking';</script>
+    <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Shared scientific concepts" href="shared_scientific_concepts.html" />
+    <link rel="prev" title="Staged RHIME workflows" href="staged_workflow.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="" />
+  
+    
+    <script src="../_static/searchtools.js"></script>
+    <script src="../_static/language_data.js"></script>
+    <script src="../searchindex.js"></script>
+  
+  </head>
+  <body data-default-mode="">
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+  
+  
+  
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header id="pst-header" class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+  
+    <p class="title logo__title">openghg_inversions  documentation</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="usage.html">
+    Using OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../development/index.html">
+    Developing OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../experimental/index.html">
+    Experimental code
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../reference/index.html">
+    API reference
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+    <button class="pst-navbar-icon sidebar-toggle secondary-toggle" aria-label="On this page">
+      <span class="fa-solid fa-outdent"></span>
+    </button>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          
+          
+            <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="usage.html">
+    Using OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../development/index.html">
+    Developing OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../experimental/index.html">
+    Experimental code
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../reference/index.html">
+    API reference
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+          
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item pst-sidebar-collapse"><button id="pst-collapse-sidebar-button" aria-expanded="true" aria-controls="pst-primary-sidebar">
+  <svg class="pst-icon" role="img" aria-hidden="true" focusable="false" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+    <path fill="currentColor" d="M3 15.5C2.36232 15.5 1.74874 15.2564 1.28478 14.8189C0.820828 14.3815 0.541576 13.7832 0.504167 13.1467L0.5 13L0.5 3C0.499965 2.36232 0.743605 1.74874 1.18107 1.28478C1.61854 0.820828 2.21676 0.541576 2.85333 0.504167L3 0.5L13 0.5C13.6377 0.499965 14.2513 0.743605 14.7152 1.18107C15.1792 1.61854 15.4584 2.21676 15.4958 2.85333L15.5 3L15.5 13C15.5 13.6377 15.2564 14.2513 14.8189 14.7152C14.3815 15.1792 13.7832 15.4584 13.1467 15.4958L13 15.5L3 15.5ZM3 13.8333L10.5 13.8333L10.5 2.16667L3 2.16667C2.79589 2.16669 2.59889 2.24163 2.44636 2.37726C2.29383 2.5129 2.19638 2.69979 2.1725 2.9025L2.16667 3L2.16667 13C2.16669 13.2041 2.24163 13.4011 2.37726 13.5536C2.5129 13.7062 2.69979 13.8036 2.9025 13.8275L3 13.8333ZM6.65583 10.325L6.5775 10.2558L4.91083 8.58917C4.76735 8.44567 4.68116 8.25476 4.66843 8.05223C4.65569 7.84971 4.71729 7.6495 4.84167 7.48917L4.91083 7.41083L6.5775 5.74417C6.72747 5.59471 6.9287 5.50794 7.14032 5.50148C7.35194 5.49502 7.55809 5.56935 7.7169 5.70937C7.8757 5.8494 7.97525 6.04463 7.99533 6.25539C8.01541 6.46616 7.95451 6.67667 7.825 6.84417L7.75583 6.9225L6.67917 8L7.75583 9.0775C7.89931 9.22099 7.98551 9.41191 7.99824 9.61443C8.01097 9.81695 7.94938 10.0172 7.825 10.1775L7.75583 10.2558C7.61234 10.3993 7.42142 10.4855 7.2189 10.4982C7.01638 10.511 6.81617 10.4494 6.65583 10.325Z"/>
+  </svg>
+  <span class="pst-collapse-sidebar-label">Collapse Sidebar</span>
+  <span class="pst-expand-sidebar-label">Expand Sidebar</span>
+</button></div>
+        <div class="sidebar-primary-item">
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Section Navigation">
+  <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
+  <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Install and set up OpenGHG Inversions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="getting_started.html">Getting started with OpenGHG Inversions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="conceptual_inversion.html">How an Atmospheric Inversion Works</a></li>
+<li class="toctree-l1"><a class="reference internal" href="model_recipes.html">Choose a RHIME model recipe</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="standard_model_family.html">Standard RHIME model family</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="rhime_standard_tutorial.html">Standard RHIME tutorial</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rhime_multisector_tutorial.html">Multisector RHIME tutorial</a></li>
+<li class="toctree-l2"><a class="reference internal" href="multisector_inversions.html">Site and satellite multisector inversions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="concrete_rhime_model.html">Standard and multisector RHIME models</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rhime.html">RHIME configuration and prepared-input reference</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cli.html">Running RHIME from the command line</a></li>
+<li class="toctree-l2"><a class="reference internal" href="customising_rhime.html">Customising RHIME</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="nested_domain_model_family.html">Nested-domain model family</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="nested_domains.html">Run a nested-domain RHIME inversion</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="co2_model_family.html">CO₂ model family</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="co2_models.html">CO₂ model recipes</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 current active has-children"><a class="reference internal" href="running_and_validating.html">Running and validating inversions</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="staged_workflow.html">Staged RHIME workflows</a></li>
+<li class="toctree-l2 current active"><a class="current reference internal" href="#">Prior predictive checking tutorial</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="shared_scientific_concepts.html">Shared scientific concepts</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="grouped_basis_layout.html">Grouped basis and state metadata</a></li>
+<li class="toctree-l2"><a class="reference internal" href="native_covariance.html">Native Covariance Projection</a></li>
+<li class="toctree-l2"><a class="reference internal" href="retained_state_reconstruction.html">Linear retained-state reconstruction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="affine_flux_map.html">Affine native-flux reconstruction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="coherent_reduction.html">Coherent Gaussian Reduction</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1"><a class="reference internal" href="legacy_and_migration.html">Migrate from HBMCMC to RHIME</a></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+      <div class="sidebar-primary-item">
+<div id="ethical-ad-placement"
+      class="flat"
+      data-ea-publisher="readthedocs"
+      data-ea-type="readthedocs-sidebar"
+      data-ea-manual="true">
+</div></div>
+  </div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="usage.html" class="nav-link">Using OpenGHG Inversions</a></li>
+    
+    
+    <li class="breadcrumb-item"><a href="running_and_validating.html" class="nav-link">Running and validating inversions</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Prior predictive checking tutorial</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="prior-predictive-checking-tutorial">
+<h1>Prior predictive checking tutorial<a class="headerlink" href="#prior-predictive-checking-tutorial" title="Link to this heading">#</a></h1>
+<p>This tutorial prepares a standard RHIME inversion, samples simulated
+concentrations without sampling a posterior, and uses the result to decide
+whether the configured priors and observation model are scientifically
+plausible. It then samples the posterior from the same prepared data.</p>
+<p>The code and recorded plots form one stateful session. You can
+<a class="reference download internal" download="" href="../_downloads/d28e965294d92aae3da74f08076d4258/prior_predictive_checking.ipynb"><code class="xref download docutils literal notranslate"><span class="pre">download</span> <span class="pre">it</span> <span class="pre">as</span> <span class="pre">a</span> <span class="pre">Jupyter</span> <span class="pre">notebook</span></code></a>
+to rerun or modify locally after populating the companion store. Run either
+the shell commands or their notebook equivalents below, not both.
+The downloaded notebook contains the executable cells and recorded text;
+rerun it to display plots, and use this page for interpretation and caveats.</p>
+<p>A prior predictive check asks what observations the complete model could
+generate before its unknown parameters are conditioned on the observed
+concentrations. RHIME predictions remain conditional on the prepared sites,
+times, footprints, flux inventories, boundary inputs, and measurement-error
+estimates. The check considers the priors and likelihood together: a prior
+that looks innocuous by itself can imply implausible concentrations after
+transport, boundary conditions, and model-data mismatch are combined. The
+check is a scientific judgement, not a binary test or proof that the priors
+are correct.</p>
+<p>If <code class="docutils literal notranslate"><span class="pre">pollution_events_from_obs=True</span></code>, the configured mismatch scale also uses
+the observed concentrations. The resulting simulations are a data-dependent
+conditional check, not a wholly pre-data prior predictive distribution.</p>
+<p>This workflow currently supports the staged <code class="docutils literal notranslate"><span class="pre">standard</span></code> and <code class="docutils literal notranslate"><span class="pre">multisector</span></code>
+recipes. This tutorial uses <code class="docutils literal notranslate"><span class="pre">standard</span></code>. The CO₂ model family does not have a
+staged CLI route; in particular, do not treat PyMC’s generic prior-predictive
+sampling as a substitute for a predictive implementation for models whose
+likelihood is represented by a <code class="docutils literal notranslate"><span class="pre">Potential</span></code>.</p>
+<section id="prerequisites">
+<h2>Prerequisites<a class="headerlink" href="#prerequisites" title="Link to this heading">#</a></h2>
+<p>Install the package and populate the companion tutorial store by following
+the <a class="reference internal" href="rhime_standard_tutorial.html"><span class="doc">standard tutorial prerequisites</span></a>. The
+commands below use its one-week CH₄ configuration. A different standard RHIME
+INI can be substituted once that example works.</p>
+<p>The companion-data instructions change into the data checkout while populating
+the store. Return to the <code class="docutils literal notranslate"><span class="pre">openghg_inversions</span></code> checkout root before continuing;
+all remaining shell commands use paths relative to that directory. Then choose
+paths for the configuration and artifacts:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nv">CONFIG</span><span class="o">=</span>openghg_inversions/rhime/config/standard_tutorial.ini
+<span class="nv">RUN</span><span class="o">=</span>outputs/prior-check
+</pre></div>
+</div>
+<p>If the command is not installed in the active environment, prefix each
+invocation with <code class="docutils literal notranslate"><span class="pre">pixi</span> <span class="pre">run</span> <span class="pre">-e</span> <span class="pre">dev</span></code> from a source checkout. The <a class="reference internal" href="cli.html"><span class="doc">CLI guide</span></a> describes the supported environment alternatives.</p>
+</section>
+<section id="prepare-the-data-once">
+<h2>Prepare the data once<a class="headerlink" href="#prepare-the-data-once" title="Link to this heading">#</a></h2>
+<p>Run the preparation stage:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>openghg-inversions<span class="w"> </span>prepare<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--config<span class="w"> </span><span class="s2">"</span><span class="nv">$CONFIG</span><span class="s2">"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--model<span class="w"> </span>standard<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--output-dir<span class="w"> </span><span class="s2">"</span><span class="nv">$RUN</span><span class="s2">/prepare"</span>
+</pre></div>
+</div>
+<p>This writes <code class="docutils literal notranslate"><span class="pre">prepared-inputs.nc</span></code> and <code class="docutils literal notranslate"><span class="pre">prepare-manifest.json</span></code> beneath
+<code class="docutils literal notranslate"><span class="pre">$RUN/prepare</span></code>. The prepared artifact fixes the observations, sites, times,
+footprints, prior flux, boundary conditions, basis, and sensitivities used by
+the subsequent stages. It does not contain posterior samples.</p>
+<p>In the notebook, use the installed configuration resource and run the same
+CLI through the kernel’s Python environment. The optional environment
+variables let the output recorder isolate its artifacts and record provenance;
+locally, outputs go to <code class="docutils literal notranslate"><span class="pre">outputs/prior-check</span></code>:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">importlib.resources</span><span class="w"> </span><span class="kn">import</span> <span class="n">as_file</span><span class="p">,</span> <span class="n">files</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">subprocess</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
+
+<span class="n">run</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"OPENGHG_TUTORIAL_OUTPUT_PATH"</span><span class="p">,</span> <span class="s2">"outputs/prior-check"</span><span class="p">))</span>
+<span class="n">resource</span> <span class="o">=</span> <span class="n">files</span><span class="p">(</span><span class="s2">"openghg_inversions.rhime"</span><span class="p">)</span><span class="o">.</span><span class="n">joinpath</span><span class="p">(</span><span class="s2">"config/standard_tutorial.ini"</span><span class="p">)</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">stage</span><span class="p">(</span><span class="n">command</span><span class="p">,</span> <span class="o">*</span><span class="n">arguments</span><span class="p">):</span>
+    <span class="n">completed</span> <span class="o">=</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">run</span><span class="p">(</span>
+        <span class="p">[</span><span class="n">sys</span><span class="o">.</span><span class="n">executable</span><span class="p">,</span> <span class="s2">"-m"</span><span class="p">,</span> <span class="s2">"openghg_inversions.cli"</span><span class="p">,</span> <span class="n">command</span><span class="p">,</span> <span class="o">*</span><span class="nb">map</span><span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="n">arguments</span><span class="p">)],</span>
+        <span class="n">capture_output</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">text</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="k">if</span> <span class="n">completed</span><span class="o">.</span><span class="n">returncode</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="n">completed</span><span class="o">.</span><span class="n">stdout</span> <span class="o">+</span> <span class="n">completed</span><span class="o">.</span><span class="n">stderr</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">completed</span><span class="o">.</span><span class="n">stdout</span>
+
+<span class="k">with</span> <span class="n">as_file</span><span class="p">(</span><span class="n">resource</span><span class="p">)</span> <span class="k">as</span> <span class="n">config</span><span class="p">:</span>
+    <span class="n">stage</span><span class="p">(</span><span class="s2">"prepare"</span><span class="p">,</span> <span class="s2">"--config"</span><span class="p">,</span> <span class="n">config</span><span class="p">,</span> <span class="s2">"--model"</span><span class="p">,</span> <span class="s2">"standard"</span><span class="p">,</span>
+          <span class="s2">"--output-dir"</span><span class="p">,</span> <span class="n">run</span> <span class="o">/</span> <span class="s2">"prepare"</span><span class="p">)</span>
+<span class="n">prepared_path</span> <span class="o">=</span> <span class="n">run</span> <span class="o">/</span> <span class="s2">"prepare/prepared-inputs.nc"</span>
+<span class="n">preparation_manifest</span> <span class="o">=</span> <span class="n">run</span> <span class="o">/</span> <span class="s2">"prepare/prepare-manifest.json"</span>
+<span class="p">{</span>
+    <span class="s2">"OpenGHG Inversions commit"</span><span class="p">:</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"OPENGHG_TUTORIAL_CODE_REF"</span><span class="p">,</span> <span class="s2">"local checkout"</span><span class="p">),</span>
+    <span class="s2">"tutorial data"</span><span class="p">:</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"OPENGHG_TUTORIAL_DATA_TAG"</span><span class="p">,</span> <span class="s2">"v1.0.0"</span><span class="p">),</span>
+    <span class="s2">"prepared inputs written"</span><span class="p">:</span> <span class="n">prepared_path</span><span class="o">.</span><span class="n">is_file</span><span class="p">(),</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>{'OpenGHG Inversions commit': 'ca468831c6603e4b368680953086c69a6b490d03',
+ 'tutorial data': 'v1.0.0',
+ 'prepared inputs written': True}
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="generate-prior-predictions">
+<h2>Generate prior predictions<a class="headerlink" href="#generate-prior-predictions" title="Link to this heading">#</a></h2>
+<p>Start with 500 simulated datasets to see the distribution’s broad shape and
+tails:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>openghg-inversions<span class="w"> </span>prior-predictive<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--config<span class="w"> </span><span class="s2">"</span><span class="nv">$CONFIG</span><span class="s2">"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--model<span class="w"> </span>standard<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--prepared-inputs<span class="w"> </span><span class="s2">"</span><span class="nv">$RUN</span><span class="s2">/prepare/prepared-inputs.nc"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--preparation-manifest<span class="w"> </span><span class="s2">"</span><span class="nv">$RUN</span><span class="s2">/prepare/prepare-manifest.json"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--draws<span class="w"> </span><span class="m">500</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--output-dir<span class="w"> </span><span class="s2">"</span><span class="nv">$RUN</span><span class="s2">/prior-predictive"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--strict
+</pre></div>
+</div>
+<p>Five hundred draws are illustrative. Increase the count or repeat the check
+when rare tails or high-dimensional extreme-series behaviour matters to the
+scientific question.</p>
+<p>The command builds the configured PyMC model and calls prior-predictive
+sampling, but it does not call NUTS or sample a posterior. It writes:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">prior-predictive.nc</span></code>, a native xarray <code class="docutils literal notranslate"><span class="pre">DataTree</span></code> trace artifact; and</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">prior-predictive-readiness.json</span></code>, a machine-readable check result.</p></li>
+</ul>
+<p><code class="docutils literal notranslate"><span class="pre">--strict</span></code> exits nonzero if model construction fails or sampled values are
+non-finite. A <code class="docutils literal notranslate"><span class="pre">pass</span></code> means only that the model produced finite values. It
+does <strong>not</strong> mean that the simulated concentrations, variability, or extremes
+are scientifically plausible.</p>
+<p>The notebook equivalent runs the same finite-value check:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="k">with</span> <span class="n">as_file</span><span class="p">(</span><span class="n">resource</span><span class="p">)</span> <span class="k">as</span> <span class="n">config</span><span class="p">:</span>
+    <span class="n">stage</span><span class="p">(</span><span class="s2">"prior-predictive"</span><span class="p">,</span> <span class="s2">"--config"</span><span class="p">,</span> <span class="n">config</span><span class="p">,</span> <span class="s2">"--model"</span><span class="p">,</span> <span class="s2">"standard"</span><span class="p">,</span>
+          <span class="s2">"--prepared-inputs"</span><span class="p">,</span> <span class="n">prepared_path</span><span class="p">,</span>
+          <span class="s2">"--preparation-manifest"</span><span class="p">,</span> <span class="n">preparation_manifest</span><span class="p">,</span>
+          <span class="s2">"--draws"</span><span class="p">,</span> <span class="mi">500</span><span class="p">,</span> <span class="s2">"--output-dir"</span><span class="p">,</span> <span class="n">run</span> <span class="o">/</span> <span class="s2">"prior-predictive"</span><span class="p">,</span> <span class="s2">"--strict"</span><span class="p">)</span>
+<span class="n">readiness</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">((</span><span class="n">run</span> <span class="o">/</span> <span class="s2">"prior-predictive/prior-predictive-readiness.json"</span><span class="p">)</span><span class="o">.</span><span class="n">read_text</span><span class="p">())</span>
+<span class="p">{</span><span class="s2">"status"</span><span class="p">:</span> <span class="n">readiness</span><span class="p">[</span><span class="s2">"status"</span><span class="p">],</span> <span class="s2">"message"</span><span class="p">:</span> <span class="n">readiness</span><span class="p">[</span><span class="s2">"message"</span><span class="p">]}</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>{'status': 'pass', 'message': 'Prior predictive produced 500 finite draws.'}
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="inspect-the-artifact">
+<h2>Inspect the artifact<a class="headerlink" href="#inspect-the-artifact" title="Link to this heading">#</a></h2>
+<p>Load the result and inspect its groups and variable names before plotting:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.serialization</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_trace</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.inversion_data</span><span class="w"> </span><span class="kn">import</span> <span class="n">RhimePreparedInputs</span>
+
+<span class="n">prior</span> <span class="o">=</span> <span class="n">load_trace</span><span class="p">(</span><span class="n">run</span> <span class="o">/</span> <span class="s2">"prior-predictive/prior-predictive.nc"</span><span class="p">)</span>
+<span class="n">prepared</span> <span class="o">=</span> <span class="n">RhimePreparedInputs</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">prepared_path</span><span class="p">)</span>
+<span class="n">observations</span> <span class="o">=</span> <span class="n">prepared</span><span class="o">.</span><span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"mf"</span><span class="p">]</span>
+<span class="n">concentration_units</span> <span class="o">=</span> <span class="n">observations</span><span class="o">.</span><span class="n">attrs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"units"</span><span class="p">,</span> <span class="s2">"mole fraction"</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="s2">"groups"</span><span class="p">:</span> <span class="nb">list</span><span class="p">(</span><span class="n">prior</span><span class="o">.</span><span class="n">children</span><span class="p">),</span>
+    <span class="s2">"prior variables"</span><span class="p">:</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">prior</span><span class="p">[</span><span class="s2">"prior"</span><span class="p">]</span><span class="o">.</span><span class="n">data_vars</span><span class="p">),</span>
+    <span class="s2">"replicated observations"</span><span class="p">:</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">prior</span><span class="p">[</span><span class="s2">"prior_predictive"</span><span class="p">]</span><span class="o">.</span><span class="n">data_vars</span><span class="p">),</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>{'groups': ['prior', 'prior_predictive', 'observed_data', 'constant_data'],
+ 'prior variables': ['bc', 'epsilon', 'mu', 'mu_bc', 'sigma', 'x'],
+ 'replicated observations': ['y']}
+</pre></div>
+</div>
+</div>
+</div>
+<p>The output should include at least <code class="docutils literal notranslate"><span class="pre">prior</span></code>, <code class="docutils literal notranslate"><span class="pre">prior_predictive</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">observed_data</span></code>. A missing group means the expected prior-check artifact was
+not produced; inspect the readiness JSON and command output before continuing.</p>
+<p>The important distinction is:</p>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">prior</span></code></dt><dd><p>Samples of parameters and deterministic latent quantities. In the standard
+model, <code class="docutils literal notranslate"><span class="pre">mu</span></code> is the flux-derived contribution to the conditional mean,
+<code class="docutils literal notranslate"><span class="pre">mu_bc</span></code> is the boundary contribution when boundary conditions are
+enabled, and <code class="docutils literal notranslate"><span class="pre">offset</span></code> is present when an offset is enabled. Their sum is
+the latent conditional-mean concentration for each parameter draw.
+<code class="docutils literal notranslate"><span class="pre">epsilon</span></code> is the modelled observation-error scale.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">prior_predictive</span></code></dt><dd><p>Replicated observations. <code class="docutils literal notranslate"><span class="pre">y</span></code> includes the latent expected concentration
+and a new draw from the configured observation model. It is therefore the
+quantity to compare with plausible measurements.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">observed_data</span></code></dt><dd><p>The actual concentrations supplied to the likelihood. Overlaying them gives
+context, but prior predictions need not closely reproduce the observed
+series.</p>
+</dd>
+</dl>
+<p>For example, compare the distribution of replicated and observed
+concentrations:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">arviz_plots</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">azp</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">matplotlib.pyplot</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">plt</span>
+
+<span class="n">azp</span><span class="o">.</span><span class="n">plot_ppc_dist</span><span class="p">(</span>
+    <span class="n">prior</span><span class="p">,</span>
+    <span class="n">group</span><span class="o">=</span><span class="s2">"prior_predictive"</span><span class="p">,</span>
+    <span class="n">var_names</span><span class="o">=</span><span class="p">[</span><span class="s2">"y"</span><span class="p">],</span>
+    <span class="n">kind</span><span class="o">=</span><span class="s2">"ecdf"</span><span class="p">,</span>
+    <span class="n">num_samples</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span>
+    <span class="n">backend</span><span class="o">=</span><span class="s2">"matplotlib"</span><span class="p">,</span>
+    <span class="n">visuals</span><span class="o">=</span><span class="p">{</span><span class="s2">"remove_axis"</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+             <span class="s2">"observed_dist"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"color"</span><span class="p">:</span> <span class="s2">"black"</span><span class="p">,</span> <span class="s2">"label"</span><span class="p">:</span> <span class="s2">"Observed"</span><span class="p">}},</span>
+<span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">gca</span><span class="p">()</span><span class="o">.</span><span class="n">set_title</span><span class="p">(</span><span class="s2">"Prior predictive concentration distributions"</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">gca</span><span class="p">()</span><span class="o">.</span><span class="n">set_xlabel</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Concentration (</span><span class="si">{</span><span class="n">concentration_units</span><span class="si">}</span><span class="s2"> mole fraction)"</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">gca</span><span class="p">()</span><span class="o">.</span><span class="n">set_ylabel</span><span class="p">(</span><span class="s2">"Cumulative probability"</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">gca</span><span class="p">()</span><span class="o">.</span><span class="n">legend</span><span class="p">()</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+<span class="s2">"Prior predictive ECDFs: 100 simulated datasets and the observations."</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>'Prior predictive ECDFs: 100 simulated datasets and the observations.'
+</pre></div>
+</div>
+</div>
+</div>
+<figure class="align-default" id="id1">
+<img alt="Prior predictive concentration ECDFs overlaid with the observed CH4 ECDF." src="../_images/prior_predictive_checking-4-1.png" />
+<figcaption>
+<p><span class="caption-text">Each simulated curve pools both sites and all times; the black curve is
+observed data. Compare magnitudes and tails, not just agreement with the
+observed curve.</span><a class="headerlink" href="#id1" title="Link to this image">#</a></p>
+</figcaption>
+</figure>
+<p><code class="docutils literal notranslate"><span class="pre">observed_dist</span></code> is explicit because ArviZ hides observed data by default for
+a prior predictive plot. This uses the ArviZ 1.x plotting package installed
+with the current OpenGHG Inversions dependencies. A flattened comparison can conceal a failure
+at one site or during one period, so also inspect the labelled structure. The
+prepared artifact supplies the authoritative site/time measurement index:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="n">measurement_index</span> <span class="o">=</span> <span class="n">prepared</span><span class="o">.</span><span class="n">inv_inputs</span><span class="o">.</span><span class="n">indexes</span><span class="p">[</span><span class="s2">"nmeasure"</span><span class="p">]</span>
+<span class="n">sites</span> <span class="o">=</span> <span class="n">measurement_index</span><span class="o">.</span><span class="n">get_level_values</span><span class="p">(</span><span class="s2">"site"</span><span class="p">)</span>
+<span class="n">times</span> <span class="o">=</span> <span class="n">measurement_index</span><span class="o">.</span><span class="n">get_level_values</span><span class="p">(</span><span class="s2">"time"</span><span class="p">)</span>
+<span class="n">predictions</span> <span class="o">=</span> <span class="p">(</span>
+    <span class="n">prior</span><span class="p">[</span><span class="s2">"prior_predictive"</span><span class="p">][</span><span class="s2">"y"</span><span class="p">]</span>
+    <span class="o">.</span><span class="n">stack</span><span class="p">(</span><span class="n">sample</span><span class="o">=</span><span class="p">(</span><span class="s2">"chain"</span><span class="p">,</span> <span class="s2">"draw"</span><span class="p">))</span>
+    <span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="s2">"sample"</span><span class="p">,</span> <span class="s2">"nmeasure"</span><span class="p">)</span>
+<span class="p">)</span>
+
+<span class="n">site_names</span> <span class="o">=</span> <span class="n">sites</span><span class="o">.</span><span class="n">unique</span><span class="p">()</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span>
+<span class="n">figure</span><span class="p">,</span> <span class="n">axes</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">subplots</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">site_names</span><span class="p">),</span> <span class="mi">1</span><span class="p">,</span> <span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="mi">7</span><span class="p">),</span> <span class="n">squeeze</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">axis</span><span class="p">,</span> <span class="n">site</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">axes</span><span class="o">.</span><span class="n">flat</span><span class="p">,</span> <span class="n">site_names</span><span class="p">):</span>
+    <span class="n">positions</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">flatnonzero</span><span class="p">(</span><span class="n">sites</span> <span class="o">==</span> <span class="n">site</span><span class="p">)</span>
+    <span class="n">intervals</span> <span class="o">=</span> <span class="n">predictions</span><span class="o">.</span><span class="n">isel</span><span class="p">(</span><span class="n">nmeasure</span><span class="o">=</span><span class="n">positions</span><span class="p">)</span><span class="o">.</span><span class="n">quantile</span><span class="p">(</span>
+        <span class="p">[</span><span class="mf">0.05</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">0.95</span><span class="p">],</span> <span class="n">dim</span><span class="o">=</span><span class="s2">"sample"</span>
+    <span class="p">)</span>
+    <span class="n">axis</span><span class="o">.</span><span class="n">fill_between</span><span class="p">(</span>
+        <span class="n">times</span><span class="p">[</span><span class="n">positions</span><span class="p">],</span>
+        <span class="n">intervals</span><span class="o">.</span><span class="n">sel</span><span class="p">(</span><span class="n">quantile</span><span class="o">=</span><span class="mf">0.05</span><span class="p">),</span>
+        <span class="n">intervals</span><span class="o">.</span><span class="n">sel</span><span class="p">(</span><span class="n">quantile</span><span class="o">=</span><span class="mf">0.95</span><span class="p">),</span>
+        <span class="n">alpha</span><span class="o">=</span><span class="mf">0.25</span><span class="p">,</span>
+        <span class="n">label</span><span class="o">=</span><span class="s2">"90% prior predictive interval"</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">axis</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">times</span><span class="p">[</span><span class="n">positions</span><span class="p">],</span> <span class="n">intervals</span><span class="o">.</span><span class="n">sel</span><span class="p">(</span><span class="n">quantile</span><span class="o">=</span><span class="mf">0.5</span><span class="p">),</span> <span class="n">label</span><span class="o">=</span><span class="s2">"median"</span><span class="p">)</span>
+    <span class="n">trajectories</span> <span class="o">=</span> <span class="n">predictions</span><span class="o">.</span><span class="n">isel</span><span class="p">(</span><span class="n">sample</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span> <span class="n">nmeasure</span><span class="o">=</span><span class="n">positions</span><span class="p">)</span>
+    <span class="n">axis</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span>
+        <span class="n">times</span><span class="p">[</span><span class="n">positions</span><span class="p">],</span>
+        <span class="n">trajectories</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="s2">"nmeasure"</span><span class="p">,</span> <span class="s2">"sample"</span><span class="p">),</span>
+        <span class="n">color</span><span class="o">=</span><span class="s2">"0.5"</span><span class="p">,</span>
+        <span class="n">alpha</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span>
+        <span class="n">linewidth</span><span class="o">=</span><span class="mf">0.8</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">axis</span><span class="o">.</span><span class="n">scatter</span><span class="p">(</span><span class="n">times</span><span class="p">[</span><span class="n">positions</span><span class="p">],</span> <span class="n">observations</span><span class="o">.</span><span class="n">isel</span><span class="p">(</span><span class="n">nmeasure</span><span class="o">=</span><span class="n">positions</span><span class="p">),</span> <span class="n">s</span><span class="o">=</span><span class="mi">8</span><span class="p">,</span>
+                 <span class="n">label</span><span class="o">=</span><span class="s2">"observed"</span><span class="p">)</span>
+    <span class="n">axis</span><span class="o">.</span><span class="n">set_title</span><span class="p">(</span><span class="n">site</span><span class="p">)</span>
+    <span class="n">axis</span><span class="o">.</span><span class="n">set_xlabel</span><span class="p">(</span><span class="s2">"Time"</span><span class="p">)</span>
+    <span class="n">axis</span><span class="o">.</span><span class="n">set_ylabel</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Concentration (</span><span class="si">{</span><span class="n">concentration_units</span><span class="si">}</span><span class="s2">)"</span><span class="p">)</span>
+    <span class="n">axis</span><span class="o">.</span><span class="n">legend</span><span class="p">()</span>
+<span class="n">figure</span><span class="o">.</span><span class="n">autofmt_xdate</span><span class="p">()</span>
+<span class="n">figure</span><span class="o">.</span><span class="n">tight_layout</span><span class="p">()</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+<span class="p">{</span><span class="s2">"sites"</span><span class="p">:</span> <span class="n">site_names</span><span class="p">,</span> <span class="s2">"concentration units"</span><span class="p">:</span> <span class="n">concentration_units</span><span class="p">}</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>{'sites': ['MHD', 'TAC'], 'concentration units': '1e-09'}
+</pre></div>
+</div>
+</div>
+</div>
+<p>Here <code class="docutils literal notranslate"><span class="pre">1e-09</span></code> denotes a mole-fraction scale of 10⁻⁹, or parts per billion
+(ppb); a plotted value of 2000 therefore means 2000 ppb, not 2000 mol/mol.
+For other data, use their recorded units rather than assuming this scale.</p>
+<figure class="align-default" id="id2">
+<img alt="MHD and TAC time series with observations, three prior simulations, and pointwise 90 percent intervals." src="../_images/prior_predictive_checking-5-1.png" />
+<figcaption>
+<p><span class="caption-text">Prior predictive intervals, median, and three complete simulated series at
+each site, with observed concentrations. These are pointwise intervals,
+not a simultaneous 90% band for a whole trajectory.</span><a class="headerlink" href="#id2" title="Link to this image">#</a></p>
+</figcaption>
+</figure>
+<p>The example produces one panel for MHD and one for TAC. Each panel should show
+the observed CH₄ series, three complete simulated series, and the pointwise
+90% prior predictive interval in the units printed above. Treat the panels as
+a decision point. For example, if a displayed complete series or a substantial
+part of the predictive interval has negative CH₄ concentrations, or has
+excursions that are incompatible with the configured flux and boundary
+scenario, stop and revise the responsible prior or mismatch model. If the
+simulated ranges and structures are scientifically defensible, record that
+judgement and its basis before continuing. Agreement with every observed point
+is not the success criterion.</p>
+</section>
+<section id="what-to-look-for">
+<h2>What to look for<a class="headerlink" href="#what-to-look-for" title="Link to this heading">#</a></h2>
+<p>Judge simulations in the physical units and scientific context of the run.
+Useful questions include:</p>
+<ul class="simple">
+<li><p>Do simulated concentrations have plausible magnitudes, signs, variability,
+and extremes?</p></li>
+<li><p>Are site-to-site differences and temporal patterns compatible with what the
+transport and boundary inputs could produce?</p></li>
+<li><p>Does a meaningful fraction of draws put mass on impossible or scientifically
+absurd outcomes?</p></li>
+<li><p>Do individual full simulated series reveal failures hidden by marginal
+intervals or density plots?</p></li>
+<li><p>Can an implausible feature be traced to flux scaling, boundary scaling,
+offsets, or the model-data mismatch prior?</p></li>
+</ul>
+<p>The aim is not to make every observation fall inside an extremely wide band.
+A useful weakly informative model can generate extreme-but-plausible datasets
+while assigning little mass to impossible ones. Choose summaries related to
+the scientific question and known failure modes; no finite collection of plots
+checks every implication of a model.</p>
+</section>
+<section id="revise-and-repeat">
+<h2>Revise and repeat<a class="headerlink" href="#revise-and-repeat" title="Link to this heading">#</a></h2>
+<p>If the simulations are implausible, change the relevant prior or model option
+in the configuration and repeat both <code class="docutils literal notranslate"><span class="pre">prepare</span></code> and <code class="docutils literal notranslate"><span class="pre">prior-predictive</span></code> in a
+new output directory. Prior settings are part of the preparation manifest’s
+configuration identity, so a manifest from the previous configuration is
+intentionally rejected. Record why each change is scientifically justified;
+repeatedly tuning a prior only to mimic the observed series turns the exercise
+into data-dependent model fitting.</p>
+</section>
+<section id="sample-the-posterior-from-the-checked-data">
+<h2>Sample the posterior from the checked data<a class="headerlink" href="#sample-the-posterior-from-the-checked-data" title="Link to this heading">#</a></h2>
+<p>When the prior predictive behaviour is credible, pass the same prepared input
+and manifest to the posterior stage:</p>
+<p>The packaged tutorial configuration uses only 50 tuning and 50 retained draws,
+two chains, and disabled convergence checks. Those settings demonstrate the
+workflow but are not adequate for scientific interpretation. Increase the
+sampler settings and enable convergence checks for a scientific run.
+Sampler-only changes do not invalidate the prepared artifact; changes to the
+scientific preparation, model, or prior settings require a new preparation.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>openghg-inversions<span class="w"> </span>sample<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--config<span class="w"> </span><span class="s2">"</span><span class="nv">$CONFIG</span><span class="s2">"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--model<span class="w"> </span>standard<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--prepared-inputs<span class="w"> </span><span class="s2">"</span><span class="nv">$RUN</span><span class="s2">/prepare/prepared-inputs.nc"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--preparation-manifest<span class="w"> </span><span class="s2">"</span><span class="nv">$RUN</span><span class="s2">/prepare/prepare-manifest.json"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--output-dir<span class="w"> </span><span class="s2">"</span><span class="nv">$RUN</span><span class="s2">/sample"</span>
+</pre></div>
+</div>
+<p>This rebuilds the same configured model from the authenticated prepared data,
+runs the configured sampler, and writes <code class="docutils literal notranslate"><span class="pre">posterior.nc</span></code> and
+<code class="docutils literal notranslate"><span class="pre">sample-manifest.json</span></code>. It reuses the data artifact, not the in-memory PyMC
+graph from the prior-predictive process.</p>
+<p>In the notebook, explicitly reuse the same artifact and manifest:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="k">with</span> <span class="n">as_file</span><span class="p">(</span><span class="n">resource</span><span class="p">)</span> <span class="k">as</span> <span class="n">config</span><span class="p">:</span>
+    <span class="n">stage</span><span class="p">(</span><span class="s2">"sample"</span><span class="p">,</span> <span class="s2">"--config"</span><span class="p">,</span> <span class="n">config</span><span class="p">,</span> <span class="s2">"--model"</span><span class="p">,</span> <span class="s2">"standard"</span><span class="p">,</span>
+          <span class="s2">"--prepared-inputs"</span><span class="p">,</span> <span class="n">prepared_path</span><span class="p">,</span>
+          <span class="s2">"--preparation-manifest"</span><span class="p">,</span> <span class="n">preparation_manifest</span><span class="p">,</span>
+          <span class="s2">"--output-dir"</span><span class="p">,</span> <span class="n">run</span> <span class="o">/</span> <span class="s2">"sample"</span><span class="p">)</span>
+<span class="n">posterior</span> <span class="o">=</span> <span class="n">load_trace</span><span class="p">(</span><span class="n">run</span> <span class="o">/</span> <span class="s2">"sample/posterior.nc"</span><span class="p">)</span>
+<span class="p">{</span><span class="s2">"posterior samples"</span><span class="p">:</span> <span class="p">{</span><span class="n">name</span><span class="p">:</span> <span class="n">posterior</span><span class="p">[</span><span class="s2">"posterior"</span><span class="p">]</span><span class="o">.</span><span class="n">sizes</span><span class="p">[</span><span class="n">name</span><span class="p">]</span>
+                       <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">"chain"</span><span class="p">,</span> <span class="s2">"draw"</span><span class="p">)}}</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>{'posterior samples': {'chain': 2, 'draw': 50}}
+</pre></div>
+</div>
+</div>
+</div>
+<p>Next run the staged convergence check:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>openghg-inversions<span class="w"> </span>diagnose<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--posterior<span class="w"> </span><span class="s2">"</span><span class="nv">$RUN</span><span class="s2">/sample/posterior.nc"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--sample-manifest<span class="w"> </span><span class="s2">"</span><span class="nv">$RUN</span><span class="s2">/sample/sample-manifest.json"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--output-dir<span class="w"> </span><span class="s2">"</span><span class="nv">$RUN</span><span class="s2">/diagnose"</span>
+</pre></div>
+</div>
+<p>Inspect the resulting diagnostics, trace behaviour, effective sample sizes,
+R-hat, and divergences before interpreting the posterior; see the
+<a class="reference internal" href="staged_workflow.html#staged-convergence-check"><span class="std std-ref">staged convergence-check contract</span></a>. Then
+perform a posterior predictive check:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">stage</span><span class="p">(</span><span class="s2">"diagnose"</span><span class="p">,</span> <span class="s2">"--posterior"</span><span class="p">,</span> <span class="n">run</span> <span class="o">/</span> <span class="s2">"sample/posterior.nc"</span><span class="p">,</span>
+      <span class="s2">"--sample-manifest"</span><span class="p">,</span> <span class="n">run</span> <span class="o">/</span> <span class="s2">"sample/sample-manifest.json"</span><span class="p">,</span>
+      <span class="s2">"--output-dir"</span><span class="p">,</span> <span class="n">run</span> <span class="o">/</span> <span class="s2">"diagnose"</span><span class="p">)</span>
+<span class="n">diagnostics</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">((</span><span class="n">run</span> <span class="o">/</span> <span class="s2">"diagnose/sampler-convergence.json"</span><span class="p">)</span><span class="o">.</span><span class="n">read_text</span><span class="p">())</span>
+<span class="p">{</span><span class="s2">"status"</span><span class="p">:</span> <span class="n">diagnostics</span><span class="p">[</span><span class="s2">"status"</span><span class="p">],</span> <span class="s2">"message"</span><span class="p">:</span> <span class="n">diagnostics</span><span class="p">[</span><span class="s2">"message"</span><span class="p">]}</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>{'status': 'fail',
+ 'message': 'Posterior convergence thresholds were exceeded.'}
+</pre></div>
+</div>
+</div>
+</div>
+<p>The deliberately short smoke run is not expected to pass convergence checks.
+The next plot demonstrates the mechanics only; it is not evidence that this
+posterior is reliable. For scientific work, obtain adequate diagnostics first.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">azp</span><span class="o">.</span><span class="n">plot_ppc_dist</span><span class="p">(</span>
+    <span class="n">posterior</span><span class="p">,</span>
+    <span class="n">group</span><span class="o">=</span><span class="s2">"posterior_predictive"</span><span class="p">,</span>
+    <span class="n">var_names</span><span class="o">=</span><span class="p">[</span><span class="s2">"y"</span><span class="p">],</span>
+    <span class="n">kind</span><span class="o">=</span><span class="s2">"ecdf"</span><span class="p">,</span>
+    <span class="n">num_samples</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span>
+    <span class="n">backend</span><span class="o">=</span><span class="s2">"matplotlib"</span><span class="p">,</span>
+    <span class="n">visuals</span><span class="o">=</span><span class="p">{</span><span class="s2">"remove_axis"</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+             <span class="s2">"observed_dist"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"color"</span><span class="p">:</span> <span class="s2">"black"</span><span class="p">,</span> <span class="s2">"label"</span><span class="p">:</span> <span class="s2">"Observed"</span><span class="p">}},</span>
+<span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">gca</span><span class="p">()</span><span class="o">.</span><span class="n">set_title</span><span class="p">(</span><span class="s2">"Posterior predictive distributions (smoke run only)"</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">gca</span><span class="p">()</span><span class="o">.</span><span class="n">set_xlabel</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Concentration (</span><span class="si">{</span><span class="n">concentration_units</span><span class="si">}</span><span class="s2"> mole fraction)"</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">gca</span><span class="p">()</span><span class="o">.</span><span class="n">set_ylabel</span><span class="p">(</span><span class="s2">"Cumulative probability"</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">gca</span><span class="p">()</span><span class="o">.</span><span class="n">legend</span><span class="p">()</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+<span class="s2">"Posterior predictive ECDFs: illustration only, not a converged scientific result."</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>'Posterior predictive ECDFs: illustration only, not a converged scientific result.'
+</pre></div>
+</div>
+</div>
+</div>
+<figure class="align-default" id="id3">
+<img alt="Posterior predictive concentration ECDFs and observed ECDF from the short smoke run." src="../_images/prior_predictive_checking-8-1.png" />
+<figcaption>
+<p><span class="caption-text">Posterior predictive comparison from the 50-draw smoke run. Apparent
+agreement with observations cannot compensate for inadequate convergence.</span><a class="headerlink" href="#id3" title="Link to this image">#</a></p>
+</figcaption>
+</figure>
+<p>Prior and posterior predictive checks answer different questions. The first
+tests whether the model’s implications before parameter fitting are plausible,
+conditional on the prepared inputs described above; the second assesses how
+well the fitted model can reproduce relevant features of the observations.
+Neither replaces sampler diagnostics, sensitivity analysis, or independent
+scientific validation. A prior predictive check is also not simulation-based
+calibration, which repeatedly simulates and refits data to test an inference
+procedure.</p>
+</section>
+<section id="further-reading">
+<h2>Further reading<a class="headerlink" href="#further-reading" title="Link to this heading">#</a></h2>
+<ul class="simple">
+<li><p>PyMC, <a class="reference external" href="https://www.pymc.io/projects/docs/en/v5.7.2/learn/core_notebooks/posterior_predictive.html">Prior and Posterior Predictive Checks</a>.</p></li>
+<li><p>ArviZ, <a class="reference external" href="https://python.arviz.org/projects/plots/en/stable/api/generated/arviz_plots.plot_ppc_dist.html">plot_ppc_dist API</a>.</p></li>
+<li><p>Stan User’s Guide, <a class="reference external" href="https://mc-stan.org/docs/stan-users-guide/posterior-predictive-checks.html">Posterior and Prior Predictive Checks</a>.</p></li>
+<li><p>Gabry, J. et al. (2019), “Visualization in Bayesian workflow”,
+<a class="reference external" href="https://doi.org/10.1111/rssa.12378">doi:10.1111/rssa.12378</a>.</p></li>
+<li><p>Gelman, A. et al. (2020), “Bayesian Workflow”,
+<a class="reference external" href="https://arxiv.org/abs/2011.01808">arXiv:2011.01808</a>.</p></li>
+</ul>
+</section>
+<section id="refreshing-the-recorded-outputs">
+<h2>Refreshing the recorded outputs<a class="headerlink" href="#refreshing-the-recorded-outputs" title="Link to this heading">#</a></h2>
+<p>From a clean checkout, maintainers can refresh this notebook’s text and plots
+with the shared recorder:</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>dev<span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>scripts.record_tutorial_outputs<span class="w"> </span>--tutorial<span class="w"> </span>prior_predictive_checking
+</pre></div>
+</div>
+<p>The opt-in recorder downloads and verifies the pinned companion data,
+populates an isolated store, executes the notebook, and saves displayed PNGs
+under <code class="docutils literal notranslate"><span class="pre">docs/_static/tutorials</span></code>. Review and commit both the refreshed RST and
+images. Ordinary documentation builds render the recorded results without
+downloading data or sampling; see the <a class="reference internal" href="rhime_standard_tutorial.html"><span class="doc">standard tutorial</span></a> for the recorder’s provenance contract.</p>
+</section>
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="staged_workflow.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">Staged RHIME workflows</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="shared_scientific_concepts.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">Shared scientific concepts</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <dialog id="pst-secondary-sidebar-modal"></dialog>
+                <div id="pst-secondary-sidebar" class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#prerequisites">Prerequisites</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#prepare-the-data-once">Prepare the data once</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#generate-prior-predictions">Generate prior predictions</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#inspect-the-artifact">Inspect the artifact</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#what-to-look-for">What to look for</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#revise-and-repeat">Revise and repeat</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#sample-the-posterior-from-the-checked-data">Sample the posterior from the checked data</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#further-reading">Further reading</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#refreshing-the-recorded-outputs">Refreshing the recorded outputs</a></li>
+</ul>
+  </nav></div>
+
+  <div class="sidebar-secondary-item">
+
+  <div class="tocsection sourcelink">
+    <a href="../_sources/usage/prior_predictive_checking.rst.txt">
+      <i class="fa-solid fa-file-lines"></i> Show Source
+    </a>
+  </div>
+</div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../_static/scripts/bootstrap.js?digest=cb8930eaaf36d9849b67"></script>
+<script defer src="../_static/scripts/pydata-sphinx-theme.js?digest=cb8930eaaf36d9849b67"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 2025, Eric Saboya and Brendan Murphy.
+      <br/>
+    
+  </p>
+</div>
+      
+        <div class="footer-item">
+
+  <p class="sphinx-version">
+    Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 9.1.0.
+    <br/>
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  <!-- # L10n: Setting the PST URL as an argument as this does not need to be localized -->
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.21.0.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+  </body>
+</html>

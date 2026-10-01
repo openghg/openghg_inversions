@@ -556,7 +556,7 @@ variable.</p></li>
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.postprocessing.countries.CountryRegions">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">CountryRegions</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">country_regions</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.postprocessing.countries.CountryRegions" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
 <p>Regions defined by combining several countries.</p>
 <dl class="field-list simple">
 </dl>
@@ -566,14 +566,14 @@ variable.</p></li>
 <dd><p>Load country regions from JSON file.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>filepath</strong> (<em>str</em><em> | </em><em>Path</em>) – path to JSON file containing country region definitions.</p>
+<dd class="field-odd"><p><strong>filepath</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><em>Path</em></a>) – path to JSON file containing country region definitions.</p>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>new CountryRegions object representing the regions on the given
 file.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><em>Self</em></p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Self" title="(in Python v3.14)"><em>Self</em></a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -588,7 +588,7 @@ in the country region definitions.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>country_code</strong> (<em>Literal</em><em>[</em><em>'alpha2'</em><em>, </em><em>'alpha3'</em><em>] </em><em>| </em><em>None</em>) – country code to set for countries comprising a region</p></li>
+<li><p><strong>country_code</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><em>Literal</em></a><em>[</em><em>'alpha2'</em><em>, </em><em>'alpha3'</em><em>] </em><em>| </em><em>None</em>) – country code to set for countries comprising a region</p></li>
 <li><p><strong>output.</strong> (<em>in the</em>)</p></li>
 </ul>
 </dd>
@@ -597,7 +597,7 @@ in the country region definitions.</p>
 comprising each region.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>dict[str, <em>CountryInfoList</em>]</p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)">str</a>, <em>CountryInfoList</em>]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -609,15 +609,15 @@ comprising each region.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>country_list</strong> (<em>CountryInfoList</em><em> | </em><em>Iterable</em><em>[</em><em>str</em><em>]</em>) – List of countries to compare with. This is usually the</p></li>
-<li><p><strong>file.</strong> (<em>list</em><em> of </em><em>country names from a country</em>)</p></li>
+<li><p><strong>country_list</strong> (<em>CountryInfoList</em><em> | </em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Iterable" title="(in Python v3.14)"><em>Iterable</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>]</em>) – List of countries to compare with. This is usually the</p></li>
+<li><p><strong>file.</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.14)"><em>list</em></a><em> of </em><em>country names from a country</em>)</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>dict mapping regions to a list of missing countries.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>dict[str, <em>CountryInfoList</em>]</p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)">str</a>, <em>CountryInfoList</em>]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -632,14 +632,14 @@ as the given country list, which is necessary if country codes are not being use
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>country_list</strong> (<em>CountryInfoList</em>) – list to align countries against.</p></li>
-<li><p><strong>drop_missing</strong> (<em>bool</em>) – if True, skip any region for which one or more countries are
+<li><p><strong>drop_missing</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – if True, skip any region for which one or more countries are
 missing from <cite>country_list</cite>.</p></li>
-<li><p><strong>warn_on_drop</strong> (<em>bool</em>) – if True and <cite>drop_missing</cite> is True, emit a warning listing
+<li><p><strong>warn_on_drop</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – if True and <cite>drop_missing</cite> is True, emit a warning listing
 dropped regions and missing countries.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><em>Self</em></p>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Self" title="(in Python v3.14)"><em>Self</em></a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -650,14 +650,14 @@ dropped regions and missing countries.</p></li>
 <dd><p>Return True if all countries needed to define regions are in the given country list.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>bool</p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)">bool</a></p>
 </dd>
 </dl>
 </dd></dl>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="openghg_inversions.postprocessing.countries.CountryRegions.region_names">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">region_names</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.postprocessing.countries.CountryRegions.region_names" title="Link to this definition">#</a></dt>
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">region_names</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.14)"><span class="pre">list</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.postprocessing.countries.CountryRegions.region_names" title="Link to this definition">#</a></dt>
 <dd><p>List of region names stored.</p>
 </dd></dl>
 
@@ -676,7 +676,7 @@ dropped regions and missing countries.</p></li>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.postprocessing.countries.Countries" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
 <p>Class to load country files and create country traces.</p>
 <p>A list of specifying a subset of the countries in the country file can be provided.
 Multiple Country objects can be merged together to use multiple country files.</p>
@@ -700,22 +700,22 @@ Multiple Country objects can be merged together to use multiple country files.</
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>country_file</strong> (<em>str</em><em> | </em><em>Path</em><em> | </em><em>None</em>) – path to country file</p></li>
-<li><p><strong>domain</strong> (<em>str</em><em> | </em><em>None</em>) – used to select country file from <cite>openghg_inversions/countries</cite> if <cite>country_file</cite> is None.</p></li>
-<li><p><strong>country_selections</strong> (<em>list</em><em>[</em><em>str</em><em>] </em><em>| </em><em>None</em>) – optional list of country names to select.</p></li>
-<li><p><strong>country_code</strong> (<em>Literal</em><em>[</em><em>'alpha2'</em><em>, </em><em>'alpha3'</em><em>] </em><em>| </em><em>None</em>) – if not None, convert country names to specified codes. These names or codes
+<li><p><strong>country_file</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><em>Path</em></a><em> | </em><em>None</em>) – path to country file</p></li>
+<li><p><strong>domain</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – used to select country file from <cite>openghg_inversions/countries</cite> if <cite>country_file</cite> is None.</p></li>
+<li><p><strong>country_selections</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.14)"><em>list</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>] </em><em>| </em><em>None</em>) – optional list of country names to select.</p></li>
+<li><p><strong>country_code</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><em>Literal</em></a><em>[</em><em>'alpha2'</em><em>, </em><em>'alpha3'</em><em>] </em><em>| </em><em>None</em>) – if not None, convert country names to specified codes. These names or codes
 will be used in the <cite>country</cite> coordinate.</p></li>
-<li><p><strong>country_regions</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>list</em><em>[</em><em>str</em><em>]</em><em>] </em><em>| </em><em>str</em><em> | </em><em>Path</em><em> | </em><em>None</em>) – dict mapping country region names (e.g. “BENELUX”) to a
+<li><p><strong>country_regions</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.14)"><em>list</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>]</em><em>] </em><em>| </em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><em>Path</em></a><em> | </em><em>None</em>) – dict mapping country region names (e.g. “BENELUX”) to a
 list of (country codes) of the countries comprising that regions (e.g.
 <cite>[“BEL”, “NLD”, “LUX”]</cite>). Alternatively, a path (or string representing a path)
 to a JSON file with a similar specification can be passed.</p></li>
-<li><p><strong>drop_missing_regions</strong> (<em>bool</em>) – if True, region definitions containing countries not
+<li><p><strong>drop_missing_regions</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – if True, region definitions containing countries not
 found in the country file are dropped with a warning. If False, missing
 countries in region definitions raise a ValueError.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><em>Self</em></p>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Self" title="(in Python v3.14)"><em>Self</em></a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -728,7 +728,7 @@ countries in region definitions raise a ValueError.</p></li>
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>inv_out</strong> (<a class="reference internal" href="openghg_inversions.postprocessing.inversion_output.html#openghg_inversions.postprocessing.inversion_output.InversionOutput" title="openghg_inversions.postprocessing.inversion_output.InversionOutput"><em>InversionOutput</em></a>) – Inversion output, used to get basis functions and flux.</p></li>
-<li><p><strong>sparse</strong> (<em>bool</em>) – if True, values of returned DataArray are <cite>sparse.COO</cite> array.</p></li>
+<li><p><strong>sparse</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – if True, values of returned DataArray are <cite>sparse.COO</cite> array.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -770,7 +770,7 @@ countries in region definitions raise a ValueError.</p></li>
 <dd><p>Merge in another Countries object (in-place).</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>other</strong> (<a class="reference internal" href="#openghg_inversions.postprocessing.countries.Countries" title="openghg_inversions.postprocessing.countries.Countries"><em>Countries</em></a><em> | </em><em>list</em><em>[</em><a class="reference internal" href="#openghg_inversions.postprocessing.countries.Countries" title="openghg_inversions.postprocessing.countries.Countries"><em>Countries</em></a><em>]</em>) – (list of) Countries object(s) to merge into this Country object.</p>
+<dd class="field-odd"><p><strong>other</strong> (<a class="reference internal" href="#openghg_inversions.postprocessing.countries.Countries" title="openghg_inversions.postprocessing.countries.Countries"><em>Countries</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.14)"><em>list</em></a><em>[</em><a class="reference internal" href="#openghg_inversions.postprocessing.countries.Countries" title="openghg_inversions.postprocessing.countries.Countries"><em>Countries</em></a><em>]</em>) – (list of) Countries object(s) to merge into this Country object.</p>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>None (updates in-place)</p>

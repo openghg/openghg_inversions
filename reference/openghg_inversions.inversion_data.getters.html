@@ -518,11 +518,11 @@ interval.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>start_date</strong> (<em>str</em>) – Requested inversion start date.</p></li>
-<li><p><strong>species</strong> (<em>str</em>) – Species associated with the requested flux.</p></li>
-<li><p><strong>source</strong> (<em>str</em>) – OpenGHG flux source name.</p></li>
-<li><p><strong>domain</strong> (<em>str</em>) – Model domain.</p></li>
-<li><p><strong>store</strong> (<em>str</em><em> | </em><em>None</em>) – Optional OpenGHG object-store name.</p></li>
+<li><p><strong>start_date</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Requested inversion start date.</p></li>
+<li><p><strong>species</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Species associated with the requested flux.</p></li>
+<li><p><strong>source</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – OpenGHG flux source name.</p></li>
+<li><p><strong>domain</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Model domain.</p></li>
+<li><p><strong>store</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Optional OpenGHG object-store name.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -557,13 +557,13 @@ when the source metadata identifies an annual or monthly period.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>sources</strong> (<em>list</em><em>[</em><em>str</em><em>]</em>) – OpenGHG flux source names.</p></li>
-<li><p><strong>species</strong> (<em>str</em>) – Species associated with the requested flux.</p></li>
-<li><p><strong>domain</strong> (<em>str</em>) – Model domain.</p></li>
-<li><p><strong>start_date</strong> (<em>str</em>) – Inversion start date.</p></li>
-<li><p><strong>end_date</strong> (<em>str</em>) – Inversion end date.</p></li>
-<li><p><strong>store</strong> (<em>str</em><em> | </em><em>None</em>) – Optional OpenGHG object-store name.</p></li>
-<li><p><strong>flux_non_finite_check</strong> (<em>Literal</em><em>[</em><em>'lazy'</em><em>, </em><em>'count'</em><em>]</em>) – <code class="docutils literal notranslate"><span class="pre">&quot;lazy&quot;</span></code> to apply zero-fill without counting,
+<li><p><strong>sources</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.14)"><em>list</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>]</em>) – OpenGHG flux source names.</p></li>
+<li><p><strong>species</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Species associated with the requested flux.</p></li>
+<li><p><strong>domain</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Model domain.</p></li>
+<li><p><strong>start_date</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Inversion start date.</p></li>
+<li><p><strong>end_date</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Inversion end date.</p></li>
+<li><p><strong>store</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Optional OpenGHG object-store name.</p></li>
+<li><p><strong>flux_non_finite_check</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><em>Literal</em></a><em>[</em><em>'lazy'</em><em>, </em><em>'count'</em><em>]</em>) – <code class="docutils literal notranslate"><span class="pre">&quot;lazy&quot;</span></code> to apply zero-fill without counting,
 or <code class="docutils literal notranslate"><span class="pre">&quot;count&quot;</span></code> to compute exact non-finite counts and warn when
 replacements are made.</p></li>
 </ul>
@@ -576,7 +576,7 @@ to <code class="docutils literal notranslate"><span class="pre">float32</span></
 <dd class="field-odd"><p><strong>SearchError</strong> – If no flux data can be found before the requested end date.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p>dict[str, <a class="reference external" href="https://docs.openghg.org/api/devapi_dataobjects.html#openghg.dataobjects.FluxData" title="(in OpenGHG v0.19.0)"><em>FluxData</em></a>]</p>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)">str</a>, <a class="reference external" href="https://docs.openghg.org/api/devapi_dataobjects.html#openghg.dataobjects.FluxData" title="(in OpenGHG v0.19.0)"><em>FluxData</em></a>]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -638,19 +638,19 @@ to <code class="docutils literal notranslate"><span class="pre">float32</span></
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>obs</strong> (<a class="reference external" href="https://docs.openghg.org/api/devapi_dataobjects.html#openghg.dataobjects.ObsData" title="(in OpenGHG v0.19.0)"><em>ObsData</em></a>) – Observation data supplying site metadata and timestamps.</p></li>
-<li><p><strong>domain</strong> (<em>str</em>) – Footprint domain to retrieve.</p></li>
-<li><p><strong>model</strong> (<em>str</em><em> | </em><em>None</em>) – Optional LPDM model selector.</p></li>
-<li><p><strong>platform</strong> (<em>str</em><em> | </em><em>None</em>) – Optional observation platform; satellite platforms use their
+<li><p><strong>domain</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Footprint domain to retrieve.</p></li>
+<li><p><strong>model</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Optional LPDM model selector.</p></li>
+<li><p><strong>platform</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Optional observation platform; satellite platforms use their
 satellite and observation-region selectors.</p></li>
-<li><p><strong>start_date</strong> (<em>str</em><em> | </em><em>None</em>) – Optional retrieval start date.</p></li>
-<li><p><strong>end_date</strong> (<em>str</em><em> | </em><em>None</em>) – Optional retrieval end date.</p></li>
-<li><p><strong>met_model</strong> (<em>str</em><em> | </em><em>None</em>) – Optional meteorological-model selector.</p></li>
-<li><p><strong>fp_species</strong> (<em>str</em><em> | </em><em>None</em>) – Optional footprint species override.</p></li>
-<li><p><strong>fp_height</strong> (<em>str</em><em> | </em><em>None</em>) – Optional footprint inlet selector.</p></li>
-<li><p><strong>store</strong> (<em>str</em><em> | </em><em>None</em>) – Optional OpenGHG store name.</p></li>
-<li><p><strong>averaging_period</strong> (<em>str</em><em> | </em><em>None</em>) – Optional observation averaging period.</p></li>
-<li><p><strong>tolerance</strong> (<em>float</em>) – Maximum inlet-height mismatch in metres.</p></li>
-<li><p><strong>time_resolved</strong> (<em>bool</em><em> | </em><em>None</em>) – <code class="docutils literal notranslate"><span class="pre">True</span></code> selects high-frequency footprints, <code class="docutils literal notranslate"><span class="pre">False</span></code>
+<li><p><strong>start_date</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Optional retrieval start date.</p></li>
+<li><p><strong>end_date</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Optional retrieval end date.</p></li>
+<li><p><strong>met_model</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Optional meteorological-model selector.</p></li>
+<li><p><strong>fp_species</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Optional footprint species override.</p></li>
+<li><p><strong>fp_height</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Optional footprint inlet selector.</p></li>
+<li><p><strong>store</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Optional OpenGHG store name.</p></li>
+<li><p><strong>averaging_period</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Optional observation averaging period.</p></li>
+<li><p><strong>tolerance</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a>) – Maximum inlet-height mismatch in metres.</p></li>
+<li><p><strong>time_resolved</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> | </em><em>None</em>) – <code class="docutils literal notranslate"><span class="pre">True</span></code> selects high-frequency footprints, <code class="docutils literal notranslate"><span class="pre">False</span></code>
 selects integrated footprints, and <code class="docutils literal notranslate"><span class="pre">None</span></code> leaves the search
 unconstrained.</p></li>
 </ul>
@@ -661,7 +661,7 @@ unconstrained.</p></li>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>SearchError</strong> – If no compatible footprints can be found.</p></li>
-<li><p><strong>ValueError</strong> – If the averaging period cannot be determined.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If the averaging period cannot be determined.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -695,21 +695,21 @@ unconstrained.</p></li>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>domain</strong> (<em>str</em>) – Footprint domain to retrieve.</p></li>
-<li><p><strong>start_date</strong> (<em>str</em>) – Retrieval start date.</p></li>
-<li><p><strong>end_date</strong> (<em>str</em>) – Retrieval end date.</p></li>
-<li><p><strong>model</strong> (<em>str</em><em> | </em><em>None</em>) – Optional LPDM model selector.</p></li>
-<li><p><strong>met_model</strong> (<em>str</em><em> | </em><em>None</em>) – Optional meteorological-model selector.</p></li>
-<li><p><strong>fp_species</strong> (<em>str</em><em> | </em><em>None</em>) – Optional footprint species override.</p></li>
-<li><p><strong>fp_height</strong> (<em>str</em><em> | </em><em>None</em>) – Footprint inlet selector or <code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code> to match
+<li><p><strong>domain</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Footprint domain to retrieve.</p></li>
+<li><p><strong>start_date</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Retrieval start date.</p></li>
+<li><p><strong>end_date</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Retrieval end date.</p></li>
+<li><p><strong>model</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Optional LPDM model selector.</p></li>
+<li><p><strong>met_model</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Optional meteorological-model selector.</p></li>
+<li><p><strong>fp_species</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Optional footprint species override.</p></li>
+<li><p><strong>fp_height</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Footprint inlet selector or <code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code> to match
 observation inlet heights.</p></li>
-<li><p><strong>site</strong> (<em>str</em><em> | </em><em>None</em>) – Observation site name.</p></li>
-<li><p><strong>platform</strong> (<em>str</em><em> | </em><em>None</em>) – Optional observation platform.</p></li>
-<li><p><strong>averaging_period</strong> (<em>str</em><em> | </em><em>None</em>) – Optional observation averaging period for automatic
+<li><p><strong>site</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Observation site name.</p></li>
+<li><p><strong>platform</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Optional observation platform.</p></li>
+<li><p><strong>averaging_period</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Optional observation averaging period for automatic
 inlet-height matching.</p></li>
 <li><p><strong>obs_data</strong> (<a class="reference external" href="https://docs.openghg.org/api/devapi_dataobjects.html#openghg.dataobjects.ObsData" title="(in OpenGHG v0.19.0)"><em>ObsData</em></a><em> | </em><em>None</em>) – Observation data required when <code class="docutils literal notranslate"><span class="pre">fp_height</span></code> is <code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code>.</p></li>
-<li><p><strong>stores</strong> (<em>str</em><em> | </em><em>None</em><em> | </em><em>Iterable</em><em>[</em><em>str</em><em> | </em><em>None</em><em>]</em>) – One or more OpenGHG stores to search in order.</p></li>
-<li><p><strong>time_resolved</strong> (<em>bool</em><em> | </em><em>None</em>) – <code class="docutils literal notranslate"><span class="pre">True</span></code> selects high-frequency footprints, <code class="docutils literal notranslate"><span class="pre">False</span></code>
+<li><p><strong>stores</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em><em> | </em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Iterable" title="(in Python v3.14)"><em>Iterable</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em><em>]</em>) – One or more OpenGHG stores to search in order.</p></li>
+<li><p><strong>time_resolved</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> | </em><em>None</em>) – <code class="docutils literal notranslate"><span class="pre">True</span></code> selects high-frequency footprints, <code class="docutils literal notranslate"><span class="pre">False</span></code>
 selects integrated footprints, and <code class="docutils literal notranslate"><span class="pre">None</span></code> leaves the search
 unconstrained.</p></li>
 </ul>
@@ -719,7 +719,7 @@ unconstrained.</p></li>
 configured store contains one.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>ValueError</strong> – If automatic inlet-height matching lacks observations.</p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If automatic inlet-height matching lacks observations.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><a class="reference external" href="https://docs.openghg.org/api/devapi_dataobjects.html#openghg.dataobjects.FootprintData" title="(in OpenGHG v0.19.0)"><em>FootprintData</em></a> | None</p>

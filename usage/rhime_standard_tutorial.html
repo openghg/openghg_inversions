@@ -339,6 +339,7 @@
 </details></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="running_and_validating.html">Running and validating inversions</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l2"><a class="reference internal" href="staged_workflow.html">Staged RHIME workflows</a></li>
+<li class="toctree-l2"><a class="reference internal" href="prior_predictive_checking.html">Prior predictive checking tutorial</a></li>
 </ul>
 </details></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="shared_scientific_concepts.html">Shared scientific concepts</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -521,6 +522,12 @@ the test suite. It is runnable after populating the named companion store:</p>
 and prior flux. The 50 tuning and 50 retained draws are only an end-to-end
 smoke test. A scientific inversion needs enough chains and draws for stable
 diagnostics and must not disable convergence checks.</p>
+<p>Before committing time to posterior sampling, use the staged
+<a class="reference internal" href="prior_predictive_checking.html"><span class="doc">prior-predictive checking tutorial</span></a> to inspect
+what these priors and the observation model imply on the concentration scale.
+That workflow prepares the same scientific inputs once, checks prior
+predictions, and then passes the authenticated prepared artifact to posterior
+sampling.</p>
 </section>
 <section id="run-it">
 <h2>Run it<a class="headerlink" href="#run-it" title="Link to this heading">#</a></h2>
@@ -734,10 +741,12 @@ a clean source checkout, run:</p>
 </div>
 <p>This opt-in command downloads the pinned <code class="docutils literal notranslate"><span class="pre">v1.0.0</span></code> companion release under the
 ignored <code class="docutils literal notranslate"><span class="pre">build</span></code> directory and verifies its files against the manifest,
-populates the named OpenGHG store, executes both downloadable notebooks, and
-updates only their paired output blocks. It records the current clean
+populates the named OpenGHG store, executes the registered downloadable notebooks,
+and updates their paired output blocks and displayed PNG assets. Select one
+notebook with <code class="docutils literal notranslate"><span class="pre">--tutorial</span></code> when invoking <code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">-m</span> <span class="pre">scripts.record_tutorial_outputs</span></code>.
+It records the current clean
 OpenGHG Inversions commit and the data tag, then rebuilds the rendered pages.
-Review and commit the resulting RST changes. Ordinary previews, documentation
+Review and commit the resulting RST and image changes. Ordinary previews, documentation
 CI, and <code class="docutils literal notranslate"><span class="pre">tox</span> <span class="pre">-e</span> <span class="pre">docs</span></code> never acquire data or execute these tutorial inputs;
 they render the committed outputs offline. The recorder invokes Sphinx
 directly and does not create a tox environment.</p>
