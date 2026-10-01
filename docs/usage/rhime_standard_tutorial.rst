@@ -64,6 +64,13 @@ and prior flux. The 50 tuning and 50 retained draws are only an end-to-end
 smoke test. A scientific inversion needs enough chains and draws for stable
 diagnostics and must not disable convergence checks.
 
+Before committing time to posterior sampling, use the staged
+:doc:`prior-predictive checking tutorial <prior_predictive_checking>` to inspect
+what these priors and the observation model imply on the concentration scale.
+That workflow prepares the same scientific inputs once, checks prior
+predictions, and then passes the authenticated prepared artifact to posterior
+sampling.
+
 Run it
 ------
 
@@ -276,10 +283,12 @@ a clean source checkout, run:
 
 This opt-in command downloads the pinned ``v1.0.0`` companion release under the
 ignored ``build`` directory and verifies its files against the manifest,
-populates the named OpenGHG store, executes both downloadable notebooks, and
-updates only their paired output blocks. It records the current clean
+populates the named OpenGHG store, executes the registered downloadable notebooks,
+and updates their paired output blocks and displayed PNG assets. Select one
+notebook with ``--tutorial`` when invoking ``python -m scripts.record_tutorial_outputs``.
+It records the current clean
 OpenGHG Inversions commit and the data tag, then rebuilds the rendered pages.
-Review and commit the resulting RST changes. Ordinary previews, documentation
+Review and commit the resulting RST and image changes. Ordinary previews, documentation
 CI, and ``tox -e docs`` never acquire data or execute these tutorial inputs;
 they render the committed outputs offline. The recorder invokes Sphinx
 directly and does not create a tox environment.
