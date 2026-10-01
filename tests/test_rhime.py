@@ -6,7 +6,8 @@ import sys
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, Callable, cast
+from collections.abc import Callable
+from typing import Any, cast
 
 import dask.array as da
 from dask import delayed

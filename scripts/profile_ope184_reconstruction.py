@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Compare source-preserving retained-state reconstruction strategies."""
 
 from __future__ import annotations

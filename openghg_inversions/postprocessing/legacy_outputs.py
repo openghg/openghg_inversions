@@ -188,9 +188,9 @@ def _set_legacy_var_attrs(ds: xr.Dataset, obs_units: str, country_units: str, us
         if dv in ds:
             ds[dv].attrs["longname"] = lname
 
-    for dv in ds.data_vars:
-        if "longname" not in ds[dv].attrs:
-            ds[dv].attrs["longname"] = str(dv).replace("_", " ")
+    for variable_name in ds.data_vars:
+        if "longname" not in ds[variable_name].attrs:
+            ds[variable_name].attrs["longname"] = str(variable_name).replace("_", " ")
 
 
 def _cast_legacy_float_data_vars(ds: xr.Dataset) -> xr.Dataset:

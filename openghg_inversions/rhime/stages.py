@@ -7,7 +7,8 @@ and check owners are independent of this facade.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, Mapping, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
+from collections.abc import Mapping
 
 from . import _standard_stages
 from ._stage_checks import (

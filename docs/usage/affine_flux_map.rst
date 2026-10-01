@@ -131,7 +131,7 @@ explicit reporting-sector mappings.
 .. _co2-affine-flux-summaries:
 
 Summarize conditional CO2 fluxes
-------------------------------
+--------------------------------
 
 The CO2 postprocessing adapter consumes an ordinary or cached fixed-OU CO2
 trace and a bound affine reconstruction. Use the posterior from the same

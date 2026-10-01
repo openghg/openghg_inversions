@@ -8,7 +8,7 @@ import shutil
 import tempfile
 import time
 from importlib.metadata import version
-from typing import Callable, Iterator
+from collections.abc import Callable, Iterator
 from unittest.mock import patch
 
 import numpy as np

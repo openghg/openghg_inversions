@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Profile the gathered MultiIndex operations investigated by OPE-121."""
 
 from __future__ import annotations

@@ -14,7 +14,8 @@ import json
 from numbers import Integral
 from pathlib import Path
 import shutil
-from typing import Any, Mapping, cast
+from typing import Any, cast
+from collections.abc import Mapping
 
 import numpy as np
 import pymc as pm

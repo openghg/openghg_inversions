@@ -234,7 +234,7 @@ def registered_model(*args: Any, **kwargs: Any) -> pm.Model:
     if coords is None:
         model = pm.Model(*args, **kwargs)
     else:
-        model_dims = tuple(coords.dims) if isinstance(coords, xr.Coordinates) else tuple(coords)
+        model_dims = tuple(map(str, coords.dims)) if isinstance(coords, xr.Coordinates) else tuple(coords)
         pymc_coords = sanitize_coords_for_pymc(coords, model_dims=model_dims)
         model = pm.Model(
             *args,

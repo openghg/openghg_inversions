@@ -12,7 +12,8 @@ from hashlib import sha256
 import json
 from numbers import Integral
 from pathlib import Path
-from typing import Any, Literal, Mapping, cast
+from typing import Any, Literal, cast
+from collections.abc import Mapping
 
 import numpy as np
 import pymc as pm
