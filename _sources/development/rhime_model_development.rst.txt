@@ -252,8 +252,8 @@ Configuration parsing should:
 * preserve model-specific sections when names repeat across channels; and
 * pass resolved values explicitly to the functions that own them.
 
-The legacy ``hbmcmc/config`` template tree has been removed. Keep new RHIME
-templates in
+New RHIME templates should not be added to the legacy ``hbmcmc/config`` tree or
+to an unrelated global template collection. Keep them in
 ``openghg_inversions/rhime/config`` so the configuration layout mirrors the
 model-recipe layout. Choose a human-readable format appropriate to the recipe;
 new recipes do not need to use the legacy INI format. A complex recipe

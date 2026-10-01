@@ -4,6 +4,7 @@ openghg\_inversions.experimental.ramsden2022
 .. automodule:: openghg_inversions.experimental.ramsden2022
    :members:
    :show-inheritance:
+   :undoc-members:
 
 
 
