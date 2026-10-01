@@ -101,6 +101,7 @@ def test_low_rank_builder_keeps_the_dynamic_cholesky_rank_sized(
         for dims in model.named_vars_to_dims.values()
     )
     assert "ou_correlation_template" not in model.named_vars
+    logp = model.compile_logp()
     original_cholesky = np.linalg.cholesky
     cholesky_shapes: list[tuple[int, ...]] = []
 
@@ -109,7 +110,7 @@ def test_low_rank_builder_keeps_the_dynamic_cholesky_rank_sized(
         return original_cholesky(value)
 
     monkeypatch.setattr(np.linalg, "cholesky", record_cholesky)
-    assert np.isfinite(float(model.compile_logp()(model.initial_point())))
+    assert np.isfinite(float(logp(model.initial_point())))
     assert cholesky_shapes == [(1, 1)]
 
 

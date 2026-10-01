@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Reproduce OPE-169 artifact sizes and process peak memory on a labelled fixture."""
 
 from __future__ import annotations

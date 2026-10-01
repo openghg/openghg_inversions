@@ -37,7 +37,8 @@ from __future__ import annotations
 
 import json
 from types import MappingProxyType
-from typing import Literal, Mapping, SupportsFloat
+from collections.abc import Mapping
+from typing import Literal, SupportsFloat
 
 import numpy as np
 import xarray as xr
