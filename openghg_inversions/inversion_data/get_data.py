@@ -323,7 +323,7 @@ def data_processing_surface_notracer(
         )
     max_level = [None if value is None else int(value) for value in max_level]
 
-    fp_all = {}
+    fp_all: dict[str, Any] = {}
 
     # Get flux data
     if emissions_name is None:

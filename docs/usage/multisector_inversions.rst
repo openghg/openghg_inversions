@@ -1,5 +1,5 @@
 Site and satellite multisector inversions
-========================================
+=========================================
 
 This tutorial shows the common RHIME workflow for estimating two or more
 flux components independently. Surface-site and satellite inversions use the

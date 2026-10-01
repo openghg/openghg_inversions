@@ -19,7 +19,8 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Iterable, Literal, cast
+from collections.abc import Iterable
+from typing import Literal, cast
 
 from cf_xarray.coding import decode_compress_to_multi_index, encode_multi_index_as_compress
 import pandas as pd

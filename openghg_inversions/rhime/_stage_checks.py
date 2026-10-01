@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from numbers import Integral, Real
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
+from collections.abc import Mapping
 
 import arviz as az
 import numpy as np
@@ -165,6 +166,7 @@ def diagnose_rhime_stage(
         if sample_stats is not None and "diverging" in sample_stats
         else None
     )
+    divergences: int | None = sum(divergences_by_chain) if divergences_by_chain is not None else None
 
     measured = {
         "chains": posterior_group.sizes.get("chain") if posterior_group is not None else None,
@@ -178,7 +180,7 @@ def diagnose_rhime_stage(
         "min_tail_ess": tail_ess,
         "min_tail_ess_variable": tail_ess_variable,
         "unassessable_tail_ess": unassessable_tail_ess,
-        "divergences": sum(divergences_by_chain) if divergences_by_chain is not None else None,
+        "divergences": divergences,
         "divergences_by_chain": divergences_by_chain,
     }
     thresholds = {
@@ -195,10 +197,10 @@ def diagnose_rhime_stage(
     }
     missing = [name for name in assessed_names if measured[name] is None or partial.get(name)]
     failed = (
-        (measured["max_rhat"] is not None and measured["max_rhat"] > max_rhat)
-        or (measured["min_bulk_ess"] is not None and measured["min_bulk_ess"] < min_bulk_ess)
-        or (measured["min_tail_ess"] is not None and measured["min_tail_ess"] < min_tail_ess)
-        or (measured["divergences"] is not None and measured["divergences"] > max_divergences)
+        (rhat is not None and rhat > max_rhat)
+        or (bulk_ess is not None and bulk_ess < min_bulk_ess)
+        or (tail_ess is not None and tail_ess < min_tail_ess)
+        or (divergences is not None and divergences > max_divergences)
     )
     status = "fail" if failed else "unknown" if missing else "pass"
     if failed:

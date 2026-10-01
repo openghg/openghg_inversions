@@ -47,7 +47,8 @@ import numpy as np
 import xarray as xr
 
 if TYPE_CHECKING:
-    from typing_extensions import Never, deprecated
+    from typing import Never
+    from typing_extensions import deprecated
 else:
     Never = Any
 

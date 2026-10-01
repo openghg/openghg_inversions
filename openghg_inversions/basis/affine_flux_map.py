@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Hashable
 from dataclasses import dataclass
 from typing import Literal
 
@@ -14,7 +15,7 @@ from openghg_inversions.array_ops import require_unique_index, same_index, spars
 from .operators import BucketBasisOperator, MultiSourceBucketBasisOperator
 
 
-RETAINED_STATE_CONDITIONAL = "retained_state_conditional"
+RETAINED_STATE_CONDITIONAL: Literal["retained_state_conditional"] = "retained_state_conditional"
 
 
 def _require_same_axis(
@@ -185,11 +186,11 @@ class AffineFluxMap:
         )
         state_scale = _dimensionless_scale(state, name="state")
         reference_scale = _dimensionless_scale(reference_state, name="reference_state")
-        occupied: set[str] = set()
+        occupied: set[Hashable] = set()
         for array in (self.native_mean, self.flux, retained, state, reference_state):
             occupied.update(array.dims)
             occupied.update(array.coords)
-        renames: dict[str, str] = {}
+        renames: dict[Hashable, Hashable] = {}
         for dim in state.dims:
             if dim == self.state_dim or (dim not in self.native_dims and dim not in self.flux.dims):
                 continue

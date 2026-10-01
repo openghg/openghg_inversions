@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Instrument the OPE-87 WUR25 producer's real multisource sensitivity calls."""
 
 from __future__ import annotations

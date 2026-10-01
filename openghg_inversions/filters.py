@@ -24,7 +24,7 @@ logger = logging.Logger(__name__)
 
 
 # this dictionary will be populated by using the decorator `register_filter`
-filtering_functions = {}
+filtering_functions: dict[str, Callable] = {}
 
 
 def register_filter(filt: Callable) -> Callable:
@@ -59,7 +59,10 @@ def list_filters() -> None:
     for k, v in filtering_functions.items():
         # print function name and first line of docstring
         try:
-            first_line_of_docstring = v.__doc__.strip().split("\n")[0]
+            docstring = v.__doc__
+            first_line_of_docstring = (
+                docstring.strip().split("\n")[0] if docstring is not None else "No docstring"
+            )
         except AttributeError:
             first_line_of_docstring = "No docstring"
 
@@ -68,7 +71,7 @@ def list_filters() -> None:
 
 def filtering(
     datasets_in: dict,
-    filters: str | None | dict[str, list[str | None]] | list[str | None],
+    filters: str | None | dict[str, str | None | list[str | None]] | list[str | None],
     keep_missing: bool = False,
 ) -> dict:
     """Applies time filtering to all datasets in `datasets_in`.
@@ -117,11 +120,11 @@ def filtering(
             if filt is not None and not isinstance(filt, list):
                 filters[site] = [filt]
 
-    filters = cast(dict[str, list[str | None]], filters)
+    filter_map = cast(dict[str, list[str | None] | None], filters)
 
     # Check that filters are defined for all sites
     # TODO: just set filters for missing sites to None?
-    tmp = [(site in filters) for site in sites]
+    tmp = [(site in filter_map) for site in sites]
     if not all(tmp):
         msg = f"Missing entry for sites {np.array(sites)[~np.array(tmp)]} in filters."
         logger.warning(msg)
@@ -131,11 +134,13 @@ def filtering(
     # Apply filtering
     # NOTE: we only loop over sites that are in the filters dict
     # so not all sites must be specified
-    for site in filters:
-        if filters[site] is not None and site in sites:
-            for filt in filters[site]:
+    for site, site_filters in filter_map.items():
+        if site_filters is not None and site in sites:
+            for filt in site_filters:
                 n_nofilter = datasets[site].time.values.shape[0]
 
+                if filt is None:
+                    raise KeyError(filt)
                 datasets[site] = filtering_functions[filt](datasets[site], keep_missing=keep_missing)
 
                 n_filter = datasets[site].time.values.shape[0]

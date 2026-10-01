@@ -36,14 +36,24 @@ jobs:
         run: |
           uv pip install --system --upgrade setuptools wheel
           uv pip install --system "git+https://github.com/openghg/openghg.git@devel" -e . pytest pytest-xdist
+      - name: Report scientific I/O versions
+        run: >-
+          python -c 'import h5py, h5netcdf, netCDF4, numpy, sys, xarray;
+          print(f"Python {sys.version.split()[0]}, NumPy {numpy.__version__}, xarray {xarray.__version__},
+          h5py {h5py.__version__} (HDF5 {h5py.version.hdf5_version}),
+          h5netcdf {h5netcdf.__version__}, netCDF4 {netCDF4.__version__} (HDF5 {netCDF4.__hdf5libversion__})")'
       - name: Prime ArviZ cache
         run: python -c "import arviz"
       - name: Run tests
         run: pytest tests/ -n 2 --dist=worksteal
 
   locked-test:
-    name: Run tests with uv.lock (Python 3.12)
+    name: Run tests with uv.lock (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.12', '3.13']
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -52,12 +62,12 @@ jobs:
         with:
           version: "latest"
           enable-cache: true
-      - name: Set up Python 3.12
+      - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v7
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
       - name: Install locked dependencies
-        run: uv sync --locked --python 3.12
+        run: uv sync --locked --python ${{ matrix.python-version }}
       - name: Verify lock tracks the latest OpenGHG release
         run: |
           locked=$(uv run --no-sync python -c 'from importlib.metadata import version; print(version("openghg"))')
@@ -66,6 +76,12 @@ jobs:
             echo "uv.lock has OpenGHG $locked, but the latest release is $latest. Refresh uv.lock."
             exit 1
           fi
+      - name: Report scientific I/O versions
+        run: >-
+          uv run --no-sync python -c 'import h5py, h5netcdf, netCDF4, numpy, sys, xarray;
+          print(f"Python {sys.version.split()[0]}, NumPy {numpy.__version__}, xarray {xarray.__version__},
+          h5py {h5py.__version__} (HDF5 {h5py.version.hdf5_version}),
+          h5netcdf {h5netcdf.__version__}, netCDF4 {netCDF4.__version__} (HDF5 {netCDF4.__hdf5libversion__})")'
       - name: Prime ArviZ cache
         run: uv run --no-sync python -c "import arviz"
       - name: Run tests

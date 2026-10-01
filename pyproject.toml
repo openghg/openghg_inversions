@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "openghg_inversions"
-version = "0.7.3"
+version = "0.7.4"
 
 authors = [
   {name = "OpenGHG Inversions contributors"},
@@ -60,6 +60,8 @@ dev = [
   "ruff==0.16.0",
   "pyright",
   "mypy",
+  "pandas-stubs==2.3.3.*",
+  "scipy-stubs==1.15.3.*",
   "towncrier>=24.8",
 ]
 
@@ -166,7 +168,7 @@ line-length = 110
 
 [tool.ruff.lint]
 # Preserve the pre-0.16 baseline by preventing default rule expansion; adopt broader rules separately.
-select = ["E4", "E7", "E9", "F", "B006", "B010", "B028", "B904", "SIM115", "RUF021", "RUF059"]
+select = ["E4", "E7", "E9", "F", "B006", "B010", "B028", "B904", "EXE001", "EXE002", "SIM115", "RUF012", "RUF021", "RUF059", "UP035"]
 
 [tool.pytest.ini_options]
 minversion = "6.0"

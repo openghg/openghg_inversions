@@ -1,4 +1,3 @@
-#!/usr/bin/env python2
 """Configuration file utilities for INI format files.
 
 This module allows configuration files in the INI format to be read and used.
