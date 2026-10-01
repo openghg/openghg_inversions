@@ -156,7 +156,7 @@ def main() -> None:
         ).strip(),
         "component_sha256": hashlib.sha256(Path(__file__).with_name("process_biosphere_prior.py").read_bytes()).hexdigest(),
         "runner_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
-        "scientific_scope": dict(data.attrs),
+        "scientific_scope": {key: value.item() if isinstance(value, np.generic) else value for key, value in data.attrs.items()},
     }
     summary["prediction_scores"] = {}
     for label, design in (("fitted", selected), ("all_hours", data)):
