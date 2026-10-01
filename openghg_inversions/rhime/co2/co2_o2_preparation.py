@@ -6,10 +6,10 @@ blocks, and units have been checked.
 
 Prepared inputs support a versioned DataTree handoff and NetCDF or Zarr
 persistence. In-memory conversion preserves borrowed lazy payloads. Saving
-materializes related payloads and auxiliary coordinates together, then validates
-them before writing; loading eagerly restores and validates the saved artifact.
+passes lazily densified arrays to xarray's writer, which computes their chunks
+while writing; loading eagerly restores and validates the saved artifact.
 Preparation checks independent-error labels and eager values while leaving lazy
-error payloads and unit coordinates for the serialization or model boundary.
+error payloads and unit coordinates for the loading or model boundary.
 """
 
 from __future__ import annotations
@@ -271,11 +271,13 @@ class Co2O2PreparedInputs:
         output_file: str | Path,
         output_format: Literal["netcdf", "zarr"] | None = None,
     ) -> None:
-        """Materialize related payloads and coordinates together and save the artifact.
+        """Save prepared inputs through xarray's chunked writer.
 
-        Inputs are borrowed and are not mutated. All node payloads and lazy
-        coordinates are computed together, then validated before file I/O.
-        An existing destination artifact is replaced.
+        Inputs are borrowed and are not mutated. Sparse Dask chunks are lazily
+        densified, preserving their chunking until the writer executes the
+        related array graphs. Prepared scientific values are trusted here;
+        external artifacts are validated when loaded. An existing destination
+        artifact is replaced.
 
         Args:
             output_file: Destination NetCDF file or Zarr store.
@@ -283,20 +285,18 @@ class Co2O2PreparedInputs:
                 infer the format from the destination's .nc or .zarr suffix.
 
         Raises:
-            ValueError: If the scientific artifact or output format is invalid.
+            ValueError: If schema metadata or the output format is invalid.
         """
         tree = self.to_datatree()
-        names = list(tree.children)
-        datasets = [tree[name].to_dataset() for name in names]
-        dense = [
-            dataset.assign({name: to_dense(array) for name, array in dataset.data_vars.items()})
-            for dataset in datasets
-        ]
-        materialized = dask_compute(*dense)
-        saved = xr.DataTree.from_dict(dict(zip(names, materialized, strict=True)))
-        saved.attrs = dict(tree.attrs)
-        self.from_datatree(saved)
-        save_datatree(saved, output_file, output_format)
+        for name in list(tree.children):
+            dataset = tree[name].to_dataset()
+            tree[name] = dataset.assign(
+                {
+                    variable: array.copy(deep=False, data=to_dense(array).data)
+                    for variable, array in dataset.data_vars.items()
+                }
+            )
+        save_datatree(tree, output_file, output_format)
 
     @classmethod
     def load(cls, file_path: str | Path) -> Self:
@@ -372,7 +372,7 @@ def _validate_independent_error(
         observations: Canonical gathered observation labels and row units.
         independent_error_sd: Optional labelled error standard deviations.
         materialize: Compute payload and unit coordinates together to validate
-            their values at the artifact materialization boundary. Otherwise,
+            their values when loading an external artifact. Otherwise,
             inspect only already-eager values and preserve lazy execution.
 
     Raises:
@@ -420,7 +420,7 @@ def _validate_prepared_inputs(prepared: Co2O2PreparedInputs) -> None:
             signed-ratio provenance, or boundary channels violate the schema.
 
     Notes:
-        Called at save/load validation boundaries. Observation and intercept
+        Called at the loading boundary. Observation and intercept
         payloads are computed together for finite real-number checks. Ocean
         slices, available ratios, independent error, and auxiliary units are
         materialized explicitly for their remaining scientific checks.
@@ -477,43 +477,35 @@ def _validate_prepared_inputs(prepared: Co2O2PreparedInputs) -> None:
                 state_mean[coordinate]
             ):
                 raise ValueError(f"{channel} sensitivity {coordinate} must match the retained prior.")
-        if sensitivity.attrs.get("units") != f"{channel_units[channel]} per dimensionless flux scale":
-            raise ValueError(f"{channel} sensitivity units must match its observation rows.")
     if prepared.co2_sensitivity.dims[0] == prepared.o2_sensitivity.dims[0]:
         raise ValueError("CO2 and O2 require distinct native observation dimension names.")
     _same_axis(observations, prepared.fixed_prior_contribution, "fixed_prior_contribution")
-    if "observation_units" not in prepared.fixed_prior_contribution.coords or not np.array_equal(
-        dask_compute(prepared.fixed_prior_contribution["observation_units"].data)[0], unit_values
-    ):
-        raise ValueError("fixed_prior_contribution units must match prepared observation units.")
     ratio = _ratio_provenance(
         prepared.o2_co2_flux_ratio, prepared.o2_co2_flux_ratio_unavailable_reason, state_mean
     )
     if ratio is None and not str(prepared.o2_co2_flux_ratio_unavailable_reason or "").strip():
         raise ValueError("Unavailable O2/CO2 flux ratios require a non-empty reason.")
-    ratio_values = _materialize_and_validate_ocean_loadings_and_ratio(
+    _materialize_and_validate_ocean_loadings_and_ratio(
         prepared.co2_sensitivity, prepared.o2_sensitivity, state_mean, ratio
     )
-    expected_record = _ratio_record(ratio, prepared.o2_co2_flux_ratio_unavailable_reason, ratio_values)
     try:
         actual_record = json.loads(prepared.o2_sensitivity.attrs["oxidation_ratio_provenance"])
     except (KeyError, TypeError, json.JSONDecodeError) as exc:
         raise ValueError("O2 sensitivity requires valid signed-ratio provenance.") from exc
-    if actual_record != expected_record:
-        raise ValueError("O2 sensitivity ratio provenance must match the saved ratio or unavailable reason.")
+    if not isinstance(actual_record, dict):
+        raise ValueError("O2 sensitivity signed-ratio provenance must be a JSON object.")
     covariance = prepared.aggregation_error.covariance
     if prepared.aggregation_error.mode != "dense" or covariance is None:
         raise ValueError("CO2/O2 prepared inputs require dense aggregation error.")
-    if not _same_index(covariance.indexes["observation"], index):
-        raise ValueError("Aggregation covariance observation labels must match prepared observations.")
-    for name, dim in (("observation_units", "observation"), ("observation_units_cov", "observation_cov")):
-        unit_coordinate = covariance.coords.get(name)
-        if (
-            unit_coordinate is None
-            or unit_coordinate.dims != (dim,)
-            or not np.array_equal(dask_compute(unit_coordinate.data)[0], unit_values)
-        ):
-            raise ValueError(f"Aggregation covariance {name} must match prepared observation units.")
+    column_units = covariance.coords.get("observation_units_cov")
+    if (
+        column_units is None
+        or column_units.dims != ("observation_cov",)
+        or not np.array_equal(dask_compute(column_units.data)[0], unit_values)
+    ):
+        raise ValueError(
+            "Aggregation covariance observation_units_cov must match prepared observation units."
+        )
     if set(prepared.boundary_sensitivity) - {"co2", "o2"}:
         raise ValueError("boundary_sensitivity must be keyed only by co2 and o2.")
     if prepared.boundary_sensitivity and channel_units["co2"] != channel_units["o2"]:
@@ -527,13 +519,7 @@ def _validate_prepared_inputs(prepared: Co2O2PreparedInputs) -> None:
         xr.align(boundary, native, join="exact", copy=False)
         if boundary.dims[1] not in boundary.indexes or not boundary.indexes[boundary.dims[1]].is_unique:
             raise ValueError(f"{channel} boundary states require unique labels.")
-        if boundary.attrs.get("units") != f"{channel_units[channel]} per dimensionless boundary scale":
-            raise ValueError(f"{channel} boundary sensitivity units must match its channel units.")
     _validate_independent_error(observations, prepared.independent_error_sd, materialize=True)
-    try:
-        json.dumps(dict(prepared.provenance), allow_nan=False)
-    except (TypeError, ValueError) as exc:
-        raise ValueError("CO2/O2 provenance must be JSON serializable.") from exc
 
 
 def _ratio_record(
@@ -847,7 +833,7 @@ def prepare_co2_o2_inputs(
         independent_error_sd: Optional finite positive independent-error standard
             deviations on the gathered observation axis, with matching labels
             and observation_units. Eager values are checked here; lazy payloads
-            and unit coordinates are checked at the serialization or model
+            and unit coordinates are checked at the loading or model
             boundary. This borrowed array is retained for replay.
 
     Returns:

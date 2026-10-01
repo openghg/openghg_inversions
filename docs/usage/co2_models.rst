@@ -805,8 +805,8 @@ must be finite, positive standard deviations already expressed in each row's
 declared units; preparation does not convert their numerical scale.
 Preparation checks the error vector's index and unit-coordinate structure,
 and validates any already eager values. Dask error payloads and auxiliary
-unit coordinates remain lazy. Artifact validation and the runners' model-input
-materialization boundary check their values and row-unit agreement.
+unit coordinates remain lazy. Restoring an external artifact and the runners'
+model-input materialization boundary check their values and row-unit agreement.
 
 For an existing ``prepared`` object, construct the vector from its gathered
 observations and attach it with ``dataclasses.replace``. This example uses
@@ -857,8 +857,11 @@ round trip. For an in-memory labelled tree, use
 :meth:`~openghg_inversions.rhime.co2.Co2O2PreparedInputs.from_datatree`.
 The saved preparation contains scientific inputs; persist the sampled trace
 separately with :func:`openghg_inversions.serialization.save_trace`.
-Saving materializes related array payloads together at the serialization
-boundary; loading returns eagerly loaded, validated inputs. These operations
+Saving passes related arrays to the xarray writer together. Dask payloads
+remain lazy until the writer evaluates their chunks, rather than assembling
+complete arrays in memory first. Saving trusts the scientific inputs supplied
+by preparation; it does not repeat their numerical validation. Loading an
+external artifact returns eagerly loaded, validated inputs. Both operations
 leave the caller's input arrays unchanged.
 
 Separate linked PARIS products

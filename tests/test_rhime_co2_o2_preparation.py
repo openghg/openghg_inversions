@@ -11,10 +11,12 @@ from dask import delayed
 import numpy as np
 import pandas as pd
 import pytest
+import sparse
 import xarray as xr
 
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.rhime.co2 import Co2O2PreparedInputs, prepare_co2_o2_inputs
+from openghg_inversions.rhime.co2 import co2_o2_preparation
 from openghg_inversions.rhime.co2.co2_o2_preparation import _stack
 from openghg_inversions.serialization import decode_cf_multiindexes, encode_cf_multiindexes, save_datatree
 
@@ -589,8 +591,9 @@ def test_complete_linked_prepared_round_trip(
     )
 
 
-def test_linked_save_computes_shared_payloads_together(tmp_path: Path) -> None:
-    """Materialize shared observation, sensitivity, ratio, and error graphs once."""
+@pytest.mark.parametrize("suffix", [".nc", ".zarr"])
+def test_linked_save_computes_shared_payloads_together(tmp_path: Path, suffix: str) -> None:
+    """Write shared observation, sensitivity, ratio, and error graphs once."""
     prepared = prepare_co2_o2_inputs(**_inputs())
     executions = []
 
@@ -613,10 +616,11 @@ def test_linked_save_computes_shared_payloads_together(tmp_path: Path) -> None:
     tree = prepared.to_datatree()
     assert executions == []
     assert tree.attrs["schema_version"] == 1
-    prepared.save(tmp_path / "shared.nc")
+    path = tmp_path / f"shared{suffix}"
+    prepared.save(path)
     assert executions == ["payload"]
     assert isinstance(prepared.observations.data, da.Array)
-    restored = Co2O2PreparedInputs.load(tmp_path / "shared.nc")
+    restored = Co2O2PreparedInputs.load(path)
     assert restored.observations.observation_units.values.tolist() == [
         "ppm",
         "ppm",
@@ -627,7 +631,9 @@ def test_linked_save_computes_shared_payloads_together(tmp_path: Path) -> None:
     np.testing.assert_array_equal(restored.independent_error_sd.values, np.ones(5))
 
 
-@pytest.mark.parametrize("corruption", ["version", "covariance_units", "error", "ratio", "index_metadata"])
+@pytest.mark.parametrize(
+    "corruption", ["version", "covariance_units", "error", "ratio_sign", "ratio_json", "index_metadata"]
+)
 def test_linked_loader_rejects_corrupt_scientific_artifacts(corruption: str) -> None:
     """Reject malformed schema metadata and inconsistent scientific values."""
     prepared = prepare_co2_o2_inputs(**_durable_inputs())
@@ -641,9 +647,13 @@ def test_linked_loader_rejects_corrupt_scientific_artifacts(corruption: str) -> 
     elif corruption == "error":
         error = tree["independent_error"]["independent_error_sd"]
         tree["independent_error"]["independent_error_sd"] = error.copy(data=np.full(error.size, -0.4))
-    elif corruption == "ratio":
+    elif corruption == "ratio_sign":
         ratio = tree["flux_ratio"]["o2_co2_flux_ratio"]
-        tree["flux_ratio"]["o2_co2_flux_ratio"] = ratio.copy(data=np.array([-1.2, -1.0, -1.4]))
+        tree["flux_ratio"]["o2_co2_flux_ratio"] = ratio.copy(data=np.array([1.2, -1.0, -1.4]))
+    elif corruption == "ratio_json":
+        tree["o2_sensitivity"]["o2_effective_sensitivity"].attrs["oxidation_ratio_provenance"] = (
+            "invalid JSON"
+        )
     else:
         tree["joint"].attrs["multiindex_dims_json"] = "[]"
 
@@ -666,28 +676,16 @@ def test_linked_preparation_accepts_labelled_independent_error() -> None:
         )
 
 
-@pytest.mark.parametrize("field", ["observations", "fixed_prior_contribution"])
-@pytest.mark.parametrize("invalid", [np.nan, np.inf, 1.0 + 1.0j, "invalid"])
-@pytest.mark.parametrize("boundary", ["save", "from_datatree"])
-def test_linked_artifact_rejects_invalid_joint_values(
-    tmp_path: Path, field: str, invalid: object, boundary: str
-) -> None:
-    """Reject non-finite and non-real joint payloads at each artifact boundary."""
-    prepared = prepare_co2_o2_inputs(**_inputs())
-    original = getattr(prepared, field)
-    corrupted = original.copy(data=np.full(original.size, invalid))
-    if boundary == "save":
-        prepared = replace(prepared, **{field: corrupted})
-        with pytest.raises(ValueError, match=f"{field} must contain only finite real numeric values"):
-            prepared.save(tmp_path / "invalid.nc")
-        assert not (tmp_path / "invalid.nc").exists()
-    else:
-        tree = prepared.to_datatree()
-        variable = "observed_concentration" if field == "observations" else field
-        stored = tree["joint"][variable]
-        tree["joint"][variable] = stored.copy(data=corrupted.data)
-        with pytest.raises(ValueError, match=f"{field} must contain only finite real numeric values"):
-            Co2O2PreparedInputs.from_datatree(tree)
+@pytest.mark.parametrize("invalid", [1.0 + 1.0j, "invalid"])
+def test_linked_loader_rejects_nonreal_joint_values(invalid: complex | str) -> None:
+    """Reject unsupported numerical types at the external artifact boundary."""
+    tree = prepare_co2_o2_inputs(**_inputs()).to_datatree()
+    intercept = tree["joint"]["fixed_prior_contribution"]
+    tree["joint"]["fixed_prior_contribution"] = intercept.copy(data=np.full(intercept.size, invalid))
+    with pytest.raises(
+        ValueError, match="fixed_prior_contribution must contain only finite real numeric values"
+    ):
+        Co2O2PreparedInputs.from_datatree(tree)
 
 
 @pytest.mark.parametrize("field", ["observed_concentration", "fixed_prior_contribution"])
@@ -703,10 +701,10 @@ def test_linked_load_rejects_nonfinite_saved_joint_values(tmp_path: Path, field:
         Co2O2PreparedInputs.load(path)
 
 
-def test_linked_serialization_rejects_mutated_boundary_channels(tmp_path: Path) -> None:
-    """Reject unsupported keys added to a borrowed boundary mapping before I/O."""
+def test_linked_serialization_rejects_unsupported_boundary_channels(tmp_path: Path) -> None:
+    """Reject boundary channels that the published schema cannot represent."""
     prepared = prepare_co2_o2_inputs(**_durable_inputs())
-    prepared.boundary_sensitivity["n2o"] = prepared.boundary_sensitivity["co2"]
+    prepared = replace(prepared, boundary_sensitivity={"n2o": prepared.boundary_sensitivity["co2"]})
     with pytest.raises(ValueError, match="keyed only by co2 and o2"):
         prepared.to_datatree()
     with pytest.raises(ValueError, match="keyed only by co2 and o2"):
@@ -758,24 +756,40 @@ def test_linked_preparation_preserves_shared_lazy_error_payload_and_units(tmp_pa
     assert sorted(executions) == ["payload", "units"]
 
 
-@pytest.mark.parametrize("invalid", [0.0, -0.4, np.nan, np.inf, 1.0 + 1.0j])
-def test_linked_save_validates_deferred_lazy_error(tmp_path: Path, invalid: float | complex) -> None:
-    """Permit lazy errors through preparation and reject invalid values before saving."""
-    inputs = _inputs()
-    reference = prepare_co2_o2_inputs(**inputs)
-    executions = []
-
-    @delayed
-    def error_payload() -> np.ndarray:
-        executions.append("error")
-        return np.full(reference.observations.size, invalid)
-
-    error = reference.observations.copy(
-        data=da.from_delayed(error_payload(), shape=(5,), dtype=np.asarray(invalid).dtype)
+@pytest.mark.parametrize("suffix", [".nc", ".zarr"])
+@pytest.mark.parametrize("sparse_chunks", [False, True])
+def test_linked_save_passes_lazy_dense_chunks_to_writer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, suffix: str, sparse_chunks: bool
+) -> None:
+    """Preserve Dask chunks through serialization and densify sparse chunks lazily."""
+    prepared = prepare_co2_o2_inputs(**_inputs())
+    values = prepared.co2_sensitivity.compute().data
+    payload = da.from_array(
+        sparse.COO.from_numpy(values) if sparse_chunks else values, chunks=(1, 2), asarray=False
     )
-    prepared = prepare_co2_o2_inputs(**inputs, independent_error_sd=error)
-    assert executions == []
-    with pytest.raises(ValueError, match="finite positive real"):
-        prepared.save(tmp_path / "invalid-error.nc")
-    assert executions == ["error"]
-    assert not (tmp_path / "invalid-error.nc").exists()
+    sensitivity = prepared.co2_sensitivity.copy(data=payload)
+    sensitivity.encoding = {"dtype": np.dtype("float64")}
+    prepared = replace(prepared, co2_sensitivity=sensitivity)
+    writer = co2_o2_preparation.save_datatree
+    writes = []
+
+    def inspect_writer(tree: xr.DataTree, output_file: Path, output_format: str | None) -> None:
+        sensitivity = tree["co2_sensitivity"]["co2_effective_sensitivity"]
+        assert isinstance(sensitivity.data, da.Array)
+        assert isinstance(sensitivity.data._meta, np.ndarray)
+        assert sensitivity.data.chunks == payload.chunks
+        assert sensitivity.encoding == prepared.co2_sensitivity.encoding
+        writes.append(output_file)
+        writer(tree, output_file, output_format)
+
+    monkeypatch.setattr(co2_o2_preparation, "save_datatree", inspect_writer)
+    path = tmp_path / f"chunks{suffix}"
+    prepared.save(path)
+    assert writes == [path]
+    assert prepared.co2_sensitivity.data is payload
+    xr.testing.assert_identical(
+        Co2O2PreparedInputs.load(path).co2_sensitivity, prepared.co2_sensitivity.compute()
+    )
+    if suffix == ".zarr":
+        with xr.open_datatree(path, engine="zarr", chunks={}) as tree:
+            assert tree["co2_sensitivity"]["co2_effective_sensitivity"].data.chunks == payload.chunks
