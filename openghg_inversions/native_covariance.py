@@ -546,7 +546,8 @@ class SeparableExponentialCovariance:
             native = vector.reshape(n_lat, n_lon, 1)
             return self._apply_matrix(native).reshape(native_size)
 
-        operator = LinearOperator(
+        # scipy-stubs 1.15.3 omits the public shape/matvec factory overload.
+        operator = LinearOperator(  # type: ignore[call-overload]
             (native_size, native_size),
             matvec,
         )
