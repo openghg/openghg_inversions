@@ -3,7 +3,7 @@ notebook
 nbsphinx
 pydata-sphinx-theme
 sphinx
-sphinx-issues >= 3.0.1
+sphinx-issues >= 6.0.0
 sphinx_rtd_theme
 sphinxcontrib-programoutput
 sphinx-autodoc-typehints
