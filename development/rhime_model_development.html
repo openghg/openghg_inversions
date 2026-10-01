@@ -781,6 +781,20 @@ property or model framework.</p>
 active <code class="docutils literal notranslate"><span class="pre">run_rhime</span></code> plan in
 <code class="docutils literal notranslate"><span class="pre">docs/plans/run_rhime_readability_and_modifiability.md</span></code>.</p>
 </section>
+<section id="file-backed-staged-workflows">
+<h2>File-backed staged workflows<a class="headerlink" href="#file-backed-staged-workflows" title="Link to this heading">#</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">rhime.stages</span></code> is the public facade for file-backed execution. The concrete
+standard and multisector staged workflows remain together in
+<code class="docutils literal notranslate"><span class="pre">rhime._standard_stages</span></code> so their preparation, sampling, and replay sequence
+can be read procedurally. Shared serialization, path, and digest mechanics
+belong to <code class="docutils literal notranslate"><span class="pre">rhime._stage_artifacts</span></code>; manifest and saved-output binding
+authentication belongs to <code class="docutils literal notranslate"><span class="pre">rhime._stage_authentication</span></code>. Each family owns its
+configuration identity and replay policy. Shared staged checks belong to
+<code class="docutils literal notranslate"><span class="pre">rhime._stage_checks</span></code> and retain their existing diagnostic calculations,
+thresholds, and check schemas. Family implementations import these owners
+directly, without importing helpers from the public facade. These private
+owners can move together when complete workflows migrate to <code class="docutils literal notranslate"><span class="pre">recipes</span></code>.</p>
+</section>
 </section>
 
 
@@ -841,6 +855,7 @@ active <code class="docutils literal notranslate"><span class="pre">run_rhime</s
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#state-and-source-selection">State and source selection</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#scientific-variable-roles">Scientific variable roles</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#numerical-boundaries">Numerical boundaries</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#file-backed-staged-workflows">File-backed staged workflows</a></li>
 </ul>
   </nav></div>
 

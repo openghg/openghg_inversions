@@ -500,16 +500,29 @@
                   
   <section id="module-openghg_inversions.rhime.stages">
 <span id="openghg-inversions-rhime-stages"></span><h1>openghg_inversions.rhime.stages<a class="headerlink" href="#module-openghg_inversions.rhime.stages" title="Link to this heading">#</a></h1>
-<p>File-backed RHIME stages for workflow orchestrators.</p>
-<p>These functions compose the existing RHIME scientific stages.  They do not
-define a second configuration schema and have no dependency on an
-orchestrator or scheduler.</p>
+<p>Public file-backed RHIME stages for workflow orchestrators.</p>
+<p>The concrete standard/multisector workflows and shared diagnostic check own
+execution. These imports preserve the staged Python API without adding a
+configuration schema or an orchestrator dependency.</p>
 <dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.rhime.stages.load_stage_params">
-<span class="sig-name descname"><span class="pre">load_stage_params</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">config_file</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">params_file</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">overrides</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.stages.load_stage_params" title="Link to this definition">#</a></dt>
-<dd><p>Load existing RHIME parameters from one explicit source.</p>
-<p><code class="docutils literal notranslate"><span class="pre">CONFIG_FILE</span></code> is intentionally not an environment default: an unrelated
-ambient variable must never select the scientific configuration.</p>
+<dt class="sig sig-object py" id="openghg_inversions.rhime.stages.diagnose_rhime_stage">
+<span class="sig-name descname"><span class="pre">diagnose_rhime_stage</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">posterior</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">output_dir</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">sample_manifest</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">check_output</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">max_rhat</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.01</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">min_bulk_ess</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">400</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">min_tail_ess</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">400</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">max_divergences</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">stage</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'posterior'</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.stages.diagnose_rhime_stage" title="Link to this definition">#</a></dt>
+<dd><p>Calculate the stable posterior convergence check.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)">str</a>, <a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><em>Any</em></a>]</p>
@@ -518,12 +531,12 @@ ambient variable must never select the scientific configuration.</p>
 </dd></dl>
 
 <dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.rhime.stages.resolve_stage_setup">
-<span class="sig-name descname"><span class="pre">resolve_stage_setup</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">params</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">model</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.stages.resolve_stage_setup" title="Link to this definition">#</a></dt>
-<dd><p>Resolve stage parameters through the canonical RHIME boundary.</p>
+<dt class="sig sig-object py" id="openghg_inversions.rhime.stages.configuration_identity">
+<span class="sig-name descname"><span class="pre">configuration_identity</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">setup</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">model</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.stages.configuration_identity" title="Link to this definition">#</a></dt>
+<dd><p>Hash resolved data, period, model, and prior choices.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference internal" href="openghg_inversions.rhime.params.html#openghg_inversions.rhime.params.RhimeRunnerSetup" title="openghg_inversions.rhime.params.RhimeRunnerSetup"><em>RhimeRunnerSetup</em></a></p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)">str</a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -540,12 +553,42 @@ ambient variable must never select the scientific configuration.</p>
 </dd></dl>
 
 <dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.rhime.stages.configuration_identity">
-<span class="sig-name descname"><span class="pre">configuration_identity</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">setup</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">model</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.stages.configuration_identity" title="Link to this definition">#</a></dt>
-<dd><p>Hash resolved data, period, model, and prior choices.</p>
+<dt class="sig sig-object py" id="openghg_inversions.rhime.stages.load_stage_params">
+<span class="sig-name descname"><span class="pre">load_stage_params</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">config_file</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">params_file</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">overrides</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.stages.load_stage_params" title="Link to this definition">#</a></dt>
+<dd><p>Load existing RHIME parameters from one explicit source.</p>
+<p><code class="docutils literal notranslate"><span class="pre">CONFIG_FILE</span></code> is intentionally not an environment default: an unrelated
+ambient variable must never select the scientific configuration.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)">str</a></p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)">str</a>, <a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><em>Any</em></a>]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.stages.postprocess_rhime_stage">
+<span class="sig-name descname"><span class="pre">postprocess_rhime_stage</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">setup</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">prepared_inputs</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">posterior</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">output_dir</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">preparation_manifest</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">sample_manifest</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.stages.postprocess_rhime_stage" title="Link to this definition">#</a></dt>
+<dd><p>Build requested products from matched prepared, posterior and role artifacts.</p>
+<p>Version-2 sample manifests use their verified saved output bindings, without
+materializing model inputs or constructing a graph. Genuine version-1
+manifests retain graph reconstruction to recover their missing roles.
+Output settings may change; the sampled scientific configuration may not.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="openghg_inversions.rhime.outputs.html#openghg_inversions.rhime.outputs.RhimeResult" title="openghg_inversions.rhime.outputs.RhimeResult"><em>RhimeResult</em></a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -587,6 +630,17 @@ ambient variable must never select the scientific configuration.</p>
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.stages.resolve_stage_setup">
+<span class="sig-name descname"><span class="pre">resolve_stage_setup</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">params</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">model</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.stages.resolve_stage_setup" title="Link to this definition">#</a></dt>
+<dd><p>Resolve stage parameters through the canonical RHIME boundary.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="openghg_inversions.rhime.params.html#openghg_inversions.rhime.params.RhimeRunnerSetup" title="openghg_inversions.rhime.params.RhimeRunnerSetup"><em>RhimeRunnerSetup</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.stages.sample_rhime_stage">
 <span class="sig-name descname"><span class="pre">sample_rhime_stage</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">setup</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prepared_inputs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_dir</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">preparation_manifest</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.stages.sample_rhime_stage" title="Link to this definition">#</a></dt>
 <dd><p>Sample prepared inputs and persist matched posterior/output bindings.</p>
@@ -596,60 +650,6 @@ invoked implicitly.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)">str</a>, <a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><em>Any</em></a>]</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.rhime.stages.diagnose_rhime_stage">
-<span class="sig-name descname"><span class="pre">diagnose_rhime_stage</span></span><span class="sig-paren">(</span>
-
-<dl>
-<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">posterior</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">output_dir</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">sample_manifest</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">check_output</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">max_rhat</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.01</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">min_bulk_ess</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">400</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">min_tail_ess</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">400</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">max_divergences</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">stage</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'posterior'</span></span></em>,</dd>
-</dl>
-
-<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.stages.diagnose_rhime_stage" title="Link to this definition">#</a></dt>
-<dd><p>Calculate the stable posterior convergence check.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)">str</a>, <a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><em>Any</em></a>]</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.rhime.stages.postprocess_rhime_stage">
-<span class="sig-name descname"><span class="pre">postprocess_rhime_stage</span></span><span class="sig-paren">(</span>
-
-<dl>
-<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">setup</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">prepared_inputs</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">posterior</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">output_dir</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">preparation_manifest</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">sample_manifest</span></span></em>,</dd>
-</dl>
-
-<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.stages.postprocess_rhime_stage" title="Link to this definition">#</a></dt>
-<dd><p>Build requested products from matched prepared, posterior and role artifacts.</p>
-<p>Version-2 sample manifests use their verified saved output bindings, without
-materializing model inputs or constructing a graph. Genuine version-1
-manifests retain graph reconstruction to recover their missing roles.
-Output settings may change; the sampled scientific configuration may not.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference internal" href="openghg_inversions.rhime.outputs.html#openghg_inversions.rhime.outputs.RhimeResult" title="openghg_inversions.rhime.outputs.RhimeResult"><em>RhimeResult</em></a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -703,15 +703,15 @@ Output settings may change; the sampled scientific configuration may not.</p>
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.stages.load_stage_params"><code class="docutils literal notranslate"><span class="pre">load_stage_params()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.stages.resolve_stage_setup"><code class="docutils literal notranslate"><span class="pre">resolve_stage_setup()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.stages.effective_configuration"><code class="docutils literal notranslate"><span class="pre">effective_configuration()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.stages.diagnose_rhime_stage"><code class="docutils literal notranslate"><span class="pre">diagnose_rhime_stage()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.stages.configuration_identity"><code class="docutils literal notranslate"><span class="pre">configuration_identity()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.stages.effective_configuration"><code class="docutils literal notranslate"><span class="pre">effective_configuration()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.stages.load_stage_params"><code class="docutils literal notranslate"><span class="pre">load_stage_params()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.stages.postprocess_rhime_stage"><code class="docutils literal notranslate"><span class="pre">postprocess_rhime_stage()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.stages.prepare_rhime_stage"><code class="docutils literal notranslate"><span class="pre">prepare_rhime_stage()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.stages.prior_predictive_stage"><code class="docutils literal notranslate"><span class="pre">prior_predictive_stage()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.stages.resolve_stage_setup"><code class="docutils literal notranslate"><span class="pre">resolve_stage_setup()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.stages.sample_rhime_stage"><code class="docutils literal notranslate"><span class="pre">sample_rhime_stage()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.stages.diagnose_rhime_stage"><code class="docutils literal notranslate"><span class="pre">diagnose_rhime_stage()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.stages.postprocess_rhime_stage"><code class="docutils literal notranslate"><span class="pre">postprocess_rhime_stage()</span></code></a></li>
 </ul>
   </nav></div>
 
