@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Compare cached CO2 inference with a direct observed-CustomDist replacement.
+"""Compare cached CO2 inference with observed-CustomDist sampling paths.
 
 This GH769 experiment leaves production builders and runners unchanged. Run
-``uv run python scripts/prototype_cached_sigma_customdist.py`` to compare both
-graphs in separate processes. Measurements are synthetic, not production
-performance or posterior convergence evidence.
+``uv run python scripts/prototype_cached_sigma_customdist.py`` to compare the
+cached baseline, direct replacement and cached observed path in separate
+processes. Measurements are synthetic, not production performance or posterior
+convergence evidence.
 """
 
 from __future__ import annotations
@@ -31,13 +32,13 @@ from openghg_inversions.rhime.co2.co2_cached_sigma_model import (
 
 
 def replace_cached_potential(cached: Co2CachedSigmaModel) -> None:
-    """Replace the likelihood in a fresh graph, before compiling or sampling.
+    """Replace the public model's sole likelihood with an observed distribution.
 
     Mutates ``cached.model``: removes its sole cached likelihood and adds an
     observed, normalized joint Gaussian ``y``. Its density and random callback
     consume explicit mean/amplitude parameters; neither reads the shared cache.
-    The original compound sampler remains usable but its state trajectory now
-    evaluates the covariance rather than the cached quadratic.
+    State steps compiled after replacement evaluate covariance rather than the
+    cached quadratic. Previously compiled steps retain their cached expression.
     """
     model = cached.model
     potential = model["cached_fixed_ou_likelihood"]
@@ -54,6 +55,42 @@ def replace_cached_potential(cached: Co2CachedSigmaModel) -> None:
             observed=model["Y"],
             dims=model.named_vars_to_dims["modelled_concentration"],
         )
+
+
+def make_observed_cached_compound_step(
+    cached: Co2CachedSigmaModel, *, rng: np.random.Generator | None = None
+) -> pm.CompoundStep:
+    """Compile cached transitions first, then expose the exact observed graph.
+
+    Takes a fresh cached recipe and mutates its model. The state NUTS function
+    retains the original normalized quadratic, priors and transform Jacobians;
+    the amplitude step still refreshes that shared quadratic between sweeps.
+    Newly compiled model density and predictive functions use the observed
+    CustomDist, independently of the sampler's mutable cache.
+
+    Graph initial values are cleared for PyMC's log-likelihood transformation.
+    Capture ``cached.model.initial_point()`` before this call and pass it as
+    ``pm.sample(initvals=...)`` to preserve the recipe's initialization. Pass
+    the returned step explicitly to sampling. Observation/design data must
+    remain fixed after construction.
+    """
+    step = make_cached_sigma_compound_step(
+        model=cached.model,
+        sigma=cached.amplitude,
+        states=cached.states,
+        modelled_mean=cached.modelled_mean,
+        target=cached.target,
+        shared_cache=cached.shared_cache,
+        initial_cache=cached.initial_cache,
+        prior_scale=cached.site_amplitude_prior_scale,
+        rng=rng,
+    )
+    replace_cached_potential(cached)
+    # PyMC's remove_value_transforms (used by compute_log_likelihood) currently
+    # rejects custom graph initvals. Initialization belongs to the sampling call.
+    for rv in cached.model.free_RVs:
+        cached.model.set_initval(rv, None)
+    return step
 
 
 def build_fixture(
@@ -122,14 +159,9 @@ def measure(args: argparse.Namespace) -> dict:
         inputs=model.value_vars,
         on_unused_input="ignore",
     )
-    state_fn(point)  # Compile/warm up before timing.
-    durations = []
-    for _ in range(5):
-        start = time.perf_counter()
-        for _ in range(args.evaluations):
-            state_fn(point)
-        durations.append((time.perf_counter() - start) / args.evaluations)
-    with model:
+    if args.mode == "observed-cached":
+        step = make_observed_cached_compound_step(cached, rng=np.random.default_rng(args.seed))
+    else:
         step = make_cached_sigma_compound_step(
             model=model,
             sigma=cached.amplitude,
@@ -141,6 +173,14 @@ def measure(args: argparse.Namespace) -> dict:
             prior_scale=cached.site_amplitude_prior_scale,
             rng=np.random.default_rng(args.seed),
         )
+    state_fn(point)  # Compile/warm up before timing.
+    durations = []
+    for _ in range(5):
+        start = time.perf_counter()
+        for _ in range(args.evaluations):
+            state_fn(point)
+        durations.append((time.perf_counter() - start) / args.evaluations)
+    with model:
         start = time.perf_counter()
         trace = pm.sample(
             draws=args.draws,
@@ -148,6 +188,7 @@ def measure(args: argparse.Namespace) -> dict:
             chains=2,
             cores=1,
             step=step,
+            initvals=point,
             random_seed=args.seed,
             progressbar=False,
             compute_convergence_checks=False,
@@ -203,7 +244,7 @@ def measure(args: argparse.Namespace) -> dict:
         "posterior_flux_mean": trace.posterior.flux_scaling.mean(("chain", "draw")).values.tolist(),
         "posterior_amplitude_mean": trace.posterior.ou_site_amplitude.mean(("chain", "draw")).values.tolist(),
     }
-    if args.mode == "observed":
+    if args.mode != "cached":
         with model:
             prior = pm.sample_prior_predictive(4, random_seed=args.seed)
             predictive = pm.sample_posterior_predictive(
@@ -211,12 +252,19 @@ def measure(args: argparse.Namespace) -> dict:
             )
         result["prior_predictive_shape"] = list(prior.prior_predictive.y.shape)
         result["posterior_predictive_shape"] = list(predictive.posterior_predictive.y.shape)
+        if args.mode == "observed-cached":
+            likelihood = pm.compute_log_likelihood(trace, model=model, progressbar=False).log_likelihood.y
+            likelihood.attrs.update(
+                rhime_likelihood_scope="joint_observation_vector",
+                rhime_normalized_log_likelihood=True,
+            )
+            result["joint_log_likelihood_shape"] = list(likelihood.shape)
     return result
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--mode", choices=("cached", "observed"))
+    parser.add_argument("--mode", choices=("cached", "observed", "observed-cached"))
     parser.add_argument("--observations", type=int, default=32)
     parser.add_argument("--states", type=int, default=4)
     parser.add_argument("--rank", type=int, default=4)
@@ -235,7 +283,7 @@ def main() -> None:
     if args.mode:
         print(json.dumps(measure(args)))
         return
-    for mode in ("cached", "observed"):
+    for mode in ("cached", "observed", "observed-cached"):
         proc = subprocess.run(
             [sys.executable, __file__, *sys.argv[1:], "--mode", mode],
             check=True,
