@@ -7,7 +7,7 @@ import json
 import xarray as xr
 from openghg.util import cf_ureg, molar_mass  # pyright: ignore[reportPrivateImportUsage]
 
-from openghg_inversions.array_ops import to_dense
+from openghg_inversions.array_ops import sparse_xr_dot, to_dense
 from openghg_inversions.basis.affine_flux_map import _in_dimensionless_units
 from openghg_inversions.rhime.co2.co2_affine_output import BoundCo2AffineFluxMap
 
@@ -197,7 +197,7 @@ def co2_country_flux_outputs(
     # dimensionless conversion and lazy bucket/explicit prolongation. Reusing
     # them avoids introducing a second reconstruction or quantity-map API.
     native_mean = _in_dimensionless_units(affine.native_mean, name="native_mean")
-    reference = to_dense(xr.dot(weighted_flux, native_mean, dim=("lat", "lon")))
+    reference = to_dense(sparse_xr_dot(weighted_flux, native_mean, dim=["lat", "lon"]))
     # Compact country arrays use dense chunks to keep mixed sparse/dense
     # additions consistent. to_dense preserves outer Dask laziness.
     outputs = []
@@ -205,7 +205,7 @@ def co2_country_flux_outputs(
     for group, state in samples.items():
         centred, prolongation = affine._centred_state(state, bound.reference_state)
         if response is None:
-            response = to_dense(xr.dot(weighted_flux, prolongation, dim=("lat", "lon")))
+            response = to_dense(sparse_xr_dot(weighted_flux, prolongation, dim=["lat", "lon"]))
         draws = reference + xr.dot(response, centred.astype("float64"), dim=affine.state_dim)
         outputs.append(_summarize(draws, prefix="country", group=group, source_dim=source_dim))
     attrs["annualization"] = "365-day year; grams of CO2, not grams of carbon"

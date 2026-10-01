@@ -10,10 +10,12 @@ from collections.abc import Mapping
 import arviz as az
 import numpy as np
 
+from openghg_inversions._provenance import installed_ogi_provenance
 from openghg_inversions.serialization import load_trace, reset_serialisation_multiindexes
 
 from ._stage_artifacts import (
     artifact_path as _artifact_path,
+    file_identity as _file_identity,
     write_json as _write_json,
     _output_path,
     _stage_output_directory,
@@ -100,10 +102,10 @@ def diagnose_rhime_stage(
         min_tail_ess=min_tail_ess,
         max_divergences=max_divergences,
     )
-    destination = _stage_output_directory(output_dir)
     posterior_path = Path(posterior).resolve()
+    sample_contract = None
     if sample_manifest is not None:
-        _verify_sample_manifest(sample_manifest, posterior=posterior_path)
+        sample_contract = _verify_sample_manifest(sample_manifest, posterior=posterior_path)
     idata = load_trace(posterior_path)
     summary = az.summary(
         idata["posterior"].to_dataset(),
@@ -113,6 +115,7 @@ def diagnose_rhime_stage(
     )
     if "summary" in summary.dims:
         summary = summary.rename(summary="metric")
+    destination = _stage_output_directory(output_dir)
     summary_path = _output_path(destination, None, "posterior-diagnostics.nc")
     reset_serialisation_multiindexes(summary).to_netcdf(summary_path)
 
@@ -220,5 +223,28 @@ def diagnose_rhime_stage(
         artifact_paths=[_artifact_path(summary_path)],
         stage=stage,
     )
-    _write_json(_output_path(destination, check_output, "sampler-convergence.json"), result)
+    check_path = _write_json(_output_path(destination, check_output, "sampler-convergence.json"), result)
+    if (
+        sample_contract is not None
+        and sample_contract.get("effective_configuration", {}).get("model") == "co2"
+    ):
+        _write_json(
+            destination / "diagnose-manifest.json",
+            {
+                "schema_version": 1,
+                "producer": "openghg_inversions",
+                "stage": "diagnose",
+                "configuration_identity": sample_contract["configuration_identity"],
+                "ogi": installed_ogi_provenance(),
+                "input_identities": {"posterior": _file_identity(posterior_path)},
+                "artifacts": {
+                    "diagnostics": _artifact_path(summary_path),
+                    "check": _artifact_path(check_path),
+                },
+                "artifact_identities": {
+                    "diagnostics": _file_identity(summary_path),
+                    "check": _file_identity(check_path),
+                },
+            },
+        )
     return result

@@ -13,9 +13,11 @@ import json
 from typing import Any, cast
 
 import numpy as np
+import pymc as pm
 import xarray as xr
 
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
+from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.models.state_activity import StateActivity
 from openghg_inversions.observation_error import (
@@ -36,7 +38,7 @@ from .co2_cached_sigma_model import (
 from .co2_model import _normalise_offset_args
 from .co2_preparation import Co2PreparedInputs
 from .co2_runner import (
-    _annotate_co2_trace,
+    annotate_co2_trace,
     _state_activity_from_inputs,
 )
 
@@ -172,9 +174,10 @@ def _append_joint_outputs(
     observations: xr.DataArray,
     posterior_predictive: bool,
     random_seed: Any,
+    sample_group: str = "posterior",
 ) -> xr.DataTree:
-    """Attach exact joint log likelihood and optional joint replicates."""
-    posterior = trace["posterior"].to_dataset()
+    """Attach exact joint outputs from prior or posterior state draws."""
+    posterior = trace[sample_group].to_dataset()
     mean = posterior["modelled_concentration"]
     sigma = posterior[OU_SITE_AMPLITUDE]
     output_dim = str(observations.dims[0])
@@ -188,7 +191,11 @@ def _append_joint_outputs(
         dtype=np.float64,
     )
     chain_count, draw_count = mean_values.shape[:2]
-    log_likelihood = np.empty((chain_count, draw_count), dtype=np.float64)
+    log_likelihood = (
+        np.empty((chain_count, draw_count), dtype=np.float64)
+        if sample_group == "posterior"
+        else None
+    )
     predictive = (
         np.empty(
             (chain_count, draw_count, cached_model.target.n_obs),
@@ -202,10 +209,11 @@ def _append_joint_outputs(
         for draw in range(draw_count):
             draw_mean = mean_values[chain, draw]
             draw_sigma = sigma_values[chain, draw]
-            log_likelihood[chain, draw] = cached_model.target.log_likelihood_from_mean(
-                draw_mean,
-                draw_sigma,
-            )
+            if log_likelihood is not None:
+                log_likelihood[chain, draw] = cached_model.target.log_likelihood_from_mean(
+                    draw_mean,
+                    draw_sigma,
+                )
             if predictive is not None:
                 predictive[chain, draw] = cached_model.target.random_from_mean(
                     draw_mean,
@@ -217,19 +225,19 @@ def _append_joint_outputs(
         "chain": posterior.coords["chain"],
         "draw": posterior.coords["draw"],
     }
-    likelihood_data = xr.DataArray(
-        log_likelihood,
-        dims=("chain", "draw"),
-        coords=sample_coords,
-        name="y",
-        attrs={
-            "rhime_likelihood_scope": "joint_observation_vector",
-            "rhime_normalized_log_likelihood": True,
-        },
-    )
-    groups: dict[str, xr.Dataset] = {
-        "log_likelihood": likelihood_data.to_dataset(),
-    }
+    groups: dict[str, xr.Dataset] = {}
+    if log_likelihood is not None:
+        likelihood_data = xr.DataArray(
+            log_likelihood,
+            dims=("chain", "draw"),
+            coords=sample_coords,
+            name="y",
+            attrs={
+                "rhime_likelihood_scope": "joint_observation_vector",
+                "rhime_normalized_log_likelihood": 1,
+            },
+        )
+        groups["log_likelihood"] = likelihood_data.to_dataset()
     if predictive is not None:
         predictive_coords = {**sample_coords, **_observation_coords(observations)}
         predictive_data = xr.DataArray(
@@ -239,7 +247,7 @@ def _append_joint_outputs(
             name="y",
             attrs={"rhime_predictive_scope": "joint_observation_vector"},
         )
-        groups["posterior_predictive"] = predictive_data.to_dataset()
+        groups[f"{sample_group}_predictive"] = predictive_data.to_dataset()
     if "observed_data" not in trace.children:
         groups["observed_data"] = observations.rename("y").to_dataset()
     for group, dataset in groups.items():
@@ -259,7 +267,7 @@ def _annotate_cached_co2_trace(
     concentration_units: str | None,
 ) -> xr.DataTree:
     """Add output semantics that belong only to the cached fixed-OU recipe."""
-    trace = _annotate_co2_trace(
+    trace = annotate_co2_trace(
         trace,
         built,
         concentration_units=concentration_units,
@@ -281,10 +289,9 @@ def _annotate_cached_co2_trace(
         observed.attrs["rhime_scientific_roles"] = json.dumps(["observation"])
         if concentration_units is not None:
             observed.attrs["units"] = concentration_units
-    if "posterior" in trace.children and OU_SITE_AMPLITUDE in trace["posterior"]:
-        amplitude = trace["posterior"][OU_SITE_AMPLITUDE]
-        if concentration_units is not None:
-            amplitude.attrs["units"] = concentration_units
+    for group in trace.children.values():
+        if concentration_units is not None and OU_SITE_AMPLITUDE in group:
+            group[OU_SITE_AMPLITUDE].attrs["units"] = concentration_units
     if "constant_data" in trace.children:
         constant_data = trace["constant_data"]
         if "ou_tau_hours" in constant_data:
@@ -293,6 +300,200 @@ def _annotate_cached_co2_trace(
             if concentration_units is not None and name in constant_data:
                 constant_data[name].attrs["units"] = concentration_units
     return trace
+
+
+def build_rhime_co2_cached_sigma(
+    *,
+    prepared_inputs: Co2PreparedInputs,
+    tau_hours: float | Mapping[str, float],
+    site_amplitude_prior_scale: float,
+    initial_site_amplitudes: float | Mapping[str, float] | None = None,
+    use_bc: bool = False,
+    bc_prior: PriorArgs | None = None,
+    bc_state_activity: StateActivity | None = None,
+    offset_prior: PriorArgs | None = None,
+    offset_args: Mapping[str, Any] | None = None,
+) -> Co2CachedSigmaModel:
+    """Materialize and build the matched cached fixed-OU graph without sampling.
+
+    Args:
+        prepared_inputs: Validated CO2 inputs with observation-aligned site and
+            time coordinates and the selected aggregation-error representation.
+        tau_hours: Fixed OU decorrelation time in hours, as a scalar or a
+            mapping covering all observed sites.
+        site_amplitude_prior_scale: HalfNormal site-amplitude prior scale in
+            observation concentration units.
+        initial_site_amplitudes: Positive scalar or site mapping in the same
+            units; defaults to the prior scale.
+        use_bc: Include prepared boundary sensitivity ``H_bc``.
+        bc_prior: Optional boundary-scaling prior.
+        bc_state_activity: Optional active/fixed boundary-state policy.
+        offset_prior: Optional offset prior; omit to disable the component.
+        offset_args: Offset settings ``offset_freq``, ``drop_first``, and
+            ``per_site``.
+
+    Returns:
+        Concrete graph and numerical target required by the matched sampler.
+
+    Raises:
+        ValueError: If component options contradict one another, prepared
+            arrays are invalid, or fixed OU mappings or parameters are invalid.
+    """
+    if not use_bc and (bc_prior is not None or bc_state_activity is not None):
+        raise ValueError("bc_prior and bc_state_activity require use_bc=True.")
+    if offset_prior is None and offset_args:
+        raise ValueError("offset_args require offset_prior.")
+    offset_freq, offset_drop_first, offset_per_site = _normalise_offset_args(offset_args)
+    prepared = prepared_inputs.validated()
+    names = co2_cached_sigma_input_names(
+        prepared,
+        use_bc=use_bc,
+    )
+    model_inputs = materialize_pymc_inputs(prepared.rhime_inputs, variable_names=names)
+    aggregation_error = resolve_aggregation_error(
+        model_inputs,
+        prepared.aggregation_error_mode,
+    )
+    prior_covariance = model_inputs["alpha_prior_covariance"]
+    retained_prior = CorrelatedLognormalPrior(
+        model_inputs["alpha_prior_mean"],
+        prior_covariance,
+        covariance_dim=str(prior_covariance.dims[-1]),
+    )
+    cached_model = build_co2_cached_sigma_model(
+        model_inputs["H"],
+        retained_prior=retained_prior,
+        fixed_prior_contribution=model_inputs["fixed_prior_contribution"],
+        observations=model_inputs["mf"],
+        observation_error=model_inputs["mf_error"],
+        aggregation_error=aggregation_error,
+        tau_hours=tau_hours,
+        site_amplitude_prior_scale=site_amplitude_prior_scale,
+        initial_site_amplitudes=initial_site_amplitudes,
+        state_activity=cast(StateActivity | None, _state_activity_from_inputs(model_inputs)),
+        boundary_sensitivity=model_inputs.get("H_bc") if use_bc else None,
+        bc_prior=bc_prior,
+        bc_state_activity=bc_state_activity,
+        offset_prior=offset_prior,
+        offset_freq=offset_freq,
+        offset_drop_first=offset_drop_first,
+        offset_per_site=offset_per_site,
+    )
+    return cached_model
+
+
+def co2_cached_sigma_build_result(
+    cached_model: Co2CachedSigmaModel,
+    prepared_inputs: Co2PreparedInputs,
+) -> RhimeModelBuildResult:
+    """Describe a built cached graph for sampling and stored output metadata.
+
+    Args:
+        cached_model: Graph returned by :func:`build_rhime_co2_cached_sigma`.
+        prepared_inputs: Prepared inputs used to build the graph, providing
+            basis provenance.
+
+    Returns:
+        Model build result with scientific roles and serializable provenance.
+    """
+    metadata = {
+        "recipe": "co2_cached_sigma_fixed_ou",
+        "kind": "builtin",
+        "prior": "correlated arithmetic-moment lognormal",
+        "mismatch_component": "fixed_within_site_ou",
+        "basis_artifact_source": getattr(
+            prepared_inputs,
+            "basis_artifact_source",
+            "unknown",
+        ),
+        "basis_artifact_path": getattr(prepared_inputs, "basis_artifact_path", None),
+    }
+    variable_roles = {
+        "observation": "Y",
+        "observation_error": "error",
+        "concentration": "y",
+        "model_error": "epsilon",
+        "model_mean": "modelled_concentration",
+        "pollution_concentration": "co2_flux_contribution",
+        "flux_scale": "flux_scaling",
+        "fixed_ou_site_amplitude": OU_SITE_AMPLITUDE,
+        "observation_to_fixed_ou_site_index": OU_SITE_INDEX,
+        "fixed_ou_timescale": "ou_tau_hours",
+        "emissions_sensitivity": "co2_sensitivity",
+        "coherent_prior_contribution": "fixed_prior_contribution",
+    }
+    if "hbc" in cached_model.model.named_vars:
+        variable_roles.update(
+            {
+                "boundary_concentration": "mu_bc",
+                "boundary_scale": "bc",
+                "boundary_sensitivity": "hbc",
+            }
+        )
+    if "offset" in cached_model.model.named_vars:
+        variable_roles["offset_concentration"] = "offset"
+    for role, name in {
+        "active_flux_scale": "flux_scaling_active",
+        "offset_coefficient": "offset_latent",
+    }.items():
+        if name in cached_model.model.named_vars:
+            variable_roles[role] = name
+    built = RhimeModelBuildResult(
+        model=cached_model.model,
+        variable_roles=variable_roles,
+        metadata=metadata,
+    )
+    return built
+
+
+def sample_co2_cached_prior_predictive(
+    cached_model: Co2CachedSigmaModel,
+    prepared_inputs: Co2PreparedInputs,
+    *,
+    draws: int = 500,
+    random_seed: int | None = None,
+) -> xr.DataTree:
+    """Draw cached CO2 priors and exact correlated observation replicates.
+
+    The cached Potential is used exclusively for the matched posterior sampler.
+    Prior replicates instead use the numerical fixed-OU target with each prior
+    draw's model mean and site amplitudes, retaining the full covariance.
+
+    Args:
+        cached_model: Graph built from the supplied prepared inputs.
+        prepared_inputs: Prepared observations and basis provenance.
+        draws: Number of prior draws.
+        random_seed: Optional reproducible seed for priors and joint replicates.
+
+    Returns:
+        Annotated prior, prior-predictive, observed-data, and constant groups.
+    """
+    # Potentials do not participate in prior draws. Only request the scientific
+    # state and mean variables; joint observation replicates are added below.
+    names = [variable.name for variable in cached_model.model.free_RVs]
+    names.extend(variable.name for variable in cached_model.model.deterministics)
+    with cached_model.model:
+        trace = pm.sample_prior_predictive(
+            draws=draws,
+            random_seed=random_seed,
+            var_names=names,
+        )
+    registry = get_coord_registry(cached_model.model)
+    if registry is not None:
+        trace = restore_inferencedata_coords(trace, registry)
+    trace = _append_joint_outputs(
+        trace,
+        cached_model=cached_model,
+        observations=prepared_inputs.inv_inputs["mf"],
+        posterior_predictive=True,
+        random_seed=random_seed,
+        sample_group="prior",
+    )
+    return _annotate_cached_co2_trace(
+        trace,
+        co2_cached_sigma_build_result(cached_model, prepared_inputs),
+        concentration_units=prepared_inputs.inv_inputs["mf"].attrs.get("units"),
+    )
 
 
 def run_rhime_co2_cached_sigma(
@@ -352,7 +553,9 @@ def run_rhime_co2_cached_sigma(
     Returns:
         Sampled DataTree with the normalized joint log likelihood as one
         value per complete observation vector and, when requested, correlated
-        joint posterior-predictive vectors.
+        joint prior- and posterior-predictive vectors. A true prior-predictive
+        setting uses the retained posterior draw count; an integer requests
+        exactly that many prior draws.
 
     Raises:
         ValueError: If prepared arrays, labels, numerical inputs, or model
@@ -360,107 +563,58 @@ def run_rhime_co2_cached_sigma(
             the sampler is not PyMC, supplies ``step`` or generic
             ``target_accept``, or has unsupported predictive keywords.
     """
-    if not use_bc and (bc_prior is not None or bc_state_activity is not None):
-        raise ValueError("bc_prior and bc_state_activity require use_bc=True.")
-    if offset_prior is None and offset_args:
-        raise ValueError("offset_args require offset_prior.")
-    offset_freq, offset_drop_first, offset_per_site = _normalise_offset_args(offset_args)
-    prepared = prepared_inputs.validated()
-    names = co2_cached_sigma_input_names(
-        prepared,
-        use_bc=use_bc,
-    )
-    model_inputs = materialize_pymc_inputs(prepared.rhime_inputs, variable_names=names)
-    aggregation_error = resolve_aggregation_error(
-        model_inputs,
-        prepared.aggregation_error_mode,
-    )
-    prior_covariance = model_inputs["alpha_prior_covariance"]
-    retained_prior = CorrelatedLognormalPrior(
-        model_inputs["alpha_prior_mean"],
-        prior_covariance,
-        covariance_dim=str(prior_covariance.dims[-1]),
-    )
-    cached_model = build_co2_cached_sigma_model(
-        model_inputs["H"],
-        retained_prior=retained_prior,
-        fixed_prior_contribution=model_inputs["fixed_prior_contribution"],
-        observations=model_inputs["mf"],
-        observation_error=model_inputs["mf_error"],
-        aggregation_error=aggregation_error,
+    cached_model = build_rhime_co2_cached_sigma(
+        prepared_inputs=prepared_inputs,
         tau_hours=tau_hours,
         site_amplitude_prior_scale=site_amplitude_prior_scale,
         initial_site_amplitudes=initial_site_amplitudes,
-        state_activity=cast(StateActivity | None, _state_activity_from_inputs(model_inputs)),
-        boundary_sensitivity=model_inputs.get("H_bc") if use_bc else None,
+        use_bc=use_bc,
         bc_prior=bc_prior,
         bc_state_activity=bc_state_activity,
         offset_prior=offset_prior,
-        offset_freq=offset_freq,
-        offset_drop_first=offset_drop_first,
-        offset_per_site=offset_per_site,
+        offset_args=offset_args,
     )
     requested_sampler = RhimeSampler() if sampler is None else sampler
-    metadata = {
-        "recipe": "co2_cached_sigma_fixed_ou",
-        "kind": "builtin",
-        "prior": "correlated arithmetic-moment lognormal",
-        "mismatch_component": "fixed_within_site_ou",
-        "basis_artifact_source": getattr(
-            prepared,
-            "basis_artifact_source",
-            "unknown",
-        ),
-        "basis_artifact_path": getattr(prepared, "basis_artifact_path", None),
-    }
-    variable_roles = {
-        "observation": "Y",
-        "observation_error": "error",
-        "concentration": "y",
-        "model_error": "epsilon",
-        "model_mean": "modelled_concentration",
-        "pollution_concentration": "co2_flux_contribution",
-        "flux_scale": "flux_scaling",
-        "fixed_ou_site_amplitude": OU_SITE_AMPLITUDE,
-        "observation_to_fixed_ou_site_index": OU_SITE_INDEX,
-        "fixed_ou_timescale": "ou_tau_hours",
-        "emissions_sensitivity": "co2_sensitivity",
-        "coherent_prior_contribution": "fixed_prior_contribution",
-    }
-    if use_bc:
-        variable_roles.update(
-            {
-                "boundary_concentration": "mu_bc",
-                "boundary_scale": "bc",
-                "boundary_sensitivity": "hbc",
-            }
-        )
-    if offset_prior is not None:
-        variable_roles["offset_concentration"] = "offset"
-    built = RhimeModelBuildResult(
-        model=cached_model.model,
-        variable_roles=variable_roles,
-        metadata=metadata,
-    )
+    built = co2_cached_sigma_build_result(cached_model, prepared_inputs)
     sampling_sampler = _sampler_for_cached_graph(
         requested_sampler,
         cached_model=cached_model,
         sigma_target_accept=sigma_target_accept,
         state_target_accept=state_target_accept,
     )
+    sampling_sampler.sample_prior_predictive = False
     trace = sample_rhime_model(built, sampling_sampler)
+    if requested_sampler.sample_prior_predictive:
+        prior_draws = (
+            trace["posterior"].sizes["draw"]
+            if requested_sampler.sample_prior_predictive is True
+            else int(requested_sampler.sample_prior_predictive)
+        )
+        prior = sample_co2_cached_prior_predictive(
+            cached_model,
+            prepared_inputs,
+            draws=prior_draws,
+            random_seed=dict(requested_sampler.sample_kwargs or {}).get("random_seed"),
+        )
+        trace.update(prior)
     trace = _append_joint_outputs(
         trace,
         cached_model=cached_model,
-        observations=model_inputs["mf"],
+        observations=prepared_inputs.inv_inputs["mf"],
         posterior_predictive=_posterior_predictive_requested(requested_sampler),
         random_seed=_predictive_seed(requested_sampler),
     )
     return _annotate_cached_co2_trace(
         trace,
         built,
-        concentration_units=model_inputs["mf"].attrs.get("units"),
+        concentration_units=prepared_inputs.inv_inputs["mf"].attrs.get("units"),
     )
 
 
-__all__ = ["co2_cached_sigma_input_names", "run_rhime_co2_cached_sigma"]
+__all__ = [
+    "build_rhime_co2_cached_sigma",
+    "co2_cached_sigma_build_result",
+    "co2_cached_sigma_input_names",
+    "run_rhime_co2_cached_sigma",
+    "sample_co2_cached_prior_predictive",
+]

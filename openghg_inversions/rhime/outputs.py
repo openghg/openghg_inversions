@@ -33,7 +33,7 @@ from openghg_inversions.utils import ncdf_encoding, write_netcdf_preserving_boun
 
 @dataclass
 class RhimeResult:
-    """Complete result of a standard or multisector RHIME recipe.
+    """Complete result of a concrete RHIME recipe, including coherent CO2.
 
     Args:
         run_spec: Top-level dates, sites, model, and output settings for the run.

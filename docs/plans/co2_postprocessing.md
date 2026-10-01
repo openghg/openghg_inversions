@@ -5,13 +5,16 @@ postprocessing products. It is for implementers and reviewers of
 [OPE-164](https://linear.app/openghg-inversions/issue/OPE-164) and
 [OPE-165](https://linear.app/openghg-inversions/issue/OPE-165), under the
 [OPE-79](https://linear.app/openghg-inversions/issue/OPE-79) integration gate.
-The first implementation is a Python adapter for conditional CO2 native-flux
-and country-total summaries. Later stages below remain proposed work; this PR
-does not complete either installed workflow.
+The CO2-only route includes conditional native-flux and country-total summaries,
+a role-based output adapter, and installed ordinary and cached fixed-OU stages.
+Linked staged delivery and complete unresolved native uncertainty remain the
+separate work identified below.
 
 ## Baseline and inherited decisions
 
-Reviewed against OGI `f708d606` and Linear on 2026-09-29:
+The inherited baseline was reviewed against OGI `f708d606` and Linear on
+2026-09-29. The staged-workflow row and delivery stage 2 below include the
+subsequent OPE-164 implementation:
 
 | Capability | Existing implementation / remaining boundary |
 | --- | --- |
@@ -21,7 +24,7 @@ Reviewed against OGI `f708d606` and Linear on 2026-09-29:
 | Native reconstruction | OPE-169 and OPE-184: factorized `AffineFluxMap`, directional application methods, persistence and exact prepared-artifact binding are available. |
 | Linked products | OPE-185: `linked_paris_outputs.py` already reconstructs channel concentrations and writes separate PARIS files. Its native-flux path accepts only a single-source bucket representation. |
 | Linked baseline | OPE-186: tracer-specific BC and offsets are available. |
-| Staged workflows | OPE-164 and OPE-165 remain open; installed stages currently route standard/multisector models. |
+| Staged workflows | OPE-164 adds installed CO2 ordinary/cached stages; linked staging remains OPE-165. |
 | Complete native uncertainty | OPE-68 remains open; affine reconstruction alone supplies retained-state-conditional means. |
 
 Issue descriptions contain historical prerequisites. Check current issue state
@@ -134,7 +137,7 @@ stage/parity manifests rather than inventing a trace-root revision attribute.
 
 ## Delivery stages and acceptance
 
-### 1. Conditional CO2 flux summaries — implemented in this PR, part of OPE-164
+### 1. Conditional CO2 flux summaries — implemented, part of OPE-164
 
 Add `postprocessing.co2_flux_outputs` with two public functions:
 
@@ -155,16 +158,18 @@ draw counts; exact label/unit failure cases; saved artifact replay; sparse/Dask
 laziness and input ownership; aggregate-before-samples evidence. Existing affine,
 country, linked output and statistics coverage must remain green.
 
-### 2. CO2 result and staged output route — remainder of OPE-164
+### 2. CO2 result and staged output route — implemented for OPE-164
 
-Connect prepared/posterior/reconstruction identities in stage manifests and
-expose the bound reconstruction through the CO2 result adapter. Enumerate output
-capabilities before opening destinations. Complete concentration components,
-full/active scaling, residuals and supported predictive products through roles.
-Route ordinary and cached/specialised samplers through their existing runners.
-Apply explicit source-to-sector transforms after reconstruction and adapt
-conditional products to PARIS with their scope preserved. Do not route arbitrary
-affine summaries through the old basis-statistics interpolation path.
+Installed `--model co2` stages reuse the CO2 TOML resolver and public ordinary
+and cached runners. Preparation validates and copies an existing coherent
+`Co2PreparedInputs` handoff; it does not acquire campaign inputs or choose a
+coherent reduction. Manifests bind the recipe, saved preparation, posterior and
+affine reconstruction. The result adapter exposes concentration components,
+full/active scaling, residuals, supported predictive products and conditional
+native/country products through roles. Output capabilities are checked before
+product writing. Explicit source-to-sector transforms follow reconstruction
+and precede statistics, with conditional uncertainty scope preserved in PARIS.
+See [the installed command examples](../usage/co2_model_family.rst).
 
 Acceptance: a small non-VG installed
 `prepare → prior-predictive → sample → diagnose → postprocess` case, a bounded
@@ -222,8 +227,8 @@ residual samples from every chain. Coordinate OPE-40 for durable residual produc
 ## Completion and validation boundaries
 
 OPE-79 closes only after both installed routes, supported products, user guidance
-and bounded scientific acceptance are complete. This first PR adds deterministic
-unit/integration coverage; it neither launches a protected VG campaign nor claims
-full native posterior or WUR parity. Compatibility/type/full-suite jobs, when
+and bounded scientific acceptance are complete. CO2 staged acceptance uses
+small package-built scientific inputs and actual installed CLI commands; it does
+not launch a protected VG campaign or claim full native posterior or WUR parity. Compatibility/type/full-suite jobs, when
 needed for later stage integration, use the repository Slurm runner. Registered
 inversion acceptance and prototype retirement require their own reviewed gates.
