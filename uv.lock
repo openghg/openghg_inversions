@@ -2066,7 +2066,7 @@ wheels = [
 
 [[package]]
 name = "openghg-inversions"
-version = "0.7.3"
+version = "0.7.4"
 source = { editable = "." }
 dependencies = [
     { name = "arviz" },
