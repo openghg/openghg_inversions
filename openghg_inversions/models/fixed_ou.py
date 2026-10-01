@@ -466,15 +466,15 @@ def prepare_fixed_ou_low_rank(
             ) from error
         base_logdet += float(2.0 * np.log(np.diag(correlation_cholesky)).sum())
 
-        values, vectors = eigh(
+        raw_values, vectors = eigh(
             np.diag(diagonal[indices]), correlation, check_finite=False
         )
-        scale = max(1.0, float(np.max(np.abs(values))))
-        if values[0] < -1.0e-10 * scale:
+        scale = max(1.0, float(np.max(np.abs(raw_values))))
+        if raw_values[0] < -1.0e-10 * scale:
             raise np.linalg.LinAlgError(
                 f"OU template for site {labels[site]!r} is not positive semidefinite."
             )
-        values = cast(FloatArray, np.maximum(values, 0.0))
+        values = cast(FloatArray, np.maximum(raw_values, 0.0))
         structural_nullity = int(np.count_nonzero(diagonal[indices] == 0.0))
         values[:structural_nullity] = 0.0
         transform = cast(FloatArray, vectors.T)

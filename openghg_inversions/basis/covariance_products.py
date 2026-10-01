@@ -26,7 +26,8 @@ from typing import assert_never, Literal, Protocol
 from dask.base import compute
 import numpy as np
 from scipy.linalg import cho_factor, cho_solve
-from scipy.linalg.lapack import dpocon
+# scipy-stubs 1.15.3 omits the runtime LAPACK wrappers, including dpocon.
+from scipy.linalg.lapack import dpocon  # type: ignore[attr-defined]
 import xarray as xr
 
 from openghg_inversions._labelled_matrices import (
