@@ -365,6 +365,7 @@
 </details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.postprocessing.html">openghg_inversions.postprocessing</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.co2_flux_outputs.html">openghg_inversions.postprocessing.co2_flux_outputs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.contracts.html">openghg_inversions.postprocessing.contracts</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.countries.html">openghg_inversions.postprocessing.countries</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.diagnostics.html">openghg_inversions.postprocessing.diagnostics</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.inversion_output.html">openghg_inversions.postprocessing.inversion_output</a></li>
@@ -374,6 +375,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.make_paris_outputs.html">openghg_inversions.postprocessing.make_paris_outputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.merge_paris_outputs.html">openghg_inversions.postprocessing.merge_paris_outputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.nested_paris_outputs.html">openghg_inversions.postprocessing.nested_paris_outputs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.output_views.html">openghg_inversions.postprocessing.output_views</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.sigma.html">openghg_inversions.postprocessing.sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.stats.html">openghg_inversions.postprocessing.stats</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.utils.html">openghg_inversions.postprocessing.utils</a></li>
@@ -506,13 +508,13 @@ A filter function should accept as arguments: an xr.Dataset, a bool called “ke
 <dd><p>Decorator function to register filters.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>filt</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Callable" title="(in Python v3.14)"><em>Callable</em></a>) – filter function to register</p>
+<dd class="field-odd"><p><strong>filt</strong> (<em>Callable</em>) – filter function to register</p>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>filt, the input function (no modifications made)</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Callable" title="(in Python v3.14)"><em>Callable</em></a></p>
+<dd class="field-odd"><p><em>Callable</em></p>
 </dd>
 </dl>
 <p>For instance, the following use of <cite>register_filter</cite> as a decorator adds <cite>my_new_filter</cite>
@@ -557,18 +559,18 @@ to look at daytime values the filters list should be
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>datasets_in</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a>) – dictionary of datasets containing output from ModelScenario.footprints_merge().</p></li>
-<li><p><strong>filters</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em><em> | </em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.14)"><em>list</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em><em>]</em><em>] </em><em>| </em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.14)"><em>list</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em><em>]</em>) – filters to apply to the datasets. Either a list of filters, which will be applied to every site,
+<li><p><strong>datasets_in</strong> (<em>dict</em>) – dictionary of datasets containing output from ModelScenario.footprints_merge().</p></li>
+<li><p><strong>filters</strong> (<em>str</em><em> | </em><em>None</em><em> | </em><em>dict</em><em>[</em><em>str</em><em>, </em><em>list</em><em>[</em><em>str</em><em> | </em><em>None</em><em>]</em><em>] </em><em>| </em><em>list</em><em>[</em><em>str</em><em> | </em><em>None</em><em>]</em>) – filters to apply to the datasets. Either a list of filters, which will be applied to every site,
 or a dictionary of lists of the form  {&lt;site code&gt;: [filter1, filter2, …]}, with specific filters to
 be applied at each site. Use the <cite>list_filters</cite> function to list available filters.</p></li>
-<li><p><strong>keep_missing</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – if True, drop missing data</p></li>
+<li><p><strong>keep_missing</strong> (<em>bool</em>) – if True, drop missing data</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>dict in same format as datasets_in, with filters applied</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)">dict</a></p>
+<dd class="field-odd"><p>dict</p>
 </dd>
 </dl>
 </dd></dl>
@@ -581,7 +583,7 @@ be applied at each site. Use the <cite>list_filters</cite> function to list avai
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>dataset</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>) – dataset to filter</p></li>
-<li><p><strong>keep_missing</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – if True, drop time points removed by filter</p></li>
+<li><p><strong>keep_missing</strong> (<em>bool</em>) – if True, drop time points removed by filter</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -601,7 +603,7 @@ be applied at each site. Use the <cite>list_filters</cite> function to list avai
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>dataset</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>) – dataset to filter</p></li>
-<li><p><strong>keep_missing</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – if True, drop time points removed by filter</p></li>
+<li><p><strong>keep_missing</strong> (<em>bool</em>) – if True, drop time points removed by filter</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -621,7 +623,7 @@ be applied at each site. Use the <cite>list_filters</cite> function to list avai
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>dataset</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>) – dataset to filter</p></li>
-<li><p><strong>keep_missing</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – if True, drop time points removed by filter</p></li>
+<li><p><strong>keep_missing</strong> (<em>bool</em>) – if True, drop time points removed by filter</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -641,7 +643,7 @@ be applied at each site. Use the <cite>list_filters</cite> function to list avai
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>dataset</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>) – dataset to filter</p></li>
-<li><p><strong>keep_missing</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – if True, drop time points removed by filter</p></li>
+<li><p><strong>keep_missing</strong> (<em>bool</em>) – if True, drop time points removed by filter</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -661,7 +663,7 @@ be applied at each site. Use the <cite>list_filters</cite> function to list avai
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>dataset</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>) – dataset to filter</p></li>
-<li><p><strong>keep_missing</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – if True, drop time points removed by filter</p></li>
+<li><p><strong>keep_missing</strong> (<em>bool</em>) – if True, drop time points removed by filter</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -681,7 +683,7 @@ be applied at each site. Use the <cite>list_filters</cite> function to list avai
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>dataset</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>) – dataset to filter</p></li>
-<li><p><strong>keep_missing</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – if True, drop time points removed by filter</p></li>
+<li><p><strong>keep_missing</strong> (<em>bool</em>) – if True, drop time points removed by filter</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -702,7 +704,7 @@ be applied at each site. Use the <cite>list_filters</cite> function to list avai
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>dataset</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>) – dataset to filter</p></li>
-<li><p><strong>keep_missing</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – if True, drop time points removed by filter</p></li>
+<li><p><strong>keep_missing</strong> (<em>bool</em>) – if True, drop time points removed by filter</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -722,8 +724,8 @@ be applied at each site. Use the <cite>list_filters</cite> function to list avai
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>dataset</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>) – dataset to filter</p></li>
-<li><p><strong>pblh_threshold</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a>) – filter will discard times where PBLH/atmosphere boundary layer thickness is below pblh_threshold</p></li>
-<li><p><strong>keep_missing</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – if True, drop time points removed by filter</p></li>
+<li><p><strong>pblh_threshold</strong> (<em>float</em>) – filter will discard times where PBLH/atmosphere boundary layer thickness is below pblh_threshold</p></li>
+<li><p><strong>keep_missing</strong> (<em>bool</em>) – if True, drop time points removed by filter</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -744,8 +746,8 @@ be applied at each site. Use the <cite>list_filters</cite> function to list avai
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>dataset</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>) – dataset to filter</p></li>
-<li><p><strong>diff_threshold</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a>) – filter will discard times where obs. are taken at a height of less than diff_threshold below PBLH</p></li>
-<li><p><strong>keep_missing</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – if True, drop time points removed by filter</p></li>
+<li><p><strong>diff_threshold</strong> (<em>float</em>) – filter will discard times where obs. are taken at a height of less than diff_threshold below PBLH</p></li>
+<li><p><strong>keep_missing</strong> (<em>bool</em>) – if True, drop time points removed by filter</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>

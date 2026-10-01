@@ -1074,10 +1074,10 @@
 </li>
       <li><a href="reference/openghg_inversions.basis.basis_functions.html#openghg_inversions.basis.basis_functions.FluxWeightedBasis.for_source">for_source() (FluxWeightedBasis method)</a>
 </li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/openghg_inversions.array_ops.html#openghg_inversions.array_ops.force_align">force_align() (in module openghg_inversions.array_ops)</a>
 </li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/openghg_inversions.inversion_data.serialise.html#openghg_inversions.inversion_data.serialise.fp_all_from_dataset">fp_all_from_dataset() (in module openghg_inversions.inversion_data.serialise)</a>
 </li>
       <li><a href="reference/openghg_inversions.flux_sanitization.html#openghg_inversions.flux_sanitization.FluxNonFiniteMetadata.from_attrs">from_attrs() (FluxNonFiniteMetadata class method)</a>
@@ -1112,6 +1112,8 @@
         <li><a href="reference/openghg_inversions.inversion_data.html#openghg_inversions.inversion_data.RhimePreparedInputs.from_datatree">(RhimePreparedInputs class method)</a>, <a href="reference/openghg_inversions.inversion_data.preparation.html#openghg_inversions.inversion_data.preparation.RhimePreparedInputs.from_datatree">[1]</a>
 </li>
       </ul></li>
+      <li><a href="reference/openghg_inversions.postprocessing.contracts.html#openghg_inversions.postprocessing.contracts.OutputContract.from_dict">from_dict() (OutputContract class method)</a>
+</li>
       <li><a href="reference/openghg_inversions.postprocessing.countries.html#openghg_inversions.postprocessing.countries.Countries.from_file">from_file() (Countries class method)</a>
 
       <ul>
@@ -1404,6 +1406,8 @@
 </li>
       <li><a href="reference/openghg_inversions.inversion_inputs.html#openghg_inversions.inversion_inputs.make_inv_inputs">make_inv_inputs() (in module openghg_inversions.inversion_inputs)</a>
 </li>
+      <li><a href="reference/openghg_inversions.postprocessing.output_views.html#openghg_inversions.postprocessing.output_views.make_inversion_output">make_inversion_output() (in module openghg_inversions.postprocessing.output_views)</a>
+</li>
       <li><a href="reference/openghg_inversions.postprocessing.legacy_outputs.html#openghg_inversions.postprocessing.legacy_outputs.make_legacy_hbmcmc_output">make_legacy_hbmcmc_output() (in module openghg_inversions.postprocessing.legacy_outputs)</a>
 </li>
       <li><a href="reference/openghg_inversions.postprocessing.make_outputs.html#openghg_inversions.postprocessing.make_outputs.make_multisector_country_trace_outputs">make_multisector_country_trace_outputs() (in module openghg_inversions.postprocessing.make_outputs)</a>
@@ -1624,6 +1628,8 @@
 </li>
         <li><a href="reference/openghg_inversions.postprocessing.co2_flux_outputs.html#module-openghg_inversions.postprocessing.co2_flux_outputs">openghg_inversions.postprocessing.co2_flux_outputs</a>
 </li>
+        <li><a href="reference/openghg_inversions.postprocessing.contracts.html#module-openghg_inversions.postprocessing.contracts">openghg_inversions.postprocessing.contracts</a>
+</li>
         <li><a href="reference/openghg_inversions.postprocessing.countries.html#module-openghg_inversions.postprocessing.countries">openghg_inversions.postprocessing.countries</a>
 </li>
         <li><a href="reference/openghg_inversions.postprocessing.diagnostics.html#module-openghg_inversions.postprocessing.diagnostics">openghg_inversions.postprocessing.diagnostics</a>
@@ -1641,6 +1647,8 @@
         <li><a href="reference/openghg_inversions.postprocessing.merge_paris_outputs.html#module-openghg_inversions.postprocessing.merge_paris_outputs">openghg_inversions.postprocessing.merge_paris_outputs</a>
 </li>
         <li><a href="reference/openghg_inversions.postprocessing.nested_paris_outputs.html#module-openghg_inversions.postprocessing.nested_paris_outputs">openghg_inversions.postprocessing.nested_paris_outputs</a>
+</li>
+        <li><a href="reference/openghg_inversions.postprocessing.output_views.html#module-openghg_inversions.postprocessing.output_views">openghg_inversions.postprocessing.output_views</a>
 </li>
         <li><a href="reference/openghg_inversions.postprocessing.sigma.html#module-openghg_inversions.postprocessing.sigma">openghg_inversions.postprocessing.sigma</a>
 </li>
@@ -2178,8 +2186,6 @@
         <li><a href="reference/openghg_inversions.models.state_activity.html#module-openghg_inversions.models.state_activity">module</a>
 </li>
       </ul></li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li>
     openghg_inversions.native_covariance
 
@@ -2194,6 +2200,8 @@
         <li><a href="reference/openghg_inversions.observation_error.html#module-openghg_inversions.observation_error">module</a>
 </li>
       </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li>
     openghg_inversions.postprocessing
 
@@ -2206,6 +2214,13 @@
 
       <ul>
         <li><a href="reference/openghg_inversions.postprocessing.co2_flux_outputs.html#module-openghg_inversions.postprocessing.co2_flux_outputs">module</a>
+</li>
+      </ul></li>
+      <li>
+    openghg_inversions.postprocessing.contracts
+
+      <ul>
+        <li><a href="reference/openghg_inversions.postprocessing.contracts.html#module-openghg_inversions.postprocessing.contracts">module</a>
 </li>
       </ul></li>
       <li>
@@ -2269,6 +2284,13 @@
 
       <ul>
         <li><a href="reference/openghg_inversions.postprocessing.nested_paris_outputs.html#module-openghg_inversions.postprocessing.nested_paris_outputs">module</a>
+</li>
+      </ul></li>
+      <li>
+    openghg_inversions.postprocessing.output_views
+
+      <ul>
+        <li><a href="reference/openghg_inversions.postprocessing.output_views.html#module-openghg_inversions.postprocessing.output_views">module</a>
 </li>
       </ul></li>
       <li>
@@ -2520,9 +2542,13 @@
 </li>
       <li><a href="reference/openghg_inversions.rhime.html#openghg_inversions.rhime.NestedRhimeResult.outer_basis_functions">outer_basis_functions (NestedRhimeResult property)</a>, <a href="reference/openghg_inversions.rhime.nested.html#openghg_inversions.rhime.nested.NestedRhimeResult.outer_basis_functions">[1]</a>
 </li>
+      <li><a href="reference/openghg_inversions.rhime.builders.html#openghg_inversions.rhime.builders.RhimeModelBuildResult.output_contract">output_contract (RhimeModelBuildResult property)</a>, <a href="reference/openghg_inversions.rhime.html#openghg_inversions.rhime.RhimeModelBuildResult.output_contract">[1]</a>
+</li>
       <li><a href="reference/openghg_inversions.rhime.html#openghg_inversions.rhime.NestedRhimeResult.output_metadata">output_metadata (NestedRhimeResult property)</a>, <a href="reference/openghg_inversions.rhime.nested.html#openghg_inversions.rhime.nested.NestedRhimeResult.output_metadata">[1]</a>
 </li>
       <li><a href="reference/openghg_inversions.rhime.html#openghg_inversions.rhime.NestedRhimeResult.output_spec">output_spec (NestedRhimeResult property)</a>, <a href="reference/openghg_inversions.rhime.nested.html#openghg_inversions.rhime.nested.NestedRhimeResult.output_spec">[1]</a>
+</li>
+      <li><a href="reference/openghg_inversions.postprocessing.contracts.html#openghg_inversions.postprocessing.contracts.OutputContract">OutputContract (class in openghg_inversions.postprocessing.contracts)</a>
 </li>
       <li><a href="reference/openghg_inversions.postprocessing.make_outputs.html#openghg_inversions.postprocessing.make_outputs.OutputSector">OutputSector (class in openghg_inversions.postprocessing.make_outputs)</a>
 </li>
@@ -3319,7 +3345,11 @@
       <li><a href="reference/openghg_inversions.array_ops.html#openghg_inversions.array_ops.to_dense">to_dense() (in module openghg_inversions.array_ops)</a>
 </li>
       <li><a href="reference/openghg_inversions.postprocessing.countries.html#openghg_inversions.postprocessing.countries.CountryRegions.to_dict">to_dict() (CountryRegions method)</a>
+
+      <ul>
+        <li><a href="reference/openghg_inversions.postprocessing.contracts.html#openghg_inversions.postprocessing.contracts.OutputContract.to_dict">(OutputContract method)</a>
 </li>
+      </ul></li>
       <li><a href="reference/openghg_inversions.basis.layout.html#openghg_inversions.basis.layout.BasisLayout.to_flat_basis">to_flat_basis() (BasisLayout method)</a>
 </li>
       <li><a href="reference/openghg_inversions.flux_sanitization.html#openghg_inversions.flux_sanitization.FluxNonFiniteMetadata.to_json">to_json() (FluxNonFiniteMetadata method)</a>
@@ -3374,8 +3404,12 @@
 </li>
       <li><a href="reference/openghg_inversions.rhime.specs.html#openghg_inversions.rhime.specs.validate_output_path_settings">validate_output_path_settings() (in module openghg_inversions.rhime.specs)</a>
 </li>
-      <li><a href="reference/openghg_inversions.rhime.builders.html#openghg_inversions.rhime.builders.RhimeModelBuildResult.validate_requested_output">validate_requested_output() (RhimeModelBuildResult method)</a>, <a href="reference/openghg_inversions.rhime.html#openghg_inversions.rhime.RhimeModelBuildResult.validate_requested_output">[1]</a>
+      <li><a href="reference/openghg_inversions.postprocessing.contracts.html#openghg_inversions.postprocessing.contracts.OutputContract.validate_requested_output">validate_requested_output() (OutputContract method)</a>
+
+      <ul>
+        <li><a href="reference/openghg_inversions.rhime.builders.html#openghg_inversions.rhime.builders.RhimeModelBuildResult.validate_requested_output">(RhimeModelBuildResult method)</a>, <a href="reference/openghg_inversions.rhime.html#openghg_inversions.rhime.RhimeModelBuildResult.validate_requested_output">[1]</a>
 </li>
+      </ul></li>
       <li><a href="reference/openghg_inversions.rhime.params.html#openghg_inversions.rhime.params.validate_required_params">validate_required_params() (in module openghg_inversions.rhime.params)</a>
 </li>
   </ul></td>

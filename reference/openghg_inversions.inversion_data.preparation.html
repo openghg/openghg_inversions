@@ -365,6 +365,7 @@
 </details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.postprocessing.html">openghg_inversions.postprocessing</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.co2_flux_outputs.html">openghg_inversions.postprocessing.co2_flux_outputs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.contracts.html">openghg_inversions.postprocessing.contracts</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.countries.html">openghg_inversions.postprocessing.countries</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.diagnostics.html">openghg_inversions.postprocessing.diagnostics</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.inversion_output.html">openghg_inversions.postprocessing.inversion_output</a></li>
@@ -374,6 +375,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.make_paris_outputs.html">openghg_inversions.postprocessing.make_paris_outputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.merge_paris_outputs.html">openghg_inversions.postprocessing.merge_paris_outputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.nested_paris_outputs.html">openghg_inversions.postprocessing.nested_paris_outputs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.output_views.html">openghg_inversions.postprocessing.output_views</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.sigma.html">openghg_inversions.postprocessing.sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.stats.html">openghg_inversions.postprocessing.stats</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.utils.html">openghg_inversions.postprocessing.utils</a></li>
@@ -514,7 +516,7 @@ not construct a PyMC model.</p>
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.inversion_data.preparation.RhimePreparedInputs">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">RhimePreparedInputs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">inv_inputs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">basis_functions</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">site_metadata</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inversion_data.preparation.RhimePreparedInputs" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
 <p>Modern RHIME preparation and durable serialization contract.</p>
 <p>Site labels and site-aligned metadata are owned by <code class="docutils literal notranslate"><span class="pre">site_metadata</span></code>.
 Integer <code class="docutils literal notranslate"><span class="pre">inv_inputs.site_indicator</span></code> values are derived as zero-based
@@ -541,7 +543,7 @@ implying that model builders consume them.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Raises<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If site metadata, measurement indexing, or multi-source
+<dd class="field-even"><p><strong>ValueError</strong> – If site metadata, measurement indexing, or multi-source
     labels are inconsistent.</p>
 </dd>
 </dl>
@@ -567,44 +569,44 @@ implying that model builders consume them.</p></li>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>inv_inputs</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>) – Canonical inversion inputs.</p></li>
 <li><p><strong>basis_functions</strong> (<a class="reference internal" href="openghg_inversions.basis.basis_functions.html#openghg_inversions.basis.basis_functions.FluxWeightedBasis" title="openghg_inversions.basis.basis_functions.FluxWeightedBasis"><em>FluxWeightedBasis</em></a>) – Retained basis object.</p></li>
-<li><p><strong>sites</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.14)"><em>Sequence</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>]</em>) – Site labels in indicator-decoding order.</p></li>
-<li><p><strong>averaging_period</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.14)"><em>Sequence</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em><em>]</em>) – Observation periods aligned to <code class="docutils literal notranslate"><span class="pre">sites</span></code>.</p></li>
-<li><p><strong>basis_artifact_source</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Optional basis provenance value.</p></li>
-<li><p><strong>basis_artifact_path</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Optional basis provenance path.</p></li>
-<li><p><strong>site_lats</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.14)"><em>Sequence</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a><em>] </em><em>| </em><em>None</em>) – Optional legacy release latitudes, one per site.</p></li>
-<li><p><strong>site_lons</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.14)"><em>Sequence</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a><em>] </em><em>| </em><em>None</em>) – Optional legacy release longitudes, one per site.</p></li>
+<li><p><strong>sites</strong> (<em>Sequence</em><em>[</em><em>str</em><em>]</em>) – Site labels in indicator-decoding order.</p></li>
+<li><p><strong>averaging_period</strong> (<em>Sequence</em><em>[</em><em>str</em><em> | </em><em>None</em><em>]</em>) – Observation periods aligned to <code class="docutils literal notranslate"><span class="pre">sites</span></code>.</p></li>
+<li><p><strong>basis_artifact_source</strong> (<em>str</em><em> | </em><em>None</em>) – Optional basis provenance value.</p></li>
+<li><p><strong>basis_artifact_path</strong> (<em>str</em><em> | </em><em>None</em>) – Optional basis provenance path.</p></li>
+<li><p><strong>site_lats</strong> (<em>Sequence</em><em>[</em><em>float</em><em>] </em><em>| </em><em>None</em>) – Optional legacy release latitudes, one per site.</p></li>
+<li><p><strong>site_lons</strong> (<em>Sequence</em><em>[</em><em>float</em><em>] </em><em>| </em><em>None</em>) – Optional legacy release longitudes, one per site.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>Prepared inputs using labeled site metadata.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Self" title="(in Python v3.14)"><em>Self</em></a></p>
+<dd class="field-odd"><p><em>Self</em></p>
 </dd>
 </dl>
 </dd></dl>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="openghg_inversions.inversion_data.preparation.RhimePreparedInputs.sites">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">sites</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.inversion_data.preparation.RhimePreparedInputs.sites" title="Link to this definition">#</a></dt>
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">sites</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.inversion_data.preparation.RhimePreparedInputs.sites" title="Link to this definition">#</a></dt>
 <dd><p>Return retained site labels in indicator-decoding order.</p>
 </dd></dl>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="openghg_inversions.inversion_data.preparation.RhimePreparedInputs.averaging_period">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">averaging_period</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.inversion_data.preparation.RhimePreparedInputs.averaging_period" title="Link to this definition">#</a></dt>
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">averaging_period</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.inversion_data.preparation.RhimePreparedInputs.averaging_period" title="Link to this definition">#</a></dt>
 <dd><p>Return averaging periods aligned to <a class="reference internal" href="#openghg_inversions.inversion_data.preparation.RhimePreparedInputs.sites" title="openghg_inversions.inversion_data.preparation.RhimePreparedInputs.sites"><code class="xref py py-attr docutils literal notranslate"><span class="pre">sites</span></code></a>.</p>
 </dd></dl>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="openghg_inversions.inversion_data.preparation.RhimePreparedInputs.basis_artifact_source">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">basis_artifact_source</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><a class="headerlink" href="#openghg_inversions.inversion_data.preparation.RhimePreparedInputs.basis_artifact_source" title="Link to this definition">#</a></dt>
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">basis_artifact_source</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><a class="headerlink" href="#openghg_inversions.inversion_data.preparation.RhimePreparedInputs.basis_artifact_source" title="Link to this definition">#</a></dt>
 <dd><p>Return retained basis provenance, defaulting to <code class="docutils literal notranslate"><span class="pre">generated</span></code>.</p>
 </dd></dl>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="openghg_inversions.inversion_data.preparation.RhimePreparedInputs.basis_artifact_path">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">basis_artifact_path</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><a class="headerlink" href="#openghg_inversions.inversion_data.preparation.RhimePreparedInputs.basis_artifact_path" title="Link to this definition">#</a></dt>
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">basis_artifact_path</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#openghg_inversions.inversion_data.preparation.RhimePreparedInputs.basis_artifact_path" title="Link to this definition">#</a></dt>
 <dd><p>Return the provenance-only basis artifact path.</p>
 </dd></dl>
 
@@ -619,7 +621,7 @@ mutation of the contained xarray objects.</p>
 <dd class="field-odd"><p>Prepared inputs normalized from the current xarray values.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Self" title="(in Python v3.14)"><em>Self</em></a></p>
+<dd class="field-even"><p><em>Self</em></p>
 </dd>
 </dl>
 </dd></dl>
@@ -637,7 +639,7 @@ reconstructing the prepared inputs.</p>
 <code class="docutils literal notranslate"><span class="pre">site_metadata</span></code> child nodes.</p>
 </dd>
 <dt class="field-even">Raises<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If site metadata or inversion inputs no longer satisfy
+<dd class="field-even"><p><strong>ValueError</strong> – If site metadata or inversion inputs no longer satisfy
     the prepared-input invariants.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
@@ -662,13 +664,13 @@ multisource basis ordering.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If the prepared schema, site metadata, serialized
+<li><p><strong>ValueError</strong> – If the prepared schema, site metadata, serialized
     MultiIndex, site indicators, or source labels are malformed.</p></li>
-<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#KeyError" title="(in Python v3.14)"><strong>KeyError</strong></a> – If a required child node is missing.</p></li>
+<li><p><strong>KeyError</strong> – If a required child node is missing.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Self" title="(in Python v3.14)"><em>Self</em></a></p>
+<dd class="field-even"><p><em>Self</em></p>
 </dd>
 </dl>
 </dd></dl>
@@ -680,15 +682,15 @@ multisource basis ordering.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>output_file</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><em>Path</em></a>) – Destination artifact path. Saving writes and may
+<li><p><strong>output_file</strong> (<em>str</em><em> | </em><em>Path</em>) – Destination artifact path. Saving writes and may
 overwrite this artifact.</p></li>
-<li><p><strong>output_format</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><em>Literal</em></a><em>[</em><em>'netcdf'</em><em>, </em><em>'zarr'</em><em>] </em><em>| </em><em>None</em>) – Storage format. When omitted, infer it from a
+<li><p><strong>output_format</strong> (<em>Literal</em><em>[</em><em>'netcdf'</em><em>, </em><em>'zarr'</em><em>] </em><em>| </em><em>None</em>) – Storage format. When omitted, infer it from a
 <code class="docutils literal notranslate"><span class="pre">.nc</span></code> or <code class="docutils literal notranslate"><span class="pre">.zarr</span></code> suffix. An explicit format adds or
 replaces the corresponding suffix.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Raises<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If metadata is invalid or the output format cannot be
+<dd class="field-even"><p><strong>ValueError</strong> – If metadata is invalid or the output format cannot be
     inferred.</p>
 </dd>
 </dl>
@@ -700,21 +702,21 @@ replaces the corresponding suffix.</p></li>
 <dd><p>Load prepared RHIME inputs from a NetCDF or Zarr artifact.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>file_path</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><em>Path</em></a>) – Prepared-input artifact previously written by <code class="docutils literal notranslate"><span class="pre">save</span></code>.</p>
+<dd class="field-odd"><p><strong>file_path</strong> (<em>str</em><em> | </em><em>Path</em>) – Prepared-input artifact previously written by <code class="docutils literal notranslate"><span class="pre">save</span></code>.</p>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>Fully loaded prepared RHIME inputs with no open file handles.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#OSError" title="(in Python v3.14)"><strong>OSError</strong></a> – If the artifact cannot be opened.</p></li>
-<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#RuntimeError" title="(in Python v3.14)"><strong>RuntimeError</strong></a> – If all available storage backends fail at runtime.</p></li>
-<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If the artifact schema or metadata is invalid.</p></li>
-<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#KeyError" title="(in Python v3.14)"><strong>KeyError</strong></a> – If a required child node is missing.</p></li>
+<li><p><strong>OSError</strong> – If the artifact cannot be opened.</p></li>
+<li><p><strong>RuntimeError</strong> – If all available storage backends fail at runtime.</p></li>
+<li><p><strong>ValueError</strong> – If the artifact schema or metadata is invalid.</p></li>
+<li><p><strong>KeyError</strong> – If a required child node is missing.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Self" title="(in Python v3.14)"><em>Self</em></a></p>
+<dd class="field-even"><p><em>Self</em></p>
 </dd>
 </dl>
 </dd></dl>
@@ -724,12 +726,12 @@ replaces the corresponding suffix.</p></li>
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.inversion_data.preparation.RhimeMergedData">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">RhimeMergedData</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fp_all</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">site_options</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inversion_data.preparation.RhimeMergedData" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
 <p>Merged RHIME data and complete site-aligned metadata between stages.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>fp_all</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a>) – Merged per-site datasets plus shared flux, boundary-condition,
+<li><p><strong>fp_all</strong> (<em>dict</em>) – Merged per-site datasets plus shared flux, boundary-condition,
 and calibration entries.</p></li>
 <li><p><strong>site_options</strong> (<em>_SiteOptions</em>) – Complete site-aligned acquisition options retained after
 retrieval or filtering.</p></li>
@@ -742,19 +744,19 @@ backend-neutral and may be Dask-backed; later stages must treat them as
 borrowed.</p>
 <dl class="py property">
 <dt class="sig sig-object py" id="openghg_inversions.inversion_data.preparation.RhimeMergedData.sites">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">sites</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.inversion_data.preparation.RhimeMergedData.sites" title="Link to this definition">#</a></dt>
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">sites</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.inversion_data.preparation.RhimeMergedData.sites" title="Link to this definition">#</a></dt>
 <dd><p>Retained site names.</p>
 </dd></dl>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="openghg_inversions.inversion_data.preparation.RhimeMergedData.averaging_period">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">averaging_period</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.inversion_data.preparation.RhimeMergedData.averaging_period" title="Link to this definition">#</a></dt>
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">averaging_period</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.inversion_data.preparation.RhimeMergedData.averaging_period" title="Link to this definition">#</a></dt>
 <dd><p>Retained averaging periods aligned to <a class="reference internal" href="#openghg_inversions.inversion_data.preparation.RhimeMergedData.sites" title="openghg_inversions.inversion_data.preparation.RhimeMergedData.sites"><code class="xref py py-attr docutils literal notranslate"><span class="pre">sites</span></code></a>.</p>
 </dd></dl>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="openghg_inversions.inversion_data.preparation.RhimeMergedData.platform">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">platform</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.inversion_data.preparation.RhimeMergedData.platform" title="Link to this definition">#</a></dt>
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">platform</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.inversion_data.preparation.RhimeMergedData.platform" title="Link to this definition">#</a></dt>
 <dd><p>Retained observation platforms aligned to <a class="reference internal" href="#openghg_inversions.inversion_data.preparation.RhimeMergedData.sites" title="openghg_inversions.inversion_data.preparation.RhimeMergedData.sites"><code class="xref py py-attr docutils literal notranslate"><span class="pre">sites</span></code></a>.</p>
 </dd></dl>
 
@@ -824,48 +826,48 @@ used for sensitivity construction.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>species</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Primary gas or tracer name used for object-store lookup and
+<li><p><strong>species</strong> (<em>str</em>) – Primary gas or tracer name used for object-store lookup and
 output naming.</p></li>
-<li><p><strong>sites</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.14)"><em>list</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>]</em>) – Requested observation site names.</p></li>
-<li><p><strong>domain</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Model domain name.</p></li>
-<li><p><strong>averaging_period</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.14)"><em>Sequence</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em><em>] </em><em>| </em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Observation averaging period, either scalar or
+<li><p><strong>sites</strong> (<em>list</em><em>[</em><em>str</em><em>]</em>) – Requested observation site names.</p></li>
+<li><p><strong>domain</strong> (<em>str</em>) – Model domain name.</p></li>
+<li><p><strong>averaging_period</strong> (<em>Sequence</em><em>[</em><em>str</em><em> | </em><em>None</em><em>] </em><em>| </em><em>str</em><em> | </em><em>None</em>) – Observation averaging period, either scalar or
 site-aligned.</p></li>
-<li><p><strong>start_date</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Inclusive inversion start date.</p></li>
-<li><p><strong>end_date</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Exclusive inversion end date.</p></li>
-<li><p><strong>output_name</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Base output name used for data and basis artifacts.</p></li>
-<li><p><strong>flux_sources</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.14)"><em>list</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>]</em>) – OpenGHG flux <code class="docutils literal notranslate"><span class="pre">source</span></code> values requested for the run.</p></li>
-<li><p><strong>split_by_sectors</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – Whether to keep sector-resolved sensitivity inputs
+<li><p><strong>start_date</strong> (<em>str</em>) – Inclusive inversion start date.</p></li>
+<li><p><strong>end_date</strong> (<em>str</em>) – Exclusive inversion end date.</p></li>
+<li><p><strong>output_name</strong> (<em>str</em>) – Base output name used for data and basis artifacts.</p></li>
+<li><p><strong>flux_sources</strong> (<em>list</em><em>[</em><em>str</em><em>]</em>) – OpenGHG flux <code class="docutils literal notranslate"><span class="pre">source</span></code> values requested for the run.</p></li>
+<li><p><strong>split_by_sectors</strong> (<em>bool</em>) – Whether to keep sector-resolved sensitivity inputs
 with a <code class="docutils literal notranslate"><span class="pre">source</span></code> provenance coordinate. Semantic sector names are
 applied later by the model specification.</p></li>
-<li><p><strong>time_resolved</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.14)"><em>Sequence</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> | </em><em>None</em><em>] </em><em>| </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em> | </em><em>None</em>) – Footprint time-resolution selector, either scalar or
+<li><p><strong>time_resolved</strong> (<em>Sequence</em><em>[</em><em>bool</em><em> | </em><em>None</em><em>] </em><em>| </em><em>bool</em><em> | </em><em>None</em>) – Footprint time-resolution selector, either scalar or
 aligned to <code class="docutils literal notranslate"><span class="pre">sites</span></code>. <code class="docutils literal notranslate"><span class="pre">True</span></code> requests high-frequency footprints,
 <code class="docutils literal notranslate"><span class="pre">False</span></code> requests integrated footprints, and <code class="docutils literal notranslate"><span class="pre">None</span></code> leaves the
 store selection unspecified.</p></li>
-<li><p><strong>inlet</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.14)"><em>Sequence</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#slice" title="(in Python v3.14)"><em>slice</em></a><em> | </em><em>None</em><em>] </em><em>| </em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Inlet selector, either scalar or aligned to <code class="docutils literal notranslate"><span class="pre">sites</span></code>. Entries
+<li><p><strong>inlet</strong> (<em>Sequence</em><em>[</em><em>str</em><em> | </em><em>slice</em><em> | </em><em>None</em><em>] </em><em>| </em><em>str</em><em> | </em><em>None</em>) – Inlet selector, either scalar or aligned to <code class="docutils literal notranslate"><span class="pre">sites</span></code>. Entries
 may be strings, legacy <code class="docutils literal notranslate"><span class="pre">slice</span></code> selectors, or <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
-<li><p><strong>fp_height</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.14)"><em>Sequence</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em><em>] </em><em>| </em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Footprint inlet height, either scalar or aligned to
+<li><p><strong>fp_height</strong> (<em>Sequence</em><em>[</em><em>str</em><em> | </em><em>None</em><em>] </em><em>| </em><em>str</em><em> | </em><em>None</em>) – Footprint inlet height, either scalar or aligned to
 <code class="docutils literal notranslate"><span class="pre">sites</span></code>.</p></li>
-<li><p><strong>instrument</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.14)"><em>Sequence</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em><em>] </em><em>| </em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Observation instrument, either scalar or aligned to
+<li><p><strong>instrument</strong> (<em>Sequence</em><em>[</em><em>str</em><em> | </em><em>None</em><em>] </em><em>| </em><em>str</em><em> | </em><em>None</em>) – Observation instrument, either scalar or aligned to
 <code class="docutils literal notranslate"><span class="pre">sites</span></code>.</p></li>
-<li><p><strong>platform</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.14)"><em>Sequence</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em><em>] </em><em>| </em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Observation platform, either scalar or aligned to <code class="docutils literal notranslate"><span class="pre">sites</span></code>.</p></li>
-<li><p><strong>obs_data_level</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.14)"><em>Sequence</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em><em>] </em><em>| </em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Observation data level, either scalar or aligned to
+<li><p><strong>platform</strong> (<em>Sequence</em><em>[</em><em>str</em><em> | </em><em>None</em><em>] </em><em>| </em><em>str</em><em> | </em><em>None</em>) – Observation platform, either scalar or aligned to <code class="docutils literal notranslate"><span class="pre">sites</span></code>.</p></li>
+<li><p><strong>obs_data_level</strong> (<em>Sequence</em><em>[</em><em>str</em><em> | </em><em>None</em><em>] </em><em>| </em><em>str</em><em> | </em><em>None</em>) – Observation data level, either scalar or aligned to
 <code class="docutils literal notranslate"><span class="pre">sites</span></code>.</p></li>
-<li><p><strong>met_model</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.14)"><em>Sequence</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em><em>] </em><em>| </em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Footprint meteorological model, either scalar or aligned to
+<li><p><strong>met_model</strong> (<em>Sequence</em><em>[</em><em>str</em><em> | </em><em>None</em><em>] </em><em>| </em><em>str</em><em> | </em><em>None</em>) – Footprint meteorological model, either scalar or aligned to
 <code class="docutils literal notranslate"><span class="pre">sites</span></code>.</p></li>
-<li><p><strong>max_level</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.14)"><em>Sequence</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em> | </em><em>None</em><em>] </em><em>| </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em> | </em><em>None</em>) – Maximum column level, either scalar or aligned to <code class="docutils literal notranslate"><span class="pre">sites</span></code>.
+<li><p><strong>max_level</strong> (<em>Sequence</em><em>[</em><em>int</em><em> | </em><em>None</em><em>] </em><em>| </em><em>int</em><em> | </em><em>None</em>) – Maximum column level, either scalar or aligned to <code class="docutils literal notranslate"><span class="pre">sites</span></code>.
 Entries must be integers or <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
-<li><p><strong>outer_regions_path</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><em>Path</em></a><em> | </em><em>None</em>) – Optional direct path to the fixed outer-region map
+<li><p><strong>outer_regions_path</strong> (<em>str</em><em> | </em><em>Path</em><em> | </em><em>None</em>) – Optional direct path to the fixed outer-region map
 used when <code class="docutils literal notranslate"><span class="pre">fix_basis_outer_regions</span></code> is true.</p></li>
-<li><p><strong>emissions_domain</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Optional flux-domain metadata selector. If it differs
+<li><p><strong>emissions_domain</strong> (<em>str</em><em> | </em><em>None</em>) – Optional flux-domain metadata selector. If it differs
 from <code class="docutils literal notranslate"><span class="pre">domain</span></code>, flux is interpolated onto the footprint grid.</p></li>
-<li><p><strong>min_error</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><em>Literal</em></a><em>[</em><em>'percentile'</em><em>, </em><em>'residual'</em><em>] </em><em>| </em><em>dict</em><em>[</em><em>str</em><em>, </em><em>float</em><em>] </em><em>| </em><em>None</em><em> | </em><em>int</em><em> | </em><em>float</em>) – Numeric minimum error or <code class="docutils literal notranslate"><span class="pre">&quot;residual&quot;</span></code>/<code class="docutils literal notranslate"><span class="pre">&quot;percentile&quot;</span></code>
+<li><p><strong>min_error</strong> (<em>Literal</em><em>[</em><em>'percentile'</em><em>, </em><em>'residual'</em><em>] </em><em>| </em><em>dict</em><em>[</em><em>str</em><em>, </em><em>float</em><em>] </em><em>| </em><em>None</em><em> | </em><em>int</em><em> | </em><em>float</em>) – Numeric minimum error or <code class="docutils literal notranslate"><span class="pre">&quot;residual&quot;</span></code>/<code class="docutils literal notranslate"><span class="pre">&quot;percentile&quot;</span></code>
 calculation method.</p></li>
-<li><p><strong>min_error_options</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.14)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Calculated minimum-error options. The only supported
+<li><p><strong>min_error_options</strong> (<em>Mapping</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>] </em><em>| </em><em>None</em>) – Calculated minimum-error options. The only supported
 key is boolean <code class="docutils literal notranslate"><span class="pre">by_site</span></code>.</p></li>
-<li><p><strong>use_tracer</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – Unsupported placeholder for tracer inversions, where an
+<li><p><strong>use_tracer</strong> (<em>bool</em>) – Unsupported placeholder for tracer inversions, where an
 additional species constrains the primary species through linked
 forward models.</p></li>
-<li><p><strong>flux_non_finite_check</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><em>Literal</em></a><em>[</em><em>'lazy'</em><em>, </em><em>'count'</em><em>]</em>) – Non-finite flux handling mode. <code class="docutils literal notranslate"><span class="pre">&quot;lazy&quot;</span></code>
+<li><p><strong>flux_non_finite_check</strong> (<em>Literal</em><em>[</em><em>'lazy'</em><em>, </em><em>'count'</em><em>]</em>) – Non-finite flux handling mode. <code class="docutils literal notranslate"><span class="pre">&quot;lazy&quot;</span></code>
 applies zero-fill lazily and records attrs; <code class="docutils literal notranslate"><span class="pre">&quot;count&quot;</span></code> computes
 count metadata once and warns if non-finite values are present.</p></li>
 </ul>
@@ -875,7 +877,7 @@ count metadata once and warns if non-finite values are present.</p></li>
 retained <code class="docutils literal notranslate"><span class="pre">BasisFunctions</span></code> object.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If site options are empty, duplicated, misaligned, or have
+<dd class="field-odd"><p><strong>ValueError</strong> – If site options are empty, duplicated, misaligned, or have
     invalid types, or if minimum-error options are invalid.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>

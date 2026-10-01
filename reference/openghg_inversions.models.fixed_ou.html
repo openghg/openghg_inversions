@@ -365,6 +365,7 @@
 </details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.postprocessing.html">openghg_inversions.postprocessing</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.co2_flux_outputs.html">openghg_inversions.postprocessing.co2_flux_outputs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.contracts.html">openghg_inversions.postprocessing.contracts</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.countries.html">openghg_inversions.postprocessing.countries</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.diagnostics.html">openghg_inversions.postprocessing.diagnostics</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.inversion_output.html">openghg_inversions.postprocessing.inversion_output</a></li>
@@ -374,6 +375,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.make_paris_outputs.html">openghg_inversions.postprocessing.make_paris_outputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.merge_paris_outputs.html">openghg_inversions.postprocessing.merge_paris_outputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.nested_paris_outputs.html">openghg_inversions.postprocessing.nested_paris_outputs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.output_views.html">openghg_inversions.postprocessing.output_views</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.sigma.html">openghg_inversions.postprocessing.sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.stats.html">openghg_inversions.postprocessing.stats</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.utils.html">openghg_inversions.postprocessing.utils</a></li>
@@ -502,7 +504,7 @@
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.models.fixed_ou.FixedOuSiteBlock">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">FixedOuSiteBlock</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">site</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">observation_indices</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">correlation_cholesky</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.fixed_ou.FixedOuSiteBlock" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
 <p>Precomputed generalized eigenbasis for one site’s fixed OU template.</p>
 <dl class="field-list simple">
 </dl>
@@ -511,7 +513,7 @@
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.models.fixed_ou.FixedOuLikelihoodEvaluation">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">FixedOuLikelihoodEvaluation</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">log_likelihood</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gradient_residual</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gradient_site_amplitude</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.fixed_ou.FixedOuLikelihoodEvaluation" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
 <p>One exact likelihood value and its physical-space gradients.</p>
 <dl class="field-list simple">
 </dl>
@@ -520,7 +522,7 @@
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.models.fixed_ou.FixedOuCovarianceSolve">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">FixedOuCovarianceSolve</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">solution</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">logdet</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.fixed_ou.FixedOuCovarianceSolve" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
 <p>One explicit factorization-and-solve of the prepared covariance.</p>
 <dl class="field-list simple">
 </dl>
@@ -545,7 +547,7 @@
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.fixed_ou.FixedOuLowRank" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
 <p>Exact fixed-OU target with a diagonal-plus-low-rank fixed covariance.</p>
 <p>The eager constructor precomputes one generalized eigenbasis per site.
 <a class="reference internal" href="#openghg_inversions.models.fixed_ou.FixedOuLowRank.logp" title="openghg_inversions.models.fixed_ou.FixedOuLowRank.logp"><code class="xref py py-meth docutils literal notranslate"><span class="pre">logp()</span></code></a> then evaluates changing site amplitudes through an <code class="docutils literal notranslate"><span class="pre">r</span> <span class="pre">x</span> <span class="pre">r</span></code>
@@ -554,19 +556,19 @@ Woodbury system, where <code class="docutils literal notranslate"><span class="p
 </dl>
 <dl class="py property">
 <dt class="sig sig-object py" id="openghg_inversions.models.fixed_ou.FixedOuLowRank.n_observation">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">n_observation</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><a class="headerlink" href="#openghg_inversions.models.fixed_ou.FixedOuLowRank.n_observation" title="Link to this definition">#</a></dt>
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">n_observation</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><a class="headerlink" href="#openghg_inversions.models.fixed_ou.FixedOuLowRank.n_observation" title="Link to this definition">#</a></dt>
 <dd><p>Number of observation rows.</p>
 </dd></dl>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="openghg_inversions.models.fixed_ou.FixedOuLowRank.n_site">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">n_site</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><a class="headerlink" href="#openghg_inversions.models.fixed_ou.FixedOuLowRank.n_site" title="Link to this definition">#</a></dt>
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">n_site</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><a class="headerlink" href="#openghg_inversions.models.fixed_ou.FixedOuLowRank.n_site" title="Link to this definition">#</a></dt>
 <dd><p>Number of independently scaled sites.</p>
 </dd></dl>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="openghg_inversions.models.fixed_ou.FixedOuLowRank.rank">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">rank</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><a class="headerlink" href="#openghg_inversions.models.fixed_ou.FixedOuLowRank.rank" title="Link to this definition">#</a></dt>
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">rank</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><a class="headerlink" href="#openghg_inversions.models.fixed_ou.FixedOuLowRank.rank" title="Link to this definition">#</a></dt>
 <dd><p>Rank of the fixed coherent covariance factor.</p>
 </dd></dl>
 
@@ -592,14 +594,14 @@ variances are rejected before applying the low-rank update.</p>
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>residual</strong> (<em>ArrayLike</em>) – Observation-minus-mean vector with one value per row.</p></li>
-<li><p><strong>site_amplitude</strong> (<em>ArrayLike</em><em> | </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a>) – Non-negative amplitude for each retained site.</p></li>
+<li><p><strong>site_amplitude</strong> (<em>ArrayLike</em><em> | </em><em>float</em>) – Non-negative amplitude for each retained site.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>Log likelihood plus residual and site-amplitude gradients.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If either input has the wrong shape.</p>
+<dd class="field-odd"><p><strong>ValueError</strong> – If either input has the wrong shape.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><a class="reference internal" href="#openghg_inversions.models.fixed_ou.FixedOuLikelihoodEvaluation" title="openghg_inversions.models.fixed_ou.FixedOuLikelihoodEvaluation"><em>FixedOuLikelihoodEvaluation</em></a></p>

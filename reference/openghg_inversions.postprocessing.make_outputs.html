@@ -365,6 +365,7 @@
 </details></li>
 <li class="toctree-l2 current active has-children"><a class="reference internal" href="openghg_inversions.postprocessing.html">openghg_inversions.postprocessing</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.co2_flux_outputs.html">openghg_inversions.postprocessing.co2_flux_outputs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.contracts.html">openghg_inversions.postprocessing.contracts</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.countries.html">openghg_inversions.postprocessing.countries</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.diagnostics.html">openghg_inversions.postprocessing.diagnostics</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.inversion_output.html">openghg_inversions.postprocessing.inversion_output</a></li>
@@ -374,6 +375,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.make_paris_outputs.html">openghg_inversions.postprocessing.make_paris_outputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.merge_paris_outputs.html">openghg_inversions.postprocessing.merge_paris_outputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.nested_paris_outputs.html">openghg_inversions.postprocessing.nested_paris_outputs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.output_views.html">openghg_inversions.postprocessing.output_views</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.sigma.html">openghg_inversions.postprocessing.sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.stats.html">openghg_inversions.postprocessing.stats</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.utils.html">openghg_inversions.postprocessing.utils</a></li>
@@ -501,25 +503,25 @@
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.postprocessing.make_outputs.OutputSector">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">OutputSector</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">flux_source</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">variable_suffix</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.postprocessing.make_outputs.OutputSector" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.NamedTuple" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">NamedTuple</span></code></a></p>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">NamedTuple</span></code></p>
 <p>Sector metadata needed for postprocessing reconstruction.</p>
 <dl class="field-list simple">
 </dl>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="openghg_inversions.postprocessing.make_outputs.OutputSector.name">
-<span class="sig-name descname"><span class="pre">name</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><a class="headerlink" href="#openghg_inversions.postprocessing.make_outputs.OutputSector.name" title="Link to this definition">#</a></dt>
+<span class="sig-name descname"><span class="pre">name</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><a class="headerlink" href="#openghg_inversions.postprocessing.make_outputs.OutputSector.name" title="Link to this definition">#</a></dt>
 <dd><p>Alias for field number 0</p>
 </dd></dl>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="openghg_inversions.postprocessing.make_outputs.OutputSector.flux_source">
-<span class="sig-name descname"><span class="pre">flux_source</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><a class="headerlink" href="#openghg_inversions.postprocessing.make_outputs.OutputSector.flux_source" title="Link to this definition">#</a></dt>
+<span class="sig-name descname"><span class="pre">flux_source</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><a class="headerlink" href="#openghg_inversions.postprocessing.make_outputs.OutputSector.flux_source" title="Link to this definition">#</a></dt>
 <dd><p>Alias for field number 1</p>
 </dd></dl>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="openghg_inversions.postprocessing.make_outputs.OutputSector.variable_suffix">
-<span class="sig-name descname"><span class="pre">variable_suffix</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><a class="headerlink" href="#openghg_inversions.postprocessing.make_outputs.OutputSector.variable_suffix" title="Link to this definition">#</a></dt>
+<span class="sig-name descname"><span class="pre">variable_suffix</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><a class="headerlink" href="#openghg_inversions.postprocessing.make_outputs.OutputSector.variable_suffix" title="Link to this definition">#</a></dt>
 <dd><p>Alias for field number 2</p>
 </dd></dl>
 
@@ -598,10 +600,10 @@
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>inv_out</strong> (<a class="reference internal" href="openghg_inversions.postprocessing.inversion_output.html#openghg_inversions.postprocessing.inversion_output.InversionOutput" title="openghg_inversions.postprocessing.inversion_output.InversionOutput"><em>InversionOutput</em></a>) – Inversion output containing multisector MCMC traces and retained
 basis functions.</p></li>
-<li><p><strong>report_flux_on_inversion_grid</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – If true, reconstruct values on the reduced
+<li><p><strong>report_flux_on_inversion_grid</strong> (<em>bool</em>) – If true, reconstruct values on the reduced
 inversion grid; otherwise include the sector prior flux on the
 latitude/longitude grid.</p></li>
-<li><p><strong>materialize</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – If true, convert the completed trace to NumPy-backed arrays.
+<li><p><strong>materialize</strong> (<em>bool</em>) – If true, convert the completed trace to NumPy-backed arrays.
 Set this to false when a downstream labelled reduction can preserve
 lazy or sparse arrays. The default preserves the historical return
 boundary.</p></li>
@@ -611,7 +613,7 @@ boundary.</p></li>
 <dd class="field-even"><p>Per-draw total and sector flux traces with reconstruction metadata.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If <code class="docutils literal notranslate"><span class="pre">inv_out</span></code> is not multisector or lacks required sector
+<dd class="field-odd"><p><strong>ValueError</strong> – If <code class="docutils literal notranslate"><span class="pre">inv_out</span></code> is not multisector or lacks required sector
     metadata or trace variables.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -643,7 +645,7 @@ per year. Variables are named <code class="docutils literal notranslate"><span c
 <code class="docutils literal notranslate"><span class="pre">country_total_&lt;when&gt;</span></code> variables.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If the inversion is not multisector or required sector or
+<dd class="field-odd"><p><strong>ValueError</strong> – If the inversion is not multisector or required sector or
     species metadata is missing.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -691,20 +693,20 @@ per year. Variables are named <code class="docutils literal notranslate"><span c
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>inv_out</strong> (<a class="reference internal" href="openghg_inversions.postprocessing.inversion_output.html#openghg_inversions.postprocessing.inversion_output.InversionOutput" title="openghg_inversions.postprocessing.inversion_output.InversionOutput"><em>InversionOutput</em></a>) – Inversion output containing MCMC traces.</p></li>
-<li><p><strong>stats</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.14)"><em>list</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>] </em><em>| </em><em>None</em>) – List of stats to use. If None, the default for
+<li><p><strong>stats</strong> (<em>list</em><em>[</em><em>str</em><em>] </em><em>| </em><em>None</em>) – List of stats to use. If None, the default for
 calculate_stats is used, which is “mean” and “quantiles”. See the
 postprocessing.stats submodule for more options.</p></li>
-<li><p><strong>stats_args</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em> | </em><em>None</em>) – Dict of arguments to be passed to stats functions. If a key
+<li><p><strong>stats_args</strong> (<em>dict</em><em> | </em><em>None</em>) – Dict of arguments to be passed to stats functions. If a key
 in this dict is the name of an argument for a stats function, then the
 value for this key will be passed to the stats function. To pass an
 option to a specific stats function, write the key in the form “&lt;stat
 function name&gt;__&lt;key&gt;”, with a double underscore.
 For instance, stats_args = {“mode_kde__chunk_size”: 20} would pass the
 argument chunk_size = 20 to the stat function mode_kde, and no others.</p></li>
-<li><p><strong>include_scale_factors</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – If True, report stats for scale factors, in
+<li><p><strong>include_scale_factors</strong> (<em>bool</em>) – If True, report stats for scale factors, in
 addition to stats for fluxes (which are calculated by transforming the
 scale factor stats to the lat/lon grid using the prior flux).</p></li>
-<li><p><strong>report_flux_on_inversion_grid</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – If True, report fluxes by basis function,
+<li><p><strong>report_flux_on_inversion_grid</strong> (<em>bool</em>) – If True, report fluxes by basis function,
 without incorporating the prior flux. Note: we do not actually optimise
 for this quantity, since the prior flux is used in the forward model.</p></li>
 </ul>
@@ -759,17 +761,17 @@ for this quantity, since the prior flux is used in the forward model.</p></li>
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>inv_out</strong> (<a class="reference internal" href="openghg_inversions.postprocessing.inversion_output.html#openghg_inversions.postprocessing.inversion_output.InversionOutput" title="openghg_inversions.postprocessing.inversion_output.InversionOutput"><em>InversionOutput</em></a>) – Inversion output containing MCMC traces.</p></li>
-<li><p><strong>stats</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.14)"><em>list</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>] </em><em>| </em><em>None</em>) – List of stats to use. If None, the default for
+<li><p><strong>stats</strong> (<em>list</em><em>[</em><em>str</em><em>] </em><em>| </em><em>None</em>) – List of stats to use. If None, the default for
 calculate_stats is used, which is “mean” and “quantiles”. See the
 postprocessing.stats submodule for more options.</p></li>
-<li><p><strong>stats_args</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em> | </em><em>None</em>) – Dict of arguments to be passed to stats functions. If a key
+<li><p><strong>stats_args</strong> (<em>dict</em><em> | </em><em>None</em>) – Dict of arguments to be passed to stats functions. If a key
 in this dict is the name of an argument for a stats function, then the
 value for this key will be passed to the stats function. To pass an
 option to a specific stats function, write the key in the form “&lt;stat
 function name&gt;__&lt;key&gt;”, with a double underscore.
 For instance, stats_args = {“mode_kde__chunk_size”: 20} would pass the
 argument chunk_size = 20 to the stat function mode_kde, and no others.</p></li>
-<li><p><strong>combine_bc_and_offset</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – If true, report the current PARIS baseline
+<li><p><strong>combine_bc_and_offset</strong> (<em>bool</em>) – If true, report the current PARIS baseline
 convention: boundary plus offset. A declared complete baseline is
 used only when no separate boundary is available.</p></li>
 </ul>
@@ -803,24 +805,24 @@ used only when no separate boundary is available.</p></li>
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>inv_out</strong> (<a class="reference internal" href="openghg_inversions.postprocessing.inversion_output.html#openghg_inversions.postprocessing.inversion_output.InversionOutput" title="openghg_inversions.postprocessing.inversion_output.InversionOutput"><em>InversionOutput</em></a>) – Inversion output containing MCMC traces.</p></li>
-<li><p><strong>country_file</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><em>Path</em></a><em> | </em><em>None</em>) – Path to country definition file. If None, the default
+<li><p><strong>country_file</strong> (<em>str</em><em> | </em><em>Path</em><em> | </em><em>None</em>) – Path to country definition file. If None, the default
 country file location and the domain of the inversion output will be used
 to try to find a suitable country file.</p></li>
-<li><p><strong>country_selections</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.14)"><em>list</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>] </em><em>| </em><em>None</em>) – Optional country names or country codes to report.</p></li>
-<li><p><strong>country_regions</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><em>Path</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.14)"><em>list</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>]</em><em>] </em><em>| </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><em>Literal</em></a><em>[</em><em>'paris'</em><em>] </em><em>| </em><em>None</em>) – Dict mapping country region names (e.g. “BENELUX”) to a
+<li><p><strong>country_selections</strong> (<em>list</em><em>[</em><em>str</em><em>] </em><em>| </em><em>None</em>) – Optional country names or country codes to report.</p></li>
+<li><p><strong>country_regions</strong> (<em>str</em><em> | </em><em>Path</em><em> | </em><em>dict</em><em>[</em><em>str</em><em>, </em><em>list</em><em>[</em><em>str</em><em>]</em><em>] </em><em>| </em><em>Literal</em><em>[</em><em>'paris'</em><em>] </em><em>| </em><em>None</em>) – Dict mapping country region names (e.g. “BENELUX”) to a
 list of (country codes) of the countries comprising that regions (e.g.
 [“BEL”, “NLD”, “LUX”]).</p></li>
-<li><p><strong>stats</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.14)"><em>list</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>] </em><em>| </em><em>None</em>) – List of stats to use. If None, the default for
+<li><p><strong>stats</strong> (<em>list</em><em>[</em><em>str</em><em>] </em><em>| </em><em>None</em>) – List of stats to use. If None, the default for
 calculate_stats is used, which is “mean” and “quantiles”. See the
 postprocessing.stats submodule for more options.</p></li>
-<li><p><strong>stats_args</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em> | </em><em>None</em>) – Dict of arguments to be passed to stats functions. If a key
+<li><p><strong>stats_args</strong> (<em>dict</em><em> | </em><em>None</em>) – Dict of arguments to be passed to stats functions. If a key
 in this dict is the name of an argument for a stats function, then the
 value for this key will be passed to the stats function. To pass an
 option to a specific stats function, write the key in the form “&lt;stat
 function name&gt;__&lt;key&gt;”, with a double underscore.
 For instance, stats_args = {“mode_kde__chunk_size”: 20} would pass the
 argument chunk_size = 20 to the stat function mode_kde, and no others.</p></li>
-<li><p><strong>country_code</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><em>Literal</em></a><em>[</em><em>'alpha2'</em><em>, </em><em>'alpha3'</em><em>] </em><em>| </em><em>None</em>) – If set to “alpha2” or “alpha3”, country names will be
+<li><p><strong>country_code</strong> (<em>Literal</em><em>[</em><em>'alpha2'</em><em>, </em><em>'alpha3'</em><em>] </em><em>| </em><em>None</em>) – If set to “alpha2” or “alpha3”, country names will be
 converted to two or three digit country codes, respectively. Country
 region definitions should use the same type of code as specified here.</p></li>
 </ul>
@@ -854,12 +856,12 @@ to create the model, like “H matrices” and the flux used.</p>
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>inv_out</strong> (<a class="reference internal" href="openghg_inversions.postprocessing.inversion_output.html#openghg_inversions.postprocessing.inversion_output.InversionOutput" title="openghg_inversions.postprocessing.inversion_output.InversionOutput"><em>InversionOutput</em></a>) – inversion output to process</p></li>
-<li><p><strong>country_file</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><em>Path</em></a><em> | </em><em>None</em>) – path to country file</p></li>
-<li><p><strong>country_regions</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><em>Path</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.14)"><em>list</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>]</em><em>] </em><em>| </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><em>Literal</em></a><em>[</em><em>'paris'</em><em>] </em><em>| </em><em>None</em>) – optional country regions to use. If “paris” is passed,</p></li>
+<li><p><strong>country_file</strong> (<em>str</em><em> | </em><em>Path</em><em> | </em><em>None</em>) – path to country file</p></li>
+<li><p><strong>country_regions</strong> (<em>str</em><em> | </em><em>Path</em><em> | </em><em>dict</em><em>[</em><em>str</em><em>, </em><em>list</em><em>[</em><em>str</em><em>]</em><em>] </em><em>| </em><em>Literal</em><em>[</em><em>'paris'</em><em>] </em><em>| </em><em>None</em>) – optional country regions to use. If “paris” is passed,</p></li>
 <li><p><strong>used.</strong> (<em>then the PARIS regions will be</em>)</p></li>
-<li><p><strong>stats</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.14)"><em>list</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>] </em><em>| </em><em>None</em>) – list of stats to use; if <cite>None</cite>, defaults to [“mean”,</p></li>
+<li><p><strong>stats</strong> (<em>list</em><em>[</em><em>str</em><em>] </em><em>| </em><em>None</em>) – list of stats to use; if <cite>None</cite>, defaults to [“mean”,</p></li>
 <li><p><strong>&quot;quantile&quot;</strong><strong>]</strong><strong>.</strong></p></li>
-<li><p><strong>stats_args</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em> | </em><em>None</em>) – optional arguments to pass to the stats functions.</p></li>
+<li><p><strong>stats_args</strong> (<em>dict</em><em> | </em><em>None</em>) – optional arguments to pass to the stats functions.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>

@@ -365,6 +365,7 @@
 </details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.postprocessing.html">openghg_inversions.postprocessing</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.co2_flux_outputs.html">openghg_inversions.postprocessing.co2_flux_outputs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.contracts.html">openghg_inversions.postprocessing.contracts</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.countries.html">openghg_inversions.postprocessing.countries</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.diagnostics.html">openghg_inversions.postprocessing.diagnostics</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.inversion_output.html">openghg_inversions.postprocessing.inversion_output</a></li>
@@ -374,6 +375,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.make_paris_outputs.html">openghg_inversions.postprocessing.make_paris_outputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.merge_paris_outputs.html">openghg_inversions.postprocessing.merge_paris_outputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.nested_paris_outputs.html">openghg_inversions.postprocessing.nested_paris_outputs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.output_views.html">openghg_inversions.postprocessing.output_views</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.sigma.html">openghg_inversions.postprocessing.sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.stats.html">openghg_inversions.postprocessing.stats</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.utils.html">openghg_inversions.postprocessing.utils</a></li>
@@ -518,7 +520,7 @@ these equations.</p>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.coherent_reduction.CoherentGaussianReduction" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
 <p>One exact, labelled native-to-retained Gaussian reduction.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Variables<span class="colon">:</span></dt>
@@ -533,7 +535,7 @@ perturbations to observations.</p></li>
 <li><p><strong>unresolved_observation_covariance</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>xarray.core.dataarray.DataArray</em></a>) – <code class="docutils literal notranslate"><span class="pre">A</span></code> on distinct observation row
 and column axes. It is a positive-semidefinite covariance up to
 floating-point roundoff.</p></li>
-<li><p><strong>projection_strategy</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Scientific strategy that selected <code class="docutils literal notranslate"><span class="pre">Pi</span></code>.</p></li>
+<li><p><strong>projection_strategy</strong> (<em>str</em>) – Scientific strategy that selected <code class="docutils literal notranslate"><span class="pre">Pi</span></code>.</p></li>
 </ul>
 </dd>
 </dl>
@@ -572,13 +574,13 @@ in the desired observation units.</p>
 <li><p><strong>covariance</strong> (<a class="reference internal" href="openghg_inversions.native_covariance.html#openghg_inversions.native_covariance.InvertibleNativeCovarianceAction" title="openghg_inversions.native_covariance.InvertibleNativeCovarianceAction"><em>InvertibleNativeCovarianceAction</em></a>) – Invertible labelled native covariance action <code class="docutils literal notranslate"><span class="pre">B</span></code>.</p></li>
 <li><p><strong>basis_prolongation</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Canonical labelled basis prolongation used by the
 retained projection strategy.</p></li>
-<li><p><strong>state_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Retained-state dimension shared by the prolongation and
+<li><p><strong>state_dim</strong> (<em>str</em>) – Retained-state dimension shared by the prolongation and
 restriction.</p></li>
 <li><p><strong>native_mean</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Dimensionless native scaling mean <code class="docutils literal notranslate"><span class="pre">m</span></code>.</p></li>
 <li><p><strong>native_sensitivity</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Native sensitivity <code class="docutils literal notranslate"><span class="pre">H</span></code> in canonical observation
 units.</p></li>
-<li><p><strong>observation_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Observation dimension in <code class="docutils literal notranslate"><span class="pre">native_sensitivity</span></code>.</p></li>
-<li><p><strong>observation_batch_size</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a>) – Covariance right-hand-side batch size.</p></li>
+<li><p><strong>observation_dim</strong> (<em>str</em>) – Observation dimension in <code class="docutils literal notranslate"><span class="pre">native_sensitivity</span></code>.</p></li>
+<li><p><strong>observation_batch_size</strong> (<em>int</em>) – Covariance right-hand-side batch size.</p></li>
 <li><p><strong>strategy</strong> (<a class="reference internal" href="openghg_inversions.basis.covariance_products.html#openghg_inversions.basis.covariance_products.RetainedProjectionStrategy" title="openghg_inversions.basis.covariance_products.RetainedProjectionStrategy"><em>RetainedProjectionStrategy</em></a><em> | </em><em>None</em>) – Optional authoritative retained restriction strategy.</p></li>
 </ul>
 </dd>
@@ -587,7 +589,7 @@ units.</p></li>
 observation covariance.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If xarray cannot transpose or exactly align the labelled
+<dd class="field-odd"><p><strong>ValueError</strong> – If xarray cannot transpose or exactly align the labelled
     inputs, or if covariance-product construction fails.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>

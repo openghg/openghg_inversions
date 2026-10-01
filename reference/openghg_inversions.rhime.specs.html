@@ -365,6 +365,7 @@
 </details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.postprocessing.html">openghg_inversions.postprocessing</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.co2_flux_outputs.html">openghg_inversions.postprocessing.co2_flux_outputs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.contracts.html">openghg_inversions.postprocessing.contracts</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.countries.html">openghg_inversions.postprocessing.countries</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.diagnostics.html">openghg_inversions.postprocessing.diagnostics</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.inversion_output.html">openghg_inversions.postprocessing.inversion_output</a></li>
@@ -374,6 +375,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.make_paris_outputs.html">openghg_inversions.postprocessing.make_paris_outputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.merge_paris_outputs.html">openghg_inversions.postprocessing.merge_paris_outputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.nested_paris_outputs.html">openghg_inversions.postprocessing.nested_paris_outputs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.output_views.html">openghg_inversions.postprocessing.output_views</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.sigma.html">openghg_inversions.postprocessing.sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.stats.html">openghg_inversions.postprocessing.stats</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.utils.html">openghg_inversions.postprocessing.utils</a></li>
@@ -513,25 +515,25 @@
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.specs.PollutionEventSettings" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
 <p>Serializable settings for pollution-event-scaled model error.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>sigma_prior</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Prior for the observation-aligned fractional model error.</p></li>
-<li><p><strong>sigma_freq</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Frequency of the latent model-error periods. <code class="docutils literal notranslate"><span class="pre">None</span></code> uses
+<li><p><strong>sigma_prior</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>] </em><em>| </em><em>None</em>) – Prior for the observation-aligned fractional model error.</p></li>
+<li><p><strong>sigma_freq</strong> (<em>str</em><em> | </em><em>None</em>) – Frequency of the latent model-error periods. <code class="docutils literal notranslate"><span class="pre">None</span></code> uses
 one period.</p></li>
-<li><p><strong>sigma_per_site</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – Whether model error varies by observation site.</p></li>
-<li><p><strong>sigma_freq_anchor</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/datetime.html#datetime.datetime" title="(in Python v3.14)"><em>datetime</em></a><em> | </em><a class="reference external" href="https://numpy.org/doc/stable/reference/arrays.scalars.html#numpy.datetime64" title="(in NumPy v2.5)"><em>datetime64</em></a><em> | </em><em>Timestamp</em><em> | </em><em>None</em>) – Optional anchor for fixed-duration periods.</p></li>
-<li><p><strong>pollution_events_from_obs</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – Derive pollution events from observations
+<li><p><strong>sigma_per_site</strong> (<em>bool</em>) – Whether model error varies by observation site.</p></li>
+<li><p><strong>sigma_freq_anchor</strong> (<em>str</em><em> | </em><em>datetime</em><em> | </em><a class="reference external" href="https://numpy.org/doc/stable/reference/arrays.scalars.html#numpy.datetime64" title="(in NumPy v2.5)"><em>datetime64</em></a><em> | </em><em>Timestamp</em><em> | </em><em>None</em>) – Optional anchor for fixed-duration periods.</p></li>
+<li><p><strong>pollution_events_from_obs</strong> (<em>bool</em>) – Derive pollution events from observations
 after removing the baseline instead of from modelled pollution.</p></li>
-<li><p><strong>power</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><em>Any</em></a><em>] </em><em>| </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a>) – Exponent or prior used in pollution-event error scaling.</p></li>
+<li><p><strong>power</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>] </em><em>| </em><em>float</em>) – Exponent or prior used in pollution-event error scaling.</p></li>
 </ul>
 </dd>
 </dl>
 <dl class="py property">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.specs.PollutionEventSettings.required_prepared_inputs">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">required_prepared_inputs</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.rhime.specs.PollutionEventSettings.required_prepared_inputs" title="Link to this definition">#</a></dt>
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">required_prepared_inputs</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.rhime.specs.PollutionEventSettings.required_prepared_inputs" title="Link to this definition">#</a></dt>
 <dd><p>Return prepared arrays owned by this likelihood.</p>
 </dd></dl>
 
@@ -550,24 +552,24 @@ after removing the baseline instead of from modelled pollution.</p></li>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.specs.AdditiveSigmaSettings" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
 <p>Serializable settings for additive model-data-mismatch error.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>sigma_prior</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Prior for the additive model-error standard deviation.</p></li>
-<li><p><strong>sigma_freq</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Frequency of the latent model-error periods. <code class="docutils literal notranslate"><span class="pre">None</span></code> uses
+<li><p><strong>sigma_prior</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>] </em><em>| </em><em>None</em>) – Prior for the additive model-error standard deviation.</p></li>
+<li><p><strong>sigma_freq</strong> (<em>str</em><em> | </em><em>None</em>) – Frequency of the latent model-error periods. <code class="docutils literal notranslate"><span class="pre">None</span></code> uses
 one period.</p></li>
-<li><p><strong>sigma_per_site</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – Whether model error varies by observation site.</p></li>
-<li><p><strong>sigma_freq_anchor</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/datetime.html#datetime.datetime" title="(in Python v3.14)"><em>datetime</em></a><em> | </em><a class="reference external" href="https://numpy.org/doc/stable/reference/arrays.scalars.html#numpy.datetime64" title="(in NumPy v2.5)"><em>datetime64</em></a><em> | </em><em>Timestamp</em><em> | </em><em>None</em>) – Optional anchor for fixed-duration periods.</p></li>
-<li><p><strong>use_minimum_error_floor</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – Apply the prepared historical minimum total-
+<li><p><strong>sigma_per_site</strong> (<em>bool</em>) – Whether model error varies by observation site.</p></li>
+<li><p><strong>sigma_freq_anchor</strong> (<em>str</em><em> | </em><em>datetime</em><em> | </em><a class="reference external" href="https://numpy.org/doc/stable/reference/arrays.scalars.html#numpy.datetime64" title="(in NumPy v2.5)"><em>datetime64</em></a><em> | </em><em>Timestamp</em><em> | </em><em>None</em>) – Optional anchor for fixed-duration periods.</p></li>
+<li><p><strong>use_minimum_error_floor</strong> (<em>bool</em>) – Apply the prepared historical minimum total-
 error floor.</p></li>
 </ul>
 </dd>
 </dl>
 <dl class="py property">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.specs.AdditiveSigmaSettings.required_prepared_inputs">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">required_prepared_inputs</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.rhime.specs.AdditiveSigmaSettings.required_prepared_inputs" title="Link to this definition">#</a></dt>
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">required_prepared_inputs</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.rhime.specs.AdditiveSigmaSettings.required_prepared_inputs" title="Link to this definition">#</a></dt>
 <dd><p>Return prepared arrays owned by this likelihood.</p>
 </dd></dl>
 
@@ -576,13 +578,13 @@ error floor.</p></li>
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.specs.FixedErrorSettings">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">FixedErrorSettings</span></span><a class="headerlink" href="#openghg_inversions.rhime.specs.FixedErrorSettings" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
 <p>Serializable selection of reported observation error only.</p>
 <dl class="field-list simple">
 </dl>
 <dl class="py property">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.specs.FixedErrorSettings.required_prepared_inputs">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">required_prepared_inputs</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.rhime.specs.FixedErrorSettings.required_prepared_inputs" title="Link to this definition">#</a></dt>
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">required_prepared_inputs</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.rhime.specs.FixedErrorSettings.required_prepared_inputs" title="Link to this definition">#</a></dt>
 <dd><p>Return prepared arrays owned by this likelihood.</p>
 </dd></dl>
 
@@ -591,15 +593,15 @@ error floor.</p></li>
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.specs.SectorSpec">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">SectorSpec</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">flux_source</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">x_prior</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">variable_suffix</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">state_activity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.specs.SectorSpec" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
 <p>Configuration for one separately optimised flux sector.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>name</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – User-facing sector name.</p></li>
-<li><p><strong>flux_source</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – OpenGHG flux <code class="docutils literal notranslate"><span class="pre">source</span></code> used to retrieve this sector.</p></li>
-<li><p><strong>x_prior</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><em>Any</em></a><em>]</em>) – Prior specification for this sector’s flux scaling factors.</p></li>
-<li><p><strong>variable_suffix</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – PyMC-safe suffix used in multi-sector model variable
+<li><p><strong>name</strong> (<em>str</em>) – User-facing sector name.</p></li>
+<li><p><strong>flux_source</strong> (<em>str</em>) – OpenGHG flux <code class="docutils literal notranslate"><span class="pre">source</span></code> used to retrieve this sector.</p></li>
+<li><p><strong>x_prior</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em>) – Prior specification for this sector’s flux scaling factors.</p></li>
+<li><p><strong>variable_suffix</strong> (<em>str</em>) – PyMC-safe suffix used in multi-sector model variable
 names. Standard single-sector RHIME uses plain <code class="docutils literal notranslate"><span class="pre">x</span></code>/<code class="docutils literal notranslate"><span class="pre">mu</span></code> names.</p></li>
 <li><p><strong>state_activity</strong> (<a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.StateActivity" title="openghg_inversions.models.state_activity.StateActivity"><em>StateActivity</em></a><em> | </em><em>None</em>) – Optional labelled active/fixed policy for this sector’s
 flux-scaling states. <code class="docutils literal notranslate"><span class="pre">None</span></code> still applies the default flux policy,
@@ -630,26 +632,26 @@ fixing exactly-zero sensitivity columns to one.</p></li>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.specs.RhimeModelSpec" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
 <p>Scientific options used by the concrete RHIME model recipes.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>species</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Primary gas or tracer name used for object-store lookup and
+<li><p><strong>species</strong> (<em>str</em>) – Primary gas or tracer name used for object-store lookup and
 output naming.</p></li>
-<li><p><strong>domain</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Model domain name.</p></li>
-<li><p><strong>sectors</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><em>tuple</em></a><em>[</em><a class="reference internal" href="#openghg_inversions.rhime.specs.SectorSpec" title="openghg_inversions.rhime.specs.SectorSpec"><em>SectorSpec</em></a><em>, </em><em>...</em><em>]</em>) – Flux sectors included in the model. Each sector is optimized
+<li><p><strong>domain</strong> (<em>str</em>) – Model domain name.</p></li>
+<li><p><strong>sectors</strong> (<em>tuple</em><em>[</em><a class="reference internal" href="#openghg_inversions.rhime.specs.SectorSpec" title="openghg_inversions.rhime.specs.SectorSpec"><em>SectorSpec</em></a><em>, </em><em>...</em><em>]</em>) – Flux sectors included in the model. Each sector is optimized
 separately and is normally backed by one OpenGHG flux <code class="docutils literal notranslate"><span class="pre">source</span></code>.</p></li>
-<li><p><strong>use_bc</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – Whether boundary-condition scaling is included.</p></li>
+<li><p><strong>use_bc</strong> (<em>bool</em>) – Whether boundary-condition scaling is included.</p></li>
 <li><p><strong>likelihood</strong> (<a class="reference internal" href="#openghg_inversions.rhime.specs.PollutionEventSettings" title="openghg_inversions.rhime.specs.PollutionEventSettings"><em>PollutionEventSettings</em></a><em> | </em><a class="reference internal" href="#openghg_inversions.rhime.specs.AdditiveSigmaSettings" title="openghg_inversions.rhime.specs.AdditiveSigmaSettings"><em>AdditiveSigmaSettings</em></a><em> | </em><a class="reference internal" href="#openghg_inversions.rhime.specs.FixedErrorSettings" title="openghg_inversions.rhime.specs.FixedErrorSettings"><em>FixedErrorSettings</em></a><em> | </em><em>None</em>) – Resolved built-in likelihood settings, or <code class="docutils literal notranslate"><span class="pre">None</span></code> when a
 Python-only custom likelihood owns that step.</p></li>
-<li><p><strong>add_offset</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – Whether model-data offsets are included.</p></li>
-<li><p><strong>aggregation_error_mode</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><em>Literal</em></a><em>[</em><em>'auto'</em><em>, </em><em>'none'</em><em>, </em><em>'dense'</em><em>, </em><em>'low_rank'</em><em>, </em><em>'diagonal'</em><em>]</em>) – Fixed aggregation-error covariance
+<li><p><strong>add_offset</strong> (<em>bool</em>) – Whether model-data offsets are included.</p></li>
+<li><p><strong>aggregation_error_mode</strong> (<em>Literal</em><em>[</em><em>'auto'</em><em>, </em><em>'none'</em><em>, </em><em>'dense'</em><em>, </em><em>'low_rank'</em><em>, </em><em>'diagonal'</em><em>]</em>) – Fixed aggregation-error covariance
 representation. The default <code class="docutils literal notranslate"><span class="pre">&quot;none&quot;</span></code> preserves the ordinary
 model; other modes are an explicit opt-in.</p></li>
-<li><p><strong>bc_prior</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Prior specification for boundary-condition scaling factors.</p></li>
-<li><p><strong>offset_prior</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Prior specification for optional offsets.</p></li>
-<li><p><strong>offset_args</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Extra keyword arguments forwarded to the offset component.</p></li>
+<li><p><strong>bc_prior</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>] </em><em>| </em><em>None</em>) – Prior specification for boundary-condition scaling factors.</p></li>
+<li><p><strong>offset_prior</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>] </em><em>| </em><em>None</em>) – Prior specification for optional offsets.</p></li>
+<li><p><strong>offset_args</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>] </em><em>| </em><em>None</em>) – Extra keyword arguments forwarded to the offset component.</p></li>
 <li><p><strong>bc_state_activity</strong> (<a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.StateActivity" title="openghg_inversions.models.state_activity.StateActivity"><em>StateActivity</em></a><em> | </em><em>None</em>) – Optional active/fixed policy for the boundary-
 condition scaling vector. <code class="docutils literal notranslate"><span class="pre">None</span></code> preserves the ordinary fully
 sampled BC graph without zero pruning. Supplying a policy opts into
@@ -677,27 +679,27 @@ flux sectors. The default retains exact-zero pruning.</p></li>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.specs.RhimeOutputSpec" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
 <p>Output settings for a RHIME run.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>output_format</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><em>Literal</em></a><em>[</em><em>'none'</em><em>, </em><em>'inv_out'</em><em>, </em><em>'basic'</em><em>, </em><em>'paris'</em><em>, </em><em>'legacy'</em><em>]</em>) – Output mode. <code class="docutils literal notranslate"><span class="pre">&quot;inv_out&quot;</span></code> saves/returns the modern
+<li><p><strong>output_format</strong> (<em>Literal</em><em>[</em><em>'none'</em><em>, </em><em>'inv_out'</em><em>, </em><em>'basic'</em><em>, </em><em>'paris'</em><em>, </em><em>'legacy'</em><em>]</em>) – Output mode. <code class="docutils literal notranslate"><span class="pre">&quot;inv_out&quot;</span></code> saves/returns the modern
 inversion output, <code class="docutils literal notranslate"><span class="pre">&quot;basic&quot;</span></code> and <code class="docutils literal notranslate"><span class="pre">&quot;paris&quot;</span></code> additionally create
 derived outputs, <code class="docutils literal notranslate"><span class="pre">&quot;legacy&quot;</span></code> creates the old HBMCMC-compatible
 NetCDF product from modern RHIME output, and <code class="docutils literal notranslate"><span class="pre">&quot;none&quot;</span></code> skips
 output products.</p></li>
-<li><p><strong>output_path</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Directory for saved outputs.</p></li>
-<li><p><strong>output_name</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Base output name.</p></li>
-<li><p><strong>save_trace</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><em>Path</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – Trace save setting. If true, save to <code class="docutils literal notranslate"><span class="pre">output_path</span></code> using
+<li><p><strong>output_path</strong> (<em>str</em><em> | </em><em>None</em>) – Directory for saved outputs.</p></li>
+<li><p><strong>output_name</strong> (<em>str</em>) – Base output name.</p></li>
+<li><p><strong>save_trace</strong> (<em>str</em><em> | </em><em>Path</em><em> | </em><em>bool</em>) – Trace save setting. If true, save to <code class="docutils literal notranslate"><span class="pre">output_path</span></code> using
 the default trace file name; if a path, save there.</p></li>
-<li><p><strong>save_inversion_output</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><em>Path</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – Inversion-output save setting. Runner parameter
+<li><p><strong>save_inversion_output</strong> (<em>str</em><em> | </em><em>Path</em><em> | </em><em>bool</em>) – Inversion-output save setting. Runner parameter
 normalization defaults this to true for <code class="docutils literal notranslate"><span class="pre">output_format=&quot;inv_out&quot;</span></code>
 and false for derived product formats.</p></li>
-<li><p><strong>country_file</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Optional country mask file used by derived outputs.</p></li>
-<li><p><strong>paris_postprocessing_kwargs</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Extra keyword arguments for PARIS output
+<li><p><strong>country_file</strong> (<em>str</em><em> | </em><em>None</em>) – Optional country mask file used by derived outputs.</p></li>
+<li><p><strong>paris_postprocessing_kwargs</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>] </em><em>| </em><em>None</em>) – Extra keyword arguments for PARIS output
 creation.</p></li>
-<li><p><strong>output_filename_convention</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><em>Literal</em></a><em>[</em><em>'rhime'</em><em>, </em><em>'legacy'</em><em>]</em>) – Filename convention for derived products.
+<li><p><strong>output_filename_convention</strong> (<em>Literal</em><em>[</em><em>'rhime'</em><em>, </em><em>'legacy'</em><em>]</em>) – Filename convention for derived products.
 Direct RHIME runs use <code class="docutils literal notranslate"><span class="pre">&quot;rhime&quot;</span></code>. The <code class="docutils literal notranslate"><span class="pre">run_hbmcmc.py</span></code>
 compatibility shim uses <code class="docutils literal notranslate"><span class="pre">&quot;legacy&quot;</span></code> for old SLURM/config
 workflows.</p></li>
@@ -721,18 +723,18 @@ workflows.</p></li>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.specs.RhimeRunSpec" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
 <p>Top-level run metadata for a RHIME run.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>start_date</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Inclusive inversion start date.</p></li>
-<li><p><strong>end_date</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Exclusive inversion end date.</p></li>
-<li><p><strong>sites</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><em>tuple</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><em>...</em><em>]</em>) – Sites included after data preparation and filtering.</p></li>
-<li><p><strong>averaging_period</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><em>tuple</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em><em>, </em><em>...</em><em>]</em>) – Observation averaging period per retained site.</p></li>
+<li><p><strong>start_date</strong> (<em>str</em>) – Inclusive inversion start date.</p></li>
+<li><p><strong>end_date</strong> (<em>str</em>) – Exclusive inversion end date.</p></li>
+<li><p><strong>sites</strong> (<em>tuple</em><em>[</em><em>str</em><em>, </em><em>...</em><em>]</em>) – Sites included after data preparation and filtering.</p></li>
+<li><p><strong>averaging_period</strong> (<em>tuple</em><em>[</em><em>str</em><em> | </em><em>None</em><em>, </em><em>...</em><em>]</em>) – Observation averaging period per retained site.</p></li>
 <li><p><strong>model</strong> (<a class="reference internal" href="#openghg_inversions.rhime.specs.RhimeModelSpec" title="openghg_inversions.rhime.specs.RhimeModelSpec"><em>RhimeModelSpec</em></a>) – Mathematical model specification.</p></li>
 <li><p><strong>output</strong> (<a class="reference internal" href="#openghg_inversions.rhime.specs.RhimeOutputSpec" title="openghg_inversions.rhime.specs.RhimeOutputSpec"><em>RhimeOutputSpec</em></a>) – Output settings.</p></li>
-<li><p><strong>split_by_sectors</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – Whether flux data were prepared in sector-resolved
+<li><p><strong>split_by_sectors</strong> (<em>bool</em>) – Whether flux data were prepared in sector-resolved
 mode. Single-sector and multi-sector RHIME are runner/model modes;
 this flag records the prepared data layout.</p></li>
 </ul>
@@ -746,10 +748,10 @@ this flag records the prepared data layout.</p></li>
 <dd><p>Validate a RHIME output-format name.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>output_format</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Requested output-format name.</p>
+<dd class="field-odd"><p><strong>output_format</strong> (<em>str</em>) – Requested output-format name.</p>
 </dd>
 <dt class="field-even">Raises<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If the format is unsupported.</p>
+<dd class="field-even"><p><strong>ValueError</strong> – If the format is unsupported.</p>
 </dd>
 </dl>
 </dd></dl>
@@ -772,15 +774,15 @@ this flag records the prepared data layout.</p></li>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>output_format</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Requested output format.</p></li>
-<li><p><strong>output_path</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Optional default output directory.</p></li>
-<li><p><strong>save_trace</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><em>Path</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – Trace-save setting or explicit path.</p></li>
-<li><p><strong>save_inversion_output</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><em>Path</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – Inversion-output save setting or explicit path.</p></li>
-<li><p><strong>multisector</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – Whether the run is multisector.</p></li>
+<li><p><strong>output_format</strong> (<em>str</em>) – Requested output format.</p></li>
+<li><p><strong>output_path</strong> (<em>str</em><em> | </em><em>None</em>) – Optional default output directory.</p></li>
+<li><p><strong>save_trace</strong> (<em>str</em><em> | </em><em>Path</em><em> | </em><em>bool</em>) – Trace-save setting or explicit path.</p></li>
+<li><p><strong>save_inversion_output</strong> (<em>str</em><em> | </em><em>Path</em><em> | </em><em>bool</em>) – Inversion-output save setting or explicit path.</p></li>
+<li><p><strong>multisector</strong> (<em>bool</em>) – Whether the run is multisector.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Raises<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If the format is incompatible with the model or a required
+<dd class="field-even"><p><strong>ValueError</strong> – If the format is incompatible with the model or a required
     default output directory is absent.</p>
 </dd>
 </dl>
@@ -792,10 +794,10 @@ this flag records the prepared data layout.</p></li>
 <dd><p>Validate an output filename convention.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>output_filename_convention</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Requested filename convention.</p>
+<dd class="field-odd"><p><strong>output_filename_convention</strong> (<em>str</em>) – Requested filename convention.</p>
 </dd>
 <dt class="field-even">Raises<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If the convention is unsupported.</p>
+<dd class="field-even"><p><strong>ValueError</strong> – If the convention is unsupported.</p>
 </dd>
 </dl>
 </dd></dl>
@@ -822,22 +824,22 @@ this flag records the prepared data layout.</p></li>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>output_format</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Requested product format.</p></li>
-<li><p><strong>output_path</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Optional default output directory.</p></li>
-<li><p><strong>output_name</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Base name for generated artifacts.</p></li>
-<li><p><strong>save_trace</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><em>Path</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – Trace-save setting or explicit path.</p></li>
-<li><p><strong>save_inversion_output</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><em>Path</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – Inversion-output save setting or explicit path.</p></li>
-<li><p><strong>country_file</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Optional country mask for derived products.</p></li>
-<li><p><strong>paris_postprocessing_kwargs</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Optional PARIS product settings.</p></li>
-<li><p><strong>output_filename_convention</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Naming convention for derived files.</p></li>
-<li><p><strong>multisector</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – Whether the run is multisector.</p></li>
+<li><p><strong>output_format</strong> (<em>str</em>) – Requested product format.</p></li>
+<li><p><strong>output_path</strong> (<em>str</em><em> | </em><em>None</em>) – Optional default output directory.</p></li>
+<li><p><strong>output_name</strong> (<em>str</em>) – Base name for generated artifacts.</p></li>
+<li><p><strong>save_trace</strong> (<em>str</em><em> | </em><em>Path</em><em> | </em><em>bool</em>) – Trace-save setting or explicit path.</p></li>
+<li><p><strong>save_inversion_output</strong> (<em>str</em><em> | </em><em>Path</em><em> | </em><em>bool</em>) – Inversion-output save setting or explicit path.</p></li>
+<li><p><strong>country_file</strong> (<em>str</em><em> | </em><em>None</em>) – Optional country mask for derived products.</p></li>
+<li><p><strong>paris_postprocessing_kwargs</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>] </em><em>| </em><em>None</em>) – Optional PARIS product settings.</p></li>
+<li><p><strong>output_filename_convention</strong> (<em>str</em>) – Naming convention for derived files.</p></li>
+<li><p><strong>multisector</strong> (<em>bool</em>) – Whether the run is multisector.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>Validated immutable output specification.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If formats, paths, or model restrictions are inconsistent.</p>
+<dd class="field-odd"><p><strong>ValueError</strong> – If formats, paths, or model restrictions are inconsistent.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><a class="reference internal" href="#openghg_inversions.rhime.specs.RhimeOutputSpec" title="openghg_inversions.rhime.specs.RhimeOutputSpec"><em>RhimeOutputSpec</em></a></p>

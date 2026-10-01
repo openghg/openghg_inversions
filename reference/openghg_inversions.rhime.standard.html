@@ -365,6 +365,7 @@
 </details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.postprocessing.html">openghg_inversions.postprocessing</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.co2_flux_outputs.html">openghg_inversions.postprocessing.co2_flux_outputs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.contracts.html">openghg_inversions.postprocessing.contracts</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.countries.html">openghg_inversions.postprocessing.countries</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.diagnostics.html">openghg_inversions.postprocessing.diagnostics</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.inversion_output.html">openghg_inversions.postprocessing.inversion_output</a></li>
@@ -374,6 +375,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.make_paris_outputs.html">openghg_inversions.postprocessing.make_paris_outputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.merge_paris_outputs.html">openghg_inversions.postprocessing.merge_paris_outputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.nested_paris_outputs.html">openghg_inversions.postprocessing.nested_paris_outputs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.output_views.html">openghg_inversions.postprocessing.output_views</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.sigma.html">openghg_inversions.postprocessing.sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.stats.html">openghg_inversions.postprocessing.stats</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.utils.html">openghg_inversions.postprocessing.utils</a></li>
@@ -517,11 +519,11 @@ scientist can read or copy this module without reconstructing a pipeline.</p>
 <dd class="field-even"><p>Prepared variable names selected for coordinated materialization.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If a selected component’s required input is absent or its
+<dd class="field-odd"><p><strong>ValueError</strong> – If a selected component’s required input is absent or its
     aggregation-error representation is ambiguous.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)">tuple</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)">str</a>, …]</p>
+<dd class="field-even"><p>tuple[str, …]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -566,24 +568,24 @@ scientist can read or copy this module without reconstructing a pipeline.</p>
 <li><p><strong>aggregation_error</strong> (<a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.AggregationError" title="openghg_inversions.observation_error.AggregationError"><em>AggregationError</em></a>) – Validated fixed aggregation-error representation.</p></li>
 <li><p><strong>minimum_error</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a><em> | </em><em>None</em>) – Optional prepared minimum total-error floor.</p></li>
 <li><p><strong>likelihood_settings</strong> (<a class="reference internal" href="openghg_inversions.rhime.specs.html#openghg_inversions.rhime.specs.PollutionEventSettings" title="openghg_inversions.rhime.specs.PollutionEventSettings"><em>PollutionEventSettings</em></a><em> | </em><a class="reference internal" href="openghg_inversions.rhime.specs.html#openghg_inversions.rhime.specs.AdditiveSigmaSettings" title="openghg_inversions.rhime.specs.AdditiveSigmaSettings"><em>AdditiveSigmaSettings</em></a><em> | </em><a class="reference internal" href="openghg_inversions.rhime.specs.html#openghg_inversions.rhime.specs.FixedErrorSettings" title="openghg_inversions.rhime.specs.FixedErrorSettings"><em>FixedErrorSettings</em></a><em> | </em><em>None</em>) – Resolved built-in likelihood settings.</p></li>
-<li><p><strong>likelihood_builder</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Callable" title="(in Python v3.14)"><em>Callable</em></a><em>[</em><em>[</em><em>...</em><em>]</em><em>, </em><em>TensorVariable</em><em>] </em><em>| </em><em>None</em>) – Optional Python-only custom likelihood.</p></li>
-<li><p><strong>likelihood_kwargs</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.14)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Options for the custom likelihood.</p></li>
+<li><p><strong>likelihood_builder</strong> (<em>Callable</em><em>[</em><em>[</em><em>...</em><em>]</em><em>, </em><em>TensorVariable</em><em>] </em><em>| </em><em>None</em>) – Optional Python-only custom likelihood.</p></li>
+<li><p><strong>likelihood_kwargs</strong> (<em>Mapping</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>] </em><em>| </em><em>None</em>) – Options for the custom likelihood.</p></li>
 <li><p><strong>boundary_sensitivity</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a><em> | </em><em>None</em>) – Optional labelled boundary sensitivity matrix.</p></li>
-<li><p><strong>x_prior</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Prior specification for flux scaling factors.</p></li>
-<li><p><strong>bc_prior</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Prior specification for boundary-condition scaling factors.</p></li>
-<li><p><strong>offset_prior</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Prior specification for optional offsets.</p></li>
-<li><p><strong>add_offset</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – Whether to include an offset term.</p></li>
-<li><p><strong>use_bc</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – Whether to include boundary-condition terms.</p></li>
-<li><p><strong>offset_args</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em> | </em><em>None</em>) – Extra keyword arguments for the offset component.</p></li>
+<li><p><strong>x_prior</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>] </em><em>| </em><em>None</em>) – Prior specification for flux scaling factors.</p></li>
+<li><p><strong>bc_prior</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>] </em><em>| </em><em>None</em>) – Prior specification for boundary-condition scaling factors.</p></li>
+<li><p><strong>offset_prior</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>] </em><em>| </em><em>None</em>) – Prior specification for optional offsets.</p></li>
+<li><p><strong>add_offset</strong> (<em>bool</em>) – Whether to include an offset term.</p></li>
+<li><p><strong>use_bc</strong> (<em>bool</em>) – Whether to include boundary-condition terms.</p></li>
+<li><p><strong>offset_args</strong> (<em>dict</em><em> | </em><em>None</em>) – Extra keyword arguments for the offset component.</p></li>
 <li><p><strong>state_activity</strong> (<a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.StateActivity" title="openghg_inversions.models.state_activity.StateActivity"><em>StateActivity</em></a><em> | </em><em>None</em>) – Optional active/fixed flux-state policy.</p></li>
 <li><p><strong>bc_state_activity</strong> (<a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.StateActivity" title="openghg_inversions.models.state_activity.StateActivity"><em>StateActivity</em></a><em> | </em><em>None</em>) – Optional active/fixed boundary-state policy.</p></li>
-<li><p><strong>preserve_legacy_likelihood</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – Whether to preserve <code class="docutils literal notranslate"><span class="pre">run_hbmcmc</span></code>’s
+<li><p><strong>preserve_legacy_likelihood</strong> (<em>bool</em>) – Whether to preserve <code class="docutils literal notranslate"><span class="pre">run_hbmcmc</span></code>’s
 boundary-only pollution event and unused <code class="docutils literal notranslate"><span class="pre">sigma</span></code> variable.</p></li>
 <li><p><strong>sigma_alignment</strong> (<a class="reference internal" href="openghg_inversions.sigma.html#openghg_inversions.sigma.SigmaAlignment" title="openghg_inversions.sigma.SigmaAlignment"><em>SigmaAlignment</em></a><em> | </em><em>None</em>) – Optional precomputed mismatch alignment. Ordinary
 runners derive it from observations.</p></li>
 <li><p><strong>legacy_unused_sigma_settings</strong> (<a class="reference internal" href="openghg_inversions.rhime.specs.html#openghg_inversions.rhime.specs.PollutionEventSettings" title="openghg_inversions.rhime.specs.PollutionEventSettings"><em>PollutionEventSettings</em></a><em> | </em><em>None</em>) – Private <code class="docutils literal notranslate"><span class="pre">run_hbmcmc</span></code> settings for its
 historical disconnected sigma variable.</p></li>
-<li><p><strong>legacy_minimum_error_floor</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – Preserve the historical additive callback’s
+<li><p><strong>legacy_minimum_error_floor</strong> (<em>bool</em>) – Preserve the historical additive callback’s
 minimum-error floor when inferred model error was disabled.</p></li>
 </ul>
 </dd>
@@ -592,10 +594,10 @@ minimum-error floor when inferred model error was disabled.</p></li>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#KeyError" title="(in Python v3.14)"><strong>KeyError</strong></a> – If required sensitivity inputs are absent.</p></li>
-<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If labels, state policies, priors, or canonical likelihood
+<li><p><strong>KeyError</strong> – If required sensitivity inputs are absent.</p></li>
+<li><p><strong>ValueError</strong> – If labels, state policies, priors, or canonical likelihood
     variables are invalid.</p></li>
-<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#TypeError" title="(in Python v3.14)"><strong>TypeError</strong></a> – If the likelihood returns the wrong result type.</p></li>
+<li><p><strong>TypeError</strong> – If the likelihood returns the wrong result type.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -631,14 +633,14 @@ minimum-error floor when inferred model error was disabled.</p></li>
 <li><p><strong>run_spec</strong> (<a class="reference internal" href="openghg_inversions.rhime.specs.html#openghg_inversions.rhime.specs.RhimeRunSpec" title="openghg_inversions.rhime.specs.RhimeRunSpec"><em>RhimeRunSpec</em></a>) – Resolved model, sampling, and output specification.</p></li>
 <li><p><strong>model_builder</strong> (<a class="reference internal" href="openghg_inversions.rhime.builders.html#openghg_inversions.rhime.builders.RhimeModelBuilder" title="openghg_inversions.rhime.builders.RhimeModelBuilder"><em>RhimeModelBuilder</em></a><em> | </em><em>None</em>) – Optional complete-model builder for advanced prepared-
 input workflows.</p></li>
-<li><p><strong>likelihood_builder</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Callable" title="(in Python v3.14)"><em>Callable</em></a><em>[</em><em>[</em><em>...</em><em>]</em><em>, </em><em>TensorVariable</em><em>] </em><em>| </em><em>None</em>) – Optional observation-error and distribution builder
+<li><p><strong>likelihood_builder</strong> (<em>Callable</em><em>[</em><em>[</em><em>...</em><em>]</em><em>, </em><em>TensorVariable</em><em>] </em><em>| </em><em>None</em>) – Optional observation-error and distribution builder
 used with the built-in graph.</p></li>
-<li><p><strong>likelihood_kwargs</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.14)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Options expanded only into the custom likelihood.</p></li>
-<li><p><strong>preserve_legacy_likelihood</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – Whether to preserve the historical
+<li><p><strong>likelihood_kwargs</strong> (<em>Mapping</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>] </em><em>| </em><em>None</em>) – Options expanded only into the custom likelihood.</p></li>
+<li><p><strong>preserve_legacy_likelihood</strong> (<em>bool</em>) – Whether to preserve the historical
 <code class="docutils literal notranslate"><span class="pre">run_hbmcmc</span></code> likelihood graph and pollution-event definition.</p></li>
 <li><p><strong>legacy_unused_sigma_settings</strong> (<a class="reference internal" href="openghg_inversions.rhime.specs.html#openghg_inversions.rhime.specs.PollutionEventSettings" title="openghg_inversions.rhime.specs.PollutionEventSettings"><em>PollutionEventSettings</em></a><em> | </em><em>None</em>) – Private compatibility settings for a
 disconnected historical sigma variable.</p></li>
-<li><p><strong>legacy_minimum_error_floor</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – Preserve the historical additive callback’s
+<li><p><strong>legacy_minimum_error_floor</strong> (<em>bool</em>) – Preserve the historical additive callback’s
 minimum-error floor when inferred model error was disabled.</p></li>
 </ul>
 </dd>
@@ -646,7 +648,7 @@ minimum-error floor when inferred model error was disabled.</p></li>
 <dd class="field-even"><p>Model plus variable roles, supported outputs, and build metadata.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If both builder extension points are supplied or the built
+<dd class="field-odd"><p><strong>ValueError</strong> – If both builder extension points are supplied or the built
     result is inconsistent with the run specification.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -664,7 +666,8 @@ minimum-error floor when inferred model error was disabled.</p></li>
 <dd><em class="sig-param"><span class="n"><span class="pre">prepared</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">run_spec</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">sampler</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">model_build_result</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">model_build_result</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">output_contract</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">idata</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">build_and_sample_seconds</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">model_builder</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
@@ -680,12 +683,14 @@ minimum-error floor when inferred model error was disabled.</p></li>
 <li><p><strong>prepared</strong> (<a class="reference internal" href="openghg_inversions.inversion_data.preparation.html#openghg_inversions.inversion_data.preparation.RhimePreparedInputs" title="openghg_inversions.inversion_data.preparation.RhimePreparedInputs"><em>RhimePreparedInputs</em></a>) – Retained canonical inputs and basis functions.</p></li>
 <li><p><strong>run_spec</strong> (<a class="reference internal" href="openghg_inversions.rhime.specs.html#openghg_inversions.rhime.specs.RhimeRunSpec" title="openghg_inversions.rhime.specs.RhimeRunSpec"><em>RhimeRunSpec</em></a>) – Resolved model, output, and run settings.</p></li>
 <li><p><strong>sampler</strong> (<a class="reference internal" href="openghg_inversions.rhime.sampling.html#openghg_inversions.rhime.sampling.RhimeSampler" title="openghg_inversions.rhime.sampling.RhimeSampler"><em>RhimeSampler</em></a>) – Sampler configuration used for the trace.</p></li>
-<li><p><strong>model_build_result</strong> (<a class="reference internal" href="openghg_inversions.rhime.builders.html#openghg_inversions.rhime.builders.RhimeModelBuildResult" title="openghg_inversions.rhime.builders.RhimeModelBuildResult"><em>RhimeModelBuildResult</em></a>) – Concrete graph and semantic variable roles.</p></li>
+<li><p><strong>model_build_result</strong> (<a class="reference internal" href="openghg_inversions.rhime.builders.html#openghg_inversions.rhime.builders.RhimeModelBuildResult" title="openghg_inversions.rhime.builders.RhimeModelBuildResult"><em>RhimeModelBuildResult</em></a><em> | </em><em>None</em>) – Concrete graph and roles, when retained in memory.</p></li>
+<li><p><strong>output_contract</strong> (<a class="reference internal" href="openghg_inversions.postprocessing.contracts.html#openghg_inversions.postprocessing.contracts.OutputContract" title="openghg_inversions.postprocessing.contracts.OutputContract"><em>OutputContract</em></a><em> | </em><em>None</em>) – Durable output information for graph-free reconstruction.
+Defaults to the live build result’s contract when supplied.</p></li>
 <li><p><strong>idata</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.9.0)"><em>DataTree</em></a>) – Sampled posterior and predictive groups.</p></li>
-<li><p><strong>build_and_sample_seconds</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a>) – Combined graph-build and sampling duration.</p></li>
+<li><p><strong>build_and_sample_seconds</strong> (<em>float</em>) – Combined graph-build and sampling duration.</p></li>
 <li><p><strong>model_builder</strong> (<a class="reference internal" href="openghg_inversions.rhime.builders.html#openghg_inversions.rhime.builders.RhimeModelBuilder" title="openghg_inversions.rhime.builders.RhimeModelBuilder"><em>RhimeModelBuilder</em></a><em> | </em><em>None</em>) – Optional complete-model callable used for provenance.</p></li>
-<li><p><strong>likelihood_builder</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Callable" title="(in Python v3.14)"><em>Callable</em></a><em>[</em><em>[</em><em>...</em><em>]</em><em>, </em><em>TensorVariable</em><em>] </em><em>| </em><em>None</em>) – Optional likelihood callable used for provenance.</p></li>
-<li><p><strong>likelihood_kwargs</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.14)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Serializable options owned by the likelihood.</p></li>
+<li><p><strong>likelihood_builder</strong> (<em>Callable</em><em>[</em><em>[</em><em>...</em><em>]</em><em>, </em><em>TensorVariable</em><em>] </em><em>| </em><em>None</em>) – Optional likelihood callable used for provenance.</p></li>
+<li><p><strong>likelihood_kwargs</strong> (<em>Mapping</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>] </em><em>| </em><em>None</em>) – Serializable options owned by the likelihood.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -722,29 +727,29 @@ requested outputs.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>config_file</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><em>Path</em></a><em> | </em><em>None</em>) – Optional INI configuration file. Values in <code class="docutils literal notranslate"><span class="pre">kwargs</span></code>
+<li><p><strong>config_file</strong> (<em>str</em><em> | </em><em>Path</em><em> | </em><em>None</em>) – Optional INI configuration file. Values in <code class="docutils literal notranslate"><span class="pre">kwargs</span></code>
 override values read from this file.</p></li>
 <li><p><strong>merged_data</strong> (<a class="reference internal" href="openghg_inversions.inversion_data.preparation.html#openghg_inversions.inversion_data.preparation.RhimeMergedData" title="openghg_inversions.inversion_data.preparation.RhimeMergedData"><em>RhimeMergedData</em></a><em> | </em><em>None</em>) – Optional externally supplied merged scientific data.
 Passing this borrowed handoff bypasses OpenGHG acquisition and
 merged-cache I/O, then resumes at the visible filtering stage.
 The retrieval stage checks its sector layout without mutating it.</p></li>
-<li><p><strong>likelihood_builder</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Callable" title="(in Python v3.14)"><em>Callable</em></a><em>[</em><em>[</em><em>...</em><em>]</em><em>, </em><em>TensorVariable</em><em>] </em><em>| </em><em>None</em>) – Optional Python-only callable invoked with a
+<li><p><strong>likelihood_builder</strong> (<em>Callable</em><em>[</em><em>[</em><em>...</em><em>]</em><em>, </em><em>TensorVariable</em><em>] </em><em>| </em><em>None</em>) – Optional Python-only callable invoked with a
 completed forward-model mean and explicit error-model inputs in
 the active PyMC model. It must return the canonical observed
 variable <code class="docutils literal notranslate"><span class="pre">y</span></code> and create the canonical error scale <code class="docutils literal notranslate"><span class="pre">epsilon</span></code>.
 The callable is never read from configuration or stored in
 run/model specifications.</p></li>
-<li><p><strong>likelihood_kwargs</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.14)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Options specific to the custom likelihood. Common
+<li><p><strong>likelihood_kwargs</strong> (<em>Mapping</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>] </em><em>| </em><em>None</em>) – Options specific to the custom likelihood. Common
 scientific arrays are passed explicitly by the recipe.</p></li>
-<li><p><strong>preserve_legacy_likelihood</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – Private <code class="docutils literal notranslate"><span class="pre">run_hbmcmc</span></code> compatibility
+<li><p><strong>preserve_legacy_likelihood</strong> (<em>bool</em>) – Private <code class="docutils literal notranslate"><span class="pre">run_hbmcmc</span></code> compatibility
 switch. Ordinary RHIME callers should leave it false.</p></li>
 <li><p><strong>_compatibility_unused_sigma_settings</strong> (<a class="reference internal" href="openghg_inversions.rhime.specs.html#openghg_inversions.rhime.specs.PollutionEventSettings" title="openghg_inversions.rhime.specs.PollutionEventSettings"><em>PollutionEventSettings</em></a><em> | </em><em>None</em>) – Private <code class="docutils literal notranslate"><span class="pre">run_hbmcmc</span></code> settings
 for its historical disconnected sigma variable.</p></li>
-<li><p><strong>_compatibility_minimum_error_floor</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – Private <code class="docutils literal notranslate"><span class="pre">run_hbmcmc</span></code> switch for
+<li><p><strong>_compatibility_minimum_error_floor</strong> (<em>bool</em>) – Private <code class="docutils literal notranslate"><span class="pre">run_hbmcmc</span></code> switch for
 the historical additive callback’s minimum-error floor.</p></li>
-<li><p><strong>compatibility_output_chain</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em> | </em><em>None</em>) – Private <code class="docutils literal notranslate"><span class="pre">run_hbmcmc</span></code> compatibility
+<li><p><strong>compatibility_output_chain</strong> (<em>int</em><em> | </em><em>None</em>) – Private <code class="docutils literal notranslate"><span class="pre">run_hbmcmc</span></code> compatibility
 selector for derived outputs. <code class="docutils literal notranslate"><span class="pre">None</span></code> uses every chain.</p></li>
-<li><p><strong>**kwargs</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><em>Any</em></a>) – RHIME run parameters using snake-case names, such as
+<li><p><strong>**kwargs</strong> (<em>Any</em>) – RHIME run parameters using snake-case names, such as
 <code class="docutils literal notranslate"><span class="pre">output_path</span></code>, <code class="docutils literal notranslate"><span class="pre">output_name</span></code>, <code class="docutils literal notranslate"><span class="pre">flux_sources</span></code>, and
 <code class="docutils literal notranslate"><span class="pre">x_prior</span></code>. <code class="docutils literal notranslate"><span class="pre">species</span></code> names the primary gas or tracer used for
 object-store lookup and output naming. <code class="docutils literal notranslate"><span class="pre">flux_sources</span></code> contains
@@ -759,9 +764,9 @@ output metadata, and generated outputs.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#TypeError" title="(in Python v3.14)"><strong>TypeError</strong></a> – If a likelihood builder is not callable or returns the
+<li><p><strong>TypeError</strong> – If a likelihood builder is not callable or returns the
     wrong result type.</p></li>
-<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If required parameters are missing, unsupported parameters
+<li><p><strong>ValueError</strong> – If required parameters are missing, unsupported parameters
     are supplied, the flux-source count is invalid, or likelihood
     variables or requested-output compatibility are invalid.</p></li>
 </ul>

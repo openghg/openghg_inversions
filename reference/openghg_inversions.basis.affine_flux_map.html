@@ -365,6 +365,7 @@
 </details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.postprocessing.html">openghg_inversions.postprocessing</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.co2_flux_outputs.html">openghg_inversions.postprocessing.co2_flux_outputs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.contracts.html">openghg_inversions.postprocessing.contracts</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.countries.html">openghg_inversions.postprocessing.countries</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.diagnostics.html">openghg_inversions.postprocessing.diagnostics</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.inversion_output.html">openghg_inversions.postprocessing.inversion_output</a></li>
@@ -374,6 +375,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.make_paris_outputs.html">openghg_inversions.postprocessing.make_paris_outputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.merge_paris_outputs.html">openghg_inversions.postprocessing.merge_paris_outputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.nested_paris_outputs.html">openghg_inversions.postprocessing.nested_paris_outputs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.output_views.html">openghg_inversions.postprocessing.output_views</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.sigma.html">openghg_inversions.postprocessing.sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.stats.html">openghg_inversions.postprocessing.stats</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.utils.html">openghg_inversions.postprocessing.utils</a></li>
@@ -512,7 +514,7 @@
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.affine_flux_map.AffineFluxMap" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
 <p>Reconstruct retained-state-conditional native scaling and flux means.</p>
 <p><code class="docutils literal notranslate"><span class="pre">state_to_native</span></code> evaluates <code class="docutils literal notranslate"><span class="pre">m</span> <span class="pre">+</span> <span class="pre">U*</span> <span class="pre">(alpha</span> <span class="pre">-</span> <span class="pre">alpha_ref)</span></code> and
 <code class="docutils literal notranslate"><span class="pre">state_to_flux</span></code> additionally multiplies the result by signed reference
@@ -527,20 +529,20 @@ native-by-state <a class="reference external" href="https://docs.xarray.dev/en/s
 <li><p><strong>native_mean</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Dimensionless native scaling mean <code class="docutils literal notranslate"><span class="pre">m</span></code>.</p></li>
 <li><p><strong>flux</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Signed reference flux <code class="docutils literal notranslate"><span class="pre">F</span></code> containing every native dimension.</p></li>
 <li><p><strong>prolongation</strong> (<a class="reference internal" href="openghg_inversions.basis.operators.html#openghg_inversions.basis.operators.BucketBasisOperator" title="openghg_inversions.basis.operators.BucketBasisOperator"><em>BucketBasisOperator</em></a><em> | </em><a class="reference internal" href="openghg_inversions.basis.operators.html#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator" title="openghg_inversions.basis.operators.MultiSourceBucketBasisOperator"><em>MultiSourceBucketBasisOperator</em></a><em> | </em><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Bucket operator or explicit dimensionless <code class="docutils literal notranslate"><span class="pre">U*</span></code>.</p></li>
-<li><p><strong>state_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Retained-state dimension.</p></li>
-<li><p><strong>uncertainty_scope</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><em>Literal</em></a><em>[</em><em>'retained_state_conditional'</em><em>]</em>) – Fixed machine-readable scope of reconstructed data.</p></li>
+<li><p><strong>state_dim</strong> (<em>str</em>) – Retained-state dimension.</p></li>
+<li><p><strong>uncertainty_scope</strong> (<em>Literal</em><em>[</em><em>'retained_state_conditional'</em><em>]</em>) – Fixed machine-readable scope of reconstructed data.</p></li>
 </ul>
 </dd>
 </dl>
 <dl class="py property">
 <dt class="sig sig-object py" id="openghg_inversions.basis.affine_flux_map.AffineFluxMap.native_dims">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">native_dims</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.basis.affine_flux_map.AffineFluxMap.native_dims" title="Link to this definition">#</a></dt>
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">native_dims</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.basis.affine_flux_map.AffineFluxMap.native_dims" title="Link to this definition">#</a></dt>
 <dd><p>Return the ordered native dimensions labelled by <code class="docutils literal notranslate"><span class="pre">native_mean</span></code>.</p>
 </dd></dl>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="openghg_inversions.basis.affine_flux_map.AffineFluxMap.representation">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">representation</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><span class="pre">Literal</span></a><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'bucket'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'explicit'</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.basis.affine_flux_map.AffineFluxMap.representation" title="Link to this definition">#</a></dt>
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">representation</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'bucket'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'explicit'</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.basis.affine_flux_map.AffineFluxMap.representation" title="Link to this definition">#</a></dt>
 <dd><p>Return the closed prolongation representation kind.</p>
 </dd></dl>
 
@@ -565,7 +567,7 @@ name collides with a native or flux dimension is renamed to
 <code class="docutils literal notranslate"><span class="pre">state_&lt;axis&gt;</span></code> or a numbered variant if that name is taken.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If state labels or units are incompatible, or the
+<dd class="field-odd"><p><strong>ValueError</strong> – If state labels or units are incompatible, or the
     reference state has incompatible dimensions or labels.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -595,7 +597,7 @@ name collides with a native or flux dimension is renamed to
 <code class="docutils literal notranslate"><span class="pre">state_&lt;axis&gt;</span></code> or a numbered variant if that name is taken.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If state labels or units are incompatible, or the
+<dd class="field-odd"><p><strong>ValueError</strong> – If state labels or units are incompatible, or the
     reference state has incompatible dimensions or labels.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>

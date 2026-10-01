@@ -365,6 +365,7 @@
 </details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.postprocessing.html">openghg_inversions.postprocessing</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.co2_flux_outputs.html">openghg_inversions.postprocessing.co2_flux_outputs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.contracts.html">openghg_inversions.postprocessing.contracts</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.countries.html">openghg_inversions.postprocessing.countries</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.diagnostics.html">openghg_inversions.postprocessing.diagnostics</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.inversion_output.html">openghg_inversions.postprocessing.inversion_output</a></li>
@@ -374,6 +375,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.make_paris_outputs.html">openghg_inversions.postprocessing.make_paris_outputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.merge_paris_outputs.html">openghg_inversions.postprocessing.merge_paris_outputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.nested_paris_outputs.html">openghg_inversions.postprocessing.nested_paris_outputs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.output_views.html">openghg_inversions.postprocessing.output_views</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.sigma.html">openghg_inversions.postprocessing.sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.stats.html">openghg_inversions.postprocessing.stats</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.utils.html">openghg_inversions.postprocessing.utils</a></li>
@@ -513,7 +515,7 @@ covariance, or diagnostically as independent standard deviations.</p>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.observation_error.AggregationError" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
 <p>Validated aggregation-error representation selected for a likelihood.</p>
 <p>Model builders trust this value as already validated. Externally supplied
 representations should be constructed through
@@ -526,7 +528,7 @@ covariance properties.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>mode</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><em>Literal</em></a><em>[</em><em>'none'</em><em>, </em><em>'dense'</em><em>, </em><em>'low_rank'</em><em>, </em><em>'diagonal'</em><em>]</em>) – Concrete covariance representation.</p></li>
+<li><p><strong>mode</strong> (<em>Literal</em><em>[</em><em>'none'</em><em>, </em><em>'dense'</em><em>, </em><em>'low_rank'</em><em>, </em><em>'diagonal'</em><em>]</em>) – Concrete covariance representation.</p></li>
 <li><p><strong>marginal_variance</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a>) – Observation-aligned covariance diagonal.</p></li>
 <li><p><strong>covariance</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a><em> | </em><em>None</em>) – Optional dense covariance matrix.</p></li>
 <li><p><strong>factor</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a><em> | </em><em>None</em>) – Optional low-rank covariance factor.</p></li>
@@ -540,14 +542,14 @@ low-rank representation.</p></li>
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.observation_error.LowRankAggregationErrorApproximation">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">LowRankAggregationErrorApproximation</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">aggregation_error</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">diagnostics</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.observation_error.LowRankAggregationErrorApproximation" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
 <p>A prepared LRPD representation and its approximation diagnostics.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Variables<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>aggregation_error</strong> (<a class="reference internal" href="#openghg_inversions.observation_error.AggregationError" title="openghg_inversions.observation_error.AggregationError"><em>openghg_inversions.observation_error.AggregationError</em></a>) – Labelled low-rank factor and non-negative diagonal
 residual accepted by the shared likelihood components.</p></li>
-<li><p><strong>diagnostics</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a><em>]</em>) – JSON-safe mapping containing the method, requested rank,
+<li><p><strong>diagnostics</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>str</em><em> | </em><em>int</em><em> | </em><em>float</em><em>]</em>) – JSON-safe mapping containing the method, requested rank,
 actual retained factor width, retained spectral fraction, relative
 Frobenius error, diagonal-preservation error, tolerances, and
 diagonal-tail clipping diagnostics. These values describe the
@@ -586,9 +588,9 @@ attributes to the returned arrays.</p>
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>covariance</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Symmetric positive-semidefinite covariance matrix.</p></li>
-<li><p><strong>rank</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a>) – Maximum number of leading eigenmodes to retain.</p></li>
-<li><p><strong>output_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Observation dimension on the covariance rows.</p></li>
-<li><p><strong>covariance_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Repeated observation dimension on the columns.</p></li>
+<li><p><strong>rank</strong> (<em>int</em>) – Maximum number of leading eigenmodes to retain.</p></li>
+<li><p><strong>output_dim</strong> (<em>str</em>) – Observation dimension on the covariance rows.</p></li>
+<li><p><strong>covariance_dim</strong> (<em>str</em>) – Repeated observation dimension on the columns.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -596,7 +598,7 @@ attributes to the returned arrays.</p>
 diagnostics.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If dimensions, coordinates, rank, or numerical covariance
+<dd class="field-odd"><p><strong>ValueError</strong> – If dimensions, coordinates, rank, or numerical covariance
     properties are invalid.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -623,7 +625,7 @@ diagonal variance with shape <code class="docutils literal notranslate"><span cl
 columns.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)">tuple</a>[<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a>, <a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a>]</p>
+<dd class="field-odd"><p>tuple[<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a>, <a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a>]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -649,12 +651,12 @@ columns.</p>
 <li><p><strong>observations</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Observed mole fractions.</p></li>
 <li><p><strong>observation_error</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Reported observation-error standard deviations.</p></li>
 <li><p><strong>minimum_error</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a><em> | </em><em>None</em>) – Optional minimum total-error standard deviations.</p></li>
-<li><p><strong>owner</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Name of the likelihood/error component consuming the arrays.</p></li>
-<li><p><strong>output_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Required observation dimension.</p></li>
+<li><p><strong>owner</strong> (<em>str</em>) – Name of the likelihood/error component consuming the arrays.</p></li>
+<li><p><strong>output_dim</strong> (<em>str</em>) – Required observation dimension.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Raises<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If an input is not an aligned observation vector or an
+<dd class="field-even"><p><strong>ValueError</strong> – If an input is not an aligned observation vector or an
     error array is non-numeric, non-finite, or negative.</p>
 </dd>
 </dl>
@@ -669,7 +671,7 @@ columns.</p>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>data</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>) – Prepared inversion inputs containing any available aggregation-error
 representations.</p></li>
-<li><p><strong>requested</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><em>Literal</em></a><em>[</em><em>'auto'</em><em>, </em><em>'none'</em><em>, </em><em>'dense'</em><em>, </em><em>'low_rank'</em><em>, </em><em>'diagonal'</em><em>]</em>) – Requested representation, or <code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code> to infer one from
+<li><p><strong>requested</strong> (<em>Literal</em><em>[</em><em>'auto'</em><em>, </em><em>'none'</em><em>, </em><em>'dense'</em><em>, </em><em>'low_rank'</em><em>, </em><em>'diagonal'</em><em>]</em>) – Requested representation, or <code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code> to infer one from
 the available inputs.</p></li>
 </ul>
 </dd>
@@ -677,11 +679,11 @@ the available inputs.</p></li>
 <dd class="field-even"><p>The selected concrete aggregation-error representation.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If <code class="docutils literal notranslate"><span class="pre">requested</span></code> is invalid or <code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code> finds both dense
+<dd class="field-odd"><p><strong>ValueError</strong> – If <code class="docutils literal notranslate"><span class="pre">requested</span></code> is invalid or <code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code> finds both dense
     and low-rank representations.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><em>Literal</em></a>[‘none’, ‘dense’, ‘low_rank’, ‘diagonal’]</p>
+<dd class="field-even"><p><em>Literal</em>[‘none’, ‘dense’, ‘low_rank’, ‘diagonal’]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -694,18 +696,18 @@ the available inputs.</p></li>
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>data</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>) – Prepared inputs containing available aggregation-error products.</p></li>
-<li><p><strong>requested</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><em>Literal</em></a><em>[</em><em>'auto'</em><em>, </em><em>'none'</em><em>, </em><em>'dense'</em><em>, </em><em>'low_rank'</em><em>, </em><em>'diagonal'</em><em>]</em>) – Requested representation, or <code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code>.</p></li>
+<li><p><strong>requested</strong> (<em>Literal</em><em>[</em><em>'auto'</em><em>, </em><em>'none'</em><em>, </em><em>'dense'</em><em>, </em><em>'low_rank'</em><em>, </em><em>'diagonal'</em><em>]</em>) – Requested representation, or <code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code>.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>Variable names required to materialize the selected representation.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If the requested mode is invalid or automatic selection is
+<dd class="field-odd"><p><strong>ValueError</strong> – If the requested mode is invalid or automatic selection is
     ambiguous.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)">tuple</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)">str</a>, …]</p>
+<dd class="field-even"><p>tuple[str, …]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -733,18 +735,18 @@ low-rank forms is ambiguous and therefore requires an explicit selection.</p>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>data</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>) – Prepared inversion inputs containing the requested aggregation-
 error representation.</p></li>
-<li><p><strong>mode</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><em>Literal</em></a><em>[</em><em>'auto'</em><em>, </em><em>'none'</em><em>, </em><em>'dense'</em><em>, </em><em>'low_rank'</em><em>, </em><em>'diagonal'</em><em>]</em>) – Representation to use, or <code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code> to select from available
+<li><p><strong>mode</strong> (<em>Literal</em><em>[</em><em>'auto'</em><em>, </em><em>'none'</em><em>, </em><em>'dense'</em><em>, </em><em>'low_rank'</em><em>, </em><em>'diagonal'</em><em>]</em>) – Representation to use, or <code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code> to select from available
 inputs.</p></li>
-<li><p><strong>output_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Observation dimension used by error vectors and the first
+<li><p><strong>output_dim</strong> (<em>str</em>) – Observation dimension used by error vectors and the first
 covariance dimension.</p></li>
-<li><p><strong>covariance_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Second dimension required for a dense covariance.</p></li>
+<li><p><strong>covariance_dim</strong> (<em>str</em>) – Second dimension required for a dense covariance.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>Validated aggregation-error arrays and their marginal variance.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If the selected inputs are absent, malformed, inconsistent,
+<dd class="field-odd"><p><strong>ValueError</strong> – If the selected inputs are absent, malformed, inconsistent,
     non-finite, or not a valid covariance representation.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>

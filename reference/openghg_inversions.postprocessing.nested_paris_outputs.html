@@ -51,7 +51,7 @@
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="openghg_inversions.postprocessing.sigma" href="openghg_inversions.postprocessing.sigma.html" />
+    <link rel="next" title="openghg_inversions.postprocessing.output_views" href="openghg_inversions.postprocessing.output_views.html" />
     <link rel="prev" title="openghg_inversions.postprocessing.merge_paris_outputs" href="openghg_inversions.postprocessing.merge_paris_outputs.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
@@ -365,6 +365,7 @@
 </details></li>
 <li class="toctree-l2 current active has-children"><a class="reference internal" href="openghg_inversions.postprocessing.html">openghg_inversions.postprocessing</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.co2_flux_outputs.html">openghg_inversions.postprocessing.co2_flux_outputs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.contracts.html">openghg_inversions.postprocessing.contracts</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.countries.html">openghg_inversions.postprocessing.countries</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.diagnostics.html">openghg_inversions.postprocessing.diagnostics</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.inversion_output.html">openghg_inversions.postprocessing.inversion_output</a></li>
@@ -374,6 +375,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.make_paris_outputs.html">openghg_inversions.postprocessing.make_paris_outputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.merge_paris_outputs.html">openghg_inversions.postprocessing.merge_paris_outputs</a></li>
 <li class="toctree-l3 current active"><a class="current reference internal" href="#">openghg_inversions.postprocessing.nested_paris_outputs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.output_views.html">openghg_inversions.postprocessing.output_views</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.sigma.html">openghg_inversions.postprocessing.sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.stats.html">openghg_inversions.postprocessing.stats</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.utils.html">openghg_inversions.postprocessing.utils</a></li>
@@ -541,24 +543,24 @@ regridded onto the outer grid for arithmetic.</p>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>outer_inv_out</strong> (<a class="reference internal" href="openghg_inversions.postprocessing.inversion_output.html#openghg_inversions.postprocessing.inversion_output.InversionOutput" title="openghg_inversions.postprocessing.inversion_output.InversionOutput"><em>InversionOutput</em></a>) – Outer-domain view prepared by the nested RHIME recipe.</p></li>
 <li><p><strong>inner_inv_out</strong> (<a class="reference internal" href="openghg_inversions.postprocessing.inversion_output.html#openghg_inversions.postprocessing.inversion_output.InversionOutput" title="openghg_inversions.postprocessing.inversion_output.InversionOutput"><em>InversionOutput</em></a>) – Inner-domain view prepared by the nested RHIME recipe.</p></li>
-<li><p><strong>inner_domain_label</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Actual inner-domain identity stored on its product.</p></li>
-<li><p><strong>country_file</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><em>Path</em></a><em> | </em><em>None</em>) – Country-definition file for the outer domain (as for
+<li><p><strong>inner_domain_label</strong> (<em>str</em>) – Actual inner-domain identity stored on its product.</p></li>
+<li><p><strong>country_file</strong> (<em>str</em><em> | </em><em>Path</em><em> | </em><em>None</em>) – Country-definition file for the outer domain (as for
 ordinary single-grid PARIS output).</p></li>
-<li><p><strong>inner_country_file</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><em>Path</em></a><em> | </em><em>None</em>) – Optional country-definition file already at the
+<li><p><strong>inner_country_file</strong> (<em>str</em><em> | </em><em>Path</em><em> | </em><em>None</em>) – Optional country-definition file already at the
 inner domain’s native resolution. If not given, <code class="docutils literal notranslate"><span class="pre">country_file</span></code>
 (or the outer domain’s default) is resampled onto the inner grid
 and cached; see <code class="docutils literal notranslate"><span class="pre">country_file_cache_dir</span></code>.</p></li>
-<li><p><strong>time_point</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><em>Literal</em></a><em>[</em><em>'start'</em><em>, </em><em>'midpoint'</em><em>]</em>) – Flux timestamp convention for both domains.</p></li>
-<li><p><strong>report_mode</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – If true, report kernel density estimate modes instead of
+<li><p><strong>time_point</strong> (<em>Literal</em><em>[</em><em>'start'</em><em>, </em><em>'midpoint'</em><em>]</em>) – Flux timestamp convention for both domains.</p></li>
+<li><p><strong>report_mode</strong> (<em>bool</em>) – If true, report kernel density estimate modes instead of
 means as central estimates.</p></li>
-<li><p><strong>inversion_grid</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – If true, include reduced inversion-grid variables.</p></li>
-<li><p><strong>flux_frequency</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Flux interval frequency. If <code class="docutils literal notranslate"><span class="pre">None</span></code>, it is inferred
+<li><p><strong>inversion_grid</strong> (<em>bool</em>) – If true, include reduced inversion-grid variables.</p></li>
+<li><p><strong>flux_frequency</strong> (<em>str</em><em> | </em><em>None</em>) – Flux interval frequency. If <code class="docutils literal notranslate"><span class="pre">None</span></code>, it is inferred
 independently for each domain’s flux.</p></li>
-<li><p><strong>obs_avg_period</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Averaging period recorded in concentration metadata.</p></li>
-<li><p><strong>template_version</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><em>Literal</em></a><em>[</em><em>'legacy'</em><em>, </em><em>'latest'</em><em>]</em>) – PARIS template version used for both domains.</p></li>
-<li><p><strong>country_selections</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Iterable" title="(in Python v3.14)"><em>Iterable</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>] </em><em>| </em><em>None</em>) – Optional country names or codes included in both
+<li><p><strong>obs_avg_period</strong> (<em>str</em>) – Averaging period recorded in concentration metadata.</p></li>
+<li><p><strong>template_version</strong> (<em>Literal</em><em>[</em><em>'legacy'</em><em>, </em><em>'latest'</em><em>]</em>) – PARIS template version used for both domains.</p></li>
+<li><p><strong>country_selections</strong> (<em>Iterable</em><em>[</em><em>str</em><em>] </em><em>| </em><em>None</em>) – Optional country names or codes included in both
 domain products.</p></li>
-<li><p><strong>country_file_cache_dir</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><em>Path</em></a><em> | </em><em>None</em>) – Directory for the cached regridded inner
+<li><p><strong>country_file_cache_dir</strong> (<em>str</em><em> | </em><em>Path</em><em> | </em><em>None</em>) – Directory for the cached regridded inner
 country file. Defaults to the standard per-user cache directory.</p></li>
 </ul>
 </dd>
@@ -570,7 +572,7 @@ inner extent, so it is never a source of double-counting against
 and country totals on the inner domain’s own grid.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)">tuple</a>[<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>, <a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>, <a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>]</p>
+<dd class="field-odd"><p>tuple[<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>, <a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>, <a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -601,7 +603,7 @@ call <a class="reference internal" href="#openghg_inversions.postprocessing.nest
 the original public entry point for callers holding a <code class="docutils literal notranslate"><span class="pre">NestedRhimeResult</span></code>.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)">tuple</a>[<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>, <a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>, <a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>]</p>
+<dd class="field-odd"><p>tuple[<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>, <a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>, <a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -628,11 +630,11 @@ the original public entry point for callers holding a <code class="docutils lite
       </div>
     </a>
     <a class="right-next"
-       href="openghg_inversions.postprocessing.sigma.html"
+       href="openghg_inversions.postprocessing.output_views.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">openghg_inversions.postprocessing.sigma</p>
+        <p class="prev-next-title">openghg_inversions.postprocessing.output_views</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>

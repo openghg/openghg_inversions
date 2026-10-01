@@ -365,6 +365,7 @@
 </details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.postprocessing.html">openghg_inversions.postprocessing</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.co2_flux_outputs.html">openghg_inversions.postprocessing.co2_flux_outputs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.contracts.html">openghg_inversions.postprocessing.contracts</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.countries.html">openghg_inversions.postprocessing.countries</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.diagnostics.html">openghg_inversions.postprocessing.diagnostics</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.inversion_output.html">openghg_inversions.postprocessing.inversion_output</a></li>
@@ -374,6 +375,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.make_paris_outputs.html">openghg_inversions.postprocessing.make_paris_outputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.merge_paris_outputs.html">openghg_inversions.postprocessing.merge_paris_outputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.nested_paris_outputs.html">openghg_inversions.postprocessing.nested_paris_outputs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.output_views.html">openghg_inversions.postprocessing.output_views</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.sigma.html">openghg_inversions.postprocessing.sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.stats.html">openghg_inversions.postprocessing.stats</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.utils.html">openghg_inversions.postprocessing.utils</a></li>
@@ -546,7 +548,7 @@ an xarray issue, which now is written in terms of <code class="docutils literal 
 <dd><p>Compare ordered labels and MultiIndex levels, ignoring ordinary Index names.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)">bool</a></p>
+<dd class="field-odd"><p>bool</p>
 </dd>
 </dl>
 </dd></dl>
@@ -561,9 +563,9 @@ missing key when the target coordinate cannot be selected.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>values</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.14)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Hashable" title="(in Python v3.14)"><em>Hashable</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><em>Any</em></a><em>]</em>) – Values keyed by scientific coordinate label.</p></li>
+<li><p><strong>values</strong> (<em>Mapping</em><em>[</em><em>Hashable</em><em>, </em><em>Any</em><em>]</em>) – Values keyed by scientific coordinate label.</p></li>
 <li><p><strong>coordinate</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Labels and output dimensions onto which to expand them.</p></li>
-<li><p><strong>name</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Optional name for the returned array.</p></li>
+<li><p><strong>name</strong> (<em>str</em><em> | </em><em>None</em>) – Optional name for the returned array.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -587,12 +589,12 @@ before labels reach the model backend.</p>
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>covariance</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Labelled covariance matrix to validate.</p></li>
-<li><p><strong>dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Row dimension and canonical coordinate name.</p></li>
-<li><p><strong>covariance_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Column dimension. Defaults to <code class="docutils literal notranslate"><span class="pre">f&quot;{dim}_cov&quot;</span></code>.</p></li>
+<li><p><strong>dim</strong> (<em>str</em>) – Row dimension and canonical coordinate name.</p></li>
+<li><p><strong>covariance_dim</strong> (<em>str</em><em> | </em><em>None</em>) – Column dimension. Defaults to <code class="docutils literal notranslate"><span class="pre">f&quot;{dim}_cov&quot;</span></code>.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Raises<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If dimensions, shape, coordinates, or coordinate ordering
+<dd class="field-even"><p><strong>ValueError</strong> – If dimensions, shape, coordinates, or coordinate ordering
     do not follow the covariance convention.</p>
 </dd>
 </dl>
@@ -609,9 +611,9 @@ Dask-backed input is computed before encoding.</p>
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>da</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – DataArray encoding categories.</p></li>
-<li><p><strong>categories</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.14)"><em>Sequence</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><em>Any</em></a><em>] </em><em>| </em><em>Index</em><em> | </em><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a><em> | </em><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a><em> | </em><em>None</em>) – Optional labels for the encoded columns.</p></li>
-<li><p><strong>cat_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Name of the new category dimension.</p></li>
-<li><p><strong>return_sparse</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – Whether to store the result in a sparse COO array.</p></li>
+<li><p><strong>categories</strong> (<em>Sequence</em><em>[</em><em>Any</em><em>] </em><em>| </em><em>Index</em><em> | </em><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a><em> | </em><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a><em> | </em><em>None</em>) – Optional labels for the encoded columns.</p></li>
+<li><p><strong>cat_dim</strong> (<em>str</em>) – Name of the new category dimension.</p></li>
+<li><p><strong>return_sparse</strong> (<em>bool</em>) – Whether to store the result in a sparse COO array.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -630,7 +632,7 @@ Dask-backed input is computed before encoding.</p>
 <dl>
 <dd><em class="sig-param"><span class="n"><span class="pre">da1</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><span class="pre">DataArray</span></a></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">da2</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><span class="pre">DataArray</span></a></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.14)"><span class="pre">list</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 </dl>
 
 <span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><span class="pre">DataArray</span></a></span></span><a class="headerlink" href="#openghg_inversions.array_ops.sparse_xr_dot" title="Link to this definition">#</a></dt>
@@ -640,7 +642,7 @@ Dask-backed input is computed before encoding.</p>
 <dl>
 <dd><em class="sig-param"><span class="n"><span class="pre">da1</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><span class="pre">DataArray</span></a></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">da2</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><span class="pre">Dataset</span></a></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.14)"><span class="pre">list</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 </dl>
 
 <span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><span class="pre">Dataset</span></a></span></span></dt>
@@ -657,7 +659,7 @@ least one dimension in common. All matching dimensions will be used for multipli
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>da1</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – DataArray on the left, which may contain sparse COO values.</p></li>
 <li><p><strong>da2</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a><em> | </em><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>) – DataArray or Dataset on the right.</p></li>
-<li><p><strong>dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.14)"><em>list</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>] </em><em>| </em><em>None</em>) – optional list of dimensions to sum over; if <cite>None</cite>, then all common
+<li><p><strong>dim</strong> (<em>list</em><em>[</em><em>str</em><em>] </em><em>| </em><em>None</em>) – optional list of dimensions to sum over; if <cite>None</cite>, then all common
 dimensions are summed over.</p></li>
 </ul>
 </dd>
@@ -687,15 +689,15 @@ identity. No interpolation or reindexing is performed.</p>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>sparse_da</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – DataArray with sparse backend.</p></li>
 <li><p><strong>other_array</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a><em> | </em><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>) – Dataset or DataArray providing canonical lat/lon coords.</p></li>
-<li><p><strong>rtol</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a>) – Relative tolerance for coordinate comparison.</p></li>
-<li><p><strong>atol</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a>) – Absolute tolerance for coordinate comparison.</p></li>
+<li><p><strong>rtol</strong> (<em>float</em>) – Relative tolerance for coordinate comparison.</p></li>
+<li><p><strong>atol</strong> (<em>float</em>) – Absolute tolerance for coordinate comparison.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>Copy of sparse_da with lat/lon coords replaced by those from other_array.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If sizes differ or coordinates differ beyond tolerance.</p>
+<dd class="field-odd"><p><strong>ValueError</strong> – If sizes differ or coordinates differ beyond tolerance.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a></p>
@@ -741,11 +743,11 @@ tolerance, a ValueError is raised.</p>
 validated and reassigned.</p></li>
 <li><p><strong>reference</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a><em> | </em><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>) – The object providing canonical coordinates. Must contain
 the specified dimensions.</p></li>
-<li><p><strong>dims</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Iterable" title="(in Python v3.14)"><em>Iterable</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Hashable" title="(in Python v3.14)"><em>Hashable</em></a><em>]</em>) – Dimensions along which to validate and enforce coordinate
+<li><p><strong>dims</strong> (<em>Iterable</em><em>[</em><em>Hashable</em><em>]</em>) – Dimensions along which to validate and enforce coordinate
 identity (e.g., [“lat”, “lon”]).</p></li>
-<li><p><strong>rtol</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a>) – Relative tolerance for coordinate comparison. Defaults to
+<li><p><strong>rtol</strong> (<em>float</em>) – Relative tolerance for coordinate comparison. Defaults to
 NumPy’s default (1e-5).</p></li>
-<li><p><strong>atol</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a>) – Absolute tolerance for coordinate comparison. Defaults to
+<li><p><strong>atol</strong> (<em>float</em>) – Absolute tolerance for coordinate comparison. Defaults to
 NumPy’s default (1e-8).</p></li>
 </ul>
 </dd>
@@ -753,7 +755,7 @@ NumPy’s default (1e-8).</p></li>
 <dd class="field-even"><p>The same type as <cite>obj</cite>, with validated coordinates reassigned.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If a dimension is missing, sizes differ, or coordinates
+<dd class="field-odd"><p><strong>ValueError</strong> – If a dimension is missing, sizes differ, or coordinates
     differ beyond tolerance.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -769,8 +771,8 @@ NumPy’s default (1e-8).</p></li>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>da_dict</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.14)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a><em>]</em>) – DataArrays keyed by labels for the new dimension.</p></li>
-<li><p><strong>key_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Name of the new dimension.</p></li>
+<li><p><strong>da_dict</strong> (<em>Mapping</em><em>[</em><em>str</em><em>, </em><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a><em>]</em>) – DataArrays keyed by labels for the new dimension.</p></li>
+<li><p><strong>key_dim</strong> (<em>str</em>) – Name of the new dimension.</p></li>
 <li><p><strong>**concat_kwargs</strong> – Additional arguments passed to <a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.concat.html#xarray.concat" title="(in xarray v2026.9.0)"><code class="xref py py-func docutils literal notranslate"><span class="pre">xarray.concat()</span></code></a>.</p></li>
 </ul>
 </dd>
@@ -798,10 +800,10 @@ dimensions other than <code class="docutils literal notranslate"><span class="pr
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>da_dict</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.14)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a><em>]</em>) – DataArrays keyed by the values to record in <code class="docutils literal notranslate"><span class="pre">key_dim</span></code>.</p></li>
-<li><p><strong>key_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Dimension name for the mapping keys.</p></li>
-<li><p><strong>ragged_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Name of the ragged dimension.</p></li>
-<li><p><strong>stack_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Name for the gathered MultiIndex dimension.</p></li>
+<li><p><strong>da_dict</strong> (<em>Mapping</em><em>[</em><em>str</em><em>, </em><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a><em>]</em>) – DataArrays keyed by the values to record in <code class="docutils literal notranslate"><span class="pre">key_dim</span></code>.</p></li>
+<li><p><strong>key_dim</strong> (<em>str</em>) – Dimension name for the mapping keys.</p></li>
+<li><p><strong>ragged_dim</strong> (<em>str</em>) – Name of the ragged dimension.</p></li>
+<li><p><strong>stack_dim</strong> (<em>str</em><em> | </em><em>None</em>) – Name for the gathered MultiIndex dimension.</p></li>
 <li><p><strong>**concat_kwargs</strong> – Arguments passed to <a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.concat.html#xarray.concat" title="(in xarray v2026.9.0)"><code class="xref py py-func docutils literal notranslate"><span class="pre">xarray.concat()</span></code></a>.</p></li>
 </ul>
 </dd>
@@ -827,10 +829,10 @@ MultiIndex.</p>
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>da</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – DataArray containing a gathered MultiIndex dimension.</p></li>
-<li><p><strong>key</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><em>Any</em></a>) – Key value to select from the gathered index.</p></li>
-<li><p><strong>key_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Name of the key level in the gathered MultiIndex.</p></li>
-<li><p><strong>ragged_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Name of the original ragged dimension.</p></li>
-<li><p><strong>stack_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Name of the gathered dimension.</p></li>
+<li><p><strong>key</strong> (<em>Any</em>) – Key value to select from the gathered index.</p></li>
+<li><p><strong>key_dim</strong> (<em>str</em>) – Name of the key level in the gathered MultiIndex.</p></li>
+<li><p><strong>ragged_dim</strong> (<em>str</em>) – Name of the original ragged dimension.</p></li>
+<li><p><strong>stack_dim</strong> (<em>str</em>) – Name of the gathered dimension.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -838,8 +840,8 @@ MultiIndex.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#TypeError" title="(in Python v3.14)"><strong>TypeError</strong></a> – If the gathered dimension does not use a pandas MultiIndex.</p></li>
-<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If the gathered levels or requested key are invalid.</p></li>
+<li><p><strong>TypeError</strong> – If the gathered dimension does not use a pandas MultiIndex.</p></li>
+<li><p><strong>ValueError</strong> – If the gathered levels or requested key are invalid.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -866,11 +868,11 @@ MultiIndex.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>ds_dict</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.14)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a><em>]</em>) – Mapping from key values to datasets to concatenate.</p></li>
-<li><p><strong>key_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Name for the key dimension level in the output MultiIndex.</p></li>
-<li><p><strong>ragged_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Ragged coordinate dimension to gather across datasets.</p></li>
-<li><p><strong>stack_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Optional name for the gathered dimension in the output.</p></li>
-<li><p><strong>missing_data_vars</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><em>Literal</em></a><em>[</em><em>'error'</em><em>, </em><em>'drop'</em><em>]</em>) – Policy for handling data variables that are not shared
+<li><p><strong>ds_dict</strong> (<em>Mapping</em><em>[</em><em>str</em><em>, </em><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a><em>]</em>) – Mapping from key values to datasets to concatenate.</p></li>
+<li><p><strong>key_dim</strong> (<em>str</em>) – Name for the key dimension level in the output MultiIndex.</p></li>
+<li><p><strong>ragged_dim</strong> (<em>str</em>) – Ragged coordinate dimension to gather across datasets.</p></li>
+<li><p><strong>stack_dim</strong> (<em>str</em><em> | </em><em>None</em>) – Optional name for the gathered dimension in the output.</p></li>
+<li><p><strong>missing_data_vars</strong> (<em>Literal</em><em>[</em><em>'error'</em><em>, </em><em>'drop'</em><em>]</em>) – Policy for handling data variables that are not shared
 by every dataset. Use <code class="docutils literal notranslate"><span class="pre">&quot;error&quot;</span></code> to raise a <code class="docutils literal notranslate"><span class="pre">ValueError</span></code> listing
 the per-dataset differences, or <code class="docutils literal notranslate"><span class="pre">&quot;drop&quot;</span></code> to keep only the
 intersection of shared data variables and emit a warning when any are
@@ -882,7 +884,7 @@ dropped.</p></li>
 <dd class="field-even"><p>Dataset containing gathered versions of the selected data variables.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If <code class="docutils literal notranslate"><span class="pre">missing_data_vars=&quot;error&quot;</span></code> and the datasets do not
+<dd class="field-odd"><p><strong>ValueError</strong> – If <code class="docutils literal notranslate"><span class="pre">missing_data_vars=&quot;error&quot;</span></code> and the datasets do not
     all have identical data-variable sets, or if <code class="docutils literal notranslate"><span class="pre">missing_data_vars</span></code> is
     not recognised.</p>
 </dd>
@@ -911,10 +913,10 @@ dropped.</p></li>
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>dt</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.9.0)"><em>DataTree</em></a>) – DataTree whose children will be converted to datasets and gathered.</p></li>
-<li><p><strong>key_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Name for the key dimension level in the output MultiIndex.</p></li>
-<li><p><strong>ragged_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Ragged coordinate dimension to gather across children.</p></li>
-<li><p><strong>stack_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Optional name for the gathered dimension in the output.</p></li>
-<li><p><strong>missing_data_vars</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><em>Literal</em></a><em>[</em><em>'error'</em><em>, </em><em>'drop'</em><em>]</em>) – Policy for handling child data variables that are not
+<li><p><strong>key_dim</strong> (<em>str</em>) – Name for the key dimension level in the output MultiIndex.</p></li>
+<li><p><strong>ragged_dim</strong> (<em>str</em>) – Ragged coordinate dimension to gather across children.</p></li>
+<li><p><strong>stack_dim</strong> (<em>str</em><em> | </em><em>None</em>) – Optional name for the gathered dimension in the output.</p></li>
+<li><p><strong>missing_data_vars</strong> (<em>Literal</em><em>[</em><em>'error'</em><em>, </em><em>'drop'</em><em>]</em>) – Policy for handling child data variables that are not
 shared by every dataset. See <code class="docutils literal notranslate"><span class="pre">concat_gather_datasets</span></code>.</p></li>
 <li><p><strong>**concat_kwargs</strong> – Additional keyword arguments passed to <code class="docutils literal notranslate"><span class="pre">xr.concat</span></code>.</p></li>
 </ul>
@@ -946,9 +948,9 @@ operation-specific results.</p>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>da</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Array indexed once per unique <code class="docutils literal notranslate"><span class="pre">level</span></code> value.</p></li>
 <li><p><strong>multi_index</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Coordinate backed by the gathered pandas MultiIndex.</p></li>
-<li><p><strong>multi_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Gathered dimension name.</p></li>
-<li><p><strong>level</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – MultiIndex level paired with <code class="docutils literal notranslate"><span class="pre">array_dim</span></code>.</p></li>
-<li><p><strong>array_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Unique-level dimension on <code class="docutils literal notranslate"><span class="pre">da</span></code>.</p></li>
+<li><p><strong>multi_dim</strong> (<em>str</em>) – Gathered dimension name.</p></li>
+<li><p><strong>level</strong> (<em>str</em>) – MultiIndex level paired with <code class="docutils literal notranslate"><span class="pre">array_dim</span></code>.</p></li>
+<li><p><strong>array_dim</strong> (<em>str</em>) – Unique-level dimension on <code class="docutils literal notranslate"><span class="pre">da</span></code>.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Yields<span class="colon">:</span></dt>
@@ -956,12 +958,12 @@ operation-specific results.</p>
 matching scalar selection from <code class="docutils literal notranslate"><span class="pre">da</span></code>.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If the gathered coordinate is not the requested
+<dd class="field-odd"><p><strong>ValueError</strong> – If the gathered coordinate is not the requested
     MultiIndex, or the input labels are absent, duplicated, missing,
     or extra relative to the target level.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Iterator" title="(in Python v3.14)"><em>Iterator</em></a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)">tuple</a>[<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Hashable" title="(in Python v3.14)"><em>Hashable</em></a>, <a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a>, <a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>]]</p>
+<dd class="field-even"><p><em>Iterator</em>[tuple[<em>Hashable</em>, <a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a>, <a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>]]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -979,10 +981,10 @@ index ownership when the MultiIndex is assigned.</p>
 <li><p><strong>da</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – DataArray to align, e.g. <cite>fp_x_flux</cite> with dimension <cite>other_dim=”source”</cite>.</p></li>
 <li><p><strong>multi_index</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Coordinate for the MultiIndex dimension (e.g. <cite>basis_matrix[“state”]</cite>).
 Must be a MultiIndex coordinate that includes the level named by <cite>level</cite>.</p></li>
-<li><p><strong>multi_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Name of the MultiIndex dimension to align onto (e.g. <cite>“state”</cite>).</p></li>
-<li><p><strong>level</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Name of the MultiIndex level within <cite>multi_index</cite> to use for alignment
+<li><p><strong>multi_dim</strong> (<em>str</em>) – Name of the MultiIndex dimension to align onto (e.g. <cite>“state”</cite>).</p></li>
+<li><p><strong>level</strong> (<em>str</em>) – Name of the MultiIndex level within <cite>multi_index</cite> to use for alignment
 (e.g. <cite>“source”</cite>).</p></li>
-<li><p><strong>other_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Dimension on <cite>da</cite> that corresponds to <cite>level</cite> (e.g. <cite>“source”</cite>).</p></li>
+<li><p><strong>other_dim</strong> (<em>str</em>) – Dimension on <cite>da</cite> that corresponds to <cite>level</cite> (e.g. <cite>“source”</cite>).</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -990,7 +992,7 @@ Must be a MultiIndex coordinate that includes the level named by <cite>level</ci
 installed on <cite>multi_dim</cite>.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If <cite>level</cite> is not a level of <cite>multi_index</cite>, or if other level
+<dd class="field-odd"><p><strong>ValueError</strong> – If <cite>level</cite> is not a level of <cite>multi_index</cite>, or if other level
     names are already present as coordinates on <cite>da</cite>.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>

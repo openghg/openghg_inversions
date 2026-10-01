@@ -365,6 +365,7 @@
 </details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.postprocessing.html">openghg_inversions.postprocessing</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.co2_flux_outputs.html">openghg_inversions.postprocessing.co2_flux_outputs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.contracts.html">openghg_inversions.postprocessing.contracts</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.countries.html">openghg_inversions.postprocessing.countries</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.diagnostics.html">openghg_inversions.postprocessing.diagnostics</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.inversion_output.html">openghg_inversions.postprocessing.inversion_output</a></li>
@@ -374,6 +375,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.make_paris_outputs.html">openghg_inversions.postprocessing.make_paris_outputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.merge_paris_outputs.html">openghg_inversions.postprocessing.merge_paris_outputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.nested_paris_outputs.html">openghg_inversions.postprocessing.nested_paris_outputs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.output_views.html">openghg_inversions.postprocessing.output_views</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.sigma.html">openghg_inversions.postprocessing.sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.stats.html">openghg_inversions.postprocessing.stats</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.utils.html">openghg_inversions.postprocessing.utils</a></li>
@@ -816,10 +818,20 @@ component boundary and when to copy a complete recipe instead.</p>
 <p><code class="docutils literal notranslate"><span class="pre">InversionOutput</span></code> is the canonical result container used by RHIME output
 helpers. Serialisation helpers preserve the labelled indexes required by
 prepared inputs and inference data.</p>
+<p><code class="docutils literal notranslate"><span class="pre">OutputContract</span></code> records model roles and explicit state mappings without a
+live graph. The output-view factory binds that metadata to prepared values
+and samples; it does not write products. See
+<a class="reference internal" href="../usage/staged_workflow.html"><span class="doc">staged replay</span></a> for persistence.</p>
 <div class="pst-scrollable-table-container"><table class="autosummary longtable table">
 <tbody>
 <tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.postprocessing.inversion_output.html#openghg_inversions.postprocessing.inversion_output.InversionOutput" title="openghg_inversions.postprocessing.inversion_output.InversionOutput"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.postprocessing.inversion_output.InversionOutput</span></code></a></p></td>
 <td><p>Modern RHIME inversion output contract.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.postprocessing.contracts.html#openghg_inversions.postprocessing.contracts.OutputContract" title="openghg_inversions.postprocessing.contracts.OutputContract"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.postprocessing.contracts.OutputContract</span></code></a></p></td>
+<td><p>Bind scientific roles and a selected state axis to durable model data.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.postprocessing.output_views.html#openghg_inversions.postprocessing.output_views.make_inversion_output" title="openghg_inversions.postprocessing.output_views.make_inversion_output"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.postprocessing.output_views.make_inversion_output</span></code></a></p></td>
+<td><p>Create a scientific output view without constructing a model or writing files.</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.postprocessing.co2_flux_outputs.html#openghg_inversions.postprocessing.co2_flux_outputs.co2_native_flux_outputs" title="openghg_inversions.postprocessing.co2_flux_outputs.co2_native_flux_outputs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.postprocessing.co2_flux_outputs.co2_native_flux_outputs</span></code></a></p></td>
 <td><p>Summarize signed affine native flux draws from a CO2-only trace.</p></td>
