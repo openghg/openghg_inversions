@@ -53,6 +53,7 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=20261001)
     parser.add_argument("--draws", type=int, default=1000)
     parser.add_argument("--tune", type=int, default=1000)
+    parser.add_argument("--target-accept", type=float, default=0.95)
     parser.add_argument("--build-only", action="store_true")
     args = parser.parse_args()
     with xr.open_dataset(args.input) as opened:
@@ -86,7 +87,7 @@ def main() -> None:
         draws=args.draws, tune=args.tune, chains=4, nuts_sampler="numpyro",
         sample_prior_predictive=False, sample_posterior_predictive=False,
         sample_kwargs={
-            "random_seed": args.seed, "target_accept": .95, "cores": 4,
+            "random_seed": args.seed, "target_accept": args.target_accept, "cores": 4,
             "idata_kwargs": {"log_likelihood": False},
             "nuts_sampler_kwargs": {"jitter": False},
         },
@@ -142,7 +143,7 @@ def main() -> None:
         "prior_covariance": covariance.tolist(),
         "max_rhat": max_rhat, "min_ess_bulk": min_ess, "min_ess_tail": min_tail_ess,
         "min_ess_bulk_per_total_second": min_ess / (setup_seconds + elapsed),
-        "target_accept": .95, "max_tree_depth": 10,
+        "target_accept": args.target_accept, "max_tree_depth": 10,
         "divergences": divergences, "depth_10_hits": depth_hits,
         "convergence_gate": max_rhat <= 1.01 and min_ess >= 100 and divergences == 0 and depth_hits == 0,
         "posterior_scaling_mean": estimate.tolist(),
