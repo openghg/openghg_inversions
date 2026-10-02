@@ -852,16 +852,20 @@ intercept, separate native channel sensitivities, joint aggregation covariance
 including cross-channel blocks, retained prior, signed-ratio data or its
 unavailability reason, optional boundary sensitivities, and provenance.
 Unequal channel lengths, MultiIndex identities and per-row units survive the
-round trip. For an in-memory labelled tree, use
+round trip. Mixed integer/string labels, such as integer ``1`` and string
+``"1"``, remain distinct after NetCDF/Zarr replay. For an in-memory labelled
+tree, use
 :meth:`~openghg_inversions.rhime.co2.Co2O2PreparedInputs.to_datatree` and
 :meth:`~openghg_inversions.rhime.co2.Co2O2PreparedInputs.from_datatree`.
 The saved preparation contains scientific inputs; persist the sampled trace
 separately with :func:`openghg_inversions.serialization.save_trace`.
 Saving passes related arrays to the xarray writer together. Dask payloads
 remain lazy until the writer evaluates their chunks, rather than assembling
-complete arrays in memory first. Saving trusts the scientific inputs supplied
-by preparation; it does not repeat their numerical validation. Loading an
-external artifact returns eagerly loaded, validated inputs. Both operations
+complete arrays in memory first. Zarr writing lazily regularizes ragged chunks
+or aligns them with explicit storage chunks; existing regular chunks are
+preserved when no override is specified. Saving trusts the scientific inputs
+supplied by preparation; it does not repeat their numerical validation. Loading
+an external artifact returns eagerly loaded, validated inputs. Both operations
 leave the caller's input arrays unchanged.
 
 Separate linked PARIS products

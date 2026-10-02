@@ -274,8 +274,8 @@ class Co2O2PreparedInputs:
         """Save prepared inputs through xarray's chunked writer.
 
         Inputs are borrowed and are not mutated. Sparse Dask chunks are lazily
-        densified, preserving their chunking until the writer executes the
-        related array graphs. Prepared scientific values are trusted here;
+        densified; the Zarr writer lazily regularizes chunks for storage before
+        executing the related array graphs. Prepared scientific values are trusted here;
         external artifacts are validated when loaded. An existing destination
         artifact is replaced.
 
@@ -473,8 +473,8 @@ def _validate_prepared_inputs(prepared: Co2O2PreparedInputs) -> None:
         native_observations[channel] = native
         _sensitivity(sensitivity, native, state_mean, channel.upper())
         for coordinate in ("source", "tracer_scope"):
-            if coordinate not in sensitivity.coords or not sensitivity[coordinate].equals(
-                state_mean[coordinate]
+            if coordinate not in sensitivity.coords or not sensitivity[coordinate].variable.equals(
+                state_mean[coordinate].variable
             ):
                 raise ValueError(f"{channel} sensitivity {coordinate} must match the retained prior.")
     if prepared.co2_sensitivity.dims[0] == prepared.o2_sensitivity.dims[0]:

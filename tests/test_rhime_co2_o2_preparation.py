@@ -344,6 +344,107 @@ def test_native_labels_preserve_integer_string_collision() -> None:
     assert [type(label) for label in labels] == [int, str]
 
 
+@pytest.mark.parametrize("suffix", [".nc", ".zarr"])
+def test_linked_files_preserve_integer_string_label_identity(tmp_path: Path, suffix: str) -> None:
+    """Keep integer labels distinct from matching strings through either writer."""
+    labels = {
+        "co2_measure": [1, 2],
+        "co2_measure_cov": [1, 2],
+        "o2_measure": ["1", "2", "3"],
+        "o2_measure_cov": ["1", "2", "3"],
+    }
+    inputs = {
+        key: value.assign_coords({dim: labels[dim] for dim in value.dims if dim in labels})
+        if isinstance(value, xr.DataArray)
+        else value
+        for key, value in _inputs().items()
+    }
+    prepared = prepare_co2_o2_inputs(**inputs)
+    path = tmp_path / f"mixed-labels{suffix}"
+    prepared.save(path)
+    restored = Co2O2PreparedInputs.load(path)
+
+    actual = restored.observations.indexes["observation"].get_level_values("channel_observation")
+    assert actual.tolist() == [1, 2, "1", "2", "3"]
+    assert [type(label) for label in actual] == [int, int, str, str, str]
+    for name in ("observations", "fixed_prior_contribution", "co2_sensitivity", "o2_sensitivity"):
+        xr.testing.assert_identical(getattr(restored, name), getattr(prepared, name).compute())
+    xr.testing.assert_identical(restored.aggregation_error.covariance, prepared.aggregation_error.covariance)
+
+
+@pytest.mark.parametrize("suffix", [".nc", ".zarr"])
+def test_linked_roundtrip_ignores_unrelated_scalar_metadata(tmp_path: Path, suffix: str) -> None:
+    """State-coordinate comparison ignores scalar metadata while preserving it."""
+    inputs = _inputs()
+    for channel in ("co2", "o2"):
+        inputs[f"{channel}_sensitivity"] = inputs[f"{channel}_sensitivity"].assign_coords(domain="EUROPE")
+    prepared = prepare_co2_o2_inputs(**inputs)
+    from_tree = Co2O2PreparedInputs.from_datatree(prepared.to_datatree())
+    path = tmp_path / f"scalar-metadata{suffix}"
+    prepared.save(path)
+    restored = Co2O2PreparedInputs.load(path)
+    for channel in ("co2", "o2"):
+        expected = getattr(prepared, f"{channel}_sensitivity")
+        xr.testing.assert_identical(getattr(from_tree, f"{channel}_sensitivity"), expected)
+        xr.testing.assert_identical(getattr(restored, f"{channel}_sensitivity"), expected)
+
+
+@pytest.mark.parametrize("coordinate", ["source", "tracer_scope"])
+def test_linked_loader_rejects_mismatched_state_coordinate_values(coordinate: str) -> None:
+    """Scientific coordinate values still have to match the retained prior."""
+    tree = prepare_co2_o2_inputs(**_inputs()).to_datatree()
+    values = tree["co2_sensitivity"][coordinate].values.copy()
+    values[0] = "wrong"
+    tree["co2_sensitivity"] = tree["co2_sensitivity"].to_dataset().assign_coords(
+        {coordinate: ("state", values)}
+    )
+    with pytest.raises(ValueError, match=f"co2 sensitivity {coordinate} must match the retained prior"):
+        Co2O2PreparedInputs.from_datatree(tree)
+
+
+@pytest.mark.parametrize("lengths", [(2, 3), (5, 7)])
+def test_linked_zarr_normalizes_ragged_channel_chunks(tmp_path: Path, lengths: tuple[int, int]) -> None:
+    """Write unequal channels with terminal and interior short chunks lazily."""
+    inputs = _inputs()
+    for channel, length in zip(("co2", "o2"), lengths, strict=True):
+        dim = f"{channel}_measure"
+        for field in ("observations", "prior_forward_mean", "sensitivity"):
+            key = f"{channel}_{field}"
+            value = inputs[key]
+            inputs[key] = (
+                value.isel({dim: np.arange(length) % value.sizes[dim]})
+                .assign_coords({dim: [f"{channel}:{i}" for i in range(length)]})
+                .chunk({dim: 4})
+            )
+    for key, channels in (
+        ("co2_aggregation_covariance", ("co2", "co2")),
+        ("o2_aggregation_covariance", ("o2", "o2")),
+        ("co2_o2_aggregation_covariance", ("co2", "o2")),
+    ):
+        dims = inputs[key].dims
+        indexes = [inputs[f"{channel}_observations"].indexes[f"{channel}_measure"] for channel in channels]
+        data = np.eye(len(indexes[0])) if channels[0] == channels[1] else np.zeros(tuple(map(len, indexes)))
+        inputs[key] = xr.DataArray(
+            da.from_array(data, chunks=(4, 4)),
+            dims=dims,
+            coords={dim: index.to_numpy() for dim, index in zip(dims, indexes, strict=True)},
+        )
+    prepared = prepare_co2_o2_inputs(**inputs)
+    chunks = prepared.observations.chunks
+    assert chunks == (((2, 3) if lengths == (2, 3) else (4, 1, 4, 3)),)
+    path = tmp_path / "ragged.zarr"
+    prepared.save(path)
+    restored = Co2O2PreparedInputs.load(path)
+    assert prepared.observations.chunks == chunks
+    for name in ("observations", "fixed_prior_contribution", "co2_sensitivity", "o2_sensitivity"):
+        xr.testing.assert_identical(getattr(restored, name), getattr(prepared, name).compute())
+    xr.testing.assert_identical(restored.aggregation_error.covariance, prepared.aggregation_error.covariance)
+    with xr.open_datatree(path, engine="zarr", chunks={}) as tree:
+        stored_chunks = tree["joint"]["observed_concentration"].data.chunks[0]
+        assert len(set(stored_chunks[:-1])) <= 1
+        assert stored_chunks[-1] <= stored_chunks[0]
+
+
 def test_multiindex_observation_labels_roundtrip_without_future_warnings(tmp_path) -> None:
     co2_index = pd.MultiIndex.from_tuples(
         [

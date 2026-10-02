@@ -23,12 +23,20 @@ from collections.abc import Iterable
 from typing import Literal, cast
 
 from cf_xarray.coding import decode_compress_to_multi_index, encode_multi_index_as_compress
+import numpy as np
 import pandas as pd
 import xarray as xr
+
+from openghg_inversions._serialization_codecs import (
+    _TAGGED_JSON_VALUE_ENCODING,
+    _decode_tagged_json_value,
+    _encode_tagged_json_value,
+)
 
 
 MULTIINDEX_DIMS_ATTR = "openghg_inversions:multiindex_dims"
 MULTIINDEX_SCHEMA_VERSION = 1
+CF_LABEL_ENCODING_ATTR = "openghg_inversions:label_encoding"
 
 
 def _validate_multiindex(
@@ -118,7 +126,9 @@ def encode_cf_multiindexes(ds: xr.Dataset, index_names: str | Iterable[str]) -> 
     This codec is intended for versioned prepared-input artifacts. Unlike
     :func:`reset_serialisation_multiindexes`, it emits the interoperable CF
     ``compress`` attribute and requires callers to name every index they intend
-    to encode.
+    to encode. Mixed-type level labels use the shared tagged JSON codec so
+    NetCDF and Zarr preserve distinctions such as integer ``1`` and string
+    ``"1"``. Homogeneous level coordinates keep their ordinary representation.
 
     Args:
         ds: Dataset containing the MultiIndex dimensions.
@@ -157,7 +167,19 @@ def encode_cf_multiindexes(ds: xr.Dataset, index_names: str | Iterable[str]) -> 
             raise ValueError(f"MultiIndex {name!r} already has CF 'compress' metadata.")
 
     try:
-        return encode_multi_index_as_compress(ds, idxnames=names)
+        encoded = encode_multi_index_as_compress(ds, idxnames=names)
+        for level_name in all_level_names:
+            coordinate = encoded[level_name]
+            if pd.api.types.infer_dtype(coordinate.values).startswith("mixed"):
+                labels = np.asarray([_encode_tagged_json_value(value) for value in coordinate.values])
+                encoded = encoded.assign_coords(
+                    {
+                        level_name: coordinate.copy(data=labels).assign_attrs(
+                            {**coordinate.attrs, CF_LABEL_ENCODING_ATTR: _TAGGED_JSON_VALUE_ENCODING}
+                        )
+                    }
+                )
+        return encoded
     except (KeyError, TypeError, ValueError) as exc:
         raise ValueError(f"Could not encode CF MultiIndexes {names!r}: {exc}") from exc
 
@@ -233,6 +255,25 @@ def decode_cf_multiindexes(ds: xr.Dataset, index_names: str | Iterable[str]) -> 
             normalised[name].attrs = dict(normalised[name].attrs)
             normalised[name].attrs["compress"] = canonical_compress
 
+    for level_name in all_level_names:
+        coordinate = normalised[level_name]
+        label_encoding = coordinate.attrs.get(CF_LABEL_ENCODING_ATTR)
+        if label_encoding is None:
+            continue
+        if label_encoding != _TAGGED_JSON_VALUE_ENCODING:
+            raise ValueError(f"CF level coordinate {level_name!r} has unsupported label encoding.")
+        labels = np.empty(coordinate.size, dtype=object)
+        try:
+            labels[:] = [_decode_tagged_json_value(value) for value in coordinate.values]
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"Could not decode labels for CF level coordinate {level_name!r}: {exc}"
+            ) from exc
+        attrs = {key: value for key, value in coordinate.attrs.items() if key != CF_LABEL_ENCODING_ATTR}
+        restored = coordinate.copy(data=labels)
+        restored.attrs = attrs
+        normalised = normalised.assign_coords({level_name: restored})
+
     try:
         decoded = decode_compress_to_multi_index(normalised, idxnames=names)
     except (AttributeError, IndexError, KeyError, TypeError, ValueError) as exc:
@@ -264,7 +305,9 @@ def save_datatree(
 
     This writes the tree, replacing an existing destination artifact. NetCDF
     uses xarray's default engine so callers that already loaded NetCDF inputs
-    do not switch HDF5 bindings at the serialization boundary.
+    do not switch HDF5 bindings at the serialization boundary. Zarr writes
+    lazily rechunk arrays to their encoded storage chunks, or regular chunks
+    sized to the largest existing chunk on each axis. Inputs are not mutated.
 
     Args:
         dt: DataTree to persist.
@@ -294,6 +337,21 @@ def save_datatree(
     elif output_format == "zarr":
         if output_path.suffix != ".zarr":
             output_path = output_path.with_suffix(".zarr")
+        dt = dt.map_over_datasets(
+            lambda dataset: dataset.assign(
+                {
+                    name: variable.copy(
+                        deep=False,
+                        data=variable.data.rechunk(
+                            variable.encoding.get("chunks")
+                            or tuple(max(axis) for axis in variable.chunks)
+                        ),
+                    )
+                    for name, variable in dataset.variables.items()
+                    if variable.chunks is not None
+                }
+            )
+        )
         dt.to_zarr(output_path, mode="w")
     else:
         raise ValueError(f"Unsupported output_format: {output_format!r}")
