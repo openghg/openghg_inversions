@@ -3,27 +3,47 @@
 CO2 and O2 keep distinct, potentially unequal observation axes at this public
 boundary. They are stacked only after their labels, state meanings, covariance
 blocks, and units have been checked.
+
+Prepared inputs support a versioned DataTree handoff and NetCDF or Zarr
+persistence. In-memory conversion preserves borrowed lazy payloads. Saving
+passes lazily densified arrays to xarray's writer, which computes their chunks
+while writing; loading eagerly restores and validates the saved artifact.
+Preparation checks independent-error labels and eager values while leaving lazy
+error payloads and unit coordinates for the loading or model boundary.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 import json
-from typing import Any
+from numbers import Integral
+from pathlib import Path
+from typing import Any, Literal, Self, cast
 
 from dask import compute as dask_compute
+from dask.array import Array as DaskArray
 import numpy as np
 import pandas as pd
 import xarray as xr
 
-from openghg_inversions.array_ops import concat_gather_data_arrays
+from openghg_inversions.array_ops import concat_gather_data_arrays, select_gathered_data_array, to_dense
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.observation_error import (
     AGGREGATION_ERROR_COVARIANCE,
     AggregationError,
     resolve_aggregation_error,
 )
+from openghg_inversions.serialization import (
+    decode_cf_multiindexes,
+    encode_cf_multiindexes,
+    open_datatree_loaded,
+    save_datatree,
+)
+
+
+CO2_O2_PREPARED_INPUTS_SCHEMA = "openghg_inversions.co2_o2_prepared_inputs"
+CO2_O2_PREPARED_INPUTS_SCHEMA_VERSION = 1
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -68,6 +88,9 @@ class Co2O2PreparedInputs:
         provenance: JSON-serializable preparation and data provenance.
         boundary_sensitivity: Optional mapping keyed by co2 and o2, containing
             native-channel H_bc arrays (observation, boundary state).
+        independent_error_sd: Optional positive independent-error standard
+            deviations on the joint observation axis, with matching row units.
+            The borrowed payload may remain lazy.
     """
 
     observations: xr.DataArray
@@ -80,6 +103,217 @@ class Co2O2PreparedInputs:
     retained_prior: CorrelatedLognormalPrior
     provenance: Mapping[str, Any] = field(default_factory=dict)
     boundary_sensitivity: Mapping[str, xr.DataArray] = field(default_factory=dict)
+    independent_error_sd: xr.DataArray | None = None
+
+    def to_datatree(self) -> xr.DataTree:
+        """Build a versioned tree without writing or materializing payloads.
+
+        Native channels and the shared-state ratio occupy separate nodes so Dataset
+        alignment cannot pad ragged observations or ratio states.
+
+        Returns:
+            A versioned DataTree retaining borrowed lazy array payloads.
+
+        Raises:
+            ValueError: If dense aggregation covariance is absent, boundary
+                channels are unsupported, or metadata cannot be serialized.
+        """
+        covariance = self.aggregation_error.covariance
+        if self.aggregation_error.mode != "dense" or covariance is None:
+            raise ValueError("CO2/O2 prepared inputs require dense aggregation error.")
+        if set(self.boundary_sensitivity) - {"co2", "o2"}:
+            raise ValueError("boundary_sensitivity must be keyed only by co2 and o2.")
+        arrays = {
+            "joint": {
+                "observed_concentration": self.observations,
+                "fixed_prior_contribution": self.fixed_prior_contribution,
+                AGGREGATION_ERROR_COVARIANCE: covariance,
+            },
+            "co2_sensitivity": {"co2_effective_sensitivity": self.co2_sensitivity},
+            "o2_sensitivity": {"o2_effective_sensitivity": self.o2_sensitivity},
+            "retained_prior": {
+                "arithmetic_mean": self.retained_prior.mean,
+                "arithmetic_covariance": self.retained_prior.arithmetic_covariance,
+            },
+        }
+        if self.o2_co2_flux_ratio is not None:
+            arrays["flux_ratio"] = {"o2_co2_flux_ratio": self.o2_co2_flux_ratio}
+        if self.independent_error_sd is not None:
+            arrays["independent_error"] = {"independent_error_sd": self.independent_error_sd}
+        for channel, boundary in self.boundary_sensitivity.items():
+            arrays[f"{channel}_boundary"] = {"boundary_sensitivity": boundary}
+        datasets: dict[str, xr.Dataset] = {}
+        for name, variables in arrays.items():
+            dataset = xr.Dataset(variables)
+            indexes = [
+                cast(str, dim) for dim in dataset.dims if isinstance(dataset.indexes.get(dim), pd.MultiIndex)
+            ]
+            if indexes:
+                dataset = encode_cf_multiindexes(dataset, indexes)
+            datasets[name] = dataset.assign_attrs(
+                multiindex_dims_json=json.dumps(indexes),
+                array_names_json=json.dumps({variable: array.name for variable, array in variables.items()}),
+            )
+        datasets["retained_prior"].attrs.update(
+            state_dim=self.retained_prior.state_dim, covariance_dim=self.retained_prior.covariance_dim
+        )
+        tree = xr.DataTree.from_dict(datasets)
+        tree.attrs = {
+            "schema": CO2_O2_PREPARED_INPUTS_SCHEMA,
+            "schema_version": CO2_O2_PREPARED_INPUTS_SCHEMA_VERSION,
+            "provenance_json": json.dumps(dict(self.provenance), sort_keys=True, allow_nan=False),
+            "o2_co2_flux_ratio_unavailable_reason": self.o2_co2_flux_ratio_unavailable_reason or "",
+        }
+        return tree
+
+    @classmethod
+    def from_datatree(cls, tree: xr.DataTree) -> Self:
+        """Restore and validate a version-1 artifact, preserving its saved intercept.
+
+        Args:
+            tree: Tree using the dedicated CO2/O2 prepared-input schema.
+
+        Returns:
+            Validated scientific inputs. Observations, fixed intercept, dense
+            covariance, prior moments, ocean-loading slices, available ratio
+            values, and independent error are materialized for validation;
+            sensitivity payloads may otherwise remain lazy.
+
+        Raises:
+            KeyError: If a required node or scientific variable is absent.
+            ValueError: If schema metadata or scientific contents are invalid.
+        """
+        if tree.attrs.get("schema") != CO2_O2_PREPARED_INPUTS_SCHEMA:
+            raise ValueError(f"Expected Co2O2PreparedInputs schema {CO2_O2_PREPARED_INPUTS_SCHEMA!r}.")
+        version = tree.attrs.get("schema_version")
+        if isinstance(version, bool) or not isinstance(version, Integral) or version != 1:
+            raise ValueError(f"Expected Co2O2PreparedInputs schema_version 1; got {version!r}.")
+        unexpected_boundaries = {
+            name
+            for name in tree.children
+            if name.endswith("_boundary") and name not in {"co2_boundary", "o2_boundary"}
+        }
+        if unexpected_boundaries:
+            raise ValueError(f"Unsupported serialized boundary nodes: {sorted(unexpected_boundaries)!r}.")
+        datasets: dict[str, xr.Dataset] = {}
+        for name, node in tree.children.items():
+            dataset = node.to_dataset()
+            try:
+                indexes = json.loads(dataset.attrs["multiindex_dims_json"])
+            except (KeyError, TypeError, json.JSONDecodeError) as exc:
+                raise ValueError(f"Invalid MultiIndex metadata in node {name!r}.") from exc
+            if not isinstance(indexes, list) or any(not isinstance(dim, str) for dim in indexes):
+                raise ValueError(f"Invalid MultiIndex metadata in node {name!r}.")
+            compressed = {
+                str(dim) for dim in dataset.dims if dim in dataset.coords and "compress" in dataset[dim].attrs
+            }
+            if set(indexes) != compressed or len(indexes) != len(compressed):
+                raise ValueError(f"Declared MultiIndexes do not match CF coordinates in node {name!r}.")
+            datasets[name] = decode_cf_multiindexes(dataset, indexes) if indexes else dataset
+        try:
+            provenance = json.loads(tree.attrs["provenance_json"])
+        except (KeyError, TypeError, json.JSONDecodeError) as exc:
+            raise ValueError("Serialized CO2/O2 provenance must be a JSON object.") from exc
+        if not isinstance(provenance, dict):
+            raise ValueError("Serialized CO2/O2 provenance must be a JSON object.")
+        prior_data = datasets["retained_prior"]
+        prior = CorrelatedLognormalPrior(
+            _stored_array(prior_data, "arithmetic_mean"),
+            _stored_array(prior_data, "arithmetic_covariance"),
+            covariance_dim=prior_data.attrs["covariance_dim"],
+        )
+        if prior.state_dim != prior_data.attrs["state_dim"]:
+            raise ValueError("Serialized retained-prior state_dim does not match its arithmetic mean.")
+        joint = datasets["joint"]
+        aggregation_error = resolve_aggregation_error(
+            joint, "dense", output_dim="observation", covariance_dim="observation_cov"
+        )
+        covariance = aggregation_error.covariance
+        if covariance is None:
+            raise ValueError("CO2/O2 prepared inputs require dense aggregation error.")
+        aggregation_error = replace(
+            aggregation_error,
+            covariance=covariance.rename(_stored_array(joint, AGGREGATION_ERROR_COVARIANCE).name),
+        )
+        reason = tree.attrs.get("o2_co2_flux_ratio_unavailable_reason")
+        if not isinstance(reason, str):
+            raise ValueError("Serialized ratio unavailable reason must be a string.")
+        prepared = cls(
+            observations=_stored_array(joint, "observed_concentration"),
+            fixed_prior_contribution=_stored_array(joint, "fixed_prior_contribution"),
+            co2_sensitivity=_stored_array(datasets["co2_sensitivity"], "co2_effective_sensitivity"),
+            o2_sensitivity=_stored_array(datasets["o2_sensitivity"], "o2_effective_sensitivity"),
+            o2_co2_flux_ratio=(
+                _stored_array(datasets["flux_ratio"], "o2_co2_flux_ratio")
+                if "flux_ratio" in datasets
+                else None
+            ),
+            o2_co2_flux_ratio_unavailable_reason=reason.strip() or None,
+            aggregation_error=aggregation_error,
+            retained_prior=prior,
+            provenance=provenance,
+            boundary_sensitivity={
+                channel: _stored_array(datasets[f"{channel}_boundary"], "boundary_sensitivity")
+                for channel in ("co2", "o2")
+                if f"{channel}_boundary" in datasets
+            },
+            independent_error_sd=(
+                _stored_array(datasets["independent_error"], "independent_error_sd")
+                if "independent_error" in datasets
+                else None
+            ),
+        )
+        _validate_prepared_inputs(prepared)
+        return prepared
+
+    def save(
+        self,
+        output_file: str | Path,
+        output_format: Literal["netcdf", "zarr"] | None = None,
+    ) -> None:
+        """Save prepared inputs through xarray's chunked writer.
+
+        Inputs are borrowed and are not mutated. Sparse Dask chunks are lazily
+        densified; the Zarr writer lazily regularizes chunks for storage before
+        executing the related array graphs. Prepared scientific values are trusted here;
+        external artifacts are validated when loaded. An existing destination
+        artifact is replaced.
+
+        Args:
+            output_file: Destination NetCDF file or Zarr store.
+            output_format: Explicit "netcdf" or "zarr" format. When omitted,
+                infer the format from the destination's .nc or .zarr suffix.
+
+        Raises:
+            ValueError: If schema metadata or the output format is invalid.
+        """
+        tree = self.to_datatree()
+        for name in list(tree.children):
+            dataset = tree[name].to_dataset()
+            tree[name] = dataset.assign(
+                {
+                    variable: array.copy(deep=False, data=to_dense(array).data)
+                    for variable, array in dataset.data_vars.items()
+                }
+            )
+        save_datatree(tree, output_file, output_format)
+
+    @classmethod
+    def load(cls, file_path: str | Path) -> Self:
+        """Eagerly load and validate a NetCDF file or Zarr store.
+
+        Args:
+            file_path: Prepared-input artifact to read.
+
+        Returns:
+            Fully materialized inputs with no references to closed file handles.
+
+        Raises:
+            KeyError: If a required node or scientific variable is absent.
+            ValueError: If the schema or scientific contents are invalid.
+            OSError: If the artifact cannot be opened.
+        """
+        return cls.from_datatree(open_datatree_loaded(file_path))
 
 
 def _axis(array: xr.DataArray, name: str) -> str:
@@ -91,6 +325,30 @@ def _axis(array: xr.DataArray, name: str) -> str:
     return dim
 
 
+def _stored_array(dataset: xr.Dataset, variable: str) -> xr.DataArray:
+    """Restore a scientific array's name without altering its borrowed payload.
+
+    Args:
+        dataset: Decoded node containing array_names_json metadata.
+        variable: Schema field whose original name should be restored.
+
+    Returns:
+        The selected array with its recorded original name and existing data.
+
+    Raises:
+        KeyError: If the required scientific field is absent.
+        ValueError: If its name metadata is missing, malformed, or unsupported.
+    """
+    try:
+        names = json.loads(dataset.attrs["array_names_json"])
+        name = names[variable]
+    except (KeyError, TypeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"Invalid array-name metadata for {variable!r}.") from exc
+    if name is not None and not isinstance(name, (str, int, float)):
+        raise ValueError(f"Invalid saved array name for {variable!r}.")
+    return dataset[variable].rename(name)
+
+
 def _same_axis(reference: xr.DataArray, candidate: xr.DataArray, name: str) -> None:
     dim = str(reference.dims[0])
     if candidate.dims != (dim,) or not _same_index(candidate.indexes[dim], reference.indexes[dim]):
@@ -100,6 +358,191 @@ def _same_axis(reference: xr.DataArray, candidate: xr.DataArray, name: str) -> N
 def _same_index(left: pd.Index, right: pd.Index) -> bool:
     """Compare index values and metadata used by xarray alignment."""
     return left.equals(right) and left.names == right.names
+
+
+def _validate_independent_error(
+    observations: xr.DataArray,
+    independent_error_sd: xr.DataArray | None,
+    *,
+    materialize: bool = False,
+) -> None:
+    """Check error structure, deferring borrowed lazy values until requested.
+
+    Args:
+        observations: Canonical gathered observation labels and row units.
+        independent_error_sd: Optional labelled error standard deviations.
+        materialize: Compute payload and unit coordinates together to validate
+            their values when loading an external artifact. Otherwise,
+            inspect only already-eager values and preserve lazy execution.
+
+    Raises:
+        ValueError: If labels, row-unit structure, or available values disagree,
+            or error values are not finite positive real numbers.
+    """
+    if independent_error_sd is None:
+        return
+    _same_axis(observations, independent_error_sd, "independent_error_sd")
+    coordinate = independent_error_sd.coords.get("observation_units")
+    if coordinate is None or coordinate.dims != observations.dims:
+        raise ValueError("independent_error_sd requires observation-aligned observation_units.")
+    values = to_dense(independent_error_sd).data
+    units = coordinate.data
+    expected_units = observations["observation_units"].data
+    if materialize:
+        values, units, expected_units = dask_compute(values, units, expected_units)
+    if (
+        not isinstance(units, DaskArray)
+        and not isinstance(expected_units, DaskArray)
+        and not np.array_equal(units, expected_units)
+    ):
+        raise ValueError("independent_error_sd observation_units must match prepared observations.")
+    if isinstance(values, DaskArray):
+        return
+    values = np.asarray(values)
+    if (
+        not np.issubdtype(values.dtype, np.number)
+        or np.iscomplexobj(values)
+        or not np.isfinite(values).all()
+        or np.any(values <= 0)
+    ):
+        raise ValueError("independent_error_sd must contain only finite positive real numeric values.")
+
+
+def _validate_prepared_inputs(prepared: Co2O2PreparedInputs) -> None:
+    """Validate the external scientific handoff without rebuilding its intercept.
+
+    Args:
+        prepared: Restored inputs whose dense covariance and correlated prior
+            have already been validated by their owning constructors.
+
+    Raises:
+        ValueError: If numeric payloads, labels, row units, state meanings,
+            signed-ratio provenance, or boundary channels violate the schema.
+
+    Notes:
+        Called at the loading boundary. Observation and intercept
+        payloads are computed together for finite real-number checks. Ocean
+        slices, available ratios, independent error, and auxiliary units are
+        materialized explicitly for their remaining scientific checks.
+    """
+    observations = prepared.observations
+    _axis(observations, "Joint observations")
+    index = observations.indexes.get("observation")
+    if observations.dims != ("observation",) or not isinstance(index, pd.MultiIndex):
+        raise ValueError("Joint observations require the observation MultiIndex.")
+    observation_values, intercept_values = dask_compute(
+        to_dense(observations).data, to_dense(prepared.fixed_prior_contribution).data
+    )
+    for name, values in (
+        ("observations", observation_values),
+        ("fixed_prior_contribution", intercept_values),
+    ):
+        values = np.asarray(values)
+        if (
+            not np.issubdtype(values.dtype, np.number)
+            or np.iscomplexobj(values)
+            or not np.isfinite(values).all()
+        ):
+            raise ValueError(f"{name} must contain only finite real numeric values.")
+    if index.names[0] != "species" or set(index.get_level_values("species")) != {"co2", "o2"}:
+        raise ValueError("Joint observation labels must gather exactly CO2 and O2 by species.")
+    species = index.get_level_values("species").to_numpy()
+    if not np.array_equal(species, np.concatenate((species[species == "co2"], species[species == "o2"]))):
+        raise ValueError("Joint observations must be ordered CO2 followed by O2.")
+    units = observations.coords.get("observation_units")
+    if units is None or units.dims != ("observation",):
+        raise ValueError("Joint observations require observation-aligned observation_units.")
+    unit_values = np.asarray(dask_compute(units.data)[0]).astype(str)
+    channel_units: dict[str, str] = {}
+    native_observations: dict[str, xr.DataArray] = {}
+    state_mean = _state(prepared.retained_prior)
+    for channel, sensitivity in (("co2", prepared.co2_sensitivity), ("o2", prepared.o2_sensitivity)):
+        if sensitivity.ndim != 2:
+            raise ValueError(f"{channel} sensitivity must have native observation and state dimensions.")
+        channel_values = np.unique(unit_values[species == channel])
+        if channel_values.size != 1 or not channel_values[0].strip():
+            raise ValueError(f"{channel} observations must have one non-empty unit label.")
+        channel_units[channel] = str(channel_values[0])
+        native = select_gathered_data_array(
+            observations,
+            key=channel,
+            key_dim="species",
+            ragged_dim="channel_observation",
+            stack_dim="observation",
+        ).rename({"observation": sensitivity.dims[0]})
+        native_observations[channel] = native
+        _sensitivity(sensitivity, native, state_mean, channel.upper())
+        for coordinate in ("source", "tracer_scope"):
+            if coordinate not in sensitivity.coords or not sensitivity[coordinate].variable.equals(
+                state_mean[coordinate].variable
+            ):
+                raise ValueError(f"{channel} sensitivity {coordinate} must match the retained prior.")
+    if prepared.co2_sensitivity.dims[0] == prepared.o2_sensitivity.dims[0]:
+        raise ValueError("CO2 and O2 require distinct native observation dimension names.")
+    _same_axis(observations, prepared.fixed_prior_contribution, "fixed_prior_contribution")
+    ratio = _ratio_provenance(
+        prepared.o2_co2_flux_ratio, prepared.o2_co2_flux_ratio_unavailable_reason, state_mean
+    )
+    if ratio is None and not str(prepared.o2_co2_flux_ratio_unavailable_reason or "").strip():
+        raise ValueError("Unavailable O2/CO2 flux ratios require a non-empty reason.")
+    _materialize_and_validate_ocean_loadings_and_ratio(
+        prepared.co2_sensitivity, prepared.o2_sensitivity, state_mean, ratio
+    )
+    try:
+        actual_record = json.loads(prepared.o2_sensitivity.attrs["oxidation_ratio_provenance"])
+    except (KeyError, TypeError, json.JSONDecodeError) as exc:
+        raise ValueError("O2 sensitivity requires valid signed-ratio provenance.") from exc
+    if not isinstance(actual_record, dict):
+        raise ValueError("O2 sensitivity signed-ratio provenance must be a JSON object.")
+    covariance = prepared.aggregation_error.covariance
+    if prepared.aggregation_error.mode != "dense" or covariance is None:
+        raise ValueError("CO2/O2 prepared inputs require dense aggregation error.")
+    column_units = covariance.coords.get("observation_units_cov")
+    if (
+        column_units is None
+        or column_units.dims != ("observation_cov",)
+        or not np.array_equal(dask_compute(column_units.data)[0], unit_values)
+    ):
+        raise ValueError(
+            "Aggregation covariance observation_units_cov must match prepared observation units."
+        )
+    if set(prepared.boundary_sensitivity) - {"co2", "o2"}:
+        raise ValueError("boundary_sensitivity must be keyed only by co2 and o2.")
+    if prepared.boundary_sensitivity and channel_units["co2"] != channel_units["o2"]:
+        raise ValueError("Linked boundary sensitivity currently requires identical channel units.")
+    for channel, boundary in prepared.boundary_sensitivity.items():
+        native = native_observations[channel]
+        if boundary.ndim != 2 or boundary.dims[0] != native.dims[0]:
+            raise ValueError(
+                f"{channel} boundary sensitivity requires native observation rows and one state axis."
+            )
+        xr.align(boundary, native, join="exact", copy=False)
+        if boundary.dims[1] not in boundary.indexes or not boundary.indexes[boundary.dims[1]].is_unique:
+            raise ValueError(f"{channel} boundary states require unique labels.")
+    _validate_independent_error(observations, prepared.independent_error_sd, materialize=True)
+
+
+def _ratio_record(
+    ratio: xr.DataArray | None,
+    unavailable_reason: str | None,
+    ratio_values: np.ndarray,
+) -> dict[str, object]:
+    """Describe signed ratios already embedded in shared-state sensitivities."""
+    record: dict[str, object] = {
+        "status": "available" if ratio is not None else "unavailable",
+        "direction": "O2 flux per CO2 flux",
+        "sign_convention": "signed; positive CO2 flux has negative O2 loading",
+    }
+    if ratio is None:
+        record["unavailable_reason"] = unavailable_reason
+    else:
+        record.update(
+            state=[str(label) for label in ratio.indexes[str(ratio.dims[0])]],
+            source=[str(source) for source in ratio["source"].values],
+            value=ratio_values.tolist(),
+            provenance=ratio.attrs["provenance"],
+        )
+    return record
 
 
 def _state(prior: CorrelatedLognormalPrior) -> xr.DataArray:
@@ -333,6 +776,7 @@ def prepare_co2_o2_inputs(
     o2_units: str,
     provenance: Mapping[str, Any] | None = None,
     boundary_sensitivity: Mapping[str, xr.DataArray] | None = None,
+    independent_error_sd: xr.DataArray | None = None,
 ) -> Co2O2PreparedInputs:
     """Validate coherent-reduction channel products and form one joint likelihood.
 
@@ -386,11 +830,16 @@ def prepare_co2_o2_inputs(
         boundary_sensitivity: Optional co2/o2 mapping of labelled H_bc arrays
             on native observation rows and one unique boundary-state axis.
             Channels must currently have identical units. Payloads remain borrowed.
+        independent_error_sd: Optional finite positive independent-error standard
+            deviations on the gathered observation axis, with matching labels
+            and observation_units. Eager values are checked here; lazy payloads
+            and unit coordinates are checked at the loading or model
+            boundary. This borrowed array is retained for replay.
 
     Returns:
         Labelled, backend-neutral joint inputs. Observation vectors, affine
-        intercept, sensitivities, and available ratio provenance retain borrowed
-        lazy payloads; dense covariance validation is the explicit eager
+        intercept, sensitivities, independent error, and available ratio
+        provenance retain borrowed lazy payloads; dense covariance validation is the explicit eager
         aggregation-error boundary.
 
     Raises:
@@ -405,7 +854,7 @@ def prepare_co2_o2_inputs(
     if not co2_units.strip() or not o2_units.strip():
         raise ValueError("CO2 and O2 channel units must be non-empty.")
     try:
-        prepared_provenance = json.loads(json.dumps(dict(provenance or {})))
+        prepared_provenance = json.loads(json.dumps(dict(provenance or {}), allow_nan=False))
     except (TypeError, ValueError) as exc:
         raise ValueError("CO2/O2 provenance must be JSON serializable.") from exc
 
@@ -482,6 +931,7 @@ def prepare_co2_o2_inputs(
         o2_units=o2_units,
         name="observed_concentration",
     )
+    _validate_independent_error(observations, independent_error_sd)
     observation_index = observations.indexes["observation"]
     if not isinstance(observation_index, pd.MultiIndex):  # pragma: no cover - helper invariant
         raise TypeError("Joint observations require a gathered MultiIndex.")
@@ -533,20 +983,7 @@ def prepare_co2_o2_inputs(
     )
     ratio_direction = "O2 flux per CO2 flux"
     ratio_sign = "signed; positive CO2 flux has negative O2 loading"
-    ratio_record: dict[str, object] = {
-        "status": "available" if o2_co2_flux_ratio is not None else "unavailable",
-        "direction": ratio_direction,
-        "sign_convention": ratio_sign,
-    }
-    if o2_co2_flux_ratio is not None:
-        ratio_record.update(
-            state=[str(label) for label in o2_co2_flux_ratio.indexes[state_dim]],
-            source=[str(source) for source in o2_co2_flux_ratio["source"].values],
-            value=ratio_values.tolist(),
-            provenance=o2_co2_flux_ratio.attrs["provenance"],
-        )
-    else:
-        ratio_record["unavailable_reason"] = o2_co2_flux_ratio_unavailable_reason
+    ratio_record = _ratio_record(o2_co2_flux_ratio, o2_co2_flux_ratio_unavailable_reason, ratio_values)
     o2_sensitivity = (
         o2_sensitivity.rename("o2_effective_sensitivity")
         .assign_coords(sensitivity_coords)
@@ -581,4 +1018,5 @@ def prepare_co2_o2_inputs(
         retained_prior=retained_prior,
         provenance=prepared_provenance,
         boundary_sensitivity=boundary_sensitivity,
+        independent_error_sd=independent_error_sd,
     )

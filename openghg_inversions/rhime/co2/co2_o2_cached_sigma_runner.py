@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-import numpy as np
 import xarray as xr
 
 from openghg_inversions.models import StateActivity
@@ -26,16 +25,14 @@ from .co2_o2_runner import (
     _annotate_co2_o2_trace,
     _annotate_linked_fixed_ou_trace,
     _co2_o2_metadata,
-    _materialize_co2_o2_pymc_inputs,
-    _validate_independent_error_labels,
-    _validate_independent_error_values,
+    _materialize_co2_o2_replay_inputs,
 )
 
 
 def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
     *,
     prepared_inputs: Co2O2PreparedInputs,
-    independent_error_sd: xr.DataArray,
+    independent_error_sd: xr.DataArray | None = None,
     tau_hours: float | Mapping[str, float],
     site_amplitude_prior_scale: float,
     initial_site_amplitudes: float | Mapping[str, float] | None = None,
@@ -51,24 +48,79 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
 ) -> xr.DataTree:
     """Sample linked species/site OU amplitudes followed by affine states.
 
-    Uses the prepared-input, independent-error and channel baseline contracts
-    of :func:`run_rhime_co2_o2_from_prepared_inputs`. Both channels must use the
-    same concentration units. Fixed ``tau_hours`` and optional positive initial
-    amplitudes accept scalars or mappings keyed by ``co2:SITE``/``o2:SITE``.
-    The HalfNormal ``site_amplitude_prior_scale`` is in concentration units.
-    The two target-accept settings tune the amplitude and state NUTS steps.
+    One joint likelihood retains the prepared cross-channel aggregation
+    covariance and adds independent errors and OU blocks grouped by species
+    and site. Both channels must use the same concentration units. Inputs
+    remain borrowed; related payloads are materialized together before graph
+    construction. The runner constructs its sigma-then-state CompoundStep,
+    refreshing the accepted amplitude cache before each affine-state update.
 
-    Only the PyMC backend is supported. The runner owns its CompoundStep and
-    attaches normalized joint log likelihoods and optional joint predictive
-    vectors from the same numerical target used during sampling. Predictive
-    keyword arguments support only ``random_seed``. Returns a DataTree with
-    posterior, prior, observed-data and joint likelihood groups.
+    Args:
+        prepared_inputs: Linked handoff containing joint labelled observations,
+            native-channel sensitivities, affine contribution, retained prior,
+            joint aggregation covariance, ratio provenance, and optional
+            channel boundary sensitivities. Observations require aligned
+            species, site, time, and observation_units coordinates.
+        independent_error_sd: Optional finite positive fixed standard deviations
+            on the joint observation axis, in its concentration units. Labels
+            and observation_units must match the prepared observations. When
+            omitted, use the artifact's saved error vector. Explicit and saved
+            vectors must agree in labels, units, and values when both exist.
+        tau_hours: Finite positive fixed OU timescale in hours, applied to each
+            species/site group. A mapping uses co2:SITE and o2:SITE keys and
+            must cover every observed group.
+        site_amplitude_prior_scale: Finite positive HalfNormal scale for the
+            independent species/site OU amplitudes, in concentration units.
+        initial_site_amplitudes: Optional finite positive starting amplitudes,
+            in concentration units. A scalar applies to every group; mappings
+            use the same keys as tau_hours. Defaults to the prior scale.
+        state_activity: Optional labelled active/fixed retained-state policy.
+            Omitted states follow the model's structural activity policy.
+        use_bc: Optional co2/o2 boolean mapping selecting prepared boundary
+            sensitivities. Omitted entries include available boundaries;
+            selecting a missing channel boundary fails.
+        bc_prior: Channel-keyed dimensionless boundary-scale priors. Enabled
+            channels use the ordinary CO2 boundary prior when omitted.
+        bc_state_activity: Optional channel-keyed labelled active/fixed
+            boundary-state policies. Requires the selected channel boundary.
+        offset_prior: Channel-keyed offset priors in concentration units.
+            Channels omitted from this mapping have no offset.
+        offset_args: Per-channel per_site, offset_freq, and drop_first options
+            with the ordinary CO2 offset meanings. Requires an offset prior
+            for each configured channel; the default is one offset per site.
+        sampler: Optional sampling configuration, defaulting to PyMC. Only the
+            PyMC backend is supported. Caller-supplied step or target_accept
+            controls are rejected because the runner owns both NUTS steps.
+            Joint predictive output supports only random_seed in predictive
+            keyword arguments and is drawn from the same numerical target.
+        sigma_target_accept: Target acceptance probability for the amplitude
+            NUTS step, defaulting to 0.8.
+        state_target_accept: Target acceptance probability for the affine-state
+            NUTS step, defaulting to 0.9.
+
+    Returns:
+        Restored DataTree with posterior samples, labelled observed data and
+        constants, scientific roles, concentration units, and JSON model
+        metadata. The log_likelihood group contains one normalized joint value
+        per chain/draw, not pointwise likelihoods. Prior groups and joint
+        posterior_predictive observation vectors are included when requested
+        by the sampler. No artifact is written to disk.
+
+    Raises:
+        ValueError: If independent errors are missing, invalid, mislabelled,
+            or conflict with saved errors; channel units or grouping
+            coordinates are invalid; selected boundary/offset settings are
+            inconsistent; OU scales or amplitudes are invalid; or the sampler
+            requests an unsupported backend, step, tuning control, or
+            predictive keyword. Label, prior, covariance, and activity errors
+            from model construction also propagate.
+        TypeError: If channel offset frequency or boolean options have
+            unsupported types.
     """
     requested_sampler = sampler or RhimeSampler(nuts_sampler="pymc")
     if requested_sampler.nuts_sampler != "pymc":
         raise ValueError("Linked cached fixed-OU requires nuts_sampler='pymc'.")
     prepared = prepared_inputs
-    _validate_independent_error_labels(prepared.observations, independent_error_sd)
     boundaries = dict(getattr(prepared, "boundary_sensitivity", {}))
     if use_bc is not None:
         if (
@@ -82,19 +134,10 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
                 raise ValueError(f"{channel} use_bc requires prepared boundary_sensitivity.")
             if not enabled:
                 boundaries.pop(channel, None)
-    materialized = _materialize_co2_o2_pymc_inputs(
-        prepared.observations,
-        prepared.fixed_prior_contribution,
-        prepared.co2_sensitivity,
-        prepared.o2_sensitivity,
-        independent_error_sd,
-        *boundaries.values(),
+    materialized, boundaries = _materialize_co2_o2_replay_inputs(
+        prepared, independent_error_sd, boundaries
     )
-    observations, fixed, co2, o2, error = materialized[:5]
-    boundaries = dict(zip(boundaries, materialized[5:], strict=True))
-    if not np.array_equal(error.observation_units.values, observations.observation_units.values):
-        raise ValueError("independent_error_sd observation_units must match the prepared observations.")
-    _validate_independent_error_values(error)
+    observations, fixed, co2, o2, error = materialized
     cached = build_co2_o2_cached_sigma_model(
         observations=observations,
         fixed_prior_contribution=fixed,

@@ -285,6 +285,7 @@ def to_dense(da: xr.DataArray) -> xr.DataArray:
     a Dask array with sparse chunks, the outer Dask collection and its chunking
     are preserved while a lazy block operation converts each chunk to NumPy when
     executed. An array whose Dask chunks are already dense is returned unchanged.
+    Coordinates retain their original backends and are not computed.
 
     Args:
         da: DataArray whose eager data or Dask chunk payloads may be sparse.
@@ -293,7 +294,7 @@ def to_dense(da: xr.DataArray) -> xr.DataArray:
         DataArray with dense NumPy data or lazily densified Dask chunks.
     """
     if not isinstance(da.data, DaskArray):  # type: ignore
-        return da.as_numpy()
+        return da.copy(deep=False, data=da.to_numpy())
 
     # check chunk types
     if isinstance(da.data._meta, SparseArray):

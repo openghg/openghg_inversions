@@ -36,7 +36,9 @@ Current support
        :class:`~openghg_inversions.rhime.co2.Co2PreparedInputs` artifact.
      - :func:`openghg_inversions.rhime.co2.prepare_co2_o2_inputs` gathers
        caller-supplied, channel-native prepared arrays; it does not acquire
-       OpenGHG data.
+       OpenGHG data. :ref:`Save and replay linked prepared inputs
+       <linked-prepared-replay>` describes NetCDF/Zarr persistence, including
+       optional labelled independent errors.
    * - Configuration
      - A packaged TOML template and strict resolver produce explicit arguments
        for the ordinary or cached fixed-OU prepared-input Python runner.

@@ -2,18 +2,23 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+from pathlib import Path
 import warnings
 
 from dask import array as da
+from dask import delayed
 import numpy as np
 import pandas as pd
 import pytest
+import sparse
 import xarray as xr
 
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
-from openghg_inversions.rhime.co2 import prepare_co2_o2_inputs
+from openghg_inversions.rhime.co2 import Co2O2PreparedInputs, prepare_co2_o2_inputs
+from openghg_inversions.rhime.co2 import co2_o2_preparation
 from openghg_inversions.rhime.co2.co2_o2_preparation import _stack
-from openghg_inversions.serialization import decode_cf_multiindexes, encode_cf_multiindexes
+from openghg_inversions.serialization import decode_cf_multiindexes, encode_cf_multiindexes, save_datatree
 
 
 def _inputs(
@@ -152,9 +157,7 @@ def test_preparation_preserves_lazy_channels_with_staggered_unequal_times(tmp_pa
     ]
     covariance = prepared.aggregation_error.covariance
     assert covariance is not None
-    assert covariance.indexes["observation"].equals(
-        prepared.observations.indexes["observation"]
-    )
+    assert covariance.indexes["observation"].equals(prepared.observations.indexes["observation"])
     np.testing.assert_array_equal(
         covariance.indexes["observation_cov"].values,
         prepared.observations.indexes["observation"].values,
@@ -167,16 +170,10 @@ def test_preparation_preserves_lazy_channels_with_staggered_unequal_times(tmp_pa
         }
     )
     path = tmp_path / "prepared_observations.nc"
-    encode_cf_multiindexes(
-        artifact, ("observation", "observation_cov")
-    ).to_netcdf(path, engine="scipy")
+    encode_cf_multiindexes(artifact, ("observation", "observation_cov")).to_netcdf(path, engine="scipy")
     with xr.open_dataset(path, engine="scipy") as stored:
-        restored = decode_cf_multiindexes(
-            stored.load(), ("observation", "observation_cov")
-        )
-    assert restored.indexes["observation"].equals(
-        prepared.observations.indexes["observation"]
-    )
+        restored = decode_cf_multiindexes(stored.load(), ("observation", "observation_cov"))
+    assert restored.indexes["observation"].equals(prepared.observations.indexes["observation"])
     np.testing.assert_array_equal(
         restored.indexes["observation_cov"].values,
         prepared.observations.indexes["observation"].values,
@@ -192,9 +189,7 @@ def test_preparation_preserves_lazy_channels_with_staggered_unequal_times(tmp_pa
         prepared.fixed_prior_contribution,
         [-8.25, -2.25, -2.5, -4.0, -5.3],
     )
-    assert prepared.fixed_prior_contribution.attrs["mathematical_name"] == (
-        "H m - H_alpha Pi m"
-    )
+    assert prepared.fixed_prior_contribution.attrs["mathematical_name"] == ("H m - H_alpha Pi m")
     ratio_provenance = prepared.o2_sensitivity.attrs["oxidation_ratio_provenance"]
     assert '"state": ["gpp:1", "ter:1", "ff:1"]' in ratio_provenance
     assert '"value": [-1.1, -1.0, -1.4]' in ratio_provenance
@@ -221,9 +216,7 @@ def test_canonicalizes_sensitivity_state_metadata_without_mutating_inputs() -> N
         ("o2_sensitivity", prepared.o2_sensitivity),
     ):
         np.testing.assert_array_equal(prepared_sensitivity["source"], prior.mean["source"])
-        np.testing.assert_array_equal(
-            prepared_sensitivity["tracer_scope"], prior.mean["tracer_scope"]
-        )
+        np.testing.assert_array_equal(prepared_sensitivity["tracer_scope"], prior.mean["tracer_scope"])
         xr.testing.assert_identical(inputs[name], originals[name])
 
 
@@ -233,14 +226,14 @@ def test_source_spelling_is_consistent_across_retained_states(gpp_sources) -> No
     state = ["gpp:1", "gpp:2", "ter:1", "ff:1", "co2-ocean:1", "o2-ocean:1"]
     sources = [*gpp_sources, "TER", "FF", "ocean", "ocean"]
     prior = inputs["retained_prior"]
-    mean = prior.mean.isel(state=[0, 0, 1, 2, 3, 4]).assign_coords(
-        state=state, source=("state", sources)
-    )
+    mean = prior.mean.isel(state=[0, 0, 1, 2, 3, 4]).assign_coords(state=state, source=("state", sources))
     inputs["retained_prior"] = CorrelatedLognormalPrior(mean, np.eye(6) * 0.01)
     for name in ("co2_sensitivity", "o2_sensitivity"):
         inputs[name] = inputs[name].isel(state=[0, 0, 1, 2, 3, 4]).assign_coords(state=state)
-    inputs["o2_co2_flux_ratio"] = inputs["o2_co2_flux_ratio"].isel(state=[0, 0, 1, 2]).assign_coords(
-        state=state[:4], source=("state", sources[:4])
+    inputs["o2_co2_flux_ratio"] = (
+        inputs["o2_co2_flux_ratio"]
+        .isel(state=[0, 0, 1, 2])
+        .assign_coords(state=state[:4], source=("state", sources[:4]))
     )
 
     if gpp_sources[0] != gpp_sources[1]:
@@ -351,6 +344,107 @@ def test_native_labels_preserve_integer_string_collision() -> None:
     assert [type(label) for label in labels] == [int, str]
 
 
+@pytest.mark.parametrize("suffix", [".nc", ".zarr"])
+def test_linked_files_preserve_integer_string_label_identity(tmp_path: Path, suffix: str) -> None:
+    """Keep integer labels distinct from matching strings through either writer."""
+    labels = {
+        "co2_measure": [1, 2],
+        "co2_measure_cov": [1, 2],
+        "o2_measure": ["1", "2", "3"],
+        "o2_measure_cov": ["1", "2", "3"],
+    }
+    inputs = {
+        key: value.assign_coords({dim: labels[dim] for dim in value.dims if dim in labels})
+        if isinstance(value, xr.DataArray)
+        else value
+        for key, value in _inputs().items()
+    }
+    prepared = prepare_co2_o2_inputs(**inputs)
+    path = tmp_path / f"mixed-labels{suffix}"
+    prepared.save(path)
+    restored = Co2O2PreparedInputs.load(path)
+
+    actual = restored.observations.indexes["observation"].get_level_values("channel_observation")
+    assert actual.tolist() == [1, 2, "1", "2", "3"]
+    assert [type(label) for label in actual] == [int, int, str, str, str]
+    for name in ("observations", "fixed_prior_contribution", "co2_sensitivity", "o2_sensitivity"):
+        xr.testing.assert_identical(getattr(restored, name), getattr(prepared, name).compute())
+    xr.testing.assert_identical(restored.aggregation_error.covariance, prepared.aggregation_error.covariance)
+
+
+@pytest.mark.parametrize("suffix", [".nc", ".zarr"])
+def test_linked_roundtrip_ignores_unrelated_scalar_metadata(tmp_path: Path, suffix: str) -> None:
+    """State-coordinate comparison ignores scalar metadata while preserving it."""
+    inputs = _inputs()
+    for channel in ("co2", "o2"):
+        inputs[f"{channel}_sensitivity"] = inputs[f"{channel}_sensitivity"].assign_coords(domain="EUROPE")
+    prepared = prepare_co2_o2_inputs(**inputs)
+    from_tree = Co2O2PreparedInputs.from_datatree(prepared.to_datatree())
+    path = tmp_path / f"scalar-metadata{suffix}"
+    prepared.save(path)
+    restored = Co2O2PreparedInputs.load(path)
+    for channel in ("co2", "o2"):
+        expected = getattr(prepared, f"{channel}_sensitivity")
+        xr.testing.assert_identical(getattr(from_tree, f"{channel}_sensitivity"), expected)
+        xr.testing.assert_identical(getattr(restored, f"{channel}_sensitivity"), expected)
+
+
+@pytest.mark.parametrize("coordinate", ["source", "tracer_scope"])
+def test_linked_loader_rejects_mismatched_state_coordinate_values(coordinate: str) -> None:
+    """Scientific coordinate values still have to match the retained prior."""
+    tree = prepare_co2_o2_inputs(**_inputs()).to_datatree()
+    values = tree["co2_sensitivity"][coordinate].values.copy()
+    values[0] = "wrong"
+    tree["co2_sensitivity"] = tree["co2_sensitivity"].to_dataset().assign_coords(
+        {coordinate: ("state", values)}
+    )
+    with pytest.raises(ValueError, match=f"co2 sensitivity {coordinate} must match the retained prior"):
+        Co2O2PreparedInputs.from_datatree(tree)
+
+
+@pytest.mark.parametrize("lengths", [(2, 3), (5, 7)])
+def test_linked_zarr_normalizes_ragged_channel_chunks(tmp_path: Path, lengths: tuple[int, int]) -> None:
+    """Write unequal channels with terminal and interior short chunks lazily."""
+    inputs = _inputs()
+    for channel, length in zip(("co2", "o2"), lengths, strict=True):
+        dim = f"{channel}_measure"
+        for field in ("observations", "prior_forward_mean", "sensitivity"):
+            key = f"{channel}_{field}"
+            value = inputs[key]
+            inputs[key] = (
+                value.isel({dim: np.arange(length) % value.sizes[dim]})
+                .assign_coords({dim: [f"{channel}:{i}" for i in range(length)]})
+                .chunk({dim: 4})
+            )
+    for key, channels in (
+        ("co2_aggregation_covariance", ("co2", "co2")),
+        ("o2_aggregation_covariance", ("o2", "o2")),
+        ("co2_o2_aggregation_covariance", ("co2", "o2")),
+    ):
+        dims = inputs[key].dims
+        indexes = [inputs[f"{channel}_observations"].indexes[f"{channel}_measure"] for channel in channels]
+        data = np.eye(len(indexes[0])) if channels[0] == channels[1] else np.zeros(tuple(map(len, indexes)))
+        inputs[key] = xr.DataArray(
+            da.from_array(data, chunks=(4, 4)),
+            dims=dims,
+            coords={dim: index.to_numpy() for dim, index in zip(dims, indexes, strict=True)},
+        )
+    prepared = prepare_co2_o2_inputs(**inputs)
+    chunks = prepared.observations.chunks
+    assert chunks == (((2, 3) if lengths == (2, 3) else (4, 1, 4, 3)),)
+    path = tmp_path / "ragged.zarr"
+    prepared.save(path)
+    restored = Co2O2PreparedInputs.load(path)
+    assert prepared.observations.chunks == chunks
+    for name in ("observations", "fixed_prior_contribution", "co2_sensitivity", "o2_sensitivity"):
+        xr.testing.assert_identical(getattr(restored, name), getattr(prepared, name).compute())
+    xr.testing.assert_identical(restored.aggregation_error.covariance, prepared.aggregation_error.covariance)
+    with xr.open_datatree(path, engine="zarr", chunks={}) as tree:
+        stored_chunks = tree["joint"]["observed_concentration"].data.chunks[0]
+        assert len(set(stored_chunks[:-1])) <= 1
+        assert stored_chunks[-1] <= stored_chunks[0]
+
+
 def test_multiindex_observation_labels_roundtrip_without_future_warnings(tmp_path) -> None:
     co2_index = pd.MultiIndex.from_tuples(
         [
@@ -426,9 +520,7 @@ def test_requires_exactly_one_ratio_values_or_unavailable_reason(
     reason: str,
 ) -> None:
     with pytest.raises(ValueError, match="exactly one"):
-        prepare_co2_o2_inputs(
-            **_inputs(ratio_available=ratio_available, unavailable_reason=reason)
-        )
+        prepare_co2_o2_inputs(**_inputs(ratio_available=ratio_available, unavailable_reason=reason))
 
 
 def test_rejects_co2_loading_on_o2_ocean_state() -> None:
@@ -471,3 +563,371 @@ def test_rejects_ambiguous_ratio_direction_or_sign(
 ) -> None:
     with pytest.raises(ValueError, match=message):
         prepare_co2_o2_inputs(**_inputs(ratio_direction=direction, ratio_sign=sign))
+
+
+def _durable_inputs(*, ratio_available: bool = True) -> dict[str, object]:
+    """Build unequal native MultiIndexes and a correlated, nonunit state prior."""
+    inputs = _inputs(
+        ratio_available=ratio_available,
+        unavailable_reason="Ratios embedded in native paired flux." if not ratio_available else "",
+    )
+    inputs["o2_units"] = "ppm"
+    indexes = {
+        "co2": pd.MultiIndex.from_tuples(
+            [("TAC", pd.Timestamp("2021-01-03")), ("MHD", pd.Timestamp("2021-01-01"))],
+            names=("site", "time"),
+        ),
+        "o2": pd.MultiIndex.from_tuples(
+            [
+                ("MHD", pd.Timestamp("2021-01-04")),
+                ("TAC", pd.Timestamp("2021-01-02")),
+                ("TAC", pd.Timestamp("2021-01-05")),
+            ],
+            names=("site", "time"),
+        ),
+    }
+
+    def native_index(array: xr.DataArray, dim: str, index: pd.MultiIndex) -> xr.DataArray:
+        result = array.drop_vars([name for name, coord in array.coords.items() if coord.dims == (dim,)])
+        return result.assign_coords(xr.Coordinates.from_pandas_multiindex(index, dim))
+
+    for channel, index in indexes.items():
+        dim = f"{channel}_measure"
+        for suffix in ("observations", "prior_forward_mean", "sensitivity", "aggregation_covariance"):
+            name = f"{channel}_{suffix}"
+            inputs[name] = native_index(inputs[name], dim, index)
+        name = f"{channel}_aggregation_covariance"
+        inputs[name] = native_index(inputs[name], f"{dim}_cov", index.set_names(("site_cov", "time_cov")))
+    cross = xr.full_like(inputs["co2_o2_aggregation_covariance"], 0.08)
+    cross = native_index(cross, "co2_measure", indexes["co2"])
+    inputs["co2_o2_aggregation_covariance"] = native_index(
+        cross, "o2_measure", indexes["o2"].set_names(("site_cross", "time_cross"))
+    )
+    state_index = pd.MultiIndex.from_arrays(
+        [
+            ["GPP", "TER", "FF", "ocean", "ocean"],
+            ["shared", "shared", "shared", "co2", "o2"],
+            [2, 1, 3, 1, 2],
+        ],
+        names=("source", "tracer_scope", "region_in_source"),
+    )
+    mean = _with_state_index(inputs["retained_prior"].mean, state_index).copy(
+        data=np.array([0.8, 1.2, 0.9, 1.1, 0.7])
+    )
+    inputs["retained_prior"] = CorrelatedLognormalPrior(mean, np.eye(5) * 0.01 + 0.002)
+    for name in ("co2_sensitivity", "o2_sensitivity"):
+        inputs[name] = _with_state_index(inputs[name], state_index)
+    if ratio_available:
+        inputs["o2_co2_flux_ratio"] = _with_state_index(inputs["o2_co2_flux_ratio"], state_index[:3])
+    inputs["boundary_sensitivity"] = {
+        channel: xr.DataArray(
+            np.arange(1, len(index) + 1, dtype=float)[:, None],
+            dims=(f"{channel}_measure", "boundary_state"),
+            coords={
+                **xr.Coordinates.from_pandas_multiindex(index, f"{channel}_measure"),
+                "boundary_state": [f"{channel}:north"],
+            },
+            attrs={"units": "ppm"},
+        )
+        for channel, index in indexes.items()
+    }
+    inputs["provenance"] = {"producer": "public linked fixture", "input_revision": "fixture-v1"}
+    return inputs
+
+
+@pytest.mark.parametrize("suffix", [".nc", ".zarr"])
+@pytest.mark.parametrize("ratio_available", [True, False])
+@pytest.mark.parametrize("saved_error", [True, False])
+def test_complete_linked_prepared_round_trip(
+    tmp_path: Path, suffix: str, ratio_available: bool, saved_error: bool
+) -> None:
+    """Persist every linked scientific field without changing labels or names."""
+    prepared = prepare_co2_o2_inputs(**_durable_inputs(ratio_available=ratio_available))
+    prepared = replace(
+        prepared,
+        aggregation_error=replace(
+            prepared.aggregation_error,
+            covariance=prepared.aggregation_error.covariance.rename("joint_covariance"),
+        ),
+    )
+    if saved_error:
+        error = xr.full_like(prepared.observations, 0.4).rename("reported_sd")
+        prepared = replace(prepared, independent_error_sd=error)
+    originals = {
+        name: getattr(prepared, name).compute().copy(deep=True)
+        for name in ("observations", "fixed_prior_contribution", "co2_sensitivity", "o2_sensitivity")
+    }
+    path = tmp_path / f"linked{suffix}"
+    prepared.save(path)
+    restored = Co2O2PreparedInputs.load(path)
+
+    for name, expected in originals.items():
+        xr.testing.assert_identical(getattr(restored, name), expected)
+        xr.testing.assert_identical(getattr(prepared, name), expected)
+    xr.testing.assert_identical(restored.aggregation_error.covariance, prepared.aggregation_error.covariance)
+    xr.testing.assert_identical(restored.retained_prior.mean, prepared.retained_prior.mean)
+    xr.testing.assert_identical(
+        restored.retained_prior.arithmetic_covariance, prepared.retained_prior.arithmetic_covariance
+    )
+    assert restored.provenance == prepared.provenance
+    assert restored.o2_co2_flux_ratio_unavailable_reason == prepared.o2_co2_flux_ratio_unavailable_reason
+    if ratio_available:
+        xr.testing.assert_identical(restored.o2_co2_flux_ratio, prepared.o2_co2_flux_ratio)
+        assert restored.o2_co2_flux_ratio.sizes["state"] == 3
+    else:
+        assert restored.o2_co2_flux_ratio is None
+    if saved_error:
+        xr.testing.assert_identical(restored.independent_error_sd, prepared.independent_error_sd)
+    else:
+        assert restored.independent_error_sd is None
+    for channel, boundary in prepared.boundary_sensitivity.items():
+        xr.testing.assert_identical(restored.boundary_sensitivity[channel], boundary)
+    np.testing.assert_array_equal(restored.aggregation_error.covariance.values[:2, 2:], np.full((2, 3), 0.08))
+    assert isinstance(prepared.co2_sensitivity.data, da.Array)
+    assert isinstance(restored.observations.indexes["observation"], pd.MultiIndex)
+    assert restored.observations.indexes["observation"].names == ["species", "site", "time"]
+    assert (
+        restored.retained_prior.mean.indexes["state"].names
+        == prepared.retained_prior.mean.indexes["state"].names
+    )
+
+
+@pytest.mark.parametrize("suffix", [".nc", ".zarr"])
+def test_linked_save_computes_shared_payloads_together(tmp_path: Path, suffix: str) -> None:
+    """Write shared observation, sensitivity, ratio, and error graphs once."""
+    prepared = prepare_co2_o2_inputs(**_inputs())
+    executions = []
+
+    @delayed
+    def shared_payload() -> np.ndarray:
+        executions.append("payload")
+        return np.array([2.0, 3.0, -4.0, -5.0, -6.0])
+
+    data = da.from_delayed(shared_payload(), shape=(5,), dtype=float)
+    scale = data[0] / 2.0
+    prepared = replace(
+        prepared,
+        observations=prepared.observations.copy(data=data),
+        fixed_prior_contribution=prepared.fixed_prior_contribution.copy(data=data + 1.0),
+        co2_sensitivity=prepared.co2_sensitivity.copy(data=prepared.co2_sensitivity.data * scale),
+        o2_sensitivity=prepared.o2_sensitivity.copy(data=prepared.o2_sensitivity.data * scale),
+        o2_co2_flux_ratio=prepared.o2_co2_flux_ratio.copy(data=prepared.o2_co2_flux_ratio.data * scale),
+        independent_error_sd=xr.full_like(prepared.observations, 0.4).copy(data=da.ones(5) * scale),
+    )
+    tree = prepared.to_datatree()
+    assert executions == []
+    assert tree.attrs["schema_version"] == 1
+    path = tmp_path / f"shared{suffix}"
+    prepared.save(path)
+    assert executions == ["payload"]
+    assert isinstance(prepared.observations.data, da.Array)
+    restored = Co2O2PreparedInputs.load(path)
+    assert restored.observations.observation_units.values.tolist() == [
+        "ppm",
+        "ppm",
+        "per meg",
+        "per meg",
+        "per meg",
+    ]
+    np.testing.assert_array_equal(restored.independent_error_sd.values, np.ones(5))
+
+
+@pytest.mark.parametrize(
+    "corruption", ["version", "covariance_units", "error", "ratio_sign", "ratio_json", "index_metadata"]
+)
+def test_linked_loader_rejects_corrupt_scientific_artifacts(corruption: str) -> None:
+    """Reject malformed schema metadata and inconsistent scientific values."""
+    prepared = prepare_co2_o2_inputs(**_durable_inputs())
+    prepared = replace(prepared, independent_error_sd=xr.full_like(prepared.observations, 0.4))
+    tree = prepared.to_datatree().copy(deep=True)
+    if corruption == "version":
+        tree.attrs["schema_version"] = True
+    elif corruption == "covariance_units":
+        units = tree["joint"]["observation_units_cov"]
+        tree["joint"]["observation_units_cov"] = units.copy(data=np.full(units.size, "per meg"))
+    elif corruption == "error":
+        error = tree["independent_error"]["independent_error_sd"]
+        tree["independent_error"]["independent_error_sd"] = error.copy(data=np.full(error.size, -0.4))
+    elif corruption == "ratio_sign":
+        ratio = tree["flux_ratio"]["o2_co2_flux_ratio"]
+        tree["flux_ratio"]["o2_co2_flux_ratio"] = ratio.copy(data=np.array([1.2, -1.0, -1.4]))
+    elif corruption == "ratio_json":
+        tree["o2_sensitivity"]["o2_effective_sensitivity"].attrs["oxidation_ratio_provenance"] = (
+            "invalid JSON"
+        )
+    else:
+        tree["joint"].attrs["multiindex_dims_json"] = "[]"
+
+    with pytest.raises(ValueError):
+        Co2O2PreparedInputs.from_datatree(tree)
+
+
+def test_linked_preparation_accepts_labelled_independent_error() -> None:
+    """Retain valid borrowed errors and reject invalid eager values or row units."""
+    inputs = _inputs()
+    prepared = prepare_co2_o2_inputs(**inputs)
+    error = xr.full_like(prepared.observations, 0.4).rename("reported_sd")
+    with_error = prepare_co2_o2_inputs(**inputs, independent_error_sd=error)
+    assert with_error.independent_error_sd is error
+    with pytest.raises(ValueError, match="positive"):
+        prepare_co2_o2_inputs(**inputs, independent_error_sd=error.copy(data=np.zeros(error.size)))
+    with pytest.raises(ValueError, match="units"):
+        prepare_co2_o2_inputs(
+            **inputs, independent_error_sd=error.assign_coords(observation_units=("observation", ["ppm"] * 5))
+        )
+
+
+@pytest.mark.parametrize("invalid", [1.0 + 1.0j, "invalid"])
+def test_linked_loader_rejects_nonreal_joint_values(invalid: complex | str) -> None:
+    """Reject unsupported numerical types at the external artifact boundary."""
+    tree = prepare_co2_o2_inputs(**_inputs()).to_datatree()
+    intercept = tree["joint"]["fixed_prior_contribution"]
+    tree["joint"]["fixed_prior_contribution"] = intercept.copy(data=np.full(intercept.size, invalid))
+    with pytest.raises(
+        ValueError, match="fixed_prior_contribution must contain only finite real numeric values"
+    ):
+        Co2O2PreparedInputs.from_datatree(tree)
+
+
+@pytest.mark.parametrize("field", ["observed_concentration", "fixed_prior_contribution"])
+@pytest.mark.parametrize("invalid", [np.nan, np.inf])
+def test_linked_load_rejects_nonfinite_saved_joint_values(tmp_path: Path, field: str, invalid: float) -> None:
+    """Reject non-finite concentrations and intercepts read from an external file."""
+    tree = prepare_co2_o2_inputs(**_inputs()).to_datatree()
+    original = tree["joint"][field]
+    tree["joint"][field] = original.copy(data=np.full(original.size, invalid))
+    path = tmp_path / "corrupted.nc"
+    save_datatree(tree, path)
+    with pytest.raises(ValueError, match="finite real numeric"):
+        Co2O2PreparedInputs.load(path)
+
+
+def test_linked_serialization_rejects_unsupported_boundary_channels(tmp_path: Path) -> None:
+    """Reject boundary channels that the published schema cannot represent."""
+    prepared = prepare_co2_o2_inputs(**_durable_inputs())
+    prepared = replace(prepared, boundary_sensitivity={"n2o": prepared.boundary_sensitivity["co2"]})
+    with pytest.raises(ValueError, match="keyed only by co2 and o2"):
+        prepared.to_datatree()
+    with pytest.raises(ValueError, match="keyed only by co2 and o2"):
+        prepared.save(tmp_path / "unsupported.nc")
+    assert not (tmp_path / "unsupported.nc").exists()
+
+
+def test_linked_loader_rejects_unexpected_boundary_nodes() -> None:
+    """Reject extra serialized boundary channels instead of discarding their data."""
+    tree = prepare_co2_o2_inputs(**_durable_inputs()).to_datatree()
+    tree["n2o_boundary"] = tree["co2_boundary"].copy()
+    with pytest.raises(ValueError, match="Unsupported serialized boundary nodes.*n2o_boundary"):
+        Co2O2PreparedInputs.from_datatree(tree)
+
+
+def test_linked_preparation_preserves_shared_lazy_error_payload_and_units(tmp_path: Path) -> None:
+    """Defer lazy error data and auxiliary units, then serialize their shared graph once."""
+    inputs = _inputs()
+    reference = prepare_co2_o2_inputs(**inputs)
+    executions = []
+
+    @delayed
+    def shared_payload() -> np.ndarray:
+        executions.append("payload")
+        return np.array([2.0, 3.0, -4.0, -5.0, -6.0])
+
+    @delayed
+    def error_units() -> np.ndarray:
+        executions.append("units")
+        return np.array(["ppm", "ppm", "per meg", "per meg", "per meg"])
+
+    data = da.from_delayed(shared_payload(), shape=(5,), dtype=float)
+    for channel, rows in (("co2", slice(0, 2)), ("o2", slice(2, 5))):
+        inputs[f"{channel}_observations"] = inputs[f"{channel}_observations"].copy(data=data[rows])
+        inputs[f"{channel}_prior_forward_mean"] = inputs[f"{channel}_prior_forward_mean"].copy(
+            data=data[rows] + 0.5
+        )
+    error = reference.observations.copy(data=abs(data) * 0.1 + 0.4).assign_coords(
+        observation_units=("observation", da.from_delayed(error_units(), shape=(5,), dtype="U7"))
+    )
+    prepared = prepare_co2_o2_inputs(**inputs, independent_error_sd=error)
+    assert executions == []
+    assert prepared.independent_error_sd is error
+    assert isinstance(prepared.independent_error_sd.data, da.Array)
+    assert isinstance(prepared.independent_error_sd.observation_units.data, da.Array)
+    prepared.to_datatree()
+    assert executions == []
+    prepared.save(tmp_path / "lazy-error.nc")
+    assert sorted(executions) == ["payload", "units"]
+
+
+@pytest.mark.parametrize("suffix", [".nc", ".zarr"])
+def test_linked_save_defers_lazy_units_with_eager_error_payload(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, suffix: str
+) -> None:
+    """Leave auxiliary coordinates uncomputed until the writer executes them once."""
+    prepared = prepare_co2_o2_inputs(**_inputs())
+    executions = []
+    units = prepared.observations.observation_units.to_numpy()
+
+    @delayed
+    def error_units() -> np.ndarray:
+        executions.append("units")
+        return units
+
+    lazy_units = da.from_delayed(error_units(), shape=units.shape, dtype=units.dtype)
+    error = prepared.observations.copy(data=np.full(prepared.observations.size, 0.4)).assign_coords(
+        observation_units=("observation", lazy_units)
+    )
+    prepared = replace(prepared, independent_error_sd=error)
+    writer = co2_o2_preparation.save_datatree
+
+    def inspect_writer(tree: xr.DataTree, output_file: Path, output_format: str | None) -> None:
+        assert executions == []
+        assert tree["independent_error"]["observation_units"].data is lazy_units
+        writer(tree, output_file, output_format)
+
+    monkeypatch.setattr(co2_o2_preparation, "save_datatree", inspect_writer)
+    path = tmp_path / f"lazy-units{suffix}"
+    prepared.save(path)
+
+    assert executions == ["units"]
+    assert prepared.independent_error_sd.observation_units.data is lazy_units
+    restored = Co2O2PreparedInputs.load(path)
+    np.testing.assert_array_equal(restored.independent_error_sd.observation_units.data, units)
+    np.testing.assert_array_equal(restored.independent_error_sd.data, np.full(error.size, 0.4))
+
+
+@pytest.mark.parametrize("suffix", [".nc", ".zarr"])
+@pytest.mark.parametrize("sparse_chunks", [False, True])
+def test_linked_save_passes_lazy_dense_chunks_to_writer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, suffix: str, sparse_chunks: bool
+) -> None:
+    """Preserve Dask chunks through serialization and densify sparse chunks lazily."""
+    prepared = prepare_co2_o2_inputs(**_inputs())
+    values = prepared.co2_sensitivity.compute().data
+    payload = da.from_array(
+        sparse.COO.from_numpy(values) if sparse_chunks else values, chunks=(1, 2), asarray=False
+    )
+    sensitivity = prepared.co2_sensitivity.copy(data=payload)
+    sensitivity.encoding = {"dtype": np.dtype("float64")}
+    prepared = replace(prepared, co2_sensitivity=sensitivity)
+    writer = co2_o2_preparation.save_datatree
+    writes = []
+
+    def inspect_writer(tree: xr.DataTree, output_file: Path, output_format: str | None) -> None:
+        sensitivity = tree["co2_sensitivity"]["co2_effective_sensitivity"]
+        assert isinstance(sensitivity.data, da.Array)
+        assert isinstance(sensitivity.data._meta, np.ndarray)
+        assert sensitivity.data.chunks == payload.chunks
+        assert sensitivity.encoding == prepared.co2_sensitivity.encoding
+        writes.append(output_file)
+        writer(tree, output_file, output_format)
+
+    monkeypatch.setattr(co2_o2_preparation, "save_datatree", inspect_writer)
+    path = tmp_path / f"chunks{suffix}"
+    prepared.save(path)
+    assert writes == [path]
+    assert prepared.co2_sensitivity.data is payload
+    xr.testing.assert_identical(
+        Co2O2PreparedInputs.load(path).co2_sensitivity, prepared.co2_sensitivity.compute()
+    )
+    if suffix == ".zarr":
+        with xr.open_datatree(path, engine="zarr", chunks={}) as tree:
+            assert tree["co2_sensitivity"]["co2_effective_sensitivity"].data.chunks == payload.chunks

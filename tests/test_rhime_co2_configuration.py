@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 from typing import Any, cast
 
+import dask.array as da
 import numpy as np
 import pytest
 import xarray as xr
@@ -259,6 +260,47 @@ def test_linked_channels_remain_distinct_and_bind_to_labelled_errors() -> None:
     error = cast(xr.DataArray, arguments["independent_error_sd"])
     np.testing.assert_allclose(error, [1.0, 1.0, 2.0])
     assert error.coords.to_index().equals(observations.coords.to_index())
+
+
+def test_linked_omitted_channel_errors_bind_saved_vector_without_computing() -> None:
+    """Omitting both channel errors requires and preserves the lazy saved vector."""
+    config = _linked()
+    channels = cast(dict[str, dict[str, object]], config["channels"])
+    for channel in channels.values():
+        channel.pop("independent_error_sd")
+    setup = cast(Co2O2RunSetup, resolve_co2_family_config(config))
+    observations = xr.DataArray(
+        [400.0, 401.0, -120.0],
+        dims="observation",
+        coords={
+            "observation": ["co2:a", "co2:b", "o2:a"],
+            "species": ("observation", ["co2", "co2", "o2"]),
+            "observation_units": ("observation", ["ppm", "ppm", "ppm"]),
+        },
+    )
+    error = observations.copy(data=da.from_array([0.5, 0.75, 1.25], chunks=2))
+    prepared = cast(
+        Co2O2PreparedInputs,
+        type("Prepared", (), {"observations": observations, "independent_error_sd": error})(),
+    )
+
+    assert setup.runner_arguments(prepared)["independent_error_sd"] is error
+    assert isinstance(error.data, da.Array)
+
+    prepared.independent_error_sd = None
+    with pytest.raises(ValueError, match="requires errors in the prepared artifact"):
+        setup.runner_arguments(prepared)
+
+
+@pytest.mark.parametrize("channel", ["co2", "o2"])
+def test_linked_partial_channel_error_omission_is_rejected(channel: str) -> None:
+    """Configuration rejects mixing one channel error with implicit saved errors."""
+    config = _linked()
+    channels = cast(dict[str, dict[str, object]], config["channels"])
+    channels[channel].pop("independent_error_sd")
+
+    with pytest.raises(ValueError, match="both linked channels or omit it for both"):
+        resolve_co2_family_config(config)
 
 
 @pytest.mark.parametrize(

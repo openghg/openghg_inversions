@@ -16,7 +16,7 @@ import pytest
 import xarray as xr
 
 from openghg_inversions.rhime import co2 as co2_public
-from openghg_inversions.rhime.co2 import co2_o2_runner
+from openghg_inversions.rhime.co2 import co2_o2_cached_sigma_runner, co2_o2_runner
 from openghg_inversions.rhime.co2.co2_o2_runner import (
     _CO2_O2_VARIABLE_ROLES,
     _materialize_co2_o2_pymc_inputs,
@@ -71,7 +71,91 @@ def _prepared_stub(array: xr.DataArray) -> SimpleNamespace:
         aggregation_error=None,
         retained_prior=None,
         provenance={},
+        independent_error_sd=None,
     )
+
+
+def _replay(cached: bool):
+    """Select the linked runner and the graph boundary intercepted by tests."""
+    if cached:
+        return (
+            co2_o2_cached_sigma_runner,
+            co2_o2_cached_sigma_runner.run_rhime_co2_o2_cached_sigma_from_prepared_inputs,
+            "build_co2_o2_cached_sigma_model",
+            {"tau_hours": 24.0, "site_amplitude_prior_scale": 1.0},
+        )
+    return co2_o2_runner, run_rhime_co2_o2_from_prepared_inputs, "build_co2_o2_model", {}
+
+
+@pytest.mark.parametrize("cached", [False, True])
+@pytest.mark.parametrize("explicit", [False, True])
+def test_replay_uses_saved_errors_and_accepts_matching_explicit_errors(monkeypatch, cached, explicit) -> None:
+    """Both replay variants forward saved errors without changing the artifact."""
+    observations = xr.DataArray(
+        [400.0, -120.0],
+        dims="observation",
+        coords={
+            "observation": ["co2:a", "o2:a"],
+            "observation_units": ("observation", ["ppm", "ppm"]),
+        },
+    )
+    prepared = _prepared_stub(observations)
+    prepared.independent_error_sd = observations.copy(data=[0.5, 1.5])
+    original = prepared.independent_error_sd.copy(deep=True)
+    module, runner, builder, kwargs = _replay(cached)
+    captured = []
+
+    def capture_error(**arguments):
+        """Record the resolved errors and stop before constructing a graph."""
+        captured.append(arguments["independent_error_sd"])
+        raise RuntimeError("builder reached")
+
+    monkeypatch.setattr(module, builder, capture_error)
+    if explicit:
+        kwargs["independent_error_sd"] = original
+    with pytest.raises(RuntimeError, match="builder reached"):
+        runner(prepared_inputs=prepared, **kwargs)
+
+    xr.testing.assert_identical(captured[0], original)
+    xr.testing.assert_identical(prepared.independent_error_sd, original)
+
+
+@pytest.mark.parametrize("cached", [False, True])
+@pytest.mark.parametrize("mismatch", ["labels", "units", "values"])
+def test_replay_rejects_conflicting_saved_and_explicit_errors(monkeypatch, cached, mismatch) -> None:
+    """Disagreement with saved errors fails before either graph is constructed."""
+    observations = xr.DataArray(
+        [1.0],
+        dims="observation",
+        coords={"observation": [0], "observation_units": ("observation", ["ppm"])},
+    )
+    prepared = _prepared_stub(observations)
+    prepared.independent_error_sd = observations.copy(data=[0.5])
+    explicit = prepared.independent_error_sd.copy(deep=True)
+    if mismatch == "labels":
+        explicit = explicit.assign_coords(observation=[1])
+        message = "dimension and labels"
+    elif mismatch == "units":
+        explicit = explicit.assign_coords(observation_units=("observation", ["ppb"]))
+        message = "observation_units"
+    else:
+        explicit = explicit.copy(data=[0.75])
+        message = "match the prepared artifact values"
+    module, runner, builder, kwargs = _replay(cached)
+    monkeypatch.setattr(module, builder, lambda **_: pytest.fail("built with conflicting errors"))
+
+    with pytest.raises(ValueError, match=message):
+        runner(prepared_inputs=prepared, independent_error_sd=explicit, **kwargs)
+
+
+@pytest.mark.parametrize("cached", [False, True])
+def test_replay_requires_saved_or_explicit_errors(cached) -> None:
+    """A replay cannot silently substitute an independent-error policy."""
+    observations = xr.DataArray([1.0], dims="observation", coords={"observation": [0]})
+    _, runner, _, kwargs = _replay(cached)
+
+    with pytest.raises(ValueError, match="explicitly or in the prepared artifact"):
+        runner(prepared_inputs=_prepared_stub(observations), **kwargs)
 
 
 def test_materializes_related_arrays_in_one_shared_graph_without_mutation() -> None:
@@ -175,7 +259,9 @@ def test_replay_rejects_stale_independent_error_multiindex_level_names() -> None
         )
 
 
-def test_replay_materializes_payloads_and_auxiliary_units_in_one_graph(monkeypatch) -> None:
+@pytest.mark.parametrize("error_source", ["explicit", "saved", "both"])
+def test_replay_materializes_payloads_and_auxiliary_units_in_one_graph(monkeypatch, error_source) -> None:
+    """Saved and explicit errors share computation with linked payloads and units."""
     executions: list[str] = []
 
     @delayed
@@ -204,6 +290,8 @@ def test_replay_materializes_payloads_and_auxiliary_units_in_one_graph(monkeypat
         {"status": "available"}
     )
     independent_error_sd = array.copy(deep=False, data=values)
+    if error_source in {"saved", "both"}:
+        prepared.independent_error_sd = independent_error_sd.copy(deep=False)
     monkeypatch.setattr(co2_o2_runner, "build_co2_o2_model", lambda **_: pm.Model())
     monkeypatch.setattr(co2_o2_runner, "sample_rhime_model", lambda *_: xr.DataTree())
     compute_graphs: list[object] = []
@@ -211,7 +299,7 @@ def test_replay_materializes_payloads_and_auxiliary_units_in_one_graph(monkeypat
     with Callback(start=lambda graph: compute_graphs.append(graph)):
         trace = run_rhime_co2_o2_from_prepared_inputs(
             prepared_inputs=prepared,
-            independent_error_sd=independent_error_sd,
+            independent_error_sd=independent_error_sd if error_source != "saved" else None,
         )
 
     assert len(compute_graphs) == 1
