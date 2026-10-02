@@ -513,7 +513,7 @@
 <dl>
 <dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">prepared_inputs</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">independent_error_sd</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">independent_error_sd</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">tau_hours</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">site_amplitude_prior_scale</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">initial_site_amplitudes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
@@ -530,20 +530,81 @@
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_o2_cached_sigma_runner.run_rhime_co2_o2_cached_sigma_from_prepared_inputs" title="Link to this definition">#</a></dt>
 <dd><p>Sample linked species/site OU amplitudes followed by affine states.</p>
-<p>Uses the prepared-input, independent-error and channel baseline contracts
-of <code class="xref py py-func docutils literal notranslate"><span class="pre">run_rhime_co2_o2_from_prepared_inputs()</span></code>. Both channels must use the
-same concentration units. Fixed <code class="docutils literal notranslate"><span class="pre">tau_hours</span></code> and optional positive initial
-amplitudes accept scalars or mappings keyed by <code class="docutils literal notranslate"><span class="pre">co2:SITE</span></code>/<code class="docutils literal notranslate"><span class="pre">o2:SITE</span></code>.
-The HalfNormal <code class="docutils literal notranslate"><span class="pre">site_amplitude_prior_scale</span></code> is in concentration units.
-The two target-accept settings tune the amplitude and state NUTS steps.</p>
-<p>Only the PyMC backend is supported. The runner owns its CompoundStep and
-attaches normalized joint log likelihoods and optional joint predictive
-vectors from the same numerical target used during sampling. Predictive
-keyword arguments support only <code class="docutils literal notranslate"><span class="pre">random_seed</span></code>. Returns a DataTree with
-posterior, prior, observed-data and joint likelihood groups.</p>
+<p>One joint likelihood retains the prepared cross-channel aggregation
+covariance and adds independent errors and OU blocks grouped by species
+and site. Both channels must use the same concentration units. Inputs
+remain borrowed; related payloads are materialized together before graph
+construction. The runner constructs its sigma-then-state CompoundStep,
+refreshing the accepted amplitude cache before each affine-state update.</p>
 <dl class="field-list simple">
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.9.0)"><em>DataTree</em></a></p>
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>prepared_inputs</strong> (<a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_preparation.html#openghg_inversions.rhime.co2.co2_o2_preparation.Co2O2PreparedInputs" title="openghg_inversions.rhime.co2.co2_o2_preparation.Co2O2PreparedInputs"><em>Co2O2PreparedInputs</em></a>) – Linked handoff containing joint labelled observations,
+native-channel sensitivities, affine contribution, retained prior,
+joint aggregation covariance, ratio provenance, and optional
+channel boundary sensitivities. Observations require aligned
+species, site, time, and observation_units coordinates.</p></li>
+<li><p><strong>independent_error_sd</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a><em> | </em><em>None</em>) – Optional finite positive fixed standard deviations
+on the joint observation axis, in its concentration units. Labels
+and observation_units must match the prepared observations. When
+omitted, use the artifact’s saved error vector. Explicit and saved
+vectors must agree in labels, units, and values when both exist.</p></li>
+<li><p><strong>tau_hours</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.14)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a><em>]</em>) – Finite positive fixed OU timescale in hours, applied to each
+species/site group. A mapping uses co2:SITE and o2:SITE keys and
+must cover every observed group.</p></li>
+<li><p><strong>site_amplitude_prior_scale</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a>) – Finite positive HalfNormal scale for the
+independent species/site OU amplitudes, in concentration units.</p></li>
+<li><p><strong>initial_site_amplitudes</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.14)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a><em>] </em><em>| </em><em>None</em>) – Optional finite positive starting amplitudes,
+in concentration units. A scalar applies to every group; mappings
+use the same keys as tau_hours. Defaults to the prior scale.</p></li>
+<li><p><strong>state_activity</strong> (<a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.StateActivity" title="openghg_inversions.models.state_activity.StateActivity"><em>StateActivity</em></a><em> | </em><em>None</em>) – Optional labelled active/fixed retained-state policy.
+Omitted states follow the model’s structural activity policy.</p></li>
+<li><p><strong>use_bc</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.14)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em>] </em><em>| </em><em>None</em>) – Optional co2/o2 boolean mapping selecting prepared boundary
+sensitivities. Omitted entries include available boundaries;
+selecting a missing channel boundary fails.</p></li>
+<li><p><strong>bc_prior</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.14)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><em>Any</em></a><em>]</em><em>] </em><em>| </em><em>None</em>) – Channel-keyed dimensionless boundary-scale priors. Enabled
+channels use the ordinary CO2 boundary prior when omitted.</p></li>
+<li><p><strong>bc_state_activity</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.14)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.StateActivity" title="openghg_inversions.models.state_activity.StateActivity"><em>StateActivity</em></a><em>] </em><em>| </em><em>None</em>) – Optional channel-keyed labelled active/fixed
+boundary-state policies. Requires the selected channel boundary.</p></li>
+<li><p><strong>offset_prior</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.14)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><em>Any</em></a><em>]</em><em>] </em><em>| </em><em>None</em>) – Channel-keyed offset priors in concentration units.
+Channels omitted from this mapping have no offset.</p></li>
+<li><p><strong>offset_args</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.14)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.14)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><em>Any</em></a><em>]</em><em>] </em><em>| </em><em>None</em>) – Per-channel per_site, offset_freq, and drop_first options
+with the ordinary CO2 offset meanings. Requires an offset prior
+for each configured channel; the default is one offset per site.</p></li>
+<li><p><strong>sampler</strong> (<a class="reference internal" href="openghg_inversions.rhime.sampling.html#openghg_inversions.rhime.sampling.RhimeSampler" title="openghg_inversions.rhime.sampling.RhimeSampler"><em>RhimeSampler</em></a><em> | </em><em>None</em>) – Optional sampling configuration, defaulting to PyMC. Only the
+PyMC backend is supported. Caller-supplied step or target_accept
+controls are rejected because the runner owns both NUTS steps.
+Joint predictive output supports only random_seed in predictive
+keyword arguments and is drawn from the same numerical target.</p></li>
+<li><p><strong>sigma_target_accept</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a>) – Target acceptance probability for the amplitude
+NUTS step, defaulting to 0.8.</p></li>
+<li><p><strong>state_target_accept</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a>) – Target acceptance probability for the affine-state
+NUTS step, defaulting to 0.9.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Restored DataTree with posterior samples, labelled observed data and
+constants, scientific roles, concentration units, and JSON model
+metadata. The log_likelihood group contains one normalized joint value
+per chain/draw, not pointwise likelihoods. Prior groups and joint
+posterior_predictive observation vectors are included when requested
+by the sampler. No artifact is written to disk.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If independent errors are missing, invalid, mislabelled,
+    or conflict with saved errors; channel units or grouping
+    coordinates are invalid; selected boundary/offset settings are
+    inconsistent; OU scales or amplitudes are invalid; or the sampler
+    requests an unsupported backend, step, tuning control, or
+    predictive keyword. Label, prior, covariance, and activity errors
+    from model construction also propagate.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#TypeError" title="(in Python v3.14)"><strong>TypeError</strong></a> – If channel offset frequency or boolean options have
+    unsupported types.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.9.0)"><em>DataTree</em></a></p>
 </dd>
 </dl>
 </dd></dl>

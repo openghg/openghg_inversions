@@ -714,7 +714,8 @@ identity. No interpolation or reindexing is performed.</p>
 <p>For an eager sparse input, this returns an eager NumPy-backed DataArray. For
 a Dask array with sparse chunks, the outer Dask collection and its chunking
 are preserved while a lazy block operation converts each chunk to NumPy when
-executed. An array whose Dask chunks are already dense is returned unchanged.</p>
+executed. An array whose Dask chunks are already dense is returned unchanged.
+Coordinates retain their original backends and are not computed.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><p><strong>da</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – DataArray whose eager data or Dask chunk payloads may be sparse.</p>

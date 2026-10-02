@@ -394,8 +394,8 @@ uses NumPyro, while both linked OU routes default to and require PyMC.
 
 For ``recipe = "co2_o2"``, ``[channels]`` must contain exactly the two tables
 ``[channels.co2]`` and ``[channels.o2]``. Each table requires a non-empty
-``units`` string convertible to ``mol/mol`` and a finite, positive
-``independent_error_sd`` number::
+``units`` string convertible to ``mol/mol``. To configure fixed errors, supply
+a finite, positive ``independent_error_sd`` number for both channels::
 
    [channels.co2]
    units = "ppm"
@@ -410,7 +410,10 @@ Each ``independent_error_sd`` is numerically expressed in its sibling
 and 2 ppm, respectively. The resolver does not convert these values. During
 binding it expands each scalar over that channel's observation rows. The two
 ``units`` strings must currently be identical, although the two error values
-may differ.
+may differ. Omit both ``independent_error_sd`` entries to use the prepared
+artifact's saved error vector. Omitting only one entry is an error; omitting
+both requires prepared errors when binding. Explicit configured errors must
+match any saved vector, including its values and row-unit labels.
 
 Boundary and offset options use the same equations and option names as the
 CO2 recipe, nested beneath each channel. For example::
@@ -461,10 +464,10 @@ run is deferred until the scaling contract tracked in `OPE-86
 <https://linear.app/openghg-inversions/issue/OPE-86>`_ is available. Use the
 direct Python interfaces for experimental combinations outside this matrix.
 The linked :class:`~openghg_inversions.rhime.co2.Co2O2PreparedInputs` artifact
-does not yet have a durable ``load`` method. Construct it through the documented
-preparation boundary and bind the resulting in-memory artifact; linked staged
-artifact loading remains follow-up work in `OPE-165
-<https://linear.app/openghg-inversions/issue/OPE-165>`_.
+supports NetCDF and Zarr save/load at the prepared-input Python boundary.
+Construct it through the documented preparation boundary or restore it before
+binding the configured runner arguments; see :ref:`linked-prepared-replay`.
+These methods do not add linked staged CLI routing.
 
 The linked template therefore follows a prepare, bind, and run sequence. The
 scientific array names below are the labelled inputs documented by
@@ -756,9 +759,11 @@ covariance block into mutually consistent channel units. The ``co2_units`` and
 numerical scales, so incorrectly scaled values can pass preparation. Before
 calling
 :func:`~openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs`,
-callers must separately convert ``independent_error_sd`` into the corresponding
-observation-row units and attach matching ``observation_units`` labels. Each
-row then retains its declared native units and numerical scale.
+callers must convert ``independent_error_sd`` into the corresponding
+observation-row units and attach matching ``observation_units`` labels. Supply
+it at preparation to preserve that policy for replay, or pass it explicitly to
+the runner when the prepared artifact has no error vector. Each row then
+retains its declared native units and numerical scale.
 Verification-game inputs may use ppm for both channels, while real atmospheric
 O2 observations may use per-meg delta(O2/N2).
 The prepared channel fields are named ``co2_sensitivity`` and
@@ -786,6 +791,82 @@ Persist sampled CO2/O2 results with
 :func:`openghg_inversions.serialization.save_trace` and restore them
 with :func:`openghg_inversions.serialization.load_trace`; this is the
 declared boundary for preserving gathered MultiIndex coordinates.
+
+.. _linked-prepared-replay:
+
+Save and replay linked prepared inputs
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+To retain the fixed observation-error policy with the scientific inputs, pass
+``independent_error_sd`` to ``prepare_co2_o2_inputs``. This optional vector must
+use the gathered ``observation`` axis, including its exact index labels and
+level names, and matching observation-aligned ``observation_units``. Its values
+must be finite, positive standard deviations already expressed in each row's
+declared units; preparation does not convert their numerical scale.
+Preparation checks the error vector's index and unit-coordinate structure,
+and validates any already eager values. Dask error payloads and auxiliary
+unit coordinates remain lazy. Restoring an external artifact and the runners'
+model-input materialization boundary check their values and row-unit agreement.
+
+For an existing ``prepared`` object, construct the vector from its gathered
+observations and attach it with ``dataclasses.replace``. This example uses
+0.5 in the CO2 row units and 1.0 in the O2 row units; choose scales appropriate
+to the measurements::
+
+   from dataclasses import replace
+
+   import xarray as xr
+
+   observations = prepared.observations
+   independent_error_sd = xr.where(
+       observations["species"] == "co2", 0.5, 1.0,
+   ).assign_coords(
+       observation_units=observations["observation_units"],
+   ).rename("independent_error_sd")
+   prepared = replace(prepared, independent_error_sd=independent_error_sd)
+
+The vector retains the joint observation index and row-unit labels. Constructing
+it uses the species labels and leaves the observation payload unread.
+
+With that vector included, save and replay the linked inputs::
+
+   from openghg_inversions.rhime.co2 import (
+       Co2O2PreparedInputs,
+       run_rhime_co2_o2_from_prepared_inputs,
+   )
+
+   prepared.save("co2-o2-prepared.nc")  # .zarr is also supported
+   restored = Co2O2PreparedInputs.load("co2-o2-prepared.nc")
+   idata = run_rhime_co2_o2_from_prepared_inputs(prepared_inputs=restored)
+
+Both ordinary and cached linked runners use the saved error vector when their
+``independent_error_sd`` argument is omitted. If supplied explicitly alongside
+a prepared vector, its labels, units and values must match; a different error
+policy raises an error before sampling. When preparation omits this optional
+field, replay still requires an explicit labelled vector. The TOML binding
+uses saved errors when both channel error settings are omitted; otherwise it
+expands the configured scalars and checks the same match.
+
+The versioned prepared artifact preserves the joint observations and affine
+intercept, separate native channel sensitivities, joint aggregation covariance
+including cross-channel blocks, retained prior, signed-ratio data or its
+unavailability reason, optional boundary sensitivities, and provenance.
+Unequal channel lengths, MultiIndex identities and per-row units survive the
+round trip. Mixed integer/string labels, such as integer ``1`` and string
+``"1"``, remain distinct after NetCDF/Zarr replay. For an in-memory labelled
+tree, use
+:meth:`~openghg_inversions.rhime.co2.Co2O2PreparedInputs.to_datatree` and
+:meth:`~openghg_inversions.rhime.co2.Co2O2PreparedInputs.from_datatree`.
+The saved preparation contains scientific inputs; persist the sampled trace
+separately with :func:`openghg_inversions.serialization.save_trace`.
+Saving passes related arrays to the xarray writer together. Dask payloads
+remain lazy until the writer evaluates their chunks, rather than assembling
+complete arrays in memory first. Zarr writing lazily regularizes ragged chunks
+or aligns them with explicit storage chunks; existing regular chunks are
+preserved when no override is specified. Saving trusts the scientific inputs
+supplied by preparation; it does not repeat their numerical validation. Loading
+an external artifact returns eagerly loaded, validated inputs. Both operations
+leave the caller's input arrays unchanged.
 
 Separate linked PARIS products
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

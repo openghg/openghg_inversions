@@ -815,8 +815,8 @@ posterior-predictive sampling.</p></td>
 </div>
 <p>For <code class="docutils literal notranslate"><span class="pre">recipe</span> <span class="pre">=</span> <span class="pre">&quot;co2_o2&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">[channels]</span></code> must contain exactly the two tables
 <code class="docutils literal notranslate"><span class="pre">[channels.co2]</span></code> and <code class="docutils literal notranslate"><span class="pre">[channels.o2]</span></code>. Each table requires a non-empty
-<code class="docutils literal notranslate"><span class="pre">units</span></code> string convertible to <code class="docutils literal notranslate"><span class="pre">mol/mol</span></code> and a finite, positive
-<code class="docutils literal notranslate"><span class="pre">independent_error_sd</span></code> number:</p>
+<code class="docutils literal notranslate"><span class="pre">units</span></code> string convertible to <code class="docutils literal notranslate"><span class="pre">mol/mol</span></code>. To configure fixed errors, supply
+a finite, positive <code class="docutils literal notranslate"><span class="pre">independent_error_sd</span></code> number for both channels:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">[</span><span class="n">channels</span><span class="o">.</span><span class="n">co2</span><span class="p">]</span>
 <span class="n">units</span> <span class="o">=</span> <span class="s2">"ppm"</span>
 <span class="n">independent_error_sd</span> <span class="o">=</span> <span class="mf">1.0</span>
@@ -831,7 +831,10 @@ posterior-predictive sampling.</p></td>
 and 2 ppm, respectively. The resolver does not convert these values. During
 binding it expands each scalar over that channel’s observation rows. The two
 <code class="docutils literal notranslate"><span class="pre">units</span></code> strings must currently be identical, although the two error values
-may differ.</p>
+may differ. Omit both <code class="docutils literal notranslate"><span class="pre">independent_error_sd</span></code> entries to use the prepared
+artifact’s saved error vector. Omitting only one entry is an error; omitting
+both requires prepared errors when binding. Explicit configured errors must
+match any saved vector, including its values and row-unit labels.</p>
 <p>Boundary and offset options use the same equations and option names as the
 CO2 recipe, nested beneath each channel. For example:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">[</span><span class="n">channels</span><span class="o">.</span><span class="n">co2</span><span class="o">.</span><span class="n">boundary</span><span class="p">]</span>
@@ -878,9 +881,10 @@ configuring a heterogeneous ppm/per-meg
 run is deferred until the scaling contract tracked in <a class="reference external" href="https://linear.app/openghg-inversions/issue/OPE-86">OPE-86</a> is available. Use the
 direct Python interfaces for experimental combinations outside this matrix.
 The linked <a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2O2PreparedInputs" title="openghg_inversions.rhime.co2.Co2O2PreparedInputs"><code class="xref py py-class docutils literal notranslate"><span class="pre">Co2O2PreparedInputs</span></code></a> artifact
-does not yet have a durable <code class="docutils literal notranslate"><span class="pre">load</span></code> method. Construct it through the documented
-preparation boundary and bind the resulting in-memory artifact; linked staged
-artifact loading remains follow-up work in <a class="reference external" href="https://linear.app/openghg-inversions/issue/OPE-165">OPE-165</a>.</p>
+supports NetCDF and Zarr save/load at the prepared-input Python boundary.
+Construct it through the documented preparation boundary or restore it before
+binding the configured runner arguments; see <a class="reference internal" href="#linked-prepared-replay"><span class="std std-ref">Save and replay linked prepared inputs</span></a>.
+These methods do not add linked staged CLI routing.</p>
 <p>The linked template therefore follows a prepare, bind, and run sequence. The
 scientific array names below are the labelled inputs documented by
 <a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.prepare_co2_o2_inputs" title="openghg_inversions.rhime.co2.prepare_co2_o2_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">prepare_co2_o2_inputs()</span></code></a>; replace them with
@@ -1132,9 +1136,11 @@ covariance block into mutually consistent channel units. The <code class="docuti
 numerical scales, so incorrectly scaled values can pass preparation. Before
 calling
 <a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs" title="openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">run_rhime_co2_o2_from_prepared_inputs()</span></code></a>,
-callers must separately convert <code class="docutils literal notranslate"><span class="pre">independent_error_sd</span></code> into the corresponding
-observation-row units and attach matching <code class="docutils literal notranslate"><span class="pre">observation_units</span></code> labels. Each
-row then retains its declared native units and numerical scale.
+callers must convert <code class="docutils literal notranslate"><span class="pre">independent_error_sd</span></code> into the corresponding
+observation-row units and attach matching <code class="docutils literal notranslate"><span class="pre">observation_units</span></code> labels. Supply
+it at preparation to preserve that policy for replay, or pass it explicitly to
+the runner when the prepared artifact has no error vector. Each row then
+retains its declared native units and numerical scale.
 Verification-game inputs may use ppm for both channels, while real atmospheric
 O2 observations may use per-meg delta(O2/N2).
 The prepared channel fields are named <code class="docutils literal notranslate"><span class="pre">co2_sensitivity</span></code> and
@@ -1158,6 +1164,76 @@ model-variable vocabulary,</p>
 <a class="reference internal" href="../reference/openghg_inversions.serialization.html#openghg_inversions.serialization.save_trace" title="openghg_inversions.serialization.save_trace"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.serialization.save_trace()</span></code></a> and restore them
 with <a class="reference internal" href="../reference/openghg_inversions.serialization.html#openghg_inversions.serialization.load_trace" title="openghg_inversions.serialization.load_trace"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.serialization.load_trace()</span></code></a>; this is the
 declared boundary for preserving gathered MultiIndex coordinates.</p>
+<section id="save-and-replay-linked-prepared-inputs">
+<span id="linked-prepared-replay"></span><h3>Save and replay linked prepared inputs<a class="headerlink" href="#save-and-replay-linked-prepared-inputs" title="Link to this heading">#</a></h3>
+<p>To retain the fixed observation-error policy with the scientific inputs, pass
+<code class="docutils literal notranslate"><span class="pre">independent_error_sd</span></code> to <code class="docutils literal notranslate"><span class="pre">prepare_co2_o2_inputs</span></code>. This optional vector must
+use the gathered <code class="docutils literal notranslate"><span class="pre">observation</span></code> axis, including its exact index labels and
+level names, and matching observation-aligned <code class="docutils literal notranslate"><span class="pre">observation_units</span></code>. Its values
+must be finite, positive standard deviations already expressed in each row’s
+declared units; preparation does not convert their numerical scale.
+Preparation checks the error vector’s index and unit-coordinate structure,
+and validates any already eager values. Dask error payloads and auxiliary
+unit coordinates remain lazy. Restoring an external artifact and the runners’
+model-input materialization boundary check their values and row-unit agreement.</p>
+<p>For an existing <code class="docutils literal notranslate"><span class="pre">prepared</span></code> object, construct the vector from its gathered
+observations and attach it with <code class="docutils literal notranslate"><span class="pre">dataclasses.replace</span></code>. This example uses
+0.5 in the CO2 row units and 1.0 in the O2 row units; choose scales appropriate
+to the measurements:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">replace</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">xarray</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">xr</span>
+
+<span class="n">observations</span> <span class="o">=</span> <span class="n">prepared</span><span class="o">.</span><span class="n">observations</span>
+<span class="n">independent_error_sd</span> <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">where</span><span class="p">(</span>
+    <span class="n">observations</span><span class="p">[</span><span class="s2">"species"</span><span class="p">]</span> <span class="o">==</span> <span class="s2">"co2"</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span>
+<span class="p">)</span><span class="o">.</span><span class="n">assign_coords</span><span class="p">(</span>
+    <span class="n">observation_units</span><span class="o">=</span><span class="n">observations</span><span class="p">[</span><span class="s2">"observation_units"</span><span class="p">],</span>
+<span class="p">)</span><span class="o">.</span><span class="n">rename</span><span class="p">(</span><span class="s2">"independent_error_sd"</span><span class="p">)</span>
+<span class="n">prepared</span> <span class="o">=</span> <span class="n">replace</span><span class="p">(</span><span class="n">prepared</span><span class="p">,</span> <span class="n">independent_error_sd</span><span class="o">=</span><span class="n">independent_error_sd</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>The vector retains the joint observation index and row-unit labels. Constructing
+it uses the species labels and leaves the observation payload unread.</p>
+<p>With that vector included, save and replay the linked inputs:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.co2</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">Co2O2PreparedInputs</span><span class="p">,</span>
+    <span class="n">run_rhime_co2_o2_from_prepared_inputs</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">prepared</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="s2">"co2-o2-prepared.nc"</span><span class="p">)</span>  <span class="c1"># .zarr is also supported</span>
+<span class="n">restored</span> <span class="o">=</span> <span class="n">Co2O2PreparedInputs</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">"co2-o2-prepared.nc"</span><span class="p">)</span>
+<span class="n">idata</span> <span class="o">=</span> <span class="n">run_rhime_co2_o2_from_prepared_inputs</span><span class="p">(</span><span class="n">prepared_inputs</span><span class="o">=</span><span class="n">restored</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Both ordinary and cached linked runners use the saved error vector when their
+<code class="docutils literal notranslate"><span class="pre">independent_error_sd</span></code> argument is omitted. If supplied explicitly alongside
+a prepared vector, its labels, units and values must match; a different error
+policy raises an error before sampling. When preparation omits this optional
+field, replay still requires an explicit labelled vector. The TOML binding
+uses saved errors when both channel error settings are omitted; otherwise it
+expands the configured scalars and checks the same match.</p>
+<p>The versioned prepared artifact preserves the joint observations and affine
+intercept, separate native channel sensitivities, joint aggregation covariance
+including cross-channel blocks, retained prior, signed-ratio data or its
+unavailability reason, optional boundary sensitivities, and provenance.
+Unequal channel lengths, MultiIndex identities and per-row units survive the
+round trip. Mixed integer/string labels, such as integer <code class="docutils literal notranslate"><span class="pre">1</span></code> and string
+<code class="docutils literal notranslate"><span class="pre">&quot;1&quot;</span></code>, remain distinct after NetCDF/Zarr replay. For an in-memory labelled
+tree, use
+<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2O2PreparedInputs.to_datatree" title="openghg_inversions.rhime.co2.Co2O2PreparedInputs.to_datatree"><code class="xref py py-meth docutils literal notranslate"><span class="pre">to_datatree()</span></code></a> and
+<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2O2PreparedInputs.from_datatree" title="openghg_inversions.rhime.co2.Co2O2PreparedInputs.from_datatree"><code class="xref py py-meth docutils literal notranslate"><span class="pre">from_datatree()</span></code></a>.
+The saved preparation contains scientific inputs; persist the sampled trace
+separately with <a class="reference internal" href="../reference/openghg_inversions.serialization.html#openghg_inversions.serialization.save_trace" title="openghg_inversions.serialization.save_trace"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.serialization.save_trace()</span></code></a>.
+Saving passes related arrays to the xarray writer together. Dask payloads
+remain lazy until the writer evaluates their chunks, rather than assembling
+complete arrays in memory first. Zarr writing lazily regularizes ragged chunks
+or aligns them with explicit storage chunks; existing regular chunks are
+preserved when no override is specified. Saving trusts the scientific inputs
+supplied by preparation; it does not repeat their numerical validation. Loading
+an external artifact returns eagerly loaded, validated inputs. Both operations
+leave the caller’s input arrays unchanged.</p>
+</section>
 <section id="separate-linked-paris-products">
 <h3>Separate linked PARIS products<a class="headerlink" href="#separate-linked-paris-products" title="Link to this heading">#</a></h3>
 <p><a class="reference internal" href="../reference/openghg_inversions.postprocessing.linked_paris_outputs.html#openghg_inversions.postprocessing.linked_paris_outputs.make_co2_o2_paris_outputs" title="openghg_inversions.postprocessing.linked_paris_outputs.make_co2_o2_paris_outputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">make_co2_o2_paris_outputs()</span></code></a>
@@ -1480,6 +1556,7 @@ independent per-observation likelihoods.</p>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#run-the-global-scalar-sigma-co2-likelihood">Run the global scalar-sigma CO2 likelihood</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#co2-o2-shared-state-model">CO2/O2 shared-state model</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#save-and-replay-linked-prepared-inputs">Save and replay linked prepared inputs</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#separate-linked-paris-products">Separate linked PARIS products</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#signed-oxidation-ratios">Signed oxidation ratios</a></li>
 </ul>

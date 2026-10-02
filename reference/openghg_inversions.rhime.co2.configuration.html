@@ -536,7 +536,10 @@ their unit labels must match the resolved configuration.</p>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>Exact keyword arguments for <code class="xref py py-attr docutils literal notranslate"><span class="pre">runner</span></code>, including a labelled
-<code class="docutils literal notranslate"><span class="pre">independent_error_sd</span></code> array expanded over the observation axis.</p>
+<code class="docutils literal notranslate"><span class="pre">independent_error_sd</span></code> array expanded over the observation axis.
+When both channel error settings are omitted, the artifact must
+contain that error vector. Explicit settings are checked against
+any saved errors at the runner’s materialization boundary.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If the required coordinates are absent or misaligned,

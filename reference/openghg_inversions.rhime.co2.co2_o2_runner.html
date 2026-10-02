@@ -513,7 +513,7 @@
 <dl>
 <dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">prepared_inputs</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">independent_error_sd</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">independent_error_sd</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">state_activity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">use_bc</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">bc_prior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
@@ -531,7 +531,9 @@
 <p>This advanced replay seam begins after channel preparation. The public
 <code class="docutils literal notranslate"><span class="pre">run_rhime_co2_o2</span></code> name is reserved for the future complete production
 recipe, including acquisition, preparation, materialization, and outputs.</p>
-<p>The fixed independent channel error is required and remains labelled. Run
+<p>The fixed independent channel error is required and remains labelled. It
+may be stored in the prepared artifact or supplied explicitly; when both
+are present their labels, units, and values must agree. Run
 policy, such as the UOB prototype’s one ppm value for both channels, belongs
 to the caller rather than the model API.</p>
 <dl class="field-list simple">
@@ -542,10 +544,12 @@ observations and affine intercept on <code class="docutils literal notranslate">
 channel sensitivities on their native observation axes and the retained
 state axis, a dense joint aggregation covariance, retained prior,
 ratio provenance, units, labels, and scientific provenance.</p></li>
-<li><p><strong>independent_error_sd</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Positive finite fixed standard deviations on
+<li><p><strong>independent_error_sd</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a><em> | </em><em>None</em>) – Optional positive finite fixed standard deviations on
 <code class="docutils literal notranslate"><span class="pre">(&quot;observation&quot;,)</span></code>. Labels and <code class="docutils literal notranslate"><span class="pre">observation_units</span></code> must match
 <code class="docutils literal notranslate"><span class="pre">prepared_inputs.observations</span></code> exactly. These values remain fixed
-data and are not an inferred mismatch amplitude.</p></li>
+data and are not an inferred mismatch amplitude. Defaults to the
+artifact’s saved error vector. An explicit vector must agree with
+saved errors when the artifact contains them.</p></li>
 <li><p><strong>state_activity</strong> (<a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.StateActivity" title="openghg_inversions.models.state_activity.StateActivity"><em>StateActivity</em></a><em> | </em><em>None</em>) – Optional labelled active/fixed policy on the retained
 state dimension. Omitted states use the model’s structural activity
 policy.</p></li>

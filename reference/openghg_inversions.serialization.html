@@ -534,7 +534,9 @@ the resulting labels are unique.</p>
 <p>This codec is intended for versioned prepared-input artifacts. Unlike
 <a class="reference internal" href="#openghg_inversions.serialization.reset_serialisation_multiindexes" title="openghg_inversions.serialization.reset_serialisation_multiindexes"><code class="xref py py-func docutils literal notranslate"><span class="pre">reset_serialisation_multiindexes()</span></code></a>, it emits the interoperable CF
 <code class="docutils literal notranslate"><span class="pre">compress</span></code> attribute and requires callers to name every index they intend
-to encode.</p>
+to encode. Mixed-type level labels use the shared tagged JSON codec so
+NetCDF and Zarr preserve distinctions such as integer <code class="docutils literal notranslate"><span class="pre">1</span></code> and string
+<code class="docutils literal notranslate"><span class="pre">&quot;1&quot;</span></code>. Homogeneous level coordinates keep their ordinary representation.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -592,7 +594,9 @@ coordinates when no compressed indexes are present.</p>
 <dd><p>Save a DataTree to NetCDF or Zarr.</p>
 <p>This writes the tree, replacing an existing destination artifact. NetCDF
 uses xarray’s default engine so callers that already loaded NetCDF inputs
-do not switch HDF5 bindings at the serialization boundary.</p>
+do not switch HDF5 bindings at the serialization boundary. Zarr writes
+lazily rechunk arrays to their encoded storage chunks, or regular chunks
+sized to the largest existing chunk on each axis. Inputs are not mutated.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
