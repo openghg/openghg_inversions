@@ -1,79 +1,65 @@
 # Proposal
 
-> Status: Draft for review. This spec PR captures the proposed OPE-207 contract;
-> it does not implement or complete the issue. Revise these artifacts together
-> as the PR discussion settles the design.
+> Draft for review. This PR records OPE-207's design; it does not implement or
+> complete the issue. The proposal, design, and spec remain open to revision.
 
 ## Why
 
-Full, prepared-input, and staged standard/multisector execution independently
-compose the same scientific functions, and have already diverged on retained-site
-policy. Establish one execution implementation per recipe before OPE-165 adds
-linked CO2/O2 staging; consistent configuration and dispatch support that goal.
+Full, prepared-input, and staged standard/multisector runners independently
+compose the same scientific functions and have diverged on retained-site policy.
+Establish shared recipe execution before OPE-165 completes linked CO2/O2 staging.
 
 ## What Changes
 
-- Make each recipe own one implementation of its applicable preparation phases.
-  For standard/multisector, this includes filtering, retained-site policy, basis
-  construction, sensitivities, and labelled assembly. Full, prepared-input, and
-  staged routes reuse the same applicable construction, sampling, and
-  result/product operations. Full runners visibly sequence these
-  ordinary operations without requiring intermediate-file I/O.
-- Give standard and multisector separate concrete stage implementations. Share
-  scientific functions and genuinely identical mechanics without a combined
-  workflow that switches recipes internally. Stages add checkpoint loading,
-  authentication, persistence, and execution reporting around recipe operations.
-- Preserve distinct merged-data and fully prepared checkpoints, including the
-  existing filtered merged artifact produced by staging. Saving or resuming a
-  checkpoint must not introduce a second scientific workflow or repeat completed
-  transformations.
-- Align standard/multisector staging with the full runners' retained-site policy:
-  preparation may drop empty sites and continue with aligned retained metadata;
-  an empty retained set still fails. This explicitly corrects staged rejection
-  of every missing requested site and requires regression coverage and a release
-  note. Other intentional route differences must be named and tested.
-- Support shared execution with one resolved configuration shape for common
-  sampling/output choices and typed recipe options, one authoritative family
-  resolver, and a narrow stage interface selected once. Remove stage-only setup
-  wrappers and repeated dispatch; diagnosis remains independently owned.
-- Require meaningful parity checks across full, merged/prepared-input, and staged
-  routes: preparation products, model behavior, sampling policy, and products
-  from the same posterior, together with checkpoint independence.
-- **BREAKING**: New staged Python setup classes and helper calling conventions
-  can change. Preserve installed CLI commands/options, existing configuration
-  syntax and meanings, established scientific runner contracts, artifact names,
-  schemas, configuration identities, and saved replay behavior.
-- Preserve standard/multisector version-2 graph-free replay and historical
-  version-1 graph replay. Preserve CO2 version-1 graph-free replay, rejection of
-  other sample-manifest versions, and independent affine authentication.
-- Reconcile these owners with PRs #773–#776; their namespace migration must carry
-  the canonical recipe operations and checkpoint wrappers without retaining
-  competing execution implementations.
+- Give each recipe canonical operations for its supported scientific phases.
+  Equivalent full, prepared-input, and staged routes reuse preparation, model
+  construction, sampling, and result/product construction. Full runners visibly
+  sequence these operations in memory; stages add checkpoint I/O, authentication,
+  and reporting around them.
+- Give standard and multisector separate concrete stage owners, sharing identical
+  scientific operations and artifact mechanics where appropriate. Preserve
+  distinct pre-filter merged, staged filtered-merged, and fully prepared
+  checkpoints without repeating completed scientific transformations.
+- Correct standard/multisector staging to accept the full runners' valid retained
+  subsets after acquisition, compatible merged-cache reload, or filtering. Align
+  all per-site metadata; reject an empty retained set or malformed input. This is
+  an explicit staged behavior change, requiring regression coverage and a release
+  note in the implementation.
+- Use one authoritative configuration resolution and a common sampling/output
+  record for workflows adopting the shared staged interface: standard,
+  multisector, and ordinary/cached CO2 initially. These types and the complete
+  stage suite are not prerequisites for independent builders, direct runners,
+  nested execution, or every future recipe.
+- Require meaningful scientific parity across equivalent supported routes,
+  including model behavior and products from the same posterior. Preserve
+  authenticated standard/multisector version-2 graph-free replay, genuine
+  historical version-1 replay, and CO2 version-1 graph-free/affine replay.
+- **BREAKING**: Newly introduced staged setup classes and helper signatures can
+  change. Preserve installed CLI behavior, configuration meanings, established
+  scientific Python APIs, artifact names/schemas/identities, and family-specific
+  readiness error reporting, apart from the retained-site correction above.
 
 ## Capabilities
 
 ### New Capabilities
 
-- `recipe-workflow-contract`: The first OpenSpec contract for consistent recipe
-  execution across full, checkpoint, and staged routes, supported by common
-  resolution and independent stages. It includes parity, retained-site policy,
-  and existing CLI, diagnostic, saved-artifact, and replay guarantees.
+- `recipe-workflow-contract`: Consistent execution across supported recipe routes,
+  checkpoint boundaries, scientific parity, and existing CLI/artifact/replay
+  guarantees.
 
 ### Modified Capabilities
 
-None. The project currently has no durable capability specs for these workflows.
+None; the project has no durable workflow capability specs yet.
 
 ## Impact
 
-The eventual implementation affects full and prepared-input runners, scientific
-preparation/construction/output owners, separate standard/multisector stage
-implementations, configuration, CLI routing, and their tests/API documentation.
-The retained-site correction is the identified staged behavior change. No
-equations, configuration formats, dependencies, artifact schema migrations, or
-unified `run` CLI are introduced. This PR changes planning artifacts only.
+Implementation affects recipe runners and their scientific operations,
+configuration, staged wrappers, and associated tests/documentation. Reconcile
+these owners with the recipes migration in PRs #773–#776. No equations,
+configuration formats, dependencies, artifact schema migrations, diagnostic
+redesign, unified `run` CLI, MAP route, or new recipe are added here.
 
 [OPE-207](https://linear.app/openghg-inversions/issue/OPE-207/unify-resolved-recipe-configuration-and-staged-workflow-interfaces)
-blocks OPE-165's completion and remaining linked staged integration until the
-refactor is implemented and validated. PR #778 has merged; PR #779's linked
-prepared-input persistence can proceed independently. Merging this spec PR
-does not close OPE-207 or unblock OPE-165.
+blocks OPE-165's completion until implementation and validation; merging this
+planning PR does not unblock it. PR #779's linked prepared-input persistence can
+proceed independently. This PR contains no implementation or tasks file.
