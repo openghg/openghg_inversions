@@ -28,6 +28,8 @@ configuration and stage calls only where they support existing workflows.
 union, capability registry, mutable lifecycle, or nullable record for every
 possible recipe. No new optimizer, scientific recipe, CLI command, diagnostic
 policy, configuration syntax, or saved-artifact schema.
+Import isolation and a possible `_model_building.py` split remain separate
+investigations. Graph-free replay does not require replay without importing PyMC.
 
 ## Decisions
 
@@ -42,6 +44,11 @@ model, and its output contract. Sampling retains the recipe's matched policy;
 cached CO2 keeps its graph, CompoundStep, conditional predictions, and trace
 annotation together. Results/products have one family constructor, accepting
 live construction information or the authenticated saved output contract.
+
+Choose operation boundaries around coherent scientific decisions and handoff
+contracts. The phase diagram does not prescribe a module or class per phase;
+one owner may provide several ordinary operations. Keep mathematically coupled
+decisions together and preserve visible scientific composition.
 
 ```text
 acquisition / merged input --> preparation --> construction --> sampling
@@ -221,17 +228,30 @@ workflow. Shared infrastructure follows an actual supported route.
 3. Consolidate each existing recipe's scientific operations and migrate its
    consumers together. Establish separate standard/multisector stage owners and
    scoped configuration/calling contracts; remove obsolete parallel owners.
+   During implementation review, trace where a retained-site policy change would
+   be made and how full and staged routes receive it. Then trace a checkpoint
+   encoding change through its persistence/authentication owners. Updating callers,
+   documentation, and tests is normal; duplicating policy across callers is not.
 4. Validate parity with real controlled preparation, basis/sensitivities,
    source-resolved multisector data, and retained subsets in all three phases.
    Compare selected model inputs, roles, deterministic terms/log probability at
    controlled parameters, and matched sampling policy; add small real-sampling
    checks for existing ordinary/cached variants. Compare products from one
    posterior, including units, dimensions, and conditional reconstruction.
+   Supplement parity with existing independent reference calculations or
+   pre-refactor expected values for representative deterministic quantities,
+   reusing tests and fixtures where possible. Expected values establish regression
+   stability; independent calculations provide correctness evidence. Validate the
+   retained-site correction against its agreed policy. Check numerical correctness
+   and ownership/execution properties separately; route agreement alone can retain
+   a shared error.
 5. Verify full execution with checkpoint serializers forbidden, prepared
    execution with preparation forbidden, and graph-free replay with construction/
    sampling forbidden. Run relevant workflow, configuration, identity, saved-output/
-   replay tests, changed-path Ruff, and whitespace checks; review affected
-   docstrings and update API/user documentation plus a Towncrier fragment.
+   replay tests, changed-path Ruff, and whitespace checks. Review ordinary docstrings
+   for extracted public operations: the decision owned, required input state and
+   phase meaning, validation ownership, borrowing/materialization effects, returns,
+   and failures. Update API/user documentation plus a Towncrier fragment.
 6. Close OPE-207 after implementation and validation, then complete OPE-165's
    linked integration. Linked remains one joint CO2/O2 recipe, with channel axes,
    covariance, and unit policy local to that scientific feature; #779's persistence
