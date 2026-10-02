@@ -1,6 +1,7 @@
 import warnings
 
 import dask.array as da
+from dask import delayed
 import numpy as np
 import pandas as pd
 import pytest
@@ -18,8 +19,43 @@ from openghg_inversions.array_ops import (
     require_unique_index,
     same_index,
     select_gathered_data_array,
+    to_dense,
     validate_covariance_coordinates,
 )
+
+
+@pytest.mark.parametrize("sparse_payload", [False, True])
+def test_to_dense_preserves_lazy_auxiliary_coordinates(sparse_payload: bool) -> None:
+    """Densifying eager payloads must not execute borrowed coordinate graphs."""
+    executions = []
+
+    @delayed
+    def auxiliary_values() -> np.ndarray:
+        executions.append("coordinate")
+        return np.array([3.0, 4.0])
+
+    values = np.array([1.0, 2.0])
+    payload = sparse.COO.from_numpy(values) if sparse_payload else values
+    auxiliary = da.from_delayed(auxiliary_values(), shape=(2,), dtype=float)
+    array = xr.DataArray(
+        payload,
+        dims="observation",
+        coords={"observation": [0, 1], "auxiliary": ("observation", auxiliary)},
+        attrs={"units": "ppm"},
+    )
+    array.encoding = {"dtype": np.dtype("float64")}
+    original_auxiliary = array.auxiliary.data
+
+    result = to_dense(array)
+
+    assert executions == []
+    assert isinstance(result.data, np.ndarray)
+    np.testing.assert_array_equal(result.data, values)
+    assert result.auxiliary.data is original_auxiliary
+    assert array.auxiliary.data is original_auxiliary
+    assert array.data is payload
+    assert result.attrs == array.attrs
+    assert result.encoding == array.encoding
 
 
 @pytest.mark.parametrize("return_sparse", [False, True])

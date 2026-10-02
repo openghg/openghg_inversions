@@ -757,6 +757,43 @@ def test_linked_preparation_preserves_shared_lazy_error_payload_and_units(tmp_pa
 
 
 @pytest.mark.parametrize("suffix", [".nc", ".zarr"])
+def test_linked_save_defers_lazy_units_with_eager_error_payload(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, suffix: str
+) -> None:
+    """Leave auxiliary coordinates uncomputed until the writer executes them once."""
+    prepared = prepare_co2_o2_inputs(**_inputs())
+    executions = []
+    units = prepared.observations.observation_units.to_numpy()
+
+    @delayed
+    def error_units() -> np.ndarray:
+        executions.append("units")
+        return units
+
+    lazy_units = da.from_delayed(error_units(), shape=units.shape, dtype=units.dtype)
+    error = prepared.observations.copy(data=np.full(prepared.observations.size, 0.4)).assign_coords(
+        observation_units=("observation", lazy_units)
+    )
+    prepared = replace(prepared, independent_error_sd=error)
+    writer = co2_o2_preparation.save_datatree
+
+    def inspect_writer(tree: xr.DataTree, output_file: Path, output_format: str | None) -> None:
+        assert executions == []
+        assert tree["independent_error"]["observation_units"].data is lazy_units
+        writer(tree, output_file, output_format)
+
+    monkeypatch.setattr(co2_o2_preparation, "save_datatree", inspect_writer)
+    path = tmp_path / f"lazy-units{suffix}"
+    prepared.save(path)
+
+    assert executions == ["units"]
+    assert prepared.independent_error_sd.observation_units.data is lazy_units
+    restored = Co2O2PreparedInputs.load(path)
+    np.testing.assert_array_equal(restored.independent_error_sd.observation_units.data, units)
+    np.testing.assert_array_equal(restored.independent_error_sd.data, np.full(error.size, 0.4))
+
+
+@pytest.mark.parametrize("suffix", [".nc", ".zarr"])
 @pytest.mark.parametrize("sparse_chunks", [False, True])
 def test_linked_save_passes_lazy_dense_chunks_to_writer(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, suffix: str, sparse_chunks: bool
