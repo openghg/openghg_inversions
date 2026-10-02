@@ -16,6 +16,9 @@ A recipe's equivalent supported full, prepared-input, and staged routes SHALL
 reuse canonical operations for their applicable preparation, construction,
 sampling, and result/product phases. Stages SHALL add checkpoint loading,
 authentication, persistence, and reporting without independent scientific policy.
+Filtering, retained-site handling, basis construction/application, sensitivities,
+and input assembly SHALL belong to one coherent scientific preparation operation
+where applicable, without requiring a separate high-level filtering stage.
 Full execution SHALL visibly sequence shared operations in memory without
 requiring intermediate-file I/O. Builders and direct runners SHALL NOT require
 unrelated preparation, configuration, stages, or result formats to be supported.
@@ -79,31 +82,65 @@ reconciliation SHALL NOT bypass malformed-input or cache-compatibility validatio
 - **AND** invalid labels/metadata and malformed or mismatched independently
   supplied prepared inputs retain their owning boundary's rejection policy
 
-### Requirement: Explicit checkpoint phase boundaries
+### Requirement: Merged and prepared checkpoint boundaries
 
-Supported merged-data and fully prepared checkpoints SHALL resume through the
-same remaining recipe operations, preserving formats, names, and existing
-validation/authentication. Pre-filter merged caches and staged filtered merged
-data SHALL retain distinct meanings. Execution SHALL NOT guess an arbitrary
-file's phase, repeat completed transformations, mutate borrowed handoffs, or
-require new installed commands or artifact schemas.
+For standard/multisector, the existing optional merged-data cache SHALL contain
+acquisition output saved before scientific preparation begins, including before
+configured observation filtering. Full and staged routes SHALL reuse the existing
+cache save/reload mechanism and formats.
+Fully prepared inputs SHALL remain the handoff after scientific preparation.
+Both checkpoints SHALL resume through canonical recipe operations without
+mutating borrowed handoffs or requiring new installed commands or schemas.
 
-#### Scenario: Pre-filter merged resume
+#### Scenario: Merged-data resume
 
 - **WHEN** a supported route resumes acquired, external, or reloaded pre-filter merged data
-- **THEN** it bypasses acquisition and uses canonical filtering and remaining preparation
+- **THEN** it bypasses acquisition and invokes the same complete scientific
+  preparation operation, including filtering, basis, sensitivities, and assembly
 
-#### Scenario: Filtered merged resume
+#### Scenario: Optional merged-data save
 
-- **WHEN** an explicitly supported Python boundary resumes a known staged filtered
-  checkpoint with its required provenance
-- **THEN** it starts after filtering and uses the same remaining preparation operations
-- **AND** ordinary merged reload is not automatically reinterpreted as filtered resume
+- **WHEN** an existing merged-cache save option requests persistence during acquisition
+- **THEN** the saved merged data precedes scientific preparation and its configured filters
+- **AND** preparation continues through the same operation used without cache persistence
 
 #### Scenario: Fully prepared resume
 
 - **WHEN** valid fully prepared inputs are supplied to a supported route
 - **THEN** construction/inference proceeds without repeating any preparation phase
+
+### Requirement: Retire the filtered merged-data checkpoint
+
+Standard/multisector staged preparation SHALL stop producing the filtered merged
+snapshot. New preparation manifests SHALL omit its retired `merged_data` artifact
+and identity entries, including when optional merged caching is enabled. The
+sole merged-cache contract SHALL remain acquisition output before scientific
+preparation. No resume route for that retired checkpoint SHALL be provided;
+the removal SHALL NOT reinterpret historical filtered files as pre-filter caches.
+Prepared-input and saved-output schemas, authentication, and supported historical
+replay SHALL remain compatible despite this artifact removal.
+
+#### Scenario: Staged preparation without optional merged caching
+
+- **WHEN** standard or multisector staged preparation runs without a requested merged cache
+- **THEN** it persists the prepared-input handoff and preparation manifest without
+  the former filtered merged artifact or its manifest entries
+- **AND** later stages consume the prepared inputs without requiring a merged snapshot
+
+#### Scenario: Staged preparation with optional merged caching
+
+- **WHEN** standard or multisector staged preparation requests the existing merged-cache save option
+- **THEN** it saves acquisition output before scientific preparation through the existing cache mechanism
+- **AND** its preparation manifest still omits the retired `merged_data` entries
+  rather than repurposing them for a different checkpoint phase
+
+#### Scenario: Historical prepared-output replay
+
+- **WHEN** valid saved prepared inputs and posterior artifacts use a historical
+  preparation manifest that also lists the retired filtered snapshot
+- **THEN** their supported family replay route remains available without that snapshot
+- **AND** prepared/posterior identity, output-binding, and optional affine
+  authentication retain their existing strictness and version policies
 
 ### Requirement: Scientific parity and explicit differences
 
@@ -161,16 +198,16 @@ by a recipe switch.
 Existing configuration formats, option meanings, defaults, aliases, overrides,
 source-relative paths, and rejection rules SHALL remain compatible. Installed
 commands SHALL retain names, model choices, arguments, handoffs, stdout, and exit
-policy. The retained-site correction above is the explicit staged acceptance
-change. This contract SHALL NOT add a unified run command or broaden diagnostic policy.
+policy, apart from the specified retained-site correction and filtered merged
+artifact removal. This contract SHALL NOT add a unified run command or broaden diagnostic policy.
 
 #### Scenario: Existing command sequence and configuration
 
 - **WHEN** a supported existing command sequence uses an explicit source and supported overrides
 - **THEN** source-relative paths and override precedence remain unchanged, without
   ambient `CONFIG_FILE` choosing staged science
-- **AND** the same handoffs/products and artifact names/schemas remain compatible,
-  including the explicitly corrected retained-site cases
+- **AND** prepared-input/product handoffs and their names/schemas remain compatible,
+  with the specified retained-site correction and removal of the filtered merged snapshot
 
 #### Scenario: Invalid or inapplicable options
 

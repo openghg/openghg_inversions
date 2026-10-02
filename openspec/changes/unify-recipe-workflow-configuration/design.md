@@ -27,7 +27,7 @@ configuration and stage calls only where they support existing workflows.
 **Non-Goals:** A universal pipeline, builder, prepared-input type, inference mode
 union, capability registry, mutable lifecycle, or nullable record for every
 possible recipe. No new optimizer, scientific recipe, CLI command, diagnostic
-policy, configuration syntax, or saved-artifact schema.
+policy, configuration syntax, or prepared-input/saved-output schema.
 Import isolation and a possible `_model_building.py` split remain separate
 investigations. Graph-free replay does not require replay without importing PyMC.
 
@@ -36,9 +36,12 @@ investigations. Graph-free replay does not require replay without importing PyMC
 ### 1. Recipe operations are canonical; route wrappers sequence them
 
 The scientific owner provides ordinary operations for the phases its recipe
-supports. For standard/multisector, preparation visibly orders filtering,
-retained-site reconciliation, basis construction, sensitivities, and labelled
-assembly. Acquisition remains independently callable for supplied merged data.
+supports. For standard/multisector, one scientific preparation operation visibly
+orders filtering, retained-site reconciliation, basis construction, sensitivities,
+and labelled assembly. Acquisition remains independently callable for supplied
+merged data.
+Filtering is part of preparation, rather than a separate high-level workflow
+step; existing ordinary helpers can remain useful inside that procedure.
 Construction owns input requirements, coordinated materialization, the concrete
 model, and its output contract. Sampling retains the recipe's matched policy;
 cached CO2 keeps its graph, CompoundStep, conditional predictions, and trace
@@ -51,14 +54,19 @@ one owner may provide several ordinary operations. Keep mathematically coupled
 decisions together and preserve visible scientific composition.
 
 ```text
-acquisition / merged input --> preparation --> construction --> sampling
-                                    ^               ^              |
-                                    |               |              v
-                            merged checkpoint   prepared      results/products
-                                                checkpoint          ^
-                                                                    |
-                                                          authenticated replay
+inputs/acquisition --> scientific preparation --> model construction --> sampling
+         |                       |                                         |
+         v                       v                                         v
+   merged checkpoint      prepared checkpoint                       results/products
+      (optional)                                                           ^
+                                                                           |
+                                                              authenticated replay
 ```
+
+The first three operations correspond to inputs/acquisition, scientific
+preparation, and model construction in the six-layer responsibility account.
+The checkpoint arrows denote persistence at handoffs; full execution uses the
+same values in memory without requiring either checkpoint write.
 
 Full runners visibly call these operations with in-memory handoffs. Prepared
 routes join at construction, saved-output routes at products, with historical
@@ -112,24 +120,39 @@ No dummy methods or sampler/output settings are required to deliver a model.
 The broad rule still holds: equivalent supported routes reuse their recipe's
 scientific operations, whether or not they adopt this staged interface.
 
-### 3. Checkpoints have explicit phase meanings
+### 3. Keep merged and prepared checkpoints around scientific preparation
 
 | Handoff | Remaining scientific work |
 | --- | --- |
-| Acquired, external, or reloaded pre-filter merged data | Filtering and remaining preparation, then inference/products |
-| Existing staged filtered merged data | Basis/sensitivities/assembly onward; no repeated filtering |
+| Acquired, external, or reloaded merged data | The complete scientific preparation operation, then construction/inference/products |
 | Fully prepared inputs | Construction, sampling, and products |
 | Prepared inputs plus authenticated posterior/output information | Products; historical role recovery only when required |
 
-The old `fixedbasisMCMC` save-merged-data option illustrates persistence at a
-handoff. Ordinary merged caches are saved before filtering; staged
-`merged-data/merged-data.nc` is filtered. Preserve those meanings and formats.
-Choose the resume boundary from the known producer/provenance or an explicit
-Python phase argument, never by guessing from an arbitrary file. Ordinary
-`reload_merged_data` does not automatically resume a filtered staged checkpoint.
-No new command or schema is required. Preparation can expose its filtered
-handoff for checkpoint persistence without callbacks or an execution-state object.
-Validate external handoffs at their owner; trust locally constructed intermediates.
+Retain the existing optional `save_merged_data` / `reload_merged_data` mechanism
+illustrated by `fixedbasisMCMC`. Its acquisition output precedes the recipe's
+configured observation filters, basis work, and sensitivity construction;
+acquisition may already have performed averaging and other processing. Full
+and staged execution use the same cache operation and existing formats/options,
+with explicit stage output containment where applicable. They then call the
+same complete preparation operation. Saving a merged cache is opt-in; fully
+prepared inputs remain the staged inference handoff.
+
+**Breaking change for the next minor release:** Remove the newer staged filtered
+snapshot `merged-data/merged-data.nc` and its `merged_data` path/digest entries
+from new preparation manifests, including when optional acquisition caching is
+enabled. That cache retains its existing persistence contract instead of
+repurposing the retired manifest entries. Preparation no longer unconditionally
+writes the filtered artifact. Do not replace it with an unconditional pre-filter
+write or silently give old filtered files the pre-preparation cache meaning. Filtered
+merged data is an internal handoff; no filtered checkpoint, public filtering
+stage, resume phase argument, or phase-detection machinery is introduced.
+
+Existing prepared-input/posterior replay remains usable with historical manifests
+that also list the retired snapshot; replay does not need that file. Authenticate
+the prepared inputs, posterior, output bindings, and optional affine artifacts
+as before. CO2 staging already uses coherent prepared inputs and affine companions
+without a merged snapshot, so it acquires no new checkpoint requirement. Validate
+external handoffs at their owner; trust locally constructed intermediates.
 
 ### 4. Retained-site policy follows the full runners in three phases
 
@@ -251,7 +274,11 @@ workflow. Shared infrastructure follows an actual supported route.
    replay tests, changed-path Ruff, and whitespace checks. Review ordinary docstrings
    for extracted public operations: the decision owned, required input state and
    phase meaning, validation ownership, borrowing/materialization effects, returns,
-   and failures. Update API/user documentation plus a Towncrier fragment.
+   and failures. Verify optional merged caching precedes preparation, default
+   staged preparation omits the retired snapshot/manifest entries, and historical
+   prepared-output replay does not require that snapshot. Update API/user
+   documentation and add a Towncrier removal fragment announcing the breaking
+   checkpoint change for the next minor release, alongside the retained-site note.
 6. Close OPE-207 after implementation and validation, then complete OPE-165's
    linked integration. Linked remains one joint CO2/O2 recipe, with channel axes,
    covariance, and unit policy local to that scientific feature; #779's persistence
@@ -262,5 +289,6 @@ workflow. Shared infrastructure follows an actual supported route.
    part of the durable contract. No sync or archive happens in this planning PR.
 
 Land a family's migration only when validated, rather than retain competing
-permanent workflows. Stable configuration/artifact contracts permit reverting
-an unsuccessful structural migration without rewriting users' saved files.
+permanent workflows. Apart from the explicit checkpoint removal, preserved
+configuration/prepared-input/saved-output contracts permit reverting an unsuccessful
+structural migration without rewriting users' saved files.
