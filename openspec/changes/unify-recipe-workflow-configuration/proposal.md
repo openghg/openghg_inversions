@@ -27,7 +27,9 @@ Establish shared recipe execution before OPE-165 completes linked CO2/O2 staging
   checkpoint (`merged-data/merged-data.nc`) and its preparation-manifest entries.
   Filtered merged data remains an in-memory preparation intermediate, with no
   separate filtering stage or filtered-checkpoint resume interface.
-- Correct standard/multisector staging to accept the full runners' valid retained
+- Require each recipe to derive retained sites and align applicable per-site
+  metadata/options consistently across equivalent routes. Correct
+  standard/multisector staging to accept the full runners' valid retained
   subsets after acquisition, compatible merged-cache reload, or filtering. Align
   all per-site metadata; reject an empty retained set or malformed input. This is
   an explicit staged behavior change, requiring regression coverage and a release

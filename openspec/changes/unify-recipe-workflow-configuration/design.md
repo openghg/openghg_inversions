@@ -89,13 +89,15 @@ receives explicit artifact paths and invocation options, then calls its recipe's
 scientific operations. Implementations import shared helpers from their owners,
 not the public dispatcher.
 
-This interface applies to those adopting workflows. Nested and future recipes
-can expose only the operations they need. Diagnosis remains independently
-callable with a posterior, optional sample manifest, and convergence options.
+This interface applies to standard, multisector, and ordinary/cached CO2.
+Nested and future recipes can expose only the operations they need. Diagnosis
+remains independently callable with a posterior, optional sample manifest, and
+convergence options.
 
 Independent builders and direct runners retain explicit scientific arguments.
-For example, a future MAP experiment could call `build_rhime_co2`, then its own
-optimizer and result construction; a prepared-only recipe could expose a builder
+For example, a future maximum a posteriori (MAP) experiment could call
+`build_rhime_co2`, then its own optimizer and result construction; a prepared-only
+recipe could expose a builder
 and runner without acquisition or staging. These are design checks, not features
 to implement here. MAP suitability and its objective would require separate
 scientific work; a cached graph is not automatically a valid MAP target.
@@ -145,11 +147,13 @@ generic input/result containers.
 | Fully prepared inputs | Construction, sampling, products |
 | Prepared inputs and authenticated saved samples/output information | Products without construction or resampling |
 
-Reuse the optional `save_merged_data` / `reload_merged_data` mechanism used by
-`fixedbasisMCMC`. Acquisition output precedes configured observation filtering,
-basis work, and sensitivities, although acquisition may already include averaging.
-Full and staged execution use the same cache mechanism and formats. Stage artifact
-paths retain their existing directory-containment checks. A cache save remains opt-in.
+For standard/multisector, acquisition must honour `save_merged_data` and
+`reload_merged_data`. A requested save writes acquisition output before configured
+filtering, basis construction, and sensitivities; acquisition may already include
+averaging. A valid cache reload bypasses acquisition and enters the same scientific
+preparation operation. Full and staged execution must share the existing save/load
+functions, naming and format rules, and cache-validation/fallback policy. Stage
+artifact paths retain their directory-containment checks. Cache saves remain opt-in.
 
 **Breaking change for the next minor release:** Stop writing the staged filtered
 `merged-data/merged-data.nc` snapshot. Omit its `merged_data` path/digest entries
@@ -164,20 +168,31 @@ does not require it to add acquisition or merged caching.
 
 ### 5. Correct retained-site handling and preserve readiness behavior
 
-Standard/multisector preparation accepts valid retained subsets after acquisition,
-compatible cache reload, and filtering. Align every per-site option to the retained
-labels and reject an empty set before basis construction or inference. Preserve
-validation of malformed inputs and the existing incompatible-cache rejection or
-fallback policy.
+Each recipe must derive retained sites from the observations it keeps and align
+applicable per-site metadata and options. Equivalent routes must use the same
+policy, preserving validation of malformed or incompatible inputs.
 
-This corrects staged rejection of missing requested sites. Cover all three causes
-with unequal per-site options and document the behavior change. Preserve other
-supported differences with a stated reason and regression coverage. For example,
+For standard/multisector, full preparation already accepts valid subsets after
+acquisition, compatible cache reload, and filtering; staging rejects missing
+requested sites. OPE-207 must remove this policy divergence by sharing preparation.
+Align every per-site option and reject an empty set before basis construction or
+inference. Cover all three causes with unequal per-site options and document the
+behavior change.
+
+CO2 staging currently starts with prepared inputs, without acquisition or configured
+observation filtering. Shared canonical-input validation already aligns site metadata
+to observed sites. Check this alignment across ordinary/cached execution routes;
+retain validation of model-specific per-site options. This does not require a new
+CO2 acquisition or filtering route.
+
+Preserve other supported route differences with a stated reason and regression
+coverage. For example,
 [`run_rhime_from_prepared_inputs`](../../../openghg_inversions/rhime/prepared.py)
 with the built-in model rejects `basic`, `paris`, and `legacy` products when
 aggregation-error mode is not `none`; this refactor does not expand those outputs.
 
-Prior-predictive readiness keeps the current family exception boundaries:
+The table describes current prior-predictive readiness behavior. The refactor must
+preserve these exception boundaries and artifact-writing rules:
 
 | Event | Standard / multisector | Ordinary / cached CO2 |
 | --- | --- | --- |
@@ -186,10 +201,10 @@ Prior-predictive readiness keeps the current family exception boundaries:
 | Build/prior-predictive `KeyError` or `ValueError` | Within the existing catch: `fail` check; no predictive artifacts | Error propagates; no check or new destination |
 | External loading/authentication outside that catch, or artifact serialization error | Error propagates | Error propagates |
 
-Returned invalid evidence still writes existing predictive/report artifacts,
-including CO2's prior manifest. Standard/multisector authentication and
-serialization remain outside the readiness catch; CO2 builds/predicts before
-creating the destination. Strict-mode exits, convergence thresholds, and
+When prediction returns invalid evidence, preserve the existing predictive/report
+writes, including CO2's prior manifest. Keep standard/multisector authentication
+and serialization outside the readiness catch, and CO2 construction/prediction
+before destination creation. Strict-mode exits, convergence thresholds, and
 `unknown` handling follow the [behavioral spec](specs/recipe-workflow-contract/spec.md#requirement-preserve-readiness-and-convergence-behavior).
 
 ### 6. Version readers own artifact compatibility

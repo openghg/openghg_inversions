@@ -49,9 +49,13 @@ unrelated preparation, configuration, stages, or result formats to be supported.
 
 ### Requirement: Retained-site consistency in preparation
 
-Standard and multisector preparation SHALL share filtering, retained-site
-handling, basis, sensitivities, and labelled assembly across their supported
-routes. Valid retained subsets after acquisition, compatible merged-cache reload,
+Each recipe SHALL derive retained sites from the observations it keeps and align
+applicable per-site metadata and options consistently across equivalent supported
+routes, preserving validation of malformed or incompatible inputs.
+
+Standard and multisector SHALL each reuse their recipe's preparation across its
+supported routes.
+Valid retained subsets after acquisition, compatible merged-cache reload,
 or filtering SHALL be accepted consistently with full preparation, with every
 per-site option aligned to retained labels. This replaces staged rejection of
 missing requested sites. An empty retained set SHALL fail before basis/inference.
@@ -60,35 +64,50 @@ reconciliation SHALL NOT bypass malformed-input or cache-compatibility validatio
 
 #### Scenario: Acquisition returns a valid subset
 
-- **WHEN** acquisition returns valid observations for only some requested sites
+- **WHEN** standard/multisector acquisition returns valid observations for only
+  some requested sites
 - **THEN** full and staged preparation retain the same observations, labels,
   averaging periods, and other per-site options using requested-site alignment
 
 #### Scenario: Compatible merged cache lacks a requested site
 
-- **WHEN** a valid compatible merged cache contains only a subset of requested sites
+- **WHEN** a valid compatible standard/multisector merged cache contains only a
+  subset of requested sites
 - **THEN** full and staged preparation retain that subset and align every per-site option
 - **AND** incompatible cache inputs retain their existing rejection/fallback policy
 
 #### Scenario: Filtering empties a site
 
-- **WHEN** valid filtering removes all observations at one site but retains others
+- **WHEN** valid standard/multisector filtering removes all observations at one
+  site but retains others
 - **THEN** full and staged preparation produce equivalent retained observations
   and aligned metadata, which prepared execution uses consistently
 
 #### Scenario: Empty or malformed handoff
 
-- **WHEN** acquisition, compatible cache reload, or filtering leaves no usable sites
+- **WHEN** standard/multisector acquisition, compatible cache reload, or filtering
+  leaves no usable sites
 - **THEN** preparation fails before basis construction or inference
 - **AND** invalid labels/metadata and malformed or mismatched independently
   supplied prepared inputs retain their owning boundary's rejection policy
+
+#### Scenario: CO2 prepared-site alignment
+
+- **WHEN** ordinary/cached CO2 direct and staged routes receive equivalent valid
+  prepared inputs whose observed-site labels are a subset of the supplied
+  site-metadata labels
+- **THEN** they use the same observed-site labels and aligned metadata
+- **AND** model-specific per-site options retain their validation rules without
+  requiring a new acquisition or filtering route
 
 ### Requirement: Merged and prepared checkpoint boundaries
 
 For standard/multisector, the existing optional merged-data cache SHALL contain
 acquisition output saved before scientific preparation begins, including before
 configured observation filtering. Full and staged routes SHALL reuse the existing
-cache save/reload mechanism and formats.
+cache save/load functions and naming, format, and validation/fallback rules.
+Acquisition SHALL honour `save_merged_data` and `reload_merged_data`; a valid
+reload SHALL bypass acquisition and enter the shared preparation operation.
 Fully prepared inputs SHALL remain the handoff after scientific preparation.
 Both checkpoints SHALL resume through canonical recipe operations without
 mutating borrowed handoffs or requiring new installed commands or numerical schemas.
