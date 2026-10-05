@@ -1,6 +1,6 @@
 # Spec Delta
 
-> Draft behavioral contract for OPE-207; not an implementation claim.
+> Behavioral contract for OPE-207. Implementation and validation remain outstanding.
 
 ## Purpose
 

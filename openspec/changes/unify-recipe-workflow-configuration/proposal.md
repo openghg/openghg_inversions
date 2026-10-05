@@ -1,7 +1,7 @@
 # Proposal
 
-> Draft for review. This PR records OPE-207's design; it does not implement or
-> complete the issue. The proposal, design, and spec remain open to revision.
+> Implementation plan for OPE-207. This PR approves the plan; implementation and
+> validation remain outstanding.
 
 ## Why
 
