@@ -17,6 +17,10 @@ Follow [RHIME development guidance](../../../docs/development/rhime_model_develo
 ordinary callable components, explicit forwarding, readable procedural runners,
 and incremental scientific delivery. Nested currently has direct full/prepared
 routes without the generic stage suite and need not acquire it in this change.
+The [architecture principles proposed in PR #793](https://github.com/openghg/openghg_inversions/blob/92be84ec2e697f2a7c2dbf8a6f0266b9965c0cb7/docs/development/architecture_principles.rst)
+inform the roles below: responsibility follows reasons to change, interfaces
+serve actual consumers, and handoffs state scientific meaning and ownership.
+They do not prescribe a class or module for every responsibility.
 
 ## Goals / Non-Goals
 
@@ -27,7 +31,8 @@ configuration and stage calls only where they support existing workflows.
 **Non-Goals:** A universal pipeline, builder, prepared-input type, inference mode
 union, capability registry, mutable lifecycle, or nullable record for every
 possible recipe. No new optimizer, scientific recipe, CLI command, diagnostic
-policy, configuration syntax, or prepared-input/saved-output schema.
+policy, configuration syntax, or numerical prepared-input/posterior codec migration.
+Staged metadata compatibility may change under the explicit reset below.
 Import isolation and a possible `_model_building.py` split remain separate
 investigations. Graph-free replay does not require replay without importing PyMC.
 
@@ -69,8 +74,8 @@ The checkpoint arrows denote persistence at handoffs; full execution uses the
 same values in memory without requiring either checkpoint write.
 
 Full runners visibly call these operations with in-memory handoffs. Prepared
-routes join at construction, saved-output routes at products, with historical
-role recovery only under the spec's replay policy. Final product writes and
+routes join at construction and authenticated saved-output routes at products,
+without historical graph-based role recovery. Final product writes and
 explicitly enabled cache/basis saves remain supported. Calling the same low-level
 functions from separate scientific orchestration procedures is insufficient;
 short entry-point sequences forwarding to canonical operations are sufficient.
@@ -103,17 +108,47 @@ workflow controlled by a standard/multisector switch. Small wrapper duplication
 is acceptable when it keeps each recipe understandable. Implementations import
 shared mechanics from their owners, never from the dispatcher.
 
-Adopting workflows use one immutable resolved record containing recipe identity,
-one sampler, one output policy, and typed recipe options. One family resolver
-serves its configuration-resolving routes. Remove CO2's stage-only normalization
-wrapper rather than nesting the old setup inside the new options; likewise,
-standard's derived result run specification must not retain a second authoritative
-output policy. Immutability includes nested choices: derive invocation overrides
-without mutation, deep-copying borrowed arrays, or hidden materialization.
-Existing source loading and path/alias/override rules precede resolution.
+Adopting workflows use one immutable resolved record containing recipe choice,
+one authoritative set of sampler choices, one output policy, and typed recipe
+options. One family resolver serves its configuration-resolving routes. Existing
+source loading and path/alias/override rules precede resolution.
 
-Renaming or wrapping the old setups would keep competing ownership. A universal
-record would force unrelated recipes into fields they do not need. Independent
+Use consistent names for consistent roles. The following names are design
+choices for review; they do not require a new class for every row.
+
+| Role | Proposed name or existing representation | Responsibility and boundary |
+| --- | --- | --- |
+| Resolved recipe configuration | `RecipeConfig` | Declarative recipe selection and resolved acquisition/scientific, sampler, and output choices for adopting routes; no live model, sampler, or numerical checkpoint payload |
+| Recipe-specific choices | `StandardOptions`, `MultisectorOptions`, `Co2Options` | Options whose meaning belongs to that recipe; forward the values needed by each scientific operation explicitly |
+| Sampling choices | `SamplerOptions` | Immutable settings, including nested keyword choices; no live step, mutable cache, or backend execution state |
+| Product policy | Existing `RhimeOutputSpec` where suitable | One authoritative choice of products and reporting/writing options; derived result metadata must not duplicate that authority |
+| Numerical handoff | Existing concrete merged/prepared input types | Phase-complete scientific values, labels, units, provenance, and explicit borrowing/materialization contracts; not a configuration record |
+| Invocation options | Explicit operation arguments | Per-call artifact paths, destination, and overrides; no independent scientific resolution or stage-only setup wrapper |
+| Runtime state | Existing build results, model, `RhimeSampler`, matched steps, and caches | Constructed or adapted for the invocation from resolved choices; build results associate the live graph with its scientific output meaning, and coupled cached graph/inference state stays with its recipe |
+| Durable output contract | Versioned scientific roles and authenticated identities | Information needed for replay after the live graph is gone; encoded by its artifact owner, not by serializing runtime dataclasses |
+
+`Config` denotes resolved orchestration choices, `Options` a coherent set of
+choices, and existing `Inputs` types the numerical handoffs. Keep
+family names where needed to disambiguate options; do not rename established
+public scientific types merely for cosmetic uniformity. Share a record when
+its meanings agree, not because its fields happen to look similar. In particular,
+do not create generic input/result containers or one options record per phase.
+
+Remove CO2's stage-only normalization wrapper rather than nesting the old setup
+inside the new options. Likewise, standard's derived result run specification
+must not retain a second authoritative output policy. Prepared inputs own actual
+retained labels; derive aligned invocation values without mutating requested
+choices retained for provenance. Merely renaming the old setups does not meet
+these ownership requirements.
+
+Runtime sampler, step, and cache objects are constructed or adapted for each
+invocation. Overrides must not mutate resolved choices or affect subsequent
+invocations, including through nested keyword dictionaries. Existing direct
+Python sampler interfaces remain supported outside this resolved configuration
+contract. Do not deep-copy borrowed numerical arrays, hide materialization, or
+introduce a sampler framework to enforce configuration immutability.
+
+An all-purpose record would force unrelated recipes into fields they do not need. Independent
 builders/direct runners continue to accept explicit scientific inputs without
 this record; future staged adoption can implement only the supported operations.
 No dummy methods or sampler/output settings are required to deliver a model.
@@ -126,7 +161,7 @@ scientific operations, whether or not they adopt this staged interface.
 | --- | --- |
 | Acquired, external, or reloaded merged data | The complete scientific preparation operation, then construction/inference/products |
 | Fully prepared inputs | Construction, sampling, and products |
-| Prepared inputs plus authenticated posterior/output information | Products; historical role recovery only when required |
+| Prepared inputs plus authenticated posterior/output information | Products without acquisition, model-input materialization, or graph construction |
 
 Retain the existing optional `save_merged_data` / `reload_merged_data` mechanism
 illustrated by `fixedbasisMCMC`. Its acquisition output precedes the recipe's
@@ -147,12 +182,14 @@ write or silently give old filtered files the pre-preparation cache meaning. Fil
 merged data is an internal handoff; no filtered checkpoint, public filtering
 stage, resume phase argument, or phase-detection machinery is introduced.
 
-Existing prepared-input/posterior replay remains usable with historical manifests
-that also list the retired snapshot; replay does not need that file. Authenticate
-the prepared inputs, posterior, output bindings, and optional affine artifacts
-as before. CO2 staging already uses coherent prepared inputs and affine companions
-without a merged snapshot, so it acquires no new checkpoint requirement. Validate
-external handoffs at their owner; trust locally constructed intermediates.
+Replay of supported artifacts authenticates prepared inputs, posterior, output
+bindings, and optional affine artifacts without requiring any merged snapshot.
+Pre-refactor staged manifests need not remain usable under the compatibility
+reset below. Numerical prepared-input/posterior formats and the older optional
+acquisition cache retain their separate contracts. CO2 staging already uses
+coherent prepared inputs and affine companions without a merged snapshot, so it
+acquires no new checkpoint requirement. Validate external handoffs at their owner;
+trust locally constructed intermediates.
 
 ### 4. Retained-site policy follows the full runners in three phases
 
@@ -196,19 +233,45 @@ independently owned, with the spec's existing threshold and unknown semantics.
 
 ### 6. Keep identity, authentication, and replay ownership explicit
 
-Project resolved choices through existing family JSON identity functions, never
-`asdict` of the new record. Preserve successful historical hashes, requested
-preparation identity, retained-run sample/replay identity, and recorded sampler
-provenance. Stage destinations do not re-resolve science. Shared artifact/path/
-digest and manifest/binding authentication keep independent owners; each recipe
-owns its permitted versions and scientific compatibility decisions.
+**Breaking boundary for the next minor release:** The staged workflow has no
+known consumers, so this refactor need not preserve its existing setup APIs,
+manifest/binding contracts, or scientific identity hashes. Retire the historical
+standard/multisector version-1 graph-recovery path. No old callable-name aliases,
+pre-refactor replay fixtures, or artifact migration implementation are required.
+Preserve established scientific Python APIs, numerical artifact formats, and
+product contracts; this is not a numerical schema migration.
 
-The spec separately preserves standard/multisector graph-free v2, genuine
-historical v1 role recovery through canonical construction, and CO2 graph-free
-v1 with independent affine authentication. A common loader's accepted versions
-are not a family's supported versions. Keep provenance collection independently
-shared and the revision requirement local to CO2. Shared metadata codec work in
-#785 is separate.
+Identity remains a deliberate family projection of resolved scientific choices,
+not `asdict` of incidental runtime records. Keep requested preparation and
+retained-run sample/replay projections distinct, retain existing sampler/output/
+transport exclusions, and report recorded sampling provenance. Hashes may change
+at this boundary; do not build a callable registry to preserve old module names.
+Within a supported identity contract, representation changes alone must not
+silently redefine scientific identity. Stage destinations do not re-resolve science.
+
+Keep schema versions explicit. Each family declares the schema and identity
+contracts it supports; writers identify their contract and readers select that
+contract before loading posterior data or creating product destinations.
+Incompatible staged metadata changes require an identifiable new contract, not
+silent reuse of a schema version with altered meaning. A family may support
+selected older versions going forward through ordinary version-specific readers
+and identity projections at the artifact/authentication boundary. Those readers
+must retain strict content/binding checks and graph-free replay. No generic
+migration framework or speculative older-version implementation is required now.
+
+Being accepted by a shared loader does not make a version supported by a family.
+Unsupported versions, malformed bindings, and attempts to downgrade binding
+authentication fail before posterior loading or product writes, without graph
+fallback. Supported standard/multisector contracts require bound saved output
+information; ordinary/cached CO2 requires graph-free replay and independently
+authenticated affine companions. Existing version numbers need not be preserved
+as acceptance requirements across this breaking boundary.
+
+Shared artifact/path/digest and manifest/binding mechanics keep independent
+owners. Recipes own scientific compatibility and supported versions; version
+readers decode recorded contracts rather than duplicate scientific preparation,
+construction, or products. Keep provenance collection independently shared and
+the revision requirement local to CO2. Shared metadata codec work in #785 is separate.
 
 ### 7. Design checks for independent scientific delivery
 
@@ -237,17 +300,22 @@ workflow. Shared infrastructure follows an actual supported route.
 - **Checkpoint consolidation repeats work or accepts invalid inputs** -> Test
   phase-specific resume and retained metadata alongside boundary rejection.
 - **Consolidation changes errors, capabilities, or saved identities** -> Preserve
-  characterized family exception scopes, output gates, and historical fixtures.
+  characterized family exception scopes and output gates; document the staged
+  compatibility reset and test supported contracts' strict authentication.
 - **Namespace migration recreates old owners** -> Move the canonical operations
-  and wrappers together, with required compatibility imports forwarding to them.
+  and wrappers together, with established scientific API compatibility imports
+  forwarding to them.
 
 ## Migration Plan
 
 1. Agree this planning PR; OPE-207 remains open. Create implementation tasks only
    after review, linking acceptance requirements to their validation evidence.
 2. Characterize supported routes, options, identities, checkpoint phases, and the
-   family readiness boundaries above. Reconcile actual devel owners with
-   #773–#776: acquisition, inference, model components, and recipe composition.
+   family readiness boundaries above. Include a short route -> canonical
+   operation -> owner table as review evidence, not an executable manifest.
+   Review each configuration/handoff role against a concrete reason to change.
+   Reconcile actual devel owners with #773–#776: acquisition, inference, model
+   components, and recipe composition.
 3. Consolidate each existing recipe's scientific operations and migrate its
    consumers together. Establish separate standard/multisector stage owners and
    scoped configuration/calling contracts; remove obsolete parallel owners.
@@ -270,25 +338,27 @@ workflow. Shared infrastructure follows an actual supported route.
    a shared error.
 5. Verify full execution with checkpoint serializers forbidden, prepared
    execution with preparation forbidden, and graph-free replay with construction/
-   sampling forbidden. Run relevant workflow, configuration, identity, saved-output/
-   replay tests, changed-path Ruff, and whitespace checks. Review ordinary docstrings
+   sampling forbidden. Check invocation overrides leave original and subsequent
+   sampler choices unchanged. Validate supported schema dispatch and rejection of
+   unsupported or malformed contracts. Run workflow, configuration, identity,
+   saved-output/replay tests, changed-path Ruff, and whitespace checks. Review ordinary docstrings
    for extracted public operations: the decision owned, required input state and
    phase meaning, validation ownership, borrowing/materialization effects, returns,
    and failures. Verify optional merged caching precedes preparation, default
-   staged preparation omits the retired snapshot/manifest entries, and historical
-   prepared-output replay does not require that snapshot. Update API/user
-   documentation and add a Towncrier removal fragment announcing the breaking
-   checkpoint change for the next minor release, alongside the retained-site note.
+   staged preparation omits the retired snapshot/manifest entries, and supported
+   replay does not require that snapshot. Update API/user documentation and add
+   a Towncrier removal fragment announcing the checkpoint removal and staged
+   compatibility reset for the next minor release, alongside the retained-site note.
 6. Close OPE-207 after implementation and validation, then complete OPE-165's
    linked integration. Linked remains one joint CO2/O2 recipe, with channel axes,
-   covariance, and unit policy local to that scientific feature; #779's persistence
-   can proceed independently. The unified `run` CLI remains a separate follow-up.
+   covariance, and unit policy local to that scientific feature; #779 has already
+   merged its persistence support. The unified `run` CLI remains a separate follow-up.
 7. After implementation, sync durable requirements into main specs and archive
    the complete change with its design, tasks, and validation evidence. PR-specific
-   migration detail stays in that history; supported historical replay remains
-   part of the durable contract. No sync or archive happens in this planning PR.
+   migration detail stays in that history; explicit supported-version policy
+   remains part of the durable contract. No sync or archive happens in this planning PR.
 
 Land a family's migration only when validated, rather than retain competing
-permanent workflows. Apart from the explicit checkpoint removal, preserved
-configuration/prepared-input/saved-output contracts permit reverting an unsuccessful
-structural migration without rewriting users' saved files.
+permanent workflows. Established configuration, numerical handoff, and product
+contracts remain stable; replay of pre-refactor staged envelopes is outside the
+rollback guarantee. Announce the compatibility boundary explicitly.

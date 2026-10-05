@@ -5,8 +5,9 @@
 ## Purpose
 
 Keep equivalent supported recipe execution routes scientifically consistent,
-with optional checkpoints and authenticated saved-output replay. Preserve the
-interfaces and artifact contracts relied on by inversion scientists and callers.
+with optional checkpoints and authenticated saved-output replay. Preserve
+established scientific interfaces and numerical/product contracts while making
+staged compatibility and supported schema versions explicit.
 
 ## ADDED Requirements
 
@@ -43,8 +44,8 @@ unrelated preparation, configuration, stages, or result formats to be supported.
 
 - **WHEN** ordinary product construction and authenticated replay receive the
   same prepared inputs, posterior, and equivalent scientific output information
-- **THEN** they reuse the same family product operations without resampling,
-  following only that family's specified graph-recovery policy
+- **THEN** they reuse the same family product operations without resampling or
+  constructing the producing graph for supported saved-output replay
 
 ### Requirement: Retained-site consistency in preparation
 
@@ -90,7 +91,7 @@ configured observation filtering. Full and staged routes SHALL reuse the existin
 cache save/reload mechanism and formats.
 Fully prepared inputs SHALL remain the handoff after scientific preparation.
 Both checkpoints SHALL resume through canonical recipe operations without
-mutating borrowed handoffs or requiring new installed commands or schemas.
+mutating borrowed handoffs or requiring new installed commands or numerical schemas.
 
 #### Scenario: Merged-data resume
 
@@ -117,8 +118,9 @@ and identity entries, including when optional merged caching is enabled. The
 sole merged-cache contract SHALL remain acquisition output before scientific
 preparation. No resume route for that retired checkpoint SHALL be provided;
 the removal SHALL NOT reinterpret historical filtered files as pre-filter caches.
-Prepared-input and saved-output schemas, authentication, and supported historical
-replay SHALL remain compatible despite this artifact removal.
+Numerical prepared-input/posterior formats and product schemas SHALL remain
+compatible; staged metadata SHALL follow the explicit compatibility boundary
+and supported-version policy below.
 
 #### Scenario: Staged preparation without optional merged caching
 
@@ -134,13 +136,12 @@ replay SHALL remain compatible despite this artifact removal.
 - **AND** its preparation manifest still omits the retired `merged_data` entries
   rather than repurposing them for a different checkpoint phase
 
-#### Scenario: Historical prepared-output replay
+#### Scenario: Supported replay without a merged snapshot
 
-- **WHEN** valid saved prepared inputs and posterior artifacts use a historical
-  preparation manifest that also lists the retired filtered snapshot
-- **THEN** their supported family replay route remains available without that snapshot
+- **WHEN** valid prepared inputs and posterior artifacts use a supported saved-output contract
+- **THEN** replay needs no merged snapshot
 - **AND** prepared/posterior identity, output-binding, and optional affine
-  authentication retain their existing strictness and version policies
+  authentication remain strict
 
 ### Requirement: Scientific parity and explicit differences
 
@@ -169,11 +170,17 @@ coverage. Independent stochastic trajectories SHALL NOT be required to match.
 ### Requirement: Scoped configuration and staged calling contract
 
 Standard, multisector, and ordinary/cached CO2 workflows adopting the shared
-staged interface SHALL use a common authoritative resolved configuration, with one owner each
-for common sampler/output choices and distinct family scientific options.
+staged interface SHALL use a common authoritative resolved configuration, with
+one owner each for recipe-specific scientific choices, immutable sampler choices,
+and output policy. Resolved choices SHALL be distinct from phase-complete
+numerical handoffs, invocation artifact options, and live model/sampler/cache
+state. Invocation overrides SHALL NOT mutate resolved choices, including nested
+choices, or affect subsequent invocations. Existing direct Python sampler
+interfaces SHALL remain supported.
 Selection SHALL occur once before named stage operations. Independent builders,
 direct runners, nested execution, and future recipes SHALL NOT be required to
-adopt this configuration record or a complete stage suite merely to deliver scientific functionality.
+adopt this configuration record or a complete stage suite merely to deliver
+scientific functionality.
 Standard and multisector SHALL have separate concrete scientific stage owners,
 sharing identical mechanics without a combined scientific workflow controlled
 by a recipe switch.
@@ -188,6 +195,22 @@ by a recipe switch.
 - **AND** standard/multisector operations invoke their own canonical recipe
   operations through their separate stage owners
 
+#### Scenario: Invocation choices do not leak
+
+- **WHEN** two invocations derive different sampling overrides from one resolved configuration
+- **THEN** each uses its intended effective choices without changing the original,
+  including nested keyword choices
+- **AND** a subsequent invocation without overrides uses the original choices
+  without inheriting either invocation's runtime state
+
+#### Scenario: Prepared handoff and invocation ownership
+
+- **WHEN** a route receives valid prepared inputs and explicit artifact destinations
+- **THEN** it uses the handoff's retained labels and phase meaning while retaining
+  requested configuration separately for provenance
+- **AND** no stage-only setup independently re-resolves scientific or output policy,
+  and configuration access does not copy or materialize the numerical handoff
+
 #### Scenario: Independent diagnosis
 
 - **WHEN** diagnosis receives a posterior, optional sample envelope, and convergence options
@@ -198,16 +221,17 @@ by a recipe switch.
 Existing configuration formats, option meanings, defaults, aliases, overrides,
 source-relative paths, and rejection rules SHALL remain compatible. Installed
 commands SHALL retain names, model choices, arguments, handoffs, stdout, and exit
-policy, apart from the specified retained-site correction and filtered merged
-artifact removal. This contract SHALL NOT add a unified run command or broaden diagnostic policy.
+policy, apart from the specified staged compatibility reset, retained-site
+correction, and filtered merged artifact removal. This contract SHALL NOT add a
+unified run command or broaden diagnostic policy.
 
 #### Scenario: Existing command sequence and configuration
 
 - **WHEN** a supported existing command sequence uses an explicit source and supported overrides
 - **THEN** source-relative paths and override precedence remain unchanged, without
   ambient `CONFIG_FILE` choosing staged science
-- **AND** prepared-input/product handoffs and their names/schemas remain compatible,
-  with the specified retained-site correction and removal of the filtered merged snapshot
+- **AND** numerical prepared-input/posterior formats and product names/schemas
+  remain compatible, with staged metadata governed by its supported-version policy
 
 #### Scenario: Invalid or inapplicable options
 
@@ -215,19 +239,21 @@ artifact removal. This contract SHALL NOT add a unified run command or broaden d
 - **THEN** the owning boundary reports an error before scientific artifact writes
   rather than ignoring it or changing the recipe
 
-### Requirement: Stable identities and recorded provenance
+### Requirement: Scientific identities and recorded provenance
 
-Unchanged scientific settings SHALL retain existing family identity encodings
-and hashes, including requested preparation and retained-run sample/replay
-projections. Existing exclusions for sampler/output/transport settings SHALL
-remain unchanged. Content identities SHALL authenticate numerical handoffs
-independently; replay SHALL retain recorded sampler provenance.
+Within a supported identity contract, unchanged scientific settings SHALL retain
+their family identity encoding and hash independently of incidental runtime
+record layout. Requested preparation and retained-run sample/replay projections
+SHALL remain distinct; existing exclusions for sampler/output/transport settings
+SHALL remain unchanged. Content identities SHALL authenticate numerical handoffs
+independently; replay SHALL retain recorded sampler provenance. Pre-refactor
+staged hashes need not survive the explicit compatibility reset below.
 
 #### Scenario: Internal representation or permitted runtime change
 
-- **WHEN** configuration representation changes or currently permitted sampler,
-  output, or transport settings differ
-- **THEN** historical scientific identities remain compatible and matched artifacts remain usable
+- **WHEN** representation changes or permitted sampler/output/transport settings
+  differ within a supported identity contract
+- **THEN** its scientific identity remains unchanged and matched artifacts remain usable
 - **AND** replay reports sampling settings recorded in the sample manifest
 
 #### Scenario: Scientific or content mismatch
@@ -235,19 +261,63 @@ independently; replay SHALL retain recorded sampler provenance.
 - **WHEN** a relevant scientific choice or supplied artifact content mismatches its identity
 - **THEN** authentication rejects reuse as a matched run
 
-### Requirement: Standard and multisector version-2 replay
+### Requirement: Explicit staged compatibility and schema-version support
 
-Standard/multisector version-2 samples SHALL require an authenticated output
-binding and replay without acquisition, model-input materialization, or graph
-construction. Missing, malformed, altered, escaping, swapped, or mismatched
+This refactor SHALL establish an announced breaking boundary for pre-refactor
+staged metadata and internal setup APIs. Compatibility with its existing
+manifest/binding contracts and identity hashes SHALL NOT be required;
+historical standard/multisector graph-based role recovery SHALL be retired.
+Established numerical prepared-input/posterior formats, product contracts,
+and the optional pre-filter acquisition cache SHALL retain their separate contracts.
+
+Each family SHALL own and document its supported schema and identity contracts.
+Writers SHALL identify their contract, and readers SHALL select and validate an
+explicitly supported contract before posterior loading or output destination
+creation. Incompatible contract changes SHALL be identifiable by version rather
+than silently altering a previously declared version's meaning. Version handling
+SHALL permit family-owned readers for selected older schema/identity contracts
+alongside the current writer contract. Supporting an older version SHALL require
+explicit validation of its identities and authentication obligations; it SHALL
+NOT imply accepting every historical artifact or require a generic migration framework.
+
+#### Scenario: Pre-refactor compatibility boundary
+
+- **WHEN** a pre-refactor staged artifact uses a retired schema or identity contract
+- **THEN** it is rejected clearly rather than triggering historical graph recovery
+  or a compatibility migration
+- **AND** this does not change the established standalone numerical artifact formats
+
+#### Scenario: Deliberately supported older version
+
+- **WHEN** a family declares an older schema/identity contract supported and receives
+  matched artifacts for that contract
+- **THEN** its corresponding reader validates their recorded meaning and identities
+  and uses the shared product operations through authenticated graph-free replay
+- **AND** current writes identify the current contract without requiring old files
+  to be rewritten or weakening authentication for either version
+
+#### Scenario: Unsupported or falsely labelled contract
+
+- **WHEN** a contract is unsupported by the selected family, malformed, or labelled
+  as an older version to bypass binding authentication
+- **THEN** replay rejects it before posterior loading or output destination creation
+  even if a shared envelope loader recognizes the version
+
+### Requirement: Authenticated graph-free saved-output replay
+
+Supported standard/multisector saved samples SHALL require an authenticated
+output binding. Supported ordinary/cached CO2 samples SHALL retain authenticated
+saved-output replay with independent optional affine authentication. These routes
+SHALL replay without acquisition, model-input materialization, graph construction,
+or resampling. Missing, malformed, altered, escaping, swapped, or mismatched
 bindings SHALL fail before posterior loading or product writes, without graph fallback.
 
 #### Scenario: Valid graph-free replay
 
-- **WHEN** either family's version-2 manifest binds the supplied prepared inputs,
-  posterior, and valid saved output contract
+- **WHEN** a supported standard, multisector, or ordinary/cached CO2 contract
+  authenticates the prepared inputs, posterior, and required output information
 - **THEN** supported products preserve scientific roles/metadata and chain/draw axes
-  with materialization and model construction forbidden
+  with model-input materialization, construction, and sampling forbidden
 
 #### Scenario: Invalid output binding
 
@@ -255,45 +325,9 @@ bindings SHALL fail before posterior loading or product writes, without graph fa
   its path escapes the allowed directory, or its prepared/posterior identities mismatch
 - **THEN** it is rejected before posterior loading or product writes without graph fallback
 
-### Requirement: Genuine historical standard and multisector replay
-
-Genuine version-1 standard/multisector samples without output bindings SHALL
-retain graph-building role recovery through canonical recipe construction,
-followed by shared product operations without resampling. Binding-bearing
-version-1 manifests SHALL be rejected instead of bypassing authentication.
-
-#### Scenario: Historical manifest
-
-- **WHEN** a matched historical version-1 manifest has no output-binding entries
-- **THEN** its established role-recovery route and supported products remain available
-
-#### Scenario: Binding-bearing downgrade
-
-- **WHEN** a version-1 manifest advertises bindings in artifacts or identities
-- **THEN** it is rejected rather than treated as genuine historical replay
-
-### Requirement: CO2 version-1 replay and affine authentication
-
-Ordinary/cached CO2 SHALL retain graph-free version-1 sample replay and reject
-other sample-manifest versions before posterior loading or output destination
-creation. Optional affine reconstruction SHALL retain independent content
-authentication and binding to prepared inputs and sampling records.
-
-#### Scenario: Supported CO2 replay
-
-- **WHEN** matched version-1 ordinary/cached CO2 artifacts are replayed
-- **THEN** supported products succeed with model-input materialization and graph
-  construction forbidden
-
-#### Scenario: Unsupported CO2 sample version
-
-- **WHEN** a CO2 sample manifest declares another version, including version 2
-  with an absent/malformed binding or incorrect digest
-- **THEN** replay rejects it before posterior loading or output destination creation
-
 #### Scenario: Affine mismatch or supported relocation
 
-- **WHEN** an affine artifact is altered or mismatches prepared/sampling identities
+- **WHEN** an optional CO2 affine artifact is altered or mismatches prepared/sampling identities
 - **THEN** it is rejected before product writes
 - **AND** existing supported relocation of identical authenticated content remains valid
 
