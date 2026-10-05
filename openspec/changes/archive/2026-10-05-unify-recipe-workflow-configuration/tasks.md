@@ -19,5 +19,5 @@
 ## 4. Validation and delivery
 
 - [x] 4.1 Establish real scientific parity and independent regression evidence for standard, multisector, ordinary/cached CO2, alongside array-ownership checks; run relevant workflow/configuration/replay suites and changed-path Ruff and whitespace checks.
-- [ ] 4.2 Update affected documentation and public docstrings and add next-minor Towncrier removal/correction announcements; verify documented contracts and links against implementation.
-- [ ] 4.3 Sync durable requirements and archive the completed change with validation evidence after all implementation checks pass; verify strict OpenSpec validation and repository-compliant delivery notes for the OPE-207 pull request.
+- [x] 4.2 Update affected documentation and public docstrings and add next-minor Towncrier removal/correction announcements; verify documented contracts and links against implementation.
+- [x] 4.3 Sync durable requirements and archive the completed change with validation evidence after all implementation checks pass; verify strict OpenSpec validation and repository-compliant delivery notes for the OPE-207 pull request.

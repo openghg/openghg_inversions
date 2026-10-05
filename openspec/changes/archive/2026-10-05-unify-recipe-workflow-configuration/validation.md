@@ -15,7 +15,7 @@ the approved planning PR #787. Local runtime checks used Python 3.13.7.
 | Installed ordinary/cached CO2 CLI acceptance | 3 passed |
 | Changed Python paths Ruff and whitespace | Passed |
 | Active change and durable capability strict OpenSpec validation | Passed |
-| Full documentation regeneration/build required by repository policy | Pending SLURM validation |
+| Full documentation regeneration/build required by repository policy | Passed on SLURM job 19221825 (exit 0); built API object links verified |
 
 The suite counts overlap; they are not a cumulative count. NumPy/Numba and
 PyTensor compilation caches were directed to writable `/tmp` paths. Initial
@@ -62,6 +62,7 @@ source, annotations, public exports and tests, preserving the existing style.
 Added a uniquely named Towncrier removal fragment for the next-minor staged
 metadata reset, filtered checkpoint removal and retained-site correction.
 
-The durable `recipe-workflow-contract` capability is synced. Archive and PR
-delivery await the full documentation build. OPE-207 remains open for review and
-merge; linked CO2/O2 staged integration remains separate in OPE-165.
+The durable `recipe-workflow-contract` capability is synced and the completed
+change is archived. All 10 implementation/delivery tasks are complete. OPE-207
+remains open for pull-request review and merge; linked CO2/O2 staged integration
+remains separate in OPE-165.

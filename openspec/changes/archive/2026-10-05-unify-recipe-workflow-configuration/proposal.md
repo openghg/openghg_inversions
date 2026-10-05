@@ -1,7 +1,7 @@
 # Proposal
 
-> Implementation plan for OPE-207. This PR approves the plan; implementation and
-> validation remain outstanding.
+> Implemented OPE-207 plan approved in PR #787. See
+> [validation evidence](validation.md) for completed checks.
 
 ## Why
 
@@ -83,5 +83,5 @@ MAP execution, and new recipes remain outside this change.
 [OPE-207](https://linear.app/openghg-inversions/issue/OPE-207/unify-resolved-recipe-configuration-and-staged-workflow-interfaces)
 blocks OPE-165's completion until implementation and validation; merging this
 planning PR does not unblock it. PR #779 has merged its linked prepared-input
-persistence; linked staged integration remains separate. This PR contains no
-implementation or tasks file.
+persistence; linked staged integration remains separate. PR #787 contained planning artifacts only; completed implementation tasks and
+validation are recorded in [validation.md](validation.md).

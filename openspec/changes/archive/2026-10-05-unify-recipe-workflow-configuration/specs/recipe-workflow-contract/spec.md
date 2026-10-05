@@ -1,6 +1,6 @@
 # Spec Delta
 
-> Behavioral contract for OPE-207. Implementation and validation remain outstanding.
+> Implemented behavioral contract for OPE-207; see [validation evidence](../../validation.md).
 
 ## Purpose
 
