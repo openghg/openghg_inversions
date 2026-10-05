@@ -183,7 +183,7 @@ def get_flux_data(
 def get_obs_data(
     site: str,
     species: str,
-    inlet: str | None,
+    inlet: str | slice | None,
     start_date: str,
     end_date: str,
     domain: str | None = None,
