@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, field, replace
 from importlib.resources import files
 from importlib.resources.abc import Traversable
 from math import isfinite
@@ -20,7 +20,8 @@ from openghg_inversions.models.priors import positive_prior_args
 from openghg_inversions.models.scalar_sigma import add_scalar_sigma_eigen_likelihood
 from openghg_inversions.models.site_sigma import add_site_sigma_gaussian_likelihood
 from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
-from openghg_inversions.rhime.sampling import RhimeSampler
+from openghg_inversions.rhime.sampling import RhimeSampler, SamplerOptions, _freeze_options
+from openghg_inversions.rhime.specs import RhimeOutputSpec
 
 from .co2_cached_sigma_runner import run_rhime_co2_cached_sigma
 from .co2_o2_cached_sigma_runner import run_rhime_co2_o2_cached_sigma_from_prepared_inputs
@@ -33,8 +34,8 @@ from .co2_runner import run_rhime_co2
 Runner = Callable[..., Any]
 
 
-@dataclass(frozen=True, slots=True)
-class Co2RunSetup:
+@dataclass(frozen=True, slots=True, init=False)
+class Co2RecipeConfig:
     """Resolved execution setup for CO2 prepared-input replay.
 
     Attributes:
@@ -43,13 +44,65 @@ class Co2RunSetup:
             :meth:`Co2PreparedInputs.load`.
         runner: Selected public prepared-input runner.
         runner_kwargs: Validated scientific arguments for ``runner``.
-        sampler: Validated sampling configuration for ``runner``.
+        sampler_options: Immutable sampling choices. ``sampler`` creates fresh
+            runtime state for each invocation.
+        output: Authoritative product and naming policy.
+        reconstruction_path: Optional authenticated affine artifact.
+        source_to_sector: Optional immutable reporting labels.
     """
 
     preparation_kwargs: Mapping[str, object]
     runner: Runner
     runner_kwargs: Mapping[str, object]
-    sampler: RhimeSampler
+    sampler_options: SamplerOptions
+    output: RhimeOutputSpec = field(
+        default_factory=lambda: RhimeOutputSpec(output_format="basic", save_inversion_output=False)
+    )
+    reconstruction_path: Path | None = None
+    source_to_sector: Mapping[str, str] | None = None
+
+    def __init__(
+        self,
+        preparation_kwargs: Mapping[str, object],
+        runner: Runner,
+        runner_kwargs: Mapping[str, object],
+        sampler: RhimeSampler | SamplerOptions | None = None,
+        output: RhimeOutputSpec | None = None,
+        reconstruction_path: Path | None = None,
+        source_to_sector: Mapping[str, str] | None = None,
+        *,
+        sampler_options: SamplerOptions | None = None,
+    ) -> None:
+        if sampler is not None and sampler_options is not None:
+            raise ValueError("Pass sampler or sampler_options, not both.")
+        choices = sampler_options if sampler_options is not None else sampler
+        if choices is None:
+            choices = SamplerOptions()
+        if isinstance(choices, RhimeSampler):
+            choices = SamplerOptions.from_sampler(choices)
+        policy = (
+            output
+            if output is not None
+            else RhimeOutputSpec(output_format="basic", save_inversion_output=False)
+        )
+        policy = replace(
+            policy, paris_postprocessing_kwargs=_freeze_options(policy.paris_postprocessing_kwargs)
+        )
+        for name, value in (
+            ("preparation_kwargs", _freeze_options(preparation_kwargs)),
+            ("runner", runner),
+            ("runner_kwargs", _freeze_options(runner_kwargs)),
+            ("sampler_options", choices),
+            ("output", policy),
+            ("reconstruction_path", reconstruction_path),
+            ("source_to_sector", _freeze_options(source_to_sector)),
+        ):
+            object.__setattr__(self, name, value)
+
+    @property
+    def sampler(self) -> RhimeSampler:
+        """Create independent execution state for this invocation."""
+        return self.sampler_options.create_sampler()
 
     def runner_arguments(self, prepared_inputs: Co2PreparedInputs) -> Mapping[str, object]:
         """Bind a prepared artifact to the selected runner.
@@ -67,6 +120,10 @@ class Co2RunSetup:
                 "sampler": self.sampler,
             }
         )
+
+
+# Existing scientific Python configuration API.
+Co2RunSetup = Co2RecipeConfig
 
 
 @dataclass(frozen=True, slots=True)
@@ -275,7 +332,7 @@ def _prepared_inputs(options: dict[str, object]) -> Mapping[str, object]:
     return _frozen({"path": path})
 
 
-def _sampling(value: object, *, cached: bool) -> RhimeSampler:
+def _sampling(value: object, *, cached: bool) -> SamplerOptions:
     options = _table(value, "sampling")
     kwargs: dict[str, Any] = {}
     for name in ("draws", "burn", "tune", "chains"):
@@ -350,7 +407,7 @@ def _sampling(value: object, *, cached: bool) -> RhimeSampler:
                 "cached_fixed_ou sampling.sample_posterior_predictive supports only "
                 f"'y' or 'concentration'; got {sorted(unsupported)!r}."
             )
-    return sampler
+    return SamplerOptions.from_sampler(sampler)
 
 
 def _model(value: object) -> dict[str, Any]:
@@ -526,7 +583,45 @@ def _cached_likelihood(value: object) -> dict[str, Any]:
     return result
 
 
-def _resolve_co2(options: dict[str, object], variant: str) -> Co2RunSetup:
+def _co2_output_options(
+    value: object, sampler: SamplerOptions
+) -> tuple[RhimeOutputSpec, Path | None, Mapping[str, str] | None]:
+    """Resolve the single CO2 output policy for ordinary and staged execution."""
+    from openghg_inversions.rhime._stage_artifacts import _filename_component
+    from .co2_outputs import validate_co2_output_spec
+
+    outputs = _table(value, "outputs")
+    reconstruction = outputs.pop("reconstruction_path", None)
+    sectors = outputs.pop("source_to_sector", None)
+    if sectors is not None and (
+        not isinstance(sectors, Mapping)
+        or not sectors
+        or any(
+            not isinstance(key, str) or not isinstance(item, str) or not item for key, item in sectors.items()
+        )
+    ):
+        raise ValueError("outputs.source_to_sector must map source names to non-empty sector names.")
+    allowed = {"output_format", "output_name", "country_file", "save_inversion_output"}
+    if unknown := outputs.keys() - allowed:
+        raise ValueError(f"Unknown CO2 output option(s): {sorted(unknown)!r}.")
+    defaults = RhimeOutputSpec(output_format="basic", save_inversion_output=False)
+    output = RhimeOutputSpec(**{**asdict(defaults), **outputs})
+    _filename_component("output_name", output.output_name)
+    validate_co2_output_spec(output, has_reconstruction=reconstruction is not None)
+    if output.output_format == "paris" and not output.country_file:
+        raise ValueError("CO2 PARIS outputs require an explicit outputs.country_file.")
+    if sectors and reconstruction is None:
+        raise ValueError("CO2 source_to_sector requires a bound affine reconstruction.")
+    if output.output_format != "none" and reconstruction is not None and not sampler.sample_prior_predictive:
+        raise ValueError("Conditional CO2 flux outputs require sampling.sample_prior_predictive draws.")
+    return (
+        output,
+        Path(reconstruction) if reconstruction is not None else None,
+        _frozen(sectors) if sectors is not None else None,
+    )
+
+
+def _resolve_co2(options: dict[str, object], variant: str) -> Co2RecipeConfig:
     if variant not in ("ordinary", "cached_fixed_ou"):
         raise ValueError("recipe='co2' requires variant='ordinary' or 'cached_fixed_ou'.")
     prepared = _prepared_inputs(options)
@@ -534,6 +629,7 @@ def _resolve_co2(options: dict[str, object], variant: str) -> Co2RunSetup:
     likelihood = _take(options, "likelihood", "config")
     cached = variant == "cached_fixed_ou"
     sampler = _sampling(options.pop("sampling", {}), cached=cached)
+    output, reconstruction, sectors = _co2_output_options(options.pop("outputs", {}), sampler)
     _reject_unknown(options, "config")
     if cached:
         runner: Runner = run_rhime_co2_cached_sigma
@@ -541,7 +637,7 @@ def _resolve_co2(options: dict[str, object], variant: str) -> Co2RunSetup:
     else:
         runner = run_rhime_co2
         runner_kwargs = {**model, **_ordinary_likelihood(likelihood)}
-    return Co2RunSetup(prepared, runner, _frozen(runner_kwargs), sampler)
+    return Co2RecipeConfig(prepared, runner, _frozen(runner_kwargs), sampler, output, reconstruction, sectors)
 
 
 def _resolve_linked(options: dict[str, object], variant: str) -> Co2O2RunSetup:
@@ -585,9 +681,7 @@ def _resolve_linked(options: dict[str, object], variant: str) -> Co2O2RunSetup:
     if errors and len(errors) != 2:
         raise ValueError("Configure independent_error_sd for both linked channels or omit it for both.")
     if units["co2"] != units["o2"]:
-        raise ValueError(
-            "The linked configuration currently requires identical CO2 and O2 channel units."
-        )
+        raise ValueError("The linked configuration currently requires identical CO2 and O2 channel units.")
     cached = variant == "cached_fixed_ou"
     likelihood = options.pop("likelihood", None)
     runner: Runner = run_rhime_co2_o2_from_prepared_inputs
@@ -618,7 +712,7 @@ def _resolve_linked(options: dict[str, object], variant: str) -> Co2O2RunSetup:
         _frozen(preparation_kwargs),
         runner,
         _frozen({"independent_error_sd": _frozen(errors), **channel_model, **likelihood_kwargs}),
-        sampler,
+        sampler.create_sampler(),
     )
 
 
@@ -639,7 +733,7 @@ def co2_config_templates() -> Mapping[str, Traversable]:
 
 def resolve_co2_family_config(
     config: Mapping[str, object],
-) -> Co2RunSetup | Co2O2RunSetup:
+) -> Co2RecipeConfig | Co2O2RunSetup:
     """Resolve a format-neutral mapping into one concrete recipe setup."""
     options = _table(config, "config")
     version = _take(options, "format_version", "config")
@@ -657,6 +751,7 @@ def resolve_co2_family_config(
 __all__ = [
     "Co2O2RunSetup",
     "Co2RunSetup",
+    "Co2RecipeConfig",
     "co2_config_templates",
     "load_co2_family_config",
     "resolve_co2_family_config",

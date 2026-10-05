@@ -81,15 +81,15 @@ def _add_output_dir(parser: argparse.ArgumentParser) -> None:
 
 def _stage_setup(args: argparse.Namespace):
     """Load and resolve one staged command's existing RHIME configuration."""
-    from openghg_inversions.rhime.stages import load_stage_params, resolve_stage_setup
+    from openghg_inversions.rhime.stages import select_stages
 
-    params = load_stage_params(
+    operations = select_stages(args.model)
+    params = operations.load_params(
         config_file=args.config,
         params_file=args.params_file,
         overrides=args.kwargs,
-        model=args.model,
     )
-    return resolve_stage_setup(params, model=args.model)
+    return operations, operations.resolve_config(params)
 
 
 def _stage_output_dir(args: argparse.Namespace) -> Path:
@@ -100,22 +100,20 @@ def _stage_output_dir(args: argparse.Namespace) -> Path:
 
 
 def _prepare_command(args: argparse.Namespace) -> None:
-    from openghg_inversions.rhime.stages import prepare_rhime_stage
+    operations, setup = _stage_setup(args)
 
-    manifest = prepare_rhime_stage(
-        setup=_stage_setup(args),
-        model=args.model,
+    manifest = operations.prepare(
+        setup=setup,
         output_dir=_stage_output_dir(args),
     )
     print(manifest["manifest_path"])
 
 
 def _prior_predictive_command(args: argparse.Namespace) -> None:
-    from openghg_inversions.rhime.stages import prior_predictive_stage
+    operations, setup = _stage_setup(args)
 
-    result = prior_predictive_stage(
-        setup=_stage_setup(args),
-        model=args.model,
+    result = operations.prior_predictive(
+        setup=setup,
         prepared_inputs=args.prepared_inputs,
         preparation_manifest=args.preparation_manifest,
         output_dir=_stage_output_dir(args),
@@ -129,11 +127,10 @@ def _prior_predictive_command(args: argparse.Namespace) -> None:
 
 
 def _sample_command(args: argparse.Namespace) -> None:
-    from openghg_inversions.rhime.stages import sample_rhime_stage
+    operations, setup = _stage_setup(args)
 
-    result = sample_rhime_stage(
-        setup=_stage_setup(args),
-        model=args.model,
+    result = operations.sample(
+        setup=setup,
         prepared_inputs=args.prepared_inputs,
         preparation_manifest=args.preparation_manifest,
         output_dir=_stage_output_dir(args),
@@ -161,11 +158,10 @@ def _diagnose_command(args: argparse.Namespace) -> None:
 
 
 def _postprocess_command(args: argparse.Namespace) -> None:
-    from openghg_inversions.rhime.stages import postprocess_rhime_stage
+    operations, setup = _stage_setup(args)
 
-    postprocess_rhime_stage(
-        setup=_stage_setup(args),
-        model=args.model,
+    operations.postprocess(
+        setup=setup,
         prepared_inputs=args.prepared_inputs,
         preparation_manifest=args.preparation_manifest,
         sample_manifest=args.sample_manifest,

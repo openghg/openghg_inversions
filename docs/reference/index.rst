@@ -47,6 +47,9 @@ the RHIME runners.
    openghg_inversions.rhime.RhimeModelSpec
    openghg_inversions.rhime.RhimeOutputSpec
    openghg_inversions.rhime.RhimeSampler
+   openghg_inversions.rhime.sampling.SamplerOptions
+   openghg_inversions.rhime.params.StandardRecipeConfig
+   openghg_inversions.rhime.co2.Co2RecipeConfig
    openghg_inversions.rhime.RhimeResult
    openghg_inversions.rhime.NestedRhimeResult
    openghg_inversions.rhime.SectorSpec
@@ -70,6 +73,10 @@ documents the expected variables, dimensions, and coordinates.
    openghg_inversions.inversion_data.prepare_rhime_inputs
    openghg_inversions.inversion_data.prepare_rhime_inputs_from_xarray
    openghg_inversions.inversion_data.load_merged_data
+   openghg_inversions.rhime.standard.prepare_standard_rhime_inputs
+   openghg_inversions.rhime.multisector.prepare_multisector_rhime_inputs
+   openghg_inversions.rhime.standard.construct_standard_rhime_model
+   openghg_inversions.rhime.multisector.construct_multisector_rhime_model
    openghg_inversions.rhime.NestedRhimePreparedInputs
    openghg_inversions.rhime.combine_nested_rhime_inputs
    openghg_inversions.rhime.co2.Co2PreparedInputs
@@ -85,6 +92,21 @@ documents the expected variables, dimensions, and coordinates.
    openghg_inversions.rhime.co2.build_rhime_co2_cached_sigma
    openghg_inversions.rhime.co2.sample_co2_cached_prior_predictive
    openghg_inversions.rhime.co2.prepare_co2_o2_inputs
+
+File-backed recipe operations
+-----------------------------
+
+Select a supported recipe once before resolving its configuration and calling
+its named operations. See :doc:`staged workflows </usage/staged_workflow>` for
+checkpoint boundaries, authentication and the staged metadata compatibility
+policy. Independent builders and partial recipes need not implement these
+operations.
+
+.. autosummary::
+   :nosignatures:
+
+   openghg_inversions.rhime.stages.select_stages
+   openghg_inversions.rhime.stages.StageOperations
 
 Basis construction and state geometry
 -------------------------------------

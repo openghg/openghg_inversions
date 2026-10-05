@@ -17,13 +17,17 @@ from ._stage_artifacts import file_identity as _file_identity
 from .sampling import RhimeSampler
 
 
-def _load_stage_manifest(path: str | Path, *, stage: str) -> tuple[Path, dict[str, Any]]:
+def _load_stage_manifest(
+    path: str | Path, *, stage: str, supported_versions: tuple[int, ...] | None = None,
+    recipe: str | None = None, identity_version: int | None = None,
+) -> tuple[Path, dict[str, Any]]:
     """Load and validate one OGI stage manifest envelope."""
     manifest_path = Path(path).resolve()
     loaded = json.loads(manifest_path.read_text(encoding="utf-8"))
     if not isinstance(loaded, dict):
         raise ValueError(f"Stage manifest {manifest_path} must contain one JSON object.")
-    supported_versions = (1, 2) if stage == "sample" else (1,)
+    if supported_versions is None:
+        supported_versions = (1, 2, 3) if stage == "sample" else (1, 3)
     if type(loaded.get("schema_version")) is not int or loaded["schema_version"] not in supported_versions:
         raise ValueError(f"Stage manifest {manifest_path} has an unsupported schema_version.")
     if stage == "sample" and loaded["schema_version"] == 1:
@@ -35,6 +39,12 @@ def _load_stage_manifest(path: str | Path, *, stage: str) -> tuple[Path, dict[st
         "producer": "openghg_inversions",
         "stage": stage,
     }
+    if recipe is not None:
+        expected["recipe"] = recipe
+    if identity_version is not None:
+        if type(loaded.get("identity_version")) is not int:
+            raise ValueError(f"Stage manifest {manifest_path} has an invalid identity_version.")
+        expected["identity_version"] = identity_version
     mismatched = {
         name: (loaded.get(name), value) for name, value in expected.items() if loaded.get(name) != value
     }
@@ -108,9 +118,15 @@ def _verify_sample_manifest(
     posterior: str | Path,
     configuration_identity: str | None = None,
     prepared_inputs: str | Path | None = None,
+    supported_versions: tuple[int, ...] | None = None,
+    recipe: str | None = None,
+    identity_version: int | None = None,
 ) -> dict[str, Any]:
     """Authenticate a posterior handoff and its optional scientific context."""
-    manifest_path, manifest = _load_stage_manifest(path, stage="sample")
+    manifest_path, manifest = _load_stage_manifest(
+        path, stage="sample", supported_versions=supported_versions,
+        recipe=recipe, identity_version=identity_version,
+    )
     _verify_manifest_artifact(
         manifest,
         manifest_path=manifest_path,

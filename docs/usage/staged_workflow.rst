@@ -82,9 +82,11 @@ destinations are likewise excluded because the artifact digest identifies the
 resulting input content.  Consequently a gas, period, site, source, transport
 or prior change produces a different identity.  Downstream scientific commands
 require ``--preparation-manifest`` and reject a mismatched configuration or
-prepared-input content digest before model construction.  Preparation also
-treats every configured site as required and fails with the gas and period
-named if the existing acquisition layer could not produce it.
+prepared-input content digest before model construction. Preparation retains
+usable requested sites after acquisition, compatible cache reload, and filtering,
+and aligns all per-site choices to that retained subset. An empty retained set
+fails before basis construction or inference. Requested choices remain in the
+manifest for provenance; sampling uses the prepared handoff's retained labels.
 
 The manifest also records a content SHA-256 for ``prepared-inputs.nc``.
 ``openghg-run``
@@ -95,17 +97,21 @@ a compact, direct identity for the prepared handoff.
 Commands and artifacts
 ----------------------
 
-All paths are explicit and outputs are written below ``--output-dir`` (or
-``openghg-run``'s ``OUTPUT_DIR``). Commands do not depend on the caller's
+Stage checkpoints, reports and products are written below ``--output-dir``
+(or ``openghg-run``'s ``OUTPUT_DIR``). Commands do not depend on the caller's
 working directory and reject pre-existing symlinks beneath a stage output
-directory.
+directory. The separately configured optional pre-filter acquisition cache
+retains its existing ``merged_data_dir`` location, which may be shared with
+full Python runs outside the stage destination.
 
 ``prepare``
   Retrieves/reloads merged data, filters observations, constructs basis and
-  sensitivities, assembles canonical inputs, and writes an inspectable
-  ``merged-data/merged-data.nc``, ``prepared-inputs.nc`` and
-  ``prepare-manifest.json``.  It never builds a
-  PyMC graph or samples a posterior.  The NetCDF is a versioned
+  sensitivities, assembles canonical inputs, and writes ``prepared-inputs.nc``
+  and ``prepare-manifest.json``. It never builds a PyMC graph or samples a
+  posterior. The optional ``save_merged_data`` cache stores acquisition output
+  before filtering, using the same naming, formats, validation and reload
+  fallback as full Python execution. No filtered merged snapshot is written
+  or required by later stages. The prepared NetCDF is a versioned
   ``RhimePreparedInputs`` artifact and is independently inspectable/loadable.
   For ``co2``, preparation validates and copies the configured
   ``Co2PreparedInputs`` artifact and optional bound affine reconstruction,
@@ -125,12 +131,12 @@ directory.
   Standard and multisector workflows load the prepared artifact, build the
   selected model, sample it with the resolved ``RhimeSampler``, and write
   ``posterior.nc``, ``output-binding.json``, and ``sample-manifest.json``. The sample manifest
-  uses schema version 2 and records the effective sampling configuration and
+  uses schema version 3 and records the effective sampling configuration and
   content identities for the posterior, prepared input, and output binding.
   The binding stores variable roles, supported formats, provenance, and any
   explicit state-dimension mapping, together with the two numerical artifact
   identities. Keep the binding beside its sample manifest when moving a run.
-  CO2 writes ``posterior.nc`` and a schema-version-1 sample manifest, retaining
+  CO2 writes ``posterior.nc`` and a schema-version-3 sample manifest, retaining
   saved trace roles and any authenticated affine-reconstruction identity.
   No family silently invokes preparation.
 
@@ -149,11 +155,10 @@ directory.
   and the saved output binding, then invoke the existing RHIME output
   implementation without constructing a PyMC model. A missing, altered, or
   mismatched binding fails validation; it does not cause a model rebuild.
-  Genuine standard/multisector schema-version-1 sample manifests retain the
-  older graph-building compatibility route because they did not store output
-  bindings. CO2 schema-version-1 replay remains graph-free, using roles in the
-  authenticated saved trace and any separately authenticated affine artifact.
-  CO2 postprocessing rejects other sample-manifest versions before replay.
+  Each recipe explicitly validates its supported manifest and scientific
+  identity versions before posterior loading or product writes. CO2 replay
+  uses roles in the authenticated saved trace and any separately authenticated
+  affine artifact. Unsupported or retired contracts fail without graph recovery.
   New posterior predictive calculations still require a separate explicit
   model-building route. The standard/multisector configuration's
   ``output_format`` controls ``inv_out``, ``basic``, ``paris`` or ``legacy``
@@ -174,6 +179,28 @@ directory.
   and prior draws, and retain conditional uncertainty scope. The complete
   supported CO2 contract is documented in :doc:`co2_model_family`.
 
+Staged metadata compatibility
+-----------------------------
+
+The next minor release establishes a breaking boundary for staged setup APIs,
+manifest envelopes and scientific identities. Standard, multisector and CO2
+currently write and accept manifest schema version 3, scientific identity version
+1, and an explicit recipe label. Each family owns its supported-version policy;
+a shared envelope loader recognizing a version does not authorize its use by
+another family. Standard/multisector saved-output bindings remain required;
+CO2 affine companions are authenticated independently.
+
+Pre-refactor schema versions 1 and 2 are retired. Rerun preparation and sampling
+to create the supported staged contract; no artifact migration or historical
+graph recovery is provided. The filtered ``merged-data/merged-data.nc``
+checkpoint and its ``merged_data`` manifest entries are also removed. Do not
+reuse that historical snapshot as a pre-filter acquisition cache.
+
+This boundary preserves standalone numerical prepared-input and posterior
+formats, scientific Python runner/builder interfaces, product names and schemas,
+and the optional pre-filter acquisition cache. Full Python runs continue to
+sequence scientific operations in memory with intermediate saves disabled.
+
 CheckResult contract
 --------------------
 
@@ -185,11 +212,13 @@ Both checks use the schema version 1 understood by ``openghg-run`` and producer
   Status is ``pass`` when model construction succeeds, prior and
   prior-predictive variables are produced, and all sampled values are finite.
   It reports ``draws`` and ``non_finite_values`` against
-  ``max_non_finite_values = 0``.  Construction, input and sampling exceptions
-  become a readable ``fail`` result for standard and multisector recipes. CO2
-  handoff, construction and sampling errors reject the command before a
-  readiness check is written; non-finite predictive values produce a ``fail``
-  check.
+  ``max_non_finite_values = 0``. For standard and multisector recipes,
+  construction or prediction ``KeyError``/``ValueError`` within the readiness
+  catch produce a readable ``fail`` without predictive artifacts. External
+  loading/authentication and artifact serialization errors propagate. CO2
+  construction and prediction errors propagate before destination creation.
+  Returned empty or non-finite evidence produces a ``fail`` check while retaining
+  the existing predictive/report writes, including CO2's prior manifest.
 
 .. _staged-convergence-check:
 

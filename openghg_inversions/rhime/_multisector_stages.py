@@ -1,4 +1,4 @@
-"""Concrete standard file-backed RHIME workflow."""
+"""Concrete multisector file-backed RHIME workflow."""
 from __future__ import annotations
 from dataclasses import replace
 from numbers import Integral
@@ -10,11 +10,11 @@ import pymc as pm
 import xarray as xr
 from openghg_inversions.inversion_data import RhimePreparedInputs
 from openghg_inversions.serialization import load_trace, reset_serialisation_multiindexes, save_trace
-from .outputs import RhimeResult, make_standard_rhime_outputs
+from .outputs import RhimeResult, make_multisector_rhime_outputs
 from .params import StandardRecipeConfig, resolve_rhime_options
 from .preparation import retrieve_or_reload_rhime_data, with_prepared_rhime_sites
 from .sampling import sample_rhime_model
-from .standard import construct_standard_rhime_model, make_standard_rhime_result, prepare_standard_rhime_inputs
+from .multisector import construct_multisector_rhime_model, make_multisector_rhime_result, prepare_multisector_rhime_inputs
 from . import _stage_configuration as configuration
 from ._stage_artifacts import (
     artifact_path as _artifact_path, file_identity as _file_identity,
@@ -26,7 +26,7 @@ from ._stage_authentication import (
 )
 from ._stage_checks import PREPARATION_CHECK_NAME, _check_result, _check_stage
 
-RECIPE = "standard"
+RECIPE = "multisector"
 SCHEMA_VERSION = 3
 SUPPORTED_SCHEMA_VERSIONS = (3,)
 IDENTITY_VERSION = 1
@@ -34,8 +34,8 @@ load_params = configuration.load_stage_params
 
 
 def resolve_config(params: Mapping[str, Any]) -> StandardRecipeConfig:
-    """Resolve the standard recipe's authoritative configuration."""
-    return resolve_rhime_options(params=params, multisector=False)
+    """Resolve the multisector recipe's authoritative configuration."""
+    return resolve_rhime_options(params=params, multisector=True)
 
 
 def effective_configuration(setup: StandardRecipeConfig) -> dict[str, Any]:
@@ -58,8 +58,8 @@ def prepare(
     data_args = dict(setup.data_args)
     if data_args["basis_output_path"] is not None:
         data_args["basis_output_path"] = str(destination / "basis")
-    merged = retrieve_or_reload_rhime_data(data_args, multisector=False)
-    prepared = prepare_standard_rhime_inputs(merged, data_args)
+    merged = retrieve_or_reload_rhime_data(data_args, multisector=True)
+    prepared = prepare_multisector_rhime_inputs(merged, data_args)
     executed_setup = StandardRecipeConfig(
         run_spec=with_prepared_rhime_sites(setup.run_spec, prepared),
         sampler_options=setup.sampler_options, data_args=data_args,
@@ -119,7 +119,7 @@ def _build_prepared_model(
     prepared: RhimePreparedInputs,
     setup: StandardRecipeConfig,
 ):
-    return construct_standard_rhime_model(prepared=prepared, run_spec=setup.run_spec)
+    return construct_multisector_rhime_model(prepared=prepared, run_spec=setup.run_spec)
 
 
 def prior_predictive(
@@ -278,12 +278,12 @@ def postprocess(
     run_spec = replace(resolved.run_spec, output=output_spec)
     resolved = StandardRecipeConfig(run_spec=run_spec, sampler=sampled_sampler, data_args=resolved.data_args)
     idata = load_trace(posterior_path)
-    result = make_standard_rhime_result(
+    result = make_multisector_rhime_result(
         prepared=prepared, run_spec=run_spec, sampler=resolved.sampler,
         model_build_result=None, output_contract=output_contract, idata=idata,
         build_and_sample_seconds=0.0,
     )
-    make_standard_rhime_outputs(result=result, prepared=prepared)
+    make_multisector_rhime_outputs(result=result, prepared=prepared)
     artifacts = {
         name: path
         for name, path in result.output_metadata.items()

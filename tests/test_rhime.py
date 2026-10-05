@@ -1937,7 +1937,7 @@ def test_prepared_replay_computes_selected_error_only_at_pymc_boundary(
         return build_result
 
     monkeypatch.setattr(rhime_prepared, "select_aggregation_error_mode", select_without_computing)
-    monkeypatch.setattr(rhime_prepared, "build_standard_rhime_model_result", build)
+    monkeypatch.setattr(rhime_standard, "build_standard_rhime_model_result", build)
     monkeypatch.setattr(rhime_prepared, "sample_rhime_model", lambda *args, **kwargs: _minimal_output_idata())
     monkeypatch.setattr(rhime_prepared, "make_standard_rhime_result", lambda **kwargs: expected)
     monkeypatch.setattr(rhime_prepared, "make_standard_rhime_outputs", lambda **kwargs: None)
@@ -2827,9 +2827,9 @@ def test_run_rhime_from_prepared_inputs_routes_without_preparation(
         stage_calls.append("outputs")
 
     monkeypatch.setattr(prep_module, "prepare_rhime_inputs", fail_prepare)
-    monkeypatch.setattr(rhime_prepared, "materialize_pymc_inputs", materialize)
+    monkeypatch.setattr(rhime_multisector if sector_count > 1 else rhime_standard, "materialize_pymc_inputs", materialize)
     monkeypatch.setattr(
-        rhime_prepared,
+        rhime_standard if sector_count == 1 else rhime_multisector,
         "build_standard_rhime_model_result" if sector_count == 1 else "build_multisector_rhime_model_result",
         build,
     )
@@ -3210,13 +3210,9 @@ def test_each_rhime_recipe_keeps_the_scientific_process_visible(recipe: Callable
     stages = (
         "resolve_rhime_options",
         "retrieve_or_reload_rhime_data",
-        "filter_rhime_observations",
-        "build_rhime_basis",
-        "build_rhime_sensitivities",
-        "assemble_rhime_inputs",
+        "prepare_multisector_rhime_inputs" if multisector else "prepare_standard_rhime_inputs",
         "with_prepared_rhime_sites",
-        "materialize_pymc_inputs",
-        "build_multisector_rhime_model_result" if multisector else "build_standard_rhime_model_result",
+        "construct_multisector_rhime_model" if multisector else "construct_standard_rhime_model",
         "sample_rhime_model",
         "make_multisector_rhime_result" if multisector else "make_standard_rhime_result",
         "make_multisector_rhime_outputs" if multisector else "make_standard_rhime_outputs",
@@ -3465,7 +3461,7 @@ def test_run_rhime_from_prepared_inputs_accepts_complete_model_builder(
         raise AssertionError("complete model builders must not materialize prepared inputs")
 
     monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
-    monkeypatch.setattr(rhime_prepared, "materialize_pymc_inputs", fail_materialization)
+    monkeypatch.setattr(rhime_standard, "materialize_pymc_inputs", fail_materialization)
     result = run_rhime_from_prepared_inputs(
         prepared_inputs=prepared,
         run_spec=run_spec,
@@ -3731,7 +3727,7 @@ def test_prepared_runner_rejects_custom_likelihood_with_builtin_selection_before
         site_metadata=_prepared_site_metadata(),
     )
     monkeypatch.setattr(
-        rhime_prepared,
+        rhime_multisector if multisector else rhime_standard,
         "materialize_pymc_inputs",
         lambda *args, **kwargs: pytest.fail("selection conflict must precede materialization"),
     )

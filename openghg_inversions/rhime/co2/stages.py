@@ -8,7 +8,7 @@ their affine reconstruction binding remains valid.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import fields, replace
 from hashlib import sha256
 import json
 from numbers import Integral
@@ -27,14 +27,13 @@ from openghg_inversions.models.coords import get_coord_registry, restore_inferen
 from openghg_inversions.postprocessing.countries import Countries
 from openghg_inversions.rhime.builders import callable_metadata
 from openghg_inversions.rhime.outputs import RhimeResult
-from openghg_inversions.rhime.specs import RhimeModelSpec, RhimeOutputSpec, RhimeRunSpec
+from openghg_inversions.rhime.specs import RhimeModelSpec, RhimeRunSpec
 from openghg_inversions._provenance import installed_ogi_provenance
 from openghg_inversions.rhime._stage_artifacts import (
     artifact_path as _artifact_path,
     file_identity as _file_identity,
     json_value as _json_value,
     write_json as _write_json,
-    _filename_component,
     _output_path,
     _stage_output_directory,
 )
@@ -56,24 +55,13 @@ from .co2_cached_sigma_runner import (
 )
 from .co2_preparation import Co2PreparedInputs, prepare_co2_inputs
 from .co2_runner import annotate_co2_trace, build_rhime_co2, co2_model_input_names
-from .configuration import Co2RunSetup, resolve_co2_family_config
+from .configuration import Co2RecipeConfig, resolve_co2_family_config
 
 
-@dataclass(frozen=True)
-class Co2StageSetup:
-    """Resolved scientific replay and output settings for the CO2 stages.
-
-    Attributes:
-        recipe: Existing CO2 configuration, including its matched sampler.
-        output: Requested common product and naming settings.
-        reconstruction_path: Optional affine artifact bound to prepared inputs.
-        source_to_sector: Explicit source-to-sector reporting labels.
-    """
-
-    recipe: Co2RunSetup
-    output: RhimeOutputSpec
-    reconstruction_path: Path | None
-    source_to_sector: Mapping[str, str] | None = None
+RECIPE = "co2"
+SCHEMA_VERSION = 3
+SUPPORTED_SCHEMA_VERSIONS = (3,)
+IDENTITY_VERSION = 1
 
 
 def load_co2_stage_params(
@@ -120,85 +108,73 @@ def resolve_co2_stage_paths(params: Mapping[str, Any], *, base_dir: Path) -> dic
     return resolved
 
 
-def resolve_co2_stage_setup(params: Mapping[str, Any]) -> Co2StageSetup:
-    """Reuse the CO2 resolver and reject unsupported stage outputs early."""
-    from .co2_outputs import validate_co2_output_spec
-
-    options = dict(params)
-    outputs = dict(options.pop("outputs", {}))
-    reconstruction = outputs.pop("reconstruction_path", None)
-    sectors = outputs.pop("source_to_sector", None)
-    if sectors is not None and (
-        not isinstance(sectors, Mapping)
-        or not sectors
-        or any(
-            not isinstance(key, str) or not isinstance(value, str) or not value
-            for key, value in sectors.items()
-        )
-    ):
-        raise ValueError("outputs.source_to_sector must map source names to non-empty sector names.")
-    allowed = {"output_format", "output_name", "country_file", "save_inversion_output"}
-    if unknown := outputs.keys() - allowed:
-        raise ValueError(f"Unknown CO2 output option(s): {sorted(unknown)!r}.")
-    output = RhimeOutputSpec(output_format="basic", save_inversion_output=False)
-    output = RhimeOutputSpec(**{**asdict(output), **outputs})
-    _filename_component("output_name", output.output_name)
-    validate_co2_output_spec(output, has_reconstruction=reconstruction is not None)
-    if output.output_format == "paris" and not output.country_file:
-        raise ValueError("Staged CO2 PARIS outputs require an explicit outputs.country_file.")
-    if sectors and reconstruction is None:
-        raise ValueError("CO2 source_to_sector requires a bound affine reconstruction.")
-    recipe = resolve_co2_family_config(options)
-    if not isinstance(recipe, Co2RunSetup):
+def resolve_co2_stage_setup(params: Mapping[str, Any]) -> Co2RecipeConfig:
+    """Resolve the authoritative CO2 configuration for staged invocation."""
+    config = resolve_co2_family_config(params)
+    if not isinstance(config, Co2RecipeConfig):
         raise ValueError("The staged co2 model requires recipe='co2'; linked CO2/O2 is not supported.")
-    if (
-        output.output_format != "none"
-        and reconstruction is not None
-        and not recipe.sampler.sample_prior_predictive
-    ):
-        raise ValueError("Conditional CO2 flux outputs require sampling.sample_prior_predictive draws.")
-    return Co2StageSetup(
-        recipe, output, Path(reconstruction) if reconstruction is not None else None, sectors
-    )
+    return config
 
 
-def effective_co2_configuration(setup: Co2StageSetup) -> dict[str, Any]:
+def effective_co2_configuration(setup: Co2RecipeConfig) -> dict[str, Any]:
     """Return JSON-safe resolved science, sampler, and output provenance."""
-    kwargs = dict(cast(Mapping[str, Any], setup.recipe.runner_kwargs))
+    kwargs = dict(cast(Mapping[str, Any], setup.runner_kwargs))
     if "likelihood_builder" in kwargs:
         kwargs["likelihood_builder"] = callable_metadata(kwargs["likelihood_builder"])
     return _json_value(
         {
             "model": "co2",
-            "runner": callable_metadata(setup.recipe.runner),
+            "runner": callable_metadata(setup.runner),
             "runner_kwargs": kwargs,
-            "preparation": setup.recipe.preparation_kwargs,
-            "sampler": {name: getattr(setup.recipe.sampler, name) for name in setup.recipe.sampler.__slots__},
-            "output": asdict(setup.output),
+            "preparation": setup.preparation_kwargs,
+            "sampler": setup.sampler_options.as_dict(),
+            "output": {field.name: getattr(setup.output, field.name) for field in fields(setup.output)},
             "reconstruction_path": setup.reconstruction_path,
             "source_to_sector": setup.source_to_sector,
         }
     )
 
 
-def co2_configuration_identity(setup: Co2StageSetup) -> str:
+def co2_configuration_identity(setup: Co2RecipeConfig) -> str:
     """Hash resolved recipe settings needed for scientific replay.
 
     Prepared data are authenticated separately by artifact content hashes.
     Transport paths, output settings, and sampler tuning may change without
     changing this configuration identity.
     """
-    science = effective_co2_configuration(setup)
-    science.pop("preparation")
-    for key in ("sigma_target_accept", "state_target_accept"):
-        science["runner_kwargs"].pop(key, None)
-    for key in ("sampler", "output", "reconstruction_path", "source_to_sector"):
-        science.pop(key)
+    # Identity version 1 names scientific choices explicitly; sampler/output
+    # records and transport paths cannot accidentally extend this contract.
+    names = (
+        "use_bc",
+        "bc_prior",
+        "bc_state_activity",
+        "offset_prior",
+        "offset_args",
+        "sigma_prior",
+        "fixed_model_mismatch",
+        "no_model_error",
+        "likelihood_builder",
+        "likelihood_kwargs",
+        "tau_hours",
+        "site_amplitude_prior_scale",
+        "initial_site_amplitudes",
+    )
+    options = {name: setup.runner_kwargs[name] for name in names if name in setup.runner_kwargs}
+    if "likelihood_builder" in options:
+        options["likelihood_builder"] = callable_metadata(options["likelihood_builder"])
+    science = _json_value(
+        {
+            "recipe": RECIPE,
+            "identity_version": IDENTITY_VERSION,
+            "runner": callable_metadata(setup.runner),
+            "options": options,
+        }
+    )
     encoded = json.dumps(science, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
     return f"sha256:{sha256(encoded).hexdigest()}"
 
 
-def _manifest(setup: Co2StageSetup, stage: str) -> dict[str, Any]:
+def _manifest(setup: Co2RecipeConfig, stage: str) -> dict[str, Any]:
     """Build a CO2 manifest requiring an identifiable installed revision."""
     ogi = installed_ogi_provenance()
     if ogi["revision"] is None:
@@ -206,7 +182,9 @@ def _manifest(setup: Co2StageSetup, stage: str) -> dict[str, Any]:
             "Staged CO2 execution requires an identifiable installed Git revision (VCS install or checkout)."
         )
     return {
-        "schema_version": 1,
+        "schema_version": SCHEMA_VERSION,
+        "identity_version": IDENTITY_VERSION,
+        "recipe": RECIPE,
         "producer": "openghg_inversions",
         "stage": stage,
         "configuration_identity": co2_configuration_identity(setup),
@@ -215,8 +193,8 @@ def _manifest(setup: Co2StageSetup, stage: str) -> dict[str, Any]:
     }
 
 
-def _validate_inputs(setup: Co2StageSetup, prepared: Co2PreparedInputs) -> None:
-    options = cast(Mapping[str, Any], setup.recipe.runner_kwargs)
+def _validate_inputs(setup: Co2RecipeConfig, prepared: Co2PreparedInputs) -> None:
+    options = cast(Mapping[str, Any], setup.runner_kwargs)
     sites = set(prepared.sites)
     likelihood = options.get("likelihood_kwargs", options)
     for key in ("tau_hours", "initial_site_amplitudes", "fixed_site_amplitudes"):
@@ -228,7 +206,7 @@ def _validate_inputs(setup: Co2StageSetup, prepared: Co2PreparedInputs) -> None:
     if setup.output.country_file:
         countries = Countries.from_file(country_file=setup.output.country_file)
         xr.align(prepared.basis_functions.flux, countries.matrix, join="exact", copy=False)
-    if setup.recipe.runner is run_rhime_co2_cached_sigma:
+    if setup.runner is run_rhime_co2_cached_sigma:
         co2_cached_sigma_input_names(prepared, use_bc=bool(options.get("use_bc", False)))
     else:
         co2_model_input_names(
@@ -241,7 +219,7 @@ def _validate_inputs(setup: Co2StageSetup, prepared: Co2PreparedInputs) -> None:
 
 def prepare_co2_stage(
     *,
-    setup: Co2StageSetup,
+    setup: Co2RecipeConfig,
     output_dir: str | Path,
     canonical_inputs: RhimePreparedInputs | None = None,
     reduction: CoherentGaussianReduction | None = None,
@@ -257,7 +235,7 @@ def prepare_co2_stage(
     """
     if (canonical_inputs is None) != (reduction is None):
         raise ValueError("Pass canonical_inputs and reduction together.")
-    source = Path(cast(Path, setup.recipe.preparation_kwargs["path"]))
+    source = Path(cast(Path, setup.preparation_kwargs["path"]))
     if canonical_inputs is None and source.is_dir():
         raise ValueError("Installed staging requires a NetCDF handoff; save Co2PreparedInputs to a .nc file.")
     prepared = (
@@ -300,11 +278,17 @@ def prepare_co2_stage(
 
 
 def _load_prepared(
-    setup: Co2StageSetup,
+    setup: Co2RecipeConfig,
     prepared_inputs: str | Path,
     preparation_manifest: str | Path,
 ) -> tuple[Co2PreparedInputs, BoundCo2AffineFluxMap | None, dict[str, Any]]:
-    manifest_path, manifest = _load_stage_manifest(preparation_manifest, stage="prepare")
+    manifest_path, manifest = _load_stage_manifest(
+        preparation_manifest,
+        stage="prepare",
+        supported_versions=SUPPORTED_SCHEMA_VERSIONS,
+        recipe=RECIPE,
+        identity_version=IDENTITY_VERSION,
+    )
     if manifest.get("configuration_identity") != co2_configuration_identity(setup):
         raise ValueError("Prepared inputs do not match the effective CO2 configuration.")
     _verify_manifest_artifact(
@@ -331,7 +315,7 @@ def _load_prepared(
 
 def prior_predictive_co2_stage(
     *,
-    setup: Co2StageSetup,
+    setup: Co2RecipeConfig,
     prepared_inputs: str | Path,
     preparation_manifest: str | Path,
     output_dir: str | Path,
@@ -344,9 +328,9 @@ def prior_predictive_co2_stage(
     if isinstance(draws, bool) or not isinstance(draws, Integral) or draws <= 0:
         raise ValueError("Prior-predictive draws must be a positive integer.")
     prepared, _, preparation = _load_prepared(setup, prepared_inputs, preparation_manifest)
-    seed = dict(setup.recipe.sampler.sample_kwargs or {}).get("random_seed")
-    kwargs = dict(cast(Mapping[str, Any], setup.recipe.runner_kwargs))
-    if setup.recipe.runner is run_rhime_co2_cached_sigma:
+    seed = dict(setup.sampler.sample_kwargs or {}).get("random_seed")
+    kwargs = dict(cast(Mapping[str, Any], setup.runner_kwargs))
+    if setup.runner is run_rhime_co2_cached_sigma:
         kwargs.pop("sigma_target_accept", None)
         kwargs.pop("state_target_accept", None)
         cached = build_rhime_co2_cached_sigma(prepared_inputs=prepared, **kwargs)
@@ -365,7 +349,7 @@ def prior_predictive_co2_stage(
     destination = _stage_output_directory(output_dir)
     prior_path = _output_path(destination, None, "prior-predictive.nc")
     save_trace(prior, prior_path)
-    status = "pass" if values and non_finite == 0 else "fail"
+    status = "pass" if any(value.size for value in values) and non_finite == 0 else "fail"
     result = _check_result(
         name=PREPARATION_CHECK_NAME,
         status=status,
@@ -385,7 +369,7 @@ def prior_predictive_co2_stage(
 
 def sample_co2_stage(
     *,
-    setup: Co2StageSetup,
+    setup: Co2RecipeConfig,
     prepared_inputs: str | Path,
     preparation_manifest: str | Path,
     output_dir: str | Path,
@@ -393,7 +377,7 @@ def sample_co2_stage(
     """Sample with the public ordinary or matched cached runner, then save canonically."""
     prepared, _, preparation = _load_prepared(setup, prepared_inputs, preparation_manifest)
     manifest = _manifest(setup, "sample")
-    trace = setup.recipe.runner(**setup.recipe.runner_arguments(prepared))
+    trace = setup.runner(**setup.runner_arguments(prepared))
     destination = _stage_output_directory(output_dir)
     posterior_path = _output_path(destination, None, "posterior.nc")
     save_trace(trace, posterior_path)
@@ -410,8 +394,8 @@ def sample_co2_stage(
     return manifest
 
 
-def _run_spec(setup: Co2StageSetup, prepared: Co2PreparedInputs, output_dir: Path) -> RhimeRunSpec:
-    options = cast(Mapping[str, Any], setup.recipe.runner_kwargs)
+def _run_spec(setup: Co2RecipeConfig, prepared: Co2PreparedInputs, output_dir: Path) -> RhimeRunSpec:
+    options = cast(Mapping[str, Any], setup.runner_kwargs)
     time = prepared.inv_inputs["time"]
     start = str(np.asarray(time.min().values).astype("datetime64[D]"))
     end = str(np.asarray(time.max().values).astype("datetime64[D]") + np.timedelta64(1, "D"))
@@ -426,26 +410,30 @@ def _run_spec(setup: Co2StageSetup, prepared: Co2PreparedInputs, output_dir: Pat
         offset_prior=options.get("offset_prior"),
         offset_args=dict(options.get("offset_args", {})),
     )
-    output = RhimeOutputSpec(**{**asdict(setup.output), "output_path": None})
+    output = replace(setup.output, output_path=None)
     return RhimeRunSpec(start, end, prepared.sites, prepared.averaging_period, model, output)
 
 
 def postprocess_co2_stage(
     *,
-    setup: Co2StageSetup,
+    setup: Co2RecipeConfig,
     prepared_inputs: str | Path,
     preparation_manifest: str | Path,
     posterior: str | Path,
     sample_manifest: str | Path,
     output_dir: str | Path,
 ) -> RhimeResult:
-    """Authenticate version-1 CO2 artifacts and create role-selected common products."""
+    """Authenticate supported CO2 artifacts and create role-selected common products."""
     from .co2_outputs import make_co2_rhime_outputs, make_co2_rhime_result
 
     prepared, bound, preparation = _load_prepared(setup, prepared_inputs, preparation_manifest)
-    path, sample = _load_stage_manifest(sample_manifest, stage="sample")
-    if sample["schema_version"] != 1:
-        raise ValueError("CO2 postprocessing requires schema_version=1 sample manifests.")
+    path, sample = _load_stage_manifest(
+        sample_manifest,
+        stage="sample",
+        supported_versions=SUPPORTED_SCHEMA_VERSIONS,
+        recipe=RECIPE,
+        identity_version=IDENTITY_VERSION,
+    )
     if sample.get("configuration_identity") != co2_configuration_identity(setup):
         raise ValueError("Posterior does not match the effective CO2 configuration.")
     for name, artifact in (("posterior", posterior), ("prepared_inputs", prepared_inputs)):
@@ -495,10 +483,20 @@ def postprocess_co2_stage(
 
 
 __all__ = [
-    "Co2StageSetup",
     "resolve_co2_stage_setup",
     "prepare_co2_stage",
     "prior_predictive_co2_stage",
     "sample_co2_stage",
     "postprocess_co2_stage",
 ]
+
+
+# The CLI selects a concrete family once, then invokes this structural interface.
+load_params = load_co2_stage_params
+resolve_config = resolve_co2_stage_setup
+prepare = prepare_co2_stage
+prior_predictive = prior_predictive_co2_stage
+sample = sample_co2_stage
+postprocess = postprocess_co2_stage
+effective_configuration = effective_co2_configuration
+configuration_identity = co2_configuration_identity

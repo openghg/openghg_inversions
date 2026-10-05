@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, fields
+from types import MappingProxyType
 from typing import Any, Literal, cast
 
 import numpy as np
@@ -14,6 +16,79 @@ from openghg_inversions.models.coords import get_coord_registry, restore_inferen
 from openghg_inversions.rhime.builders import RhimeModelBuildResult
 
 NutsSampler = Literal["pymc", "nutpie", "numpyro", "blackjax"]
+
+
+def _freeze_options(value: Any, *, copy_arrays: bool = False) -> Any:
+    """Freeze containers, borrowing scientific arrays unless capturing sampler choices."""
+    if isinstance(value, Mapping):
+        return MappingProxyType(
+            {key: _freeze_options(item, copy_arrays=copy_arrays) for key, item in value.items()}
+        )
+    if isinstance(value, list | tuple):
+        return tuple(_freeze_options(item, copy_arrays=copy_arrays) for item in value)
+    if copy_arrays and isinstance(value, np.ndarray):
+        frozen = value.copy()
+        frozen.setflags(write=False)
+        return frozen
+    return value
+
+
+def _runtime_options(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {key: _runtime_options(item) for key, item in value.items()}
+    if isinstance(value, tuple):
+        return tuple(_runtime_options(item) for item in value)
+    if isinstance(value, list):
+        return [_runtime_options(item) for item in value]
+    if isinstance(value, np.ndarray):
+        return value.copy()
+    return value
+
+
+@dataclass(frozen=True, slots=True)
+class SamplerOptions:
+    """Immutable sampling choices; runtime samplers are created per invocation.
+
+    Nested keyword mappings and sequences are copied and frozen at resolution.
+    NumPy sampler choices such as initial values are copied and made read-only
+    at resolution; ``create_sampler`` copies them into writable invocation-local
+    arrays alongside independent keyword containers. Scientific xarray handoffs
+    remain borrowed and are never copied or computed here.
+    Direct scientific APIs continue to accept ``RhimeSampler``.
+    """
+
+    draws: int = 1000
+    burn: int = 0
+    tune: int = 1000
+    chains: int = 4
+    nuts_sampler: NutsSampler | str = "pymc"
+    progressbar: bool = False
+    sample_kwargs: Mapping[str, Any] | None = None
+    sample_prior_predictive: bool | int = True
+    sample_posterior_predictive: bool | Sequence[str] = ("y",)
+    posterior_predictive_kwargs: Mapping[str, Any] | None = None
+
+    def __post_init__(self) -> None:
+        normalized = RhimeSampler(**{field.name: getattr(self, field.name) for field in fields(self)})
+        for field in fields(self):
+            object.__setattr__(
+                self, field.name, _freeze_options(getattr(normalized, field.name), copy_arrays=True)
+            )
+
+    @classmethod
+    def from_sampler(cls, sampler: RhimeSampler) -> SamplerOptions:
+        """Capture sampling choices without retaining mutable runtime state."""
+        return cls(**{field.name: getattr(sampler, field.name) for field in fields(cls)})
+
+    def create_sampler(self, **overrides: Any) -> RhimeSampler:
+        """Create execution state, copying NumPy choices and override arrays."""
+        options = {field.name: _runtime_options(getattr(self, field.name)) for field in fields(self)}
+        options.update({name: _runtime_options(value) for name, value in overrides.items()})
+        return RhimeSampler(**options)
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return independent keywords for provenance and serialization."""
+        return {field.name: _runtime_options(getattr(self, field.name)) for field in fields(self)}
 
 
 def sample_rhime_model(

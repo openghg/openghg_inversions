@@ -425,14 +425,50 @@ active ``run_rhime`` plan in
 File-backed staged workflows
 ---------------------------
 
-``rhime.stages`` is the public facade for file-backed execution. The concrete
-standard and multisector staged workflows remain together in
-``rhime._standard_stages`` so their preparation, sampling, and replay sequence
-can be read procedurally. Shared serialization, path, and digest mechanics
-belong to ``rhime._stage_artifacts``; manifest and saved-output binding
+``rhime.stages`` is the public facade for file-backed execution. Select the
+concrete module once with ``select_stages`` before resolving configuration and
+calling its named ``prepare``, ``prior_predictive``, ``sample`` or ``postprocess``
+operation. Standard and multisector have separate procedural stage owners in
+``rhime._standard_stages`` and ``rhime._multisector_stages``. Their full,
+merged-input, prepared-input and staged routes reuse the same recipe scientific
+operations. Filtering and retained-site alignment belong inside preparation;
+stages add checkpoint I/O, authentication and reporting. Shared serialization,
+path, and digest mechanics belong to ``rhime._stage_artifacts``; manifest and saved-output binding
 authentication belongs to ``rhime._stage_authentication``. Each family owns its
 configuration identity and replay policy. Shared staged checks belong to
 ``rhime._stage_checks`` and retain their existing diagnostic calculations,
 thresholds, and check schemas. Family implementations import these owners
 directly, without importing helpers from the public facade. These private
 owners can move together when complete workflows migrate to ``recipes``.
+
+The scientific operation owners are explicit:
+
+.. list-table:: Equivalent execution routes
+   :header-rows: 1
+   :widths: 24 46 30
+
+   * - Entry points
+     - Canonical operations
+     - Owner
+   * - Standard full, merged-input, prepared-input and staged execution
+     - ``prepare_standard_rhime_inputs``, ``construct_standard_rhime_model``,
+       ``sample_rhime_model``, standard result/output functions
+     - ``rhime.standard``, ``rhime.sampling``, ``rhime.outputs``
+   * - Multisector full, merged-input, prepared-input and staged execution
+     - ``prepare_multisector_rhime_inputs``, ``construct_multisector_rhime_model``,
+       ``sample_rhime_model``, multisector result/output functions
+     - ``rhime.multisector``, ``rhime.sampling``, ``rhime.outputs``
+   * - Ordinary/cached CO2 prepared-input and staged execution
+     - Ordinary/cached builders and sampling operations; CO2 result/output functions
+     - ``rhime.co2.co2_runner``, ``rhime.co2.co2_cached_sigma_runner``,
+       ``rhime.co2.co2_outputs``
+   * - Authenticated saved-output replay
+     - Family result/output operations with saved scientific output information
+     - Concrete family stages and the same result/output owners
+
+Resolved configuration stores choices, not numerical handoffs or live model
+state. ``SamplerOptions`` creates independent runtime ``RhimeSampler`` instances;
+nested invocation overrides cannot alter later calls. Standard/multisector
+``StandardRecipeConfig`` and CO2 ``Co2RecipeConfig`` each own their resolved
+scientific choices and output policy. Independent builders and nested or partial
+recipes need not implement the complete staged interface.

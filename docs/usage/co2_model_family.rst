@@ -116,6 +116,14 @@ handoff from your observation preparation and coherent reduction. The staged
 ``prepare`` command validates and copies that artifact and writes a manifest.
 It does not acquire OpenGHG data or infer a coherent reduction from a gas name.
 
+Direct prepared-input and staged execution use the same resolved CO2 recipe
+configuration and ordinary/cached scientific operations. Sampler choices are
+immutable; each invocation gets its own runtime sampler. Prepared observations
+select and align retained site metadata in both routes. Staged manifest schema
+version 3 and identity version 1 are the currently supported CO2 contract;
+pre-refactor envelopes are rejected. See :doc:`staged_workflow` for the next-minor
+compatibility boundary and graph-free replay authentication.
+
 CO₂ manifests record the installed package version, exact Git revision and
 checkout modification status when available. Run from a source checkout or a
 VCS installation

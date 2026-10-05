@@ -7,10 +7,9 @@ and check owners are independent of this facade.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, cast
-from collections.abc import Mapping
+from typing import TYPE_CHECKING, Any, Literal, Protocol, cast
+from collections.abc import Callable, Mapping
 
-from . import _standard_stages
 from ._stage_checks import (
     CHECK_SCHEMA_VERSION,
     CONVERGENCE_CHECK_NAME,
@@ -18,12 +17,46 @@ from ._stage_checks import (
     diagnose_rhime_stage,
 )
 from .outputs import RhimeResult
-from .params import RhimeRunnerSetup
+from .params import StandardRecipeConfig
 
 if TYPE_CHECKING:
-    from .co2.stages import Co2StageSetup
+    from .co2.configuration import Co2RecipeConfig
 
 ModelKind = Literal["standard", "multisector", "co2"]
+
+
+class StageOperations(Protocol):
+    """Named file-backed operations implemented by a concrete recipe module.
+
+    Select once before resolving configuration and invoking a stage. Numerical
+    builders and partial recipes do not need this complete interface.
+    """
+
+    load_params: Callable[..., dict[str, Any]]
+    resolve_config: Callable[..., Any]
+    effective_configuration: Callable[..., dict[str, Any]]
+    configuration_identity: Callable[..., str]
+    prepare: Callable[..., dict[str, Any]]
+    prior_predictive: Callable[..., dict[str, Any]]
+    sample: Callable[..., dict[str, Any]]
+    postprocess: Callable[..., RhimeResult]
+
+
+def select_stages(model: ModelKind) -> StageOperations:
+    """Select the concrete staged recipe, rejecting unsupported families."""
+    if model == "standard":
+        from . import _standard_stages
+
+        return cast(StageOperations, _standard_stages)
+    if model == "multisector":
+        from . import _multisector_stages
+
+        return cast(StageOperations, _multisector_stages)
+    if model == "co2":
+        from .co2 import stages
+
+        return cast(StageOperations, stages)
+    raise ValueError(f"Unsupported staged model {model!r}.")
 
 
 def load_stage_params(
@@ -39,40 +72,24 @@ def load_stage_params(
     ambient variable must never select the scientific configuration.
     """
 
-    if model == "co2":
-        from .co2.stages import load_co2_stage_params
-
-        return load_co2_stage_params(config_file=config_file, params_file=params_file, overrides=overrides)
-    return _standard_stages.load_stage_params(
+    return select_stages(model).load_params(
         config_file=config_file, params_file=params_file, overrides=overrides
     )
 
 
-def resolve_stage_setup(params: Mapping[str, Any], *, model: ModelKind) -> RhimeRunnerSetup | Co2StageSetup:
+def resolve_stage_setup(params: Mapping[str, Any], *, model: ModelKind) -> StandardRecipeConfig | Co2RecipeConfig:
     """Resolve stage parameters through the canonical RHIME boundary."""
 
-    if model == "co2":
-        from .co2.stages import resolve_co2_stage_setup
-
-        return resolve_co2_stage_setup(params=params)
-    if model not in ("standard", "multisector"):
-        raise ValueError(f"Unsupported staged model {model!r}.")
-    return _standard_stages.resolve_stage_setup(params=params, model=cast(_standard_stages.ModelKind, model))
+    return select_stages(model).resolve_config(params)
 
 
-def effective_configuration(setup: RhimeRunnerSetup | Co2StageSetup, *, model: ModelKind) -> dict[str, Any]:
+def effective_configuration(setup: StandardRecipeConfig | Co2RecipeConfig, *, model: ModelKind) -> dict[str, Any]:
     """Return the resolved scientific configuration used by every stage."""
 
-    if model == "co2":
-        from .co2.stages import effective_co2_configuration
-
-        return effective_co2_configuration(setup=cast("Co2StageSetup", setup))
-    return _standard_stages.effective_configuration(
-        setup=cast(RhimeRunnerSetup, setup), model=cast(_standard_stages.ModelKind, model)
-    )
+    return select_stages(model).effective_configuration(setup)
 
 
-def configuration_identity(setup: RhimeRunnerSetup | Co2StageSetup, *, model: ModelKind) -> str:
+def configuration_identity(setup: StandardRecipeConfig | Co2RecipeConfig, *, model: ModelKind) -> str:
     """Hash the resolved settings required for scientific replay.
 
     Standard and multisector identities cover preparation, period, model,
@@ -80,37 +97,23 @@ def configuration_identity(setup: RhimeRunnerSetup | Co2StageSetup, *, model: Mo
     artifact content hashes authenticate the prepared data.
     """
 
-    if model == "co2":
-        from .co2.stages import co2_configuration_identity
-
-        return co2_configuration_identity(setup=cast("Co2StageSetup", setup))
-    return _standard_stages.configuration_identity(
-        setup=cast(RhimeRunnerSetup, setup), model=cast(_standard_stages.ModelKind, model)
-    )
+    return select_stages(model).configuration_identity(setup)
 
 
 def prepare_rhime_stage(
     *,
-    setup: RhimeRunnerSetup | Co2StageSetup,
+    setup: StandardRecipeConfig | Co2RecipeConfig,
     model: ModelKind,
     output_dir: str | Path,
 ) -> dict[str, Any]:
     """Prepare and persist independently inspectable RHIME inputs."""
 
-    if model == "co2":
-        from .co2.stages import prepare_co2_stage
-
-        return prepare_co2_stage(setup=cast("Co2StageSetup", setup), output_dir=output_dir)
-    return _standard_stages.prepare_rhime_stage(
-        setup=cast(RhimeRunnerSetup, setup),
-        model=cast(_standard_stages.ModelKind, model),
-        output_dir=output_dir,
-    )
+    return select_stages(model).prepare(setup=setup, output_dir=output_dir)
 
 
 def prior_predictive_stage(
     *,
-    setup: RhimeRunnerSetup | Co2StageSetup,
+    setup: StandardRecipeConfig | Co2RecipeConfig,
     model: ModelKind,
     prepared_inputs: str | Path,
     output_dir: str | Path,
@@ -121,21 +124,8 @@ def prior_predictive_stage(
 ) -> dict[str, Any]:
     """Build the configured graph and check finite prior-predictive draws."""
 
-    if model == "co2":
-        from .co2.stages import prior_predictive_co2_stage
-
-        return prior_predictive_co2_stage(
-            setup=cast("Co2StageSetup", setup),
-            prepared_inputs=prepared_inputs,
-            output_dir=output_dir,
-            check_output=check_output,
-            preparation_manifest=preparation_manifest,
-            draws=draws,
-            stage=stage,
-        )
-    return _standard_stages.prior_predictive_stage(
-        setup=cast(RhimeRunnerSetup, setup),
-        model=cast(_standard_stages.ModelKind, model),
+    return select_stages(model).prior_predictive(
+        setup=setup,
         prepared_inputs=prepared_inputs,
         output_dir=output_dir,
         check_output=check_output,
@@ -147,7 +137,7 @@ def prior_predictive_stage(
 
 def sample_rhime_stage(
     *,
-    setup: RhimeRunnerSetup | Co2StageSetup,
+    setup: StandardRecipeConfig | Co2RecipeConfig,
     model: ModelKind,
     prepared_inputs: str | Path,
     output_dir: str | Path,
@@ -155,23 +145,12 @@ def sample_rhime_stage(
 ) -> dict[str, Any]:
     """Sample prepared inputs without invoking preparation.
 
-    Standard/multisector workflows persist version-2 sample manifests with
-    output bindings. CO2 retains its version-1 manifest and authenticates any
-    supplied affine artifact separately.
+    Each family writes its declared manifest contract. Standard/multisector
+    bind saved output roles; CO2 authenticates supplied affine artifacts separately.
     """
 
-    if model == "co2":
-        from .co2.stages import sample_co2_stage
-
-        return sample_co2_stage(
-            setup=cast("Co2StageSetup", setup),
-            prepared_inputs=prepared_inputs,
-            output_dir=output_dir,
-            preparation_manifest=preparation_manifest,
-        )
-    return _standard_stages.sample_rhime_stage(
-        setup=cast(RhimeRunnerSetup, setup),
-        model=cast(_standard_stages.ModelKind, model),
+    return select_stages(model).sample(
+        setup=setup,
         prepared_inputs=prepared_inputs,
         output_dir=output_dir,
         preparation_manifest=preparation_manifest,
@@ -180,7 +159,7 @@ def sample_rhime_stage(
 
 def postprocess_rhime_stage(
     *,
-    setup: RhimeRunnerSetup | Co2StageSetup,
+    setup: StandardRecipeConfig | Co2RecipeConfig,
     model: ModelKind,
     prepared_inputs: str | Path,
     posterior: str | Path,
@@ -190,26 +169,12 @@ def postprocess_rhime_stage(
 ) -> RhimeResult:
     """Build products from authenticated saved artifacts.
 
-    Standard/multisector version-2 sample manifests and CO2 version-1
-    manifests replay without a graph. Historical standard/multisector
-    version-1 manifests reconstruct their missing output roles. Invalid
-    bindings never fall back.
+    Supported family contracts replay without graph construction or resampling.
+    Retired contracts and invalid bindings fail before posterior loading or writes.
     """
 
-    if model == "co2":
-        from .co2.stages import postprocess_co2_stage
-
-        return postprocess_co2_stage(
-            setup=cast("Co2StageSetup", setup),
-            prepared_inputs=prepared_inputs,
-            posterior=posterior,
-            output_dir=output_dir,
-            preparation_manifest=preparation_manifest,
-            sample_manifest=sample_manifest,
-        )
-    return _standard_stages.postprocess_rhime_stage(
-        setup=cast(RhimeRunnerSetup, setup),
-        model=cast(_standard_stages.ModelKind, model),
+    return select_stages(model).postprocess(
+        setup=setup,
         prepared_inputs=prepared_inputs,
         posterior=posterior,
         output_dir=output_dir,
@@ -223,6 +188,8 @@ __all__ = [
     "CONVERGENCE_CHECK_NAME",
     "PREPARATION_CHECK_NAME",
     "ModelKind",
+    "StageOperations",
+    "select_stages",
     "diagnose_rhime_stage",
     "load_stage_params",
     "resolve_stage_setup",
