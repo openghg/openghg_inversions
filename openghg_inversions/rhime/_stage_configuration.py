@@ -152,4 +152,3 @@ def configuration_identity(setup: StandardRecipeConfig, *, model: ModelKind) -> 
         separators=(",", ":"),
     ).encode()
     return f"sha256:{sha256(encoded).hexdigest()}"
-

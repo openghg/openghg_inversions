@@ -66,3 +66,20 @@ The durable `recipe-workflow-contract` capability is synced and the completed
 change is archived. All 10 implementation/delivery tasks are complete. OPE-207
 remains open for pull-request review and merge; linked CO2/O2 staged integration
 remains separate in OPE-165.
+
+## Review corrections (6 October 2026)
+
+Preserved nested list/tuple types when resolving and recreating sampler choices,
+including fresh invocation containers and unchanged NumPy isolation. The shared
+sampler rejects inference-data coordinate/dimension overrides before PyMC while
+forwarding permitted conversion options. Updated the consumer's explicit builder
+forwarding assertion, normalized preparation-option docstrings, historical
+diagnosis guidance, and the release fragment. Removed redundant materialization
+deduplication, the unused CO2 output default factory, and committed EOF whitespace.
+
+The combined workflow, scientific-operation, sampler, CO2 configuration/contract,
+consumer, existing RHIME, and cached-sigma sampling suites passed: **475 tests**
+on Python 3.13.7. Regression coverage includes direct/resolved rejection before
+sampling, nested container round trips and isolation, and successful independent
+diagnosis for sample schemas 1/2/3 across standard, multisector and CO2 families.
+Changed-path Ruff, `git diff devel --check`, and strict OpenSpec validation passed.

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import asdict, dataclass, field, replace
+from dataclasses import asdict, dataclass, replace
 from importlib.resources import files
 from importlib.resources.abc import Traversable
 from math import isfinite
@@ -55,9 +55,7 @@ class Co2RecipeConfig:
     runner: Runner
     runner_kwargs: Mapping[str, object]
     sampler_options: SamplerOptions
-    output: RhimeOutputSpec = field(
-        default_factory=lambda: RhimeOutputSpec(output_format="basic", save_inversion_output=False)
-    )
+    output: RhimeOutputSpec
     reconstruction_path: Path | None = None
     source_to_sector: Mapping[str, str] | None = None
 

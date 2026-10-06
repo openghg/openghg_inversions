@@ -636,6 +636,14 @@ def prepare_multisector_rhime_inputs(
     Basis I/O occurs only when requested; numerical arrays remain potentially
     lazy until model construction. Empty retained observations raise ValueError
     before basis construction.
+
+    Args:
+        merged: Borrowed acquisition output or externally supplied/reloaded
+            merged data before configured filtering, with retained site
+            options and a compatible multisector layout.
+        data_args: Complete normalized preparation options from
+            ``resolve_rhime_options(..., multisector=True).data_args``.
+            Resolve raw options and aliases first; this mapping is not mutated.
     """
     filtered = filter_rhime_observations(merged, data_args)
     basis_functions = build_rhime_basis(filtered, data_args)
@@ -670,10 +678,9 @@ def construct_multisector_rhime_model(
     if model_builder is not None:
         model_inputs = prepared.inv_inputs
     else:
-        names = list(multisector_model_input_names(prepared, run_spec.model))
         model_inputs = materialize_pymc_inputs(
             prepared,
-            variable_names=tuple(dict.fromkeys(names)),
+            variable_names=multisector_model_input_names(prepared, run_spec.model),
         )
     return build_multisector_rhime_model_result(
         prepared=prepared,

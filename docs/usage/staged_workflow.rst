@@ -73,6 +73,12 @@ directly:
 * ``x_prior``, ``bc_prior``, ``sigma_prior`` and the selected mismatch model
   define mathematical priors and likelihood policy.
 
+Sampling keywords may configure ``sample_kwargs.idata_kwargs`` options such as
+``log_likelihood``, but cannot supply ``coords`` or ``dims``. Define labelled
+coordinates through ``registered_model()`` and its ``CoordRegistry``; see
+:doc:`concrete_rhime_model` for custom-builder guidance. Other supported sampler
+keywords remain available.
+
 All requested choices and the exact stage-contained preparation choices that
 were executed are written to ``prepare-manifest.json``.  Its
 ``configuration_identity`` is a SHA-256 digest of the resolved preparation,
@@ -183,18 +189,25 @@ Staged metadata compatibility
 -----------------------------
 
 The next minor release establishes a breaking boundary for staged setup APIs,
-manifest envelopes and scientific identities. Standard, multisector and CO2
-currently write and accept manifest schema version 3, scientific identity version
-1, and an explicit recipe label. Each family owns its supported-version policy;
+workflow manifest envelopes and scientific identities. Standard, multisector and
+CO2 preparation, prior-predictive, sampling and postprocessing workflows currently
+write and accept manifest schema version 3, scientific identity version 1, and an
+explicit recipe label. Each family owns its supported-version policy;
 a shared envelope loader recognizing a version does not authorize its use by
 another family. Standard/multisector saved-output bindings remain required;
 CO2 affine companions are authenticated independently.
 
-Pre-refactor schema versions 1 and 2 are retired. Rerun preparation and sampling
-to create the supported staged contract; no artifact migration or historical
-graph recovery is provided. The filtered ``merged-data/merged-data.nc``
+Pre-refactor schema versions 1 and 2 are retired for these workflow handoffs.
+Rerun preparation and sampling to create the supported staged contract; no
+artifact migration or historical graph recovery is provided. The filtered ``merged-data/merged-data.nc``
 checkpoint and its ``merged_data`` manifest entries are also removed. Do not
 reuse that historical snapshot as a pre-filter acquisition cache.
+
+Independent diagnosis still accepts sample envelopes using schema versions 1,
+2 or 3 and authenticates the posterior content digest. It requires no family
+configuration, output binding or affine companion, and does not authorize
+scientific replay. Diagnostic CheckResults remain schema version 1; CO2 diagnosis
+also retains its schema-version-1 diagnostic manifest.
 
 This boundary preserves standalone numerical prepared-input and posterior
 formats, scientific Python runner/builder interfaces, product names and schemas,

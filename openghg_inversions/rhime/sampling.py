@@ -18,13 +18,21 @@ from openghg_inversions.rhime.builders import RhimeModelBuildResult
 NutsSampler = Literal["pymc", "nutpie", "numpyro", "blackjax"]
 
 
+class _FrozenList(tuple):
+    """Immutable list choices that retain their runtime container meaning."""
+
+    __slots__ = ()
+
+
 def _freeze_options(value: Any, *, copy_arrays: bool = False) -> Any:
     """Freeze containers, borrowing scientific arrays unless capturing sampler choices."""
     if isinstance(value, Mapping):
         return MappingProxyType(
             {key: _freeze_options(item, copy_arrays=copy_arrays) for key, item in value.items()}
         )
-    if isinstance(value, list | tuple):
+    if isinstance(value, list | _FrozenList):
+        return _FrozenList(_freeze_options(item, copy_arrays=copy_arrays) for item in value)
+    if isinstance(value, tuple):
         return tuple(_freeze_options(item, copy_arrays=copy_arrays) for item in value)
     if copy_arrays and isinstance(value, np.ndarray):
         frozen = value.copy()
@@ -36,6 +44,8 @@ def _freeze_options(value: Any, *, copy_arrays: bool = False) -> Any:
 def _runtime_options(value: Any) -> Any:
     if isinstance(value, Mapping):
         return {key: _runtime_options(item) for key, item in value.items()}
+    if isinstance(value, _FrozenList):
+        return [_runtime_options(item) for item in value]
     if isinstance(value, tuple):
         return tuple(_runtime_options(item) for item in value)
     if isinstance(value, list):
@@ -213,6 +223,9 @@ class RhimeSampler:
         nuts_sampler: PyMC NUTS backend name.
         progressbar: Whether PyMC progress output should be shown.
         sample_kwargs: Extra keyword arguments forwarded to ``pm.sample``.
+            ``idata_kwargs`` may configure conversion, including log likelihood,
+            but may not override ``coords`` or ``dims``. Register labelled model
+            coordinates and dimensions through the model's coordinate registry.
         sample_prior_predictive: Whether to append prior predictive draws.
         sample_posterior_predictive: Whether to append posterior predictive
             draws, or variable names to sample.
@@ -319,6 +332,11 @@ class RhimeSampler:
         sample_kwargs = dict(self.sample_kwargs or {})
         sample_kwargs.pop("return_inferencedata", None)
         idata_kwargs = dict(sample_kwargs.pop("idata_kwargs", {}))
+        if forbidden := idata_kwargs.keys() & {"coords", "dims"}:
+            raise ValueError(
+                f"RhimeSampler idata_kwargs cannot override {sorted(forbidden)!r}; "
+                "register labelled coordinates and dimensions through the model's coordinate registry."
+            )
         idata_kwargs.setdefault("log_likelihood", True)
         sample_kwargs.setdefault("progressbar", self.progressbar)
         sample_kwargs.setdefault("cores", self.chains)

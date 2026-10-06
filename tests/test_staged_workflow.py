@@ -606,6 +606,42 @@ def test_diagnostics_authenticate_posterior_with_sample_manifest(tmp_path: Path)
         )
 
 
+@pytest.mark.parametrize("schema_version", [1, 2, 3])
+@pytest.mark.parametrize("family", ["standard", "multisector", "co2"])
+def test_independent_diagnosis_accepts_historical_sample_envelopes(
+    tmp_path: Path, schema_version: int, family: str,
+) -> None:
+    """Posterior-only diagnosis keeps its own compatibility and report contracts."""
+    from openghg_inversions.rhime._stage_artifacts import file_identity, write_json
+
+    trace = make_trace(posterior=xr.Dataset(
+        {"x": (("chain", "draw"), np.random.default_rng(42).normal(size=(2, 40)))},
+        coords={"chain": [0, 1], "draw": range(40)},
+    ))
+    posterior_path = tmp_path / "posterior.nc"
+    save_trace(trace, posterior_path)
+    manifest_path = write_json(tmp_path / "sample-manifest.json", {
+        "schema_version": schema_version,
+        "producer": "openghg_inversions",
+        "stage": "sample",
+        "configuration_identity": "historical-science",
+        "effective_configuration": {"model": family},
+        "artifact_identities": {"posterior": file_identity(posterior_path)},
+    })
+    destination = tmp_path / "diagnose"
+    result = diagnose_rhime_stage(
+        posterior=posterior_path, sample_manifest=manifest_path, output_dir=destination,
+    )
+    assert result["schema_version"] == 1
+    assert result["measured_values"]["chains"] == 2
+    assert (destination / "posterior-diagnostics.nc").exists()
+    diagnostic_manifest = destination / "diagnose-manifest.json"
+    if family == "co2":
+        assert json.loads(diagnostic_manifest.read_text())["schema_version"] == 1
+    else:
+        assert not diagnostic_manifest.exists()
+
+
 @pytest.mark.parametrize("output_name", ["/tmp/outside-", "../outside-"])
 def test_postprocess_rejects_output_name_that_can_escape_output_dir(
     tmp_path: Path,

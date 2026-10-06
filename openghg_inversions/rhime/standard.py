@@ -459,6 +459,14 @@ def prepare_standard_rhime_inputs(
     Basis I/O occurs only when requested; numerical arrays remain potentially
     lazy until model construction. Empty retained observations raise ValueError
     before basis construction.
+
+    Args:
+        merged: Borrowed acquisition output or externally supplied/reloaded
+            merged data before configured filtering, with retained site
+            options and a compatible single-sector layout.
+        data_args: Complete normalized preparation options from
+            ``resolve_rhime_options(..., multisector=False).data_args``.
+            Resolve raw options and aliases first; this mapping is not mutated.
     """
     filtered = filter_rhime_observations(merged, data_args)
     basis_functions = build_rhime_basis(filtered, data_args)
@@ -506,7 +514,7 @@ def construct_standard_rhime_model(
             names.append("min_error")
         model_inputs = materialize_pymc_inputs(
             prepared,
-            variable_names=tuple(dict.fromkeys(names)),
+            variable_names=names,
         )
     return build_standard_rhime_model_result(
         prepared=prepared,

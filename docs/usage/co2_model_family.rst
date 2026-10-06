@@ -120,16 +120,18 @@ Direct prepared-input and staged execution use the same resolved CO2 recipe
 configuration and ordinary/cached scientific operations. Sampler choices are
 immutable; each invocation gets its own runtime sampler. Prepared observations
 select and align retained site metadata in both routes. Staged manifest schema
-version 3 and identity version 1 are the currently supported CO2 contract;
-pre-refactor envelopes are rejected. See :doc:`staged_workflow` for the next-minor
-compatibility boundary and graph-free replay authentication.
+version 3 and identity version 1 are the currently supported CO2 preparation,
+prior-predictive, sampling and postprocessing contract; pre-refactor workflow
+handoffs are rejected. Independent diagnosis retains historical sample-envelope
+support. See :doc:`staged_workflow` for the next-minor compatibility boundary,
+diagnosis support and graph-free replay authentication.
 
-CO₂ manifests record the installed package version, exact Git revision and
+CO₂ workflow manifests record the installed package version, exact Git revision and
 checkout modification status when available. Run from a source checkout or a
 VCS installation
 whose package metadata records the commit. An installation without an
 identifiable Git revision, such as a release wheel without VCS metadata or an
-associated checkout, is rejected by these stages.
+associated checkout, is rejected by these workflow stages.
 
 For example, an ordinary configuration can contain:
 
