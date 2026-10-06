@@ -1,5 +1,8 @@
 # Design
 
+> **Superseded:** Read the [replacement design](../replace-recipe-workflow-with-reusable-handoffs/design.md).
+> The historical design below is not the current implementation instruction.
+
 > Implementation design for OPE-207. Proposed names are not implemented APIs.
 > The [proposal](proposal.md) defines scope; the
 > [behavioral spec](specs/recipe-workflow-contract/spec.md) defines acceptance requirements.

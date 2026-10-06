@@ -1,5 +1,9 @@
 # Spec Delta
 
+> **Superseded:** The [replacement change](../../../replace-recipe-workflow-with-reusable-handoffs/proposal.md)
+> defines three smaller capabilities. Retain this historical contract without
+> syncing it into durable specs or treating its implementation as completed.
+
 > Behavioral contract for OPE-207. Implementation and validation remain outstanding.
 
 ## Purpose
