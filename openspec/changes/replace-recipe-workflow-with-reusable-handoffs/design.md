@@ -234,7 +234,7 @@ sequenceDiagram
     participant Files as Artifact helpers
     participant Science as Family outputs
     Caller->>Stage: sample manifest + output choices
-    Stage->>Files: Read record; validate versions, refs and digests
+    Stage->>Files: Read record and validate versions, refs and digests
     Files-->>Stage: Authenticated record and file locations
     Stage->>Science: Load family inputs and posterior
     Science-->>Stage: Numerical replay inputs
