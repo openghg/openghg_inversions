@@ -66,17 +66,21 @@ def interpolate_flux_to_footprint_grid(
 def add_obs_error(sites: list[str], fp_all: dict, add_averaging_error: bool = True) -> None:
     """Create `mf_error` variable.
 
-    The `mf_error` variables contains either `mf_repeatablility`, `mf_variability`
+    The `mf_error` variable contains either `mf_repeatability`, `mf_variability`
     or the square root of the sum of the squares of both, if `add_averaging_error` is True.
 
     This function modifies `fp_all` in place, adding `mf_error` and making sure that both
     `mf_repeatability` and `mf_variability` are present.
 
-    Note: if `averaging_period` is specified in `data_processing_surface_notracer`, then OpenGHG
-    will add an `mf_variability` variable with the standard deviation of the obs over the specified
-    period. If `mf_variability` is already present (for instance, for Picarro data), then the existing
-    variable is over-written. If the `averaging_period` matches the frequency of the data, this will
-    make `mf_variability` zero (since the stdev of one value is 0).
+    Note: OpenGHG resampling pools supplied variability with the spread between input means,
+    weighted by observation counts when available. Supplied variability may itself serve as
+    instrument uncertainty. If neither variability nor counts is present, resampling instead
+    calculates variability from the input concentrations, giving zero for a window with one
+    finite observation. Pooling a single input instead retains its supplied variability, subject
+    to numerical precision. When counts are present but variability is absent, the weighted
+    resampling path does not create variability.
+
+    See :doc:`/development/observation_uncertainty` for missing-value behavior and policies.
 
     Args:
         sites: list of site names to process
