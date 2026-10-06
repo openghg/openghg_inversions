@@ -105,3 +105,7 @@ stubbed and arguments bound against actual function signatures. All five CLI
 example commands passed shell syntax and the actual argument parser. Changed-path
 Ruff and whitespace checks passed; no scientific test rerun was needed for this
 documentation-only change.
+The fresh `docs-full` regeneration/build passed on SLURM job 19229280 (exit 0).
+Generated HTML was checked for the lifecycle/identity tables, Python example,
+CO2 tutorial correction and operation contracts. All added lifecycle, identity,
+Python-example and CO2-command links resolve to existing pages and anchors.
