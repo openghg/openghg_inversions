@@ -407,6 +407,43 @@ def test_get_obs_data_routes_site_column_platform_to_column_retrieval(
     assert captured["max_level"] == 17
 
 
+def test_get_obs_data_preserves_multi_inlet_slice_and_combined_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Surface retrieval retains a range selector and its combined inlet data."""
+    captured: dict[str, object] = {}
+    expected = ObsData(
+        data=xr.Dataset(
+            {
+                "mf": ("time", [1.0, 2.0]),
+                "inlet": ("time", [14.0, 2.0]),
+            },
+            coords={"time": [np.datetime64("2012-01-01"), np.datetime64("2012-09-01")]},
+        ),
+        metadata={"inlet": "multiple"},
+    )
+
+    def fake_get_obs_surface(**kwargs: object) -> ObsData:
+        captured.update(kwargs)
+        return expected
+
+    monkeypatch.setattr(getters_module, "get_obs_surface", fake_get_obs_surface)
+    inlet = slice(2, 14)
+
+    result = getters_module.get_obs_data(
+        site="JFJ",
+        species="c3f8",
+        inlet=inlet,
+        start_date="2012-01-01",
+        end_date="2013-01-01",
+        stores="observations",
+    )
+
+    assert result is expected
+    assert captured["inlet"] == inlet
+    np.testing.assert_array_equal(result.data["inlet"], [14.0, 2.0])
+
+
 @pytest.mark.parametrize("platform", [None, "surface"])
 def test_column_inlet_labels_scenario_as_site_column(
     monkeypatch: pytest.MonkeyPatch,
