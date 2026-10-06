@@ -1,14 +1,16 @@
 Developing OpenGHG Inversions
 =============================
 
-These pages describe the programming conventions used for scientific model
-development. They are normative for new RHIME work.
+These pages cover scientific model development, observation-uncertainty
+decisions, and release practices. The model-development and validation guides
+are normative for new RHIME work.
 
 .. toctree::
    :maxdepth: 2
 
    rhime_model_development
    validation_and_xarray
+   observation_uncertainty
    releasing
 
 Scientific notation in prose
