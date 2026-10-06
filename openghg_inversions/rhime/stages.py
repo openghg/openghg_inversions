@@ -1,7 +1,10 @@
 """Public file-backed RHIME stages and explicit family dispatch.
 
-Concrete workflows own scientific execution and replay policy. Shared artifact
-and check owners are independent of this facade.
+Select a concrete module once with ``select_stages`` before calling its named
+operations. Family modules document preparation, sampling and replay contracts;
+shared artifact and diagnostic owners are independent of this facade.
+See :ref:`staged-rhime-python` for Python invocation and
+:ref:`staged-rhime-lifecycle` for checkpoint ownership.
 """
 
 from __future__ import annotations
@@ -106,7 +109,7 @@ def prepare_rhime_stage(
     model: ModelKind,
     output_dir: str | Path,
 ) -> dict[str, Any]:
-    """Prepare and persist independently inspectable RHIME inputs."""
+    """Dispatch preparation to the selected family's documented checkpoint contract."""
 
     return select_stages(model).prepare(setup=setup, output_dir=output_dir)
 
@@ -122,7 +125,13 @@ def prior_predictive_stage(
     draws: int = 100,
     stage: str = "prior-predictive",
 ) -> dict[str, Any]:
-    """Build the configured graph and check finite prior-predictive draws."""
+    """Dispatch prior readiness using the selected family's error boundary.
+
+    Standard/multisector catch construction/prediction KeyError or ValueError;
+    CO2 execution errors propagate. All families propagate external loading,
+    authentication and serialization failures. See the concrete operation
+    docstrings for returned checks and artifact writes.
+    """
 
     return select_stages(model).prior_predictive(
         setup=setup,

@@ -1,9 +1,21 @@
-"""File-backed stages for the concrete ordinary and cached CO2 recipes.
+"""File-backed execution for the ordinary and cached CO2 recipes.
 
-Preparation accepts the public coherent handoff, or canonical observations
-and a coherent reduction supplied directly through the Python API. Campaign
-discovery stays with the caller. Saved handoffs are copied byte-for-byte so
-their affine reconstruction binding remains valid.
+Read the workflow in scientific order: ``prepare_co2_stage`` establishes the
+coherent-reduction handoff, ``prior_predictive_co2_stage`` checks predictions,
+``sample_co2_stage`` stores inference, and ``postprocess_co2_stage`` replays
+products from authenticated files. The aliases at the end supply the interface
+selected once by the CLI; configuration and invocation paths remain explicit.
+See :ref:`staged-rhime-lifecycle` and :ref:`co2-staged-commands` for the lifecycle
+and installed commands.
+
+Unlike standard/multisector acquisition, installed CO2 preparation validates and
+copies an existing prepared artifact. Python callers can instead supply canonical
+inputs and their coherent reduction. Scientific construction and ordinary
+sampling belong to ``co2_runner``; the matched cached graph, sigma-then-state
+updates, and numerical conditional predictions belong to
+``co2_cached_sigma_runner``. This module adds artifact I/O, family version checks,
+configuration/content authentication, readiness reporting, and independent
+optional affine reconstruction authentication around those operations.
 """
 
 from __future__ import annotations
@@ -225,13 +237,35 @@ def prepare_co2_stage(
     reduction: CoherentGaussianReduction | None = None,
     aggregation_error_rank: int | None = 512,
 ) -> dict[str, Any]:
-    """Persist a source-neutral coherent CO2 handoff and preparation manifest.
+    """Validate or prepare a coherent CO2 handoff and persist its checkpoint.
 
-    Pass both ``canonical_inputs`` and ``reduction`` to call the public
-    preparation boundary directly. Otherwise copy ``prepared_inputs.path``
-    from the configuration after validation. Existing handoffs and their
-    optional bound affine artifacts retain exact byte identities. Invalid
-    science or output requests fail before creating the destination.
+    The installed route loads ``setup.preparation_kwargs["path"]`` and copies
+    the prepared NetCDF and any configured bound affine companion byte-for-byte,
+    preserving their content identities. The Python route calls
+    :func:`prepare_co2_inputs` with supplied canonical inputs and reduction,
+    then saves the new handoff. It does not acquire observations, construct a
+    graph, or sample. Validation precedes destination creation; serialization
+    errors propagate and may leave partially written artifacts.
+
+    Args:
+        setup: Authoritative ordinary/cached recipe, sampler, and output choices.
+        output_dir: Destination for ``prepared-inputs.nc``, optional
+            ``affine-flux-map.nc``, and ``prepare-manifest.json``.
+        canonical_inputs: Optional in-memory canonical inputs; supply together
+            with ``reduction`` instead of loading the configured handoff.
+        reduction: Coherent reduction for the supplied canonical inputs. A new
+            handoff must be saved and bound before requesting affine outputs.
+        aggregation_error_rank: Positive LRPD rank for new preparation; ``None``
+            keeps dense covariance. Ignored when copying an existing handoff.
+
+    Returns:
+        Preparation manifest dictionary, augmented with ``manifest_path`` for
+        this invocation. That path field is absent from the saved manifest.
+
+    Raises:
+        ValueError: If only one in-memory input is supplied, a source handoff
+            is a directory, scientific/output choices are invalid, affine
+            authentication fails, or the installed Git revision is unavailable.
     """
     if (canonical_inputs is None) != (reduction is None):
         raise ValueError("Pass canonical_inputs and reduction together.")
@@ -323,7 +357,40 @@ def prior_predictive_co2_stage(
     draws: int = 100,
     stage: str = "prior-predictive",
 ) -> dict[str, Any]:
-    """Check exact prior replicates from the selected CO2 graph without sampling a posterior."""
+    """Build the selected CO2 graph and assess finite prior predictions.
+
+    Authenticate prepared inputs and any configured affine companion first.
+    Ordinary CO2 uses PyMC prior prediction and restores labelled coordinates.
+    Cached fixed-OU draws prior parameters and model means with PyMC, then
+    generates correlated observation replicates through its numerical target;
+    generic PyMC prediction alone cannot generate observations from its
+    ``Potential``. Neither route samples a posterior.
+
+    Args:
+        setup: Resolved ordinary/cached scientific and output choices, including
+            an optional random seed in sampler keywords.
+        prepared_inputs: Prepared NetCDF authenticated by the preparation manifest.
+        preparation_manifest: Supported CO2 preparation manifest for those inputs.
+        output_dir: Destination for prediction, readiness, and prior manifest files.
+        check_output: Optional contained readiness-report path; defaults to
+            ``prior-predictive-readiness.json`` beneath ``output_dir``.
+        draws: Positive number of prior draws.
+        stage: Non-empty stage label recorded in the readiness CheckResult.
+
+    Returns:
+        Readiness CheckResult dictionary. ``pass`` requires non-empty finite
+        evidence and does not establish scientific plausibility. Empty or
+        non-finite returned evidence gives ``fail`` while still writing
+        ``prior-predictive.nc``, the readiness report, and
+        ``prior-predictive-manifest.json``.
+
+    Raises:
+        ValueError: If draws or the stage label are invalid, or artifact,
+            configuration, or scientific validation fails. Loading,
+            authentication, construction, prediction, and serialization errors
+            propagate rather than becoming failed readiness checks. Construction
+            and prediction errors occur before destination creation.
+    """
     stage = _check_stage(stage)
     if isinstance(draws, bool) or not isinstance(draws, Integral) or draws <= 0:
         raise ValueError("Prior-predictive draws must be a positive integer.")
@@ -374,7 +441,31 @@ def sample_co2_stage(
     preparation_manifest: str | Path,
     output_dir: str | Path,
 ) -> dict[str, Any]:
-    """Sample with the public ordinary or matched cached runner, then save canonically."""
+    """Authenticate prepared CO2 inputs, construct the graph, and save inference.
+
+    The ordinary route uses its public prepared-input runner. Cached fixed-OU
+    uses the matched sigma-then-state sampler and numerical joint predictions;
+    it keeps the graph and cache transitions together. Both routes use fresh
+    sampler state from resolved choices and preserve labelled trace metadata.
+    This stage never invokes preparation or creates final reporting products.
+
+    Args:
+        setup: Authoritative ordinary/cached recipe and sampler choices.
+        prepared_inputs: Prepared NetCDF to authenticate and sample.
+        preparation_manifest: Supported CO2 preparation manifest for those inputs
+            and any configured affine reconstruction.
+        output_dir: Destination for ``posterior.nc`` and ``sample-manifest.json``.
+
+    Returns:
+        Sample manifest recording effective sampling choices and content identities,
+        augmented with ``manifest_path`` for this invocation. The saved manifest
+        does not contain that path field; the trace is written to ``posterior.nc``.
+
+    Raises:
+        ValueError: If authentication, scientific validation, or matched sampler
+            requirements fail. Construction and sampling errors propagate before
+            destination creation; writing errors can leave partial artifacts.
+    """
     prepared, _, preparation = _load_prepared(setup, prepared_inputs, preparation_manifest)
     manifest = _manifest(setup, "sample")
     trace = setup.runner(**setup.runner_arguments(prepared))
@@ -423,7 +514,38 @@ def postprocess_co2_stage(
     sample_manifest: str | Path,
     output_dir: str | Path,
 ) -> RhimeResult:
-    """Authenticate supported CO2 artifacts and create role-selected common products."""
+    """Replay CO2 products from authenticated files without rebuilding a graph.
+
+    Authenticate supported family/schema/identity contracts and the prepared
+    and posterior content identities before loading the posterior. A configured
+    affine companion is authenticated independently against preparation and
+    sampling; it is required for conditional native-flux outputs. Saved trace
+    roles select scientific variables, and sampling provenance comes from the
+    sample manifest, even if current sampler choices differ. Products are built
+    before opening the output destination; no preparation, model-input
+    materialization, graph construction, or resampling occurs.
+
+    Args:
+        setup: Current scientific identity and requested output policy.
+        prepared_inputs: Prepared NetCDF used by the saved sampling invocation.
+        preparation_manifest: Supported CO2 preparation manifest for those inputs.
+        posterior: Saved posterior trace authenticated by ``sample_manifest``.
+        sample_manifest: Supported CO2 sample manifest, including saved sampler
+            choices and any affine reconstruction identity.
+        output_dir: Destination for requested NetCDF products and
+            ``postprocess-manifest.json``.
+
+    Returns:
+        Graph-free ``RhimeResult`` containing the loaded trace, requested products,
+        saved sampling provenance, and output paths including
+        ``postprocess_manifest_path``.
+
+    Raises:
+        ValueError: If versions, scientific identity, content authentication,
+            affine binding, or requested products are invalid. Authentication
+            errors precede posterior loading and product writes; loading,
+            product construction, and serialization errors propagate.
+    """
     from .co2_outputs import make_co2_rhime_outputs, make_co2_rhime_result
 
     prepared, bound, preparation = _load_prepared(setup, prepared_inputs, preparation_manifest)

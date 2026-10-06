@@ -97,10 +97,11 @@ File-backed recipe operations
 -----------------------------
 
 Select a supported recipe once before resolving its configuration and calling
-its named operations. See :doc:`staged workflows </usage/staged_workflow>` for
-checkpoint boundaries, authentication and the staged metadata compatibility
-policy. Independent builders and partial recipes need not implement these
-operations.
+its named operations. See :ref:`staged-rhime-lifecycle` for checkpoints,
+authentication and graph boundaries, and :ref:`staged-rhime-python` for an
+explicit Python calling sequence. The :doc:`staged workflow guide
+</usage/staged_workflow>` also documents metadata compatibility. Independent
+builders and partial recipes need not implement these operations.
 
 .. autosummary::
    :nosignatures:

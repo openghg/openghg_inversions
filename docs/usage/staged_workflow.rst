@@ -1,11 +1,10 @@
 Staged RHIME workflows
 ======================
 
-``openghg-inversions`` exposes file-backed stages for schedulers such as
-``openghg-run``. The interface composes the same configuration resolver,
-preparation functions, model recipes, sampler and output functions used by
-the corresponding Python runners. It is not a second scientific configuration
-system, and OpenGHG Inversions does not depend on ``openghg-run``.
+``openghg-inversions`` exposes file-backed stages for preparing reusable inputs,
+sampling them, and constructing products from saved results. The interface
+composes the same configuration resolver, preparation functions, model recipes,
+sampler and output functions used by the corresponding Python runners.
 
 The supported recipes are ``standard``, ``multisector`` and ``co2``. Recipe
 selection is always explicit with ``--model``.  It is not inferred from
@@ -15,6 +14,49 @@ CO2 recipe accepts an existing coherent prepared-input artifact and supports
 ordinary and cached fixed-OU execution. Linked CO2/O2 staging remains separate
 follow-up work. See :doc:`co2_model_family` for CO2 prerequisites, commands and
 output capabilities.
+
+.. _staged-rhime-lifecycle:
+
+What persists between stages
+---------------------------
+
+A checkpoint stores numerical values for a later stage. A manifest records the
+configuration and content digests that let that stage verify the checkpoint.
+Neither stores a live PyMC model. Standard and multisector sampling also save
+an output binding: the scientific variable roles and output contract associated
+with that exact prepared-input and posterior pair.
+
+.. list-table:: Stage lifecycle
+   :header-rows: 1
+   :widths: 18 48 34
+
+   * - Stage
+     - Saved handoff or report
+     - Graph construction
+   * - ``prepare``
+     - ``prepared-inputs.nc`` and ``prepare-manifest.json``; optional acquisition
+       cache before filtering for standard/multisector
+     - No graph; standard/multisector prepare data, CO2 validates an existing handoff
+   * - ``prior-predictive`` (optional)
+     - Prior-predictive values and readiness check
+     - Builds a graph from prepared inputs; sampling builds its own graph later
+   * - ``sample``
+     - ``posterior.nc`` and ``sample-manifest.json``; standard/multisector also
+       write ``output-binding.json``
+     - Builds a graph from authenticated prepared inputs and samples it
+   * - ``diagnose`` (optional)
+     - Posterior diagnostics and convergence check
+     - No graph or scientific configuration
+   * - ``postprocess``
+     - Requested products and ``postprocess-manifest.json``
+     - Authenticates saved output information and constructs products without
+       a graph, repeated preparation or resampling
+
+Keep the prepared artifact, preparation manifest, posterior and sample manifest
+for replay, together with the standard/multisector output binding or any CO2
+affine companion. Their content digests authenticate associations between these
+files. Full Python runners can instead pass scientific values between operations
+in memory; they do not need this checkpoint sequence.
 
 Configuration inputs
 --------------------
@@ -27,21 +69,13 @@ except ``diagnose`` accepts exactly one of:
   with the same keyword names accepted by ``run_rhime``.
 
 ``--kwargs '{...}'`` can explicitly override either source. The JSON form
-supports ``openghg-run`` cases that do not declare an INI ``CONFIG_FILE``; it
-does not add new scientific keys. The existing ``resolve_rhime_options`` boundary still
-normalizes and validates every value.  The staged commands deliberately do not
-read ambient ``CONFIG_FILE``.  ``OUTPUT_DIR`` is the only automatic path
-default, and the effective ``openghg-run`` ``STAGE`` is the default check-stage
-label.
-Relative filesystem values inside an INI or JSON parameter file are resolved
-against that file's directory, not the process working directory.
-
-``openghg-run``'s ``EFFECTIVE_CONFIG`` is a stage-specific TOML envelope, not
-an OpenGHG Inversions scientific parameter file, so do not pass it to
-``--params-file``. It remains orchestration provenance. A no-INI campaign
-should explicitly copy or provide a canonical OpenGHG Inversions JSON
-parameter file and pass that path (for example beneath ``SOURCE_DIR`` or
-``RUN_ROOT/scripts``).
+uses the same scientific keys as the Python runner. The existing
+``resolve_rhime_options`` boundary normalizes and validates every value.
+Staged commands do not read ambient ``CONFIG_FILE``. If ``--output-dir`` is
+omitted, ``OUTPUT_DIR`` supplies its default; ``STAGE`` can supply a check label
+when ``--check-stage`` is omitted. Relative filesystem values inside an INI or
+JSON parameter file are resolved against that file's directory, not the process
+working directory.
 
 Legacy fixedbasis-style PARIS INIs contain options such as ``nit``, ``nchain``,
 ``xprior`` and ``mcmc_type``.  Their translation remains owned by the existing
@@ -79,8 +113,8 @@ coordinates through ``registered_model()`` and its ``CoordRegistry``; see
 :doc:`concrete_rhime_model` for custom-builder guidance. Other supported sampler
 keywords remain available.
 
-All requested choices and the exact stage-contained preparation choices that
-were executed are written to ``prepare-manifest.json``.  Its
+Requested choices and a record of retained-run and preparation choices are
+written to ``prepare-manifest.json``. Its
 ``configuration_identity`` is a SHA-256 digest of the resolved preparation,
 period, model and prior settings.  Sampling and output-only changes do not
 invalidate reusable prepared inputs; cache locations and preparation artifact
@@ -95,16 +129,57 @@ fails before basis construction or inference. Requested choices remain in the
 manifest for provenance; sampling uses the prepared handoff's retained labels.
 
 The manifest also records a content SHA-256 for ``prepared-inputs.nc``.
-``openghg-run``
-independently verifies the declared stage-output directory and records its own
-filesystem identity; the OpenGHG Inversions digest gives scientific consumers
-a compact, direct identity for the prepared handoff.
+This content digest identifies the numerical handoff independently of the
+configuration identity.
+
+.. _staged-rhime-identity-lifecycle:
+
+Requested sites and retained-run identities
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Suppose a standard or multisector configuration requests ``TAC`` and ``MHD``,
+with averaging periods ``1h`` and ``2h``, but acquisition, cache reload or
+filtering retains only ``TAC`` with ``1h`` averaging. Pass the same
+original resolved ``setup`` to every stage. Downstream loading first checks the
+requested configuration against the preparation manifest, then aligns the run
+specification to the prepared artifact's actual sites and averaging periods.
+It leaves the requested ``data_args`` available for provenance and hashing.
+
+.. list-table:: Identity lifecycle for requested TAC, MHD and retained TAC
+   :header-rows: 1
+   :widths: 28 36 36
+
+   * - Record
+     - Run specification's sites
+     - Preparation ``data_args`` sites
+   * - Preparation ``configuration_identity`` and ``requested_configuration``
+     - Requested ``TAC, MHD``
+     - Requested ``TAC, MHD``
+   * - Preparation ``effective_configuration``
+     - Retained ``TAC``
+     - Requested ``TAC, MHD``; an enabled basis-save destination may be stage-local
+   * - Sample identity and postprocessing's expected sample identity
+     - Retained ``TAC``, aligned internally from the prepared artifact
+     - Requested ``TAC, MHD`` from the original setup
+
+``configuration_identity`` hashes scientific configuration settings.
+``artifact_identities`` separately hashes file bytes, including the prepared
+inputs and posterior; matching configuration alone cannot authenticate those
+numerical artifacts.
+
+The preparation hash combines requested run settings with requested preparation
+settings. The downstream hash combines retained-run settings with those same
+requested preparation settings. Both use the existing scientific projection,
+which excludes sampler, output and cache-location choices; the hashes need not
+be equal when sites were dropped. Do not replace the original setup with a
+manually shortened site configuration: it would no longer authenticate the
+original preparation request.
 
 Commands and artifacts
 ----------------------
 
 Stage checkpoints, reports and products are written below ``--output-dir``
-(or ``openghg-run``'s ``OUTPUT_DIR``). Commands do not depend on the caller's
+(or the ``OUTPUT_DIR`` default). Commands do not depend on the caller's
 working directory and reject pre-existing symlinks beneath a stage output
 directory. The separately configured optional pre-filter acquisition cache
 retains its existing ``merged_data_dir`` location, which may be shared with
@@ -217,9 +292,12 @@ sequence scientific operations in memory with intermediate saves disabled.
 CheckResult contract
 --------------------
 
-Both checks use the schema version 1 understood by ``openghg-run`` and producer
-``openghg_inversions``.  ``--check-output`` chooses the JSON path and
-``--check-stage`` chooses the producing ``openghg-run`` stage name.
+Both checks use schema version 1 and producer ``openghg_inversions``.
+``--check-output`` chooses the JSON path and ``--check-stage`` chooses the
+producing stage label. A scientific ``fail`` exits zero by default; the
+``prior-predictive`` and ``diagnose`` commands accept ``--strict`` to exit
+nonzero for ``fail``. ``unknown`` remains a zero exit even with ``--strict``.
+Input, authentication and execution errors still propagate as errors.
 
 ``prior-predictive-readiness``
   Status is ``pass`` when model construction succeeds, prior and
@@ -244,17 +322,21 @@ Both checks use the schema version 1 understood by ``openghg-run`` and producer
   Thresholds have CLI options.  The result is ``unknown`` when a signal is not
   assessable (for example R-hat from one chain), ``fail`` when an available
   signal exceeds policy, and ``pass`` otherwise.  This is the machine-visible
-  convergence outcome requested by issues #656/#667; ``openghg-run`` does not
-  import ArviZ or PyMC.
+  convergence outcome reported independently of process exit policy.
 
 Minimal command sequence
 ------------------------
 
 The following is a complete run using a canonical JSON parameter file. An INI
-can be substituted with ``--config``. Set ``OGI_PARAMS_FILE`` to the path of
-that OpenGHG Inversions JSON parameter file before running the commands.
+can be substituted with ``--config``. Replace the two absolute paths below
+with an existing parameter file and a writable output destination. The example
+uses ``--strict`` on optional checks and ``set -e`` to stop if a command fails.
 
 .. code-block:: bash
+
+   set -e
+   OGI_PARAMS_FILE=/absolute/path/ogi-params.json
+   OUTPUT_DIR=/absolute/path/run-output
 
    openghg-inversions prepare \
      --params-file "$OGI_PARAMS_FILE" --model standard \
@@ -265,10 +347,8 @@ that OpenGHG Inversions JSON parameter file before running the commands.
      --prepared-inputs "$OUTPUT_DIR/prepare/prepared-inputs.nc" \
      --preparation-manifest "$OUTPUT_DIR/prepare/prepare-manifest.json" \
      --output-dir "$OUTPUT_DIR/prior-predictive" \
-     --check-output "$OUTPUT_DIR/prior-predictive/prior-ready.json"
-
-   openghg-run record-check "$RUN_ROOT" \
-     "$OUTPUT_DIR/prior-predictive/prior-ready.json" --strict
+     --check-output "$OUTPUT_DIR/prior-predictive/prior-ready.json" \
+     --strict
 
    openghg-inversions sample \
      --params-file "$OGI_PARAMS_FILE" --model standard \
@@ -280,10 +360,8 @@ that OpenGHG Inversions JSON parameter file before running the commands.
      --posterior "$OUTPUT_DIR/sample/posterior.nc" \
      --sample-manifest "$OUTPUT_DIR/sample/sample-manifest.json" \
      --output-dir "$OUTPUT_DIR/diagnose" \
-     --check-output "$OUTPUT_DIR/diagnose/convergence.json"
-
-   openghg-run record-check "$RUN_ROOT" \
-     "$OUTPUT_DIR/diagnose/convergence.json"
+     --check-output "$OUTPUT_DIR/diagnose/convergence.json" \
+     --strict
 
    openghg-inversions postprocess \
      --params-file "$OGI_PARAMS_FILE" --model standard \
@@ -293,50 +371,73 @@ that OpenGHG Inversions JSON parameter file before running the commands.
      --sample-manifest "$OUTPUT_DIR/sample/sample-manifest.json" \
      --output-dir "$OUTPUT_DIR/postprocess"
 
-``openghg-run`` campaign stages
--------------------------------
+.. _staged-rhime-python:
 
-A campaign can place the same commands directly in named stages and declare
-their output directories.  No hand-authored SLURM script is required:
+Calling selected stages from Python
+-----------------------------------
 
-.. code-block:: toml
+Select the recipe once, load one explicit configuration source, and resolve its
+choices once. This standard example uses the same artifact paths as the CLI
+sequence. Substitute ``"multisector"`` and an appropriate configuration for a
+multisector run, or ``"co2"`` and CO2-family TOML/JSON for a prepared CO2 run.
+Pass the original requested ``setup`` to downstream operations, including when
+preparation retains fewer sites; see :ref:`staged-rhime-identity-lifecycle`.
 
-   [[stage]]
-   name = "prepare"
-   command = '''openghg-inversions prepare --config "$CONFIG_FILE" --model standard --output-dir "$OUTPUT_DIR/prepare"'''
-   outputs = ["outputs/prepare"]
+.. code-block:: python
 
-   [[stage]]
-   name = "prior-predictive"
-   depends_on = ["prepare"]
-   command = '''openghg-inversions prior-predictive --config "$CONFIG_FILE" --model standard --prepared-inputs "$OUTPUT_DIR/prepare/prepared-inputs.nc" --preparation-manifest "$OUTPUT_DIR/prepare/prepare-manifest.json" --output-dir "$OUTPUT_DIR/prior-predictive" --check-output "$OUTPUT_DIR/prior-predictive/prior-ready.json" && openghg-run record-check "$RUN_ROOT" "$OUTPUT_DIR/prior-predictive/prior-ready.json"'''
-   outputs = ["outputs/prior-predictive"]
+   from pathlib import Path
 
-   [[stage]]
-   name = "sample"
-   depends_on = ["prior-predictive"]
-   required_checks = ["prior-predictive-readiness"]
-   command = '''openghg-inversions sample --config "$CONFIG_FILE" --model standard --prepared-inputs "$OUTPUT_DIR/prepare/prepared-inputs.nc" --preparation-manifest "$OUTPUT_DIR/prepare/prepare-manifest.json" --output-dir "$OUTPUT_DIR/sample"'''
-   outputs = ["outputs/sample"]
+   from openghg_inversions.rhime.stages import diagnose_rhime_stage, select_stages
 
-   [[stage]]
-   name = "diagnose"
-   depends_on = ["sample"]
-   command = '''openghg-inversions diagnose --posterior "$OUTPUT_DIR/sample/posterior.nc" --sample-manifest "$OUTPUT_DIR/sample/sample-manifest.json" --output-dir "$OUTPUT_DIR/diagnose" --check-output "$OUTPUT_DIR/diagnose/convergence.json" && openghg-run record-check "$RUN_ROOT" "$OUTPUT_DIR/diagnose/convergence.json"'''
-   outputs = ["outputs/diagnose"]
+   root = Path("/absolute/path/run-output")
+   operations = select_stages("standard")
+   params = operations.load_params(
+       params_file=Path("/absolute/path/ogi-params.json"),
+   )
+   setup = operations.resolve_config(params)
 
-   [[stage]]
-   name = "postprocess"
-   depends_on = ["prepare", "sample", "diagnose"]
-   command = '''openghg-inversions postprocess --config "$CONFIG_FILE" --model standard --prepared-inputs "$OUTPUT_DIR/prepare/prepared-inputs.nc" --preparation-manifest "$OUTPUT_DIR/prepare/prepare-manifest.json" --posterior "$OUTPUT_DIR/sample/posterior.nc" --sample-manifest "$OUTPUT_DIR/sample/sample-manifest.json" --output-dir "$OUTPUT_DIR/postprocess"'''
-   outputs = ["outputs/postprocess"]
+   operations.prepare(setup=setup, output_dir=root / "prepare")
+   prepared = root / "prepare" / "prepared-inputs.nc"
+   preparation_manifest = root / "prepare" / "prepare-manifest.json"
 
-``openghg-run`` owns campaign matrices, selected tasks, dependencies, scheduler
-state, declared-output hashing, continuation manifests, check recording and
-gates. OpenGHG Inversions owns data preparation, model selection, sampling,
-scientific products, check calculations and their threshold policy.
-``STAGE_INPUTS_MANIFEST`` may be used
-by application code to discover continued parent outputs, but it is not needed
-for full-graph submission and is not implicitly interpreted by OpenGHG
-Inversions. The
-predictable explicit paths above work in both modes.
+   # Optional: build a separate graph and check prior-predictive readiness.
+   readiness = operations.prior_predictive(
+       setup=setup,
+       prepared_inputs=prepared,
+       preparation_manifest=preparation_manifest,
+       output_dir=root / "prior-predictive",
+       draws=100,
+   )
+   if readiness["status"] == "fail":
+       raise RuntimeError("Prior-predictive readiness failed")
+
+   operations.sample(
+       setup=setup,
+       prepared_inputs=prepared,
+       preparation_manifest=preparation_manifest,
+       output_dir=root / "sample",
+   )
+   posterior = root / "sample" / "posterior.nc"
+   sample_manifest = root / "sample" / "sample-manifest.json"
+
+   # Optional: diagnosis needs only the saved posterior and sample manifest.
+   convergence = diagnose_rhime_stage(
+       posterior=posterior,
+       sample_manifest=sample_manifest,
+       output_dir=root / "diagnose",
+   )
+
+   result = operations.postprocess(
+       setup=setup,
+       prepared_inputs=prepared,
+       preparation_manifest=preparation_manifest,
+       posterior=posterior,
+       sample_manifest=sample_manifest,
+       output_dir=root / "postprocess",
+   )
+
+Python check functions return dictionaries rather than applying CLI exit policy.
+The explicit readiness gate above stops on ``fail``. Apply the same comparison
+to ``convergence["status"]`` if convergence should gate product construction;
+``unknown`` is not a failure under the existing policy. The optional checks can
+be omitted without changing the required checkpoint handoffs.

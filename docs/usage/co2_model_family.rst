@@ -105,6 +105,8 @@ standard and multisector runners or to ``run_hbmcmc.py``.
 
    co2_models
 
+.. _co2-staged-commands:
+
 Staged CO₂ commands
 -------------------
 

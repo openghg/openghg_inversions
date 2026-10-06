@@ -1,4 +1,10 @@
-"""Concrete standard file-backed RHIME workflow."""
+"""Concrete standard stages around the canonical scientific recipe.
+
+Read ``prepare`` -> optional ``prior_predictive`` -> ``sample`` -> ``postprocess``.
+Prepared inputs are the inference checkpoint; saved output bindings permit
+strict graph-free replay under the family schema-3/identity-1 contract.
+See :ref:`staged-rhime-lifecycle` for checkpoint ownership and
+:ref:`staged-rhime-identity-lifecycle` for requested-to-retained identities."""
 from __future__ import annotations
 from dataclasses import replace
 from numbers import Integral
@@ -53,7 +59,28 @@ def prepare(
     setup: StandardRecipeConfig,
     output_dir: str | Path,
 ) -> dict[str, Any]:
-    """Prepare and persist independently inspectable RHIME inputs."""
+    """Acquire and prepare observations, then persist the retained handoff.
+
+    Filtering, site alignment, basis and sensitivities use the canonical recipe.
+    Optional merged caching saves acquisition output before filtering at its
+    configured cache location. This stage writes prepared inputs and a manifest;
+    it does not construct a model. Checkpoint serialization materializes arrays.
+
+    Args:
+        setup: Resolved requested science, sampler choices and output policy.
+        output_dir: Stage checkpoint directory; requested basis saves go below it.
+
+    Returns:
+        Preparation envelope with requested configuration identity, requested
+        and retained effective choices, prepared path and content digest.
+        ``manifest_path`` is added to the returned mapping after persistence
+        and is absent from the saved JSON.
+
+    Raises:
+        ValueError: If inputs, scientific options or output paths are invalid.
+        OSError: If acquisition, cache or checkpoint I/O fails. Failures propagate;
+            the destination and earlier optional artifacts may already exist.
+    """
     destination = _stage_output_directory(output_dir)
     data_args = dict(setup.data_args)
     if data_args["basis_output_path"] is not None:
@@ -93,6 +120,15 @@ def _load_prepared(
     setup: StandardRecipeConfig,
     preparation_manifest: str | Path,
 ) -> tuple[RhimePreparedInputs, StandardRecipeConfig]:
+    """Authenticate requested preparation, then align the run to retained sites.
+
+    The family schema and identity versions, requested configuration identity
+    and prepared content digest are checked before loading the handoff. The
+    returned configuration keeps requested preparation choices while its
+    run sites and averaging periods follow the loaded observations. Sampling
+    and replay use this retained-run identity. Loading/authentication errors
+    propagate rather than becoming prior-readiness results.
+    """
     prepared_path = Path(path).resolve()
     manifest_path, manifest = _load_stage_manifest(
         preparation_manifest, stage="prepare", supported_versions=SUPPORTED_SCHEMA_VERSIONS,
@@ -132,7 +168,32 @@ def prior_predictive(
     draws: int = 100,
     stage: str = "prior-predictive",
 ) -> dict[str, Any]:
-    """Build the configured graph and check finite prior-predictive draws."""
+    """Assess prior readiness from authenticated fully prepared inputs.
+
+    Construction materializes the model-selected inputs. Loading/authentication
+    happens outside the readiness catch. Construction/prediction ``KeyError``
+    or ``ValueError`` inside that catch yields a fail check without predictive
+    artifacts. Returned empty/non-finite evidence yields fail while preserving
+    predictive/report writes. Serialization errors propagate.
+
+    Args:
+        setup: Requested configuration matched to the preparation manifest.
+        prepared_inputs: Saved fully prepared handoff; preparation is not repeated.
+        output_dir: Predictive and readiness-report destination.
+        check_output: Optional report path beneath the stage destination.
+        preparation_manifest: Envelope authenticating requested science and inputs.
+        draws: Positive integer prior-predictive draw count.
+        stage: Non-empty stage label included in the check.
+
+    Returns:
+        Schema-version-1 preparation-readiness CheckResult with status, measured
+        evidence, thresholds and any predictive artifact paths.
+
+    Raises:
+        ValueError: If invocation arguments, paths or authentication are invalid.
+        OSError: If input loading or artifact persistence fails. External loading
+            and uncaught execution errors also propagate; a destination may exist.
+    """
     stage = _check_stage(stage)
     if isinstance(draws, bool) or not isinstance(draws, Integral) or draws <= 0:
         raise ValueError("Prior-predictive draws must be a positive integer.")
@@ -185,11 +246,27 @@ def sample(
     output_dir: str | Path,
     preparation_manifest: str | Path,
 ) -> dict[str, Any]:
-    """Sample prepared inputs and persist matched posterior/output bindings.
+    """Construct and sample an authenticated prepared handoff, then bind outputs.
 
-    Writes the trace, a versioned output contract bound to both numerical
-    artifacts, and a versioned sample manifest. Preparation is never
-    invoked implicitly.
+    No acquisition or preparation is repeated. Construction materializes selected
+    inputs; sampling uses invocation-local state. The posterior, output binding
+    and sample envelope authenticate both numerical artifacts and output meaning.
+
+    Args:
+        setup: Requested configuration and sampling choices for this invocation.
+        prepared_inputs: Saved fully prepared numerical handoff.
+        output_dir: Posterior, binding and sample-manifest destination.
+        preparation_manifest: Requested-science and prepared-content authentication.
+
+    Returns:
+        Sample envelope with the retained-run configuration identity, recorded
+        sampling choices, artifact paths and digests. Its ``manifest_path`` is
+        added only to the returned mapping after the JSON has been written.
+
+    Raises:
+        ValueError: If authentication, construction or sampling options are invalid.
+        OSError: If input or artifact I/O fails. Execution failures propagate;
+            the stage destination or earlier artifacts may already exist.
     """
     destination = _stage_output_directory(output_dir)
     prepared, resolved = _load_prepared(
@@ -246,7 +323,33 @@ def postprocess(
     preparation_manifest: str | Path,
     sample_manifest: str | Path,
 ) -> RhimeResult:
-    """Build products from strictly authenticated graph-free saved output information."""
+    """Authenticate saved output meaning and construct products without a graph.
+
+    Requested preparation identity, retained-run sample identity, numerical
+    digests and output binding are verified before posterior loading or output
+    destination creation. Replay does not materialize model inputs, construct
+    a model or resample. It uses recorded sampling provenance and the caller's
+    current output policy, with writes contained beneath ``output_dir``.
+
+    Args:
+        setup: Requested science and current product policy; sampler changes do
+            not replace the provenance recorded by sampling.
+        prepared_inputs: Saved fully prepared handoff.
+        posterior: Posterior whose content digest matches the sample envelope.
+        output_dir: Requested product and postprocess-manifest destination.
+        preparation_manifest: Requested preparation and input authentication.
+        sample_manifest: Retained-run, posterior and bound-output authentication.
+
+    Returns:
+        RhimeResult with requested products and saved output contract, with
+        ``model`` and ``model_build_result`` set to None. ``output_metadata``
+        includes ``postprocess_manifest_path`` for the written product envelope.
+
+    Raises:
+        ValueError: If schemas, identities, bindings, formats or paths are invalid.
+        OSError: If input or product I/O fails. Product-construction and persistence
+            errors propagate; earlier product writes are not rolled back.
+    """
     configured_output = setup.run_spec.output
     _filename_component("output_name", configured_output.output_name)
     _filename_component("species", setup.run_spec.model.species)

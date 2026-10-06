@@ -86,3 +86,22 @@ Changed-path Ruff, `git diff devel --check`, and strict OpenSpec validation pass
 The fresh `docs-full` regeneration/build passed on SLURM job 19228601 (exit 0).
 Rendered staged/CO2 compatibility guidance, sampler restrictions, and both
 preparation parameter descriptions were verified in the generated HTML.
+
+## Newcomer documentation review (6 October 2026)
+
+Expanded the existing staged workflow guide with checkpoint, manifest, output
+binding and graph boundaries, an explicit Python entry point, and a requested
+TAC/MHD to retained TAC identity example. The guide now presents standalone
+OpenGHG Inversions CLI commands and its check/strict policy, with initialized
+paths. Added direct lifecycle/example links from the developer/API pages and
+concrete module guides. Documented standard, multisector and ordinary/cached CO2
+operation prerequisites, returns, persistence and failure boundaries. Corrected
+the prior-predictive tutorial's CO2 staging availability and exact cached
+predictor caveat. A unique Towncrier documentation fragment records these updates.
+
+AST comparison after removing docstrings confirmed no executable Python changes.
+The documented Python sequence executed all seven calls with scientific execution
+stubbed and arguments bound against actual function signatures. All five CLI
+example commands passed shell syntax and the actual argument parser. Changed-path
+Ruff and whitespace checks passed; no scientific test rerun was needed for this
+documentation-only change.

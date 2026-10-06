@@ -441,6 +441,11 @@ thresholds, and check schemas. Family implementations import these owners
 directly, without importing helpers from the public facade. These private
 owners can move together when complete workflows migrate to ``recipes``.
 
+For the persisted values, manifests and graph boundaries, see
+:ref:`staged-rhime-lifecycle`. The :ref:`staged-rhime-python` example shows
+selection and explicit artifact handoffs; :ref:`staged-rhime-identity-lifecycle`
+explains how requested configuration remains distinct from retained site labels.
+
 The scientific operation owners are explicit:
 
 .. list-table:: Equivalent execution routes
