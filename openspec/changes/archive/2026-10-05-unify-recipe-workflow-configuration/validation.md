@@ -83,3 +83,6 @@ on Python 3.13.7. Regression coverage includes direct/resolved rejection before
 sampling, nested container round trips and isolation, and successful independent
 diagnosis for sample schemas 1/2/3 across standard, multisector and CO2 families.
 Changed-path Ruff, `git diff devel --check`, and strict OpenSpec validation passed.
+The fresh `docs-full` regeneration/build passed on SLURM job 19228601 (exit 0).
+Rendered staged/CO2 compatibility guidance, sampler restrictions, and both
+preparation parameter descriptions were verified in the generated HTML.
