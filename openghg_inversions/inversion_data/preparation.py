@@ -4,7 +4,7 @@
 basis metadata, and site metadata; component-specific model arrays are
 intentionally absent.
 
-The durable ``RhimePreparedInputs`` contract lives in :mod:`.prepared` and
+The durable ``RhimePreparedInputs`` contract lives in :mod:`openghg_inversions.inversion_data.prepared_inputs` and
 remains importable here for compatibility. It validates labelled relationships
 when it is constructed. When the retained basis-functions object
 provides ``validated()``, preparation uses the returned copy after that method
