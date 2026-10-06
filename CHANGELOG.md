@@ -1,3 +1,14 @@
+## 0.7.5 (2026-10-06)
+
+
+### Documentation
+
+- Document observation-uncertainty handling, its decision history, and count and precision failures in resampling, distinguishing supplied variability from variability calculated during averaging. ([#765](https://github.com/openghg/openghg_inversions/issues/765))
+
+### Bug fixes
+
+- Report observation retrieval `AttributeError` exceptions with site and store context and stop the run instead of silently treating them as missing observations. ([#765](https://github.com/openghg/openghg_inversions/issues/765))
+
 ## 0.7.4 (2026-10-01)
 
 
