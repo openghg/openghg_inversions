@@ -103,7 +103,6 @@ RHIME_PREPARATION_OPTION_NAMES = frozenset(
         "calibration_scale",
         "obs_data_level",
         "platform",
-        "use_tracer",
         "use_bc",
         "fp_basis_case",
         "basis_directory",
@@ -164,7 +163,6 @@ RHIME_PREPARATION_DEFAULTS: dict[str, Any] = {
     "calibration_scale": None,
     "obs_data_level": None,
     "platform": None,
-    "use_tracer": False,
     "use_bc": True,
     "fp_basis_case": None,
     "basis_directory": None,
@@ -293,6 +291,8 @@ def params_from_config(
 def normalise_rhime_params(params: Mapping[str, Any]) -> dict[str, Any]:
     """Normalize aliases, coerce simple scalars, and validate structured values."""
     normalized = normalise_param_aliases(params)
+    if normalized.pop("use_tracer", False):
+        raise ValueError("`use_tracer=True` is not supported; tracer inversions are not implemented.")
     normalise_output_format_alias(normalized)
     coerce_simple_param_types(normalized)
     validate_rhime_param_types(normalized)

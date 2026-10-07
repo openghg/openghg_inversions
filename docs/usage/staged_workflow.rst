@@ -86,6 +86,13 @@ prepared-input content digest before model construction.  Preparation also
 treats every configured site as required and fails with the gas and period
 named if the existing acquisition layer could not produce it.
 
+.. important::
+
+   Version 0.8 does not support staged artifacts produced by 0.7. Use 0.7 to
+   consume those artifacts, or regenerate them with 0.8. Removing the unused
+   ``use_tracer=False`` field from resolved preparation options changes the
+   configuration hash even when scientific settings are unchanged.
+
 The manifest also records a content SHA-256 for ``prepared-inputs.nc``.
 ``openghg-run``
 independently verifies the declared stage-output directory and records its own

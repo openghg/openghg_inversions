@@ -998,7 +998,7 @@ def _warn_for_nan_inputs(inv_inputs: xr.Dataset, *, use_bc: bool) -> None:
         )
 
 
-def _prepare_merged_data(
+def _retrieve_or_reload_merged_data(
     *,
     species: str,
     sites: list[str],
@@ -1025,7 +1025,6 @@ def _prepare_merged_data(
     calibration_scale: str | None = None,
     obs_data_level: SiteStringOption = None,
     platform: SiteStringOption = None,
-    use_tracer: bool = False,
     use_bc: bool = True,
     bc_input: str | None = None,
     averaging_error: bool = True,
@@ -1048,11 +1047,8 @@ def _prepare_merged_data(
 
     Raises:
         ValueError: If site options are invalid, no requested sites are loaded,
-            or retrieval returns misaligned metadata.
-        RuntimeError: If neither retrieval nor reload produces merged data.
+            or retrieval returns invalid retained-site names.
     """
-    if use_tracer:
-        raise ValueError("Tracer inversions are not supported by this preparation path.")
     site_options = _SiteOptions.from_inputs(
         sites=sites,
         averaging_period=averaging_period,
@@ -1065,36 +1061,24 @@ def _prepare_merged_data(
         max_level=max_level,
         time_resolved=time_resolved,
     )
-    rerun_merge = True
     fp_all: dict | None = None
     if reload_merged_data and merged_data_dir is not None:
         try:
             fp_all = load_merged_data(merged_data_dir, species, start_date, output_name, merged_data_name)
         except ValueError as exc:
             print(f"{exc}, re-running data merge.")
-        else:
-            _validate_loaded_time_resolved_selector(fp_all, site_options)
-            _validate_loaded_sector_layout(fp_all, split_by_sectors=split_by_sectors)
-            print("Successfully read in merged data.\n")
-            fp_all[".split_by_sectors"] = split_by_sectors
-            rerun_merge = False
-            site_options = _drop_sites_missing_from_loaded_data(
-                fp_all=fp_all,
-                site_options=site_options,
-            )
-            fp_all = _select_fp_all_sites(fp_all, site_options.sites)
     elif reload_merged_data:
         print("Cannot reload merged data without a value for `merged_data_dir`; re-running data merge.")
 
-    if rerun_merge:
-        (
-            fp_all,
-            retained_sites,
-            retained_inlet,
-            retained_fp_height,
-            retained_instrument,
-            retained_averaging_period,
-        ) = data_processing_surface_notracer(
+    if fp_all is not None:
+        _validate_loaded_time_resolved_selector(fp_all, site_options)
+        _validate_loaded_sector_layout(fp_all, split_by_sectors=split_by_sectors)
+        print("Successfully read in merged data.\n")
+        fp_all[".split_by_sectors"] = split_by_sectors
+        site_options = _drop_sites_missing_from_loaded_data(fp_all=fp_all, site_options=site_options)
+    else:
+        # Requested options remain authoritative; legacy metadata is redundant.
+        fp_all, retained_sites, *_ = data_processing_surface_notracer(
             species=species,
             sites=list(site_options.sites),
             domain=domain,
@@ -1129,26 +1113,7 @@ def _prepare_merged_data(
             flux_non_finite_check=flux_non_finite_check,
         )
         site_options = site_options.retain_sites(retained_sites, context="Data gathering")
-        retained_count = len(site_options.sites)
-        returned_metadata = {
-            "averaging_period": retained_averaging_period,
-            "inlet": retained_inlet,
-            "fp_height": retained_fp_height,
-            "instrument": retained_instrument,
-        }
-        misaligned_lengths = {
-            name: len(values) for name, values in returned_metadata.items() if len(values) != retained_count
-        }
-        if misaligned_lengths:
-            raise ValueError(
-                "Data gathering returned metadata with lengths that do not match retained sites; "
-                f"expected {retained_count}, got {misaligned_lengths!r}."
-            )
 
-    if fp_all is None:
-        raise RuntimeError("Data preparation did not create or load merged data.")
-    if not site_options.sites:
-        raise ValueError("No sites remain after data gathering.")
     fp_all = _select_fp_all_sites(fp_all, site_options.sites)
 
     flux_entries = fp_all.get(".flux")
@@ -1444,9 +1409,8 @@ def prepare_rhime_inputs(
             calculation method.
         min_error_options: Calculated minimum-error options. The only supported
             key is boolean ``by_site``.
-        use_tracer: Unsupported placeholder for tracer inversions, where an
-            additional species constrains the primary species through linked
-            forward models.
+        use_tracer: Unsupported linked-species flag. Omit or keep ``False``;
+            ``True`` raises ``ValueError`` before acquisition.
         flux_non_finite_check: Non-finite flux handling mode. ``"lazy"``
             applies zero-fill lazily and records attrs; ``"count"`` computes
             count metadata once and warns if non-finite values are present.
@@ -1457,11 +1421,14 @@ def prepare_rhime_inputs(
 
     Raises:
         ValueError: If site options are empty, duplicated, misaligned, or have
-            invalid types, or if minimum-error options are invalid.
+            invalid types, if minimum-error options are invalid, or if
+            ``use_tracer=True``.
     """
+    if use_tracer:
+        raise ValueError("`use_tracer=True` is not supported; tracer inversions are not implemented.")
     min_error_options = normalise_min_error_options(min_error_options)
     with timed("rhime.prepare_inputs.merged_data", sites=len(sites), split_by_sectors=split_by_sectors):
-        merged = _prepare_merged_data(
+        merged = _retrieve_or_reload_merged_data(
             species=species,
             sites=sites,
             domain=domain,
@@ -1487,7 +1454,6 @@ def prepare_rhime_inputs(
             calibration_scale=calibration_scale,
             obs_data_level=obs_data_level,
             platform=platform,
-            use_tracer=use_tracer,
             use_bc=use_bc,
             bc_input=bc_input,
             averaging_error=averaging_error,
