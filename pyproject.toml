@@ -74,6 +74,10 @@ local = [
   "pytest",
   "ruff==0.16.0",
 ]
+test = [
+  "pytest",
+  "pytest-xdist",
+]
 uv_dev = [
   "openghg_inversions[jupyter,dev]",
   "sphinx>=4",
