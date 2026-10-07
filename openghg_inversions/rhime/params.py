@@ -293,6 +293,8 @@ def params_from_config(
 def normalise_rhime_params(params: Mapping[str, Any]) -> dict[str, Any]:
     """Normalize aliases, coerce simple scalars, and validate structured values."""
     normalized = normalise_param_aliases(params)
+    if normalized.get("use_tracer", False):
+        raise ValueError("`use_tracer=True` is not supported; tracer inversions are not implemented.")
     normalise_output_format_alias(normalized)
     coerce_simple_param_types(normalized)
     validate_rhime_param_types(normalized)

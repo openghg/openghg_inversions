@@ -69,7 +69,13 @@ def retrieve_or_reload_rhime_data(
     Otherwise this stage may read OpenGHG stores or a local merged artifact,
     optionally write merged data, sanitize flux arrays, print progress, and
     emit warnings.  ``data_args`` is never mutated.
+
+    Raises:
+        ValueError: If ``data_args`` requests unsupported ``use_tracer=True``
+            or the supplied merged data has an incompatible sector layout.
     """
+    if data_args.get("use_tracer", False):
+        raise ValueError("`use_tracer=True` is not supported; tracer inversions are not implemented.")
     if merged_data is not None:
         stored_multisector = bool(merged_data.fp_all.get(".split_by_sectors", False))
         if stored_multisector != multisector:
@@ -85,7 +91,7 @@ def retrieve_or_reload_rhime_data(
         sites=len(data_args["sites"]),
         split_by_sectors=multisector,
     ):
-        return inversion_preparation._prepare_merged_data(
+        return inversion_preparation._retrieve_or_reload_merged_data(
             species=data_args["species"],
             sites=data_args["sites"],
             domain=data_args["domain"],

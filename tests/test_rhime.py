@@ -3253,7 +3253,7 @@ def test_external_merged_data_bypasses_acquisition_without_mutation(
     def fail_acquisition(**kwargs: Any) -> None:
         raise AssertionError("external merged data must bypass acquisition")
 
-    monkeypatch.setattr(prep_module, "_prepare_merged_data", fail_acquisition)
+    monkeypatch.setattr(prep_module, "_retrieve_or_reload_merged_data", fail_acquisition)
     result = rhime_public.retrieve_or_reload_rhime_data(
         {"sites": ["TAC"]},
         multisector=False,
@@ -3313,7 +3313,7 @@ def test_public_stages_compose_as_complete_external_runner(monkeypatch: pytest.M
     inv_inputs_fixture = _minimal_output_inv_inputs()
     idata = _minimal_output_idata()
 
-    monkeypatch.setattr(prep_module, "_prepare_merged_data", lambda **kwargs: merged_fixture)
+    monkeypatch.setattr(prep_module, "_retrieve_or_reload_merged_data", lambda **kwargs: merged_fixture)
     monkeypatch.setattr(rhime_preparation, "make_basis_functions", lambda **kwargs: basis_fixture)
     monkeypatch.setattr(
         prep_module,
@@ -5711,7 +5711,7 @@ def test_rhime_preparation_uses_platform_for_sites_retained_after_filtering(
     )
     captured: dict[str, object] = {}
 
-    monkeypatch.setattr(prep_module, "_prepare_merged_data", lambda **kwargs: merged)
+    monkeypatch.setattr(prep_module, "_retrieve_or_reload_merged_data", lambda **kwargs: merged)
     monkeypatch.setattr(prep_module, "_filter_merged_inversion_data", lambda **kwargs: filtered_merged)
     monkeypatch.setattr(prep_module, "make_basis_functions", lambda **kwargs: _fake_basis_functions())
     monkeypatch.setattr(
@@ -5926,7 +5926,7 @@ def test_prepare_rhime_inputs_prunes_reloaded_merged_data_to_requested_sites(
     }
 
 
-def test_prepare_merged_data_reload_keeps_all_options_aligned(
+def test_retrieve_or_reload_merged_data_reload_keeps_all_options_aligned(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """Reloading a subset retains the complete option record for each kept site."""
@@ -5938,7 +5938,7 @@ def test_prepare_merged_data_reload_keeps_all_options_aligned(
         },
     )
 
-    merged = prep_module._prepare_merged_data(
+    merged = prep_module._retrieve_or_reload_merged_data(
         species="ch4",
         sites=["TAC", "MHD", "RGL"],
         domain="EUROPE",
@@ -5997,7 +5997,7 @@ def test_site_options_direct_construction_enforces_immutable_alignment() -> None
         options.sites.append("MHD")  # type: ignore[attr-defined]
 
 
-def test_prepare_merged_data_retrieval_keeps_requested_metadata_authoritative(
+def test_retrieve_or_reload_merged_data_retrieval_keeps_requested_metadata_authoritative(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A middle retrieval failure retains every option from the requested record."""
@@ -6025,7 +6025,7 @@ def test_prepare_merged_data_retrieval_keeps_requested_metadata_authoritative(
         fake_data_processing,
     )
 
-    merged = prep_module._prepare_merged_data(
+    merged = prep_module._retrieve_or_reload_merged_data(
         species="ch4",
         sites=["TAC", "MHD", "RGL"],
         domain="EUROPE",
@@ -6057,7 +6057,7 @@ def test_prepare_merged_data_retrieval_keeps_requested_metadata_authoritative(
     )
 
 
-def test_prepare_merged_data_reload_rejects_time_resolved_selector_mismatch(
+def test_retrieve_or_reload_merged_data_reload_rejects_time_resolved_selector_mismatch(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """Reloaded data cannot satisfy the opposite footprint-resolution selector."""
@@ -6070,7 +6070,7 @@ def test_prepare_merged_data_reload_rejects_time_resolved_selector_mismatch(
     )
 
     with pytest.raises(ValueError, match="does not match the requested `time_resolved` selector"):
-        prep_module._prepare_merged_data(
+        prep_module._retrieve_or_reload_merged_data(
             species="ch4",
             sites=["TAC"],
             domain="EUROPE",
@@ -6090,7 +6090,7 @@ def test_prepare_merged_data_reload_rejects_time_resolved_selector_mismatch(
     ("cached_split_by_sectors", "requested_split_by_sectors"),
     [(False, True), (True, False)],
 )
-def test_prepare_merged_data_reload_rejects_sector_layout_mismatch(
+def test_retrieve_or_reload_merged_data_reload_rejects_sector_layout_mismatch(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     cached_split_by_sectors: bool,
@@ -6109,7 +6109,7 @@ def test_prepare_merged_data_reload_rejects_sector_layout_mismatch(
     )
 
     with pytest.raises(ValueError, match="incompatible `split_by_sectors` layout"):
-        prep_module._prepare_merged_data(
+        prep_module._retrieve_or_reload_merged_data(
             species="ch4",
             sites=["TAC"],
             domain="EUROPE",
@@ -6125,7 +6125,7 @@ def test_prepare_merged_data_reload_rejects_sector_layout_mismatch(
         )
 
 
-def test_prepare_merged_data_ignores_redundant_retrieval_metadata(
+def test_retrieve_or_reload_merged_data_ignores_redundant_retrieval_metadata(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Length-correct legacy metadata cannot replace requested site pairings."""
@@ -6142,7 +6142,7 @@ def test_prepare_merged_data_ignores_redundant_retrieval_metadata(
         ),
     )
 
-    merged = prep_module._prepare_merged_data(
+    merged = prep_module._retrieve_or_reload_merged_data(
         species="ch4",
         sites=["TAC"],
         domain="EUROPE",
@@ -9161,11 +9161,11 @@ def test_rhime_acquisition_forwards_satellite_footprint_mode(
     captured: dict[str, Any] = {}
     expected = object()
 
-    def fake_prepare_merged_data(**kwargs: Any) -> object:
+    def fake_retrieve_or_reload_merged_data(**kwargs: Any) -> object:
         captured.update(kwargs)
         return expected
 
-    monkeypatch.setattr(prep_module, "_prepare_merged_data", fake_prepare_merged_data)
+    monkeypatch.setattr(prep_module, "_retrieve_or_reload_merged_data", fake_retrieve_or_reload_merged_data)
     data_args = {
         **rhime_params.RHIME_PREPARATION_DEFAULTS,
         "species": "co2",
@@ -9220,3 +9220,68 @@ def test_satellite_rhime_template_matches_modern_input_schema() -> None:
     assert setup.run_spec.sites == ("GOSAT-BRAZIL",)
     assert setup.data_args["platform"] == ["satellite"]
     assert setup.data_args["max_level"] == [3]
+
+
+@pytest.mark.parametrize("reload", [False, True])
+def test_retrieve_or_reload_merged_data_sanitizes_flux_lazily(
+    monkeypatch: pytest.MonkeyPatch, reload: bool
+) -> None:
+    """Both acquisition paths sanitize flux without computing its Dask payload."""
+    flux = SimpleNamespace(data=xr.Dataset({"flux": ("time", da.from_array([np.nan, np.inf, 2.0]))}))
+    fp_all = {"TAC": _site_dataset([2.0]), ".flux": {"inventory": flux}}
+    monkeypatch.setattr(prep_module, "load_merged_data", lambda *args: fp_all)
+
+    def retrieve(**kwargs: Any) -> tuple:
+        assert not reload
+        return fp_all, ["TAC"], [None], [None], [None], ["1h"]
+
+    monkeypatch.setattr(prep_module, "data_processing_surface_notracer", retrieve)
+    with Callback(pretask=lambda *args: pytest.fail("acquisition must preserve lazy flux")):
+        merged = prep_module._retrieve_or_reload_merged_data(
+            species="ch4",
+            sites=["TAC"],
+            domain="EUROPE",
+            averaging_period="1h",
+            start_date="2019-01-01",
+            end_date="2019-02-01",
+            output_name="sanitation",
+            flux_sources=["inventory"],
+            reload_merged_data=reload,
+            merged_data_dir="unused",
+        )
+    sanitized = merged.fp_all[".flux"]["inventory"].data.flux
+    assert isinstance(sanitized.data, da.Array)
+    np.testing.assert_array_equal(sanitized.compute(), [0.0, 0.0, 2.0])
+
+
+@pytest.mark.parametrize("merged_data_dir", [None, "unused"])
+def test_retrieve_or_reload_merged_data_falls_back_to_acquisition(
+    monkeypatch: pytest.MonkeyPatch, merged_data_dir: str | None
+) -> None:
+    """A requested reload without a usable artifact retrieves fresh data once."""
+    calls = []
+
+    def load(*args: Any) -> dict:
+        calls.append("load")
+        raise ValueError("missing merged artifact")
+
+    def retrieve(**kwargs: Any) -> tuple:
+        calls.append("retrieve")
+        return {"TAC": _site_dataset([2.0])}, ["TAC"], [None], [None], [None], ["1h"]
+
+    monkeypatch.setattr(prep_module, "load_merged_data", load)
+    monkeypatch.setattr(prep_module, "data_processing_surface_notracer", retrieve)
+    merged = prep_module._retrieve_or_reload_merged_data(
+        species="ch4",
+        sites=["TAC"],
+        domain="EUROPE",
+        averaging_period="1h",
+        start_date="2019-01-01",
+        end_date="2019-02-01",
+        output_name="fallback",
+        flux_sources=["inventory"],
+        reload_merged_data=True,
+        merged_data_dir=merged_data_dir,
+    )
+    assert merged.sites == ("TAC",)
+    assert calls == (["load", "retrieve"] if merged_data_dir else ["retrieve"])

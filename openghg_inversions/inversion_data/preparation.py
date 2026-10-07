@@ -998,7 +998,7 @@ def _warn_for_nan_inputs(inv_inputs: xr.Dataset, *, use_bc: bool) -> None:
         )
 
 
-def _prepare_merged_data(
+def _retrieve_or_reload_merged_data(
     *,
     species: str,
     sites: list[str],
@@ -1052,7 +1052,7 @@ def _prepare_merged_data(
         RuntimeError: If neither retrieval nor reload produces merged data.
     """
     if use_tracer:
-        raise ValueError("Tracer inversions are not supported by this preparation path.")
+        raise ValueError("`use_tracer=True` is not supported; tracer inversions are not implemented.")
     site_options = _SiteOptions.from_inputs(
         sites=sites,
         averaging_period=averaging_period,
@@ -1065,7 +1065,6 @@ def _prepare_merged_data(
         max_level=max_level,
         time_resolved=time_resolved,
     )
-    rerun_merge = True
     fp_all: dict | None = None
     if reload_merged_data and merged_data_dir is not None:
         try:
@@ -1077,16 +1076,14 @@ def _prepare_merged_data(
             _validate_loaded_sector_layout(fp_all, split_by_sectors=split_by_sectors)
             print("Successfully read in merged data.\n")
             fp_all[".split_by_sectors"] = split_by_sectors
-            rerun_merge = False
             site_options = _drop_sites_missing_from_loaded_data(
                 fp_all=fp_all,
                 site_options=site_options,
             )
-            fp_all = _select_fp_all_sites(fp_all, site_options.sites)
     elif reload_merged_data:
         print("Cannot reload merged data without a value for `merged_data_dir`; re-running data merge.")
 
-    if rerun_merge:
+    if fp_all is None:
         (
             fp_all,
             retained_sites,
@@ -1444,9 +1441,8 @@ def prepare_rhime_inputs(
             calculation method.
         min_error_options: Calculated minimum-error options. The only supported
             key is boolean ``by_site``.
-        use_tracer: Unsupported placeholder for tracer inversions, where an
-            additional species constrains the primary species through linked
-            forward models.
+        use_tracer: Unsupported linked-species flag. Omit or keep ``False``;
+            ``True`` raises ``ValueError`` before acquisition.
         flux_non_finite_check: Non-finite flux handling mode. ``"lazy"``
             applies zero-fill lazily and records attrs; ``"count"`` computes
             count metadata once and warns if non-finite values are present.
@@ -1457,11 +1453,14 @@ def prepare_rhime_inputs(
 
     Raises:
         ValueError: If site options are empty, duplicated, misaligned, or have
-            invalid types, or if minimum-error options are invalid.
+            invalid types, if minimum-error options are invalid, or if
+            ``use_tracer=True``.
     """
+    if use_tracer:
+        raise ValueError("`use_tracer=True` is not supported; tracer inversions are not implemented.")
     min_error_options = normalise_min_error_options(min_error_options)
     with timed("rhime.prepare_inputs.merged_data", sites=len(sites), split_by_sectors=split_by_sectors):
-        merged = _prepare_merged_data(
+        merged = _retrieve_or_reload_merged_data(
             species=species,
             sites=sites,
             domain=domain,

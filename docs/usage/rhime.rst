@@ -44,7 +44,9 @@ Terminology
    Additional species used to constrain the primary species, normally with
    linked forward models. The standard-family acquisition and preparation path
    does not support tracer inversions; the advanced linked CO₂/O₂ recipe starts
-   from separately prepared channel arrays.
+   from separately prepared channel arrays. The generic ``use_tracer`` flag
+   must be omitted or ``False``; ``True`` raises ``ValueError`` before
+   acquisition or execution, including when merged data is supplied.
 
 ``emissions_name``
    Legacy compatibility spelling accepted only when ``flux_sources`` is absent.
