@@ -20,6 +20,7 @@ openghg\_inversions.postprocessing
    openghg_inversions.postprocessing.make_outputs
    openghg_inversions.postprocessing.make_paris_outputs
    openghg_inversions.postprocessing.merge_paris_outputs
+   openghg_inversions.postprocessing.metrics
    openghg_inversions.postprocessing.nested_paris_outputs
    openghg_inversions.postprocessing.output_views
    openghg_inversions.postprocessing.sigma

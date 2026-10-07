@@ -38,7 +38,8 @@ Run specifications and results
 ------------------------------
 
 These objects describe the model, sampling, and output settings accepted by
-the RHIME runners.
+the RHIME runners. The sampler's former ``rhime`` imports remain compatible;
+its implementation is owned by ``inference``.
 
 .. autosummary::
    :nosignatures:
@@ -46,7 +47,7 @@ the RHIME runners.
    openghg_inversions.rhime.RhimeRunSpec
    openghg_inversions.rhime.RhimeModelSpec
    openghg_inversions.rhime.RhimeOutputSpec
-   openghg_inversions.rhime.RhimeSampler
+   openghg_inversions.inference.RhimeSampler
    openghg_inversions.rhime.RhimeResult
    openghg_inversions.rhime.NestedRhimeResult
    openghg_inversions.rhime.SectorSpec
@@ -210,6 +211,22 @@ and samples; it does not write products. See
    openghg_inversions.serialization.open_datatree_loaded
    openghg_inversions.serialization.save_inferencedata
    openghg_inversions.serialization.load_inferencedata
+
+Inference diagnostics and scientific metrics
+--------------------------------------------
+
+Neutral convergence summaries consume posterior samples while preserving
+chain/draw structure. Scientific metrics compare observations with predictions
+at their stated sampling support. The established
+``postprocessing.diagnostics`` module remains an output compatibility adapter;
+calculating a score does not apply a scientific acceptance threshold.
+
+.. autosummary::
+   :nosignatures:
+
+   openghg_inversions.inference.diagnostics.posterior_summary
+   openghg_inversions.postprocessing.metrics.bayes_r2_by_site
+   openghg_inversions.postprocessing.metrics.bayes_r2_by_site_resample
 
 Legacy compatibility APIs
 -------------------------

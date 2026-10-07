@@ -38,7 +38,7 @@ def _probe_pytensor_config(code: str, *, flags: str | None = None) -> dict[str, 
 
 
 @pytest.mark.parametrize(
-    "module", ["rhime", "models"]
+    "module", ["rhime", "inference.sampling", "inference.cached_sigma", "models"]
 )
 def test_fresh_backend_import_defaults_pytensor_to_float32(module: str) -> None:
     """Backend entry points install defaults before loading PyTensor."""

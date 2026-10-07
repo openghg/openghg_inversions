@@ -30,7 +30,7 @@ import openghg_inversions.rhime.params as rhime_params
 import openghg_inversions.rhime.preparation as rhime_preparation
 import openghg_inversions.rhime.prepared as rhime_prepared
 import openghg_inversions.rhime.sampling as rhime_sampling
-import openghg_inversions.rhime.sampling as inference_sampling
+import openghg_inversions.inference.sampling as inference_sampling
 import openghg_inversions.rhime.specs as rhime_specs
 import openghg_inversions.rhime.standard as rhime_standard
 import openghg_inversions.rhime.multisector as rhime_multisector
@@ -4673,14 +4673,14 @@ def test_rhime_sampler_runs_pymc_sampling_and_predictive_steps(
     def fake_log_timing(label: str, seconds: float, **fields: Any) -> None:
         timings.append((label, fields))
 
-    monkeypatch.setattr("openghg_inversions.rhime.sampling.pm.sample", fake_sample)
+    monkeypatch.setattr("openghg_inversions.inference.sampling.pm.sample", fake_sample)
     monkeypatch.setattr(inference_sampling, "log_timing", fake_log_timing)
     monkeypatch.setattr(
-        "openghg_inversions.rhime.sampling.pm.sample_prior_predictive",
+        "openghg_inversions.inference.sampling.pm.sample_prior_predictive",
         fake_prior_predictive,
     )
     monkeypatch.setattr(
-        "openghg_inversions.rhime.sampling.pm.sample_posterior_predictive",
+        "openghg_inversions.inference.sampling.pm.sample_posterior_predictive",
         fake_posterior_predictive,
     )
     model = pm.Model()
@@ -4742,7 +4742,7 @@ def test_rhime_sampler_preserves_disabled_log_likelihood(
         seen.update(kwargs)
         return trace
 
-    monkeypatch.setattr("openghg_inversions.rhime.sampling.pm.sample", fake_sample)
+    monkeypatch.setattr("openghg_inversions.inference.sampling.pm.sample", fake_sample)
     sampler = RhimeSampler(
         draws=2,
         tune=0,
@@ -4813,13 +4813,13 @@ def test_rhime_sampler_resets_retained_draws_before_extending_predictive_groups(
             )
         )
 
-    monkeypatch.setattr("openghg_inversions.rhime.sampling.pm.sample", fake_sample)
+    monkeypatch.setattr("openghg_inversions.inference.sampling.pm.sample", fake_sample)
     monkeypatch.setattr(
-        "openghg_inversions.rhime.sampling.pm.sample_prior_predictive",
+        "openghg_inversions.inference.sampling.pm.sample_prior_predictive",
         fake_prior_predictive,
     )
     monkeypatch.setattr(
-        "openghg_inversions.rhime.sampling.pm.sample_posterior_predictive",
+        "openghg_inversions.inference.sampling.pm.sample_posterior_predictive",
         fake_posterior_predictive,
     )
     sampler = RhimeSampler(draws=2000, burn=1000, tune=0, chains=1)
@@ -4858,7 +4858,7 @@ def test_rhime_sampler_resolves_predictive_name_from_custom_model_roles(
         return make_trace(posterior_predictive=xr.Dataset({"custom_y": ("draw", [1.0])}))
 
     monkeypatch.setattr(
-        "openghg_inversions.rhime.sampling.pm.sample_posterior_predictive",
+        "openghg_inversions.inference.sampling.pm.sample_posterior_predictive",
         fake_posterior_predictive,
     )
     with pm.Model() as model:
@@ -4902,16 +4902,16 @@ def test_rhime_sampler_restores_registered_coords_after_predictive_steps(
         calls.append((trace, registry, list(trace.children)))
         return trace
 
-    monkeypatch.setattr("openghg_inversions.rhime.sampling.pm.sample", fake_sample)
+    monkeypatch.setattr("openghg_inversions.inference.sampling.pm.sample", fake_sample)
     monkeypatch.setattr(
-        "openghg_inversions.rhime.sampling.pm.sample_prior_predictive",
+        "openghg_inversions.inference.sampling.pm.sample_prior_predictive",
         fake_prior_predictive,
     )
     monkeypatch.setattr(
-        "openghg_inversions.rhime.sampling.pm.sample_posterior_predictive",
+        "openghg_inversions.inference.sampling.pm.sample_posterior_predictive",
         fake_posterior_predictive,
     )
-    monkeypatch.setattr("openghg_inversions.rhime.sampling.restore_inferencedata_coords", fake_restore)
+    monkeypatch.setattr("openghg_inversions.inference.sampling.restore_inferencedata_coords", fake_restore)
 
     model = pm.Model()
     registry = models.CoordRegistry(
