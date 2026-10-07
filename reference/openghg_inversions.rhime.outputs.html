@@ -340,6 +340,12 @@
 </ul>
 </details></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.html">openghg_inversions.hbmcmc</a></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.inference.html">openghg_inversions.inference</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inference.cached_sigma.html">openghg_inversions.inference.cached_sigma</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inference.diagnostics.html">openghg_inversions.inference.diagnostics</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inference.sampling.html">openghg_inversions.inference.sampling</a></li>
+</ul>
+</details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.inversion_data.html">openghg_inversions.inversion_data</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.acquisition.html">openghg_inversions.inversion_data.acquisition</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.get_data.html">openghg_inversions.inversion_data.get_data</a></li>
@@ -376,6 +382,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.make_outputs.html">openghg_inversions.postprocessing.make_outputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.make_paris_outputs.html">openghg_inversions.postprocessing.make_paris_outputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.merge_paris_outputs.html">openghg_inversions.postprocessing.merge_paris_outputs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.metrics.html">openghg_inversions.postprocessing.metrics</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.nested_paris_outputs.html">openghg_inversions.postprocessing.nested_paris_outputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.output_views.html">openghg_inversions.postprocessing.output_views</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.sigma.html">openghg_inversions.postprocessing.sigma</a></li>
@@ -543,7 +550,7 @@ empty dictionary is used by default.</p></li>
 <li><p><strong>basis_functions</strong> (<a class="reference internal" href="openghg_inversions.basis.basis_functions.html#openghg_inversions.basis.basis_functions.FluxWeightedBasis" title="openghg_inversions.basis.basis_functions.FluxWeightedBasis"><em>FluxWeightedBasis</em></a><em> | </em><em>None</em>) – Basis operator and flux retained for postprocessing.</p></li>
 <li><p><strong>model</strong> (<a class="reference external" href="https://www.pymc.io/projects/docs/en/stable/api/model/generated/pymc.model.core.Model.html#pymc.model.core.Model" title="(in PyMC v6.3.2)"><em>Model</em></a><em> | </em><em>None</em>) – Concrete sampled PyMC model, when retained.</p></li>
 <li><p><strong>inv_out</strong> (<a class="reference internal" href="openghg_inversions.postprocessing.inversion_output.html#openghg_inversions.postprocessing.inversion_output.InversionOutput" title="openghg_inversions.postprocessing.inversion_output.InversionOutput"><em>InversionOutput</em></a><em> | </em><em>None</em>) – Modern inversion output, when postprocessing created one.</p></li>
-<li><p><strong>sampler</strong> (<a class="reference internal" href="openghg_inversions.rhime.sampling.html#openghg_inversions.rhime.sampling.RhimeSampler" title="openghg_inversions.rhime.sampling.RhimeSampler"><em>RhimeSampler</em></a>) – Sampling configuration used for the run. A new
+<li><p><strong>sampler</strong> (<a class="reference internal" href="openghg_inversions.inference.sampling.html#openghg_inversions.inference.sampling.RhimeSampler" title="openghg_inversions.inference.sampling.RhimeSampler"><em>RhimeSampler</em></a>) – Sampling configuration used for the run. A new
 <code class="xref py py-class docutils literal notranslate"><span class="pre">RhimeSampler</span></code> is used by default.</p></li>
 <li><p><strong>model_build_result</strong> (<a class="reference internal" href="openghg_inversions.rhime.builders.html#openghg_inversions.rhime.builders.RhimeModelBuildResult" title="openghg_inversions.rhime.builders.RhimeModelBuildResult"><em>RhimeModelBuildResult</em></a><em> | </em><em>None</em>) – Model, variable-role manifest, and builder metadata,
 when available.</p></li>

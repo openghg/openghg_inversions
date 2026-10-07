@@ -340,6 +340,12 @@
 </ul>
 </details></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.html">openghg_inversions.hbmcmc</a></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.inference.html">openghg_inversions.inference</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inference.cached_sigma.html">openghg_inversions.inference.cached_sigma</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inference.diagnostics.html">openghg_inversions.inference.diagnostics</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inference.sampling.html">openghg_inversions.inference.sampling</a></li>
+</ul>
+</details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.inversion_data.html">openghg_inversions.inversion_data</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.acquisition.html">openghg_inversions.inversion_data.acquisition</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.get_data.html">openghg_inversions.inversion_data.get_data</a></li>
@@ -376,6 +382,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.make_outputs.html">openghg_inversions.postprocessing.make_outputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.make_paris_outputs.html">openghg_inversions.postprocessing.make_paris_outputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.merge_paris_outputs.html">openghg_inversions.postprocessing.merge_paris_outputs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.metrics.html">openghg_inversions.postprocessing.metrics</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.nested_paris_outputs.html">openghg_inversions.postprocessing.nested_paris_outputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.output_views.html">openghg_inversions.postprocessing.output_views</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.sigma.html">openghg_inversions.postprocessing.sigma</a></li>
@@ -531,7 +538,7 @@ materialization boundary.</p>
 <li><p><strong>prepared_inputs</strong> (<a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html#openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs" title="openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs"><em>RhimePreparedInputs</em></a>) – Validated canonical inversion inputs and retained
 basis functions.</p></li>
 <li><p><strong>run_spec</strong> (<a class="reference internal" href="openghg_inversions.rhime.specs.html#openghg_inversions.rhime.specs.RhimeRunSpec" title="openghg_inversions.rhime.specs.RhimeRunSpec"><em>RhimeRunSpec</em></a>) – Resolved model, output, and run settings.</p></li>
-<li><p><strong>sampler</strong> (<a class="reference internal" href="openghg_inversions.rhime.sampling.html#openghg_inversions.rhime.sampling.RhimeSampler" title="openghg_inversions.rhime.sampling.RhimeSampler"><em>RhimeSampler</em></a><em> | </em><em>None</em>) – Optional sampler configuration; defaults to <code class="docutils literal notranslate"><span class="pre">RhimeSampler</span></code>.</p></li>
+<li><p><strong>sampler</strong> (<a class="reference internal" href="openghg_inversions.inference.sampling.html#openghg_inversions.inference.sampling.RhimeSampler" title="openghg_inversions.inference.sampling.RhimeSampler"><em>RhimeSampler</em></a><em> | </em><em>None</em>) – Optional sampler configuration; defaults to <code class="docutils literal notranslate"><span class="pre">RhimeSampler</span></code>.</p></li>
 <li><p><strong>model_builder</strong> (<a class="reference internal" href="openghg_inversions.rhime.builders.html#openghg_inversions.rhime.builders.RhimeModelBuilder" title="openghg_inversions.rhime.builders.RhimeModelBuilder"><em>RhimeModelBuilder</em></a><em> | </em><em>None</em>) – Optional complete-model callable for advanced graphs.</p></li>
 <li><p><strong>likelihood_builder</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Callable" title="(in Python v3.14)"><em>Callable</em></a><em>[</em><em>[</em><em>...</em><em>]</em><em>, </em><em>TensorVariable</em><em>] </em><em>| </em><em>None</em>) – Optional ordinary likelihood callable used with
 the built-in graph.</p></li>

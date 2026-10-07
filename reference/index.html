@@ -340,6 +340,12 @@
 </ul>
 </details></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.html">openghg_inversions.hbmcmc</a></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.inference.html">openghg_inversions.inference</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inference.cached_sigma.html">openghg_inversions.inference.cached_sigma</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inference.diagnostics.html">openghg_inversions.inference.diagnostics</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inference.sampling.html">openghg_inversions.inference.sampling</a></li>
+</ul>
+</details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.inversion_data.html">openghg_inversions.inversion_data</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.acquisition.html">openghg_inversions.inversion_data.acquisition</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.get_data.html">openghg_inversions.inversion_data.get_data</a></li>
@@ -376,6 +382,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.make_outputs.html">openghg_inversions.postprocessing.make_outputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.make_paris_outputs.html">openghg_inversions.postprocessing.make_paris_outputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.merge_paris_outputs.html">openghg_inversions.postprocessing.merge_paris_outputs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.metrics.html">openghg_inversions.postprocessing.metrics</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.nested_paris_outputs.html">openghg_inversions.postprocessing.nested_paris_outputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.output_views.html">openghg_inversions.postprocessing.output_views</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.sigma.html">openghg_inversions.postprocessing.sigma</a></li>
@@ -548,7 +555,8 @@ runner.</p>
 <section id="run-specifications-and-results">
 <h2>Run specifications and results<a class="headerlink" href="#run-specifications-and-results" title="Link to this heading">#</a></h2>
 <p>These objects describe the model, sampling, and output settings accepted by
-the RHIME runners.</p>
+the RHIME runners. The sampler’s former <code class="docutils literal notranslate"><span class="pre">rhime</span></code> imports remain compatible;
+its implementation is owned by <code class="docutils literal notranslate"><span class="pre">inference</span></code>.</p>
 <div class="pst-scrollable-table-container"><table class="autosummary longtable table">
 <tbody>
 <tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.RhimeRunSpec" title="openghg_inversions.rhime.RhimeRunSpec"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.RhimeRunSpec</span></code></a></p></td>
@@ -560,7 +568,7 @@ the RHIME runners.</p>
 <tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.RhimeOutputSpec" title="openghg_inversions.rhime.RhimeOutputSpec"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.RhimeOutputSpec</span></code></a></p></td>
 <td><p>Output settings for a RHIME run.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.RhimeSampler" title="openghg_inversions.rhime.RhimeSampler"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.RhimeSampler</span></code></a></p></td>
+<tr class="row-even"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.inference.RhimeSampler</span></code></p></td>
 <td><p>PyMC sampler configuration and execution for RHIME models.</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.RhimeResult" title="openghg_inversions.rhime.RhimeResult"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.RhimeResult</span></code></a></p></td>
@@ -905,6 +913,28 @@ and samples; it does not write products. See
 </table>
 </div>
 </section>
+<section id="inference-diagnostics-and-scientific-metrics">
+<h2>Inference diagnostics and scientific metrics<a class="headerlink" href="#inference-diagnostics-and-scientific-metrics" title="Link to this heading">#</a></h2>
+<p>Neutral convergence summaries consume posterior samples while preserving
+chain/draw structure. Scientific metrics compare observations with predictions
+at their stated sampling support. The established
+<code class="docutils literal notranslate"><span class="pre">postprocessing.diagnostics</span></code> module remains an output compatibility adapter;
+calculating a score does not apply a scientific acceptance threshold.</p>
+<div class="pst-scrollable-table-container"><table class="autosummary longtable table">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.inference.diagnostics.html#openghg_inversions.inference.diagnostics.posterior_summary" title="openghg_inversions.inference.diagnostics.posterior_summary"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.inference.diagnostics.posterior_summary</span></code></a></p></td>
+<td><p>Calculate unrounded ArviZ diagnostics on the original chain/draw axes.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.postprocessing.metrics.html#openghg_inversions.postprocessing.metrics.bayes_r2_by_site" title="openghg_inversions.postprocessing.metrics.bayes_r2_by_site"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.postprocessing.metrics.bayes_r2_by_site</span></code></a></p></td>
+<td><p>Compute Bayesian R2 scores grouped by site.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.postprocessing.metrics.html#openghg_inversions.postprocessing.metrics.bayes_r2_by_site_resample" title="openghg_inversions.postprocessing.metrics.bayes_r2_by_site_resample"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.postprocessing.metrics.bayes_r2_by_site_resample</span></code></a></p></td>
+<td><p>Compute Bayesian R2 scores grouped by site and time.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
 <section id="legacy-compatibility-apis">
 <h2>Legacy compatibility APIs<a class="headerlink" href="#legacy-compatibility-apis" title="Link to this heading">#</a></h2>
 <p>The direct fixed-basis and hierarchical Bayesian Markov chain Monte Carlo
@@ -978,6 +1008,7 @@ module-level view.</p>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#covariance-and-coherent-reduction">Covariance and coherent reduction</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#compose-a-rhime-model">Compose a RHIME model</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#outputs-and-serialisation">Outputs and serialisation</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#inference-diagnostics-and-scientific-metrics">Inference diagnostics and scientific metrics</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#legacy-compatibility-apis">Legacy compatibility APIs</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#detailed-module-reference">Detailed module reference</a></li>
 </ul>

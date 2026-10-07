@@ -340,6 +340,12 @@
 </ul>
 </details></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.html">openghg_inversions.hbmcmc</a></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.inference.html">openghg_inversions.inference</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inference.cached_sigma.html">openghg_inversions.inference.cached_sigma</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inference.diagnostics.html">openghg_inversions.inference.diagnostics</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inference.sampling.html">openghg_inversions.inference.sampling</a></li>
+</ul>
+</details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.inversion_data.html">openghg_inversions.inversion_data</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.acquisition.html">openghg_inversions.inversion_data.acquisition</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.get_data.html">openghg_inversions.inversion_data.get_data</a></li>
@@ -376,6 +382,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.make_outputs.html">openghg_inversions.postprocessing.make_outputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.make_paris_outputs.html">openghg_inversions.postprocessing.make_paris_outputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.merge_paris_outputs.html">openghg_inversions.postprocessing.merge_paris_outputs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.metrics.html">openghg_inversions.postprocessing.metrics</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.nested_paris_outputs.html">openghg_inversions.postprocessing.nested_paris_outputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.output_views.html">openghg_inversions.postprocessing.output_views</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.sigma.html">openghg_inversions.postprocessing.sigma</a></li>
@@ -504,13 +511,7 @@
                   
   <section id="module-openghg_inversions.rhime.cached_sigma">
 <span id="openghg-inversions-rhime-cached-sigma"></span><h1>openghg_inversions.rhime.cached_sigma<a class="headerlink" href="#module-openghg_inversions.rhime.cached_sigma" title="Link to this heading">#</a></h1>
-<p>Cache the fixed-OU state likelihood between ordered sigma and state updates.</p>
-<p>The compound sweep is deliberately ordered <code class="docutils literal notranslate"><span class="pre">site</span> <span class="pre">amplitude</span> <span class="pre">-&gt;</span> <span class="pre">state</span></code>. A
-stock PyMC NUTS step first updates site amplitudes using their exact
-conditional likelihood. If that transition changes the amplitudes, the
-sampler rebuilds the state-likelihood quadratic for the returned values. The
-following stock state NUTS step holds that quadratic fixed, so its leapfrog
-evaluations do not refactor the observation covariance.</p>
+<p>Compatibility imports; implementation lives in <a class="reference internal" href="openghg_inversions.inference.cached_sigma.html#module-openghg_inversions.inference.cached_sigma" title="openghg_inversions.inference.cached_sigma"><code class="xref py py-mod docutils literal notranslate"><span class="pre">openghg_inversions.inference.cached_sigma</span></code></a>.</p>
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">PymcCachedSigmaNutsStep</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep" title="Link to this definition">#</a></dt>

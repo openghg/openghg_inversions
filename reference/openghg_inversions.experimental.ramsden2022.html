@@ -340,6 +340,12 @@
 </ul>
 </details></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.html">openghg_inversions.hbmcmc</a></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.inference.html">openghg_inversions.inference</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inference.cached_sigma.html">openghg_inversions.inference.cached_sigma</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inference.diagnostics.html">openghg_inversions.inference.diagnostics</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inference.sampling.html">openghg_inversions.inference.sampling</a></li>
+</ul>
+</details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.inversion_data.html">openghg_inversions.inversion_data</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.acquisition.html">openghg_inversions.inversion_data.acquisition</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.get_data.html">openghg_inversions.inversion_data.get_data</a></li>
@@ -376,6 +382,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.make_outputs.html">openghg_inversions.postprocessing.make_outputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.make_paris_outputs.html">openghg_inversions.postprocessing.make_paris_outputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.merge_paris_outputs.html">openghg_inversions.postprocessing.merge_paris_outputs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.metrics.html">openghg_inversions.postprocessing.metrics</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.nested_paris_outputs.html">openghg_inversions.postprocessing.nested_paris_outputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.output_views.html">openghg_inversions.postprocessing.output_views</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.sigma.html">openghg_inversions.postprocessing.sigma</a></li>
@@ -631,7 +638,7 @@ every coupled sector.</p></li>
 <li><p><strong>model</strong> (<a class="reference external" href="https://www.pymc.io/projects/docs/en/stable/api/model/generated/pymc.model.core.Model.html#pymc.model.core.Model" title="(in PyMC v6.3.2)"><em>Model</em></a>) – Built PyMC model.</p></li>
 <li><p><strong>idata</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.9.0)"><em>DataTree</em></a>) – Joint sampled DataTree preserving shared-state/ratio covariance
 and the two namespaced likelihood and predictive variables.</p></li>
-<li><p><strong>sampler</strong> (<a class="reference internal" href="openghg_inversions.rhime.sampling.html#openghg_inversions.rhime.sampling.RhimeSampler" title="openghg_inversions.rhime.sampling.RhimeSampler"><em>RhimeSampler</em></a>) – Modern RHIME sampler used for the run.</p></li>
+<li><p><strong>sampler</strong> (<a class="reference internal" href="openghg_inversions.inference.sampling.html#openghg_inversions.inference.sampling.RhimeSampler" title="openghg_inversions.inference.sampling.RhimeSampler"><em>RhimeSampler</em></a>) – Modern RHIME sampler used for the run.</p></li>
 </ul>
 </dd>
 </dl>
@@ -707,7 +714,7 @@ the declared reference ratio.</p></li>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>Built PyMC model ready for
-<a class="reference internal" href="openghg_inversions.rhime.sampling.html#openghg_inversions.rhime.sampling.RhimeSampler" title="openghg_inversions.rhime.sampling.RhimeSampler"><code class="xref py py-class docutils literal notranslate"><span class="pre">RhimeSampler</span></code></a>.</p>
+<a class="reference internal" href="openghg_inversions.inference.sampling.html#openghg_inversions.inference.sampling.RhimeSampler" title="openghg_inversions.inference.sampling.RhimeSampler"><code class="xref py py-class docutils literal notranslate"><span class="pre">RhimeSampler</span></code></a>.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If model metadata, required input variables, source labels,
@@ -733,7 +740,7 @@ declared <code class="docutils literal notranslate"><span class="pre">observatio
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>prepared_inputs</strong> (<a class="reference internal" href="openghg_inversions.experimental.ramsden2022.model.html#openghg_inversions.experimental.ramsden2022.model.RamsdenPreparedInputs" title="openghg_inversions.experimental.ramsden2022.model.RamsdenPreparedInputs"><em>RamsdenPreparedInputs</em></a>) – Canonical primary and tracer datasets.</p></li>
 <li><p><strong>model_spec</strong> (<a class="reference internal" href="openghg_inversions.experimental.ramsden2022.model.html#openghg_inversions.experimental.ramsden2022.model.RamsdenModelSpec" title="openghg_inversions.experimental.ramsden2022.model.RamsdenModelSpec"><em>RamsdenModelSpec</em></a>) – Historical model specification.</p></li>
-<li><p><strong>sampler</strong> (<a class="reference internal" href="openghg_inversions.rhime.sampling.html#openghg_inversions.rhime.sampling.RhimeSampler" title="openghg_inversions.rhime.sampling.RhimeSampler"><em>RhimeSampler</em></a><em> | </em><em>None</em>) – Modern RHIME sampling configuration controlling seeds,
+<li><p><strong>sampler</strong> (<a class="reference internal" href="openghg_inversions.inference.sampling.html#openghg_inversions.inference.sampling.RhimeSampler" title="openghg_inversions.inference.sampling.RhimeSampler"><em>RhimeSampler</em></a><em> | </em><em>None</em>) – Modern RHIME sampling configuration controlling seeds,
 chains, draws, and predictive output. When omitted, the standard
 sampler is used with both namespaced gas observations included in
 posterior predictive sampling.</p></li>
@@ -753,7 +760,7 @@ posterior predictive sampling.</p></li>
 <p>This function samples the model and may run multiple chains. It does
 not retrieve data, convert units, or write postprocessed products.
 Sampling exceptions raised by
-<a class="reference internal" href="openghg_inversions.rhime.sampling.html#openghg_inversions.rhime.sampling.RhimeSampler" title="openghg_inversions.rhime.sampling.RhimeSampler"><code class="xref py py-class docutils literal notranslate"><span class="pre">RhimeSampler</span></code></a> are
+<a class="reference internal" href="openghg_inversions.inference.sampling.html#openghg_inversions.inference.sampling.RhimeSampler" title="openghg_inversions.inference.sampling.RhimeSampler"><code class="xref py py-class docutils literal notranslate"><span class="pre">RhimeSampler</span></code></a> are
 propagated.</p>
 </dd></dl>
 

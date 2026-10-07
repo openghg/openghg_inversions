@@ -634,9 +634,9 @@
 </li>
       <li><a href="reference/openghg_inversions.basis.layout.html#openghg_inversions.basis.layout.BasisStateMetadata">BasisStateMetadata (class in openghg_inversions.basis.layout)</a>
 </li>
-      <li><a href="reference/openghg_inversions.postprocessing.diagnostics.html#openghg_inversions.postprocessing.diagnostics.bayes_r2_by_site">bayes_r2_by_site() (in module openghg_inversions.postprocessing.diagnostics)</a>
+      <li><a href="reference/openghg_inversions.postprocessing.metrics.html#openghg_inversions.postprocessing.metrics.bayes_r2_by_site">bayes_r2_by_site() (in module openghg_inversions.postprocessing.metrics)</a>
 </li>
-      <li><a href="reference/openghg_inversions.postprocessing.diagnostics.html#openghg_inversions.postprocessing.diagnostics.bayes_r2_by_site_resample">bayes_r2_by_site_resample() (in module openghg_inversions.postprocessing.diagnostics)</a>
+      <li><a href="reference/openghg_inversions.postprocessing.metrics.html#openghg_inversions.postprocessing.metrics.bayes_r2_by_site_resample">bayes_r2_by_site_resample() (in module openghg_inversions.postprocessing.metrics)</a>
 </li>
       <li><a href="reference/openghg_inversions.borrowed.html#openghg_inversions.borrowed.borrow">borrow() (in module openghg_inversions.borrowed)</a>
 </li>
@@ -860,7 +860,7 @@
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/openghg_inversions.inversion_data.serialise.html#openghg_inversions.inversion_data.serialise.combine_scenario_attrs">combine_scenario_attrs() (in module openghg_inversions.inversion_data.serialise)</a>
 </li>
-      <li><a href="reference/openghg_inversions.rhime.cached_sigma.html#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.competence">competence() (PymcCachedSigmaNutsStep static method)</a>
+      <li><a href="reference/openghg_inversions.inference.cached_sigma.html#openghg_inversions.inference.cached_sigma.PymcCachedSigmaNutsStep.competence">competence() (PymcCachedSigmaNutsStep static method)</a>, <a href="reference/openghg_inversions.rhime.cached_sigma.html#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.competence">[1]</a>
 </li>
       <li><a href="reference/openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.ComponentConsolidationPolicy">ComponentConsolidationPolicy (class in openghg_inversions.basis.algorithms)</a>
 </li>
@@ -1387,7 +1387,7 @@
       <ul>
         <li><a href="reference/openghg_inversions.models.cached_sigma.html#openghg_inversions.models.cached_sigma.MarginalQuadraticCache.log_likelihood">(MarginalQuadraticCache method)</a>, <a href="reference/openghg_inversions.models.html#openghg_inversions.models.MarginalQuadraticCache.log_likelihood">[1]</a>
 </li>
-        <li><a href="reference/openghg_inversions.rhime.cached_sigma.html#openghg_inversions.rhime.cached_sigma.PytensorMarginalQuadraticCache.log_likelihood">(PytensorMarginalQuadraticCache method)</a>
+        <li><a href="reference/openghg_inversions.inference.cached_sigma.html#openghg_inversions.inference.cached_sigma.PytensorMarginalQuadraticCache.log_likelihood">(PytensorMarginalQuadraticCache method)</a>, <a href="reference/openghg_inversions.rhime.cached_sigma.html#openghg_inversions.rhime.cached_sigma.PytensorMarginalQuadraticCache.log_likelihood">[1]</a>
 </li>
       </ul></li>
       <li><a href="reference/openghg_inversions.models.cached_sigma.html#openghg_inversions.models.cached_sigma.FixedOuCachedSigmaTarget.log_likelihood_from_mean">log_likelihood_from_mean() (FixedOuCachedSigmaTarget method)</a>, <a href="reference/openghg_inversions.models.html#openghg_inversions.models.FixedOuCachedSigmaTarget.log_likelihood_from_mean">[1]</a>
@@ -1420,8 +1420,12 @@
 </li>
       <li><a href="reference/openghg_inversions.basis.html#openghg_inversions.basis.make_basis_functions">make_basis_functions() (in module openghg_inversions.basis)</a>
 </li>
-      <li><a href="reference/openghg_inversions.rhime.cached_sigma.html#openghg_inversions.rhime.cached_sigma.make_cached_sigma_compound_step">make_cached_sigma_compound_step() (in module openghg_inversions.rhime.cached_sigma)</a>
+      <li><a href="reference/openghg_inversions.inference.cached_sigma.html#openghg_inversions.inference.cached_sigma.make_cached_sigma_compound_step">make_cached_sigma_compound_step() (in module openghg_inversions.inference.cached_sigma)</a>
+
+      <ul>
+        <li><a href="reference/openghg_inversions.rhime.cached_sigma.html#openghg_inversions.rhime.cached_sigma.make_cached_sigma_compound_step">(in module openghg_inversions.rhime.cached_sigma)</a>
 </li>
+      </ul></li>
       <li><a href="reference/openghg_inversions.postprocessing.linked_paris_outputs.html#openghg_inversions.postprocessing.linked_paris_outputs.make_co2_o2_paris_outputs">make_co2_o2_paris_outputs() (in module openghg_inversions.postprocessing.linked_paris_outputs)</a>
 </li>
       <li><a href="reference/openghg_inversions.rhime.co2.co2_outputs.html#openghg_inversions.rhime.co2.co2_outputs.make_co2_rhime_outputs">make_co2_rhime_outputs() (in module openghg_inversions.rhime.co2.co2_outputs)</a>
@@ -1612,6 +1616,14 @@
 </li>
         <li><a href="reference/openghg_inversions.flux_sanitization.html#module-openghg_inversions.flux_sanitization">openghg_inversions.flux_sanitization</a>
 </li>
+        <li><a href="reference/openghg_inversions.inference.html#module-openghg_inversions.inference">openghg_inversions.inference</a>
+</li>
+        <li><a href="reference/openghg_inversions.inference.cached_sigma.html#module-openghg_inversions.inference.cached_sigma">openghg_inversions.inference.cached_sigma</a>
+</li>
+        <li><a href="reference/openghg_inversions.inference.diagnostics.html#module-openghg_inversions.inference.diagnostics">openghg_inversions.inference.diagnostics</a>
+</li>
+        <li><a href="reference/openghg_inversions.inference.sampling.html#module-openghg_inversions.inference.sampling">openghg_inversions.inference.sampling</a>
+</li>
         <li><a href="reference/openghg_inversions.inversion_data.html#module-openghg_inversions.inversion_data">openghg_inversions.inversion_data</a>
 </li>
         <li><a href="reference/openghg_inversions.inversion_data.acquisition.html#module-openghg_inversions.inversion_data.acquisition">openghg_inversions.inversion_data.acquisition</a>
@@ -1683,6 +1695,8 @@
         <li><a href="reference/openghg_inversions.postprocessing.make_paris_outputs.html#module-openghg_inversions.postprocessing.make_paris_outputs">openghg_inversions.postprocessing.make_paris_outputs</a>
 </li>
         <li><a href="reference/openghg_inversions.postprocessing.merge_paris_outputs.html#module-openghg_inversions.postprocessing.merge_paris_outputs">openghg_inversions.postprocessing.merge_paris_outputs</a>
+</li>
+        <li><a href="reference/openghg_inversions.postprocessing.metrics.html#module-openghg_inversions.postprocessing.metrics">openghg_inversions.postprocessing.metrics</a>
 </li>
         <li><a href="reference/openghg_inversions.postprocessing.nested_paris_outputs.html#module-openghg_inversions.postprocessing.nested_paris_outputs">openghg_inversions.postprocessing.nested_paris_outputs</a>
 </li>
@@ -1800,7 +1814,7 @@
       <ul>
         <li><a href="reference/openghg_inversions.models.cached_sigma.html#openghg_inversions.models.cached_sigma.MarginalQuadraticCache.n_state">(MarginalQuadraticCache property)</a>, <a href="reference/openghg_inversions.models.html#openghg_inversions.models.MarginalQuadraticCache.n_state">[1]</a>
 </li>
-        <li><a href="reference/openghg_inversions.rhime.cached_sigma.html#openghg_inversions.rhime.cached_sigma.PytensorMarginalQuadraticCache.n_state">(PytensorMarginalQuadraticCache property)</a>
+        <li><a href="reference/openghg_inversions.inference.cached_sigma.html#openghg_inversions.inference.cached_sigma.PytensorMarginalQuadraticCache.n_state">(PytensorMarginalQuadraticCache property)</a>, <a href="reference/openghg_inversions.rhime.cached_sigma.html#openghg_inversions.rhime.cached_sigma.PytensorMarginalQuadraticCache.n_state">[1]</a>
 </li>
         <li><a href="reference/openghg_inversions.models.html#openghg_inversions.models.ResolvedStateActivity.n_state">(ResolvedStateActivity property)</a>, <a href="reference/openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.ResolvedStateActivity.n_state">[1]</a>
 </li>
@@ -2082,6 +2096,34 @@
 </li>
       </ul></li>
       <li>
+    openghg_inversions.inference
+
+      <ul>
+        <li><a href="reference/openghg_inversions.inference.html#module-openghg_inversions.inference">module</a>
+</li>
+      </ul></li>
+      <li>
+    openghg_inversions.inference.cached_sigma
+
+      <ul>
+        <li><a href="reference/openghg_inversions.inference.cached_sigma.html#module-openghg_inversions.inference.cached_sigma">module</a>
+</li>
+      </ul></li>
+      <li>
+    openghg_inversions.inference.diagnostics
+
+      <ul>
+        <li><a href="reference/openghg_inversions.inference.diagnostics.html#module-openghg_inversions.inference.diagnostics">module</a>
+</li>
+      </ul></li>
+      <li>
+    openghg_inversions.inference.sampling
+
+      <ul>
+        <li><a href="reference/openghg_inversions.inference.sampling.html#module-openghg_inversions.inference.sampling">module</a>
+</li>
+      </ul></li>
+      <li>
     openghg_inversions.inversion_data
 
       <ul>
@@ -2242,6 +2284,8 @@
         <li><a href="reference/openghg_inversions.models.state_activity.html#module-openghg_inversions.models.state_activity">module</a>
 </li>
       </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li>
     openghg_inversions.native_covariance
 
@@ -2256,8 +2300,6 @@
         <li><a href="reference/openghg_inversions.observation_error.html#module-openghg_inversions.observation_error">module</a>
 </li>
       </ul></li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li>
     openghg_inversions.postprocessing
 
@@ -2333,6 +2375,13 @@
 
       <ul>
         <li><a href="reference/openghg_inversions.postprocessing.merge_paris_outputs.html#module-openghg_inversions.postprocessing.merge_paris_outputs">module</a>
+</li>
+      </ul></li>
+      <li>
+    openghg_inversions.postprocessing.metrics
+
+      <ul>
+        <li><a href="reference/openghg_inversions.postprocessing.metrics.html#module-openghg_inversions.postprocessing.metrics">module</a>
 </li>
       </ul></li>
       <li>
@@ -2688,6 +2737,8 @@
       </ul></li>
       <li><a href="reference/openghg_inversions.models.priors.html#openghg_inversions.models.priors.positive_prior_args">positive_prior_args() (in module openghg_inversions.models.priors)</a>
 </li>
+      <li><a href="reference/openghg_inversions.inference.diagnostics.html#openghg_inversions.inference.diagnostics.posterior_summary">posterior_summary() (in module openghg_inversions.inference.diagnostics)</a>
+</li>
       <li><a href="reference/openghg_inversions.rhime.co2.stages.html#openghg_inversions.rhime.co2.stages.postprocess_co2_stage">postprocess_co2_stage() (in module openghg_inversions.rhime.co2.stages)</a>
 </li>
       <li><a href="reference/openghg_inversions.rhime.html#openghg_inversions.rhime.postprocess_rhime_stage">postprocess_rhime_stage() (in module openghg_inversions.rhime)</a>
@@ -2820,10 +2871,18 @@
       </ul></li>
       <li><a href="reference/openghg_inversions.borrowed.html#openghg_inversions.borrowed.BorrowedNDArray.put">put() (BorrowedNDArray method)</a>
 </li>
-      <li><a href="reference/openghg_inversions.rhime.cached_sigma.html#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep">PymcCachedSigmaNutsStep (class in openghg_inversions.rhime.cached_sigma)</a>
+      <li><a href="reference/openghg_inversions.inference.cached_sigma.html#openghg_inversions.inference.cached_sigma.PymcCachedSigmaNutsStep">PymcCachedSigmaNutsStep (class in openghg_inversions.inference.cached_sigma)</a>
+
+      <ul>
+        <li><a href="reference/openghg_inversions.rhime.cached_sigma.html#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep">(class in openghg_inversions.rhime.cached_sigma)</a>
 </li>
-      <li><a href="reference/openghg_inversions.rhime.cached_sigma.html#openghg_inversions.rhime.cached_sigma.PytensorMarginalQuadraticCache">PytensorMarginalQuadraticCache (class in openghg_inversions.rhime.cached_sigma)</a>
+      </ul></li>
+      <li><a href="reference/openghg_inversions.inference.cached_sigma.html#openghg_inversions.inference.cached_sigma.PytensorMarginalQuadraticCache">PytensorMarginalQuadraticCache (class in openghg_inversions.inference.cached_sigma)</a>
+
+      <ul>
+        <li><a href="reference/openghg_inversions.rhime.cached_sigma.html#openghg_inversions.rhime.cached_sigma.PytensorMarginalQuadraticCache">(class in openghg_inversions.rhime.cached_sigma)</a>
 </li>
+      </ul></li>
   </ul></td>
 </tr></table>
 
@@ -2950,7 +3009,7 @@
 </li>
       <li><a href="reference/openghg_inversions.serialization.html#openghg_inversions.serialization.reset_serialisation_multiindexes">reset_serialisation_multiindexes() (in module openghg_inversions.serialization)</a>
 </li>
-      <li><a href="reference/openghg_inversions.rhime.cached_sigma.html#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.reset_tuning">reset_tuning() (PymcCachedSigmaNutsStep method)</a>
+      <li><a href="reference/openghg_inversions.inference.cached_sigma.html#openghg_inversions.inference.cached_sigma.PymcCachedSigmaNutsStep.reset_tuning">reset_tuning() (PymcCachedSigmaNutsStep method)</a>, <a href="reference/openghg_inversions.rhime.cached_sigma.html#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.reset_tuning">[1]</a>
 </li>
       <li><a href="reference/openghg_inversions.model_error.html#openghg_inversions.model_error.residual_error_method">residual_error_method() (in module openghg_inversions.model_error)</a>
 </li>
@@ -3088,10 +3147,10 @@
         <li><a href="reference/openghg_inversions.rhime.specs.html#openghg_inversions.rhime.specs.RhimeRunSpec">(class in openghg_inversions.rhime.specs)</a>
 </li>
       </ul></li>
-      <li><a href="reference/openghg_inversions.rhime.html#openghg_inversions.rhime.RhimeSampler">RhimeSampler (class in openghg_inversions.rhime)</a>
+      <li><a href="reference/openghg_inversions.inference.sampling.html#openghg_inversions.inference.sampling.RhimeSampler">RhimeSampler (class in openghg_inversions.inference.sampling)</a>
 
       <ul>
-        <li><a href="reference/openghg_inversions.rhime.sampling.html#openghg_inversions.rhime.sampling.RhimeSampler">(class in openghg_inversions.rhime.sampling)</a>
+        <li><a href="reference/openghg_inversions.rhime.html#openghg_inversions.rhime.RhimeSampler">(class in openghg_inversions.rhime)</a>
 </li>
       </ul></li>
       <li><a href="reference/openghg_inversions.experimental.ramsden2022.html#openghg_inversions.experimental.ramsden2022.run_ramsden_from_prepared_inputs">run_ramsden_from_prepared_inputs() (in module openghg_inversions.experimental.ramsden2022)</a>
@@ -3172,7 +3231,7 @@
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/openghg_inversions.array_ops.html#openghg_inversions.array_ops.same_index">same_index() (in module openghg_inversions.array_ops)</a>
 </li>
-      <li><a href="reference/openghg_inversions.rhime.html#openghg_inversions.rhime.RhimeSampler.sample">sample() (RhimeSampler method)</a>, <a href="reference/openghg_inversions.rhime.sampling.html#openghg_inversions.rhime.sampling.RhimeSampler.sample">[1]</a>
+      <li><a href="reference/openghg_inversions.inference.sampling.html#openghg_inversions.inference.sampling.RhimeSampler.sample">sample() (RhimeSampler method)</a>, <a href="reference/openghg_inversions.rhime.html#openghg_inversions.rhime.RhimeSampler.sample">[1]</a>
 </li>
       <li><a href="reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.sample_co2_cached_prior_predictive">sample_co2_cached_prior_predictive() (in module openghg_inversions.rhime.co2)</a>
 
@@ -3266,13 +3325,13 @@
       </ul></li>
       <li><a href="reference/openghg_inversions.native_covariance.html#openghg_inversions.native_covariance.SeparableExponentialCovariance">SeparableExponentialCovariance (class in openghg_inversions.native_covariance)</a>
 </li>
-      <li><a href="reference/openghg_inversions.rhime.cached_sigma.html#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.set_rng">set_rng() (PymcCachedSigmaNutsStep method)</a>
+      <li><a href="reference/openghg_inversions.inference.cached_sigma.html#openghg_inversions.inference.cached_sigma.PymcCachedSigmaNutsStep.set_rng">set_rng() (PymcCachedSigmaNutsStep method)</a>, <a href="reference/openghg_inversions.rhime.cached_sigma.html#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.set_rng">[1]</a>
 </li>
       <li><a href="reference/openghg_inversions.borrowed.html#openghg_inversions.borrowed.BorrowedNDArray.setfield">setfield() (BorrowedNDArray method)</a>
 </li>
       <li><a href="reference/openghg_inversions.borrowed.html#openghg_inversions.borrowed.BorrowedNDArray.setflags">setflags() (BorrowedNDArray method)</a>
 </li>
-      <li><a href="reference/openghg_inversions.rhime.cached_sigma.html#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.setup_chain">setup_chain() (PymcCachedSigmaNutsStep method)</a>
+      <li><a href="reference/openghg_inversions.inference.cached_sigma.html#openghg_inversions.inference.cached_sigma.PymcCachedSigmaNutsStep.setup_chain">setup_chain() (PymcCachedSigmaNutsStep method)</a>, <a href="reference/openghg_inversions.rhime.cached_sigma.html#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.setup_chain">[1]</a>
 </li>
       <li><a href="reference/openghg_inversions.postprocessing.make_paris_outputs.html#openghg_inversions.postprocessing.make_paris_outputs.shift_measurement_time_to_midpoint">shift_measurement_time_to_midpoint() (in module openghg_inversions.postprocessing.make_paris_outputs)</a>
 </li>
@@ -3380,15 +3439,15 @@
       </ul></li>
       <li><a href="reference/openghg_inversions.models.components.html#openghg_inversions.models.components.StateVectorResult">StateVectorResult (class in openghg_inversions.models.components)</a>
 </li>
-      <li><a href="reference/openghg_inversions.rhime.cached_sigma.html#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.stats_dtypes_shapes">stats_dtypes_shapes (PymcCachedSigmaNutsStep attribute)</a>
+      <li><a href="reference/openghg_inversions.inference.cached_sigma.html#openghg_inversions.inference.cached_sigma.PymcCachedSigmaNutsStep.stats_dtypes_shapes">stats_dtypes_shapes (PymcCachedSigmaNutsStep attribute)</a>, <a href="reference/openghg_inversions.rhime.cached_sigma.html#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.stats_dtypes_shapes">[1]</a>
 </li>
       <li><a href="reference/openghg_inversions.postprocessing.stats.html#openghg_inversions.postprocessing.stats.StatsFunction">StatsFunction (class in openghg_inversions.postprocessing.stats)</a>
 </li>
       <li><a href="reference/openghg_inversions.postprocessing.stats.html#openghg_inversions.postprocessing.stats.stdev">stdev() (in module openghg_inversions.postprocessing.stats)</a>
 </li>
-      <li><a href="reference/openghg_inversions.rhime.cached_sigma.html#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.step">step() (PymcCachedSigmaNutsStep method)</a>
+      <li><a href="reference/openghg_inversions.inference.cached_sigma.html#openghg_inversions.inference.cached_sigma.PymcCachedSigmaNutsStep.step">step() (PymcCachedSigmaNutsStep method)</a>, <a href="reference/openghg_inversions.rhime.cached_sigma.html#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.step">[1]</a>
 </li>
-      <li><a href="reference/openghg_inversions.rhime.cached_sigma.html#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.stop_tuning">stop_tuning() (PymcCachedSigmaNutsStep method)</a>
+      <li><a href="reference/openghg_inversions.inference.cached_sigma.html#openghg_inversions.inference.cached_sigma.PymcCachedSigmaNutsStep.stop_tuning">stop_tuning() (PymcCachedSigmaNutsStep method)</a>, <a href="reference/openghg_inversions.rhime.cached_sigma.html#openghg_inversions.rhime.cached_sigma.PymcCachedSigmaNutsStep.stop_tuning">[1]</a>
 </li>
       <li><a href="reference/openghg_inversions.config.config.html#openghg_inversions.config.config.str_check">str_check() (in module openghg_inversions.config.config)</a>
 </li>
@@ -3472,7 +3531,7 @@
 <h2 id="U">U</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="reference/openghg_inversions.rhime.cached_sigma.html#openghg_inversions.rhime.cached_sigma.PytensorMarginalQuadraticCache.update">update() (PytensorMarginalQuadraticCache method)</a>
+      <li><a href="reference/openghg_inversions.inference.cached_sigma.html#openghg_inversions.inference.cached_sigma.PytensorMarginalQuadraticCache.update">update() (PytensorMarginalQuadraticCache method)</a>, <a href="reference/openghg_inversions.rhime.cached_sigma.html#openghg_inversions.rhime.cached_sigma.PytensorMarginalQuadraticCache.update">[1]</a>
 </li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
