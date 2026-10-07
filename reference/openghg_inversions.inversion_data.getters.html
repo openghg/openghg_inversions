@@ -606,7 +606,10 @@ to <code class="docutils literal notranslate"><span class="pre">float32</span></
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inversion_data.getters.get_obs_data" title="Link to this definition">#</a></dt>
-<dd><p>Try to retrieve obs. data from listed stores.</p>
+<dd><p>Retrieve the first non-empty observation dataset from the listed stores.</p>
+<p>Missing results (<code class="docutils literal notranslate"><span class="pre">SearchError</span></code>, <code class="docutils literal notranslate"><span class="pre">None</span></code>, or datasets with an empty time
+dimension) are skipped. Return <code class="docutils literal notranslate"><span class="pre">None</span></code> if all stores have missing results.
+Retrieval <code class="docutils literal notranslate"><span class="pre">AttributeError</span></code> exceptions are logged with context and re-raised.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.openghg.org/api/devapi_dataobjects.html#openghg.dataobjects.ObsData" title="(in OpenGHG v0.19.0)"><em>ObsData</em></a> | None</p>

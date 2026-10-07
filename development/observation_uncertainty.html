@@ -1,0 +1,813 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Missing observation uncertainty: behavior and decisions &#8212; openghg_inversions  documentation</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../_static/styles/theme.css?digest=cb8930eaaf36d9849b67" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=cb8930eaaf36d9849b67" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../_static/jupyter-sphinx.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/thebelab.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=5f08cb77" />
+  
+  <!-- So that users can add custom icons -->
+  <script defer src="../_static/scripts/fontawesome.js?digest=cb8930eaaf36d9849b67"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=cb8930eaaf36d9849b67" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=cb8930eaaf36d9849b67" />
+
+    <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../_static/thebelab-helper.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+    <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@4/tex-mml-chtml.js"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'development/observation_uncertainty';</script>
+    <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Releases and branch maintenance" href="releasing.html" />
+    <link rel="prev" title="Maintain the documentation" href="documentation.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="" />
+  
+    
+    <script src="../_static/searchtools.js"></script>
+    <script src="../_static/language_data.js"></script>
+    <script src="../searchindex.js"></script>
+  
+  </head>
+  <body data-default-mode="">
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+  
+  
+  
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header id="pst-header" class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+  
+    <p class="title logo__title">openghg_inversions  documentation</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../usage/usage.html">
+    Using OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="index.html">
+    Developing OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../experimental/index.html">
+    Experimental code
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../reference/index.html">
+    API reference
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+    <button class="pst-navbar-icon sidebar-toggle secondary-toggle" aria-label="On this page">
+      <span class="fa-solid fa-outdent"></span>
+    </button>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          
+          
+            <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../usage/usage.html">
+    Using OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="index.html">
+    Developing OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../experimental/index.html">
+    Experimental code
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../reference/index.html">
+    API reference
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+          
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item pst-sidebar-collapse"><button id="pst-collapse-sidebar-button" aria-expanded="true" aria-controls="pst-primary-sidebar">
+  <svg class="pst-icon" role="img" aria-hidden="true" focusable="false" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+    <path fill="currentColor" d="M3 15.5C2.36232 15.5 1.74874 15.2564 1.28478 14.8189C0.820828 14.3815 0.541576 13.7832 0.504167 13.1467L0.5 13L0.5 3C0.499965 2.36232 0.743605 1.74874 1.18107 1.28478C1.61854 0.820828 2.21676 0.541576 2.85333 0.504167L3 0.5L13 0.5C13.6377 0.499965 14.2513 0.743605 14.7152 1.18107C15.1792 1.61854 15.4584 2.21676 15.4958 2.85333L15.5 3L15.5 13C15.5 13.6377 15.2564 14.2513 14.8189 14.7152C14.3815 15.1792 13.7832 15.4584 13.1467 15.4958L13 15.5L3 15.5ZM3 13.8333L10.5 13.8333L10.5 2.16667L3 2.16667C2.79589 2.16669 2.59889 2.24163 2.44636 2.37726C2.29383 2.5129 2.19638 2.69979 2.1725 2.9025L2.16667 3L2.16667 13C2.16669 13.2041 2.24163 13.4011 2.37726 13.5536C2.5129 13.7062 2.69979 13.8036 2.9025 13.8275L3 13.8333ZM6.65583 10.325L6.5775 10.2558L4.91083 8.58917C4.76735 8.44567 4.68116 8.25476 4.66843 8.05223C4.65569 7.84971 4.71729 7.6495 4.84167 7.48917L4.91083 7.41083L6.5775 5.74417C6.72747 5.59471 6.9287 5.50794 7.14032 5.50148C7.35194 5.49502 7.55809 5.56935 7.7169 5.70937C7.8757 5.8494 7.97525 6.04463 7.99533 6.25539C8.01541 6.46616 7.95451 6.67667 7.825 6.84417L7.75583 6.9225L6.67917 8L7.75583 9.0775C7.89931 9.22099 7.98551 9.41191 7.99824 9.61443C8.01097 9.81695 7.94938 10.0172 7.825 10.1775L7.75583 10.2558C7.61234 10.3993 7.42142 10.4855 7.2189 10.4982C7.01638 10.511 6.81617 10.4494 6.65583 10.325Z"/>
+  </svg>
+  <span class="pst-collapse-sidebar-label">Collapse Sidebar</span>
+  <span class="pst-expand-sidebar-label">Expand Sidebar</span>
+</button></div>
+        <div class="sidebar-primary-item">
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Section Navigation">
+  <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
+  <div class="bd-toc-item navbar-nav"><ul class="current nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="rhime_model_development.html">Developing RHIME models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="validation_and_xarray.html">Validation and labelled-array patterns</a></li>
+<li class="toctree-l1"><a class="reference internal" href="documentation.html">Maintain the documentation</a></li>
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">Missing observation uncertainty: behavior and decisions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="releasing.html">Releases and branch maintenance</a></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+      <div class="sidebar-primary-item">
+<div id="ethical-ad-placement"
+      class="flat"
+      data-ea-publisher="readthedocs"
+      data-ea-type="readthedocs-sidebar"
+      data-ea-manual="true">
+</div></div>
+  </div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="index.html" class="nav-link">Developing OpenGHG Inversions</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Missing observation uncertainty: behavior and decisions</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="missing-observation-uncertainty-behavior-and-decisions">
+<h1>Missing observation uncertainty: behavior and decisions<a class="headerlink" href="#missing-observation-uncertainty-behavior-and-decisions" title="Link to this heading">#</a></h1>
+<p>This record explains how RHIME handles missing repeatability and variability,
+and which changes still require scientific agreement. It is intended for
+maintainers investigating lost observations or proposing an uncertainty policy.
+The implementation review covers OpenGHG Inversions 0.7.4 and OpenGHG 0.16.0
+and 0.18.0. Historical decisions are linked below; proposed estimators are not
+configuration options that users can currently select.</p>
+<section id="quantities-and-missingness">
+<h2>Quantities and missingness<a class="headerlink" href="#quantities-and-missingness" title="Link to this heading">#</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">mf_repeatability</span></code> describes measurement repeatability. <code class="docutils literal notranslate"><span class="pre">mf_variability</span></code>
+can be supplied with observations or calculated during resampling. Supplied
+variability commonly describes the spread of high-frequency measurements within
+the provider’s averaging window; for some datasets it is also the supplied
+measure used as instrument uncertainty. Its interpretation therefore depends
+on the source, not just the variable name. Variability calculated from input
+concentrations during resampling describes their spread over the new window
+and is normally added alongside repeatability.</p>
+<p>Estimating variability from already averaged concentrations cannot reconstruct
+missing within-input variability or instrument repeatability. Conversely,
+absent repeatability does not necessarily mean that instrument uncertainty is
+unavailable: supplied variability may serve that role. <code class="docutils literal notranslate"><span class="pre">mf_error</span></code> is the
+prepared observation-error component supplied to the likelihood; RHIME
+likelihoods may also include modeled mismatch uncertainty. These error
+quantities have the same mole-fraction units as <code class="docutils literal notranslate"><span class="pre">mf</span></code>.</p>
+<p>An absent variable, a present variable containing NaNs, and a zero value take
+different paths in the existing implementation. A synthetic zero contribution
+does not establish that measurement uncertainty was measured to be zero.</p>
+</section>
+<section id="existing-uncertainty-construction">
+<h2>Existing uncertainty construction<a class="headerlink" href="#existing-uncertainty-construction" title="Link to this heading">#</a></h2>
+<p><a class="reference internal" href="../reference/openghg_inversions.inversion_data.get_data.html#openghg_inversions.inversion_data.get_data.add_obs_error" title="openghg_inversions.inversion_data.get_data.add_obs_error"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.inversion_data.get_data.add_obs_error()</span></code></a> constructs the
+error from each merged site’s data. With averaging errors enabled, its behavior
+is:</p>
+<div class="pst-scrollable-table-container"><table class="table">
+<colgroup>
+<col style="width: 40.0%" />
+<col style="width: 60.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Input fields</p></th>
+<th class="head"><p>Result before the zero-error fallback</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Both fields absent</p></td>
+<td><p>Raise <code class="docutils literal notranslate"><span class="pre">ValueError</span></code>; no observation error is accepted.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Repeatability absent, variability present</p></td>
+<td><p>Supply zero repeatability and use variability as <code class="docutils literal notranslate"><span class="pre">mf_error</span></code>, including
+any NaNs already in variability.</p></td>
+</tr>
+<tr class="row-even"><td><p>Variability absent, repeatability present</p></td>
+<td><p>Supply zero variability and use the repeatability contribution, with
+NaNs treated as zero during quadrature.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Both fields present, one component NaN</p></td>
+<td><p>Use the other component; NaNs are replaced by zero only in the
+quadrature expression, not in the original diagnostic arrays.</p></td>
+</tr>
+<tr class="row-even"><td><p>Both fields present, both components NaN</p></td>
+<td><p>Quadrature gives zero, which enters the fallback below.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>For two present fields, the calculation is
+<code class="docutils literal notranslate"><span class="pre">sqrt(repeatability.fillna(0)**2</span> <span class="pre">+</span> <span class="pre">variability.fillna(0)**2)</span></code>.
+With averaging errors disabled, present repeatability is used directly,
+including its NaNs. If repeatability is absent, the variability-only path still
+applies.</p>
+<p>This option operates on field names; it does not distinguish supplied
+variability used as instrument uncertainty from newly calculated variability.</p>
+<p>Zero <code class="docutils literal notranslate"><span class="pre">mf_error</span></code> values are replaced by the maximum of the median nonzero,
+non-NaN error and the standard deviation of the merged <code class="docutils literal notranslate"><span class="pre">mf</span></code> series passed to
+the function. This is an empirical fallback over that series, not an estimate
+of instrument precision or an annual average of within-window variability.
+It need not be positive when concentrations are constant. NaN <code class="docutils literal notranslate"><span class="pre">mf_error</span></code>
+values are not replaced by this step, despite the current warning referring to
+both zeros and NaNs.</p>
+<p>Inversion-input preparation subsequently drops rows containing NaNs in the
+required sensitivity, concentration, or <code class="docutils literal notranslate"><span class="pre">mf_error</span></code> variables. NaNs in the
+repeatability and variability diagnostic fields alone do not remove a row.
+A configured minimum total-error floor acts later; it cannot recover a site
+discarded during retrieval or bypass the missing-both-fields error.</p>
+</section>
+<section id="why-preserving-nans-is-not-an-incidental-bug-fix">
+<h2>Why preserving NaNs is not an incidental bug fix<a class="headerlink" href="#why-preserving-nans-is-not-an-incidental-bug-fix" title="Link to this heading">#</a></h2>
+<p>The history contains several distinct decisions:</p>
+<ul class="simple">
+<li><p><a class="reference external" href="https://github.com/openghg/openghg_inversions/pull/267">PR 267</a> explicitly
+masked the derived error when both source uncertainties were NaN, so those
+observations would be excluded.</p></li>
+<li><p>The <a class="reference external" href="https://github.com/openghg/openghg_inversions/commit/fbbe3013f0dec67e71691ac5b0b5cc43f4268f3f">April 15, 2025 change</a>
+removed that mask and introduced the zero-error fallback.</p></li>
+<li><p><a class="reference external" href="https://github.com/openghg/openghg_inversions/pull/292">PR 292</a> added NaN
+detection to warning messages, particularly when averaging errors are
+disabled. It did not change the replacement mask to include NaNs.</p></li>
+<li><p><a class="reference external" href="https://github.com/openghg/openghg_inversions/pull/306">PR 306</a> removed
+the percentage threshold for replacing zero errors. Its stated scope was
+zero values, although the combined warning refers to zeros and NaNs.</p></li>
+</ul>
+<p>Consequently, filling all NaN errors would change which observations enter an
+inversion. The warning mismatch does not establish agreement to make that
+scientific change. Preserve the current distinction when fixing unrelated
+retrieval errors; assess any replacement policy explicitly, including the case
+where both uncertainty components are unknown.</p>
+</section>
+<section id="openghg-resampling-and-retrieval">
+<h2>OpenGHG resampling and retrieval<a class="headerlink" href="#openghg-resampling-and-retrieval" title="Link to this heading">#</a></h2>
+<p>There are two distinct variability paths in the reviewed OpenGHG resampler:</p>
+<ul class="simple">
+<li><p><strong>Variability supplied with observations:</strong> resampling pools the supplied
+within-input variances and the differences between input means. The mean and
+variability are weighted by the supplied number of observations. Without
+counts, OpenGHG uses the same calculation with equal weights. Supplied
+variability is thus propagated, rather than discarded and replaced by the
+standard deviation of the input means.</p></li>
+<li><p><strong>Variability calculated during resampling:</strong> when neither variability nor
+counts is supplied, OpenGHG calculates the standard deviation of the input
+concentrations in each window. A window with one finite observation has zero
+variability in this path; a single input with supplied variability retains
+its variability mathematically under pooling, subject to numerical precision.</p></li>
+</ul>
+<p>For complete, finite inputs, the supplied-variability calculation is</p>
+<div class="math notranslate nohighlight">
+\[N = \sum_i n_i, \qquad
+\mu = \frac{\sum_i n_i m_i}{N}, \qquad
+s^2 = \frac{\sum_i n_i(s_i^2 + m_i^2)}{N} - \mu^2.\]</div>
+<p>Here <code class="docutils literal notranslate"><span class="pre">m_i</span></code>, <code class="docutils literal notranslate"><span class="pre">s_i</span></code>, and <code class="docutils literal notranslate"><span class="pre">n_i</span></code> are each input’s mean, variability, and
+observation count. This preserves within-input spread as well as spread between
+means; it is not the standard error of the new mean. Repeatability uses a
+different propagation rule, assuming independent errors: the variance of the
+mean is the sum of input repeatability variances divided by the square of the
+number of non-NaN repeatability records, rather than underlying measurement
+counts.</p>
+<p>The supplied PARIS methodology draft, <em>Inverse modelling of greenhouse gas
+surface fluxes with ELRIS, InTEM and RHIME: general methodology and model
+settings</em> (October 2025), describes these RHIME paths in section 7.1,
+pages 26–27, using equations (21) and (24). Section 4.1, pages 13–14,
+describes the provider’s hourly variability and target-gas repeatability.
+The draft is supporting scientific context, not an adopted missing-value policy.</p>
+<p>In the reviewed OpenGHG versions, all-NaN variables are deleted before surface
+resampling, so an all-NaN supplied field subsequently follows an absent-field
+path. When an observation-count field remains, the weighted branch
+does not create variability if its input variability field is absent. Thus
+identical missing uncertainty components can produce different outputs
+depending on the retained count field. See the <a class="reference external" href="https://github.com/openghg/openghg/blob/0.18.0/openghg/data_processing/_resampling.py">0.18.0 resampler</a>.</p>
+<section id="zero-observation-counts-in-issue-765">
+<h3>Zero observation counts in issue 765<a class="headerlink" href="#zero-observation-counts-in-issue-765" title="Link to this heading">#</a></h3>
+<p>A matched August 2020 CBW retrieval, investigated on October 2, 2026 using
+OpenGHG 0.16.0, isolated an input-data difference. Both observation stores
+contained 602 concentrations at identical timestamps, with nearly identical
+concentrations and finite supplied variability. <code class="docutils literal notranslate"><span class="pre">obs_nid_2026_store</span></code> had no
+observation-count field and returned 163 four-hour observations.
+<code class="docutils literal notranslate"><span class="pre">obs_paris_2026_07_store</span></code> contained an observation-count field with all values
+zero and returned an empty dataset: weighted resampling divided by zero,
+producing NaN means which were subsequently dropped. No exception was raised.
+The retrieval <code class="docutils literal notranslate"><span class="pre">AttributeError</span></code> change below does not address this path.</p>
+<p>Those zero counts were already present as <code class="docutils literal notranslate"><span class="pre">mf_count</span></code> in the frozen input
+created on August 18, before store ingestion on August 21. Valid CBW records
+have zero counts through September 29, 2021, and positive counts from September
+30, matching the source boundary with the ICOS L2 contribution. The zero
+counts are numeric values, not the file’s NaN fill value. Their interpretation
+as unavailable historical counts is plausible but has not been established
+by provider documentation or the exact freezing script.</p>
+<p>A finite measurement represents at least one observation, so supplying a count
+of zero is invalid. An absent count field instead gives every input record
+equal weight; it does not mean zero underlying observations. Guard against
+counts below one for valid measurements at the OpenGHG input boundary,
+before weighted resampling can silently discard those measurements.</p>
+<p>Correcting erroneous counts requires an authoritative source. An explicit
+equal-weight fallback for unavailable counts could reuse existing pooling,
+but must preserve valid counts in other periods and supplied variability.
+Inferred record weights must not be presented as known underlying measurement
+counts or used uncritically in sample-count thresholds. Agree a consistent
+weighting policy for windows mixing positive counts with zero or missing counts;
+replacing only unavailable counts with one would mix source-record weights with
+underlying-measurement counts.</p>
+<p>The saved-data control also exposed float32 cancellation in the supplied-
+variability formula: subtracting large second moments yielded one NaN and three
+zero variability estimates despite positive supplied variability. Promoting
+concentrations and variability to float64 before squaring produced 163 finite,
+positive estimates. A centered variance calculation is a more robust,
+algebraically equivalent alternative. These numerical corrections do not impute
+missing uncertainty or resolve invalid counts; clipping negative variances to
+zero would conceal the loss of genuine variability.</p>
+<p>On a saved copy, omitting the all-zero count field, promoting concentrations and
+supplied variability to float64, and applying normal all-NaN repeatability
+removal recovered 163 four-hour observations. Inversions supplied zero
+repeatability and used the pooled variability directly: all 163 <code class="docutils literal notranslate"><span class="pre">mf_error</span></code>
+values were finite and positive. Times matched the old-store result, with
+maximum concentration and variability differences below 0.00014 and 0.000084
+ppb respectively. This validates a recovery path under the explicit assumption
+that these historical counts are unavailable; it does not adopt that assumption
+as a general policy or establish the exact successful-run environment.</p>
+</section>
+<section id="temporary-recovery-using-an-existing-store-fallback">
+<h3>Temporary recovery using an existing store fallback<a class="headerlink" href="#temporary-recovery-using-an-existing-store-fallback" title="Link to this heading">#</a></h3>
+<p>The existing ordered-store option can recover wholly missing periods without
+changing uncertainty handling:</p>
+<div class="highlight-ini notranslate"><div class="highlight"><pre><span></span><span class="k">[INPUT.STORES]</span>
+<span class="na">obs_store</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">["obs_paris_2026_07_store", "obs_nid_2026_store"]</span>
+</pre></div>
+</div>
+<p>An actual retrieval control returned 163 CBW observations from the older store
+for August 2020 after the newer store returned no observations. An August 2022
+control returned 186 observations from the newer store without querying the
+older one. Both used four-hour averaging and OpenGHG 0.16.0.</p>
+<p>This selects the first nonempty dataset for the whole requested period; it does
+not fill gaps within a partially populated period. In particular, a run spanning
+the September 2021 source transition may still select only its valid newer
+observations. The list also applies to every site, and fallback does not occur
+after later uncertainty processing or filtering. A successful merged-data
+reload bypasses retrieval entirely.</p>
+<p>Using this temporary option deliberately substitutes an older observation
+release. Record the selected store, source UUID and version, and audit retained
+sites and uncertainties, including other sites that fall back. The final
+<code class="docutils literal notranslate"><span class="pre">source_format</span></code> metadata alone is insufficient to identify the selected
+store. This option does not implement Joe’s proposed hierarchy or correct the
+numerical precision issue.</p>
+</section>
+<section id="retrieval-outcomes">
+<h3>Retrieval outcomes<a class="headerlink" href="#retrieval-outcomes" title="Link to this heading">#</a></h3>
+<p>Historical retrieval outcomes were also different. The <a class="reference external" href="https://github.com/openghg/openghg/blob/c94b9e7048ab9bcdd0c4eb43278c267d19d21050/openghg/retrieve/_access.py">January 29, 2024
+OpenGHG implementation</a>
+returned <code class="docutils literal notranslate"><span class="pre">None</span></code> for an empty time selection, but raised <code class="docutils literal notranslate"><span class="pre">AttributeError</span></code>
+when a dataset had no time attribute. Still earlier versions used other return
+values and exception types. The <a class="reference external" href="https://github.com/openghg/openghg_inversions/commit/b7e811d699b52b44a66e481a262063f236041eba">inversions catch added the following day</a>
+treated retrieval <code class="docutils literal notranslate"><span class="pre">AttributeError</span></code> as a reason to skip a site.</p>
+<p>The retrieval change accompanying this record preserves handling of
+<code class="docutils literal notranslate"><span class="pre">SearchError</span></code>, <code class="docutils literal notranslate"><span class="pre">None</span></code>, and datasets with an empty time dimension. It logs
+and re-raises retrieval <code class="docutils literal notranslate"><span class="pre">AttributeError</span></code> with site, store, and date context.
+This intentionally exposes legacy missing-time failures as well as unexpected
+attribute failures; it does not establish compatibility with every historical
+OpenGHG return convention. Retrieval failures should be diagnosed separately
+from deciding which missing uncertainties to impute.</p>
+</section>
+</section>
+<section id="flask-decision-and-proposed-variability-hierarchy">
+<h2>Flask decision and proposed variability hierarchy<a class="headerlink" href="#flask-decision-and-proposed-variability-hierarchy" title="Link to this heading">#</a></h2>
+<p><a class="reference external" href="https://github.com/openghg/openghg_inversions/issues/304">Issue 304</a> proposed
+fixed variability values for flask data. The <a class="reference external" href="https://github.com/openghg/openghg_inversions/issues/304#issuecomment-3188163132">closing discussion</a>
+records the decision not to introduce arbitrary flask variability after
+HFC-143a experiments showed compensation by the inferred model-error parameter.
+This was evidence for that experiment, not a decision that zero variability is
+adequate for every gas and site. Current flask handling bypasses resampling;
+there is no implemented gas-specific variability lookup table.</p>
+<p><a class="reference external" href="https://github.com/openghg/openghg_inversions/issues/765#issuecomment-5949214874">Joe’s proposal in issue 765</a>
+provides a possible policy for sparse observations. For a four-hour target
+window containing at least one observation:</p>
+<ol class="arabic simple">
+<li><p>With at least six observations in that window, calculate its variability.</p></li>
+<li><p>Otherwise, with at least three observations in the centered twelve-hour
+window, calculate variability there, retaining the four-hour mean.</p></li>
+<li><p>With two observations in twelve hours, use their absolute difference,
+retaining the four-hour mean.</p></li>
+<li><p>With one observation in the centered twelve-hour window, use the annual
+average variability for the site and gas.</p></li>
+<li><p>If that annual reference is unavailable, use a gas-specific reference derived
+from TAC-185m observations during 2017–2024, or MHD during 2013–2024 where
+TAC data are unavailable.</p></li>
+</ol>
+<p>This hierarchy is not implemented. Its annual reference is an average of
+valid variability estimates, not the standard deviation of a year’s
+concentrations, which also contains seasonal variation. Implementing the
+neighboring-window calculation needs observations beyond the requested run
+boundaries, followed by trimming to the target period.</p>
+<p>The draft’s InTEM description (section 6.5.1, pages 24–25) also uses pooled
+variability, but differs from the issue proposal: it requires more than fifty
+calculated variances before using the annual reference, says “more than three”
+for the extended-window threshold, and calls the two-observation difference a
+variance. Agree the threshold, reference eligibility, and whether the difference
+is a standard deviation before adopting either description; a concentration
+difference has standard-deviation units, not variance units.</p>
+<p>Before adopting it, agree whether observation thresholds count source records
+or underlying measurements in already averaged data; weighting and standard
+deviation conventions; when to preserve or impute supplied variability used as
+instrument uncertainty, separately from estimating resampling variability; and
+how to handle genuinely zero estimates. Missing within-sample variability cannot be
+reconstructed from sample means and counts alone. Reference values also need
+units, source data, averaging conventions, and a recorded period of validity.</p>
+<p>Repeatability requires a separate policy. <a class="reference external" href="https://github.com/openghg/openghg_inversions/issues/212">Issue 212</a> discusses using
+valid repeatability from the inversion period, then a wider dataset. The
+choice of reference site/instrument, mean or median, and the behavior when no
+reference exists remain scientific decisions. <a class="reference external" href="https://github.com/openghg/openghg_inversions/issues/268">Issue 268</a> and issue 765
+provide further missing-uncertainty context.</p>
+</section>
+<section id="evidence-required-for-a-policy-change">
+<h2>Evidence required for a policy change<a class="headerlink" href="#evidence-required-for-a-policy-change" title="Link to this heading">#</a></h2>
+<p>Record the installed versions, configuration, observation store and source
+dataset, variables before and after resampling, and the resulting prepared
+<code class="docutils literal notranslate"><span class="pre">mf_error</span></code>. Compare retained site and observation counts as well as errors.
+Capture whether each value was supplied, estimated by resampling, or imputed
+from a reference, together with that reference’s provenance.</p>
+<p>PARIS concentration products export repeatability, variability, and total
+likelihood error but omit prepared <code class="docutils literal notranslate"><span class="pre">mf_error</span></code>. A successful output can
+therefore establish site retention without proving the exact fallback used.
+Save merged data when that distinction matters, and retain logs with job IDs:
+scheduler completion alone does not show that all requested sites were retained.</p>
+</section>
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="documentation.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">Maintain the documentation</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="releasing.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">Releases and branch maintenance</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <dialog id="pst-secondary-sidebar-modal"></dialog>
+                <div id="pst-secondary-sidebar" class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#quantities-and-missingness">Quantities and missingness</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#existing-uncertainty-construction">Existing uncertainty construction</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#why-preserving-nans-is-not-an-incidental-bug-fix">Why preserving NaNs is not an incidental bug fix</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg-resampling-and-retrieval">OpenGHG resampling and retrieval</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#zero-observation-counts-in-issue-765">Zero observation counts in issue 765</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#temporary-recovery-using-an-existing-store-fallback">Temporary recovery using an existing store fallback</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#retrieval-outcomes">Retrieval outcomes</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#flask-decision-and-proposed-variability-hierarchy">Flask decision and proposed variability hierarchy</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#evidence-required-for-a-policy-change">Evidence required for a policy change</a></li>
+</ul>
+  </nav></div>
+
+  <div class="sidebar-secondary-item">
+
+  <div class="tocsection sourcelink">
+    <a href="../_sources/development/observation_uncertainty.rst.txt">
+      <i class="fa-solid fa-file-lines"></i> Show Source
+    </a>
+  </div>
+</div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../_static/scripts/bootstrap.js?digest=cb8930eaaf36d9849b67"></script>
+<script defer src="../_static/scripts/pydata-sphinx-theme.js?digest=cb8930eaaf36d9849b67"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 2025, Eric Saboya and Brendan Murphy.
+      <br/>
+    
+  </p>
+</div>
+      
+        <div class="footer-item">
+
+  <p class="sphinx-version">
+    Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 9.1.0.
+    <br/>
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  <!-- # L10n: Setting the PST URL as an argument as this does not need to be localized -->
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.21.0.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+  </body>
+</html>

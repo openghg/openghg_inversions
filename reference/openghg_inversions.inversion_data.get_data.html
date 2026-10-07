@@ -525,15 +525,18 @@ OpenGHG <code class="docutils literal notranslate"><span class="pre">ModelScenar
 <dt class="sig sig-object py" id="openghg_inversions.inversion_data.get_data.add_obs_error">
 <span class="sig-name descname"><span class="pre">add_obs_error</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sites</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fp_all</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">add_averaging_error</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inversion_data.get_data.add_obs_error" title="Link to this definition">#</a></dt>
 <dd><p>Create <cite>mf_error</cite> variable.</p>
-<p>The <cite>mf_error</cite> variables contains either <cite>mf_repeatablility</cite>, <cite>mf_variability</cite>
+<p>The <cite>mf_error</cite> variable contains either <cite>mf_repeatability</cite>, <cite>mf_variability</cite>
 or the square root of the sum of the squares of both, if <cite>add_averaging_error</cite> is True.</p>
 <p>This function modifies <cite>fp_all</cite> in place, adding <cite>mf_error</cite> and making sure that both
 <cite>mf_repeatability</cite> and <cite>mf_variability</cite> are present.</p>
-<p>Note: if <cite>averaging_period</cite> is specified in <cite>data_processing_surface_notracer</cite>, then OpenGHG
-will add an <cite>mf_variability</cite> variable with the standard deviation of the obs over the specified
-period. If <cite>mf_variability</cite> is already present (for instance, for Picarro data), then the existing
-variable is over-written. If the <cite>averaging_period</cite> matches the frequency of the data, this will
-make <cite>mf_variability</cite> zero (since the stdev of one value is 0).</p>
+<p>Note: OpenGHG resampling pools supplied variability with the spread between input means,
+weighted by observation counts when available. Supplied variability may itself serve as
+instrument uncertainty. If neither variability nor counts is present, resampling instead
+calculates variability from the input concentrations, giving zero for a window with one
+finite observation. Pooling a single input instead retains its supplied variability, subject
+to numerical precision. When counts are present but variability is absent, the weighted
+resampling path does not create variability.</p>
+<p>See <a class="reference internal" href="../development/observation_uncertainty.html"><span class="doc">Missing observation uncertainty: behavior and decisions</span></a> for missing-value behavior and policies.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">

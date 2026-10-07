@@ -318,6 +318,7 @@
 <li class="toctree-l1"><a class="reference internal" href="rhime_model_development.html">Developing RHIME models</a></li>
 <li class="toctree-l1"><a class="reference internal" href="validation_and_xarray.html">Validation and labelled-array patterns</a></li>
 <li class="toctree-l1"><a class="reference internal" href="documentation.html">Maintain the documentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="observation_uncertainty.html">Missing observation uncertainty: behavior and decisions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="releasing.html">Releases and branch maintenance</a></li>
 </ul>
 </div>
@@ -378,8 +379,9 @@
                   
   <section id="developing-openghg-inversions">
 <h1>Developing OpenGHG Inversions<a class="headerlink" href="#developing-openghg-inversions" title="Link to this heading">#</a></h1>
-<p>These pages describe the programming conventions used for scientific model
-development. They are normative for new RHIME work.</p>
+<p>These pages cover scientific model development, observation-uncertainty
+decisions, and release practices. The model-development and validation guides
+are normative for new RHIME work.</p>
 <div class="toctree-wrapper compound">
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="rhime_model_development.html">Developing RHIME models</a><ul>
@@ -408,6 +410,15 @@ development. They are normative for new RHIME work.</p>
 <li class="toctree-l2"><a class="reference internal" href="documentation.html#update-the-hand-maintained-api-reference">Update the hand-maintained API reference</a></li>
 <li class="toctree-l2"><a class="reference internal" href="documentation.html#regenerate-module-pages">Regenerate module pages</a></li>
 <li class="toctree-l2"><a class="reference internal" href="documentation.html#build-and-check-the-documentation">Build and check the documentation</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="observation_uncertainty.html">Missing observation uncertainty: behavior and decisions</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="observation_uncertainty.html#quantities-and-missingness">Quantities and missingness</a></li>
+<li class="toctree-l2"><a class="reference internal" href="observation_uncertainty.html#existing-uncertainty-construction">Existing uncertainty construction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="observation_uncertainty.html#why-preserving-nans-is-not-an-incidental-bug-fix">Why preserving NaNs is not an incidental bug fix</a></li>
+<li class="toctree-l2"><a class="reference internal" href="observation_uncertainty.html#openghg-resampling-and-retrieval">OpenGHG resampling and retrieval</a></li>
+<li class="toctree-l2"><a class="reference internal" href="observation_uncertainty.html#flask-decision-and-proposed-variability-hierarchy">Flask decision and proposed variability hierarchy</a></li>
+<li class="toctree-l2"><a class="reference internal" href="observation_uncertainty.html#evidence-required-for-a-policy-change">Evidence required for a policy change</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="releasing.html">Releases and branch maintenance</a><ul>
