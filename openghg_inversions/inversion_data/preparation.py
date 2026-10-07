@@ -49,7 +49,8 @@ from openghg_inversions.inversion_data.acquisition import (
     _normalise_site_inlets as _normalise_site_inlets,
     _normalise_site_integers as _normalise_site_integers,
     _normalise_site_strings as _normalise_site_strings,
-    _retrieve_or_reload_merged_data,
+    _retrieve_or_reload_merged_data as _retrieve_or_reload_merged_data,
+    _retrieve_or_reload_merged_data_from_options,
     _select_fp_all_sites as _select_fp_all_sites,
     _validate_loaded_sector_layout as _validate_loaded_sector_layout,
     _validate_loaded_time_resolved_selector as _validate_loaded_time_resolved_selector,
@@ -431,12 +432,23 @@ def prepare_rhime_inputs(
     if use_tracer:
         raise ValueError("`use_tracer=True` is not supported; tracer inversions are not implemented.")
     min_error_options = normalise_min_error_options(min_error_options)
+    site_options = _SiteOptions.from_inputs(
+        sites=sites,
+        averaging_period=averaging_period,
+        inlet=inlet,
+        fp_height=fp_height,
+        instrument=instrument,
+        platform=platform,
+        obs_data_level=obs_data_level,
+        met_model=met_model,
+        max_level=max_level,
+        time_resolved=time_resolved,
+    )
     with timed("rhime.prepare_inputs.merged_data", sites=len(sites), split_by_sectors=split_by_sectors):
-        merged = _retrieve_or_reload_merged_data(
+        merged = _retrieve_or_reload_merged_data_from_options(
+            site_options=site_options,
             species=species,
-            sites=sites,
             domain=domain,
-            averaging_period=averaging_period,
             start_date=start_date,
             end_date=end_date,
             output_name=output_name,
@@ -447,17 +459,9 @@ def prepare_rhime_inputs(
             footprint_store=footprint_store,
             emissions_store=emissions_store,
             emissions_domain=emissions_domain,
-            met_model=met_model,
             fp_model=fp_model,
-            fp_height=fp_height,
             fp_species=fp_species,
-            time_resolved=time_resolved,
-            inlet=inlet,
-            instrument=instrument,
-            max_level=max_level,
             calibration_scale=calibration_scale,
-            obs_data_level=obs_data_level,
-            platform=platform,
             use_bc=use_bc,
             bc_input=bc_input,
             averaging_error=averaging_error,

@@ -98,6 +98,7 @@ scientific process from option resolution through output construction.
        output_path="outputs",
        output_name="example",
        flux_sources=["total-ukghg-edgar7"],
+       mismatch_model="pollution_event",
    )
 
    multi_sector_result = run_rhime_multisector(
@@ -110,6 +111,7 @@ scientific process from option resolution through output construction.
        output_path="outputs",
        output_name="example_multisector",
        flux_sources=["ff-inventory", "gpp-inventory", "ter-inventory", "ocean-inventory"],
+       mismatch_model="pollution_event",
        sector_sources={
            "FF": "ff-inventory",
            "GPP": "gpp-inventory",
@@ -139,6 +141,93 @@ supports one distinct source and one independent state vector per sector.
 Rectangular legacy inputs may carry ``source_region_count(source)`` so padded
 layouts can be rejected; modern preparation does not create that compatibility
 metadata.
+
+Resolving a requested configuration
+----------------------------------
+
+Standard and multisector runners resolve their effective options before
+acquisition. Use ``resolve_rhime_config`` to inspect the same choices without
+retrieving observations, loading a merged cache, building a model or sampling.
+The returned ``RhimeConfig`` groups four values:
+
+* ``preparation`` is a ``RhimePreparationConfig`` containing requested data
+  selectors, basis and preparation choices, and one complete ``site_options``
+  record. Its sites and selectors are aligned tuples.
+* ``model`` is the existing ``RhimeModelSpec`` containing sectors, priors,
+  likelihood and other scientific model choices.
+* ``output`` is the existing ``RhimeOutputSpec`` describing final products,
+  destinations, naming and save choices.
+* ``sampler`` is the existing ``RhimeSampler`` with resolved sampling settings.
+  It executes inference only when supplied a completed model. Its implementation
+  lives in ``inference.sampling``; the established RHIME imports remain valid.
+
+For example, a scalar period broadcasts across the effective requested sites:
+
+.. code-block:: python
+
+   from openghg_inversions.rhime import resolve_rhime_config
+
+   options = {
+       "species": "ch4",
+       "sites": ["tac", "MHD"],
+       "averaging_period": "1h",
+       "domain": "EUROPE",
+       "start_date": "2019-01-01",
+       "end_date": "2019-01-02",
+       "flux_sources": ["total-ukghg-edgar7"],
+       "output_name": "inspect-request",
+       "output_format": "none",
+       "mismatch_model": "fixed_error",
+   }
+   config = resolve_rhime_config(options, multisector=False)
+   assert config.preparation.site_options.sites == ("TAC", "MHD")
+   assert config.preparation.site_options.averaging_period == ("1h", "1h")
+
+``averaging_period=["1h", "1h"]`` resolves to the same period tuple.
+An explicit ``["1h"]`` sequence for these two sites raises ``ValueError``
+before acquisition. Optional selectors retain their existing meanings:
+``time_resolved=None`` remains unspecified for each site, and supported inlet
+slices are preserved. Empty or case-insensitively duplicate site requests and
+incorrect selector lengths are rejected at resolution.
+
+For a configured INI file, decode it first and apply overrides before resolving:
+
+.. code-block:: python
+
+   from openghg_inversions.rhime import load_rhime_config, resolve_rhime_config
+
+   options = dict(load_rhime_config("rhime.ini"))
+   options.update(sites=["TAC", "MHD"], averaging_period="1h")
+   config = resolve_rhime_config(options, multisector=False)
+
+``load_rhime_config`` decodes the existing flat INI vocabulary into raw values;
+it does not apply aliases, defaults or site expansion. The resolver applies
+those rules to the winning options. Complete runners perform this sequence
+for ``config_file`` plus keyword overrides; their signatures remain unchanged.
+``params_from_config`` retains its normalized-dictionary default, and
+``resolve_rhime_options`` retains its compatibility setup return contract.
+Direct preparation and retrieval APIs also retain their scalar shorthand
+without requiring a full model, output or sampler configuration.
+
+The requested configuration contains no acquired/prepared handoff or
+``RhimeRunSpec``.
+Merged and prepared handoffs describe the sites retained by acquisition and
+filtering. Ordinary runners create the execution ``RhimeRunSpec`` after
+preparation: it combines those retained sites and periods with the requested
+date bounds and resolved model/output choices. If only TAC remains from a
+TAC/MHD request, the configuration continues to name both sites while the run
+specification names TAC. A supplied compatible merged handoff keeps its own
+authoritative site options. The prepared-input API below remains independent
+of ``RhimeConfig``.
+
+The new records are frozen; their existing mapping and sampler members remain
+mutable. Resolution leaves caller options unchanged, and retained-site
+selection leaves the requested configuration unchanged. Equal resolved
+scalar/list choices do not guarantee equal historical configuration hashes.
+For persisted workflows, see :doc:`staged_workflow`: version 0.8 does not
+support staged artifacts produced by 0.7; consume them with 0.7 or regenerate
+them with 0.8. Ordinary paths remain relative to the working directory and
+staged paths retain their configuration-file-relative convention.
 
 Satellite multisector inputs
 ----------------------------

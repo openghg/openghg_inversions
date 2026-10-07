@@ -24,7 +24,7 @@ configuration and retained-run metadata also have overlapping meanings.
 - Document record roles and add focused equivalence, override, early-failure and
   retained-site checks at implementation time.
 
-This is a planning-only change. Implementation tasks remain deferred for review.
+Implementation and validation are tracked in [tasks.md](tasks.md).
 INI remains the supported file frontend; format neutrality enables later
 frontends without introducing one here. CO2 recipe configuration is unchanged.
 Hash/manifest policy remains with

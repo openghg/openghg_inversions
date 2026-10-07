@@ -9,11 +9,13 @@ The first successful scenario supplies the unit target forwarded to later
 OpenGHG ``ModelScenario`` merges.
 """
 
+from __future__ import annotations
+
 import logging
 import warnings
 from collections.abc import Iterable, Sequence
 from numbers import Integral
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 import xarray as xr
@@ -23,7 +25,6 @@ from openghg.types import SearchError
 
 from openghg_inversions.flux_sanitization import FluxNonFiniteCheck
 from openghg_inversions.inversion_data._site_options import (
-    expand_site_boolean_option,
     expand_site_option,
     is_column_observation,
     is_column_platform,
@@ -37,6 +38,9 @@ from openghg_inversions.inversion_data.getters import (
 )
 from openghg_inversions.inversion_data.scenario import merged_scenario_data
 from openghg_inversions.inversion_data.serialise import _save_merged_data
+
+if TYPE_CHECKING:
+    from openghg_inversions.inversion_data.acquisition import _SiteOptions
 
 logger = logging.getLogger(__name__)
 
@@ -302,30 +306,85 @@ def data_processing_surface_notracer(
         warnings, and may save a merged-data artifact. The first retained
         scenario defines the unit target requested for later sites.
     """
-    site_values = [sites] if isinstance(sites, str) else sites
-    sites = [site.upper() for site in site_values]
+    from openghg_inversions.inversion_data.acquisition import _SiteOptions
 
-    # Convert 'None' args to list
-    nsites = len(sites)
-    inlet = convert_to_list(inlet, nsites, "inlet")
-    instrument = convert_to_list(instrument, nsites, "instrument")
-    fp_height = convert_to_list(fp_height, nsites, "fp_height")
-    obs_data_level = convert_to_list(obs_data_level, nsites, "obs_data_level")
-    met_model = convert_to_list(met_model, nsites, "met_model")
-    averaging_period = convert_to_list(averaging_period, nsites, "averaging_period")
-    platform = convert_to_list(platform, nsites, "platform")
-    max_level = convert_to_list(max_level, nsites, "max_level")
-    time_resolved = list(expand_site_boolean_option(time_resolved, nsites=nsites, name="time_resolved"))
-    invalid_max_levels = [
-        value
-        for value in max_level
-        if value is not None and (not isinstance(value, Integral) or isinstance(value, bool))
-    ]
-    if invalid_max_levels:
-        raise ValueError(
-            f"`max_level` entries must be integers or None. Invalid value(s): {invalid_max_levels!r}."
-        )
-    max_level = [None if value is None else int(value) for value in max_level]
+    site_values = [sites] if isinstance(sites, str) else sites
+    site_options = _SiteOptions.from_inputs(
+        sites=site_values,
+        averaging_period=averaging_period,
+        inlet=inlet,
+        fp_height=fp_height,
+        instrument=instrument,
+        platform=platform,
+        obs_data_level=obs_data_level,
+        met_model=met_model,
+        max_level=max_level,
+        time_resolved=time_resolved,
+    )
+    return _data_processing_surface_notracer_from_options(
+        site_options=site_options,
+        species=species,
+        domain=domain,
+        start_date=start_date,
+        end_date=end_date,
+        calibration_scale=calibration_scale,
+        fp_model=fp_model,
+        fp_species=fp_species,
+        emissions_name=emissions_name,
+        use_bc=use_bc,
+        bc_input=bc_input,
+        bc_store=bc_store,
+        obs_store=obs_store,
+        footprint_store=footprint_store,
+        emissions_store=emissions_store,
+        emissions_domain=emissions_domain,
+        split_by_sectors=split_by_sectors,
+        averagingerror=averagingerror,
+        save_merged_data=save_merged_data,
+        merged_data_name=merged_data_name,
+        merged_data_dir=merged_data_dir,
+        output_name=output_name,
+        flux_non_finite_check=flux_non_finite_check,
+    )
+
+
+def _data_processing_surface_notracer_from_options(
+    *,
+    site_options: _SiteOptions,
+    species: str,
+    domain: str,
+    start_date: str,
+    end_date: str,
+    calibration_scale: str | None = None,
+    fp_model: str | None = None,
+    fp_species: str | None = None,
+    emissions_name: list | None = None,
+    use_bc: bool = True,
+    bc_input: str | None = None,
+    bc_store: str | None = None,
+    obs_store: str | list[str] | None = None,
+    footprint_store: str | list[str] | None = None,
+    emissions_store: str | None = None,
+    emissions_domain: str | None = None,
+    split_by_sectors: bool = False,
+    averagingerror: bool = True,
+    save_merged_data: bool = False,
+    merged_data_name: str | None = None,
+    merged_data_dir: str | None = None,
+    output_name: str | None = None,
+    flux_non_finite_check: FluxNonFiniteCheck = "lazy",
+) -> tuple[dict, list, list, list, list, list]:
+    """Retrieve using resolved site options without expanding external shorthand."""
+    sites = list(site_options.sites)
+    averaging_period = list(site_options.averaging_period)
+    inlet = list(site_options.inlet)
+    fp_height = list(site_options.fp_height)
+    instrument = list(site_options.instrument)
+    platform = list(site_options.platform)
+    obs_data_level = list(site_options.obs_data_level)
+    met_model = list(site_options.met_model)
+    max_level = list(site_options.max_level)
+    time_resolved = list(site_options.time_resolved)
 
     fp_all: dict[str, Any] = {}
 

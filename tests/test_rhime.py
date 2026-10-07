@@ -2914,7 +2914,26 @@ def test_public_rhime_runners_follow_named_stage_order(
         site_metadata=_prepared_site_metadata(),
     )
     sampler = RhimeSampler()
-    setup = SimpleNamespace(data_args={"species": "ch4"}, run_spec=run_spec, sampler=sampler)
+    config = replace(
+        rhime_params.resolve_rhime_config(
+            {
+                "species": "ch4",
+                "domain": "EUROPE",
+                "sites": ["TAC"],
+                "averaging_period": "1h",
+                "start_date": run_spec.start_date,
+                "end_date": run_spec.end_date,
+                "output_name": "stages",
+                "output_format": "none",
+                "flux_sources": ["inventory", "ocean"] if multisector else ["inventory"],
+                "use_bc": False,
+            },
+            multisector=multisector,
+        ),
+        model=run_spec.model,
+        output=run_spec.output,
+        sampler=sampler,
+    )
     model_inputs = xr.Dataset({"sentinel": xr.DataArray(1)})
     build_result = RhimeModelBuildResult(model=pm.Model(), variable_roles={"concentration": "y"})
     idata = _minimal_output_idata()
@@ -2922,10 +2941,10 @@ def test_public_rhime_runners_follow_named_stage_order(
     calls: list[str] = []
     recipe_module = rhime_multisector if multisector else rhime_standard
 
-    def resolve(*, params: dict[str, Any], multisector: bool) -> Any:
+    def resolve(params: dict[str, Any], *, multisector: bool) -> Any:
         """Record public option resolution."""
         calls.append("resolve")
-        return setup
+        return config
 
     merged = cast(Any, object())
     external_merged = cast(RhimeMergedData, object())
@@ -2934,53 +2953,65 @@ def test_public_rhime_runners_follow_named_stage_order(
     site_data = cast(Any, object())
 
     def retrieve(
-        data_args: dict[str, Any],
+        data_args: rhime_params.RhimePreparationConfig,
         *,
         multisector: bool,
         merged_data: RhimeMergedData | None = None,
     ) -> Any:
         """Record ordinary acquisition or external-data validation."""
+        assert data_args is config.preparation
         assert merged_data is (external_merged if external_data else None)
         calls.append("retrieve")
         return merged
 
-    def filter_observations(actual: Any, data_args: dict[str, Any]) -> Any:
+    def filter_observations(actual: Any, data_args: rhime_params.RhimePreparationConfig) -> Any:
         """Record public filtering and site alignment."""
         assert actual is merged
+        assert data_args is config.preparation
         calls.append("filter")
         return filtered
 
-    def build_basis(actual: Any, data_args: dict[str, Any]) -> Any:
+    def build_basis(actual: Any, data_args: rhime_params.RhimePreparationConfig) -> Any:
         """Record public basis construction."""
         assert actual is filtered
+        assert data_args is config.preparation
         calls.append("basis")
         return basis
 
     def build_sensitivities(
         actual: Any,
         actual_basis: Any,
-        data_args: dict[str, Any],
+        data_args: rhime_params.RhimePreparationConfig,
         *,
         multisector: bool,
     ) -> Any:
         """Record public sensitivity construction."""
         assert actual is filtered
         assert actual_basis is basis
+        assert data_args is config.preparation
         calls.append("sensitivities")
         return site_data
 
-    def assemble(actual: Any, actual_basis: Any, actual_site_data: Any, data_args: dict[str, Any]) -> Any:
+    def assemble(
+        actual: Any,
+        actual_basis: Any,
+        actual_site_data: Any,
+        data_args: rhime_params.RhimePreparationConfig,
+    ) -> Any:
         """Record public labelled-input assembly."""
         assert actual is filtered
         assert actual_basis is basis
         assert actual_site_data is site_data
+        assert data_args is config.preparation
         calls.append("assemble")
         return prepared
 
-    def align(spec: RhimeRunSpec, actual: RhimePreparedInputs) -> RhimeRunSpec:
+    def align(actual_config: rhime_params.RhimeConfig, actual: RhimePreparedInputs) -> RhimeRunSpec:
         """Record public retained-site alignment."""
+        assert actual_config is config
+        assert actual is prepared
         calls.append("align")
-        return spec
+        return run_spec
 
     def materialize(
         actual: RhimePreparedInputs,
@@ -3002,6 +3033,7 @@ def test_public_rhime_runners_follow_named_stage_order(
         assert kwargs["likelihood_builder"] is expected_builder
         expected_options = {"project_option": 42} if custom_likelihood else None
         assert kwargs["likelihood_kwargs"] == expected_options
+        assert kwargs["run_spec"] is run_spec
         calls.append("build")
         return build_result
 
@@ -3026,13 +3058,13 @@ def test_public_rhime_runners_follow_named_stage_order(
         assert kwargs == {"result": expected, "prepared": prepared}
         calls.append("outputs")
 
-    monkeypatch.setattr(recipe_module, "resolve_rhime_options", resolve)
+    monkeypatch.setattr(recipe_module, "resolve_rhime_config", resolve)
     monkeypatch.setattr(recipe_module, "retrieve_or_reload_rhime_data", retrieve)
     monkeypatch.setattr(recipe_module, "filter_rhime_observations", filter_observations)
     monkeypatch.setattr(recipe_module, "build_rhime_basis", build_basis)
     monkeypatch.setattr(recipe_module, "build_rhime_sensitivities", build_sensitivities)
     monkeypatch.setattr(recipe_module, "assemble_rhime_inputs", assemble)
-    monkeypatch.setattr(recipe_module, "with_prepared_rhime_sites", align)
+    monkeypatch.setattr(rhime_params.RhimeConfig, "retained_run_spec", align)
     monkeypatch.setattr(recipe_module, "materialize_pymc_inputs", materialize)
     monkeypatch.setattr(recipe_module, build_stage, build)
     monkeypatch.setattr(recipe_module, "sample_rhime_model", sample)
@@ -3124,7 +3156,7 @@ def test_ordinary_runners_reject_custom_likelihood_with_configured_mismatch(
     recipe_module = rhime_multisector if runner is run_rhime_multisector else rhime_standard
     monkeypatch.setattr(
         recipe_module,
-        "resolve_rhime_options",
+        "resolve_rhime_config",
         lambda *args, **kwargs: pytest.fail("the selection conflict must fail before resolution"),
     )
 
@@ -3165,6 +3197,8 @@ def test_rhime_public_package_exports_supported_orchestration_stages() -> None:
     """External runners can import every supported stage from the RHIME package."""
     stage_names = (
         "resolve_rhime_options",
+        "resolve_rhime_config",
+        "load_rhime_config",
         "retrieve_or_reload_rhime_data",
         "filter_rhime_observations",
         "build_rhime_basis",
@@ -3211,13 +3245,13 @@ def test_each_rhime_recipe_keeps_the_scientific_process_visible(recipe: Callable
     source = inspect.getsource(recipe)
     multisector = recipe is run_rhime_multisector
     stages = (
-        "resolve_rhime_options",
+        "resolve_rhime_config",
         "retrieve_or_reload_rhime_data",
         "filter_rhime_observations",
         "build_rhime_basis",
         "build_rhime_sensitivities",
         "assemble_rhime_inputs",
-        "with_prepared_rhime_sites",
+        "retained_run_spec",
         "materialize_pymc_inputs",
         "build_multisector_rhime_model_result" if multisector else "build_standard_rhime_model_result",
         "sample_rhime_model",
@@ -3889,10 +3923,14 @@ def test_run_rhime_rejects_noncanonical_custom_likelihood_before_sampling(
         basis_functions=_fake_basis_functions(),
         site_metadata=_prepared_site_metadata(),
     )
-    setup = SimpleNamespace(
-        data_args={"species": "ch4"},
-        run_spec=run_spec,
+    config = SimpleNamespace(
+        preparation={"species": "ch4"},
+        model=run_spec.model,
+        output=run_spec.output,
         sampler=RhimeSampler(),
+        retained_run_spec=lambda actual: replace(
+            run_spec, sites=actual.sites, averaging_period=actual.averaging_period
+        ),
     )
 
     def noncanonical_likelihood(**kwargs: Any) -> Any:
@@ -3909,7 +3947,7 @@ def test_run_rhime_rejects_noncanonical_custom_likelihood_before_sampling(
         """Prove compatibility validation precedes sampler execution."""
         raise AssertionError("invalid likelihood must fail before sampling")
 
-    monkeypatch.setattr(rhime_standard, "resolve_rhime_options", lambda **kwargs: setup)
+    monkeypatch.setattr(rhime_standard, "resolve_rhime_config", lambda *args, **kwargs: config)
     monkeypatch.setattr(rhime_standard, "retrieve_or_reload_rhime_data", lambda *args, **kwargs: object())
     monkeypatch.setattr(rhime_standard, "filter_rhime_observations", lambda *args, **kwargs: object())
     monkeypatch.setattr(rhime_standard, "build_rhime_basis", lambda *args, **kwargs: prepared.basis_functions)
@@ -6278,9 +6316,8 @@ def test_prepare_rhime_inputs_normalises_averaging_period_to_site_count(
         **kwargs: object,
     ) -> tuple[dict, list[str], list[str], list[str], list[str], list[str | None]]:
         nonlocal captured_averaging_period
-        averaging_period_arg = kwargs["averaging_period"]
-        assert isinstance(averaging_period_arg, list)
-        captured_averaging_period = averaging_period_arg
+        options = cast(acquisition_module._SiteOptions, kwargs["site_options"])
+        captured_averaging_period = list(options.averaging_period)
         return (
             {**site_data, ".species": "CH4"},
             ["TAC", "MHD"],
@@ -6356,14 +6393,14 @@ def test_prepare_rhime_inputs_rejects_non_string_averaging_period_values(
 
 
 @pytest.mark.rhime_contract
-def test_run_rhime_leaves_scalar_averaging_period_for_shared_preparation(
+def test_run_rhime_resolves_scalar_averaging_period_before_acquisition(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Ensure scalar averaging periods reach shared preparation unchanged."""
+    """Acquisition receives canonical requested selectors instead of shorthand."""
     captured_averaging_period: object = None
 
     def fake_retrieve(
-        data_args: dict[str, object],
+        data_args: rhime_params.RhimePreparationConfig,
         *,
         multisector: bool,
         merged_data: RhimeMergedData | None = None,
@@ -6371,7 +6408,7 @@ def test_run_rhime_leaves_scalar_averaging_period_for_shared_preparation(
         """Capture acquisition options before any data access."""
         nonlocal captured_averaging_period
         assert merged_data is None
-        captured_averaging_period = data_args["averaging_period"]
+        captured_averaging_period = data_args.site_options.averaging_period
         raise RuntimeError("stop after data argument capture")
 
     monkeypatch.setattr(rhime_standard, "retrieve_or_reload_rhime_data", fake_retrieve)
@@ -6390,7 +6427,7 @@ def test_run_rhime_leaves_scalar_averaging_period_for_shared_preparation(
             output_format="none",
         )
 
-    assert captured_averaging_period == "1H"
+    assert captured_averaging_period == ("1H", "1H")
 
 
 def test_prepare_rhime_inputs_treats_min_error_none_as_default(
@@ -9033,13 +9070,13 @@ output_format = "inv_out"
         actual_merged: Any,
         actual_basis: Any,
         actual_site_data: Any,
-        data_args: dict[str, Any],
+        data_args: rhime_params.RhimePreparationConfig,
     ) -> RhimePreparedInputs:
         """Capture post-merge preparation arguments and return minimal inputs."""
         assert actual_merged is filtered
         assert actual_basis is basis
         assert actual_site_data is site_data
-        seen["preparation"] = dict(data_args)
+        seen["preparation"] = data_args.as_data_args()
         return prepared
 
     build_result = RhimeModelBuildResult(model=pm.Model(), variable_roles={"concentration": "y"})

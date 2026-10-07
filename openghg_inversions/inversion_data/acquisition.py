@@ -21,7 +21,9 @@ from openghg_inversions.inversion_data._site_options import (
     expand_site_option,
     is_column_observation,
 )
-from openghg_inversions.inversion_data.get_data import data_processing_surface_notracer
+from openghg_inversions.inversion_data.get_data import (
+    _data_processing_surface_notracer_from_options as data_processing_surface_notracer,
+)
 from openghg_inversions.inversion_data.serialise import load_merged_data
 
 SiteStringOption = Sequence[str | None] | str | None
@@ -410,6 +412,62 @@ def _retrieve_or_reload_merged_data(
         max_level=max_level,
         time_resolved=time_resolved,
     )
+    return _retrieve_or_reload_merged_data_from_options(
+        site_options=site_options,
+        species=species,
+        domain=domain,
+        start_date=start_date,
+        end_date=end_date,
+        output_name=output_name,
+        flux_sources=flux_sources,
+        split_by_sectors=split_by_sectors,
+        bc_store=bc_store,
+        obs_store=obs_store,
+        footprint_store=footprint_store,
+        emissions_store=emissions_store,
+        emissions_domain=emissions_domain,
+        fp_model=fp_model,
+        fp_species=fp_species,
+        calibration_scale=calibration_scale,
+        use_bc=use_bc,
+        bc_input=bc_input,
+        averaging_error=averaging_error,
+        reload_merged_data=reload_merged_data,
+        save_merged_data=save_merged_data,
+        merged_data_dir=merged_data_dir,
+        merged_data_name=merged_data_name,
+        flux_non_finite_check=flux_non_finite_check,
+    )
+
+
+def _retrieve_or_reload_merged_data_from_options(
+    *,
+    site_options: _SiteOptions,
+    species: str,
+    domain: str,
+    start_date: str,
+    end_date: str,
+    output_name: str,
+    flux_sources: list[str] | None,
+    split_by_sectors: bool = False,
+    bc_store: str = "user",
+    obs_store: str = "user",
+    footprint_store: str = "user",
+    emissions_store: str = "user",
+    emissions_domain: str | None = None,
+    fp_model: str | None = None,
+    fp_species: str | None = None,
+    calibration_scale: str | None = None,
+    use_bc: bool = True,
+    bc_input: str | None = None,
+    averaging_error: bool = True,
+    reload_merged_data: bool = False,
+    save_merged_data: bool = False,
+    merged_data_dir: str | None = None,
+    merged_data_name: str | None = None,
+    flux_non_finite_check: FluxNonFiniteCheck = "lazy",
+) -> RhimeMergedData:
+    """Retrieve using resolved site options without expanding external shorthand."""
     fp_all: dict | None = None
     if reload_merged_data and merged_data_dir is not None:
         try:
@@ -428,23 +486,14 @@ def _retrieve_or_reload_merged_data(
     else:
         # Requested options remain authoritative; legacy metadata is redundant.
         fp_all, retained_sites, *_ = data_processing_surface_notracer(
+            site_options=site_options,
             species=species,
-            sites=list(site_options.sites),
             domain=domain,
-            averaging_period=list(site_options.averaging_period),
             start_date=start_date,
             end_date=end_date,
-            obs_data_level=list(site_options.obs_data_level),
-            platform=list(site_options.platform),
-            met_model=list(site_options.met_model),
             fp_model=fp_model,
-            fp_height=list(site_options.fp_height),
             fp_species=fp_species,
-            time_resolved=list(site_options.time_resolved),
             emissions_name=flux_sources,
-            inlet=list(site_options.inlet),
-            instrument=list(site_options.instrument),
-            max_level=list(site_options.max_level),
             calibration_scale=calibration_scale,
             use_bc=use_bc,
             bc_input=bc_input,
@@ -546,6 +595,51 @@ def retrieve_or_reload_rhime_data(
             calibration_scale=data_args["calibration_scale"],
             obs_data_level=data_args["obs_data_level"],
             platform=data_args["platform"],
+            use_bc=data_args["use_bc"],
+            bc_input=data_args["bc_input"],
+            averaging_error=data_args["averaging_error"],
+            reload_merged_data=data_args["reload_merged_data"],
+            save_merged_data=data_args["save_merged_data"],
+            merged_data_dir=data_args["merged_data_dir"],
+            merged_data_name=data_args["merged_data_name"],
+            flux_non_finite_check=data_args["flux_non_finite_check"],
+        )
+
+
+def retrieve_or_reload_rhime_data_from_options(
+    site_options: _SiteOptions,
+    data_args: Mapping[str, Any],
+    *,
+    multisector: bool,
+    merged_data: RhimeMergedData | None = None,
+) -> RhimeMergedData:
+    """Acquire from canonical choices, preserving supplied merged-data authority."""
+    if data_args.get("use_tracer", False):
+        raise ValueError("`use_tracer=True` is not supported; tracer inversions are not implemented.")
+    if merged_data is not None:
+        return retrieve_or_reload_rhime_data(data_args, multisector=multisector, merged_data=merged_data)
+    with timed(
+        "rhime.prepare_inputs.merged_data",
+        sites=len(site_options.sites),
+        split_by_sectors=multisector,
+    ):
+        return _retrieve_or_reload_merged_data_from_options(
+            site_options=site_options,
+            species=data_args["species"],
+            domain=data_args["domain"],
+            start_date=data_args["start_date"],
+            end_date=data_args["end_date"],
+            output_name=data_args["output_name"],
+            flux_sources=data_args["flux_sources"],
+            split_by_sectors=multisector,
+            bc_store=data_args["bc_store"],
+            obs_store=data_args["obs_store"],
+            footprint_store=data_args["footprint_store"],
+            emissions_store=data_args["emissions_store"],
+            emissions_domain=data_args["emissions_domain"],
+            fp_model=data_args["fp_model"],
+            fp_species=data_args["fp_species"],
+            calibration_scale=data_args["calibration_scale"],
             use_bc=data_args["use_bc"],
             bc_input=data_args["bc_input"],
             averaging_error=data_args["averaging_error"],

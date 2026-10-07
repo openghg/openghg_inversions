@@ -46,7 +46,7 @@ Python mapping --------------------------^                   |
                                                    retained RhimeRunSpec
 ```
 
-Proposed API sketch; the new types/functions are not installed yet:
+API outline; the preparation inventory below lists the remaining fields:
 
 ```python
 def load_rhime_config(path: str | Path) -> Mapping[str, object]: ...
@@ -106,7 +106,7 @@ alias, required-option and rejection rules.
 | `RhimeMergedData` (existing) | Acquired/reloaded scientific data and its authoritative retained site-options record. | Returned by acquisition and passed through filtering; never held in config. |
 | `RhimePreparedInputs` (existing) | Durable labelled model inputs, basis and retained site metadata. | Returned by preparation; consumed by model construction and prepared-input runners. |
 | `RhimeRunSpec` (existing) | Execution description: requested date bounds, retained sites/averaging periods, prepared sector-layout flag, model and output specifications. | Constructed after preparation in ordinary configured runs; consumed by builders, execution and output provenance. |
-| `RhimeRunnerSetup` (existing compatibility record) | Legacy projection containing a run-spec-shaped setup, sampler and preparation dictionary. | Produced only where established helper/runner consumers require it; does not define canonical config semantics. |
+| `RhimeRunnerSetup` (existing compatibility record) | Legacy projection containing a run-spec-shaped setup, sampler and preparation dictionary. | Produced only where established helper/runner consumers require it; preserves scalar/optional selector forms and sparse prior metadata, rather than defining canonical config semantics. |
 | `RhimeResult` (existing) | Execution result with retained run/model/output descriptions, numerical inputs, posterior and output metadata. | Returned after execution; never used to represent an unresolved request. |
 
 Ordinary canonical runs do not construct a requested-site `RhimeRunSpec` or store
@@ -213,6 +213,12 @@ Preserve `params_from_config` and its default normalized-dictionary return,
 `resolve_rhime_options`/`RhimeRunnerSetup` consumers, nested RHIME, the HBMCMC shim
 and composition examples through projections from the same resolution rules.
 Only compatibility projections construct the legacy requested run specification.
+`make_rhime_runner_setup`/`resolve_rhime_options` project the validated original
+site forms and sparse prior metadata for established consumers. This preserves
+current staged effective-config and identity encodings without storing raw
+spellings in `RhimeConfig` or introducing another resolution policy.
+`RhimePreparationConfig.as_data_args()` independently projects expanded choices
+for consumers of canonical preparation values.
 Independent builders and prepared-input runners do not require `RhimeConfig`.
 
 Keep flat INI section interpretation, alias warnings, canonical-name precedence,
@@ -254,8 +260,7 @@ encoding explicitly without silently redefining its contract.
 
 ## Migration Plan
 
-Review this revised planning change before generating tasks. On the landed
-#773/#774/#807 foundations, add the aggregate/preparation records and resolver,
+On the landed #773/#774/#807 foundations, add the aggregate/preparation records and resolver,
 switch ordinary consumers to canonical values, derive retained run specifications
 and adapt supported entry points together. Reuse existing site/drop/reload,
 legacy-metadata and tracer tests. Replace the test expecting raw scalar periods
@@ -264,5 +269,5 @@ caller/request non-mutation and retained-run checks. Reuse existing sampler and
 facade coverage, plus #811's consolidated sampling coverage; configuration
 checks need no new stochastic sampling or repeated CLI subprocesses. Run focused
 and relevant broader coverage, update configuration guidance and add
-`newsfragments/804.feature.md` during implementation. This draft changes no
-runtime paths and needs planning validation only.
+`newsfragments/804.feature.md` for the user-visible implementation. Track focused, broader compatibility and
+documentation verification in [tasks.md](tasks.md).

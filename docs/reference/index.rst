@@ -34,6 +34,22 @@ runner.
    openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs
    openghg_inversions.rhime.co2.run_rhime_co2_o2_cached_sigma_from_prepared_inputs
 
+Resolve a requested RHIME configuration
+--------------------------------------
+
+Inspect standard/multisector choices before data access. Decode an INI file,
+apply supported overrides, then resolve the complete request. The
+:doc:`configuration guide </usage/rhime>` explains requested site selectors,
+retained execution metadata and compatibility helpers.
+
+.. autosummary::
+   :nosignatures:
+
+   openghg_inversions.rhime.load_rhime_config
+   openghg_inversions.rhime.resolve_rhime_config
+   openghg_inversions.rhime.RhimeConfig
+   openghg_inversions.rhime.RhimePreparationConfig
+
 Run specifications and results
 ------------------------------
 
