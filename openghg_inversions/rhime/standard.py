@@ -519,7 +519,9 @@ def run_rhime(
         if params.get("mismatch_model") is not None:
             raise ValueError("A custom likelihood cannot be combined with a built-in mismatch model.")
         params["mismatch_model"] = None
+    setup_start = timer_start()
     config = resolve_rhime_config(params=params, multisector=False)
+    log_timing("rhime.runner_setup", timer_seconds(setup_start), multisector=False)
     if likelihood_builder is None and config.model.likelihood is None:
         raise ValueError("A standard RHIME run requires a built-in or custom likelihood.")
 

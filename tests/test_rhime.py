@@ -5752,7 +5752,13 @@ def test_rhime_preparation_uses_platform_for_sites_retained_after_filtering(
     )
     captured: dict[str, object] = {}
 
-    monkeypatch.setattr(prep_module, "_retrieve_or_reload_merged_data", lambda **kwargs: merged)
+    def retrieve(*, site_options: acquisition_module._SiteOptions, **kwargs: object) -> RhimeMergedData:
+        """Accept resolved requested selectors at the canonical acquisition seam."""
+        assert site_options.sites == ("TAC", "OCO2-EASTASIA")
+        assert site_options.platform == ("surface", "satellite")
+        return merged
+
+    monkeypatch.setattr(prep_module, "_retrieve_or_reload_merged_data_from_options", retrieve)
     monkeypatch.setattr(prep_module, "_filter_merged_inversion_data", lambda **kwargs: filtered_merged)
     monkeypatch.setattr(prep_module, "make_basis_functions", lambda **kwargs: _fake_basis_functions())
     monkeypatch.setattr(
