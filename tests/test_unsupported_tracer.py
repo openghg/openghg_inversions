@@ -18,7 +18,28 @@ def test_option_resolution_rejects_tracer_before_required_options(multisector):
 
 @pytest.mark.parametrize("tracer_options", [{}, {"use_tracer": False}])
 def test_false_or_omitted_tracer_is_accepted_during_option_normalization(tracer_options):
-    assert normalise_rhime_params(tracer_options) == tracer_options
+    assert normalise_rhime_params(tracer_options) == {}
+
+
+@pytest.mark.parametrize("tracer_options", [{}, {"use_tracer": False}])
+@pytest.mark.parametrize("multisector", [False, True])
+def test_false_or_omitted_tracer_is_not_forwarded_after_resolution(tracer_options, multisector):
+    params = {
+        "species": "ch4",
+        "sites": ["TAC"],
+        "domain": "EUROPE",
+        "averaging_period": "1h",
+        "start_date": "2019-01-01",
+        "end_date": "2019-01-02",
+        "output_name": "test",
+        "output_format": "none",
+        "flux_sources": ["anthro", "natural"] if multisector else ["total"],
+        **tracer_options,
+    }
+    original = params.copy()
+    setup = resolve_rhime_options(params=params, multisector=multisector)
+    assert "use_tracer" not in setup.data_args
+    assert params == original
 
 
 @pytest.mark.parametrize("runner", [run_rhime, run_rhime_multisector])

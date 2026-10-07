@@ -1951,8 +1951,9 @@ def test_prepared_replay_computes_selected_error_only_at_pymc_boundary(
 
 
 def test_explicit_preparation_option_ownership_matches_current_preparer() -> None:
-    """The explicit routing schema deliberately tracks the accepted preparation API."""
-    parameters = inspect.signature(prepare_rhime_inputs).parameters
+    """Routing tracks preparation options after consuming the unsupported tracer flag."""
+    parameters = dict(inspect.signature(prepare_rhime_inputs).parameters)
+    parameters.pop("use_tracer")
     assert rhime_params.RHIME_PREPARATION_OPTION_NAMES == frozenset(parameters)
     assert rhime_params.RHIME_PREPARATION_DEFAULTS == {
         name: parameter.default
@@ -6128,17 +6129,17 @@ def test_retrieve_or_reload_merged_data_reload_rejects_sector_layout_mismatch(
 def test_retrieve_or_reload_merged_data_ignores_redundant_retrieval_metadata(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Length-correct legacy metadata cannot replace requested site pairings."""
+    """Unused legacy metadata cannot replace requested site pairings."""
     monkeypatch.setattr(
         prep_module,
         "data_processing_surface_notracer",
         lambda **kwargs: (
             {"TAC": _site_dataset([2.0]), ".species": "CH4"},
             ["TAC"],
-            ["wrong-inlet"],
-            ["110m"],
-            ["inst-tac"],
-            ["1H"],
+            [],
+            ["wrong-height", "extra-height"],
+            [],
+            [],
         ),
     )
 

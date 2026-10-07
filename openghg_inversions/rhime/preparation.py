@@ -117,7 +117,6 @@ def retrieve_or_reload_rhime_data(
             calibration_scale=data_args["calibration_scale"],
             obs_data_level=data_args["obs_data_level"],
             platform=data_args["platform"],
-            use_tracer=data_args["use_tracer"],
             use_bc=data_args["use_bc"],
             bc_input=data_args["bc_input"],
             averaging_error=data_args["averaging_error"],
