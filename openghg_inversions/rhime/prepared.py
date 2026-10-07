@@ -14,9 +14,7 @@ from openghg_inversions.observation_error import (
 )
 
 from .builders import RhimeLikelihoodBuilder, RhimeModelBuilder
-from .materialization import materialize_pymc_inputs
-from .multisector import build_multisector_rhime_model_result, make_multisector_rhime_result
-from .multisector import multisector_model_input_names
+from .multisector import construct_multisector_rhime_model, make_multisector_rhime_result
 from .outputs import RhimeResult, make_multisector_rhime_outputs, make_standard_rhime_outputs
 from .preparation import with_prepared_rhime_sites
 from .sampling import RhimeSampler, sample_rhime_model
@@ -27,9 +25,8 @@ from .specs import (
     validate_output_path_settings,
 )
 from .standard import (
-    build_standard_rhime_model_result,
+    construct_standard_rhime_model,
     make_standard_rhime_result,
-    standard_model_input_names,
 )
 
 
@@ -128,42 +125,20 @@ def run_rhime_from_prepared_inputs(
         raise ValueError("A prepared RHIME run requires a model builder or likelihood.")
 
     run_spec = with_prepared_rhime_sites(run_spec, prepared_inputs)
-    # Complete-model builders historically own canonical, potentially lazy
-    # inputs. Only built-in graphs cross the named eager PyMC boundary here.
-    model_inputs = (
-        prepared_inputs.inv_inputs
-        if model_builder is not None
-        else materialize_pymc_inputs(
-            prepared_inputs,
-            variable_names=(
-                multisector_model_input_names(
-                    prepared_inputs,
-                    run_spec.model,
-                )
-                if multisector
-                else standard_model_input_names(
-                    prepared_inputs,
-                    run_spec.model,
-                )
-            ),
-        )
-    )
     active_sampler = RhimeSampler() if sampler is None else sampler
     build_and_sample_start = timer_start()
 
     if multisector:
-        model_build_result = build_multisector_rhime_model_result(
+        model_build_result = construct_multisector_rhime_model(
             prepared=prepared_inputs,
-            model_inputs=model_inputs,
             run_spec=run_spec,
             model_builder=model_builder,
             likelihood_builder=likelihood_builder,
             likelihood_kwargs=likelihood_kwargs,
         )
     else:
-        model_build_result = build_standard_rhime_model_result(
+        model_build_result = construct_standard_rhime_model(
             prepared=prepared_inputs,
-            model_inputs=model_inputs,
             run_spec=run_spec,
             model_builder=model_builder,
             likelihood_builder=likelihood_builder,

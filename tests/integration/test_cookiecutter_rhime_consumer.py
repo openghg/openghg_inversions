@@ -122,10 +122,12 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
             "prepared": prepared,
             "model_inputs": model_inputs,
             "run_spec": run_spec,
+            "model_builder": None,
             "likelihood_builder": likelihoods.likelihood_builder,
             "likelihood_kwargs": None,
             "preserve_legacy_likelihood": False,
             "legacy_unused_sigma_settings": None,
+            "legacy_minimum_error_floor": False,
         }
         calls.append("build")
         return build_result

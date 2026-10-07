@@ -1,0 +1,1 @@
+Document the standalone staged RHIME lifecycle and Python entry point, requested-versus-retained configuration identities, and concrete standard, multisector and CO2 stage contracts. Correct the prior-predictive tutorial's CO2 availability guidance and remove premature companion-orchestrator integration examples.

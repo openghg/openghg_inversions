@@ -311,9 +311,7 @@ def test_linked_partial_channel_error_omission_is_rejected(channel: str) -> None
         ({"surprise": True}, "config.surprise"),
     ],
 )
-def test_top_level_invalid_options_fail_during_resolution(
-    change: dict[str, object], message: str
-) -> None:
+def test_top_level_invalid_options_fail_during_resolution(change: dict[str, object], message: str) -> None:
     config = _ordinary()
     config.update(change)
 
@@ -348,9 +346,7 @@ def test_top_level_invalid_options_fail_during_resolution(
         ),
     ],
 )
-def test_invalid_likelihoods_fail_during_resolution(
-    likelihood: dict[str, object], message: str
-) -> None:
+def test_invalid_likelihoods_fail_during_resolution(likelihood: dict[str, object], message: str) -> None:
     config = _ordinary()
     config["likelihood"] = likelihood
 
@@ -366,9 +362,7 @@ def test_invalid_likelihoods_fail_during_resolution(
         ({"pdf": "uniform", "lower": 2.0, "upper": 1.0}, "lower must be less"),
     ],
 )
-def test_invalid_prior_parameters_fail_during_resolution(
-    prior: dict[str, object], message: str
-) -> None:
+def test_invalid_prior_parameters_fail_during_resolution(prior: dict[str, object], message: str) -> None:
     config = _ordinary()
     config["likelihood"] = {"kind": "additive_sigma", "sigma_prior": prior}
 
@@ -550,3 +544,40 @@ def test_linked_binding_rechecks_units_against_prepared_inputs() -> None:
 
     with pytest.raises(ValueError, match="channels.o2.units"):
         setup.runner_arguments(prepared)
+
+
+def test_co2_configuration_is_authoritative_for_stages_and_outputs(tmp_path):
+    from openghg_inversions.rhime.co2.stages import resolve_co2_stage_setup
+    from test_co2_stage_contracts import _config
+
+    config = _config(tmp_path / "prepared.nc")
+    config["outputs"] = {"output_format": "none", "output_name": "chosen"}
+    direct = resolve_co2_family_config(config)
+    staged = resolve_co2_stage_setup(config)
+    assert direct == staged
+    assert direct.output.output_name == "chosen"
+    assert direct.sampler_options == staged.sampler_options
+    direct.sampler.sample_kwargs = {"random_seed": 999}
+    assert direct.sampler.sample_kwargs is None
+
+
+def test_existing_co2_setup_constructor_preserves_sampler_and_frozen_output_keywords(tmp_path):
+    from openghg_inversions.rhime.sampling import RhimeSampler
+    from openghg_inversions.rhime.specs import RhimeOutputSpec
+    from openghg_inversions.rhime.co2.stages import effective_co2_configuration
+
+    sampler = RhimeSampler(draws=7, sample_kwargs={"idata_kwargs": {"log_likelihood": True}})
+    output = RhimeOutputSpec(output_format="none", paris_postprocessing_kwargs={"nested": {"choice": 1}})
+    resolved = Co2RunSetup(
+        {"path": tmp_path / "prepared.nc"}, lambda: None, {}, sampler=sampler, output=output
+    )
+    sampler.draws = 99
+    output.paris_postprocessing_kwargs["nested"]["choice"] = 2
+    assert resolved.sampler.draws == 7
+    assert resolved.output.paris_postprocessing_kwargs["nested"]["choice"] == 1
+    with pytest.raises(TypeError):
+        resolved.output.paris_postprocessing_kwargs["nested"]["choice"] = 3
+    assert (
+        effective_co2_configuration(resolved)["output"]["paris_postprocessing_kwargs"]["nested"]["choice"]
+        == 1
+    )

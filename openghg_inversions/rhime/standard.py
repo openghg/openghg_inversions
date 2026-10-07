@@ -448,6 +448,87 @@ def make_standard_rhime_result(
     return result
 
 
+def prepare_standard_rhime_inputs(
+    merged: RhimeMergedData,
+    data_args: Mapping[str, Any],
+) -> RhimePreparedInputs:
+    """Prepare borrowed pre-filter merged data for the standard recipe.
+
+    Filtering determines retained observations and aligned site options before
+    basis construction, sensitivity projection, and canonical input assembly.
+    Basis I/O occurs only when requested; numerical arrays remain potentially
+    lazy until model construction. Empty retained observations raise ValueError
+    before basis construction.
+
+    Args:
+        merged: Borrowed acquisition output or externally supplied/reloaded
+            merged data before configured filtering, with retained site
+            options and a compatible single-sector layout.
+        data_args: Complete normalized preparation options from
+            ``resolve_rhime_options(..., multisector=False).data_args``.
+            Resolve raw options and aliases first; this mapping is not mutated.
+    """
+    filtered = filter_rhime_observations(merged, data_args)
+    basis_functions = build_rhime_basis(filtered, data_args)
+    site_data = build_rhime_sensitivities(
+        filtered,
+        basis_functions,
+        data_args,
+        multisector=False,
+    )
+    return assemble_rhime_inputs(filtered, basis_functions, site_data, data_args)
+
+
+def construct_standard_rhime_model(
+    *,
+    prepared: RhimePreparedInputs,
+    run_spec: RhimeRunSpec,
+    model_builder: RhimeModelBuilder | None = None,
+    likelihood_builder: RhimeLikelihoodBuilder | None = None,
+    likelihood_kwargs: Mapping[str, Any] | None = None,
+    preserve_legacy_likelihood: bool = False,
+    legacy_unused_sigma_settings: PollutionEventSettings | None = None,
+    legacy_minimum_error_floor: bool = False,
+) -> RhimeModelBuildResult:
+    """Construct the standard graph from phase-complete prepared inputs.
+
+    Built-in construction selects and materializes related arrays together at
+    the PyMC boundary. A complete custom builder receives borrowed, potentially
+    lazy inputs and owns its materialization. Builder conflicts and missing
+    component inputs raise ValueError before construction.
+    """
+    if model_builder is not None and likelihood_builder is not None:
+        raise ValueError("Pass either `model_builder` or `likelihood_builder`, not both.")
+    if likelihood_kwargs and likelihood_builder is None:
+        raise ValueError("Non-empty `likelihood_kwargs` require an active `likelihood_builder`.")
+    if model_builder is not None:
+        model_inputs = prepared.inv_inputs
+    else:
+        names = list(standard_model_input_names(prepared, run_spec.model))
+        if legacy_unused_sigma_settings is not None or legacy_minimum_error_floor:
+            _require_component_inputs(
+                prepared,
+                ("min_error",),
+                owner="Legacy run_hbmcmc likelihood compatibility",
+            )
+            names.append("min_error")
+        model_inputs = materialize_pymc_inputs(
+            prepared,
+            variable_names=names,
+        )
+    return build_standard_rhime_model_result(
+        prepared=prepared,
+        model_inputs=model_inputs,
+        run_spec=run_spec,
+        model_builder=model_builder,
+        likelihood_builder=likelihood_builder,
+        likelihood_kwargs=likelihood_kwargs,
+        preserve_legacy_likelihood=preserve_legacy_likelihood,
+        legacy_unused_sigma_settings=legacy_unused_sigma_settings,
+        legacy_minimum_error_floor=legacy_minimum_error_floor,
+    )
+
+
 def run_rhime(
     *,
     config_file: str | Path | None = None,
@@ -530,15 +611,7 @@ def run_rhime(
         multisector=False,
         merged_data=merged_data,
     )
-    filtered = filter_rhime_observations(merged, setup.data_args)
-    basis_functions = build_rhime_basis(filtered, setup.data_args)
-    site_data = build_rhime_sensitivities(
-        filtered,
-        basis_functions,
-        setup.data_args,
-        multisector=False,
-    )
-    prepared = assemble_rhime_inputs(filtered, basis_functions, site_data, setup.data_args)
+    prepared = prepare_standard_rhime_inputs(merged, setup.data_args)
     log_timing(
         "rhime.prepare_inputs",
         timer_seconds(preparation_start),
@@ -551,40 +624,25 @@ def run_rhime(
     )
     run_spec = with_prepared_rhime_sites(setup.run_spec, prepared)
 
-    model_input_names = list(standard_model_input_names(prepared, run_spec.model))
-    if _compatibility_unused_sigma_settings is not None or _compatibility_minimum_error_floor:
-        _require_component_inputs(
-            prepared,
-            ("min_error",),
-            owner="Legacy run_hbmcmc likelihood compatibility",
-        )
-        model_input_names.append("min_error")
-    model_inputs = materialize_pymc_inputs(
-        prepared,
-        variable_names=tuple(dict.fromkeys(model_input_names)),
-    )
     build_and_sample_start = timer_start()
-    legacy_additive_kwargs = (
-        {"legacy_minimum_error_floor": True} if _compatibility_minimum_error_floor else {}
-    )
-    model_build_result = build_standard_rhime_model_result(
+    model_build_result = construct_standard_rhime_model(
         prepared=prepared,
-        model_inputs=model_inputs,
         run_spec=run_spec,
         likelihood_builder=likelihood_builder,
         likelihood_kwargs=likelihood_kwargs,
         preserve_legacy_likelihood=preserve_legacy_likelihood,
         legacy_unused_sigma_settings=_compatibility_unused_sigma_settings,
-        **legacy_additive_kwargs,
+        legacy_minimum_error_floor=_compatibility_minimum_error_floor,
     )
+    sampler = setup.sampler
     idata = sample_rhime_model(
         model_build_result,
-        setup.sampler,
+        sampler,
     )
     result = make_standard_rhime_result(
         prepared=prepared,
         run_spec=run_spec,
-        sampler=setup.sampler,
+        sampler=sampler,
         model_build_result=model_build_result,
         idata=idata,
         build_and_sample_seconds=timer_seconds(build_and_sample_start),

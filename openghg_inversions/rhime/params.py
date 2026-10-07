@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import warnings
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, fields, is_dataclass, replace
 from pathlib import Path
 from typing import Any, cast
 
@@ -23,7 +23,7 @@ from openghg_inversions.config import config
 from openghg_inversions.model_error import normalise_min_error_options
 from openghg_inversions.models._flux import safe_pymc_name
 from openghg_inversions.observation_error import AggregationErrorMode
-from openghg_inversions.rhime.sampling import RhimeSampler
+from openghg_inversions.rhime.sampling import RhimeSampler, SamplerOptions
 from openghg_inversions.rhime.specs import (
     DEFAULT_X_PRIOR,
     AdditiveSigmaSettings,
@@ -190,13 +190,72 @@ RHIME_PREPARATION_DEFAULTS: dict[str, Any] = {
 }
 
 
-@dataclass(frozen=True)
-class RhimeRunnerSetup:
+def _copy_configuration_choices(value: Any) -> Any:
+    """Copy nested choice containers while leaving scientific arrays borrowed."""
+    if is_dataclass(value) and not isinstance(value, type):
+        return replace(
+            value,
+            **{
+                item.name: _copy_configuration_choices(getattr(value, item.name))
+                for item in fields(value)
+                if item.init
+            },
+        )
+    if isinstance(value, Mapping):
+        return {key: _copy_configuration_choices(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_copy_configuration_choices(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_copy_configuration_choices(item) for item in value)
+    return value
+
+
+@dataclass(frozen=True, init=False)
+class StandardRecipeConfig:
     """Normalized RHIME setup derived from config or direct API parameters."""
 
-    run_spec: RhimeRunSpec
-    sampler: RhimeSampler
-    data_args: dict[str, Any]
+    _run_spec: RhimeRunSpec
+    sampler_options: SamplerOptions
+    _data_args: dict[str, Any]
+
+    def __init__(
+        self,
+        run_spec: RhimeRunSpec,
+        sampler_options: SamplerOptions | RhimeSampler | None = None,
+        data_args: Mapping[str, Any] | None = None,
+        *,
+        sampler: RhimeSampler | None = None,
+    ) -> None:
+        if sampler_options is not None and sampler is not None:
+            raise ValueError("Pass sampler_options or sampler, not both.")
+        supplied_sampler = sampler_options if sampler_options is not None else sampler
+        choices = (
+            supplied_sampler
+            if isinstance(supplied_sampler, SamplerOptions)
+            else SamplerOptions.from_sampler(supplied_sampler or RhimeSampler())
+        )
+        object.__setattr__(self, "_run_spec", _copy_configuration_choices(run_spec))
+        object.__setattr__(self, "sampler_options", choices)
+        object.__setattr__(self, "_data_args", _copy_configuration_choices(dict(data_args or {})))
+
+    @property
+    def run_spec(self) -> RhimeRunSpec:
+        """Return independent scientific/output choices without copying arrays."""
+        return _copy_configuration_choices(self._run_spec)
+
+    @property
+    def data_args(self) -> dict[str, Any]:
+        """Return independent preparation options without leaking invocation edits."""
+        return _copy_configuration_choices(self._data_args)
+
+    @property
+    def sampler(self) -> RhimeSampler:
+        """Create invocation-local sampling state from immutable choices."""
+        return self.sampler_options.create_sampler()
+
+
+# Nested runners retain their existing Python setup import.
+RhimeRunnerSetup = StandardRecipeConfig
 
 
 def as_list(value: str | Sequence[str] | None) -> list[str] | None:
@@ -786,7 +845,7 @@ def make_rhime_runner_setup(
         remaining.pop("aggregation_error_mode", "none"),
     )
 
-    sampler = RhimeSampler(
+    sampler = SamplerOptions(
         draws=remaining.pop("draws", 1000),
         burn=remaining.pop("burn", 0),
         tune=remaining.pop("tune", 1000),
@@ -855,4 +914,4 @@ def make_rhime_runner_setup(
         name: value for name, value in data_candidate_args.items() if name in RHIME_PREPARATION_OPTION_NAMES
     }
     data_args["min_error_options"] = normalise_min_error_options(data_args["min_error_options"])
-    return RhimeRunnerSetup(run_spec=run_spec, sampler=sampler, data_args=data_args)
+    return StandardRecipeConfig(run_spec=run_spec, sampler_options=sampler, data_args=data_args)

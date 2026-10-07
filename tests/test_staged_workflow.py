@@ -92,12 +92,6 @@ def _prepared() -> RhimePreparedInputs:
     return RhimePreparedInputs(inv_inputs=inputs, basis_functions=basis, site_metadata=metadata)
 
 
-def _fake_save_merged(_data: object, directory: str | Path, **_kwargs: object) -> None:
-    destination = Path(directory)
-    destination.mkdir(parents=True)
-    (destination / "merged-data.nc").write_bytes(b"synthetic merged data")
-
-
 def test_stage_parser_requires_explicit_config_source_and_model() -> None:
     parser = build_parser()
     args = parser.parse_args(
@@ -206,11 +200,7 @@ def test_prepare_is_independent_and_writes_inspectable_contract(
     prepared = _prepared()
     sentinel = SimpleNamespace(sites=("TAC",), fp_all={})
     monkeypatch.setattr(stages, "retrieve_or_reload_rhime_data", lambda *args, **kwargs: sentinel)
-    monkeypatch.setattr(stages, "filter_rhime_observations", lambda *args, **kwargs: sentinel)
-    monkeypatch.setattr(stages, "build_rhime_basis", lambda *args, **kwargs: prepared.basis_functions)
-    monkeypatch.setattr(stages, "build_rhime_sensitivities", lambda *args, **kwargs: {})
-    monkeypatch.setattr(stages, "assemble_rhime_inputs", lambda *args, **kwargs: prepared)
-    monkeypatch.setattr(stages, "_save_merged_data", _fake_save_merged)
+    monkeypatch.setattr(stages, "prepare_standard_rhime_inputs", lambda *args, **kwargs: prepared)
     monkeypatch.setattr(stages, "sample_rhime_model", lambda *args, **kwargs: pytest.fail("sampled"))
 
     setup = resolve_stage_setup(
@@ -229,10 +219,12 @@ def test_prepare_is_independent_and_writes_inspectable_contract(
 
     prepared_path = Path(manifest["artifacts"]["prepared_inputs"])
     assert prepared_path.is_file()
-    assert Path(manifest["artifacts"]["merged_data"]).is_file()
+    assert "merged_data" not in manifest["artifacts"]
+    assert "merged_data" not in manifest["artifact_identities"]
+    assert not (tmp_path / "prepare" / "merged-data").exists()
     assert manifest["artifact_identities"]["prepared_inputs"].startswith("sha256:")
     assert manifest["requested_configuration"]["preparation"]["save_merged_data"] is True
-    assert manifest["effective_configuration"]["preparation"]["save_merged_data"] is False
+    assert manifest["effective_configuration"]["preparation"]["save_merged_data"] is True
     assert manifest["effective_configuration"]["preparation"]["basis_output_path"] == str(
         tmp_path / "prepare" / "basis"
     )
@@ -244,7 +236,7 @@ def test_prepare_is_independent_and_writes_inspectable_contract(
     xr.testing.assert_identical(RhimePreparedInputs.load(prepared_path).inv_inputs, prepared.inv_inputs)
 
 
-def test_prepare_fails_when_a_requested_site_was_dropped(
+def test_prepare_accepts_retained_subset(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -253,21 +245,17 @@ def test_prepare_fails_when_a_requested_site_was_dropped(
     prepared = _prepared()
     merged = SimpleNamespace(sites=("TAC",), fp_all={})
     monkeypatch.setattr(stages, "retrieve_or_reload_rhime_data", lambda *args, **kwargs: merged)
-    monkeypatch.setattr(stages, "filter_rhime_observations", lambda *args, **kwargs: merged)
-    monkeypatch.setattr(stages, "build_rhime_basis", lambda *args, **kwargs: prepared.basis_functions)
-    monkeypatch.setattr(stages, "build_rhime_sensitivities", lambda *args, **kwargs: {})
-    monkeypatch.setattr(stages, "assemble_rhime_inputs", lambda *args, **kwargs: prepared)
-    monkeypatch.setattr(stages, "_save_merged_data", _fake_save_merged)
+    monkeypatch.setattr(stages, "prepare_standard_rhime_inputs", lambda *args, **kwargs: prepared)
 
-    with pytest.raises(ValueError, match="could not produce required site.*MHD"):
-        prepare_rhime_stage(
-            setup=resolve_stage_setup(
-                _params(sites=["TAC", "MHD"], averaging_period=["1h", "1h"]),
-                model="standard",
-            ),
-            model="standard",
-            output_dir=tmp_path,
-        )
+    manifest = prepare_rhime_stage(
+        setup=resolve_stage_setup(
+            _params(sites=["TAC", "MHD"], averaging_period=["1h", "2h"]), model="standard",
+        ), model="standard", output_dir=tmp_path,
+    )
+    retained = manifest["effective_configuration"]["run_spec"]
+    assert retained["sites"] == ("TAC",)
+    assert retained["averaging_period"] == ("1h",)
+    assert manifest["requested_configuration"]["run_spec"]["sites"] == ("TAC", "MHD")
 
 
 def test_prepare_accepts_canonicalised_site_labels(
@@ -279,11 +267,7 @@ def test_prepare_accepts_canonicalised_site_labels(
     prepared = _prepared()
     merged = SimpleNamespace(sites=("TAC",), fp_all={})
     monkeypatch.setattr(stages, "retrieve_or_reload_rhime_data", lambda *args, **kwargs: merged)
-    monkeypatch.setattr(stages, "filter_rhime_observations", lambda *args, **kwargs: merged)
-    monkeypatch.setattr(stages, "build_rhime_basis", lambda *args, **kwargs: prepared.basis_functions)
-    monkeypatch.setattr(stages, "build_rhime_sensitivities", lambda *args, **kwargs: {})
-    monkeypatch.setattr(stages, "assemble_rhime_inputs", lambda *args, **kwargs: prepared)
-    monkeypatch.setattr(stages, "_save_merged_data", _fake_save_merged)
+    monkeypatch.setattr(stages, "prepare_standard_rhime_inputs", lambda *args, **kwargs: prepared)
 
     manifest = prepare_rhime_stage(
         setup=resolve_stage_setup(_params(sites=["tac"]), model="standard"),
@@ -397,11 +381,7 @@ def test_preparation_manifest_authenticates_supplied_prepared_inputs(
     prepared = _prepared()
     merged = SimpleNamespace(sites=("TAC",), fp_all={})
     monkeypatch.setattr(stages, "retrieve_or_reload_rhime_data", lambda *args, **kwargs: merged)
-    monkeypatch.setattr(stages, "filter_rhime_observations", lambda *args, **kwargs: merged)
-    monkeypatch.setattr(stages, "build_rhime_basis", lambda *args, **kwargs: prepared.basis_functions)
-    monkeypatch.setattr(stages, "build_rhime_sensitivities", lambda *args, **kwargs: {})
-    monkeypatch.setattr(stages, "assemble_rhime_inputs", lambda *args, **kwargs: prepared)
-    monkeypatch.setattr(stages, "_save_merged_data", _fake_save_merged)
+    monkeypatch.setattr(stages, "prepare_standard_rhime_inputs", lambda *args, **kwargs: prepared)
     setup = resolve_stage_setup(_params(), model="standard")
     preparation = prepare_rhime_stage(setup=setup, model="standard", output_dir=tmp_path / "prepare")
 
@@ -419,7 +399,6 @@ def test_preparation_manifest_authenticates_supplied_prepared_inputs(
         stages._load_prepared(
             unrelated_path,
             setup=setup,
-            model="standard",
             preparation_manifest=preparation["manifest_path"],
         )
 
@@ -627,6 +606,42 @@ def test_diagnostics_authenticate_posterior_with_sample_manifest(tmp_path: Path)
         )
 
 
+@pytest.mark.parametrize("schema_version", [1, 2, 3])
+@pytest.mark.parametrize("family", ["standard", "multisector", "co2"])
+def test_independent_diagnosis_accepts_historical_sample_envelopes(
+    tmp_path: Path, schema_version: int, family: str,
+) -> None:
+    """Posterior-only diagnosis keeps its own compatibility and report contracts."""
+    from openghg_inversions.rhime._stage_artifacts import file_identity, write_json
+
+    trace = make_trace(posterior=xr.Dataset(
+        {"x": (("chain", "draw"), np.random.default_rng(42).normal(size=(2, 40)))},
+        coords={"chain": [0, 1], "draw": range(40)},
+    ))
+    posterior_path = tmp_path / "posterior.nc"
+    save_trace(trace, posterior_path)
+    manifest_path = write_json(tmp_path / "sample-manifest.json", {
+        "schema_version": schema_version,
+        "producer": "openghg_inversions",
+        "stage": "sample",
+        "configuration_identity": "historical-science",
+        "effective_configuration": {"model": family},
+        "artifact_identities": {"posterior": file_identity(posterior_path)},
+    })
+    destination = tmp_path / "diagnose"
+    result = diagnose_rhime_stage(
+        posterior=posterior_path, sample_manifest=manifest_path, output_dir=destination,
+    )
+    assert result["schema_version"] == 1
+    assert result["measured_values"]["chains"] == 2
+    assert (destination / "posterior-diagnostics.nc").exists()
+    diagnostic_manifest = destination / "diagnose-manifest.json"
+    if family == "co2":
+        assert json.loads(diagnostic_manifest.read_text())["schema_version"] == 1
+    else:
+        assert not diagnostic_manifest.exists()
+
+
 @pytest.mark.parametrize("output_name", ["/tmp/outside-", "../outside-"])
 def test_postprocess_rejects_output_name_that_can_escape_output_dir(
     tmp_path: Path,
@@ -676,11 +691,7 @@ def test_synthetic_staged_tracer_bullet(
     prepared = _prepared()
     sentinel = SimpleNamespace(sites=("TAC",), fp_all={})
     monkeypatch.setattr(stages, "retrieve_or_reload_rhime_data", lambda *args, **kwargs: sentinel)
-    monkeypatch.setattr(stages, "filter_rhime_observations", lambda *args, **kwargs: sentinel)
-    monkeypatch.setattr(stages, "build_rhime_basis", lambda *args, **kwargs: prepared.basis_functions)
-    monkeypatch.setattr(stages, "build_rhime_sensitivities", lambda *args, **kwargs: {})
-    monkeypatch.setattr(stages, "assemble_rhime_inputs", lambda *args, **kwargs: prepared)
-    monkeypatch.setattr(stages, "_save_merged_data", _fake_save_merged)
+    monkeypatch.setattr(stages, "prepare_standard_rhime_inputs", lambda *args, **kwargs: prepared)
     setup = resolve_stage_setup(
         _params(sample_kwargs={"random_seed": 42}),
         model="standard",
@@ -741,7 +752,7 @@ def test_synthetic_staged_tracer_bullet(
     assert result.model_build_result is None
     assert result.output_contract is not None
     assert result.idata["posterior"].sizes["chain"] == 2
-    assert sample_contract["schema_version"] == 2
+    assert sample_contract["schema_version"] == 3
     assert result.inv_out.output_metadata["sampler"] == {
         "draws": 10,
         "burn": 0,
@@ -787,7 +798,9 @@ def _saved_output_binding(tmp_path: Path) -> dict[str, Any]:
         prepare_manifest,
         {
             "producer": "openghg_inversions",
-            "schema_version": 1,
+            "schema_version": 3,
+            "recipe": "standard",
+            "identity_version": 1,
             "stage": "prepare",
             "configuration_identity": configuration_identity(setup, model="standard"),
             "artifact_identities": {"prepared_inputs": identities["prepared_inputs"]},
@@ -813,10 +826,12 @@ def _saved_output_binding(tmp_path: Path) -> dict[str, Any]:
         sample_manifest,
         {
             "producer": "openghg_inversions",
-            "schema_version": 2,
+            "schema_version": 3,
+            "recipe": "standard",
+            "identity_version": 1,
             "stage": "sample",
             "configuration_identity": configuration_identity(setup, model="standard"),
-            "effective_configuration": stages.effective_configuration(setup, model="standard"),
+            "effective_configuration": stages.effective_configuration(setup),
             "artifacts": {"output_binding": binding_path.name},
             "artifact_identities": {**identities, "output_binding": stages._file_identity(binding_path)},
         },
@@ -869,7 +884,9 @@ assert result.output_contract.variable_roles['flux_scale'] == 'x'
     assert loaded.model_metadata["builder"] == {"fixture": "distinct chains"}
 
 
-@pytest.mark.parametrize("corruption", ["missing", "changed", "swapped", "schema", "contract", "downgraded"])
+@pytest.mark.parametrize("corruption", [
+    "missing", "changed", "swapped", "prepared", "schema", "contract", "downgraded", "escaping", "absolute",
+])
 def test_new_replay_rejects_invalid_output_binding_without_graph_fallback(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, corruption: str
 ) -> None:
@@ -884,11 +901,17 @@ def test_new_replay_rejects_invalid_output_binding_without_graph_fallback(
         del manifest["artifacts"]["output_binding"]
     elif corruption == "downgraded":
         manifest["schema_version"] = 1
+    elif corruption == "escaping":
+        manifest["artifacts"]["output_binding"] = "../outside.json"
+    elif corruption == "absolute":
+        manifest["artifacts"]["output_binding"] = str(binding_path)
     elif corruption == "changed":
         binding_path.write_text("{}", encoding="utf-8")
     else:
         if corruption == "swapped":
             binding["artifact_identities"]["posterior"] = "sha256:another-posterior"
+        elif corruption == "prepared":
+            binding["artifact_identities"]["prepared_inputs"] = "sha256:another-prepared"
         elif corruption == "schema":
             binding["schema_version"] = True
         else:
@@ -904,35 +927,181 @@ def test_new_replay_rejects_invalid_output_binding_without_graph_fallback(
     monkeypatch.setattr(stages, "load_trace", forbidden)
     with pytest.raises(ValueError):
         postprocess_rhime_stage(**arguments)
-    assert not list(arguments["output_dir"].glob("*.nc"))
+    assert not arguments["output_dir"].exists()
 
 
-def test_legacy_sample_manifest_retains_explicit_graph_compatibility(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize("version", [1, 2, 4, True])
+def test_retired_sample_manifest_fails_before_posterior_or_destination(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, version: int
 ) -> None:
-    from openghg_inversions.postprocessing.contracts import OutputContract
     from openghg_inversions.rhime import _standard_stages as stages
 
     arguments = _saved_output_binding(tmp_path)
     path = arguments["sample_manifest"]
     manifest = json.loads(path.read_text())
-    manifest["schema_version"] = 1
-    del manifest["artifacts"]["output_binding"]
-    del manifest["artifact_identities"]["output_binding"]
+    manifest["schema_version"] = version
+    manifest["artifacts"].pop("output_binding")
+    manifest["artifact_identities"].pop("output_binding")
     stages._write_json(path, manifest)
+
+    def forbidden(*args: Any, **kwargs: Any) -> None:
+        pytest.fail("Retired versions must fail before constructing/loading/writing.")
+
+    monkeypatch.setattr(stages, "_build_prepared_model", forbidden)
+    monkeypatch.setattr(stages, "load_trace", forbidden)
+    with pytest.raises(ValueError, match="unsupported schema_version"):
+        postprocess_rhime_stage(**arguments)
+    assert not arguments["output_dir"].exists()
+
+
+@pytest.mark.parametrize("field,value", [("recipe", "co2"), ("identity_version", 2), ("identity_version", True)])
+def test_family_contract_rejected_before_replay_destination(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, field: str, value: Any,
+) -> None:
+    from openghg_inversions.rhime import _standard_stages as stages
+
+    arguments = _saved_output_binding(tmp_path)
+    path = arguments["sample_manifest"]
+    manifest = json.loads(path.read_text())
+    manifest[field] = value
+    stages._write_json(path, manifest)
+    monkeypatch.setattr(stages, "load_trace", lambda *args: pytest.fail("loaded posterior"))
+    with pytest.raises(ValueError):
+        postprocess_rhime_stage(**arguments)
+    assert not arguments["output_dir"].exists()
+
+
+@pytest.mark.parametrize("family", ["standard", "multisector"])
+def test_concrete_stage_preparation_keeps_requested_cache_and_retained_labels(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, family: str,
+) -> None:
+    from openghg_inversions.rhime.stages import select_stages
+
+    stages = select_stages(family)
+    setup = stages.resolve_config(_params(
+        sites=["MHD", "TAC"], averaging_period=["2h", "1h"], save_merged_data=True,
+        flux_sources=["synthetic-total"] if family == "standard" else ["bio", "ff"],
+    ))
+    merged = object()
     calls = []
 
-    def legacy_build(*args: Any, **kwargs: Any) -> SimpleNamespace:
-        calls.append(True)
-        return SimpleNamespace(
-            model=None,
-            output_contract=OutputContract(
-                variable_roles={"flux_scale": "x"}, supported_output_formats=("none", "inv_out")
-            ),
-        )
+    def acquisition(data_args: dict[str, Any], *, multisector: bool) -> object:
+        assert data_args["save_merged_data"] is True
+        assert multisector == (family == "multisector")
+        calls.append("acquisition")
+        return merged
 
-    monkeypatch.setattr(stages, "_build_prepared_model", legacy_build)
-    result = postprocess_rhime_stage(**arguments)
-    assert calls == [True]
-    assert result.inv_out is not None
-    assert result.idata["posterior"].sizes["chain"] == 2
+    def preparation(value: object, data_args: dict[str, Any]) -> RhimePreparedInputs:
+        assert value is merged
+        assert data_args["sites"] == ["MHD", "TAC"]
+        calls.append("preparation")
+        return _prepared()
+
+    monkeypatch.setattr(stages, "retrieve_or_reload_rhime_data", acquisition)
+    monkeypatch.setattr(stages, f"prepare_{family}_rhime_inputs", preparation)
+    manifest = stages.prepare(setup=setup, output_dir=tmp_path / family)
+    assert calls == ["acquisition", "preparation"]
+    assert manifest["recipe"] == family
+    assert manifest["schema_version"] == 3 and manifest["identity_version"] == 1
+    assert set(manifest["artifacts"]) == {"prepared_inputs"}
+    assert manifest["effective_configuration"]["run_spec"]["sites"] == ("TAC",)
+    assert setup.run_spec.sites == ("MHD", "TAC")
+
+
+@pytest.mark.parametrize("family", ["standard", "multisector"])
+@pytest.mark.parametrize("evidence,status", [([1.0], "pass"), ([float("nan")], "fail"), ([], "fail")])
+def test_concrete_readiness_preserves_returned_evidence_writes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, family: str, evidence: list[float], status: str,
+) -> None:
+    from openghg_inversions.rhime.stages import select_stages
+
+    stages = select_stages(family)
+    setup = stages.resolve_config(_params(
+        flux_sources=["synthetic-total"] if family == "standard" else ["bio", "ff"],
+    ))
+    prior = make_trace(prior=xr.Dataset({"x": (("chain", "draw"), [evidence])}))
+    monkeypatch.setattr(stages, "_load_prepared", lambda *args, **kwargs: (_prepared(), setup))
+    monkeypatch.setattr(stages, "_build_prepared_model", lambda *args: SimpleNamespace(model=nullcontext()))
+    monkeypatch.setattr(stages.pm, "sample_prior_predictive", lambda *args: prior)
+    result = stages.prior_predictive(
+        setup=setup, prepared_inputs=tmp_path / "unused.nc",
+        preparation_manifest=tmp_path / "unused.json", output_dir=tmp_path / family,
+    )
+    assert result["status"] == status
+    assert (tmp_path / family / "prior-predictive.nc").exists()
+    assert (tmp_path / family / "prior-predictive-readiness.json").exists()
+
+
+@pytest.mark.parametrize("family", ["standard", "multisector"])
+def test_real_model_and_common_posterior_products_match_all_routes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, family: str,
+) -> None:
+    """Compare real graphs/products; substitute only acquisition and stochastic draws."""
+    import importlib
+    from openghg_inversions.rhime import prepared as prepared_runner
+    from openghg_inversions.rhime.stages import select_stages
+
+    science = importlib.import_module(f"openghg_inversions.rhime.{family}")
+    stages = select_stages(family)
+    parameters = _params(
+        flux_sources=["synthetic-total"] if family == "standard" else ["bio", "ff"],
+        save_inversion_output=False, save_trace=False, output_path=None,
+    )
+    setup = stages.resolve_config(parameters)
+    prepared = _prepared()
+    if family == "multisector":
+        inputs = prepared.inv_inputs.copy()
+        inputs["H"] = xr.concat(
+            [inputs["H"], 2 * inputs["H"]], dim=xr.IndexVariable("source", ["bio", "ff"]),
+        )
+        prepared = RhimePreparedInputs(
+            inv_inputs=inputs, basis_functions=prepared.basis_functions, site_metadata=prepared.site_metadata,
+        )
+    direct = getattr(science, f"construct_{family}_rhime_model")(
+        prepared=prepared, run_spec=setup.run_spec,
+    )
+    staged = stages._build_prepared_model(prepared, setup)
+    point = direct.model.initial_point()
+    np.testing.assert_allclose(direct.model.compile_logp()(point), staged.model.compile_logp()(point))
+    assert direct.output_contract.to_dict() == staged.output_contract.to_dict()
+    with direct.model:
+        draws = stages.pm.sample_prior_predictive(3, random_seed=127)
+    common_posterior = make_trace(posterior=draws["prior"].to_dataset())
+    samplers = []
+
+    def controlled_sampling(build: Any, sampler: Any) -> xr.DataTree:
+        np.testing.assert_allclose(build.model.compile_logp()(point), direct.model.compile_logp()(point))
+        samplers.append((sampler.draws, sampler.tune, sampler.chains, sampler.nuts_sampler))
+        return common_posterior.copy(deep=True)
+
+    monkeypatch.setattr(science, "sample_rhime_model", controlled_sampling)
+    monkeypatch.setattr(prepared_runner, "sample_rhime_model", controlled_sampling)
+    monkeypatch.setattr(stages, "sample_rhime_model", controlled_sampling)
+    monkeypatch.setattr(science, "retrieve_or_reload_rhime_data", lambda *args, **kwargs: object())
+    monkeypatch.setattr(science, f"prepare_{family}_rhime_inputs", lambda *args: prepared)
+    full = getattr(science, "run_rhime" if family == "standard" else "run_rhime_multisector")(**parameters)
+    from_prepared = prepared_runner.run_rhime_from_prepared_inputs(
+        prepared_inputs=prepared, run_spec=setup.run_spec, sampler=setup.sampler,
+    )
+    monkeypatch.setattr(stages, "retrieve_or_reload_rhime_data", lambda *args, **kwargs: object())
+    monkeypatch.setattr(stages, f"prepare_{family}_rhime_inputs", lambda *args: prepared)
+    preparation = stages.prepare(setup=setup, output_dir=tmp_path / "prepare")
+    sampled = stages.sample(
+        setup=setup, prepared_inputs=preparation["artifacts"]["prepared_inputs"],
+        preparation_manifest=preparation["manifest_path"], output_dir=tmp_path / "sample",
+    )
+    monkeypatch.setattr(stages, "_build_prepared_model", lambda *args: pytest.fail("replay built graph"))
+    replay = stages.postprocess(
+        setup=setup,
+        prepared_inputs=preparation["artifacts"]["prepared_inputs"],
+        preparation_manifest=preparation["manifest_path"], posterior=sampled["artifacts"]["posterior"],
+        sample_manifest=sampled["manifest_path"], output_dir=tmp_path / "replay",
+    )
+    assert samplers == [(10, 10, 2, "pymc")] * 3
+    for result in (from_prepared, replay):
+        xr.testing.assert_equal(result.inv_out.flux, full.inv_out.flux)
+        xr.testing.assert_equal(result.inv_out.trace["posterior"].to_dataset(), full.inv_out.trace["posterior"].to_dataset())
+        xr.testing.assert_identical(result.inv_out.inv_inputs, full.inv_out.inv_inputs)
+        assert result.inv_out.model_metadata["variable_roles"] == full.inv_out.model_metadata["variable_roles"]
+    if family == "multisector":
+        xr.testing.assert_equal(replay.outputs["sector_flux_diagnostics"], full.outputs["sector_flux_diagnostics"])

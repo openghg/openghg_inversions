@@ -501,7 +501,25 @@ def run_rhime_co2(
         offset_prior=offset_prior,
         offset_args=offset_args,
     )
-    trace = sample_rhime_model(built, RhimeSampler() if sampler is None else sampler)
+    return sample_co2_model(
+        built,
+        prepared_inputs,
+        sampler=RhimeSampler() if sampler is None else sampler,
+        likelihood_builder=likelihood_builder,
+        likelihood_kwargs=likelihood_kwargs,
+    )
+
+
+def sample_co2_model(
+    built: RhimeModelBuildResult,
+    prepared_inputs: Co2PreparedInputs,
+    *,
+    sampler: RhimeSampler,
+    likelihood_builder: RhimeLikelihoodBuilder | None = None,
+    likelihood_kwargs: Mapping[str, Any] | None = None,
+) -> xr.DataTree:
+    """Sample and annotate an ordinary CO2 graph with its scientific roles."""
+    trace = sample_rhime_model(built, sampler)
     trace = annotate_co2_trace(
         trace,
         built,

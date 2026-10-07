@@ -39,6 +39,7 @@ from .co2_o2_cached_sigma_runner import run_rhime_co2_o2_cached_sigma_from_prepa
 from .configuration import (
     Co2O2RunSetup,
     Co2RunSetup,
+    Co2RecipeConfig,
     co2_config_templates,
     load_co2_family_config,
     resolve_co2_family_config,
@@ -51,6 +52,7 @@ __all__ = [
     "BoundCo2AffineFluxMap",
     "Co2CachedSigmaModel",
     "Co2RunSetup",
+    "Co2RecipeConfig",
     "annotate_co2_trace",
     "sample_co2_cached_prior_predictive",
     "build_co2_cached_sigma_model",

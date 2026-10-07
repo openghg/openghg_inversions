@@ -74,19 +74,14 @@ def co2_cached_sigma_input_names(
     names = list(_CO2_CACHED_SIGMA_INPUT_NAMES)
     if use_bc:
         names.append("H_bc")
-    names.extend(
-        aggregation_error_input_names(inputs, prepared_inputs.aggregation_error_mode)
-    )
+    names.extend(aggregation_error_input_names(inputs, prepared_inputs.aggregation_error_mode))
     if "state_is_active" in inputs:
         names.append("state_is_active")
         if "state_fixed_value" in inputs:
             names.append("state_fixed_value")
     missing = [name for name in names if name not in inputs]
     if missing:
-        raise ValueError(
-            "Cached-sigma CO2 prepared inputs are missing required variable(s): "
-            f"{missing!r}."
-        )
+        raise ValueError(f"Cached-sigma CO2 prepared inputs are missing required variable(s): {missing!r}.")
     return tuple(names)
 
 
@@ -150,8 +145,7 @@ def _predictive_seed(sampler: RhimeSampler) -> Any:
     unsupported = set(predictive_kwargs) - {"random_seed"}
     if unsupported:
         raise ValueError(
-            "The cached-sigma CO2 joint predictive supports only "
-            f"`random_seed`; got {sorted(unsupported)!r}."
+            f"The cached-sigma CO2 joint predictive supports only `random_seed`; got {sorted(unsupported)!r}."
         )
     if "random_seed" in predictive_kwargs:
         return predictive_kwargs["random_seed"]
@@ -192,9 +186,7 @@ def _append_joint_outputs(
     )
     chain_count, draw_count = mean_values.shape[:2]
     log_likelihood = (
-        np.empty((chain_count, draw_count), dtype=np.float64)
-        if sample_group == "posterior"
-        else None
+        np.empty((chain_count, draw_count), dtype=np.float64) if sample_group == "posterior" else None
     )
     predictive = (
         np.empty(
@@ -574,7 +566,29 @@ def run_rhime_co2_cached_sigma(
         offset_prior=offset_prior,
         offset_args=offset_args,
     )
-    requested_sampler = RhimeSampler() if sampler is None else sampler
+    return sample_co2_cached_model(
+        cached_model,
+        prepared_inputs,
+        sampler=RhimeSampler() if sampler is None else sampler,
+        sigma_target_accept=sigma_target_accept,
+        state_target_accept=state_target_accept,
+    )
+
+
+def sample_co2_cached_model(
+    cached_model: Co2CachedSigmaModel,
+    prepared_inputs: Co2PreparedInputs,
+    *,
+    sampler: RhimeSampler,
+    sigma_target_accept: float = 0.8,
+    state_target_accept: float = 0.9,
+) -> xr.DataTree:
+    """Execute the matched sigma-then-state transition and conditional outputs.
+
+    Graph adaptation, cache updates, predictions, and annotations stay together
+    because they define this concrete scientific sampler.
+    """
+    requested_sampler = sampler
     built = co2_cached_sigma_build_result(cached_model, prepared_inputs)
     sampling_sampler = _sampler_for_cached_graph(
         requested_sampler,

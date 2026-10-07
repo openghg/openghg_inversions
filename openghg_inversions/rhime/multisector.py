@@ -625,6 +625,73 @@ def make_multisector_rhime_result(
     return result
 
 
+def prepare_multisector_rhime_inputs(
+    merged: RhimeMergedData,
+    data_args: Mapping[str, Any],
+) -> RhimePreparedInputs:
+    """Prepare borrowed pre-filter merged data for the multisector recipe.
+
+    Filtering determines retained observations and aligned site options before
+    basis construction, sensitivity projection, and canonical input assembly.
+    Basis I/O occurs only when requested; numerical arrays remain potentially
+    lazy until model construction. Empty retained observations raise ValueError
+    before basis construction.
+
+    Args:
+        merged: Borrowed acquisition output or externally supplied/reloaded
+            merged data before configured filtering, with retained site
+            options and a compatible multisector layout.
+        data_args: Complete normalized preparation options from
+            ``resolve_rhime_options(..., multisector=True).data_args``.
+            Resolve raw options and aliases first; this mapping is not mutated.
+    """
+    filtered = filter_rhime_observations(merged, data_args)
+    basis_functions = build_rhime_basis(filtered, data_args)
+    site_data = build_rhime_sensitivities(
+        filtered,
+        basis_functions,
+        data_args,
+        multisector=True,
+    )
+    return assemble_rhime_inputs(filtered, basis_functions, site_data, data_args)
+
+
+def construct_multisector_rhime_model(
+    *,
+    prepared: RhimePreparedInputs,
+    run_spec: RhimeRunSpec,
+    model_builder: RhimeModelBuilder | None = None,
+    likelihood_builder: RhimeLikelihoodBuilder | None = None,
+    likelihood_kwargs: Mapping[str, Any] | None = None,
+) -> RhimeModelBuildResult:
+    """Construct the multisector graph from phase-complete prepared inputs.
+
+    Built-in construction selects and materializes related arrays together at
+    the PyMC boundary. A complete custom builder receives borrowed, potentially
+    lazy inputs and owns its materialization. Builder conflicts and missing
+    component inputs raise ValueError before construction.
+    """
+    if model_builder is not None and likelihood_builder is not None:
+        raise ValueError("Pass either `model_builder` or `likelihood_builder`, not both.")
+    if likelihood_kwargs and likelihood_builder is None:
+        raise ValueError("Non-empty `likelihood_kwargs` require an active `likelihood_builder`.")
+    if model_builder is not None:
+        model_inputs = prepared.inv_inputs
+    else:
+        model_inputs = materialize_pymc_inputs(
+            prepared,
+            variable_names=multisector_model_input_names(prepared, run_spec.model),
+        )
+    return build_multisector_rhime_model_result(
+        prepared=prepared,
+        model_inputs=model_inputs,
+        run_spec=run_spec,
+        model_builder=model_builder,
+        likelihood_builder=likelihood_builder,
+        likelihood_kwargs=likelihood_kwargs,
+    )
+
+
 def run_rhime_multisector(
     *,
     config_file: str | Path | None = None,
@@ -697,15 +764,7 @@ def run_rhime_multisector(
         multisector=True,
         merged_data=merged_data,
     )
-    filtered = filter_rhime_observations(merged, setup.data_args)
-    basis_functions = build_rhime_basis(filtered, setup.data_args)
-    site_data = build_rhime_sensitivities(
-        filtered,
-        basis_functions,
-        setup.data_args,
-        multisector=True,
-    )
-    prepared = assemble_rhime_inputs(filtered, basis_functions, site_data, setup.data_args)
+    prepared = prepare_multisector_rhime_inputs(merged, setup.data_args)
     log_timing(
         "rhime.prepare_inputs",
         timer_seconds(preparation_start),
@@ -718,29 +777,22 @@ def run_rhime_multisector(
     )
     run_spec = with_prepared_rhime_sites(setup.run_spec, prepared)
 
-    model_inputs = materialize_pymc_inputs(
-        prepared,
-        variable_names=multisector_model_input_names(
-            prepared,
-            run_spec.model,
-        ),
-    )
     build_and_sample_start = timer_start()
-    model_build_result = build_multisector_rhime_model_result(
+    model_build_result = construct_multisector_rhime_model(
         prepared=prepared,
-        model_inputs=model_inputs,
         run_spec=run_spec,
         likelihood_builder=likelihood_builder,
         likelihood_kwargs=likelihood_kwargs,
     )
+    sampler = setup.sampler
     idata = sample_rhime_model(
         model_build_result,
-        setup.sampler,
+        sampler,
     )
     result = make_multisector_rhime_result(
         prepared=prepared,
         run_spec=run_spec,
-        sampler=setup.sampler,
+        sampler=sampler,
         model_build_result=model_build_result,
         idata=idata,
         build_and_sample_seconds=timer_seconds(build_and_sample_start),
