@@ -83,7 +83,7 @@ requiring retained labels or numerical data SHALL remain with their owning phase
 Acquisition and preparation SHALL retain responsibility for data-dependent site
 selection. Dropping or reordering sites SHALL select every applicable resolved
 site option together by label, without reparsing the external request or changing
-its configuration. Existing empty-set, malformed-handoff and cache-compatibility
+its configuration. Existing empty-set, retained-label and cache-compatibility
 rules SHALL remain at their owning boundaries. A supplied valid merged handoff
 SHALL retain its authoritative options and existing no-acquisition behavior.
 
@@ -102,6 +102,14 @@ SHALL retain its authoritative options and existing no-acquisition behavior.
 - **AND** selection preserves the existing ordering policy without reparsing
   or changing the requested configuration
 
+#### Scenario: Redundant legacy retrieval metadata
+
+- **WHEN** the legacy retrieval adapter returns valid retained labels and unused
+  metadata lists that disagree with the resolved request
+- **THEN** the requested site-options record is selected using those labels
+- **AND** unused legacy metadata does not replace the record or introduce new
+  validation failures
+
 #### Scenario: Supplied merged data
 
 - **WHEN** a configured run receives a valid compatible merged handoff with its
@@ -117,7 +125,12 @@ resolver or its shared site-option translation. Existing direct preparation and
 retrieval APIs SHALL continue to accept scalar and site-aligned options;
 independent builders and prepared-input runners SHALL NOT require the complete
 configured-run record. INI section interpretation, existing path conventions and
-the supported file vocabulary SHALL remain unchanged.
+the supported file vocabulary SHALL remain unchanged. Resolution SHALL consume
+omitted/false `use_tracer` without retaining a concrete configuration field.
+Unsupported true requests SHALL retain early rejection at resolution and the
+direct public boundaries that accept this option, including supplied merged data.
+Existing legacy-option and custom-likelihood conflict precedence SHALL remain
+unchanged.
 
 #### Scenario: Existing Python shorthand
 
@@ -126,3 +139,12 @@ the supported file vocabulary SHALL remain unchanged.
 - **THEN** the adapter establishes the same applicable canonical choices before
   its scientific work, preserving the established return contract
 - **AND** internal canonical calls do not repeat that translation
+
+#### Scenario: Preserve unsupported tracer rejection
+
+- **WHEN** a configured run, direct public preparation call or mapping-based
+  retrieval call supplies effective `use_tracer=True` after supported overrides,
+  including with supplied merged data
+- **THEN** it rejects the option before acquisition, reload or scientific execution
+- **AND** omitted and false options remain accepted, with equivalent resolved
+  configuration that contains no tracer field

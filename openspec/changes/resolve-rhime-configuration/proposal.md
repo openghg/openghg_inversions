@@ -39,8 +39,11 @@ None. This checkout has no synced durable capability specs.
 ## Impact
 
 The existing `rhime.params` owner, ordinary runners, and acquisition/preparation
-consumers change. Public INI/Python helpers and low-level retrieval entry points
-remain adapters; independent builders and prepared-input routes retain their
-contracts. Reconcile acquisition ownership with #773/#774 and tracer handling
-with #805/PR #807 before implementation. No new dependency, file format, cache
-policy, scientific equation or staged workflow redesign is included.
+consumers change. Build on the landed #773/#774 owners:
+`inversion_data.acquisition`, `inversion_data.prepared_inputs` and
+`inference.sampling`, preserving their compatibility exports. Public INI/Python
+helpers and low-level retrieval entry points remain adapters; independent
+builders and prepared-input routes retain their contracts. Preserve #807's
+early tracer rejection and consumption of omitted/false options. No new
+dependency, file format, cache policy, scientific equation or staged workflow
+redesign is included.

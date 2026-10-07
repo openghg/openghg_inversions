@@ -3,16 +3,24 @@
 ## Context
 
 See [proposal.md](proposal.md) and the [behavioral contract](specs/rhime-configuration/spec.md).
-The inspected checkout is `9b8cac81`. Its `rhime.params` already separates
+The inspected `devel` revision is `771d1175`. Its `rhime.params` already separates
 `params_from_config(..., normalise=False)` from `resolve_rhime_options`, but
 `RhimeRunnerSetup` contains a runtime sampler and partly raw `data_args`.
-`inversion_data.preparation._SiteOptions` owns aligned selectors; acquisition
-unpacks them into the legacy loader, which expands them again.
+`inversion_data.acquisition._SiteOptions` owns aligned selectors. Acquisition's
+`_retrieve_or_reload_merged_data` still constructs that record and unpacks it into
+the legacy loader, which expands the selectors again. Retrieval now ignores
+redundant legacy metadata beyond returned site labels; requested options remain
+authoritative. Preserve that simplification.
 
-Use the ownership resulting from #773/#774 when implementing. PR #807 consumes
-unsupported tracer requests at resolution; preserve that behavior rather than
-restoring a `use_tracer=False` field merely for hashing. PR #802 is the proposed
-replacement staged design; #798 supplies prototype evidence only.
+#773/#774 have landed: acquisition owns `RhimeMergedData`,
+`inversion_data.prepared_inputs` owns durable `RhimePreparedInputs`, and
+`inference.sampling` owns the runtime `RhimeSampler`. Established preparation and
+RHIME imports remain compatibility exports. #807 has also landed: resolution
+consumes omitted/false `use_tracer` and rejects true before acquisition, with
+guards at direct preparation and mapping-based retrieval boundaries, including
+supplied merged data. Do not restore a tracer field to the concrete config.
+PR #802 remains the proposed replacement staged design; #798 supplies prototype
+evidence only.
 
 ## Goals / Non-Goals
 
@@ -90,9 +98,11 @@ when constructing the records instead of adding repeated consistency validators.
 `RhimeSamplingOptions` is a small frozen values record with the currently accepted
 `draws`, `burn`, `tune`, `chains`, `nuts_sampler`, `progressbar`, `sample_kwargs`
 and `posterior_predictive_kwargs`. Preserve existing defaults and keyword value
-types. The runner creates the existing `RhimeSampler` explicitly from those
-values after resolution; its algorithms, predictive defaults and direct API stay
-unchanged. Do not expose additional predictive switches through configuration.
+types. Recipe configuration owns these values; the runner creates the existing
+`inference.sampling.RhimeSampler` explicitly from them after resolution. Preserve
+the sampler's algorithms, predictive defaults, direct API and established
+`rhime.sampling`/public RHIME aliases. Do not expose additional predictive
+switches through configuration or add another sampler implementation.
 
 Use frozen records for stable choices. Copy ordinary containers where translation
 needs ownership; never deep-copy scientific handoffs or build a general recursive
@@ -100,9 +110,9 @@ freezing system. Keep supported opaque sampler keyword values compatible.
 
 ### 3. Resolve site shorthand once, then select by label
 
-Reuse `_SiteOptions.from_inputs`, promoting/moving the existing record into its
-shared owner only if required to avoid import cycles. It already uppercases site
-labels, expands scalars, validates sequence lengths and supports complete-record
+Reuse acquisition's `_SiteOptions.from_inputs` and its existing shared expansion
+helpers; retain the record's ownership and compatibility imports. It uppercases
+site labels, expands scalars, validates sequence lengths and supports complete-record
 selection. Preserve `time_resolved=None`, supported inlet slices, integer levels
 and all optional string selectors; do not invent metadata defaults.
 
@@ -115,9 +125,12 @@ full-run resolution for choices it cannot use. Tuple/list conversion needed by
 an external API is explicit representation conversion, not another parsing pass.
 
 Acquisition, compatible reload and filtering keep their existing label-selection
-mechanics. Supplied merged data retains its own authoritative site record.
-Requested choices describe input intent; merged/prepared handoffs describe what
-was retained. No second requested-option resolver is introduced after a site drop.
+mechanics. Keep ignoring unused legacy metadata lists instead of reinstating
+their old length checks. Validate returned retained labels through the existing
+complete-record selection. Supplied merged data retains its own authoritative
+site record. Requested choices describe input intent; merged/prepared handoffs
+describe what was retained. No second requested-option resolver is introduced
+after a site drop.
 
 ### 4. Keep public adaptation small
 
@@ -141,9 +154,13 @@ protocols, migration machinery or raw-spelling fields to the configuration.
 [#808](https://github.com/openghg/openghg_inversions/issues/808) collects the
 representation-sensitive gates; [#802](https://github.com/openghg/openghg_inversions/pull/802)
 owns reusable handoffs, authentication and explicit staged contract transitions.
-If an existing supported staged encoding is affected during integration, handle
-that consumer explicitly; never silently redefine its declared version. This
-does not require completing the wider hashing work before reviewing this spec.
+The current [staged guide](../../../docs/usage/staged_workflow.rst) already declares
+that 0.8 does not support 0.7 staged artifacts: removing `use_tracer=False` changed
+the hash despite unchanged scientific settings. Honor that announced boundary;
+do not add a raw-spelling or old-artifact preservation layer here. If a currently
+supported staged encoding is affected during integration, handle that consumer
+explicitly without silently redefining its contract. Wider hash policy remains
+outside this change.
 
 ## Risks / Trade-offs
 
@@ -151,19 +168,23 @@ does not require completing the wider hashing work before reviewing this spec.
   adapters and reuse existing nested/shim/composition coverage.
 - Configuration defaults can still hide in builders -> resolve only known
   configuration defaults; retain data-dependent interpretation where data exists.
-- Module ownership is changing -> implement against the landed acquisition stack,
-  without copying the old and new owners into parallel paths.
+- Compatibility imports can hide the current owner -> use acquisition,
+  prepared-input and inference owners directly without duplicating their exports.
 - Frozen records can suggest deeper immutability than they provide -> document
   ownership and preserve input non-mutation without a generic freeze framework.
 
 ## Migration Plan
 
-Review this bounded spec before generating implementation tasks. Implement after
-#773/#774, reconciling #807's tracer rejection. Add the resolver/value records,
+Review this bounded spec before generating implementation tasks. Implement on
+the landed #773/#774/#807 foundations. Add the resolver/value records,
 switch ordinary consumers and adapt supported entry points together. Reuse
 existing site/drop/reload checks, replacing the test that expects raw scalar
 periods to reach acquisition. Add file/Python equivalence, early-failure and
-caller-non-mutation checks; run relevant broader coverage rather than a new test
-harness. Update configuration guidance and add `newsfragments/804.feature.md` at
+caller-non-mutation checks. Reuse `tests/test_unsupported_tracer.py` and the inference
+sampler facade check in `tests/test_inference_diagnostics.py`, extending alias
+coverage to RHIME as needed. Preserve the existing legacy metadata checks in
+`tests/test_rhime.py` and #811's consolidated sampling coverage. Run relevant
+broader coverage without new sampling/CLI repetitions or a new test harness.
+Update configuration guidance and add `newsfragments/804.feature.md` at
 implementation time. No release note or runtime test run is needed for this
 planning-only draft.
