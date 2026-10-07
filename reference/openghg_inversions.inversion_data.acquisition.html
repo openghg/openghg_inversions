@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>openghg_inversions.filters &#8212; openghg_inversions  documentation</title>
+    <title>openghg_inversions.inversion_data.acquisition &#8212; openghg_inversions  documentation</title>
   
   
   
@@ -47,12 +47,12 @@
     <script src="../_static/thebelab-helper.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
-    <script>DOCUMENTATION_OPTIONS.pagename = 'reference/openghg_inversions.filters';</script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'reference/openghg_inversions.inversion_data.acquisition';</script>
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="openghg_inversions.flux_sanitization" href="openghg_inversions.flux_sanitization.html" />
-    <link rel="prev" title="openghg_inversions.correlated_state" href="openghg_inversions.correlated_state.html" />
+    <link rel="next" title="openghg_inversions.inversion_data.get_data" href="openghg_inversions.inversion_data.get_data.html" />
+    <link rel="prev" title="openghg_inversions.inversion_data" href="openghg_inversions.inversion_data.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="" />
@@ -340,8 +340,8 @@
 </ul>
 </details></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.html">openghg_inversions.hbmcmc</a></li>
-<li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.inversion_data.html">openghg_inversions.inversion_data</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.acquisition.html">openghg_inversions.inversion_data.acquisition</a></li>
+<li class="toctree-l2 current active has-children"><a class="reference internal" href="openghg_inversions.inversion_data.html">openghg_inversions.inversion_data</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
+<li class="toctree-l3 current active"><a class="current reference internal" href="#">openghg_inversions.inversion_data.acquisition</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.get_data.html">openghg_inversions.inversion_data.get_data</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.getters.html">openghg_inversions.inversion_data.getters</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.preparation.html">openghg_inversions.inversion_data.preparation</a></li>
@@ -424,7 +424,7 @@
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.coherent_reduction.html">openghg_inversions.coherent_reduction</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.convert.html">openghg_inversions.convert</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.correlated_state.html">openghg_inversions.correlated_state</a></li>
-<li class="toctree-l2 current active"><a class="current reference internal" href="#">openghg_inversions.filters</a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.filters.html">openghg_inversions.filters</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.flux_sanitization.html">openghg_inversions.flux_sanitization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.inversion_inputs.html">openghg_inversions.inversion_inputs</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.model_error.html">openghg_inversions.model_error</a></li>
@@ -482,7 +482,10 @@
     
     <li class="breadcrumb-item"><a href="openghg_inversions.html" class="nav-link">openghg_inversions</a></li>
     
-    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">openghg_inversions.filters</span></li>
+    
+    <li class="breadcrumb-item"><a href="openghg_inversions.inversion_data.html" class="nav-link">openghg_inversions.inversion_data</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">openghg_inversions.inversion_data.acquisition</span></li>
   </ul>
 </nav>
 </div>
@@ -499,278 +502,67 @@
 <div id="searchbox"></div>
                 <article class="bd-article">
                   
-  <section id="module-openghg_inversions.filters">
-<span id="openghg-inversions-filters"></span><h1>openghg_inversions.filters<a class="headerlink" href="#module-openghg_inversions.filters" title="Link to this heading">#</a></h1>
-<p>Functions for filtering data.</p>
-<p>All filters are accessed and applied to data via the <cite>filtering</cite> function.</p>
-<p>New filters are registered using <cite>&#64;register_filter</cite>.
-A filter function should accept as arguments: an xr.Dataset, a bool called “keep_missing”</p>
-<p>To see the available filters call <cite>list_filters</cite>.</p>
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.filters.register_filter">
-<span class="sig-name descname"><span class="pre">register_filter</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">filt</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.filters.register_filter" title="Link to this definition">#</a></dt>
-<dd><p>Decorator function to register filters.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>filt</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Callable" title="(in Python v3.14)"><em>Callable</em></a>) – filter function to register</p>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>filt, the input function (no modifications made)</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Callable" title="(in Python v3.14)"><em>Callable</em></a></p>
-</dd>
-</dl>
-<p>For instance, the following use of <cite>register_filter</cite> as a decorator adds <cite>my_new_filter</cite>
-to the <cite>filtering_functions</cite> dictionary, under the key “my_new_filter”:</p>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="nd">@register_filter</span>
-<span class="go">    def my_new_filter(data):</span>
-<span class="go">        return data</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="s2">"my_new_filter"</span> <span class="ow">in</span> <span class="n">filtering_functions</span>
-<span class="go">True</span>
-</pre></div>
-</div>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.filters.list_filters">
-<span class="sig-name descname"><span class="pre">list_filters</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.filters.list_filters" title="Link to this definition">#</a></dt>
-<dd><p>Print a list of the available filters with a short description.</p>
-<dl class="field-list simple">
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.filters.filtering">
-<span class="sig-name descname"><span class="pre">filtering</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">datasets_in</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filters</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">keep_missing</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.filters.filtering" title="Link to this definition">#</a></dt>
-<dd><p>Applies time filtering to all datasets in <cite>datasets_in</cite>.</p>
-<p>If <cite>filters</cite> is a list, the same filters are applied to all sites. If <cite>filters</cite> is a dict
-with site codes as keys, then the filters applied to each site depend on the list supplied
-for that site.</p>
-<p>In any case, filters supplied in a list are applied in order.
-For example, if you wanted a daily, daytime average, you could do this:</p>
-<blockquote>
-<div><dl class="simple">
-<dt>datasets_dictionary = filtering(datasets_dictionary,</dt><dd><p>[“daytime”, “daily_median”])</p>
-</dd>
-</dl>
-</div></blockquote>
-<p>The order of the filters reflects the order they are applied, so for
-instance when applying the “daily_median” filter if you only wanted
-to look at daytime values the filters list should be
-[“daytime”,”daily_median”]</p>
-<p>If a site is <cite>datasets_in</cite> is not in <cite>filters</cite>, then no filters are applied to that site.</p>
+  <section id="module-openghg_inversions.inversion_data.acquisition">
+<span id="openghg-inversions-inversion-data-acquisition"></span><h1>openghg_inversions.inversion_data.acquisition<a class="headerlink" href="#module-openghg_inversions.inversion_data.acquisition" title="Link to this heading">#</a></h1>
+<p>Retrieve or reload RHIME observations, transport, flux and boundary data.</p>
+<p>Acquisition owns store/cache access and the complete site-aligned selection
+record. It returns a borrowed <code class="docutils literal notranslate"><span class="pre">RhimeMergedData</span></code> handoff for subsequent
+scientific filtering, basis construction and sensitivity preparation.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="openghg_inversions.inversion_data.acquisition.RhimeMergedData">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">RhimeMergedData</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fp_all</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">site_options</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inversion_data.acquisition.RhimeMergedData" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>Merged RHIME data and complete site-aligned metadata between stages.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>datasets_in</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a>) – dictionary of datasets containing output from ModelScenario.footprints_merge().</p></li>
-<li><p><strong>filters</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em><em> | </em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em><em> | </em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.14)"><em>list</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em><em>]</em><em>] </em><em>| </em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.14)"><em>list</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em><em>]</em>) – filters to apply to the datasets. Either a list of filters, which will be applied to every site,
-or a dictionary of lists of the form  {&lt;site code&gt;: [filter1, filter2, …]}, with specific filters to
-be applied at each site. Use the <cite>list_filters</cite> function to list available filters.</p></li>
-<li><p><strong>keep_missing</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – if True, drop missing data</p></li>
+<li><p><strong>fp_all</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a>) – Merged per-site datasets plus shared flux, boundary-condition,
+and calibration entries.</p></li>
+<li><p><strong>site_options</strong> (<em>_SiteOptions</em>) – Complete site-aligned acquisition options retained after
+retrieval or filtering.</p></li>
 </ul>
 </dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>dict in same format as datasets_in, with filters applied</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)">dict</a></p>
-</dd>
 </dl>
+<p class="rubric">Notes</p>
+<p>This is a supported orchestration handoff. Its datasets remain
+backend-neutral and may be Dask-backed; later stages must treat them as
+borrowed.</p>
+<dl class="py property">
+<dt class="sig sig-object py" id="openghg_inversions.inversion_data.acquisition.RhimeMergedData.sites">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">sites</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.inversion_data.acquisition.RhimeMergedData.sites" title="Link to this definition">#</a></dt>
+<dd><p>Retained site names.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="openghg_inversions.inversion_data.acquisition.RhimeMergedData.averaging_period">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">averaging_period</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.inversion_data.acquisition.RhimeMergedData.averaging_period" title="Link to this definition">#</a></dt>
+<dd><p>Retained averaging periods aligned to <a class="reference internal" href="#openghg_inversions.inversion_data.acquisition.RhimeMergedData.sites" title="openghg_inversions.inversion_data.acquisition.RhimeMergedData.sites"><code class="xref py py-attr docutils literal notranslate"><span class="pre">sites</span></code></a>.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="openghg_inversions.inversion_data.acquisition.RhimeMergedData.platform">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">platform</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.inversion_data.acquisition.RhimeMergedData.platform" title="Link to this definition">#</a></dt>
+<dd><p>Retained observation platforms aligned to <a class="reference internal" href="#openghg_inversions.inversion_data.acquisition.RhimeMergedData.sites" title="openghg_inversions.inversion_data.acquisition.RhimeMergedData.sites"><code class="xref py py-attr docutils literal notranslate"><span class="pre">sites</span></code></a>.</p>
+</dd></dl>
+
 </dd></dl>
 
 <dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.filters.daily_median">
-<span class="sig-name descname"><span class="pre">daily_median</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dataset</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">keep_missing</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.filters.daily_median" title="Link to this definition">#</a></dt>
-<dd><p>Resample data to daily frequency and use daily median values.</p>
+<dt class="sig sig-object py" id="openghg_inversions.inversion_data.acquisition.retrieve_or_reload_rhime_data">
+<span class="sig-name descname"><span class="pre">retrieve_or_reload_rhime_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data_args</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">multisector</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">merged_data</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inversion_data.acquisition.retrieve_or_reload_rhime_data" title="Link to this definition">#</a></dt>
+<dd><p>Retrieve, reload, or accept externally supplied merged RHIME data.</p>
+<p>Passing <code class="docutils literal notranslate"><span class="pre">merged_data</span></code> is the explicit no-I/O path.  The object remains
+borrowed and is returned unchanged after a sector-layout compatibility check.
+Otherwise this stage may read OpenGHG stores or a local merged artifact,
+optionally write merged data, sanitize flux arrays, print progress, and
+emit warnings.  <code class="docutils literal notranslate"><span class="pre">data_args</span></code> is never mutated.</p>
 <dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>dataset</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>) – dataset to filter</p></li>
-<li><p><strong>keep_missing</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – if True, drop time points removed by filter</p></li>
-</ul>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If <code class="docutils literal notranslate"><span class="pre">data_args</span></code> requests unsupported <code class="docutils literal notranslate"><span class="pre">use_tracer=True</span></code>
+    or the supplied merged data has an incompatible sector layout.</p>
 </dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>filtered dataset</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a></p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.filters.six_hr_mean">
-<span class="sig-name descname"><span class="pre">six_hr_mean</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dataset</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">keep_missing</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.filters.six_hr_mean" title="Link to this definition">#</a></dt>
-<dd><p>Resample data to 6h frequency and use 6h mean values.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>dataset</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>) – dataset to filter</p></li>
-<li><p><strong>keep_missing</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – if True, drop time points removed by filter</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>filtered dataset</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a></p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.filters.daytime">
-<span class="sig-name descname"><span class="pre">daytime</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dataset</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">keep_missing</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.filters.daytime" title="Link to this definition">#</a></dt>
-<dd><p>Subset during daytime hours (11:00-15:00).</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>dataset</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>) – dataset to filter</p></li>
-<li><p><strong>keep_missing</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – if True, drop time points removed by filter</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>filtered dataset</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a></p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.filters.daytime9to5">
-<span class="sig-name descname"><span class="pre">daytime9to5</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dataset</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">keep_missing</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.filters.daytime9to5" title="Link to this definition">#</a></dt>
-<dd><p>Subset during daytime hours (9:00-17:00).</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>dataset</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>) – dataset to filter</p></li>
-<li><p><strong>keep_missing</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – if True, drop time points removed by filter</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>filtered dataset</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a></p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.filters.nighttime">
-<span class="sig-name descname"><span class="pre">nighttime</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dataset</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">keep_missing</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.filters.nighttime" title="Link to this definition">#</a></dt>
-<dd><p>Subset during nighttime hours (23:00 - 03:00).</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>dataset</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>) – dataset to filter</p></li>
-<li><p><strong>keep_missing</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – if True, drop time points removed by filter</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>filtered dataset</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a></p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.filters.noon">
-<span class="sig-name descname"><span class="pre">noon</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dataset</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">keep_missing</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.filters.noon" title="Link to this definition">#</a></dt>
-<dd><p>Select only 12pm data.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>dataset</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>) – dataset to filter</p></li>
-<li><p><strong>keep_missing</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – if True, drop time points removed by filter</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>filtered dataset</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a></p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.filters.local_influence">
-<span class="sig-name descname"><span class="pre">local_influence</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dataset</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">keep_missing</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.filters.local_influence" title="Link to this definition">#</a></dt>
-<dd><p>Subset for times when “local influence” is below threshold.</p>
-<p>Local influence expressed as a fraction of the sum of entire footprint domain.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>dataset</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>) – dataset to filter</p></li>
-<li><p><strong>keep_missing</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – if True, drop time points removed by filter</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>filtered dataset</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a></p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.filters.pblh_min">
-<span class="sig-name descname"><span class="pre">pblh_min</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dataset</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pblh_threshold</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">200.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">keep_missing</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.filters.pblh_min" title="Link to this definition">#</a></dt>
-<dd><p>Subset for times when the PBLH is greater than 200m.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>dataset</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>) – dataset to filter</p></li>
-<li><p><strong>pblh_threshold</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a>) – filter will discard times where PBLH/atmosphere boundary layer thickness is below pblh_threshold</p></li>
-<li><p><strong>keep_missing</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – if True, drop time points removed by filter</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>filtered dataset</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a></p>
-</dd>
-</dl>
-<p>TODO: need way to pass pblh_threshold to filter</p>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.filters.pblh_inlet_diff">
-<span class="sig-name descname"><span class="pre">pblh_inlet_diff</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dataset</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">diff_threshold</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">50.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">keep_missing</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.filters.pblh_inlet_diff" title="Link to this definition">#</a></dt>
-<dd><p>Subset for times when observations are taken at a height of less than 50 m below the PBLH.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>dataset</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>) – dataset to filter</p></li>
-<li><p><strong>diff_threshold</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a>) – filter will discard times where obs. are taken at a height of less than diff_threshold below PBLH</p></li>
-<li><p><strong>keep_missing</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – if True, drop time points removed by filter</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>filtered dataset</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a></p>
-</dd>
-</dl>
-<p>TODO: need way to pass diff_threshold to filter</p>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.filters.pblh">
-<span class="sig-name descname"><span class="pre">pblh</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dataset</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">keep_missing</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.filters.pblh" title="Link to this definition">#</a></dt>
-<dd><p>Deprecated: pblh is now called pblh_inlet_diff.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a></p>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="#openghg_inversions.inversion_data.acquisition.RhimeMergedData" title="openghg_inversions.inversion_data.acquisition.RhimeMergedData"><em>RhimeMergedData</em></a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -788,20 +580,20 @@ be applied at each site. Use the <cite>list_filters</cite> function to list avai
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="openghg_inversions.correlated_state.html"
+       href="openghg_inversions.inversion_data.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">openghg_inversions.correlated_state</p>
+        <p class="prev-next-title">openghg_inversions.inversion_data</p>
       </div>
     </a>
     <a class="right-next"
-       href="openghg_inversions.flux_sanitization.html"
+       href="openghg_inversions.inversion_data.get_data.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">openghg_inversions.flux_sanitization</p>
+        <p class="prev-next-title">openghg_inversions.inversion_data.get_data</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -824,26 +616,20 @@ be applied at each site. Use the <cite>list_filters</cite> function to list avai
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.filters.register_filter"><code class="docutils literal notranslate"><span class="pre">register_filter()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.filters.list_filters"><code class="docutils literal notranslate"><span class="pre">list_filters()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.filters.filtering"><code class="docutils literal notranslate"><span class="pre">filtering()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.filters.daily_median"><code class="docutils literal notranslate"><span class="pre">daily_median()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.filters.six_hr_mean"><code class="docutils literal notranslate"><span class="pre">six_hr_mean()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.filters.daytime"><code class="docutils literal notranslate"><span class="pre">daytime()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.filters.daytime9to5"><code class="docutils literal notranslate"><span class="pre">daytime9to5()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.filters.nighttime"><code class="docutils literal notranslate"><span class="pre">nighttime()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.filters.noon"><code class="docutils literal notranslate"><span class="pre">noon()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.filters.local_influence"><code class="docutils literal notranslate"><span class="pre">local_influence()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.filters.pblh_min"><code class="docutils literal notranslate"><span class="pre">pblh_min()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.filters.pblh_inlet_diff"><code class="docutils literal notranslate"><span class="pre">pblh_inlet_diff()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.filters.pblh"><code class="docutils literal notranslate"><span class="pre">pblh()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.acquisition.RhimeMergedData"><code class="docutils literal notranslate"><span class="pre">RhimeMergedData</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.acquisition.RhimeMergedData.sites"><code class="docutils literal notranslate"><span class="pre">RhimeMergedData.sites</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.acquisition.RhimeMergedData.averaging_period"><code class="docutils literal notranslate"><span class="pre">RhimeMergedData.averaging_period</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.acquisition.RhimeMergedData.platform"><code class="docutils literal notranslate"><span class="pre">RhimeMergedData.platform</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.acquisition.retrieve_or_reload_rhime_data"><code class="docutils literal notranslate"><span class="pre">retrieve_or_reload_rhime_data()</span></code></a></li>
 </ul>
   </nav></div>
 
   <div class="sidebar-secondary-item">
 
   <div class="tocsection sourcelink">
-    <a href="../_sources/reference/openghg_inversions.filters.rst.txt">
+    <a href="../_sources/reference/openghg_inversions.inversion_data.acquisition.rst.txt">
       <i class="fa-solid fa-file-lines"></i> Show Source
     </a>
   </div>

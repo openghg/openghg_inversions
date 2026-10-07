@@ -341,9 +341,11 @@
 </details></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.html">openghg_inversions.hbmcmc</a></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.inversion_data.html">openghg_inversions.inversion_data</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.acquisition.html">openghg_inversions.inversion_data.acquisition</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.get_data.html">openghg_inversions.inversion_data.get_data</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.getters.html">openghg_inversions.inversion_data.getters</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.preparation.html">openghg_inversions.inversion_data.preparation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html">openghg_inversions.inversion_data.prepared_inputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.scenario.html">openghg_inversions.inversion_data.scenario</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.serialise.html">openghg_inversions.inversion_data.serialise</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.xarray_adapter.html">openghg_inversions.inversion_data.xarray_adapter</a></li>
@@ -505,7 +507,9 @@
 <p>Named scientific preparation stages for RHIME recipes.</p>
 <p>The functions in this module form the backend-neutral preparation spine used
 by <a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.run_rhime" title="openghg_inversions.rhime.run_rhime"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.run_rhime()</span></code></a> and copied project runners:</p>
-<p><code class="docutils literal notranslate"><span class="pre">retrieve/reload</span> <span class="pre">-&gt;</span> <span class="pre">filter</span> <span class="pre">-&gt;</span> <span class="pre">basis</span> <span class="pre">-&gt;</span> <span class="pre">sensitivities</span> <span class="pre">-&gt;</span> <span class="pre">labelled</span> <span class="pre">assembly</span></code>.</p>
+<p><code class="docutils literal notranslate"><span class="pre">filter</span> <span class="pre">-&gt;</span> <span class="pre">basis</span> <span class="pre">-&gt;</span> <span class="pre">sensitivities</span> <span class="pre">-&gt;</span> <span class="pre">labelled</span> <span class="pre">assembly</span></code>.</p>
+<p>Acquisition is owned by <a class="reference internal" href="openghg_inversions.inversion_data.acquisition.html#module-openghg_inversions.inversion_data.acquisition" title="openghg_inversions.inversion_data.acquisition"><code class="xref py py-mod docutils literal notranslate"><span class="pre">openghg_inversions.inversion_data.acquisition</span></code></a>;
+its established stage name is re-exported here for compatibility.</p>
 <p>Merged data and xarray objects supplied to these stages are borrowed.  Stages
 return new handoffs when they need to attach variables or metadata and never
 mutate caller-owned datasets.  Retrieval may read OpenGHG stores or a merged
@@ -530,7 +534,7 @@ acquired data; moving them to their model components is a later semantic
 change. This stage does not cross the PyMC materialization boundary.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference internal" href="openghg_inversions.inversion_data.preparation.html#openghg_inversions.inversion_data.preparation.RhimePreparedInputs" title="openghg_inversions.inversion_data.preparation.RhimePreparedInputs"><em>RhimePreparedInputs</em></a></p>
+<dd class="field-odd"><p><a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html#openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs" title="openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs"><em>RhimePreparedInputs</em></a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -572,7 +576,7 @@ returns a new merged-data handoff when filtering changes data and never
 constructs basis functions or model inputs.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference internal" href="openghg_inversions.inversion_data.preparation.html#openghg_inversions.inversion_data.preparation.RhimeMergedData" title="openghg_inversions.inversion_data.preparation.RhimeMergedData"><em>RhimeMergedData</em></a></p>
+<dd class="field-odd"><p><a class="reference internal" href="openghg_inversions.inversion_data.acquisition.html#openghg_inversions.inversion_data.acquisition.RhimeMergedData" title="openghg_inversions.inversion_data.acquisition.RhimeMergedData"><em>RhimeMergedData</em></a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -592,7 +596,7 @@ emit warnings.  <code class="docutils literal notranslate"><span class="pre">dat
     or the supplied merged data has an incompatible sector layout.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference internal" href="openghg_inversions.inversion_data.preparation.html#openghg_inversions.inversion_data.preparation.RhimeMergedData" title="openghg_inversions.inversion_data.preparation.RhimeMergedData"><em>RhimeMergedData</em></a></p>
+<dd class="field-even"><p><a class="reference internal" href="openghg_inversions.inversion_data.acquisition.html#openghg_inversions.inversion_data.acquisition.RhimeMergedData" title="openghg_inversions.inversion_data.acquisition.RhimeMergedData"><em>RhimeMergedData</em></a></p>
 </dd>
 </dl>
 </dd></dl>

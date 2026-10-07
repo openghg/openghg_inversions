@@ -51,7 +51,7 @@
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="openghg_inversions.inversion_data.scenario" href="openghg_inversions.inversion_data.scenario.html" />
+    <link rel="next" title="openghg_inversions.inversion_data.prepared_inputs" href="openghg_inversions.inversion_data.prepared_inputs.html" />
     <link rel="prev" title="openghg_inversions.inversion_data.getters" href="openghg_inversions.inversion_data.getters.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
@@ -341,9 +341,11 @@
 </details></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.html">openghg_inversions.hbmcmc</a></li>
 <li class="toctree-l2 current active has-children"><a class="reference internal" href="openghg_inversions.inversion_data.html">openghg_inversions.inversion_data</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.acquisition.html">openghg_inversions.inversion_data.acquisition</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.get_data.html">openghg_inversions.inversion_data.get_data</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.getters.html">openghg_inversions.inversion_data.getters</a></li>
 <li class="toctree-l3 current active"><a class="current reference internal" href="#">openghg_inversions.inversion_data.preparation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html">openghg_inversions.inversion_data.prepared_inputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.scenario.html">openghg_inversions.inversion_data.scenario</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.serialise.html">openghg_inversions.inversion_data.serialise</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.xarray_adapter.html">openghg_inversions.inversion_data.xarray_adapter</a></li>
@@ -502,268 +504,21 @@
                   
   <section id="module-openghg_inversions.inversion_data.preparation">
 <span id="openghg-inversions-inversion-data-preparation"></span><h1>openghg_inversions.inversion_data.preparation<a class="headerlink" href="#module-openghg_inversions.inversion_data.preparation" title="Link to this heading">#</a></h1>
-<p>Shared mechanics and durable data contracts for inversion preparation.</p>
+<p>Scientific preparation and compatibility entry points for RHIME inversions.</p>
 <p><code class="docutils literal notranslate"><span class="pre">prepare_rhime_inputs</span></code> returns backend-neutral observations, sensitivities,
 basis metadata, and site metadata; component-specific model arrays are
 intentionally absent.</p>
-<p><code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code> validates the relationships between these labeled
-arrays when it is constructed. When the retained basis-functions object
+<p>The durable <code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code> contract lives in <a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html#module-openghg_inversions.inversion_data.prepared_inputs" title="openghg_inversions.inversion_data.prepared_inputs"><code class="xref py py-mod docutils literal notranslate"><span class="pre">openghg_inversions.inversion_data.prepared_inputs</span></code></a> and
+remains importable here for compatibility. It validates labelled relationships
+when it is constructed. When the retained basis-functions object
 provides <code class="docutils literal notranslate"><span class="pre">validated()</span></code>, preparation uses the returned copy after that method
 has rechecked its mutable flux, operator data, and source labels. Compatible
 objects without that hook are retained unchanged.</p>
-<p>Preparation can read OpenGHG object stores or local merged-data artifacts,
-write merged-data and basis artifacts, emit warnings and progress messages,
+<p>The compatibility <code class="docutils literal notranslate"><span class="pre">prepare_rhime_inputs</span></code> runner delegates store/cache access
+to <a class="reference internal" href="openghg_inversions.inversion_data.acquisition.html#module-openghg_inversions.inversion_data.acquisition" title="openghg_inversions.inversion_data.acquisition"><code class="xref py py-mod docutils literal notranslate"><span class="pre">acquisition</span></code></a>. Scientific preparation may write basis artifacts, emit
+warnings and progress messages,
 and record timing information. These backend-neutral preparation functions do
 not construct a PyMC model.</p>
-<dl class="py class">
-<dt class="sig sig-object py" id="openghg_inversions.inversion_data.preparation.RhimePreparedInputs">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">RhimePreparedInputs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">inv_inputs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">basis_functions</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">site_metadata</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inversion_data.preparation.RhimePreparedInputs" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
-<p>Modern RHIME preparation and durable serialization contract.</p>
-<p>Site labels and site-aligned metadata are owned by <code class="docutils literal notranslate"><span class="pre">site_metadata</span></code>.
-Integer <code class="docutils literal notranslate"><span class="pre">inv_inputs.site_indicator</span></code> values are derived as zero-based
-project-schema positions into its <code class="docutils literal notranslate"><span class="pre">site</span></code> coordinate; they are distinct
-from CF compression-by-gathering indexes. The invariant is
-<code class="docutils literal notranslate"><span class="pre">site_metadata.site[site_indicator]</span> <span class="pre">==</span> <span class="pre">nmeasure.site</span></code>.
-<code class="docutils literal notranslate"><span class="pre">site_names</span></code> remains available in memory for existing model code, but is
-regenerated from <code class="docutils literal notranslate"><span class="pre">site_metadata</span></code> rather than serialized.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>inv_inputs</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>) – Canonical inversion inputs consumed by RHIME model
-builders.</p></li>
-<li><p><strong>basis_functions</strong> (<a class="reference internal" href="openghg_inversions.basis.basis_functions.html#openghg_inversions.basis.basis_functions.FluxWeightedBasis" title="openghg_inversions.basis.basis_functions.FluxWeightedBasis"><em>FluxWeightedBasis</em></a>) – Retained flux basis object used to derive
-output-boundary basis and flux arrays.</p></li>
-<li><p><strong>site_metadata</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>) – Dataset indexed by the authoritative <code class="docutils literal notranslate"><span class="pre">site</span></code>
-coordinate. Every variable contains exactly one value per site,
-and <code class="docutils literal notranslate"><span class="pre">averaging_period</span></code> is required. Observation metadata that
-is genuinely constant per site may also be stored here. Values
-that vary within a site, such as satellite or aircraft release
-locations, must instead remain observation-aligned arrays. Such
-arrays may be carried alongside the inversion arrays without
-implying that model builders consume them.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Raises<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If site metadata, measurement indexing, or multi-source
-    labels are inconsistent.</p>
-</dd>
-</dl>
-<dl class="py method">
-<dt class="sig sig-object py" id="openghg_inversions.inversion_data.preparation.RhimePreparedInputs.from_legacy_inputs">
-<span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">from_legacy_inputs</span></span><span class="sig-paren">(</span>
-
-<dl>
-<dd><em class="sig-param"><span class="n"><span class="pre">inv_inputs</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">basis_functions</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">sites</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">averaging_period</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">basis_artifact_source</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">basis_artifact_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">site_lats</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">site_lons</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-</dl>
-
-<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inversion_data.preparation.RhimePreparedInputs.from_legacy_inputs" title="Link to this definition">#</a></dt>
-<dd><p>Adapt the former positional fields to the labeled-data contract.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>inv_inputs</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a>) – Canonical inversion inputs.</p></li>
-<li><p><strong>basis_functions</strong> (<a class="reference internal" href="openghg_inversions.basis.basis_functions.html#openghg_inversions.basis.basis_functions.FluxWeightedBasis" title="openghg_inversions.basis.basis_functions.FluxWeightedBasis"><em>FluxWeightedBasis</em></a>) – Retained basis object.</p></li>
-<li><p><strong>sites</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.14)"><em>Sequence</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>]</em>) – Site labels in indicator-decoding order.</p></li>
-<li><p><strong>averaging_period</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.14)"><em>Sequence</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em><em>]</em>) – Observation periods aligned to <code class="docutils literal notranslate"><span class="pre">sites</span></code>.</p></li>
-<li><p><strong>basis_artifact_source</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Optional basis provenance value.</p></li>
-<li><p><strong>basis_artifact_path</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Optional basis provenance path.</p></li>
-<li><p><strong>site_lats</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.14)"><em>Sequence</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a><em>] </em><em>| </em><em>None</em>) – Optional legacy release latitudes, one per site.</p></li>
-<li><p><strong>site_lons</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.14)"><em>Sequence</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a><em>] </em><em>| </em><em>None</em>) – Optional legacy release longitudes, one per site.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Prepared inputs using labeled site metadata.</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Self" title="(in Python v3.14)"><em>Self</em></a></p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py property">
-<dt class="sig sig-object py" id="openghg_inversions.inversion_data.preparation.RhimePreparedInputs.sites">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">sites</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.inversion_data.preparation.RhimePreparedInputs.sites" title="Link to this definition">#</a></dt>
-<dd><p>Return retained site labels in indicator-decoding order.</p>
-</dd></dl>
-
-<dl class="py property">
-<dt class="sig sig-object py" id="openghg_inversions.inversion_data.preparation.RhimePreparedInputs.averaging_period">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">averaging_period</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.inversion_data.preparation.RhimePreparedInputs.averaging_period" title="Link to this definition">#</a></dt>
-<dd><p>Return averaging periods aligned to <a class="reference internal" href="#openghg_inversions.inversion_data.preparation.RhimePreparedInputs.sites" title="openghg_inversions.inversion_data.preparation.RhimePreparedInputs.sites"><code class="xref py py-attr docutils literal notranslate"><span class="pre">sites</span></code></a>.</p>
-</dd></dl>
-
-<dl class="py property">
-<dt class="sig sig-object py" id="openghg_inversions.inversion_data.preparation.RhimePreparedInputs.basis_artifact_source">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">basis_artifact_source</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><a class="headerlink" href="#openghg_inversions.inversion_data.preparation.RhimePreparedInputs.basis_artifact_source" title="Link to this definition">#</a></dt>
-<dd><p>Return retained basis provenance, defaulting to <code class="docutils literal notranslate"><span class="pre">generated</span></code>.</p>
-</dd></dl>
-
-<dl class="py property">
-<dt class="sig sig-object py" id="openghg_inversions.inversion_data.preparation.RhimePreparedInputs.basis_artifact_path">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">basis_artifact_path</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><a class="headerlink" href="#openghg_inversions.inversion_data.preparation.RhimePreparedInputs.basis_artifact_path" title="Link to this definition">#</a></dt>
-<dd><p>Return the provenance-only basis artifact path.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="openghg_inversions.inversion_data.preparation.RhimePreparedInputs.validated">
-<span class="sig-name descname"><span class="pre">validated</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inversion_data.preparation.RhimePreparedInputs.validated" title="Link to this definition">#</a></dt>
-<dd><p>Return a freshly canonicalized copy of these prepared inputs.</p>
-<p>This re-establishes the semantic invariants after possible in-place
-mutation of the contained xarray objects.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Returns<span class="colon">:</span></dt>
-<dd class="field-odd"><p>Prepared inputs normalized from the current xarray values.</p>
-</dd>
-<dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Self" title="(in Python v3.14)"><em>Self</em></a></p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="openghg_inversions.inversion_data.preparation.RhimePreparedInputs.to_datatree">
-<span class="sig-name descname"><span class="pre">to_datatree</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inversion_data.preparation.RhimePreparedInputs.to_datatree" title="Link to this definition">#</a></dt>
-<dd><p>Convert prepared RHIME inputs to the versioned DataTree schema.</p>
-<p>The basis object is embedded in the artifact. <code class="docutils literal notranslate"><span class="pre">basis_artifact_path</span></code>
-is retained only as provenance and is never read while serializing or
-reconstructing the prepared inputs.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Returns<span class="colon">:</span></dt>
-<dd class="field-odd"><p>DataTree containing <code class="docutils literal notranslate"><span class="pre">inv_inputs</span></code>, <code class="docutils literal notranslate"><span class="pre">basis_functions</span></code>, and
-<code class="docutils literal notranslate"><span class="pre">site_metadata</span></code> child nodes.</p>
-</dd>
-<dt class="field-even">Raises<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If site metadata or inversion inputs no longer satisfy
-    the prepared-input invariants.</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.9.0)"><em>DataTree</em></a></p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="openghg_inversions.inversion_data.preparation.RhimePreparedInputs.from_datatree">
-<span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">from_datatree</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dt</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inversion_data.preparation.RhimePreparedInputs.from_datatree" title="Link to this definition">#</a></dt>
-<dd><p>Construct prepared RHIME inputs from a version-1 DataTree.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>dt</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.9.0)"><em>DataTree</em></a>) – DataTree using the <code class="docutils literal notranslate"><span class="pre">openghg_inversions.rhime_prepared_inputs</span></code>
-schema.</p>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Reconstructed prepared inputs with the canonical inversion-input
-MultiIndexes and embedded basis object restored, including retained
-multisource basis ordering.</p>
-</dd>
-<dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If the prepared schema, site metadata, serialized
-    MultiIndex, site indicators, or source labels are malformed.</p></li>
-<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#KeyError" title="(in Python v3.14)"><strong>KeyError</strong></a> – If a required child node is missing.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Self" title="(in Python v3.14)"><em>Self</em></a></p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="openghg_inversions.inversion_data.preparation.RhimePreparedInputs.save">
-<span class="sig-name descname"><span class="pre">save</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">output_file</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_format</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inversion_data.preparation.RhimePreparedInputs.save" title="Link to this definition">#</a></dt>
-<dd><p>Save prepared RHIME inputs to NetCDF or Zarr.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>output_file</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><em>Path</em></a>) – Destination artifact path. Saving writes and may
-overwrite this artifact.</p></li>
-<li><p><strong>output_format</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><em>Literal</em></a><em>[</em><em>'netcdf'</em><em>, </em><em>'zarr'</em><em>] </em><em>| </em><em>None</em>) – Storage format. When omitted, infer it from a
-<code class="docutils literal notranslate"><span class="pre">.nc</span></code> or <code class="docutils literal notranslate"><span class="pre">.zarr</span></code> suffix. An explicit format adds or
-replaces the corresponding suffix.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Raises<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If metadata is invalid or the output format cannot be
-    inferred.</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="openghg_inversions.inversion_data.preparation.RhimePreparedInputs.load">
-<span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">load</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">file_path</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inversion_data.preparation.RhimePreparedInputs.load" title="Link to this definition">#</a></dt>
-<dd><p>Load prepared RHIME inputs from a NetCDF or Zarr artifact.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>file_path</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><em>Path</em></a>) – Prepared-input artifact previously written by <code class="docutils literal notranslate"><span class="pre">save</span></code>.</p>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Fully loaded prepared RHIME inputs with no open file handles.</p>
-</dd>
-<dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#OSError" title="(in Python v3.14)"><strong>OSError</strong></a> – If the artifact cannot be opened.</p></li>
-<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#RuntimeError" title="(in Python v3.14)"><strong>RuntimeError</strong></a> – If all available storage backends fail at runtime.</p></li>
-<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If the artifact schema or metadata is invalid.</p></li>
-<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#KeyError" title="(in Python v3.14)"><strong>KeyError</strong></a> – If a required child node is missing.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Self" title="(in Python v3.14)"><em>Self</em></a></p>
-</dd>
-</dl>
-</dd></dl>
-
-</dd></dl>
-
-<dl class="py class">
-<dt class="sig sig-object py" id="openghg_inversions.inversion_data.preparation.RhimeMergedData">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">RhimeMergedData</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fp_all</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">site_options</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inversion_data.preparation.RhimeMergedData" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
-<p>Merged RHIME data and complete site-aligned metadata between stages.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>fp_all</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a>) – Merged per-site datasets plus shared flux, boundary-condition,
-and calibration entries.</p></li>
-<li><p><strong>site_options</strong> (<em>_SiteOptions</em>) – Complete site-aligned acquisition options retained after
-retrieval or filtering.</p></li>
-</ul>
-</dd>
-</dl>
-<p class="rubric">Notes</p>
-<p>This is a supported orchestration handoff. Its datasets remain
-backend-neutral and may be Dask-backed; later stages must treat them as
-borrowed.</p>
-<dl class="py property">
-<dt class="sig sig-object py" id="openghg_inversions.inversion_data.preparation.RhimeMergedData.sites">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">sites</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.inversion_data.preparation.RhimeMergedData.sites" title="Link to this definition">#</a></dt>
-<dd><p>Retained site names.</p>
-</dd></dl>
-
-<dl class="py property">
-<dt class="sig sig-object py" id="openghg_inversions.inversion_data.preparation.RhimeMergedData.averaging_period">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">averaging_period</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.inversion_data.preparation.RhimeMergedData.averaging_period" title="Link to this definition">#</a></dt>
-<dd><p>Retained averaging periods aligned to <a class="reference internal" href="#openghg_inversions.inversion_data.preparation.RhimeMergedData.sites" title="openghg_inversions.inversion_data.preparation.RhimeMergedData.sites"><code class="xref py py-attr docutils literal notranslate"><span class="pre">sites</span></code></a>.</p>
-</dd></dl>
-
-<dl class="py property">
-<dt class="sig sig-object py" id="openghg_inversions.inversion_data.preparation.RhimeMergedData.platform">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">platform</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.inversion_data.preparation.RhimeMergedData.platform" title="Link to this definition">#</a></dt>
-<dd><p>Retained observation platforms aligned to <a class="reference internal" href="#openghg_inversions.inversion_data.preparation.RhimeMergedData.sites" title="openghg_inversions.inversion_data.preparation.RhimeMergedData.sites"><code class="xref py py-attr docutils literal notranslate"><span class="pre">sites</span></code></a>.</p>
-</dd></dl>
-
-</dd></dl>
-
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.inversion_data.preparation.prepare_rhime_inputs">
 <span class="sig-name descname"><span class="pre">prepare_rhime_inputs</span></span><span class="sig-paren">(</span>
@@ -883,7 +638,7 @@ retained <code class="docutils literal notranslate"><span class="pre">BasisFunct
     <code class="docutils literal notranslate"><span class="pre">use_tracer=True</span></code>.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference internal" href="#openghg_inversions.inversion_data.preparation.RhimePreparedInputs" title="openghg_inversions.inversion_data.preparation.RhimePreparedInputs"><em>RhimePreparedInputs</em></a></p>
+<dd class="field-even"><p><a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html#openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs" title="openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs"><em>RhimePreparedInputs</em></a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -910,11 +665,11 @@ retained <code class="docutils literal notranslate"><span class="pre">BasisFunct
       </div>
     </a>
     <a class="right-next"
-       href="openghg_inversions.inversion_data.scenario.html"
+       href="openghg_inversions.inversion_data.prepared_inputs.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">openghg_inversions.inversion_data.scenario</p>
+        <p class="prev-next-title">openghg_inversions.inversion_data.prepared_inputs</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -937,25 +692,6 @@ retained <code class="docutils literal notranslate"><span class="pre">BasisFunct
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.preparation.RhimePreparedInputs"><code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code></a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.preparation.RhimePreparedInputs.from_legacy_inputs"><code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs.from_legacy_inputs()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.preparation.RhimePreparedInputs.sites"><code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs.sites</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.preparation.RhimePreparedInputs.averaging_period"><code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs.averaging_period</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.preparation.RhimePreparedInputs.basis_artifact_source"><code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs.basis_artifact_source</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.preparation.RhimePreparedInputs.basis_artifact_path"><code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs.basis_artifact_path</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.preparation.RhimePreparedInputs.validated"><code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs.validated()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.preparation.RhimePreparedInputs.to_datatree"><code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs.to_datatree()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.preparation.RhimePreparedInputs.from_datatree"><code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs.from_datatree()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.preparation.RhimePreparedInputs.save"><code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs.save()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.preparation.RhimePreparedInputs.load"><code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs.load()</span></code></a></li>
-</ul>
-</li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.preparation.RhimeMergedData"><code class="docutils literal notranslate"><span class="pre">RhimeMergedData</span></code></a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.preparation.RhimeMergedData.sites"><code class="docutils literal notranslate"><span class="pre">RhimeMergedData.sites</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.preparation.RhimeMergedData.averaging_period"><code class="docutils literal notranslate"><span class="pre">RhimeMergedData.averaging_period</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.preparation.RhimeMergedData.platform"><code class="docutils literal notranslate"><span class="pre">RhimeMergedData.platform</span></code></a></li>
-</ul>
-</li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.preparation.prepare_rhime_inputs"><code class="docutils literal notranslate"><span class="pre">prepare_rhime_inputs()</span></code></a></li>
 </ul>
   </nav></div>

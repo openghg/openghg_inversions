@@ -341,9 +341,11 @@
 </details></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.html">openghg_inversions.hbmcmc</a></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.inversion_data.html">openghg_inversions.inversion_data</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.acquisition.html">openghg_inversions.inversion_data.acquisition</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.get_data.html">openghg_inversions.inversion_data.get_data</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.getters.html">openghg_inversions.inversion_data.getters</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.preparation.html">openghg_inversions.inversion_data.preparation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html">openghg_inversions.inversion_data.prepared_inputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.scenario.html">openghg_inversions.inversion_data.scenario</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.serialise.html">openghg_inversions.inversion_data.serialise</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.xarray_adapter.html">openghg_inversions.inversion_data.xarray_adapter</a></li>
@@ -536,10 +538,10 @@ removed so saved per-domain artifacts remain scientifically interpretable.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>outer</strong> (<a class="reference internal" href="openghg_inversions.inversion_data.preparation.html#openghg_inversions.inversion_data.preparation.RhimePreparedInputs" title="openghg_inversions.inversion_data.preparation.RhimePreparedInputs"><em>RhimePreparedInputs</em></a>) – Prepared outer-domain inputs with the inner-domain spatial
+<li><p><strong>outer</strong> (<a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html#openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs" title="openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs"><em>RhimePreparedInputs</em></a>) – Prepared outer-domain inputs with the inner-domain spatial
 response removed before basis projection.</p></li>
-<li><p><strong>inner</strong> (<a class="reference internal" href="openghg_inversions.inversion_data.preparation.html#openghg_inversions.inversion_data.preparation.RhimePreparedInputs" title="openghg_inversions.inversion_data.preparation.RhimePreparedInputs"><em>RhimePreparedInputs</em></a>) – Prepared inner-domain inputs on their native grid.</p></li>
-<li><p><strong>combined</strong> (<a class="reference internal" href="openghg_inversions.inversion_data.preparation.html#openghg_inversions.inversion_data.preparation.RhimePreparedInputs" title="openghg_inversions.inversion_data.preparation.RhimePreparedInputs"><em>RhimePreparedInputs</em></a>) – Observation-aligned inputs containing outer <code class="docutils literal notranslate"><span class="pre">H</span></code> and inner
+<li><p><strong>inner</strong> (<a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html#openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs" title="openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs"><em>RhimePreparedInputs</em></a>) – Prepared inner-domain inputs on their native grid.</p></li>
+<li><p><strong>combined</strong> (<a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html#openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs" title="openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs"><em>RhimePreparedInputs</em></a>) – Observation-aligned inputs containing outer <code class="docutils literal notranslate"><span class="pre">H</span></code> and inner
 <code class="docutils literal notranslate"><span class="pre">H_inner</span></code> sensitivities.</p></li>
 <li><p><strong>time_tolerance</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>Timedelta</em><em> | </em><em>None</em>) – Maximum time difference allowed when aligning inner
 observations to the outer observation index.</p></li>
@@ -719,7 +721,7 @@ inner-domain array. Exact matching is the default; nearest selection is
 site-local and requires an explicit tolerance.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference internal" href="openghg_inversions.inversion_data.preparation.html#openghg_inversions.inversion_data.preparation.RhimeMergedData" title="openghg_inversions.inversion_data.preparation.RhimeMergedData"><em>RhimeMergedData</em></a></p>
+<dd class="field-odd"><p><a class="reference internal" href="openghg_inversions.inversion_data.acquisition.html#openghg_inversions.inversion_data.acquisition.RhimeMergedData" title="openghg_inversions.inversion_data.acquisition.RhimeMergedData"><em>RhimeMergedData</em></a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -781,7 +783,7 @@ modified.  The union of all retained inner site extents is applied to the
 retained outer flux used by basis generation and post-run reconstruction.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference internal" href="openghg_inversions.inversion_data.preparation.html#openghg_inversions.inversion_data.preparation.RhimeMergedData" title="openghg_inversions.inversion_data.preparation.RhimeMergedData"><em>RhimeMergedData</em></a></p>
+<dd class="field-odd"><p><a class="reference internal" href="openghg_inversions.inversion_data.acquisition.html#openghg_inversions.inversion_data.acquisition.RhimeMergedData" title="openghg_inversions.inversion_data.acquisition.RhimeMergedData"><em>RhimeMergedData</em></a></p>
 </dd>
 </dl>
 </dd></dl>

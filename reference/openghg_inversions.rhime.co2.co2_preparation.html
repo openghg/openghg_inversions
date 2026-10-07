@@ -341,9 +341,11 @@
 </details></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.html">openghg_inversions.hbmcmc</a></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.inversion_data.html">openghg_inversions.inversion_data</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.acquisition.html">openghg_inversions.inversion_data.acquisition</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.get_data.html">openghg_inversions.inversion_data.get_data</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.getters.html">openghg_inversions.inversion_data.getters</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.preparation.html">openghg_inversions.inversion_data.preparation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html">openghg_inversions.inversion_data.prepared_inputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.scenario.html">openghg_inversions.inversion_data.scenario</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.serialise.html">openghg_inversions.inversion_data.serialise</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.xarray_adapter.html">openghg_inversions.inversion_data.xarray_adapter</a></li>
@@ -527,7 +529,7 @@ provenance violate this boundary’s contract.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Variables<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>rhime_inputs</strong> (<a class="reference internal" href="openghg_inversions.inversion_data.preparation.html#openghg_inversions.inversion_data.preparation.RhimePreparedInputs" title="openghg_inversions.inversion_data.preparation.RhimePreparedInputs"><em>openghg_inversions.inversion_data.preparation.RhimePreparedInputs</em></a>) – Canonical RHIME inputs composed into this recipe-specific
+<li><p><strong>rhime_inputs</strong> (<a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html#openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs" title="openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs"><em>openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs</em></a>) – Canonical RHIME inputs composed into this recipe-specific
 boundary and passed directly to shared RHIME consumers.</p></li>
 <li><p><strong>aggregation_error_mode</strong> (<em>Literal</em><em>[</em><em>'dense'</em><em>, </em><em>'low_rank'</em><em>]</em>) – Concrete dense or low-rank representation
 stored in <a class="reference internal" href="#openghg_inversions.rhime.co2.co2_preparation.Co2PreparedInputs.inv_inputs" title="openghg_inversions.rhime.co2.co2_preparation.Co2PreparedInputs.inv_inputs"><code class="xref py py-attr docutils literal notranslate"><span class="pre">inv_inputs</span></code></a> and consumed by both CO2 runners.</p></li>
@@ -709,7 +711,7 @@ not this preparation cost.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>canonical_inputs</strong> (<a class="reference internal" href="openghg_inversions.inversion_data.preparation.html#openghg_inversions.inversion_data.preparation.RhimePreparedInputs" title="openghg_inversions.inversion_data.preparation.RhimePreparedInputs"><em>RhimePreparedInputs</em></a>) – Canonical RHIME observations and metadata whose
+<li><p><strong>canonical_inputs</strong> (<a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html#openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs" title="openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs"><em>RhimePreparedInputs</em></a>) – Canonical RHIME observations and metadata whose
 observation and retained-state labels match <code class="docutils literal notranslate"><span class="pre">reduction</span></code>.</p></li>
 <li><p><strong>reduction</strong> (<a class="reference internal" href="openghg_inversions.coherent_reduction.html#openghg_inversions.coherent_reduction.CoherentGaussianReduction" title="openghg_inversions.coherent_reduction.CoherentGaussianReduction"><em>CoherentGaussianReduction</em></a>) – One coherent Gaussian reduction containing all linked
 retained-prior and observation products.</p></li>

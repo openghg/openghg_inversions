@@ -341,9 +341,11 @@
 </details></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.html">openghg_inversions.hbmcmc</a></li>
 <li class="toctree-l2 current active has-children"><a class="reference internal" href="openghg_inversions.inversion_data.html">openghg_inversions.inversion_data</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.acquisition.html">openghg_inversions.inversion_data.acquisition</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.get_data.html">openghg_inversions.inversion_data.get_data</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.getters.html">openghg_inversions.inversion_data.getters</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.preparation.html">openghg_inversions.inversion_data.preparation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html">openghg_inversions.inversion_data.prepared_inputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.scenario.html">openghg_inversions.inversion_data.scenario</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.serialise.html">openghg_inversions.inversion_data.serialise</a></li>
 <li class="toctree-l3 current active"><a class="current reference internal" href="#">openghg_inversions.inversion_data.xarray_adapter</a></li>
@@ -507,7 +509,7 @@
 acquisition. It accepts site data already held in xarray objects, applies a
 retained <a class="reference internal" href="openghg_inversions.basis.basis_functions.html#openghg_inversions.basis.basis_functions.BasisFunctions" title="openghg_inversions.basis.basis_functions.BasisFunctions"><code class="xref py py-class docutils literal notranslate"><span class="pre">BasisFunctions</span></code></a>
 object when only footprint-times-flux caches are available, and returns the
-same <a class="reference internal" href="openghg_inversions.inversion_data.preparation.html#openghg_inversions.inversion_data.preparation.RhimePreparedInputs" title="openghg_inversions.inversion_data.preparation.RhimePreparedInputs"><code class="xref py py-class docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code></a>
+same <a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html#openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs" title="openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs"><code class="xref py py-class docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code></a>
 contract used by the OpenGHG-backed preparation path.</p>
 <p>Each site-local input dataset must contain a <code class="docutils literal notranslate"><span class="pre">time</span></code> dimension and the
 observation variables required by
@@ -545,8 +547,8 @@ Labels on explicit <code class="docutils literal notranslate"><span class="pre">
 be nonempty, unique Python or NumPy strings in their intended order, and
 non-string labels are not coerced. Repeated source values inside a gathered
 <code class="docutils literal notranslate"><span class="pre">(source,</span> <span class="pre">region_in_source)</span></code> state MultiIndex are valid.</p>
-<p>Use <a class="reference internal" href="openghg_inversions.inversion_data.preparation.html#openghg_inversions.inversion_data.preparation.RhimePreparedInputs.save" title="openghg_inversions.inversion_data.preparation.RhimePreparedInputs.save"><code class="xref py py-meth docutils literal notranslate"><span class="pre">RhimePreparedInputs.save</span></code></a> and
-<a class="reference internal" href="openghg_inversions.inversion_data.preparation.html#openghg_inversions.inversion_data.preparation.RhimePreparedInputs.load" title="openghg_inversions.inversion_data.preparation.RhimePreparedInputs.load"><code class="xref py py-meth docutils literal notranslate"><span class="pre">load()</span></code></a>
+<p>Use <a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html#openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs.save" title="openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs.save"><code class="xref py py-meth docutils literal notranslate"><span class="pre">RhimePreparedInputs.save</span></code></a> and
+<a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html#openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs.load" title="openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs.load"><code class="xref py py-meth docutils literal notranslate"><span class="pre">load()</span></code></a>
 for durable canonical artifacts. Serialized or otherwise pre-stacked
 <code class="docutils literal notranslate"><span class="pre">nmeasure</span></code> data should not be passed back through this adapter.</p>
 <dl class="py function">
@@ -589,9 +591,9 @@ explicit <code class="docutils literal notranslate"><span class="pre">source</sp
 and are never coerced from bytes or numbers. Repeated source values in a
 gathered source-specific state MultiIndex remain valid.</p>
 <p>Persist and reopen canonical artifacts with
-<a class="reference internal" href="openghg_inversions.inversion_data.preparation.html#openghg_inversions.inversion_data.preparation.RhimePreparedInputs.save" title="openghg_inversions.inversion_data.preparation.RhimePreparedInputs.save"><code class="xref py py-meth docutils literal notranslate"><span class="pre">RhimePreparedInputs.save</span></code></a>
+<a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html#openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs.save" title="openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs.save"><code class="xref py py-meth docutils literal notranslate"><span class="pre">RhimePreparedInputs.save</span></code></a>
 and
-<a class="reference internal" href="openghg_inversions.inversion_data.preparation.html#openghg_inversions.inversion_data.preparation.RhimePreparedInputs.load" title="openghg_inversions.inversion_data.preparation.RhimePreparedInputs.load"><code class="xref py py-meth docutils literal notranslate"><span class="pre">load()</span></code></a>;
+<a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html#openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs.load" title="openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs.load"><code class="xref py py-meth docutils literal notranslate"><span class="pre">load()</span></code></a>;
 do not pass serialized <code class="docutils literal notranslate"><span class="pre">nmeasure</span></code> data back to this adapter.
 The reserved <code class="docutils literal notranslate"><span class="pre">fixed_baseline</span></code> input is rejected until a reusable
 semantic Baseline component is available; use sampled <code class="docutils literal notranslate"><span class="pre">H_bc</span></code> or omit it.</p>
@@ -628,7 +630,7 @@ preparation route.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference internal" href="openghg_inversions.inversion_data.preparation.html#openghg_inversions.inversion_data.preparation.RhimePreparedInputs" title="openghg_inversions.inversion_data.preparation.RhimePreparedInputs"><em>RhimePreparedInputs</em></a></p>
+<dd class="field-even"><p><a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html#openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs" title="openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs"><em>RhimePreparedInputs</em></a></p>
 </dd>
 </dl>
 </dd></dl>

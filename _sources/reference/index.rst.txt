@@ -60,7 +60,11 @@ Prepared inversion data
 Use these interfaces to prepare, save, reload, or adapt canonical inputs
 before a separate model run. The
 :doc:`RHIME configuration and prepared-input reference </usage/rhime>`
-documents the expected variables, dimensions, and coordinates.
+documents the expected variables, dimensions, and coordinates. Acquisition
+and reload mechanics live in ``inversion_data.acquisition``; the prepared
+value and its unchanged version-1 schema live in
+``inversion_data.prepared_inputs``. Existing package and preparation-module
+imports identify the same classes.
 
 .. autosummary::
    :nosignatures:
@@ -70,6 +74,7 @@ documents the expected variables, dimensions, and coordinates.
    openghg_inversions.inversion_data.prepare_rhime_inputs
    openghg_inversions.inversion_data.prepare_rhime_inputs_from_xarray
    openghg_inversions.inversion_data.load_merged_data
+   openghg_inversions.inversion_data.acquisition.retrieve_or_reload_rhime_data
    openghg_inversions.rhime.NestedRhimePreparedInputs
    openghg_inversions.rhime.combine_nested_rhime_inputs
    openghg_inversions.rhime.co2.Co2PreparedInputs
