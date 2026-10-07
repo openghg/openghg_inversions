@@ -1114,8 +1114,6 @@ def _retrieve_or_reload_merged_data(
         )
         site_options = site_options.retain_sites(retained_sites, context="Data gathering")
 
-    if not site_options.sites:
-        raise ValueError("No sites remain after data gathering.")
     fp_all = _select_fp_all_sites(fp_all, site_options.sites)
 
     flux_entries = fp_all.get(".flux")

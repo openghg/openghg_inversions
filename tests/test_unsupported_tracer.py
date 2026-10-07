@@ -6,7 +6,7 @@ import pytest
 
 from openghg_inversions.inversion_data import prepare_rhime_inputs
 from openghg_inversions.rhime import run_rhime, run_rhime_multisector
-from openghg_inversions.rhime.params import normalise_rhime_params, resolve_rhime_options
+from openghg_inversions.rhime.params import normalise_rhime_params, params_from_config, resolve_rhime_options
 from openghg_inversions.rhime.preparation import retrieve_or_reload_rhime_data
 
 
@@ -19,6 +19,22 @@ def test_option_resolution_rejects_tracer_before_required_options(multisector):
 @pytest.mark.parametrize("tracer_options", [{}, {"use_tracer": False}])
 def test_false_or_omitted_tracer_is_accepted_during_option_normalization(tracer_options):
     assert normalise_rhime_params(tracer_options) == {}
+
+
+@pytest.mark.parametrize(
+    ("configured", "override", "effective"),
+    [(True, None, True), (False, None, False), (True, False, False), (False, True, True)],
+)
+def test_ini_tracer_option_respects_overrides_before_normalization(tmp_path, configured, override, effective):
+    config_file = tmp_path / "rhime.ini"
+    config_file.write_text(f"[RHIME.OPTIONS]\nuse_tracer = {configured}\n", encoding="utf-8")
+    assert params_from_config(config_file, normalise=False)["use_tracer"] is configured
+    extra_kwargs = {} if override is None else {"use_tracer": override}
+    if effective:
+        with pytest.raises(ValueError, match="use_tracer=True.*not supported"):
+            params_from_config(config_file, extra_kwargs=extra_kwargs)
+    else:
+        assert "use_tracer" not in params_from_config(config_file, extra_kwargs=extra_kwargs)
 
 
 @pytest.mark.parametrize("tracer_options", [{}, {"use_tracer": False}])
