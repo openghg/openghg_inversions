@@ -450,7 +450,9 @@ unused sector keys are errors.</p>
 <dt><code class="docutils literal notranslate"><span class="pre">tracer</span></code></dt><dd><p>Additional species used to constrain the primary species, normally with
 linked forward models. The standard-family acquisition and preparation path
 does not support tracer inversions; the advanced linked CO₂/O₂ recipe starts
-from separately prepared channel arrays.</p>
+from separately prepared channel arrays. The generic <code class="docutils literal notranslate"><span class="pre">use_tracer</span></code> flag
+must be omitted or <code class="docutils literal notranslate"><span class="pre">False</span></code>; <code class="docutils literal notranslate"><span class="pre">True</span></code> raises <code class="docutils literal notranslate"><span class="pre">ValueError</span></code> before
+acquisition or execution, including when merged data is supplied.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">emissions_name</span></code></dt><dd><p>Legacy compatibility spelling accepted only when <code class="docutils literal notranslate"><span class="pre">flux_sources</span></code> is absent.</p>
 </dd>

@@ -493,6 +493,13 @@ require <code class="docutils literal notranslate"><span class="pre">--preparati
 prepared-input content digest before model construction.  Preparation also
 treats every configured site as required and fails with the gas and period
 named if the existing acquisition layer could not produce it.</p>
+<div class="admonition important">
+<p class="admonition-title">Important</p>
+<p>Version 0.8 does not support staged artifacts produced by 0.7. Use 0.7 to
+consume those artifacts, or regenerate them with 0.8. Removing the unused
+<code class="docutils literal notranslate"><span class="pre">use_tracer=False</span></code> field from resolved preparation options changes the
+configuration hash even when scientific settings are unchanged.</p>
+</div>
 <p>The manifest also records a content SHA-256 for <code class="docutils literal notranslate"><span class="pre">prepared-inputs.nc</span></code>.
 <code class="docutils literal notranslate"><span class="pre">openghg-run</span></code>
 independently verifies the declared stage-output directory and records its own

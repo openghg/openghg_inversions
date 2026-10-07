@@ -1990,8 +1990,12 @@ Otherwise this stage may read OpenGHG stores or a local merged artifact,
 optionally write merged data, sanitize flux arrays, print progress, and
 emit warnings.  <code class="docutils literal notranslate"><span class="pre">data_args</span></code> is never mutated.</p>
 <dl class="field-list simple">
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference internal" href="openghg_inversions.inversion_data.preparation.html#openghg_inversions.inversion_data.preparation.RhimeMergedData" title="openghg_inversions.inversion_data.preparation.RhimeMergedData"><em>RhimeMergedData</em></a></p>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If <code class="docutils literal notranslate"><span class="pre">data_args</span></code> requests unsupported <code class="docutils literal notranslate"><span class="pre">use_tracer=True</span></code>
+    or the supplied merged data has an incompatible sector layout.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="openghg_inversions.inversion_data.preparation.html#openghg_inversions.inversion_data.preparation.RhimeMergedData" title="openghg_inversions.inversion_data.preparation.RhimeMergedData"><em>RhimeMergedData</em></a></p>
 </dd>
 </dl>
 </dd></dl>
