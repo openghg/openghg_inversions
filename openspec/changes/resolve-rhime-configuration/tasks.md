@@ -13,5 +13,5 @@
 ## 3. Delivery
 
 - [x] 3.1 Document record roles and the resolve-before-acquisition workflow and add the Issue 804 Towncrier fragment; verify guidance and examples match the public API.
-- [ ] 3.2 Run focused and relevant broader tests, changed-path Ruff, strict OpenSpec and whitespace checks, and review staged compatibility and input ownership; resolve failures before marking complete.
+- [x] 3.2 Run focused and relevant broader tests, changed-path Ruff, strict OpenSpec and whitespace checks, and review staged compatibility and input ownership; resolve failures before marking complete. Locked Python 3.12/3.13 coverage passed in Slurm job 19270831; docs-full passed in job 19270662 and the affected rendered pages were inspected.
 - [ ] 3.3 Commit and SSH-push the implementation, then create or update the GitHub PR using the repository template; verify the remote head and attach the PR. PR #813 is pushed and verified; app attachment confirmation is pending.
