@@ -7,6 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import dask.array as da
+from dask.callbacks import Callback
 import numpy as np
 import pandas as pd
 import pytest
@@ -15,9 +16,10 @@ import xarray as xr
 import openghg_inversions.rhime.nested as nested_module
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.cli import main
+from openghg_inversions.rhime._domain_support import rectangular_extent_mask, remove_domain_overlap
 from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs
-from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.inversion_data.preparation import _SiteOptions
+from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.postprocessing.nested_paris_outputs import (
     _regridded_inner_country_file,
 )
@@ -280,6 +282,44 @@ def test_mask_outer_merged_zeroes_overlap_lazily_without_mutating_inputs() -> No
     assert float(masked.fp_all["TAC"]["fp"].isel(time=0, lat=0, lon=0).compute()) == 1.0
     assert float(masked.fp_all[".flux"]["inventory"].data["flux"].isel(time=0, lat=1, lon=1).compute()) == 0.0
     assert float(outer.fp_all["TAC"]["fp"].isel(time=0, lat=1, lon=1).compute()) == 1.0
+
+
+def test_domain_support_preserves_native_order_sources_and_lazy_payloads() -> None:
+    """A nonmatching inner grid removes only native cells within its rectangle."""
+    native = xr.DataArray(
+        da.ones((2, 3, 4), chunks=(1, 3, 2)),
+        dims=("source", "lat", "lon"),
+        coords={"source": ["a", "b"], "lat": [3.0, 0.0, 1.0], "lon": [4.0, 2.0, -1.0, 0.0]},
+        attrs={"units": "mol m-2 s-1"},
+    )
+    inner = xr.Dataset(coords={"lat": [1.5, 0.0], "lon": [0.0, 0.5, 2.5]})
+    tasks: list[object] = []
+    with Callback(pretask=lambda key, *_: tasks.append(key)):
+        mask = rectangular_extent_mask(inner, target_lat=native.lat, target_lon=native.lon)
+        masked = remove_domain_overlap(native, mask)
+
+    assert not tasks
+    assert isinstance(masked.data, da.Array)
+    assert masked.dims == native.dims
+    assert masked.attrs == native.attrs
+    xr.testing.assert_identical(masked.coords.to_dataset(), native.coords.to_dataset())
+    expected = np.array([[1, 1, 1, 1], [1, 0, 1, 0], [1, 0, 1, 0]])
+    np.testing.assert_array_equal(masked.compute(), np.broadcast_to(expected, (2, 3, 4)))
+    np.testing.assert_array_equal(native.compute(), np.ones((2, 3, 4)))
+
+
+def test_domain_support_rejects_misaligned_mask_instead_of_intersecting() -> None:
+    native = xr.DataArray([1.0, 2.0], dims="lat", coords={"lat": [0.0, 1.0]})
+    mask = xr.DataArray([True, False], dims="lat", coords={"lat": [1.0, 2.0]})
+    with pytest.raises(ValueError, match="align.*exact"):
+        remove_domain_overlap(native, mask)
+
+
+@pytest.mark.parametrize("inner", [xr.Dataset(), xr.Dataset(coords={"lat": [], "lon": [0.0]})])
+def test_domain_support_rejects_missing_or_empty_inner_grid(inner: xr.Dataset) -> None:
+    target = xr.Dataset(coords={"lat": [0.0], "lon": [0.0]})
+    with pytest.raises(ValueError, match="coordinates"):
+        rectangular_extent_mask(inner, target_lat=target.lat, target_lon=target.lon)
 
 
 def test_inner_merged_alignment_mirrors_filtered_outer_times_with_tolerance() -> None:
