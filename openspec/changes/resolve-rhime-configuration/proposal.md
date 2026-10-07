@@ -2,35 +2,42 @@
 
 ## Why
 
-Standard and multisector RHIME runners pass partly raw options into acquisition,
-which builds an aligned site record, unpacks it, and repeats expansion in the
-lower-level loader. [Issue #804](https://github.com/openghg/openghg_inversions/issues/804)
-needs one concrete configuration boundary before acquisition, so internal code
-can consume named values without parsing convenient external syntax again.
+[Issue #804](https://github.com/openghg/openghg_inversions/issues/804) needs an
+inspectable in-memory representation of the resolved RHIME request. Today partly
+raw options reach acquisition, and site shorthand is expanded repeatedly;
+configuration and retained-run metadata also have overlapping meanings.
 
 ## What Changes
 
-- Separate raw INI loading from a format-neutral semantic resolver shared by
-  file and Python adapters; retain existing INI vocabulary and override rules.
-- Reuse the existing run/model/output specifications and site-options record;
-  introduce only the missing typed preparation and sampling values.
-- Normalize requested sites and expand site selectors once before acquisition.
-  Acquisition and preparation subsequently select retained options together.
-- Preserve public shorthand through adapters, caller-owned inputs, existing
-  direct sampler APIs and numerical behavior.
-- Add focused configuration/entry-point checks and update affected guidance.
+- Introduce `RhimeConfig` for the complete resolved standard/multisector request:
+  preparation choices, model specification, output specification and the existing
+  `RhimeSampler` settings object.
+- Keep INI decoding separate from semantic resolution. Apply supported overrides
+  first, then resolve aliases, defaults and site shorthand while constructing
+  `RhimeConfig`. File and Python inputs share this format-neutral boundary.
+- Introduce only the missing `RhimePreparationConfig`; reuse the existing
+  site-options, model, sector, likelihood, output and sampler types.
+- Keep requested sites in configuration. Acquisition/preparation select retained
+  options by label; construct `RhimeRunSpec` with retained sites after preparation.
+- Preserve supported public shorthand and return contracts through small adapters,
+  caller-owned inputs, scientific behavior and existing direct sampler APIs.
+- Document record roles and add focused equivalence, override, early-failure and
+  retained-site checks at implementation time.
 
-This is planning for review, with no implementation tasks or code changes yet.
-Hash and manifest policy remains with [#808](https://github.com/openghg/openghg_inversions/issues/808)
-and [PR #802](https://github.com/openghg/openghg_inversions/pull/802): this change
-adds no identity protocol, migration layer or historical-hash guarantee.
+This is a planning-only change. Implementation tasks remain deferred for review.
+INI remains the supported file frontend; format neutrality enables later
+frontends without introducing one here. CO2 recipe configuration is unchanged.
+Hash/manifest policy remains with
+[#808](https://github.com/openghg/openghg_inversions/issues/808) and
+[PR #802](https://github.com/openghg/openghg_inversions/pull/802).
 
 ## Capabilities
 
 ### New Capabilities
 
-- `rhime-configuration`: Concrete standard/multisector configuration resolved
-  before acquisition, with compatible entry adapters and aligned site options.
+- `rhime-configuration`: Resolve a complete requested-run configuration before
+  acquisition, with equivalent external shorthand, compatible entry adapters and
+  distinct retained-run metadata.
 
 ### Modified Capabilities
 
@@ -38,12 +45,11 @@ None. This checkout has no synced durable capability specs.
 
 ## Impact
 
-The existing `rhime.params` owner, ordinary runners, and acquisition/preparation
-consumers change. Build on the landed #773/#774 owners:
-`inversion_data.acquisition`, `inversion_data.prepared_inputs` and
-`inference.sampling`, preserving their compatibility exports. Public INI/Python
-helpers and low-level retrieval entry points remain adapters; independent
-builders and prepared-input routes retain their contracts. Preserve #807's
-early tracer rejection and consumption of omitted/false options. No new
-dependency, file format, cache policy, scientific equation or staged workflow
-redesign is included.
+The existing `rhime.params` owner, ordinary runners, acquisition/preparation
+consumers and configuration guidance change. Build on landed #773/#774 ownership
+in `inversion_data.acquisition`, `inversion_data.prepared_inputs` and
+`inference.sampling`, preserving public compatibility exports. Preserve #807's
+tracer handling and existing staged transport contracts. Independent builders
+and prepared-input runners keep their contracts. No new dependency, scientific
+equation, file format, stage ownership, cache policy or identity protocol is
+introduced.
