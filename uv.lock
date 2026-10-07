@@ -2111,6 +2111,10 @@ local = [
     { name = "pytest" },
     { name = "ruff" },
 ]
+test = [
+    { name = "pytest" },
+    { name = "pytest-xdist" },
+]
 uv-dev = [
     { name = "jupyter-sphinx" },
     { name = "openghg-inversions", extra = ["dev", "jupyter"] },
@@ -2158,6 +2162,10 @@ local = [
     { name = "h5py", specifier = "<3.15" },
     { name = "pytest" },
     { name = "ruff", specifier = "==0.16.0" },
+]
+test = [
+    { name = "pytest" },
+    { name = "pytest-xdist" },
 ]
 uv-dev = [
     { name = "jupyter-sphinx", specifier = ">=0.5.3" },

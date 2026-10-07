@@ -1,4 +1,8 @@
-"""Tracer-local boundary and offset equations on unequal observation axes."""
+"""Tracer-local boundary and offset equations on unequal observation axes.
+
+Prior draws exercise the equations and restored coordinates; observation
+replicates are unnecessary for these checks.
+"""
 
 import json
 
@@ -73,7 +77,11 @@ def test_boundary_fixed_and_active_state_reconstructs_exact_joint_sum(channels):
     }
     model = _model(prepared, bc_state_activity=activities)
     with model:
-        trace = pm.sample_prior_predictive(draws=3, random_seed=42)
+        trace = pm.sample_prior_predictive(
+            draws=3,
+            random_seed=42,
+            var_names=[var.name for var in model.free_RVs + model.deterministics],
+        )
     trace = restore_inferencedata_coords(trace, get_coord_registry(model))
     expected = np.zeros((1, 3, 5))
     for channel in channels:
@@ -106,7 +114,11 @@ def test_independent_offsets_and_boundary_reconstruct_from_draws(per_site, frequ
         offset_args={channel: {"per_site": per_site, "offset_freq": frequency} for channel in ("co2", "o2")},
     )
     with model:
-        trace = pm.sample_prior_predictive(draws=3, random_seed=7)
+        trace = pm.sample_prior_predictive(
+            draws=3,
+            random_seed=7,
+            var_names=[var.name for var in model.free_RVs + model.deterministics],
+        )
     trace = restore_inferencedata_coords(trace, get_coord_registry(model))
     path = tmp_path / "baselines.nc"
     save_trace(trace, path)
@@ -161,7 +173,11 @@ def test_configuration_and_runner_forward_same_channel_options(monkeypatch):
 
     def prior_sample(built, sampler):
         with built.model:
-            trace = pm.sample_prior_predictive(draws=2, random_seed=8)
+            trace = pm.sample_prior_predictive(
+                draws=2,
+                random_seed=8,
+                var_names=[var.name for var in built.model.free_RVs + built.model.deterministics],
+            )
         return restore_inferencedata_coords(trace, get_coord_registry(built.model))
 
     monkeypatch.setattr(co2_o2_runner, "sample_rhime_model", prior_sample)
@@ -237,7 +253,11 @@ def test_offsets_restore_native_site_time_multiindexes(per_site, frequency, extr
         offset_args={channel: {"per_site": per_site, "offset_freq": frequency} for channel in ("co2", "o2")},
     )
     with model:
-        trace = pm.sample_prior_predictive(draws=3, random_seed=12)
+        trace = pm.sample_prior_predictive(
+            draws=3,
+            random_seed=12,
+            var_names=[var.name for var in model.free_RVs + model.deterministics],
+        )
     trace = restore_inferencedata_coords(trace, get_coord_registry(model))
     assert trace.prior.indexes["observation"].equals(prepared.observations.indexes["observation"])
     if extra_level:

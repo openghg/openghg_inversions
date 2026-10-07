@@ -19,6 +19,7 @@ import xarray as xr
 from dask.callbacks import Callback
 
 from examples.rhime_customisation import likelihoods as example_likelihoods
+import openghg_inversions.inversion_data.acquisition as acquisition_module
 import openghg_inversions.inversion_data.preparation as prep_module
 import openghg_inversions.models as models
 import openghg_inversions.postprocessing.inversion_output as inversion_output_module
@@ -29,6 +30,7 @@ import openghg_inversions.rhime.params as rhime_params
 import openghg_inversions.rhime.preparation as rhime_preparation
 import openghg_inversions.rhime.prepared as rhime_prepared
 import openghg_inversions.rhime.sampling as rhime_sampling
+import openghg_inversions.inference.sampling as inference_sampling
 import openghg_inversions.rhime.specs as rhime_specs
 import openghg_inversions.rhime.standard as rhime_standard
 import openghg_inversions.rhime.multisector as rhime_multisector
@@ -1951,8 +1953,9 @@ def test_prepared_replay_computes_selected_error_only_at_pymc_boundary(
 
 
 def test_explicit_preparation_option_ownership_matches_current_preparer() -> None:
-    """The explicit routing schema deliberately tracks the accepted preparation API."""
-    parameters = inspect.signature(prepare_rhime_inputs).parameters
+    """Routing tracks preparation options after consuming the unsupported tracer flag."""
+    parameters = dict(inspect.signature(prepare_rhime_inputs).parameters)
+    parameters.pop("use_tracer")
     assert rhime_params.RHIME_PREPARATION_OPTION_NAMES == frozenset(parameters)
     assert rhime_params.RHIME_PREPARATION_DEFAULTS == {
         name: parameter.default
@@ -3253,7 +3256,7 @@ def test_external_merged_data_bypasses_acquisition_without_mutation(
     def fail_acquisition(**kwargs: Any) -> None:
         raise AssertionError("external merged data must bypass acquisition")
 
-    monkeypatch.setattr(prep_module, "_prepare_merged_data", fail_acquisition)
+    monkeypatch.setattr(acquisition_module, "_retrieve_or_reload_merged_data", fail_acquisition)
     result = rhime_public.retrieve_or_reload_rhime_data(
         {"sites": ["TAC"]},
         multisector=False,
@@ -3313,7 +3316,7 @@ def test_public_stages_compose_as_complete_external_runner(monkeypatch: pytest.M
     inv_inputs_fixture = _minimal_output_inv_inputs()
     idata = _minimal_output_idata()
 
-    monkeypatch.setattr(prep_module, "_prepare_merged_data", lambda **kwargs: merged_fixture)
+    monkeypatch.setattr(acquisition_module, "_retrieve_or_reload_merged_data", lambda **kwargs: merged_fixture)
     monkeypatch.setattr(rhime_preparation, "make_basis_functions", lambda **kwargs: basis_fixture)
     monkeypatch.setattr(
         prep_module,
@@ -4670,14 +4673,14 @@ def test_rhime_sampler_runs_pymc_sampling_and_predictive_steps(
     def fake_log_timing(label: str, seconds: float, **fields: Any) -> None:
         timings.append((label, fields))
 
-    monkeypatch.setattr("openghg_inversions.rhime.sampling.pm.sample", fake_sample)
-    monkeypatch.setattr(rhime_sampling, "log_timing", fake_log_timing)
+    monkeypatch.setattr("openghg_inversions.inference.sampling.pm.sample", fake_sample)
+    monkeypatch.setattr(inference_sampling, "log_timing", fake_log_timing)
     monkeypatch.setattr(
-        "openghg_inversions.rhime.sampling.pm.sample_prior_predictive",
+        "openghg_inversions.inference.sampling.pm.sample_prior_predictive",
         fake_prior_predictive,
     )
     monkeypatch.setattr(
-        "openghg_inversions.rhime.sampling.pm.sample_posterior_predictive",
+        "openghg_inversions.inference.sampling.pm.sample_posterior_predictive",
         fake_posterior_predictive,
     )
     model = pm.Model()
@@ -4739,7 +4742,7 @@ def test_rhime_sampler_preserves_disabled_log_likelihood(
         seen.update(kwargs)
         return trace
 
-    monkeypatch.setattr("openghg_inversions.rhime.sampling.pm.sample", fake_sample)
+    monkeypatch.setattr("openghg_inversions.inference.sampling.pm.sample", fake_sample)
     sampler = RhimeSampler(
         draws=2,
         tune=0,
@@ -4810,13 +4813,13 @@ def test_rhime_sampler_resets_retained_draws_before_extending_predictive_groups(
             )
         )
 
-    monkeypatch.setattr("openghg_inversions.rhime.sampling.pm.sample", fake_sample)
+    monkeypatch.setattr("openghg_inversions.inference.sampling.pm.sample", fake_sample)
     monkeypatch.setattr(
-        "openghg_inversions.rhime.sampling.pm.sample_prior_predictive",
+        "openghg_inversions.inference.sampling.pm.sample_prior_predictive",
         fake_prior_predictive,
     )
     monkeypatch.setattr(
-        "openghg_inversions.rhime.sampling.pm.sample_posterior_predictive",
+        "openghg_inversions.inference.sampling.pm.sample_posterior_predictive",
         fake_posterior_predictive,
     )
     sampler = RhimeSampler(draws=2000, burn=1000, tune=0, chains=1)
@@ -4855,7 +4858,7 @@ def test_rhime_sampler_resolves_predictive_name_from_custom_model_roles(
         return make_trace(posterior_predictive=xr.Dataset({"custom_y": ("draw", [1.0])}))
 
     monkeypatch.setattr(
-        "openghg_inversions.rhime.sampling.pm.sample_posterior_predictive",
+        "openghg_inversions.inference.sampling.pm.sample_posterior_predictive",
         fake_posterior_predictive,
     )
     with pm.Model() as model:
@@ -4899,16 +4902,16 @@ def test_rhime_sampler_restores_registered_coords_after_predictive_steps(
         calls.append((trace, registry, list(trace.children)))
         return trace
 
-    monkeypatch.setattr("openghg_inversions.rhime.sampling.pm.sample", fake_sample)
+    monkeypatch.setattr("openghg_inversions.inference.sampling.pm.sample", fake_sample)
     monkeypatch.setattr(
-        "openghg_inversions.rhime.sampling.pm.sample_prior_predictive",
+        "openghg_inversions.inference.sampling.pm.sample_prior_predictive",
         fake_prior_predictive,
     )
     monkeypatch.setattr(
-        "openghg_inversions.rhime.sampling.pm.sample_posterior_predictive",
+        "openghg_inversions.inference.sampling.pm.sample_posterior_predictive",
         fake_posterior_predictive,
     )
-    monkeypatch.setattr("openghg_inversions.rhime.sampling.restore_inferencedata_coords", fake_restore)
+    monkeypatch.setattr("openghg_inversions.inference.sampling.restore_inferencedata_coords", fake_restore)
 
     model = pm.Model()
     registry = models.CoordRegistry(
@@ -5711,7 +5714,7 @@ def test_rhime_preparation_uses_platform_for_sites_retained_after_filtering(
     )
     captured: dict[str, object] = {}
 
-    monkeypatch.setattr(prep_module, "_prepare_merged_data", lambda **kwargs: merged)
+    monkeypatch.setattr(prep_module, "_retrieve_or_reload_merged_data", lambda **kwargs: merged)
     monkeypatch.setattr(prep_module, "_filter_merged_inversion_data", lambda **kwargs: filtered_merged)
     monkeypatch.setattr(prep_module, "make_basis_functions", lambda **kwargs: _fake_basis_functions())
     monkeypatch.setattr(
@@ -5796,7 +5799,7 @@ def test_prepare_rhime_inputs_uses_basis_sensitivity_without_legacy_side_channel
         return _minimal_prepared_inv_inputs()
 
     monkeypatch.setattr(
-        prep_module,
+        acquisition_module,
         "data_processing_surface_notracer",
         fake_data_processing_surface_notracer,
     )
@@ -5843,7 +5846,7 @@ def test_prepare_rhime_inputs_matches_direct_sensitivity_inv_inputs(
         return basis_functions
 
     monkeypatch.setattr(
-        prep_module,
+        acquisition_module,
         "data_processing_surface_notracer",
         fake_data_processing_surface_notracer,
     )
@@ -5900,7 +5903,7 @@ def test_prepare_rhime_inputs_prunes_reloaded_merged_data_to_requested_sites(
         assert sites == ["TAC"]
         return _minimal_prepared_inv_inputs()
 
-    monkeypatch.setattr(prep_module, "load_merged_data", fake_load_merged_data)
+    monkeypatch.setattr(acquisition_module, "load_merged_data", fake_load_merged_data)
     monkeypatch.setattr(prep_module, "make_basis_functions", fake_make_basis_functions)
     monkeypatch.setattr(prep_module, "make_inv_inputs", fake_make_inv_inputs)
 
@@ -5926,19 +5929,19 @@ def test_prepare_rhime_inputs_prunes_reloaded_merged_data_to_requested_sites(
     }
 
 
-def test_prepare_merged_data_reload_keeps_all_options_aligned(
+def test_retrieve_or_reload_merged_data_reload_keeps_all_options_aligned(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """Reloading a subset retains the complete option record for each kept site."""
     monkeypatch.setattr(
-        prep_module,
+        acquisition_module,
         "load_merged_data",
         lambda *args, **kwargs: {
             "MHD": _site_dataset([3.0]).assign_attrs(openghg_inversions_time_resolved="false"),
         },
     )
 
-    merged = prep_module._prepare_merged_data(
+    merged = prep_module._retrieve_or_reload_merged_data(
         species="ch4",
         sites=["TAC", "MHD", "RGL"],
         domain="EUROPE",
@@ -5997,7 +6000,7 @@ def test_site_options_direct_construction_enforces_immutable_alignment() -> None
         options.sites.append("MHD")  # type: ignore[attr-defined]
 
 
-def test_prepare_merged_data_retrieval_keeps_requested_metadata_authoritative(
+def test_retrieve_or_reload_merged_data_retrieval_keeps_requested_metadata_authoritative(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A middle retrieval failure retains every option from the requested record."""
@@ -6020,12 +6023,12 @@ def test_prepare_merged_data_retrieval_keeps_requested_metadata_authoritative(
         )
 
     monkeypatch.setattr(
-        prep_module,
+        acquisition_module,
         "data_processing_surface_notracer",
         fake_data_processing,
     )
 
-    merged = prep_module._prepare_merged_data(
+    merged = prep_module._retrieve_or_reload_merged_data(
         species="ch4",
         sites=["TAC", "MHD", "RGL"],
         domain="EUROPE",
@@ -6057,20 +6060,20 @@ def test_prepare_merged_data_retrieval_keeps_requested_metadata_authoritative(
     )
 
 
-def test_prepare_merged_data_reload_rejects_time_resolved_selector_mismatch(
+def test_retrieve_or_reload_merged_data_reload_rejects_time_resolved_selector_mismatch(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """Reloaded data cannot satisfy the opposite footprint-resolution selector."""
     cached_site = _site_dataset([3.0])
     cached_site.attrs["openghg_inversions_time_resolved"] = "false"
     monkeypatch.setattr(
-        prep_module,
+        acquisition_module,
         "load_merged_data",
         lambda *args, **kwargs: {"TAC": cached_site, ".species": "CH4", ".units": 1e-9},
     )
 
     with pytest.raises(ValueError, match="does not match the requested `time_resolved` selector"):
-        prep_module._prepare_merged_data(
+        prep_module._retrieve_or_reload_merged_data(
             species="ch4",
             sites=["TAC"],
             domain="EUROPE",
@@ -6090,7 +6093,7 @@ def test_prepare_merged_data_reload_rejects_time_resolved_selector_mismatch(
     ("cached_split_by_sectors", "requested_split_by_sectors"),
     [(False, True), (True, False)],
 )
-def test_prepare_merged_data_reload_rejects_sector_layout_mismatch(
+def test_retrieve_or_reload_merged_data_reload_rejects_sector_layout_mismatch(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     cached_split_by_sectors: bool,
@@ -6098,7 +6101,7 @@ def test_prepare_merged_data_reload_rejects_sector_layout_mismatch(
 ) -> None:
     """Reloading never relabels a cache as the opposite sector layout."""
     monkeypatch.setattr(
-        prep_module,
+        acquisition_module,
         "load_merged_data",
         lambda *args, **kwargs: {
             "TAC": _site_dataset([3.0]),
@@ -6109,7 +6112,7 @@ def test_prepare_merged_data_reload_rejects_sector_layout_mismatch(
     )
 
     with pytest.raises(ValueError, match="incompatible `split_by_sectors` layout"):
-        prep_module._prepare_merged_data(
+        prep_module._retrieve_or_reload_merged_data(
             species="ch4",
             sites=["TAC"],
             domain="EUROPE",
@@ -6125,24 +6128,24 @@ def test_prepare_merged_data_reload_rejects_sector_layout_mismatch(
         )
 
 
-def test_prepare_merged_data_ignores_redundant_retrieval_metadata(
+def test_retrieve_or_reload_merged_data_ignores_redundant_retrieval_metadata(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Length-correct legacy metadata cannot replace requested site pairings."""
+    """Unused legacy metadata cannot replace requested site pairings."""
     monkeypatch.setattr(
-        prep_module,
+        acquisition_module,
         "data_processing_surface_notracer",
         lambda **kwargs: (
             {"TAC": _site_dataset([2.0]), ".species": "CH4"},
             ["TAC"],
-            ["wrong-inlet"],
-            ["110m"],
-            ["inst-tac"],
-            ["1H"],
+            [],
+            ["wrong-height", "extra-height"],
+            [],
+            [],
         ),
     )
 
-    merged = prep_module._prepare_merged_data(
+    merged = prep_module._retrieve_or_reload_merged_data(
         species="ch4",
         sites=["TAC"],
         domain="EUROPE",
@@ -6175,7 +6178,7 @@ def test_prepare_rhime_inputs_reload_all_sites_missing_fails_before_basis(
 ) -> None:
     """Reloading with no requested sites fails before basis construction."""
     monkeypatch.setattr(
-        prep_module,
+        acquisition_module,
         "load_merged_data",
         lambda *args, **kwargs: {
             "RGL": _site_dataset([4.0]),
@@ -6296,7 +6299,7 @@ def test_prepare_rhime_inputs_normalises_averaging_period_to_site_count(
         return _minimal_prepared_inv_inputs(("TAC", "MHD"))
 
     monkeypatch.setattr(
-        prep_module,
+        acquisition_module,
         "data_processing_surface_notracer",
         fake_data_processing_surface_notracer,
     )
@@ -6419,7 +6422,7 @@ def test_prepare_rhime_inputs_treats_min_error_none_as_default(
         return _minimal_prepared_inv_inputs()
 
     monkeypatch.setattr(
-        prep_module,
+        acquisition_module,
         "data_processing_surface_notracer",
         fake_data_processing_surface_notracer,
     )
@@ -6479,7 +6482,7 @@ def test_prepare_rhime_inputs_rejects_min_error_options_before_retrieval(
         raise AssertionError("Data retrieval should not run for invalid min-error options.")
 
     monkeypatch.setattr(
-        prep_module,
+        acquisition_module,
         "data_processing_surface_notracer",
         fail_data_processing,
     )
@@ -6556,7 +6559,7 @@ def test_prepare_rhime_inputs_filters_sites_before_basis_generation(
         return _minimal_prepared_inv_inputs()
 
     monkeypatch.setattr(
-        prep_module,
+        acquisition_module,
         "data_processing_surface_notracer",
         fake_data_processing_surface_notracer,
     )
@@ -6682,7 +6685,7 @@ def test_prepare_rhime_inputs_applies_daily_median_before_sensitivity(
         return _minimal_prepared_inv_inputs()
 
     monkeypatch.setattr(
-        prep_module,
+        acquisition_module,
         "data_processing_surface_notracer",
         fake_data_processing_surface_notracer,
     )
@@ -6770,7 +6773,7 @@ def test_prepare_rhime_inputs_filters_multisector_sites_before_basis_generation(
         return inv_inputs
 
     monkeypatch.setattr(
-        prep_module,
+        acquisition_module,
         "data_processing_surface_notracer",
         fake_data_processing_surface_notracer,
     )
@@ -6844,7 +6847,7 @@ def test_prepare_rhime_inputs_filters_loaded_basis_before_sensitivity(
         return _minimal_prepared_inv_inputs()
 
     monkeypatch.setattr(
-        prep_module,
+        acquisition_module,
         "data_processing_surface_notracer",
         fake_data_processing_surface_notracer,
     )
@@ -6904,7 +6907,7 @@ def test_prepare_rhime_inputs_aligns_averaging_period_after_empty_site_drop(
         return _minimal_prepared_inv_inputs()
 
     monkeypatch.setattr(
-        prep_module,
+        acquisition_module,
         "data_processing_surface_notracer",
         fake_data_processing_surface_notracer,
     )
@@ -6950,7 +6953,7 @@ def test_prepare_rhime_inputs_rejects_all_sites_dropped_before_basis_generation(
         raise AssertionError("Basis generation should not run when all sites are dropped.")
 
     monkeypatch.setattr(
-        prep_module,
+        acquisition_module,
         "data_processing_surface_notracer",
         fake_data_processing_surface_notracer,
     )
@@ -9161,11 +9164,11 @@ def test_rhime_acquisition_forwards_satellite_footprint_mode(
     captured: dict[str, Any] = {}
     expected = object()
 
-    def fake_prepare_merged_data(**kwargs: Any) -> object:
+    def fake_retrieve_or_reload_merged_data(**kwargs: Any) -> object:
         captured.update(kwargs)
         return expected
 
-    monkeypatch.setattr(prep_module, "_prepare_merged_data", fake_prepare_merged_data)
+    monkeypatch.setattr(acquisition_module, "_retrieve_or_reload_merged_data", fake_retrieve_or_reload_merged_data)
     data_args = {
         **rhime_params.RHIME_PREPARATION_DEFAULTS,
         "species": "co2",
@@ -9220,3 +9223,68 @@ def test_satellite_rhime_template_matches_modern_input_schema() -> None:
     assert setup.run_spec.sites == ("GOSAT-BRAZIL",)
     assert setup.data_args["platform"] == ["satellite"]
     assert setup.data_args["max_level"] == [3]
+
+
+@pytest.mark.parametrize("reload", [False, True])
+def test_retrieve_or_reload_merged_data_sanitizes_flux_lazily(
+    monkeypatch: pytest.MonkeyPatch, reload: bool
+) -> None:
+    """Both acquisition paths sanitize flux without computing its Dask payload."""
+    flux = SimpleNamespace(data=xr.Dataset({"flux": ("time", da.from_array([np.nan, np.inf, 2.0]))}))
+    fp_all = {"TAC": _site_dataset([2.0]), ".flux": {"inventory": flux}}
+    monkeypatch.setattr(acquisition_module, "load_merged_data", lambda *args: fp_all)
+
+    def retrieve(**kwargs: Any) -> tuple:
+        assert not reload
+        return fp_all, ["TAC"], [None], [None], [None], ["1h"]
+
+    monkeypatch.setattr(acquisition_module, "data_processing_surface_notracer", retrieve)
+    with Callback(pretask=lambda *args: pytest.fail("acquisition must preserve lazy flux")):
+        merged = prep_module._retrieve_or_reload_merged_data(
+            species="ch4",
+            sites=["TAC"],
+            domain="EUROPE",
+            averaging_period="1h",
+            start_date="2019-01-01",
+            end_date="2019-02-01",
+            output_name="sanitation",
+            flux_sources=["inventory"],
+            reload_merged_data=reload,
+            merged_data_dir="unused",
+        )
+    sanitized = merged.fp_all[".flux"]["inventory"].data.flux
+    assert isinstance(sanitized.data, da.Array)
+    np.testing.assert_array_equal(sanitized.compute(), [0.0, 0.0, 2.0])
+
+
+@pytest.mark.parametrize("merged_data_dir", [None, "unused"])
+def test_retrieve_or_reload_merged_data_falls_back_to_acquisition(
+    monkeypatch: pytest.MonkeyPatch, merged_data_dir: str | None
+) -> None:
+    """A requested reload without a usable artifact retrieves fresh data once."""
+    calls = []
+
+    def load(*args: Any) -> dict:
+        calls.append("load")
+        raise ValueError("missing merged artifact")
+
+    def retrieve(**kwargs: Any) -> tuple:
+        calls.append("retrieve")
+        return {"TAC": _site_dataset([2.0])}, ["TAC"], [None], [None], [None], ["1h"]
+
+    monkeypatch.setattr(acquisition_module, "load_merged_data", load)
+    monkeypatch.setattr(acquisition_module, "data_processing_surface_notracer", retrieve)
+    merged = prep_module._retrieve_or_reload_merged_data(
+        species="ch4",
+        sites=["TAC"],
+        domain="EUROPE",
+        averaging_period="1h",
+        start_date="2019-01-01",
+        end_date="2019-02-01",
+        output_name="fallback",
+        flux_sources=["inventory"],
+        reload_merged_data=True,
+        merged_data_dir=merged_data_dir,
+    )
+    assert merged.sites == ("TAC",)
+    assert calls == (["load", "retrieve"] if merged_data_dir else ["retrieve"])

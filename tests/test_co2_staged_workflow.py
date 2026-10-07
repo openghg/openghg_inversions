@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+from time import perf_counter
 
 from netCDF4 import Dataset as NetCDFDataset
 import numpy as np
@@ -16,6 +17,7 @@ import xarray as xr
 
 from openghg_inversions.basis.affine_flux_map_io import save as save_affine
 from openghg_inversions.basis.basis_functions import BasisFunctions
+from openghg_inversions.cli import main
 from openghg_inversions.inversion_data import RhimePreparedInputs
 from openghg_inversions.rhime.co2 import Co2PreparedInputs, prepare_co2_inputs
 from openghg_inversions.rhime.co2.co2_affine_output import (
@@ -124,6 +126,7 @@ def _cli(*arguments: str | Path, success: bool = True) -> subprocess.CompletedPr
     executable = Path(sys.executable).with_name("openghg-inversions")
     environment = os.environ.copy()
     environment.pop("RUN_ROOT", None)
+    started = perf_counter()
     result = subprocess.run(
         [str(executable), *map(str, arguments)],
         text=True,
@@ -131,6 +134,7 @@ def _cli(*arguments: str | Path, success: bool = True) -> subprocess.CompletedPr
         env=environment,
         timeout=240,
     )
+    print(f"Installed CLI {arguments[0]}: {perf_counter() - started:.2f}s")
     if success:
         assert result.returncode == 0, result.stdout + result.stderr
     else:
@@ -138,8 +142,18 @@ def _cli(*arguments: str | Path, success: bool = True) -> subprocess.CompletedPr
     return result
 
 
+def _in_process_cli(*arguments: str | Path) -> None:
+    """Reuse the CLI parser and handlers for checks on the already sampled handoff."""
+    started = perf_counter()
+    main(list(map(str, arguments)))
+    print(f"In-process CLI {arguments[0]}: {perf_counter() - started:.2f}s")
+
+
 @pytest.mark.parametrize("variant", ["ordinary", "cached_fixed_ou"])
-def test_installed_co2_stages_preserve_scientific_and_file_contracts(tmp_path: Path, variant: str) -> None:
+def test_installed_co2_stages_preserve_scientific_and_file_contracts(
+    tmp_path: Path, variant: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("RUN_ROOT", raising=False)
     source, original = _handoff(tmp_path)
     config = _configuration(tmp_path, variant)
     common = ["--model", "co2", "--config", str(config)]
@@ -197,7 +211,7 @@ def test_installed_co2_stages_preserve_scientific_and_file_contracts(tmp_path: P
         sample_manifest["input_identities"]["prepared_inputs"]
         == prepare_manifest["artifact_identities"]["prepared_inputs"]
     )
-    _cli(
+    _in_process_cli(
         "diagnose",
         "--posterior",
         posterior,
@@ -216,7 +230,7 @@ def test_installed_co2_stages_preserve_scientific_and_file_contracts(tmp_path: P
         diagnose_manifest["input_identities"]["posterior"]
         == sample_manifest["artifact_identities"]["posterior"]
     )
-    _cli(
+    _in_process_cli(
         "postprocess",
         *common,
         *handoff,
@@ -247,8 +261,9 @@ def test_installed_co2_stages_preserve_scientific_and_file_contracts(tmp_path: P
         assert "active_flux_scale_posterior" in components
         assert "residual_posterior" in components
         assert components["predictive_posterior"].attrs["units"] == "ppm"
+    # Installed stages above cover process boundaries; replay uses the same CLI in-process.
     # Replaying saved inputs and posterior must produce identical scientific products.
-    _cli(
+    _in_process_cli(
         "postprocess",
         *common,
         *handoff,
@@ -273,7 +288,7 @@ def test_installed_co2_stages_preserve_scientific_and_file_contracts(tmp_path: P
             "country_file": str(tmp_path / "countries.nc"),
         }
     }
-    _cli(
+    _in_process_cli(
         "postprocess",
         *common,
         *handoff,
@@ -311,18 +326,17 @@ def test_installed_co2_stages_preserve_scientific_and_file_contracts(tmp_path: P
         restored.provenance,
     )
     unrelated.save(tmp_path / "unrelated.nc")
-    failure = _cli(
-        "sample",
-        *common,
-        "--prepared-inputs",
-        tmp_path / "unrelated.nc",
-        "--preparation-manifest",
-        preparation,
-        "--output-dir",
-        tmp_path / "rejected",
-        success=False,
-    )
-    assert "content does not match" in failure.stderr
+    with pytest.raises(ValueError, match="content does not match"):
+        _in_process_cli(
+            "sample",
+            *common,
+            "--prepared-inputs",
+            tmp_path / "unrelated.nc",
+            "--preparation-manifest",
+            preparation,
+            "--output-dir",
+            tmp_path / "rejected",
+        )
     assert not (tmp_path / "rejected" / "posterior.nc").exists()
 
 
