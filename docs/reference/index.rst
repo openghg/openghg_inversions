@@ -70,6 +70,8 @@ imports identify the same classes.
 .. autosummary::
    :nosignatures:
 
+   openghg_inversions.inversion_data.SiteOptions
+   openghg_inversions.inversion_data.retrieve_inversion_data
    openghg_inversions.inversion_data.RhimeMergedData
    openghg_inversions.inversion_data.RhimePreparedInputs
    openghg_inversions.inversion_data.prepare_rhime_inputs
