@@ -26,7 +26,8 @@ import xarray as xr
 from openghg_inversions._timing import log_timing, timer_seconds, timer_start
 from openghg_inversions.array_ops import to_dense
 from ._domain_support import rectangular_extent_mask, remove_domain_overlap
-from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs
+from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs, load_rhime_data
+from openghg_inversions.inversion_data.preparation import MinErrorConfig
 from openghg_inversions.models.components import add_linear_component, add_offset_component
 from openghg_inversions.models.coords import registered_model
 from openghg_inversions.models.priors import PriorArgs
@@ -46,13 +47,12 @@ from .builders import (
 )
 from .materialization import materialize_pymc_inputs
 from .outputs import RhimeResult, _make_inversion_output
-from .params import RhimeRunnerSetup, params_from_config, resolve_rhime_options
+from .params import RhimeConfig, params_from_config, resolve_rhime_config
 from .preparation import (
     assemble_rhime_inputs,
     build_rhime_basis,
     build_rhime_sensitivities,
     filter_rhime_observations,
-    retrieve_or_reload_rhime_data,
     with_prepared_rhime_sites,
 )
 from .sampling import RhimeSampler, sample_rhime_model
@@ -707,17 +707,67 @@ def _inner_domain_name(outer_domain: str, inner_domain: str) -> str:
 
 def _prepare_one_domain(
     merged: RhimeMergedData,
-    data_args: Mapping[str, Any],
+    *,
+    species: str,
+    domain: str,
+    start_date: str,
+    flux_sources: tuple[str, ...],
+    output_name: str,
+    basis_algorithm: str | None,
+    nbasis: int,
+    fp_basis_case: str | None,
+    basis_directory: str | Path | None,
+    country_directory: str | Path | None,
+    outer_regions_path: str | Path | None,
+    fix_basis_outer_regions: bool,
+    basis_output_path: str | Path | None,
+    use_bc: bool,
+    bc_basis_case: str,
+    bc_basis_directory: str | Path | None,
+    bc_freq: str | None,
+    min_error: MinErrorConfig,
+    min_error_options: dict[str, bool],
+    allow_empty_inner_region: bool = False,
 ) -> RhimePreparedInputs:
-    """Run the modern basis, sensitivity, and assembly stages for one grid."""
-    basis_functions = build_rhime_basis(merged, data_args)
+    """Run basis, sensitivity and assembly stages with explicit resolved values."""
+    basis_functions = build_rhime_basis(
+        merged,
+        species=species,
+        domain=domain,
+        start_date=start_date,
+        flux_sources=flux_sources,
+        output_name=output_name,
+        basis_algorithm=basis_algorithm,
+        nbasis=nbasis,
+        fp_basis_case=fp_basis_case,
+        basis_directory=basis_directory,
+        country_directory=country_directory,
+        outer_regions_path=outer_regions_path,
+        fix_basis_outer_regions=fix_basis_outer_regions,
+        basis_output_path=basis_output_path,
+        allow_empty_inner_region=allow_empty_inner_region,
+    )
     site_data = build_rhime_sensitivities(
         merged,
         basis_functions,
-        data_args,
+        domain=domain,
+        flux_sources=flux_sources,
+        use_bc=use_bc,
+        bc_basis_case=bc_basis_case,
+        bc_basis_directory=bc_basis_directory,
         multisector=False,
     )
-    return assemble_rhime_inputs(merged, basis_functions, site_data, data_args)
+    return assemble_rhime_inputs(
+        merged,
+        basis_functions,
+        site_data,
+        domain=domain,
+        start_date=start_date,
+        bc_freq=bc_freq,
+        min_error=min_error,
+        min_error_options=min_error_options,
+        use_bc=use_bc,
+    )
 
 
 def _nested_sensitivity_reductions(
@@ -794,7 +844,7 @@ def _allocate_nested_nbasis(
 
 
 def prepare_nested_rhime_inputs(
-    setup: RhimeRunnerSetup,
+    config: RhimeConfig,
     *,
     inner_domain: str,
     inner_footprint_store: str | None = None,
@@ -813,53 +863,94 @@ def prepare_nested_rhime_inputs(
     time_tolerance: str | pd.Timedelta | None = None,
 ) -> NestedRhimePreparedInputs:
     """Retrieve and prepare native outer and inner grids with no double count."""
-    if setup.run_spec.split_by_sectors or len(setup.run_spec.model.sectors) != 1:
-        raise ValueError("Nested RHIME preparation currently requires a standard one-source setup.")
+    if config.split_by_sectors or len(config.model.sectors) != 1:
+        raise ValueError("Nested RHIME preparation currently requires a standard one-source request.")
 
-    outer_args = dict(setup.data_args)
-    # Nested masking (`mask_outer_merged_for_inner_domain`, below) always zeroes the outer
-    # footprint response and prior flux over the inner domain's extent. When the outer basis
-    # also uses `fix_basis_outer_regions` with an inner-region map covering that same extent
-    # (e.g. EUHROB), there is genuinely nothing left to subdivide there -- that is expected,
-    # not a data error, so the outer basis keeps that marked region as one fixed label instead
-    # of raising. `inner_args` (below) forces `fix_basis_outer_regions=False`, so this has no
-    # effect on inner-domain basis preparation.
-    outer_args["allow_empty_inner_region"] = True
-    inner_domain_name = _inner_domain_name(outer_args["domain"], inner_domain)
-    inner_args = dict(outer_args)
-    inner_args.update(
-        {
-            "domain": inner_domain_name,
-            "footprint_store": inner_footprint_store or outer_args.get("footprint_store", "user"),
-            "emissions_store": inner_emissions_store or outer_args.get("emissions_store", "user"),
-            "emissions_domain": inner_emissions_domain,
-            "use_bc": False,
-            "bc_input": None,
-            "output_name": f"{outer_args['output_name']}_inner",
-            "basis_algorithm": inner_basis_algorithm
-            if inner_basis_algorithm is not None
-            else (None if inner_fp_basis_case is not None else "quadtree"),
-            "fp_basis_case": inner_fp_basis_case,
-            "basis_output_path": inner_basis_output_path,
-            "fix_basis_outer_regions": False,
-            "reload_merged_data": inner_reload_merged_data,
-            "save_merged_data": inner_save_merged_data,
-            "merged_data_dir": inner_merged_data_dir,
-            "merged_data_name": inner_merged_data_name,
-        }
+    # Outer overlap masking leaves an intentionally empty inner basis region.
+    # Allow that fixed label when constructing the outer basis below.
+    outer_config = config
+    inner_domain_name = _inner_domain_name(config.domain, inner_domain)
+    inner_config = replace(
+        config,
+        domain=inner_domain_name,
+        footprint_store=inner_footprint_store or config.footprint_store,
+        emissions_store=inner_emissions_store or config.emissions_store,
+        emissions_domain=inner_emissions_domain,
+        use_bc=False,
+        bc_input=None,
+        output_name=f"{config.output_name}_inner",
+        model=replace(config.model, domain=inner_domain_name, use_bc=False, bc_prior=None),
+        basis_algorithm=(
+            inner_basis_algorithm if inner_basis_algorithm is not None
+            else (None if inner_fp_basis_case is not None else "quadtree")
+        ),
+        fp_basis_case=inner_fp_basis_case,
+        basis_output_path=inner_basis_output_path,
+        fix_basis_outer_regions=False,
+        reload_merged_data=inner_reload_merged_data,
+        save_merged_data=inner_save_merged_data,
+        merged_data_dir=inner_merged_data_dir,
+        merged_data_name=inner_merged_data_name,
+        nbasis=inner_nbasis if inner_nbasis is not None else config.nbasis,
+        basis_directory=inner_basis_directory if inner_basis_directory is not None else config.basis_directory,
+        country_directory=inner_country_directory if inner_country_directory is not None else config.country_directory,
     )
-    if inner_nbasis is not None:
-        inner_args["nbasis"] = inner_nbasis
-    if inner_basis_directory is not None:
-        inner_args["basis_directory"] = inner_basis_directory
-    if inner_country_directory is not None:
-        inner_args["country_directory"] = inner_country_directory
 
     preparation_start = timer_start()
-    outer_merged = retrieve_or_reload_rhime_data(outer_args, multisector=False)
-    inner_merged = retrieve_or_reload_rhime_data(inner_args, multisector=False)
+    outer_merged = load_rhime_data(
+        site_options=outer_config.site_options,
+        species=outer_config.species,
+        domain=outer_config.domain,
+        start_date=outer_config.start_date,
+        end_date=outer_config.end_date,
+        output_name=outer_config.output_name,
+        flux_sources=outer_config.flux_sources,
+        split_by_sectors=outer_config.split_by_sectors,
+        bc_store=outer_config.bc_store,
+        obs_store=outer_config.obs_store,
+        footprint_store=outer_config.footprint_store,
+        emissions_store=outer_config.emissions_store,
+        emissions_domain=outer_config.emissions_domain,
+        fp_model=outer_config.fp_model,
+        fp_species=outer_config.fp_species,
+        calibration_scale=outer_config.calibration_scale,
+        use_bc=outer_config.use_bc,
+        bc_input=outer_config.bc_input,
+        averaging_error=outer_config.averaging_error,
+        reload_merged_data=outer_config.reload_merged_data,
+        save_merged_data=outer_config.save_merged_data,
+        merged_data_dir=outer_config.merged_data_dir,
+        merged_data_name=outer_config.merged_data_name,
+        flux_non_finite_check=outer_config.flux_non_finite_check,
+    )
+    inner_merged = load_rhime_data(
+        site_options=inner_config.site_options,
+        species=inner_config.species,
+        domain=inner_config.domain,
+        start_date=inner_config.start_date,
+        end_date=inner_config.end_date,
+        output_name=inner_config.output_name,
+        flux_sources=inner_config.flux_sources,
+        split_by_sectors=inner_config.split_by_sectors,
+        bc_store=inner_config.bc_store,
+        obs_store=inner_config.obs_store,
+        footprint_store=inner_config.footprint_store,
+        emissions_store=inner_config.emissions_store,
+        emissions_domain=inner_config.emissions_domain,
+        fp_model=inner_config.fp_model,
+        fp_species=inner_config.fp_species,
+        calibration_scale=inner_config.calibration_scale,
+        use_bc=inner_config.use_bc,
+        bc_input=inner_config.bc_input,
+        averaging_error=inner_config.averaging_error,
+        reload_merged_data=inner_config.reload_merged_data,
+        save_merged_data=inner_config.save_merged_data,
+        merged_data_dir=inner_config.merged_data_dir,
+        merged_data_name=inner_config.merged_data_name,
+        flux_non_finite_check=inner_config.flux_non_finite_check,
+    )
     outer_merged, inner_merged = _retain_common_sites(outer_merged, inner_merged)
-    outer_filtered = filter_rhime_observations(outer_merged, outer_args)
+    outer_filtered = filter_rhime_observations(outer_merged, filters=outer_config.filters)
     outer_filtered, inner_merged = _retain_common_sites(outer_filtered, inner_merged)
     inner_filtered = align_inner_merged_to_outer_observations(
         outer_filtered,
@@ -870,19 +961,62 @@ def prepare_nested_rhime_inputs(
 
     if (
         inner_nbasis is None
-        and outer_args.get("fp_basis_case") is None
-        and inner_args.get("fp_basis_case") is None
+        and outer_config.fp_basis_case is None
+        and inner_config.fp_basis_case is None
     ):
         outer_nbasis, allocated_inner_nbasis = _allocate_nested_nbasis(
             masked_outer,
             inner_filtered,
-            total_nbasis=outer_args.get("nbasis", 100),
+            total_nbasis=outer_config.nbasis,
         )
-        outer_args["nbasis"] = outer_nbasis
-        inner_args["nbasis"] = allocated_inner_nbasis
+        outer_config = replace(outer_config, nbasis=outer_nbasis)
+        inner_config = replace(inner_config, nbasis=allocated_inner_nbasis)
 
-    outer_prepared = _prepare_one_domain(masked_outer, outer_args)
-    inner_prepared = _prepare_one_domain(inner_filtered, inner_args)
+    outer_prepared = _prepare_one_domain(
+        masked_outer,
+        species=outer_config.species,
+        domain=outer_config.domain,
+        start_date=outer_config.start_date,
+        flux_sources=outer_config.flux_sources,
+        output_name=outer_config.output_name,
+        basis_algorithm=outer_config.basis_algorithm,
+        nbasis=outer_config.nbasis,
+        fp_basis_case=outer_config.fp_basis_case,
+        basis_directory=outer_config.basis_directory,
+        country_directory=outer_config.country_directory,
+        outer_regions_path=outer_config.outer_regions_path,
+        fix_basis_outer_regions=outer_config.fix_basis_outer_regions,
+        basis_output_path=outer_config.basis_output_path,
+        use_bc=outer_config.use_bc,
+        bc_basis_case=outer_config.bc_basis_case,
+        bc_basis_directory=outer_config.bc_basis_directory,
+        bc_freq=outer_config.bc_freq,
+        min_error=outer_config.min_error,
+        min_error_options=outer_config.min_error_options,
+        allow_empty_inner_region=True,
+    )
+    inner_prepared = _prepare_one_domain(
+        inner_filtered,
+        species=inner_config.species,
+        domain=inner_config.domain,
+        start_date=inner_config.start_date,
+        flux_sources=inner_config.flux_sources,
+        output_name=inner_config.output_name,
+        basis_algorithm=inner_config.basis_algorithm,
+        nbasis=inner_config.nbasis,
+        fp_basis_case=inner_config.fp_basis_case,
+        basis_directory=inner_config.basis_directory,
+        country_directory=inner_config.country_directory,
+        outer_regions_path=inner_config.outer_regions_path,
+        fix_basis_outer_regions=inner_config.fix_basis_outer_regions,
+        basis_output_path=inner_config.basis_output_path,
+        use_bc=inner_config.use_bc,
+        bc_basis_case=inner_config.bc_basis_case,
+        bc_basis_directory=inner_config.bc_basis_directory,
+        bc_freq=inner_config.bc_freq,
+        min_error=inner_config.min_error,
+        min_error_options=inner_config.min_error_options,
+    )
     prepared = combine_nested_rhime_inputs(
         outer_prepared,
         inner_prepared,
@@ -1359,21 +1493,21 @@ def run_rhime_nested(
         if params.get("mismatch_model") is not None:
             raise ValueError("A custom likelihood cannot be combined with a built-in mismatch model.")
         params["mismatch_model"] = None
-    setup = resolve_rhime_options(params=params, multisector=False)
-    if likelihood_builder is None and setup.run_spec.model.likelihood is None:
+    config = resolve_rhime_config(params=params, multisector=False)
+    if likelihood_builder is None and config.model.likelihood is None:
         raise ValueError("A nested RHIME run requires a built-in or custom likelihood.")
-    if setup.run_spec.output.output_format not in ("none", "paris"):
+    if config.output.output_format not in ("none", "paris"):
         raise ValueError("`run_rhime_nested` currently requires output_format='none' or 'paris'.")
     prepared = prepare_nested_rhime_inputs(
-        setup,
+        config,
         inner_domain=str(inner_domain),
         time_tolerance=time_tolerance,
         **nested_options,
     )
     return run_rhime_nested_from_prepared_inputs(
         prepared_inputs=prepared,
-        run_spec=setup.run_spec,
-        sampler=setup.sampler,
+        run_spec=config.retained_run_spec(prepared.combined),
+        sampler=config.sampler,
         inner_x_prior=inner_x_prior,
         likelihood_builder=likelihood_builder,
         likelihood_kwargs=likelihood_kwargs,

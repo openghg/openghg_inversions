@@ -1,5 +1,5 @@
-from .acquisition import RhimeMergedData
-from .get_data import data_processing_surface_notracer
+from .acquisition import RhimeMergedData, SiteOptions, load_rhime_data
+from .get_data import data_processing_surface_notracer, retrieve_inversion_data
 from .preparation import (
     prepare_rhime_inputs,
 )
@@ -11,6 +11,9 @@ __all__ = [
     "_save_merged_data",
     "RhimeMergedData",
     "RhimePreparedInputs",
+    "SiteOptions",
+    "load_rhime_data",
+    "retrieve_inversion_data",
     "data_processing_surface_notracer",
     "load_merged_data",
     "prepare_rhime_inputs",

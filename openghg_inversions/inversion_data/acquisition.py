@@ -22,7 +22,7 @@ from openghg_inversions.inversion_data._site_options import (
     is_column_observation,
 )
 from openghg_inversions.inversion_data.get_data import (
-    _data_processing_surface_notracer_from_options as data_processing_surface_notracer,
+    _retrieve_inversion_data_from_options,
 )
 from openghg_inversions.inversion_data.serialise import load_merged_data
 
@@ -89,7 +89,7 @@ def _normalise_site_booleans(
 
 
 @dataclass(frozen=True)
-class _SiteOptions:
+class SiteOptions:
     """All runner inputs whose positions are aligned to ``sites``.
 
     Every field has the same length and ordering. Selection always creates a
@@ -147,15 +147,15 @@ class _SiteOptions:
         *,
         sites: Sequence[str],
         averaging_period: Sequence[str | None] | str | None,
-        inlet: Sequence[str | slice | None] | str | None,
-        fp_height: Sequence[str | None] | str | None,
-        instrument: Sequence[str | None] | str | None,
-        platform: Sequence[str | None] | str | None,
-        obs_data_level: Sequence[str | None] | str | None,
-        met_model: Sequence[str | None] | str | None,
-        max_level: Sequence[int | None] | int | None,
+        inlet: Sequence[str | slice | None] | str | None = None,
+        fp_height: Sequence[str | None] | str | None = None,
+        instrument: Sequence[str | None] | str | None = None,
+        platform: Sequence[str | None] | str | None = None,
+        obs_data_level: Sequence[str | None] | str | None = None,
+        met_model: Sequence[str | None] | str | None = None,
+        max_level: Sequence[int | None] | int | None = None,
         time_resolved: SiteBooleanOption = None,
-    ) -> _SiteOptions:
+    ) -> SiteOptions:
         """Normalize all site options and validate their common length.
 
         Site names are uppercased. Scalar option values are broadcast, while
@@ -190,13 +190,13 @@ class _SiteOptions:
             time_resolved=tuple(_normalise_site_booleans(time_resolved, length=nsites, name="time_resolved")),
         )
 
-    def select_indices(self, indices: Sequence[int]) -> _SiteOptions:
+    def select_indices(self, indices: Sequence[int]) -> SiteOptions:
         """Return a new complete option record restricted to ``indices``."""
 
         def select(values: Sequence[Any]) -> tuple[Any, ...]:
             return tuple(values[index] for index in indices)
 
-        return _SiteOptions(
+        return SiteOptions(
             sites=select(self.sites),
             averaging_period=select(self.averaging_period),
             inlet=select(self.inlet),
@@ -217,7 +217,7 @@ class _SiteOptions:
             for inlet, platform in zip(self.inlet, self.platform, strict=True)
         )
 
-    def retain_sites(self, retained_sites: Sequence[str], *, context: str) -> _SiteOptions:
+    def retain_sites(self, retained_sites: Sequence[str], *, context: str) -> SiteOptions:
         """Return options for retained sites in their supplied order.
 
         Raises:
@@ -255,7 +255,7 @@ class RhimeMergedData:
     """
 
     fp_all: dict
-    site_options: _SiteOptions
+    site_options: SiteOptions
 
     @property
     def sites(self) -> tuple[str, ...]:
@@ -276,8 +276,8 @@ class RhimeMergedData:
 def _drop_sites_missing_from_loaded_data(
     *,
     fp_all: dict,
-    site_options: _SiteOptions,
-) -> _SiteOptions:
+    site_options: SiteOptions,
+) -> SiteOptions:
     """Align site-level options when loaded merged data lacks requested sites."""
     sites_merged = [site for site in fp_all if not site.startswith(".")]
     if all(site in sites_merged for site in site_options.sites):
@@ -297,7 +297,7 @@ def _drop_sites_missing_from_loaded_data(
 
 def _validate_loaded_time_resolved_selector(
     fp_all: Mapping[str, Any],
-    site_options: _SiteOptions,
+    site_options: SiteOptions,
 ) -> None:
     """Reject cached sites whose explicit time-resolution selector differs."""
     mismatched_sites: list[str] = []
@@ -349,303 +349,122 @@ def _select_fp_all_sites(fp_all: dict, sites: Sequence[str]) -> dict:
     return {key: value for key, value in fp_all.items() if key.startswith(".") or key in site_names}
 
 
-def _retrieve_or_reload_merged_data(
+def load_rhime_data(
     *,
-    species: str,
-    sites: list[str],
-    domain: str,
-    averaging_period: SiteStringOption,
-    start_date: str,
-    end_date: str,
-    output_name: str,
-    flux_sources: list[str] | None,
-    split_by_sectors: bool = False,
-    bc_store: str = "user",
-    obs_store: str = "user",
-    footprint_store: str = "user",
-    emissions_store: str = "user",
-    emissions_domain: str | None = None,
-    met_model: SiteStringOption = None,
-    fp_model: str | None = None,
-    fp_height: SiteStringOption = None,
-    fp_species: str | None = None,
-    time_resolved: SiteBooleanOption = None,
-    inlet: SiteInletOption = None,
-    instrument: SiteStringOption = None,
-    max_level: SiteIntegerOption = None,
-    calibration_scale: str | None = None,
-    obs_data_level: SiteStringOption = None,
-    platform: SiteStringOption = None,
-    use_bc: bool = True,
-    bc_input: str | None = None,
-    averaging_error: bool = True,
-    reload_merged_data: bool = False,
-    save_merged_data: bool = False,
-    merged_data_dir: str | None = None,
-    merged_data_name: str | None = None,
-    flux_non_finite_check: FluxNonFiniteCheck = "lazy",
-) -> RhimeMergedData:
-    """Gather or reload merged data and align site metadata.
-
-    ``flux_sources`` contains modern OpenGHG flux ``source`` values. This
-    helper passes them to lower-level data loading through the legacy
-    ``emissions_name`` argument. Retrieval may access OpenGHG object stores,
-    print progress, and optionally save merged data. Reload reads a local
-    artifact. Both paths retain one complete :class:`_SiteOptions` record.
-
-    Returns:
-        Merged per-site data and aligned retained-site options.
-
-    Raises:
-        ValueError: If site options are invalid, no requested sites are loaded,
-            or retrieval returns invalid retained-site names.
-    """
-    site_options = _SiteOptions.from_inputs(
-        sites=sites,
-        averaging_period=averaging_period,
-        inlet=inlet,
-        fp_height=fp_height,
-        instrument=instrument,
-        platform=platform,
-        obs_data_level=obs_data_level,
-        met_model=met_model,
-        max_level=max_level,
-        time_resolved=time_resolved,
-    )
-    return _retrieve_or_reload_merged_data_from_options(
-        site_options=site_options,
-        species=species,
-        domain=domain,
-        start_date=start_date,
-        end_date=end_date,
-        output_name=output_name,
-        flux_sources=flux_sources,
-        split_by_sectors=split_by_sectors,
-        bc_store=bc_store,
-        obs_store=obs_store,
-        footprint_store=footprint_store,
-        emissions_store=emissions_store,
-        emissions_domain=emissions_domain,
-        fp_model=fp_model,
-        fp_species=fp_species,
-        calibration_scale=calibration_scale,
-        use_bc=use_bc,
-        bc_input=bc_input,
-        averaging_error=averaging_error,
-        reload_merged_data=reload_merged_data,
-        save_merged_data=save_merged_data,
-        merged_data_dir=merged_data_dir,
-        merged_data_name=merged_data_name,
-        flux_non_finite_check=flux_non_finite_check,
-    )
-
-
-def _retrieve_or_reload_merged_data_from_options(
-    *,
-    site_options: _SiteOptions,
-    species: str,
-    domain: str,
-    start_date: str,
-    end_date: str,
-    output_name: str,
-    flux_sources: list[str] | None,
-    split_by_sectors: bool = False,
-    bc_store: str = "user",
-    obs_store: str = "user",
-    footprint_store: str = "user",
-    emissions_store: str = "user",
-    emissions_domain: str | None = None,
-    fp_model: str | None = None,
-    fp_species: str | None = None,
-    calibration_scale: str | None = None,
-    use_bc: bool = True,
-    bc_input: str | None = None,
-    averaging_error: bool = True,
-    reload_merged_data: bool = False,
-    save_merged_data: bool = False,
-    merged_data_dir: str | None = None,
-    merged_data_name: str | None = None,
-    flux_non_finite_check: FluxNonFiniteCheck = "lazy",
-) -> RhimeMergedData:
-    """Retrieve using resolved site options without expanding external shorthand."""
-    fp_all: dict | None = None
-    if reload_merged_data and merged_data_dir is not None:
-        try:
-            fp_all = load_merged_data(merged_data_dir, species, start_date, output_name, merged_data_name)
-        except ValueError as exc:
-            print(f"{exc}, re-running data merge.")
-    elif reload_merged_data:
-        print("Cannot reload merged data without a value for `merged_data_dir`; re-running data merge.")
-
-    if fp_all is not None:
-        _validate_loaded_time_resolved_selector(fp_all, site_options)
-        _validate_loaded_sector_layout(fp_all, split_by_sectors=split_by_sectors)
-        print("Successfully read in merged data.\n")
-        fp_all[".split_by_sectors"] = split_by_sectors
-        site_options = _drop_sites_missing_from_loaded_data(fp_all=fp_all, site_options=site_options)
-    else:
-        # Requested options remain authoritative; legacy metadata is redundant.
-        fp_all, retained_sites, *_ = data_processing_surface_notracer(
-            site_options=site_options,
-            species=species,
-            domain=domain,
-            start_date=start_date,
-            end_date=end_date,
-            fp_model=fp_model,
-            fp_species=fp_species,
-            emissions_name=flux_sources,
-            calibration_scale=calibration_scale,
-            use_bc=use_bc,
-            bc_input=bc_input,
-            bc_store=bc_store,
-            obs_store=obs_store,
-            footprint_store=footprint_store,
-            emissions_store=emissions_store,
-            emissions_domain=emissions_domain,
-            split_by_sectors=split_by_sectors,
-            averagingerror=averaging_error,
-            save_merged_data=save_merged_data,
-            merged_data_name=merged_data_name,
-            merged_data_dir=merged_data_dir,
-            output_name=output_name,
-            flux_non_finite_check=flux_non_finite_check,
-        )
-        site_options = site_options.retain_sites(retained_sites, context="Data gathering")
-
-    fp_all = _select_fp_all_sites(fp_all, site_options.sites)
-
-    flux_entries = fp_all.get(".flux")
-    if isinstance(flux_entries, Mapping):
-        for source, flux_data in flux_entries.items():
-            data = getattr(flux_data, "data", None)
-            if isinstance(data, xr.Dataset) and "flux" in data:
-                data["flux"] = sanitize_flux_nonfinite(
-                    data["flux"],
-                    context="merged inversion data preparation",
-                    source=str(source),
-                    check=flux_non_finite_check,
-                    warn=flux_non_finite_check == "count",
-                )
-
-    return RhimeMergedData(
-        fp_all=fp_all,
-        site_options=site_options,
-    )
-
-
-
-def retrieve_or_reload_rhime_data(
-    data_args: Mapping[str, Any],
-    *,
-    multisector: bool,
+    site_options: SiteOptions,
     merged_data: RhimeMergedData | None = None,
+    species: str,
+    domain: str,
+    start_date: str,
+    end_date: str,
+    output_name: str,
+    flux_sources: Sequence[str] | None,
+    split_by_sectors: bool = False,
+    bc_store: str = "user",
+    obs_store: str = "user",
+    footprint_store: str = "user",
+    emissions_store: str = "user",
+    emissions_domain: str | None = None,
+    fp_model: str | None = None,
+    fp_species: str | None = None,
+    calibration_scale: str | None = None,
+    use_bc: bool = True,
+    bc_input: str | None = None,
+    averaging_error: bool = True,
+    reload_merged_data: bool = False,
+    save_merged_data: bool = False,
+    merged_data_dir: str | None = None,
+    merged_data_name: str | None = None,
+    flux_non_finite_check: FluxNonFiniteCheck = "lazy",
 ) -> RhimeMergedData:
-    """Retrieve, reload, or accept externally supplied merged RHIME data.
+    """Retrieve, reload, or accept borrowed merged RHIME data.
 
-    Passing ``merged_data`` is the explicit no-I/O path.  The object remains
-    borrowed and is returned unchanged after a sector-layout compatibility check.
-    Otherwise this stage may read OpenGHG stores or a local merged artifact,
-    optionally write merged data, sanitize flux arrays, print progress, and
-    emit warnings.  ``data_args`` is never mutated.
+    Selectors are complete aligned values; this boundary does not expand
+    shorthand. Supplied data remains authoritative and returns unchanged
+    after its sector layout is checked, bypassing stores, caches and writes.
+    Otherwise retrieval may access OpenGHG stores, reload a merged artifact,
+    optionally save data and sanitize flux values. Cache selector/layout checks
+    and retained-site alignment belong here.
 
     Raises:
-        ValueError: If ``data_args`` requests unsupported ``use_tracer=True``
-            or the supplied merged data has an incompatible sector layout.
+        ValueError: If supplied data has an incompatible sector layout, cached
+            selectors/layout are incompatible, or retained names are invalid.
     """
-    if data_args.get("use_tracer", False):
-        raise ValueError("`use_tracer=True` is not supported; tracer inversions are not implemented.")
     if merged_data is not None:
         stored_multisector = bool(merged_data.fp_all.get(".split_by_sectors", False))
-        if stored_multisector != multisector:
+        if stored_multisector != split_by_sectors:
             raise ValueError(
                 "External RHIME merged data has an incompatible sector layout: "
                 f"artifact split_by_sectors={stored_multisector!r}, "
-                f"runner multisector={multisector!r}."
+                f"runner multisector={split_by_sectors!r}."
             )
         return merged_data
 
     with timed(
         "rhime.prepare_inputs.merged_data",
-        sites=len(data_args["sites"]),
-        split_by_sectors=multisector,
-    ):
-        return _retrieve_or_reload_merged_data(
-            species=data_args["species"],
-            sites=data_args["sites"],
-            domain=data_args["domain"],
-            averaging_period=data_args["averaging_period"],
-            start_date=data_args["start_date"],
-            end_date=data_args["end_date"],
-            output_name=data_args["output_name"],
-            flux_sources=data_args["flux_sources"],
-            split_by_sectors=multisector,
-            bc_store=data_args["bc_store"],
-            obs_store=data_args["obs_store"],
-            footprint_store=data_args["footprint_store"],
-            emissions_store=data_args["emissions_store"],
-            emissions_domain=data_args["emissions_domain"],
-            met_model=data_args["met_model"],
-            fp_model=data_args["fp_model"],
-            fp_height=data_args["fp_height"],
-            fp_species=data_args["fp_species"],
-            time_resolved=data_args["time_resolved"],
-            inlet=data_args["inlet"],
-            instrument=data_args["instrument"],
-            max_level=data_args["max_level"],
-            calibration_scale=data_args["calibration_scale"],
-            obs_data_level=data_args["obs_data_level"],
-            platform=data_args["platform"],
-            use_bc=data_args["use_bc"],
-            bc_input=data_args["bc_input"],
-            averaging_error=data_args["averaging_error"],
-            reload_merged_data=data_args["reload_merged_data"],
-            save_merged_data=data_args["save_merged_data"],
-            merged_data_dir=data_args["merged_data_dir"],
-            merged_data_name=data_args["merged_data_name"],
-            flux_non_finite_check=data_args["flux_non_finite_check"],
-        )
-
-
-def retrieve_or_reload_rhime_data_from_options(
-    site_options: _SiteOptions,
-    data_args: Mapping[str, Any],
-    *,
-    multisector: bool,
-    merged_data: RhimeMergedData | None = None,
-) -> RhimeMergedData:
-    """Acquire from canonical choices, preserving supplied merged-data authority."""
-    if data_args.get("use_tracer", False):
-        raise ValueError("`use_tracer=True` is not supported; tracer inversions are not implemented.")
-    if merged_data is not None:
-        return retrieve_or_reload_rhime_data(data_args, multisector=multisector, merged_data=merged_data)
-    with timed(
-        "rhime.prepare_inputs.merged_data",
         sites=len(site_options.sites),
-        split_by_sectors=multisector,
+        split_by_sectors=split_by_sectors,
     ):
-        return _retrieve_or_reload_merged_data_from_options(
+        fp_all: dict | None = None
+        if reload_merged_data and merged_data_dir is not None:
+            try:
+                fp_all = load_merged_data(merged_data_dir, species, start_date, output_name, merged_data_name)
+            except ValueError as exc:
+                print(f"{exc}, re-running data merge.")
+        elif reload_merged_data:
+            print("Cannot reload merged data without a value for `merged_data_dir`; re-running data merge.")
+
+        if fp_all is not None:
+            _validate_loaded_time_resolved_selector(fp_all, site_options)
+            _validate_loaded_sector_layout(fp_all, split_by_sectors=split_by_sectors)
+            print("Successfully read in merged data.\n")
+            fp_all[".split_by_sectors"] = split_by_sectors
+            site_options = _drop_sites_missing_from_loaded_data(fp_all=fp_all, site_options=site_options)
+        else:
+            # Requested options remain authoritative; legacy metadata is redundant.
+            fp_all, retained_sites, *_ = _retrieve_inversion_data_from_options(
+                site_options=site_options,
+                species=species,
+                domain=domain,
+                start_date=start_date,
+                end_date=end_date,
+                fp_model=fp_model,
+                fp_species=fp_species,
+                emissions_name=flux_sources,
+                calibration_scale=calibration_scale,
+                use_bc=use_bc,
+                bc_input=bc_input,
+                bc_store=bc_store,
+                obs_store=obs_store,
+                footprint_store=footprint_store,
+                emissions_store=emissions_store,
+                emissions_domain=emissions_domain,
+                split_by_sectors=split_by_sectors,
+                averagingerror=averaging_error,
+                save_merged_data=save_merged_data,
+                merged_data_name=merged_data_name,
+                merged_data_dir=merged_data_dir,
+                output_name=output_name,
+                flux_non_finite_check=flux_non_finite_check,
+            )
+            site_options = site_options.retain_sites(retained_sites, context="Data gathering")
+
+        fp_all = _select_fp_all_sites(fp_all, site_options.sites)
+
+        flux_entries = fp_all.get(".flux")
+        if isinstance(flux_entries, Mapping):
+            for source, flux_data in flux_entries.items():
+                data = getattr(flux_data, "data", None)
+                if isinstance(data, xr.Dataset) and "flux" in data:
+                    data["flux"] = sanitize_flux_nonfinite(
+                        data["flux"],
+                        context="merged inversion data preparation",
+                        source=str(source),
+                        check=flux_non_finite_check,
+                        warn=flux_non_finite_check == "count",
+                    )
+
+        return RhimeMergedData(
+            fp_all=fp_all,
             site_options=site_options,
-            species=data_args["species"],
-            domain=data_args["domain"],
-            start_date=data_args["start_date"],
-            end_date=data_args["end_date"],
-            output_name=data_args["output_name"],
-            flux_sources=data_args["flux_sources"],
-            split_by_sectors=multisector,
-            bc_store=data_args["bc_store"],
-            obs_store=data_args["obs_store"],
-            footprint_store=data_args["footprint_store"],
-            emissions_store=data_args["emissions_store"],
-            emissions_domain=data_args["emissions_domain"],
-            fp_model=data_args["fp_model"],
-            fp_species=data_args["fp_species"],
-            calibration_scale=data_args["calibration_scale"],
-            use_bc=data_args["use_bc"],
-            bc_input=data_args["bc_input"],
-            averaging_error=data_args["averaging_error"],
-            reload_merged_data=data_args["reload_merged_data"],
-            save_merged_data=data_args["save_merged_data"],
-            merged_data_dir=data_args["merged_data_dir"],
-            merged_data_name=data_args["merged_data_name"],
-            flux_non_finite_check=data_args["flux_non_finite_check"],
         )

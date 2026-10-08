@@ -148,11 +148,12 @@ Resolving a requested configuration
 Standard and multisector runners resolve their effective options before
 acquisition. Use ``resolve_rhime_config`` to inspect the same choices without
 retrieving observations, loading a merged cache, building a model or sampling.
-The returned ``RhimeConfig`` groups four values:
+The returned ``RhimeConfig`` is the complete requested configuration:
 
-* ``preparation`` is a ``RhimePreparationConfig`` containing requested data
-  selectors, basis and preparation choices, and one complete ``site_options``
-  record. Its sites and selectors are aligned tuples.
+* Acquisition and preparation choices are direct fields, including
+  ``species``, ``domain``, dates, stores, basis, filtering and error settings.
+  ``site_options`` is one public ``SiteOptions`` record containing complete
+  aligned tuples of requested sites and their selectors.
 * ``model`` is the existing ``RhimeModelSpec`` containing sectors, priors,
   likelihood and other scientific model choices.
 * ``output`` is the existing ``RhimeOutputSpec`` describing final products,
@@ -180,8 +181,8 @@ For example, a scalar period broadcasts across the effective requested sites:
        "mismatch_model": "fixed_error",
    }
    config = resolve_rhime_config(options, multisector=False)
-   assert config.preparation.site_options.sites == ("TAC", "MHD")
-   assert config.preparation.site_options.averaging_period == ("1h", "1h")
+   assert config.site_options.sites == ("TAC", "MHD")
+   assert config.site_options.averaging_period == ("1h", "1h")
 
 ``averaging_period=["1h", "1h"]`` resolves to the same period tuple.
 An explicit ``["1h"]`` sequence for these two sites raises ``ValueError``
@@ -190,24 +191,51 @@ before acquisition. Optional selectors retain their existing meanings:
 slices are preserved. Empty or case-insensitively duplicate site requests and
 incorrect selector lengths are rejected at resolution.
 
-For a configured INI file, decode it first and apply overrides before resolving:
+For a configured INI file, use the resolved reader:
 
 .. code-block:: python
 
-   from openghg_inversions.rhime import load_rhime_config, resolve_rhime_config
+   from openghg_inversions.rhime import read_rhime_ini
 
-   options = dict(load_rhime_config("rhime.ini"))
-   options.update(sites=["TAC", "MHD"], averaging_period="1h")
-   config = resolve_rhime_config(options, multisector=False)
+   config = read_rhime_ini(
+       "rhime.ini",
+       overrides={"sites": ["TAC", "MHD"], "averaging_period": "1h"},
+   )
 
-``load_rhime_config`` decodes the existing flat INI vocabulary into raw values;
-it does not apply aliases, defaults or site expansion. The resolver applies
-those rules to the winning options. Complete runners perform this sequence
-for ``config_file`` plus keyword overrides; their signatures remain unchanged.
-``params_from_config`` retains its normalized-dictionary default, and
-``resolve_rhime_options`` retains its compatibility setup return contract.
-Direct preparation and retrieval APIs also retain their scalar shorthand
-without requiring a full model, output or sampler configuration.
+``read_rhime_ini`` owns file parsing, section interpretation and value decoding.
+It applies winning overrides before resolving defaults and site shorthand, and
+returns complete ``RhimeConfig``. Complete runners consume that result without
+another resolution pass; their signatures remain unchanged. The current INI
+reader flattens section options into bare names and uses the first occurrence
+when a name repeats across sections. Other file frontends can interpret their
+own structures and reuse RHIME resolution and site-alignment helpers.
+``params_from_config`` retains its dictionary return, normalized-dictionary
+default and ``normalise=False`` control through shared internal INI decoding.
+
+``SiteOptions``, exported from ``openghg_inversions.inversion_data``, also works
+without a complete configured run. Its ``from_inputs`` factory expands external
+shorthand and normalizes selector labels; direct construction accepts complete
+aligned values and checks their structural alignment. For example:
+
+.. code-block:: python
+
+   from openghg_inversions.inversion_data import SiteOptions
+
+   selectors = SiteOptions.from_inputs(
+       sites=["tac", "MHD"], averaging_period="1h"
+   )
+   assert selectors.sites == ("TAC", "MHD")
+   assert selectors.averaging_period == ("1h", "1h")
+
+Direct preparation and retrieval APIs retain their scalar shorthand without
+requiring model, output or sampler settings. ``retrieve_inversion_data`` performs
+fresh surface or column acquisition and returns its established six-tuple of
+merged data and retained metadata lists. The former
+``data_processing_surface_notracer`` name is a deprecated wrapper with the same
+signature and return. ``load_rhime_data`` is the higher-level shared loading
+boundary: it returns ``RhimeMergedData`` from supplied data, a compatible cache,
+or fresh acquisition, retaining cache-load fallback and selector/layout checks.
+Valid compatible supplied data bypasses I/O and is returned unchanged.
 
 The requested configuration contains no acquired/prepared handoff or
 ``RhimeRunSpec``.
@@ -220,10 +248,13 @@ specification names TAC. A supplied compatible merged handoff keeps its own
 authoritative site options. The prepared-input API below remains independent
 of ``RhimeConfig``.
 
-The new records are frozen; their existing mapping and sampler members remain
-mutable. Resolution leaves caller options unchanged, and retained-site
-selection leaves the requested configuration unchanged. Equal resolved
-scalar/list choices do not guarantee equal historical configuration hashes.
+The configuration record is frozen; its existing mapping and sampler members
+remain mutable. Resolution leaves caller options unchanged, and retained-site
+selection leaves the requested configuration unchanged. Configuration
+serialization and an INI writer are deferred to
+`Issue 814 <https://github.com/openghg/openghg_inversions/issues/814>`_.
+Equal resolved scalar/list choices do not guarantee equal historical
+configuration hashes.
 For persisted workflows, see :doc:`staged_workflow`: version 0.8 does not
 support staged artifacts produced by 0.7; consume them with 0.7 or regenerate
 them with 0.8. Ordinary paths remain relative to the working directory and

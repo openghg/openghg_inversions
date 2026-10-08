@@ -35,8 +35,8 @@ meant to simplify.
   adapters. Remove requirements to reconstruct original spellings or sparse
   defaults solely to preserve historical staged hashes.
 
-This revision updates planning on #813; its Python implementation still needs
-reconciliation. [tasks.md](tasks.md) tracks that work. INI remains the file
+This change is delivered on #813; [tasks.md](tasks.md) tracks implementation,
+validation and delivery. INI remains the file
 frontend. CO2 recipe configuration is unchanged. Manifest, identity and release
 compatibility policy remain with [#808](https://github.com/openghg/openghg_inversions/issues/808)
 and [#802](https://github.com/openghg/openghg_inversions/pull/802).

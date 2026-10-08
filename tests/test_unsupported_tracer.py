@@ -6,14 +6,14 @@ import pytest
 
 from openghg_inversions.inversion_data import prepare_rhime_inputs
 from openghg_inversions.rhime import run_rhime, run_rhime_multisector
-from openghg_inversions.rhime.params import normalise_rhime_params, params_from_config, resolve_rhime_options
-from openghg_inversions.rhime.preparation import retrieve_or_reload_rhime_data
+from openghg_inversions.rhime.params import normalise_rhime_params, params_from_config, resolve_rhime_config
+from openghg_inversions.inversion_data import SiteOptions, load_rhime_data
 
 
 @pytest.mark.parametrize("multisector", [False, True])
 def test_option_resolution_rejects_tracer_before_required_options(multisector):
     with pytest.raises(ValueError, match="use_tracer=True.*not supported"):
-        resolve_rhime_options(params={"use_tracer": True}, multisector=multisector)
+        resolve_rhime_config(params={"use_tracer": True}, multisector=multisector)
 
 
 @pytest.mark.parametrize("tracer_options", [{}, {"use_tracer": False}])
@@ -53,8 +53,8 @@ def test_false_or_omitted_tracer_is_not_forwarded_after_resolution(tracer_option
         **tracer_options,
     }
     original = params.copy()
-    setup = resolve_rhime_options(params=params, multisector=multisector)
-    assert "use_tracer" not in setup.data_args
+    config = resolve_rhime_config(params=params, multisector=multisector)
+    assert not hasattr(config, "use_tracer")
     assert params == original
 
 
@@ -67,20 +67,22 @@ def test_rhime_runner_rejects_tracer_before_acquisition(runner, supplied_merged_
 
 
 @pytest.mark.parametrize("multisector", [False, True])
-def test_direct_retrieval_rejects_tracer_with_supplied_merged_data(multisector):
-    with pytest.raises(ValueError, match="use_tracer=True.*not supported"):
-        retrieve_or_reload_rhime_data(
-            {"use_tracer": True}, multisector=multisector, merged_data=SimpleNamespace(fp_all={})
-        )
-
-
-@pytest.mark.parametrize("tracer_options", [{}, {"use_tracer": False}])
-@pytest.mark.parametrize("multisector", [False, True])
-def test_false_or_omitted_tracer_preserves_supplied_data(tracer_options, multisector):
-    merged = SimpleNamespace(fp_all={".split_by_sectors": multisector})
-    assert (
-        retrieve_or_reload_rhime_data(tracer_options, multisector=multisector, merged_data=merged) is merged
+def test_canonical_load_checks_supplied_layout(multisector):
+    requested = SiteOptions.from_inputs(
+        sites=["TAC"], averaging_period="1h", inlet=None, fp_height=None,
+        instrument=None, platform=None, obs_data_level=None, met_model=None,
+        max_level=None,
     )
+    kwargs = dict(
+        site_options=requested, species="ch4", domain="EUROPE",
+        start_date="2019-01-01", end_date="2019-01-02", output_name="test",
+        flux_sources=["total"], split_by_sectors=multisector,
+    )
+    merged = SimpleNamespace(fp_all={".split_by_sectors": multisector})
+    assert load_rhime_data(**kwargs, merged_data=merged) is merged
+    merged.fp_all[".split_by_sectors"] = not multisector
+    with pytest.raises(ValueError, match="incompatible sector layout"):
+        load_rhime_data(**kwargs, merged_data=merged)
 
 
 def test_direct_preparation_rejects_tracer_before_other_options():

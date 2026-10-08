@@ -33,9 +33,9 @@ def _data_inputs():
     }
 
 
-@pytest.mark.parametrize("boundary", ["retrieval", "acquisition", "preparation"])
+@pytest.mark.parametrize("boundary", ["retrieval", "preparation"])
 def test_public_site_shorthand_expands_once_before_retrieval(monkeypatch, boundary):
-    original = acquisition._SiteOptions.from_inputs
+    original = acquisition.SiteOptions.from_inputs
     resolved = []
 
     def resolve(cls, **kwargs):
@@ -46,15 +46,13 @@ def test_public_site_shorthand_expands_once_before_retrieval(monkeypatch, bounda
     def stop(**kwargs):
         raise RuntimeError("retrieval reached")
 
-    monkeypatch.setattr(acquisition._SiteOptions, "from_inputs", classmethod(resolve))
+    monkeypatch.setattr(acquisition.SiteOptions, "from_inputs", classmethod(resolve))
     monkeypatch.setattr(get_data, "get_flux_data", stop)
     kwargs = {**_site_inputs(), **_data_inputs()}
     with pytest.raises(RuntimeError, match="retrieval reached"):
         if boundary == "retrieval":
             kwargs["emissions_name"] = kwargs.pop("flux_sources")
-            get_data.data_processing_surface_notracer(**kwargs)
-        elif boundary == "acquisition":
-            acquisition._retrieve_or_reload_merged_data(**kwargs)
+            get_data.retrieve_inversion_data(**kwargs)
         else:
             preparation.prepare_rhime_inputs(**kwargs)
     assert len(resolved) == 1
@@ -64,7 +62,7 @@ def test_public_site_shorthand_expands_once_before_retrieval(monkeypatch, bounda
 
 
 def test_canonical_acquisition_and_retrieval_never_expand_selectors(monkeypatch):
-    options = acquisition._SiteOptions.from_inputs(**_site_inputs())
+    options = acquisition.SiteOptions.from_inputs(**_site_inputs())
 
     def fail(*args, **kwargs):
         raise AssertionError("canonical selectors must not be expanded")
@@ -72,23 +70,23 @@ def test_canonical_acquisition_and_retrieval_never_expand_selectors(monkeypatch)
     def stop(**kwargs):
         raise RuntimeError("retrieval reached")
 
-    monkeypatch.setattr(acquisition._SiteOptions, "from_inputs", classmethod(fail))
+    monkeypatch.setattr(acquisition.SiteOptions, "from_inputs", classmethod(fail))
     monkeypatch.setattr(get_data, "expand_site_option", fail)
     monkeypatch.setattr(acquisition, "expand_site_option", fail)
     monkeypatch.setattr(get_data, "get_flux_data", stop)
     with pytest.raises(RuntimeError, match="retrieval reached"):
-        acquisition._retrieve_or_reload_merged_data_from_options(site_options=options, **_data_inputs())
+        acquisition.load_rhime_data(site_options=options, **_data_inputs())
 
 
 def test_canonical_reload_selects_options_without_expansion(monkeypatch, tmp_path):
-    options = acquisition._SiteOptions.from_inputs(**_site_inputs())
+    options = acquisition.SiteOptions.from_inputs(**_site_inputs())
 
     def fail(*args, **kwargs):
         raise AssertionError("reload must not expand selectors")
 
-    monkeypatch.setattr(acquisition._SiteOptions, "from_inputs", classmethod(fail))
+    monkeypatch.setattr(acquisition.SiteOptions, "from_inputs", classmethod(fail))
     monkeypatch.setattr(acquisition, "load_merged_data", lambda *args: {"MHD": xr.Dataset()})
-    merged = acquisition._retrieve_or_reload_merged_data_from_options(
+    merged = acquisition.load_rhime_data(
         site_options=options,
         **_data_inputs(),
         reload_merged_data=True,
@@ -98,16 +96,38 @@ def test_canonical_reload_selects_options_without_expansion(monkeypatch, tmp_pat
     assert options.sites == ("TAC", "MHD")
 
 
-def test_canonical_supplied_data_keeps_its_options_and_tracer_guard():
-    requested = acquisition._SiteOptions.from_inputs(**_site_inputs())
+def test_canonical_supplied_data_keeps_its_options_without_io(monkeypatch):
+    requested = acquisition.SiteOptions.from_inputs(**_site_inputs())
     merged = acquisition.RhimeMergedData({}, requested.select_indices([1]))
-    assert (
-        acquisition.retrieve_or_reload_rhime_data_from_options(
-            requested, {}, multisector=False, merged_data=merged
-        )
-        is merged
+
+    def fail(*args, **kwargs):
+        raise AssertionError("Supplied data must bypass acquisition and normalization")
+
+    monkeypatch.setattr(acquisition.SiteOptions, "from_inputs", classmethod(fail))
+    monkeypatch.setattr(acquisition, "load_merged_data", fail)
+    monkeypatch.setattr(acquisition, "_retrieve_inversion_data_from_options", fail)
+    assert acquisition.load_rhime_data(
+        site_options=requested,
+        **_data_inputs(),
+        merged_data=merged,
+        reload_merged_data=True,
+        save_merged_data=True,
+        merged_data_dir="unused",
+    ) is merged
+
+
+def test_site_options_public_factory_resolved_constructor_and_selection():
+    from openghg_inversions.inversion_data import SiteOptions
+
+    options = SiteOptions.from_inputs(**_site_inputs())
+    assert options == SiteOptions.from_inputs(
+        **{**_site_inputs(), "averaging_period": ["1h", "1h"]}
     )
-    with pytest.raises(ValueError, match="use_tracer=True.*not supported"):
-        acquisition.retrieve_or_reload_rhime_data_from_options(
-            requested, {"use_tracer": True}, multisector=False, merged_data=merged
-        )
+    values = {name: getattr(options, name) for name in options.__dataclass_fields__}
+    assert SiteOptions(**values) == options
+    selected = options.retain_sites(["mhd"], context="test")
+    assert selected.sites == ("MHD",)
+    assert selected.averaging_period == ("1h",)
+    assert options.sites == ("TAC", "MHD")
+    with pytest.raises(ValueError, match="same length"):
+        SiteOptions(**{**values, "averaging_period": ("1h",)})

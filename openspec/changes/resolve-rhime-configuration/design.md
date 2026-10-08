@@ -3,10 +3,10 @@
 ## Context
 
 See [proposal.md](proposal.md) and the [behavioral contract](specs/rhime-configuration/spec.md).
-PR #809 is merged. PR #813 currently implements its aggregate configuration:
+PR #809 is merged. PR #813 originally implemented its aggregate configuration:
 `RhimeConfig(preparation=RhimePreparationConfig(...), model=..., output=..., sampler=...)`.
-This revision corrects that design; it does not describe the current Python code
-as already conforming.
+This specification supersedes that design. Implementation and validation
+progress is tracked in [tasks.md](tasks.md).
 
 The accepted conversation made `RhimeConfig` the in-memory equivalent of resolved
 configuration-file options, independent of file format. The previous design
@@ -58,7 +58,7 @@ Python options --> winning overrides ------------------+
                                        retained execution RhimeRunSpec
 ```
 
-Proposed API outline; this is a plan for revising #813, not installed behavior:
+Target API outline:
 
 ```python
 def read_rhime_ini(
@@ -288,8 +288,8 @@ logging behavior is required to complete #804.
 
 ## Risks / Trade-offs
 
-- The current implementation/docs no longer match this plan: reopen affected
-  tasks and reconcile them before claiming completion or marking #813 ready.
+- The former implementation/docs need reconciliation with this plan: verify
+  affected tasks before claiming completion or marking #813 ready.
 - Public acquisition names have imports, monkeypatch seams and tuple consumers:
   preserve the deprecated wrapper, share the body and update internal callers.
 - Model/output views repeat a few shared facts: resolve once and forward values;

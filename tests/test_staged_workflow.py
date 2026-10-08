@@ -205,7 +205,7 @@ def test_prepare_is_independent_and_writes_inspectable_contract(
 
     prepared = _prepared()
     sentinel = SimpleNamespace(sites=("TAC",), fp_all={})
-    monkeypatch.setattr(stages, "retrieve_or_reload_rhime_data", lambda *args, **kwargs: sentinel)
+    monkeypatch.setattr(stages, "load_rhime_data", lambda *args, **kwargs: sentinel)
     monkeypatch.setattr(stages, "filter_rhime_observations", lambda *args, **kwargs: sentinel)
     monkeypatch.setattr(stages, "build_rhime_basis", lambda *args, **kwargs: prepared.basis_functions)
     monkeypatch.setattr(stages, "build_rhime_sensitivities", lambda *args, **kwargs: {})
@@ -252,7 +252,7 @@ def test_prepare_fails_when_a_requested_site_was_dropped(
 
     prepared = _prepared()
     merged = SimpleNamespace(sites=("TAC",), fp_all={})
-    monkeypatch.setattr(stages, "retrieve_or_reload_rhime_data", lambda *args, **kwargs: merged)
+    monkeypatch.setattr(stages, "load_rhime_data", lambda *args, **kwargs: merged)
     monkeypatch.setattr(stages, "filter_rhime_observations", lambda *args, **kwargs: merged)
     monkeypatch.setattr(stages, "build_rhime_basis", lambda *args, **kwargs: prepared.basis_functions)
     monkeypatch.setattr(stages, "build_rhime_sensitivities", lambda *args, **kwargs: {})
@@ -278,7 +278,7 @@ def test_prepare_accepts_canonicalised_site_labels(
 
     prepared = _prepared()
     merged = SimpleNamespace(sites=("TAC",), fp_all={})
-    monkeypatch.setattr(stages, "retrieve_or_reload_rhime_data", lambda *args, **kwargs: merged)
+    monkeypatch.setattr(stages, "load_rhime_data", lambda *args, **kwargs: merged)
     monkeypatch.setattr(stages, "filter_rhime_observations", lambda *args, **kwargs: merged)
     monkeypatch.setattr(stages, "build_rhime_basis", lambda *args, **kwargs: prepared.basis_functions)
     monkeypatch.setattr(stages, "build_rhime_sensitivities", lambda *args, **kwargs: {})
@@ -396,7 +396,7 @@ def test_preparation_manifest_authenticates_supplied_prepared_inputs(
 
     prepared = _prepared()
     merged = SimpleNamespace(sites=("TAC",), fp_all={})
-    monkeypatch.setattr(stages, "retrieve_or_reload_rhime_data", lambda *args, **kwargs: merged)
+    monkeypatch.setattr(stages, "load_rhime_data", lambda *args, **kwargs: merged)
     monkeypatch.setattr(stages, "filter_rhime_observations", lambda *args, **kwargs: merged)
     monkeypatch.setattr(stages, "build_rhime_basis", lambda *args, **kwargs: prepared.basis_functions)
     monkeypatch.setattr(stages, "build_rhime_sensitivities", lambda *args, **kwargs: {})
@@ -675,7 +675,7 @@ def test_synthetic_staged_tracer_bullet(
 
     prepared = _prepared()
     sentinel = SimpleNamespace(sites=("TAC",), fp_all={})
-    monkeypatch.setattr(stages, "retrieve_or_reload_rhime_data", lambda *args, **kwargs: sentinel)
+    monkeypatch.setattr(stages, "load_rhime_data", lambda *args, **kwargs: sentinel)
     monkeypatch.setattr(stages, "filter_rhime_observations", lambda *args, **kwargs: sentinel)
     monkeypatch.setattr(stages, "build_rhime_basis", lambda *args, **kwargs: prepared.basis_functions)
     monkeypatch.setattr(stages, "build_rhime_sensitivities", lambda *args, **kwargs: {})
@@ -720,7 +720,7 @@ def test_synthetic_staged_tracer_bullet(
         raise AssertionError("Postprocessing must use the persisted output binding.")
 
     monkeypatch.setattr(stages, "_build_prepared_model", forbid_rebuild)
-    monkeypatch.setattr(stages, "retrieve_or_reload_rhime_data", forbid_rebuild)
+    monkeypatch.setattr(stages, "load_rhime_data", forbid_rebuild)
     result = postprocess_rhime_stage(
         setup=postprocess_setup,
         model="standard",
@@ -756,7 +756,7 @@ def test_synthetic_staged_tracer_bullet(
     assert postprocess_contract["effective_configuration"]["sampler"] == sample_contract[
         "effective_configuration"
     ]["sampler"]
-    assert postprocess_contract["effective_configuration"]["run_spec"]["output"]["output_path"] == str(
+    assert postprocess_contract["effective_configuration"]["output"]["output_path"] == str(
         tmp_path / "postprocess"
     )
 
@@ -851,7 +851,7 @@ def forbidden(*args, **kwargs):
     raise AssertionError('replay attempted acquisition, materialization, or model construction')
 stages._build_prepared_model = forbidden
 stages.materialize_pymc_inputs = forbidden
-stages.retrieve_or_reload_rhime_data = forbidden
+stages.load_rhime_data = forbidden
 from openghg_inversions.rhime import stages as public_stages
 setup = public_stages.resolve_stage_setup(json.loads((root / 'params.json').read_text()), model='standard')
 result = public_stages.postprocess_rhime_stage(

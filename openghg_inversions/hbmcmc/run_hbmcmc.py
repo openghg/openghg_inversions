@@ -29,7 +29,7 @@ from typing import Any
 from openghg_inversions._timing import log_timing, timed, timer_seconds, timer_start
 from openghg_inversions.config import config
 from openghg_inversions.models.additive_sigma import DEFAULT_ADDITIVE_SIGMA_PRIOR
-from openghg_inversions.rhime import PollutionEventSettings, resolve_rhime_options, run_rhime
+from openghg_inversions.rhime import PollutionEventSettings, resolve_rhime_config, run_rhime
 from openghg_inversions.rhime.params import normalise_rhime_params
 
 
@@ -409,7 +409,7 @@ def main(argv: list[str] | None = None) -> None:
             rhime_params["mismatch_model"] = "pollution_event"
 
     with timed("run_hbmcmc.validation"):
-        resolve_rhime_options(params=rhime_params, multisector=False)
+        resolve_rhime_config(params=rhime_params, multisector=False)
 
     _validate_country_file(rhime_params)
 

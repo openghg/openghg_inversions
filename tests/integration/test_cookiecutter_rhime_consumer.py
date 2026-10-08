@@ -10,6 +10,8 @@ from typing import Any
 import pytest
 import xarray as xr
 
+from openghg_inversions.rhime.params import resolve_rhime_config
+
 from examples.rhime_cookiecutter.my_inversion import likelihoods
 from examples.rhime_cookiecutter.my_inversion import runner as consumer_runner
 import openghg_inversions.rhime.standard as rhime_runner
@@ -19,16 +21,15 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Run the downstream wrapper through controlled library-owned stages."""
-    run_spec = SimpleNamespace(
-        model=SimpleNamespace(aggregation_error_mode="diagonal"),
-        output=SimpleNamespace(output_format="inv_out"),
+    config = resolve_rhime_config(
+        params=dict(species="ch4", sites=["TAC", "MHD"], domain="EUROPE",
+                    averaging_period="1h", start_date="2019-01-01", end_date="2019-02-01",
+                    output_name="example", output_format="inv_out", save_inversion_output=False,
+                    mismatch_model=None, flux_sources=["inventory"],
+                    reload_merged_data=False, draws=3),
+        multisector=False,
     )
-    sampler = object()
-    setup = SimpleNamespace(
-        data_args={"species": "ch4"},
-        run_spec=run_spec,
-        sampler=sampler,
-    )
+    sampler = config.sampler
     merged = object()
     filtered = object()
     basis = object()
@@ -39,6 +40,7 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
             coords={"region": [0], "source": ["inventory"]},
         ),
         sites=("MHD",),
+        averaging_period=("1h",),
         basis_artifact_source="controlled-test-basis",
     )
     model_inputs = xr.Dataset({"mf": ("nmeasure", [1.0])})
@@ -55,61 +57,43 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
         }
         assert multisector is False
         calls.append("resolve")
-        return setup
+        return config
 
-    def retrieve(
-        data_args: dict[str, Any],
-        *,
-        multisector: bool,
-        merged_data: Any = None,
-    ) -> Any:
-        assert data_args is setup.data_args
-        assert multisector is False
-        assert merged_data is None
+    def retrieve(**kwargs: Any) -> Any:
+        assert kwargs["site_options"] is config.site_options
+        assert kwargs["species"] == config.species
+        assert kwargs["split_by_sectors"] is False
+        assert kwargs["merged_data"] is None
         calls.append("retrieve")
         return merged
 
-    def filter_observations(actual: Any, data_args: dict[str, Any]) -> Any:
+    def filter_observations(actual: Any, *, filters: Any) -> Any:
         assert actual is merged
-        assert data_args is setup.data_args
+        assert filters is config.filters
         calls.append("filter")
         return filtered
 
-    def build_basis(actual: Any, data_args: dict[str, Any]) -> Any:
+    def build_basis(actual: Any, **kwargs: Any) -> Any:
         assert actual is filtered
-        assert data_args is setup.data_args
+        assert kwargs["domain"] == config.domain
+        assert kwargs["flux_sources"] == config.flux_sources
         calls.append("basis")
         return basis
 
-    def build_sensitivities(
-        actual: Any,
-        actual_basis: Any,
-        data_args: dict[str, Any],
-        *,
-        multisector: bool,
-    ) -> Any:
+    def build_sensitivities(actual: Any, actual_basis: Any, **kwargs: Any) -> Any:
         assert actual is filtered
         assert actual_basis is basis
-        assert data_args is setup.data_args
-        assert multisector is False
+        assert kwargs["multisector"] is False
         calls.append("sensitivities")
         return site_data
 
-    def assemble(
-        actual: Any,
-        actual_basis: Any,
-        actual_site_data: Any,
-        data_args: dict[str, Any],
-    ) -> Any:
+    def assemble(actual: Any, actual_basis: Any, actual_site_data: Any, **kwargs: Any) -> Any:
         assert (actual, actual_basis, actual_site_data) == (filtered, basis, site_data)
-        assert data_args is setup.data_args
+        assert kwargs["min_error_options"] == config.min_error_options
         calls.append("assemble")
         return prepared
 
-    def align(actual_spec: Any, actual_prepared: Any) -> Any:
-        assert actual_prepared is prepared
-        calls.append("align")
-        return actual_spec
+
 
     def materialize(actual: Any, *, variable_names: tuple[str, ...]) -> Any:
         assert actual is prepared
@@ -121,7 +105,7 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
         assert kwargs == {
             "prepared": prepared,
             "model_inputs": model_inputs,
-            "run_spec": run_spec,
+            "run_spec": config.retained_run_spec(prepared),
             "likelihood_builder": likelihoods.likelihood_builder,
             "likelihood_kwargs": None,
             "preserve_legacy_likelihood": False,
@@ -148,13 +132,12 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
         assert kwargs == {"result": expected, "prepared": prepared}
         calls.append("output")
 
-    monkeypatch.setattr(rhime_runner, "resolve_rhime_options", resolve)
-    monkeypatch.setattr(rhime_runner, "retrieve_or_reload_rhime_data", retrieve)
+    monkeypatch.setattr(rhime_runner, "resolve_rhime_config", resolve)
+    monkeypatch.setattr(rhime_runner, "load_rhime_data", retrieve)
     monkeypatch.setattr(rhime_runner, "filter_rhime_observations", filter_observations)
     monkeypatch.setattr(rhime_runner, "build_rhime_basis", build_basis)
     monkeypatch.setattr(rhime_runner, "build_rhime_sensitivities", build_sensitivities)
     monkeypatch.setattr(rhime_runner, "assemble_rhime_inputs", assemble)
-    monkeypatch.setattr(rhime_runner, "with_prepared_rhime_sites", align)
     monkeypatch.setattr(
         rhime_runner,
         "standard_model_input_names",
@@ -176,7 +159,6 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
         "basis",
         "sensitivities",
         "assemble",
-        "align",
         "materialize",
         "build",
         "sample",

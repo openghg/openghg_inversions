@@ -26,22 +26,21 @@ from .builders import (
     RhimeModelBuildResult,
 )
 from .co2 import build_co2_model, co2_model_input_names, run_rhime_co2
+from openghg_inversions.inversion_data import load_rhime_data
+
 from .materialization import materialize_pymc_inputs
 from .params import (
     RhimeConfig,
-    RhimePreparationConfig,
-    load_rhime_config,
+    read_rhime_ini,
     params_from_config,
     resolve_flux_sources,
     resolve_rhime_config,
-    resolve_rhime_options,
 )
 from .preparation import (
     assemble_rhime_inputs,
     build_rhime_basis,
     build_rhime_sensitivities,
     filter_rhime_observations,
-    retrieve_or_reload_rhime_data,
     with_prepared_rhime_sites,
 )
 from .multisector import (
@@ -99,8 +98,7 @@ from .specs import (
 
 __all__ = [
     "RhimeConfig",
-    "RhimePreparationConfig",
-    "load_rhime_config",
+    "read_rhime_ini",
     "resolve_rhime_config",
     "SectorSpec",
     "AdditiveSigmaSettings",
@@ -147,9 +145,8 @@ __all__ = [
     "materialize_pymc_inputs",
     "co2_model_input_names",
     "multisector_model_input_names",
-    "retrieve_or_reload_rhime_data",
+    "load_rhime_data",
     "resolve_flux_sources",
-    "resolve_rhime_options",
     "resolve_stage_setup",
     "postprocess_rhime_stage",
     "prepare_rhime_stage",

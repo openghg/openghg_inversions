@@ -37,18 +37,18 @@ runner.
 Resolve a requested RHIME configuration
 --------------------------------------
 
-Inspect standard/multisector choices before data access. Decode an INI file,
-apply supported overrides, then resolve the complete request. The
+Inspect standard/multisector choices before data access. Read complete resolved
+configuration from an INI with supported overrides, or resolve Python options. The
 :doc:`configuration guide </usage/rhime>` explains requested site selectors,
 retained execution metadata and compatibility helpers.
 
 .. autosummary::
    :nosignatures:
 
-   openghg_inversions.rhime.load_rhime_config
+   openghg_inversions.rhime.read_rhime_ini
    openghg_inversions.rhime.resolve_rhime_config
    openghg_inversions.rhime.RhimeConfig
-   openghg_inversions.rhime.RhimePreparationConfig
+   openghg_inversions.inversion_data.SiteOptions
 
 Run specifications and results
 ------------------------------
@@ -91,7 +91,8 @@ imports identify the same classes.
    openghg_inversions.inversion_data.prepare_rhime_inputs
    openghg_inversions.inversion_data.prepare_rhime_inputs_from_xarray
    openghg_inversions.inversion_data.load_merged_data
-   openghg_inversions.inversion_data.acquisition.retrieve_or_reload_rhime_data
+   openghg_inversions.inversion_data.retrieve_inversion_data
+   openghg_inversions.inversion_data.acquisition.load_rhime_data
    openghg_inversions.rhime.NestedRhimePreparedInputs
    openghg_inversions.rhime.combine_nested_rhime_inputs
    openghg_inversions.rhime.co2.Co2PreparedInputs

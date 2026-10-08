@@ -24,7 +24,7 @@ from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
 from openghg_inversions.inversion_data.get_data import (
     add_obs_error,
     convert_to_list,
-    data_processing_surface_notracer,
+    retrieve_inversion_data,
     interpolate_flux_to_footprint_grid,
 )
 from openghg_inversions.inversion_data.getters import get_flux_data
@@ -70,12 +70,12 @@ def test_mole_fraction_unit_scale_uses_openghg_registry(raw_units: str, expected
     assert mole_fraction_unit_scale(raw_units, context="test observations") == pytest.approx(expected)
 
 
-def test_data_processing_surface_notracer(tac_ch4_data_args, merged_data_file_name, raw_data_path):
-    """Check that `data_processing_surface_notracer` produces the same output
+def test_retrieve_inversion_data(tac_ch4_data_args, merged_data_file_name, raw_data_path):
+    """Check that `retrieve_inversion_data` produces the same output
     as v0.1, with test data frozen on 9 Feb 2024, or the same as v0.2, with test data frozen on
     15 Apr 2024 (using the zarr backend).
     """
-    result = data_processing_surface_notracer(**tac_ch4_data_args)
+    result = retrieve_inversion_data(**tac_ch4_data_args)
 
     # check number of items returned
     assert len(result) == 6
@@ -172,7 +172,7 @@ def test_save_load_merged_data(tac_ch4_data_args, merged_data_dir):
     # make merged data dir
     merged_data_dir.mkdir(exist_ok=True)
 
-    fp_all, *_ = data_processing_surface_notracer(
+    fp_all, *_ = retrieve_inversion_data(
         save_merged_data=True,
         merged_data_dir=merged_data_dir,
         merged_data_name=merged_data_name,
@@ -195,7 +195,7 @@ def test_missing_data_at_one_site(tac_ch4_data_args):
     data_args["fp_height"].append("24m")
     data_args["averaging_period"].append("1H")
 
-    fp_all, *_ = data_processing_surface_notracer(**data_args)
+    fp_all, *_ = retrieve_inversion_data(**data_args)
 
     assert "TAC" in fp_all
     assert "MHD" not in fp_all
@@ -310,7 +310,7 @@ def test_mixed_platforms_keep_surface_calibration_scale_per_site(
     monkeypatch.setattr(get_data_module, "merged_scenario_data", fake_merged_scenario_data)
     monkeypatch.setattr(get_data_module, "add_obs_error", lambda *args, **kwargs: None)
 
-    result = data_processing_surface_notracer(
+    result = retrieve_inversion_data(
         species="ch4",
         sites=["TAC", "GOSAT-BRAZIL"],
         domain="EUROPE",
@@ -504,7 +504,7 @@ def test_column_inlet_labels_scenario_as_site_column(
     monkeypatch.setattr(get_data_module, "get_footprint_data", lambda **kwargs: object())
     monkeypatch.setattr(get_data_module, "merged_scenario_data", fake_scenario)
 
-    data_processing_surface_notracer(
+    retrieve_inversion_data(
         species="ch4",
         sites=["TAC"],
         domain="EUROPE",
@@ -533,7 +533,7 @@ def test_convert_to_list_accepts_numpy_integer_scalar() -> None:
 def test_data_processing_rejects_boolean_max_level_before_retrieval() -> None:
     """Boolean maximum levels are not accepted as integers."""
     with pytest.raises(ValueError, match="must be integers or None"):
-        data_processing_surface_notracer(
+        retrieve_inversion_data(
             species="ch4",
             sites=["TAC"],
             domain="EUROPE",
@@ -614,7 +614,7 @@ def test_data_processing_reuses_first_successful_observation_units(
     monkeypatch.setattr(get_data_module, "get_footprint_data", lambda **kwargs: object())
     monkeypatch.setattr(get_data_module, "merged_scenario_data", fake_scenario)
 
-    fp_all, retained_sites, *_ = data_processing_surface_notracer(
+    fp_all, retained_sites, *_ = retrieve_inversion_data(
         species="ch4",
         sites=["BSD", "TAC", "GOSAT-BRAZIL"],
         domain="EUROPE",
@@ -652,7 +652,7 @@ def test_data_processing_rejects_non_mole_fraction_units(
     monkeypatch.setattr(get_data_module, "merged_scenario_data", lambda *args, **kwargs: scenario)
 
     with pytest.raises(ValueError, match="site 'TAC'.*to mol/mol"):
-        data_processing_surface_notracer(
+        retrieve_inversion_data(
             species="ch4",
             sites=["TAC"],
             domain="EUROPE",
@@ -691,7 +691,7 @@ def test_data_processing_reports_later_site_unit_conversion_failure(
     monkeypatch.setattr(get_data_module, "merged_scenario_data", fake_scenario)
 
     with pytest.raises(ValueError, match="site 'MHD'.*target observation units 'ppb'") as exc_info:
-        data_processing_surface_notracer(
+        retrieve_inversion_data(
             species="ch4",
             sites=["TAC", "MHD"],
             domain="EUROPE",
@@ -809,11 +809,11 @@ def test_missing_data_at_all_sites(openghg_test_store):
     }
 
     with pytest.raises(SearchError):
-        data_processing_surface_notracer(**data_args)
+        retrieve_inversion_data(**data_args)
 
 
 def test_fp_all_to_dataset_and_back(tac_ch4_data_args):
-    fp_all, *_ = data_processing_surface_notracer(**tac_ch4_data_args)
+    fp_all, *_ = retrieve_inversion_data(**tac_ch4_data_args)
     ds = make_combined_scenario(fp_all)
     fp_all_recovered = fp_all_from_dataset(ds)
 
@@ -1116,11 +1116,11 @@ def test_add_averaging_error(tac_ch4_data_args):
         mock_obs.return_value = patched_obs
 
         # set up two scenarios, one with averaging, one without
-        fp_all, *_ = data_processing_surface_notracer(**tac_ch4_data_args)
+        fp_all, *_ = retrieve_inversion_data(**tac_ch4_data_args)
         ds1 = fp_all["TAC"]
 
         tac_ch4_data_args["averagingerror"] = False
-        fp_all, *_ = data_processing_surface_notracer(**tac_ch4_data_args)
+        fp_all, *_ = retrieve_inversion_data(**tac_ch4_data_args)
         ds2 = fp_all["TAC"]
 
         # check that "mf_error", "mf_repeatability", and "mf_variability" are present
@@ -1195,7 +1195,7 @@ def test_looking_older_flux_files(tac_ch4_data_args, capsys):
 
     # we should get an error when trying to get obs data, but not when trying to get flux data
     with pytest.raises(SearchError):
-        data_processing_surface_notracer(**data_args)
+        retrieve_inversion_data(**data_args)
 
     stdout = capsys.readouterr().out
 
@@ -1382,3 +1382,32 @@ def test_get_flux_data_count_mode_audits_original_values(monkeypatch: pytest.Mon
     assert metadata.count == 2
     assert metadata.total == 4
     assert np.isfinite(sanitized.values).all()
+
+
+def test_deprecated_retrieval_preserves_signature_and_six_tuple(monkeypatch):
+    import inspect
+    from openghg_inversions.inversion_data import (
+        data_processing_surface_notracer,
+        retrieve_inversion_data,
+    )
+    from openghg_inversions.inversion_data import get_data
+
+    assert inspect.signature(data_processing_surface_notracer) == inspect.signature(retrieve_inversion_data)
+    returned = ({"TAC": xr.Dataset()}, ["TAC"], ["10m"], ["20m"], ["instrument"], ["1h"])
+    received = []
+
+    def acquire(**kwargs):
+        received.append(kwargs)
+        return returned
+
+    monkeypatch.setattr(get_data, "_retrieve_inversion_data_from_options", acquire)
+    kwargs = dict(
+        species="ch4", sites=["tac"], domain="EUROPE", averaging_period="1h",
+        start_date="2019-01-01", end_date="2019-01-02", inlet="10m", fp_height="20m",
+        instrument="instrument", emissions_name=["total"], use_bc=False,
+    )
+    assert retrieve_inversion_data(**kwargs) is returned
+    with pytest.warns(DeprecationWarning, match="use retrieve_inversion_data"):
+        assert data_processing_surface_notracer(**kwargs) is returned
+    assert received[0] == received[1]
+    assert received[0]["site_options"].sites == ("TAC",)

@@ -11,6 +11,8 @@ import numpy as np
 import pytest
 import xarray as xr
 
+from openghg_inversions.rhime.params import resolve_rhime_config
+
 from openghg_inversions.basis.basis_functions import BasisFunctions
 
 
@@ -58,11 +60,14 @@ def test_custom_basis_runner_replaces_only_basis_stage(
         "max_child_pca_eccentricity": 6.5,
         **overrides,
     }
-    resolved_data_args = {"reload_merged_data": reload_merged_data}
-    sampler = object()
-    initial_spec = SimpleNamespace(model=SimpleNamespace(aggregation_error_mode="diagonal"))
-    aligned_spec = SimpleNamespace(model=SimpleNamespace(aggregation_error_mode="low_rank"))
-    setup = SimpleNamespace(data_args=resolved_data_args, run_spec=initial_spec, sampler=sampler)
+    config = resolve_rhime_config(
+        params=dict(species="ch4", sites=["TAC", "MHD"], domain="EUROPE",
+                    averaging_period="1h", start_date="2019-01-01", end_date="2019-02-01",
+                    output_name="example", output_format="none", flux_sources=["inventory"],
+                    reload_merged_data=reload_merged_data, draws=3),
+        multisector=False,
+    )
+    sampler = config.sampler
 
     merged = object()
     filtered = object()
@@ -72,6 +77,7 @@ def test_custom_basis_runner_replaces_only_basis_stage(
         inv_inputs=xr.Dataset({"mf": ("nmeasure", [1.0])}),
         basis_functions=basis,
         sites=("MHD",),
+        averaging_period=("1h",),
         basis_artifact_source=basis.basis_artifact_source,
     )
     model_inputs = xr.Dataset({"mf": ("nmeasure", [1.0])})
@@ -79,7 +85,6 @@ def test_custom_basis_runner_replaces_only_basis_stage(
     idata = object()
     expected_result = object()
     calls: list[str] = []
-    workflow_data_args: dict[str, Any] | None = None
 
     def parse_config(
         actual_config: str | Path,
@@ -99,80 +104,51 @@ def test_custom_basis_runner_replaces_only_basis_stage(
         assert "max_child_pca_eccentricity" not in params
         assert multisector is False
         calls.append("resolve")
-        return setup
+        return config
 
-    def retrieve(actual_data_args: dict[str, Any], *, multisector: bool) -> Any:
-        """Record ordinary acquisition or controlled merged-data reload."""
-        nonlocal workflow_data_args
-        workflow_data_args = actual_data_args
-        assert actual_data_args is resolved_data_args
-        assert actual_data_args["reload_merged_data"] is reload_merged_data
-        assert "project_basis_path" not in actual_data_args
-        assert multisector is False
+    def retrieve(**kwargs: Any) -> Any:
+        assert kwargs["site_options"] is config.site_options
+        assert kwargs["reload_merged_data"] is reload_merged_data
+        assert kwargs["split_by_sectors"] is False
+        assert "project_basis_path" not in kwargs
         calls.append("retrieve")
         return merged
 
-    def filter_observations(actual: Any, actual_data_args: dict[str, Any]) -> Any:
-        """Record unchanged public observation filtering."""
+    def filter_observations(actual: Any, *, filters: Any) -> Any:
         assert actual is merged
-        assert actual_data_args is workflow_data_args
+        assert filters is config.filters
         calls.append("filter")
         return filtered
 
-    def build_project_basis(
-        actual: Any,
-        actual_data_args: dict[str, Any],
-        *,
-        project_basis_path: str | Path | None,
-        max_child_pca_eccentricity: float,
-    ) -> BasisFunctions:
-        """Record the sole custom replacement stage and its supported result."""
+    def build_project_basis(actual: Any, **kwargs: Any) -> BasisFunctions:
         assert actual is filtered
-        assert actual_data_args == workflow_data_args
-        assert actual_data_args is not workflow_data_args
-        assert "project_basis_path" not in actual_data_args
-        assert "max_child_pca_eccentricity" not in actual_data_args
-        assert project_basis_path == tmp_path / "external-basis.nc"
-        assert max_child_pca_eccentricity == 6.5
+        assert kwargs["domain"] == config.domain
+        assert kwargs["flux_sources"] == config.flux_sources
+        assert kwargs["nbasis"] == config.nbasis
+        assert kwargs["project_basis_path"] == tmp_path / "external-basis.nc"
+        assert kwargs["max_child_pca_eccentricity"] == 6.5
         calls.append("project-basis")
         return basis
 
-    def build_sensitivities(
-        actual: Any,
-        actual_basis: BasisFunctions,
-        actual_data_args: dict[str, Any],
-        *,
-        multisector: bool,
-    ) -> Any:
-        """Record unchanged sensitivity construction with the custom basis."""
+    def build_sensitivities(actual: Any, actual_basis: Any, **kwargs: Any) -> Any:
         assert actual is filtered
         assert actual_basis is basis
-        assert isinstance(actual_basis, BasisFunctions)
-        assert actual_data_args is workflow_data_args
-        assert multisector is False
+        assert kwargs["domain"] == config.domain
+        assert kwargs["flux_sources"] == config.flux_sources
+        assert kwargs["multisector"] is False
         calls.append("sensitivities")
         return site_data
 
-    def assemble(
-        actual: Any,
-        actual_basis: BasisFunctions,
-        actual_site_data: Any,
-        actual_data_args: dict[str, Any],
-    ) -> Any:
-        """Record unchanged labelled-input assembly with the custom basis."""
+    def assemble(actual: Any, actual_basis: Any, actual_site_data: Any, **kwargs: Any) -> Any:
         assert actual is filtered
         assert actual_basis is basis
         assert actual_site_data is site_data
-        assert actual_data_args is workflow_data_args
+        assert kwargs["min_error_options"] == config.min_error_options
+        assert kwargs["start_date"] == config.start_date
         calls.append("assemble")
         return prepared
 
-    def align(actual_spec: Any, actual_prepared: Any) -> Any:
-        """Record retained-site alignment."""
-        assert actual_spec is initial_spec
-        assert actual_prepared is prepared
-        calls.append("align")
-        return aligned_spec
+
 
     def materialize(actual: Any, *, variable_names: tuple[str, ...]) -> xr.Dataset:
         """Record the explicit eager model-input boundary."""
@@ -186,7 +162,7 @@ def test_custom_basis_runner_replaces_only_basis_stage(
         assert kwargs == {
             "prepared": prepared,
             "model_inputs": model_inputs,
-            "run_spec": aligned_spec,
+            "run_spec": config.retained_run_spec(prepared),
         }
         calls.append("build")
         return build_result
@@ -202,7 +178,8 @@ def test_custom_basis_runner_replaces_only_basis_stage(
         """Record the supported output stage and retained custom basis."""
         assert kwargs["prepared"] is prepared
         assert kwargs["prepared"].basis_functions is basis
-        assert kwargs["run_spec"] is aligned_spec
+        assert kwargs["run_spec"].sites == ("MHD",)
+        assert kwargs["run_spec"].model is config.model
         assert kwargs["sampler"] is sampler
         assert kwargs["model_build_result"] is build_result
         assert kwargs["idata"] is idata
@@ -223,13 +200,12 @@ def test_custom_basis_runner_replaces_only_basis_stage(
         calls.append("outputs")
 
     monkeypatch.setattr(custom_basis_runner, "params_from_config", parse_config)
-    monkeypatch.setattr(custom_basis_runner, "resolve_rhime_options", resolve)
-    monkeypatch.setattr(custom_basis_runner, "retrieve_or_reload_rhime_data", retrieve)
+    monkeypatch.setattr(custom_basis_runner, "resolve_rhime_config", resolve)
+    monkeypatch.setattr(custom_basis_runner, "load_rhime_data", retrieve)
     monkeypatch.setattr(custom_basis_runner, "filter_rhime_observations", filter_observations)
     monkeypatch.setattr(custom_basis_runner, "build_project_basis", build_project_basis)
     monkeypatch.setattr(custom_basis_runner, "build_rhime_sensitivities", build_sensitivities)
     monkeypatch.setattr(custom_basis_runner, "assemble_rhime_inputs", assemble)
-    monkeypatch.setattr(custom_basis_runner, "with_prepared_rhime_sites", align)
     monkeypatch.setattr(
         custom_basis_runner,
         "standard_model_input_names",
@@ -255,7 +231,6 @@ def test_custom_basis_runner_replaces_only_basis_stage(
         "project-basis",
         "sensitivities",
         "assemble",
-        "align",
         "materialize",
         "build",
         "sample",
@@ -279,15 +254,15 @@ def test_project_basis_artifact_bypasses_calculation(
         }
     )
 
-    def fail_calculation(actual: Any, data_args: dict[str, Any]) -> BasisFunctions:
+    def fail_calculation(actual: Any, **kwargs: Any) -> BasisFunctions:
         """Fail if the cached ingress route tries to calculate a basis."""
-        raise AssertionError(f"unexpected basis calculation for {actual!r} with {data_args!r}")
+        raise AssertionError(f"unexpected basis calculation for {actual!r} with {kwargs!r}")
 
     monkeypatch.setattr(custom_basis_runner, "_guarded_basis", fail_calculation)
 
     loaded = custom_basis_runner.build_project_basis(
         merged,
-        {},
+        domain="EUROPE",
         project_basis_path=artifact_path,
     )
 
@@ -415,7 +390,10 @@ def test_generated_project_basis_uses_guarded_connected_inertial_composition(
 
     actual = custom_basis_runner.build_project_basis(
         merged,
-        data_args,
+        domain=data_args["domain"],
+        flux_sources=data_args["flux_sources"],
+        nbasis=data_args["nbasis"],
+        country_directory=data_args["country_directory"],
         max_child_pca_eccentricity=7.5,
     )
 
@@ -428,40 +406,39 @@ def test_incompatible_project_basis_failure_remains_owned_by_sensitivity_stage(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Let the unchanged downstream stage explain an incompatible custom basis."""
-    setup = SimpleNamespace(data_args={}, run_spec=object(), sampler=object())
+    config = resolve_rhime_config(
+        params=dict(species="ch4", sites=["TAC", "MHD"], domain="EUROPE",
+                    averaging_period="1h", start_date="2019-01-01", end_date="2019-02-01",
+                    output_name="example", output_format="none", flux_sources=["inventory"],
+                    reload_merged_data=False, draws=3),
+        multisector=False,
+    )
     merged = object()
     filtered = object()
     incompatible_basis = object()
 
     monkeypatch.setattr(
         custom_basis_runner,
-        "resolve_rhime_options",
-        lambda *, params, multisector: setup,
+        "resolve_rhime_config",
+        lambda *, params, multisector: config,
     )
     monkeypatch.setattr(
         custom_basis_runner,
-        "retrieve_or_reload_rhime_data",
-        lambda data_args, *, multisector: merged,
+        "load_rhime_data",
+        lambda **kwargs: merged,
     )
     monkeypatch.setattr(
         custom_basis_runner,
         "filter_rhime_observations",
-        lambda actual, data_args: filtered,
+        lambda actual, *, filters: filtered,
     )
     monkeypatch.setattr(
         custom_basis_runner,
         "build_project_basis",
-        lambda actual, data_args, *, project_basis_path, max_child_pca_eccentricity: incompatible_basis,
+        lambda actual, **kwargs: incompatible_basis,
     )
 
-    def reject_incompatible_basis(
-        actual: Any,
-        actual_basis: Any,
-        data_args: dict[str, Any],
-        *,
-        multisector: bool,
-    ) -> Any:
-        """Represent validation owned by the public sensitivity stage."""
+    def reject_incompatible_basis(actual: Any, actual_basis: Any, **kwargs: Any) -> Any:
         assert actual is filtered
         assert actual_basis is incompatible_basis
         raise TypeError("build_rhime_sensitivities requires compatible BasisFunctions")

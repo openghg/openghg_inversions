@@ -6,7 +6,7 @@ by :func:`openghg_inversions.rhime.run_rhime` and copied project runners:
 ``filter -> basis -> sensitivities -> labelled assembly``.
 
 Acquisition is owned by :mod:`openghg_inversions.inversion_data.acquisition`;
-the stage adapter accepts resolved preparation choices and legacy mappings.
+stages accept explicit resolved choices and established mapping calls.
 
 Merged data and xarray objects supplied to these stages are borrowed.  Stages
 return new handoffs when they need to attach variables or metadata and never
@@ -23,8 +23,9 @@ as the scientific transformation from merged observations to labelled inputs.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import replace
+from pathlib import Path
 from typing import Any
 
 import xarray as xr
@@ -33,13 +34,8 @@ from openghg_inversions._timing import log_timing, timed
 from openghg_inversions.basis import make_basis_functions
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs
-from openghg_inversions.inversion_data.acquisition import (
-    retrieve_or_reload_rhime_data as _retrieve_or_reload_rhime_data,
-    retrieve_or_reload_rhime_data_from_options,
-)
 from openghg_inversions.inversion_data import preparation as inversion_preparation
 from openghg_inversions.model_error import normalise_min_error_options
-from openghg_inversions.rhime.params import RhimePreparationConfig
 from openghg_inversions.rhime.specs import RhimeRunSpec
 
 __all__ = [
@@ -47,7 +43,6 @@ __all__ = [
     "build_rhime_basis",
     "build_rhime_sensitivities",
     "filter_rhime_observations",
-    "retrieve_or_reload_rhime_data",
     "with_prepared_rhime_sites",
 ]
 
@@ -64,37 +59,11 @@ def with_prepared_rhime_sites(
     )
 
 
-def retrieve_or_reload_rhime_data(
-    data_args: RhimePreparationConfig | Mapping[str, Any],
-    *,
-    multisector: bool,
-    merged_data: RhimeMergedData | None = None,
-) -> RhimeMergedData:
-    """Acquire data from resolved selectors, or adapt a legacy mapping.
-
-    Args:
-        data_args: Complete resolved preparation choices or existing mapping.
-        multisector: Whether sector-resolved flux inputs are required.
-        merged_data: Optional authoritative handoff that bypasses acquisition.
-
-    Returns:
-        Borrowed merged data with aligned retained-site options.
-    """
-    if isinstance(data_args, RhimePreparationConfig):
-        return retrieve_or_reload_rhime_data_from_options(
-            data_args.site_options,
-            data_args.as_data_args(),
-            multisector=multisector,
-            merged_data=merged_data,
-        )
-    return _retrieve_or_reload_rhime_data(
-        data_args, multisector=multisector, merged_data=merged_data,
-    )
-
-
 def filter_rhime_observations(
     merged: RhimeMergedData,
-    data_args: RhimePreparationConfig | Mapping[str, Any],
+    data_args: Mapping[str, Any] | None = None,
+    *,
+    filters: Any = None,
 ) -> RhimeMergedData:
     """Filter borrowed observations and remove empty sites with aligned metadata.
 
@@ -102,14 +71,11 @@ def filter_rhime_observations(
     returns a new merged-data handoff when filtering changes data and never
     constructs basis functions or model inputs.
     """
-    if isinstance(data_args, RhimePreparationConfig):
-        filters = data_args.filters
-        if isinstance(filters, dict):
-            # The established filter adapter normalizes dictionary entries
-            # in place. Its working copy must not change the resolved request.
-            filters = dict(filters)
-    else:
+    if data_args is not None:
         filters = data_args["filters"]
+    if isinstance(filters, dict):
+        # The legacy filter implementation normalizes this working mapping.
+        filters = dict(filters)
 
     with timed(
         "rhime.prepare_inputs.obs_filtering",
@@ -121,7 +87,22 @@ def filter_rhime_observations(
 
 def build_rhime_basis(
     merged: RhimeMergedData,
-    data_args: RhimePreparationConfig | Mapping[str, Any],
+    data_args: Mapping[str, Any] | None = None,
+    *,
+    species: str | None = None,
+    domain: str | None = None,
+    start_date: str | None = None,
+    flux_sources: Sequence[str] | None = None,
+    output_name: str | None = None,
+    basis_algorithm: str = "weighted",
+    nbasis: int = 100,
+    fp_basis_case: str | None = None,
+    basis_directory: str | Path | None = None,
+    country_directory: str | Path | None = None,
+    outer_regions_path: str | Path | None = None,
+    fix_basis_outer_regions: bool = False,
+    basis_output_path: str | Path | None = None,
+    allow_empty_inner_region: bool = False,
 ) -> BasisFunctions:
     """Load or fit the retained RHIME basis for filtered observations.
 
@@ -129,21 +110,7 @@ def build_rhime_basis(
     basis algorithm.  It treats ``merged`` as borrowed and does not build
     sensitivities.
     """
-    if isinstance(data_args, RhimePreparationConfig):
-        basis_algorithm = data_args.basis_algorithm
-        nbasis = data_args.nbasis
-        fp_basis_case = data_args.fp_basis_case
-        basis_directory = data_args.basis_directory
-        country_directory = data_args.country_directory
-        outer_regions_path = data_args.outer_regions_path
-        species = data_args.species
-        domain = data_args.domain
-        start_date = data_args.start_date
-        fix_basis_outer_regions = data_args.fix_basis_outer_regions
-        flux_sources = list(data_args.flux_sources)
-        output_name = data_args.output_name
-        basis_output_path = data_args.basis_output_path
-    else:
+    if data_args is not None:
         basis_algorithm = data_args["basis_algorithm"]
         nbasis = data_args["nbasis"]
         fp_basis_case = data_args["fp_basis_case"]
@@ -157,10 +124,7 @@ def build_rhime_basis(
         flux_sources = data_args["flux_sources"]
         output_name = data_args["output_name"]
         basis_output_path = data_args["basis_output_path"]
-    allow_empty_inner_region = (
-        False if isinstance(data_args, RhimePreparationConfig)
-        else data_args.get("allow_empty_inner_region", False)
-    )
+        allow_empty_inner_region = data_args.get("allow_empty_inner_region", False)
 
     with timed(
         "rhime.prepare_inputs.basis_build",
@@ -190,8 +154,13 @@ def build_rhime_basis(
 def build_rhime_sensitivities(
     merged: RhimeMergedData,
     basis_functions: BasisFunctions,
-    data_args: RhimePreparationConfig | Mapping[str, Any],
+    data_args: Mapping[str, Any] | None = None,
     *,
+    domain: str | None = None,
+    flux_sources: Sequence[str] | None = None,
+    use_bc: bool = True,
+    bc_basis_case: str = "NESW",
+    bc_basis_directory: str | Path | None = None,
     multisector: bool,
 ) -> dict[str, xr.Dataset]:
     """Construct labelled flux and optional boundary-condition sensitivities.
@@ -200,13 +169,7 @@ def build_rhime_sensitivities(
     and may load boundary-condition basis data.  ``merged`` and
     ``basis_functions`` remain borrowed.
     """
-    if isinstance(data_args, RhimePreparationConfig):
-        domain = data_args.domain
-        flux_sources = list(data_args.flux_sources)
-        use_bc = data_args.use_bc
-        bc_basis_case = data_args.bc_basis_case
-        bc_basis_directory = data_args.bc_basis_directory
-    else:
+    if data_args is not None:
         domain = data_args["domain"]
         flux_sources = data_args["flux_sources"]
         use_bc = data_args["use_bc"]
@@ -232,7 +195,14 @@ def assemble_rhime_inputs(
     merged: RhimeMergedData,
     basis_functions: BasisFunctions,
     site_data: Mapping[str, xr.Dataset],
-    data_args: RhimePreparationConfig | Mapping[str, Any],
+    data_args: Mapping[str, Any] | None = None,
+    *,
+    domain: str | None = None,
+    start_date: str | None = None,
+    bc_freq: str | None = None,
+    min_error: inversion_preparation.MinErrorConfig = 0.0,
+    min_error_options: Mapping[str, Any] | None = None,
+    use_bc: bool = True,
 ) -> RhimePreparedInputs:
     """Construct and validate durable, backend-neutral RHIME model inputs.
 
@@ -244,27 +214,19 @@ def assemble_rhime_inputs(
     acquired data; moving them to their model components is a later semantic
     change. This stage does not cross the PyMC materialization boundary.
     """
-    if isinstance(data_args, RhimePreparationConfig):
-        domain = data_args.domain
-        start_date = data_args.start_date
-        bc_freq = data_args.bc_freq
-        min_error = data_args.min_error
-        use_bc = data_args.use_bc
-    else:
+    if data_args is not None:
         domain = data_args["domain"]
         start_date = data_args["start_date"]
         bc_freq = data_args["bc_freq"]
         min_error = data_args["min_error"]
         use_bc = data_args["use_bc"]
 
+        min_error_options = normalise_min_error_options(data_args["min_error_options"])
+
     owned_site_data = {site: dataset.copy(deep=False) for site, dataset in site_data.items()}
     inversion_preparation._set_domain_attrs(owned_site_data, merged.sites, domain)
     # These inverse-model settings are materialized into labelled arrays here
     # to preserve the existing numerical contract while preparation is split.
-    min_error_options = (
-        data_args.min_error_options if isinstance(data_args, RhimePreparationConfig)
-        else normalise_min_error_options(data_args["min_error_options"])
-    )
     with timed("rhime.prepare_inputs.make_inv_inputs", sites=len(merged.sites)):
         inv_inputs = inversion_preparation._make_inv_inputs(
             fp_data=owned_site_data,
@@ -273,7 +235,7 @@ def assemble_rhime_inputs(
             bc_freq=bc_freq,
             min_error=min_error,
             calculate_min_error=None,
-            min_error_per_site=min_error_options["by_site"],
+            min_error_per_site=False if min_error_options is None else min_error_options["by_site"],
         )
     inv_inputs = inversion_preparation._scale_satellite_bc_sensitivity_to_column_signal(
         inv_inputs,

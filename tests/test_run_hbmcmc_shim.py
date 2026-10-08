@@ -92,10 +92,10 @@ def test_fixedbasis_default_does_not_opt_into_aggregation_error(tmp_path: Path) 
 
     translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
     translated["mismatch_model"] = "pollution_event"
-    setup = run_hbmcmc.resolve_rhime_options(params=translated, multisector=False)
+    setup = run_hbmcmc.resolve_rhime_config(params=translated, multisector=False)
 
     assert "aggregation_error_mode" not in translated
-    assert setup.run_spec.model.aggregation_error_mode == "none"
+    assert setup.model.aggregation_error_mode == "none"
 
 
 def test_additive_sigma_selection_forces_no_aggregation_error(tmp_path: Path) -> None:
@@ -405,7 +405,7 @@ def test_run_hbmcmc_translated_params_enter_real_rhime(
     def stop_before_external_data(*args: Any, **kwargs: Any) -> None:
         raise ReachedRhimeDataBoundary
 
-    monkeypatch.setattr(rhime_standard, "retrieve_or_reload_rhime_data", stop_before_external_data)
+    monkeypatch.setattr(rhime_standard, "load_rhime_data", stop_before_external_data)
 
     with pytest.raises(ReachedRhimeDataBoundary):
         run_hbmcmc.main(

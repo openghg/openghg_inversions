@@ -249,35 +249,59 @@ Configuration parsing should:
 
 * translate legacy spellings and normalize values once at the runner boundary;
 * reject unknown and unused options;
-* preserve model-specific sections when names repeat across channels; and
+* let each file frontend interpret its own sections and value syntax; and
 * pass resolved values explicitly to the functions that own them.
 
 Standard and multisector requests use ``rhime.params.RhimeConfig`` as this
-boundary. Decode INI with ``load_rhime_config``, merge supported overrides,
-then call ``resolve_rhime_config``. Its explicit preparation record owns the
-requested ``inversion_data.acquisition._SiteOptions`` alongside the existing
-preparation choices. Construct that complete aligned record once; canonical
-acquisition consumes it and retained-site selection selects all applicable
-options together. Public shorthand adapters share this translation without
-requiring the full configured-run record for direct preparation or retrieval.
+boundary. ``read_rhime_ini`` owns INI parsing and interpretation, applies
+supported overrides, and returns complete resolved configuration. Python
+options enter ``resolve_rhime_config`` after overrides have won. Both routes
+share RHIME defaults, supported aliases and site-shorthand resolution; another
+frontend need not adopt INI headers or value syntax. Keep the current INI
+first-occurrence rule for repeated bare option names inside that reader.
+``params_from_config`` remains the dictionary-returning compatibility adapter.
 
-``RhimeConfig`` composes preparation, ``RhimeModelSpec``, ``RhimeOutputSpec``
-and the existing ``inference.sampling.RhimeSampler``. Constructing the sampler
-does not execute inference or bind scientific data. Keep the procedural
-runner's acquisition, preparation, model construction and sampling sequence
-visible. Shared species/domain, source, BC-use and artifact-naming choices
-come from one resolution boundary; their small explicit duplication across
-phase views does not justify a shared context hierarchy.
+``RhimeConfig`` owns acquisition and preparation fields directly, alongside
+one public ``inversion_data.SiteOptions`` and the existing ``RhimeModelSpec``,
+``RhimeOutputSpec`` and ``inference.sampling.RhimeSampler``. The model
+specification describes scientific choices, the output specification describes
+final products, and the sampler holds settings and executes only when given a
+completed model. Do not add a separate preparation configuration or duplicate
+sampler settings class. Constructing configuration does not acquire scientific
+data, bind a model or execute inference.
+
+``SiteOptions.from_inputs`` and its small helpers establish complete aligned
+selectors independently of file syntax. Direct construction accepts resolved
+aligned values. Canonical acquisition consumes those values without another
+shorthand pass; retained-site selection selects every applicable selector
+together and returns a new record. Public preparation and fresh-retrieval
+adapters share applicable translation without requiring the full configured
+request. ``retrieve_inversion_data`` is fresh acquisition, while
+``load_rhime_data`` owns supplied data, cache reload/fallback and fresh
+acquisition through one substantive loading boundary. The deprecated
+``data_processing_surface_notracer`` wrapper preserves its six-tuple contract;
+internal calls use the neutral names.
+
+Keep the procedural runner's acquisition, preparation, model construction and
+sampling sequence visible. Pass needed resolved values explicitly to each
+scientific stage, rather than forwarding configuration or an options mapping.
+Shared species/domain, source, BC-use and artifact-naming facts come from one
+resolution boundary; their small explicit duplication in independently usable
+model/output specifications does not justify a shared context hierarchy or
+repeated consistency checks.
 
 The requested configuration has no run specification. After preparation,
-derive ``RhimeRunSpec`` from retained sites/periods, requested date bounds and
-the resolved model/output choices. ``RhimeRunnerSetup`` and its requested-site
-run-spec projection remain compatibility adapters; they do not define the
-canonical configuration contract. The independent prepared-input APIs remain
-unchanged. Resolve known configuration defaults here, while conversions that
-require retained labels or numerical arrays remain with the scientific owner.
+derive ``RhimeRunSpec`` from retained sites/periods, requested date bounds,
+prepared layout and resolved model/output choices. It describes execution;
+``RhimeResult`` describes completed execution with prepared inputs, posterior
+and products. Internal setup bundles and their requested-site run projections
+are removed. Independent prepared-input APIs remain supported. Resolve known
+configuration defaults at the request boundary; conversions that require
+retained labels or numerical arrays remain with their scientific owner.
 Frozen records do not imply recursive immutability of existing mappings or
 samplers; preserve borrowed scientific arrays and caller-owned containers.
+Configuration serialization and INI writing are deferred to
+`Issue 814 <https://github.com/openghg/openghg_inversions/issues/814>`_.
 
 Effective ``use_tracer=True`` remains unsupported and is rejected before data
 access. Omitted/false requests produce no tracer configuration field. Do not

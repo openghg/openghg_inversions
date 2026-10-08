@@ -43,14 +43,13 @@ from openghg_inversions.inversion_data.acquisition import (
     SiteInletOption as SiteInletOption,
     SiteIntegerOption as SiteIntegerOption,
     SiteStringOption as SiteStringOption,
-    _SiteOptions,
+    SiteOptions,
     _drop_sites_missing_from_loaded_data as _drop_sites_missing_from_loaded_data,
     _normalise_site_booleans as _normalise_site_booleans,
     _normalise_site_inlets as _normalise_site_inlets,
     _normalise_site_integers as _normalise_site_integers,
     _normalise_site_strings as _normalise_site_strings,
-    _retrieve_or_reload_merged_data as _retrieve_or_reload_merged_data,
-    _retrieve_or_reload_merged_data_from_options,
+    load_rhime_data,
     _select_fp_all_sites as _select_fp_all_sites,
     _validate_loaded_sector_layout as _validate_loaded_sector_layout,
     _validate_loaded_time_resolved_selector as _validate_loaded_time_resolved_selector,
@@ -143,9 +142,9 @@ def _warn_for_nan_inputs(inv_inputs: xr.Dataset, *, use_bc: bool) -> None:
 def _apply_filters_and_drop_empty_sites(
     *,
     fp_data: dict,
-    site_options: _SiteOptions,
+    site_options: SiteOptions,
     filters: Any,
-) -> tuple[dict, _SiteOptions]:
+) -> tuple[dict, SiteOptions]:
     """Apply filters and keep site-aligned metadata in sync."""
     if filters is not None:
         try:
@@ -186,7 +185,7 @@ def _validate_multisector_sensitivity_sources(
     sensitivity: xr.DataArray,
     *,
     site: str,
-    flux_sources: list[str],
+    flux_sources: Sequence[str],
 ) -> xr.DataArray:
     """Validate and order one site's source-resolved sensitivity."""
     if "source" not in sensitivity.coords:
@@ -211,7 +210,7 @@ def _validate_multisector_sensitivity_sources(
             f"duplicate source(s): {duplicate_sources!r}."
         )
     if "source" in sensitivity.dims:
-        return sensitivity.sel(source=flux_sources)
+        return sensitivity.sel(source=list(flux_sources))
     return sensitivity
 
 
@@ -221,7 +220,7 @@ def _rhime_site_data_from_basis_functions(
     basis_functions: BasisFunctions,
     domain: str,
     split_by_sectors: bool,
-    flux_sources: list[str],
+    flux_sources: Sequence[str],
     use_bc: bool,
     bc_basis_case: str,
     bc_basis_directory: str | None,
@@ -327,7 +326,7 @@ def prepare_rhime_inputs(
     start_date: str,
     end_date: str,
     output_name: str,
-    flux_sources: list[str],
+    flux_sources: Sequence[str],
     split_by_sectors: bool = False,
     bc_store: str = "user",
     obs_store: str = "user",
@@ -432,7 +431,7 @@ def prepare_rhime_inputs(
     if use_tracer:
         raise ValueError("`use_tracer=True` is not supported; tracer inversions are not implemented.")
     min_error_options = normalise_min_error_options(min_error_options)
-    site_options = _SiteOptions.from_inputs(
+    site_options = SiteOptions.from_inputs(
         sites=sites,
         averaging_period=averaging_period,
         inlet=inlet,
@@ -444,33 +443,32 @@ def prepare_rhime_inputs(
         max_level=max_level,
         time_resolved=time_resolved,
     )
-    with timed("rhime.prepare_inputs.merged_data", sites=len(sites), split_by_sectors=split_by_sectors):
-        merged = _retrieve_or_reload_merged_data_from_options(
-            site_options=site_options,
-            species=species,
-            domain=domain,
-            start_date=start_date,
-            end_date=end_date,
-            output_name=output_name,
-            flux_sources=flux_sources,
-            split_by_sectors=split_by_sectors,
-            bc_store=bc_store,
-            obs_store=obs_store,
-            footprint_store=footprint_store,
-            emissions_store=emissions_store,
-            emissions_domain=emissions_domain,
-            fp_model=fp_model,
-            fp_species=fp_species,
-            calibration_scale=calibration_scale,
-            use_bc=use_bc,
-            bc_input=bc_input,
-            averaging_error=averaging_error,
-            reload_merged_data=reload_merged_data,
-            save_merged_data=save_merged_data,
-            merged_data_dir=merged_data_dir,
-            merged_data_name=merged_data_name,
-            flux_non_finite_check=flux_non_finite_check,
-        )
+    merged = load_rhime_data(
+        site_options=site_options,
+        species=species,
+        domain=domain,
+        start_date=start_date,
+        end_date=end_date,
+        output_name=output_name,
+        flux_sources=flux_sources,
+        split_by_sectors=split_by_sectors,
+        bc_store=bc_store,
+        obs_store=obs_store,
+        footprint_store=footprint_store,
+        emissions_store=emissions_store,
+        emissions_domain=emissions_domain,
+        fp_model=fp_model,
+        fp_species=fp_species,
+        calibration_scale=calibration_scale,
+        use_bc=use_bc,
+        bc_input=bc_input,
+        averaging_error=averaging_error,
+        reload_merged_data=reload_merged_data,
+        save_merged_data=save_merged_data,
+        merged_data_dir=merged_data_dir,
+        merged_data_name=merged_data_name,
+        flux_non_finite_check=flux_non_finite_check,
+    )
 
     with timed("rhime.prepare_inputs.obs_filtering", sites=len(merged.sites), filters=filters is not None):
         filtered_merged = _filter_merged_inversion_data(merged=merged, filters=filters)

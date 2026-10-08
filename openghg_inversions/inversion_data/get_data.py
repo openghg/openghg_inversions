@@ -1,6 +1,6 @@
 """Retrieve and merge observations, footprints, fluxes, and boundary data.
 
-``data_processing_surface_notracer`` expands scalar site options, keeps their
+``retrieve_inversion_data`` expands scalar site options, keeps their
 positions aligned during retrieval failures, assembles per-site model
 scenarios, and can save the resulting merged-data artifact. Retrieval and
 optional saving have external object-store and filesystem side effects; loading
@@ -40,7 +40,7 @@ from openghg_inversions.inversion_data.scenario import merged_scenario_data
 from openghg_inversions.inversion_data.serialise import _save_merged_data
 
 if TYPE_CHECKING:
-    from openghg_inversions.inversion_data.acquisition import _SiteOptions
+    from openghg_inversions.inversion_data.acquisition import SiteOptions
 
 logger = logging.getLogger(__name__)
 
@@ -189,7 +189,7 @@ def convert_to_list(
     return list(expand_site_option(x, nsites=length, name=name or "value"))
 
 
-def data_processing_surface_notracer(
+def retrieve_inversion_data(
     species: str,
     sites: Sequence[str] | str,
     domain: str,
@@ -306,10 +306,10 @@ def data_processing_surface_notracer(
         warnings, and may save a merged-data artifact. The first retained
         scenario defines the unit target requested for later sites.
     """
-    from openghg_inversions.inversion_data.acquisition import _SiteOptions
+    from openghg_inversions.inversion_data.acquisition import SiteOptions
 
     site_values = [sites] if isinstance(sites, str) else sites
-    site_options = _SiteOptions.from_inputs(
+    site_options = SiteOptions.from_inputs(
         sites=site_values,
         averaging_period=averaging_period,
         inlet=inlet,
@@ -321,7 +321,7 @@ def data_processing_surface_notracer(
         max_level=max_level,
         time_resolved=time_resolved,
     )
-    return _data_processing_surface_notracer_from_options(
+    return _retrieve_inversion_data_from_options(
         site_options=site_options,
         species=species,
         domain=domain,
@@ -348,9 +348,90 @@ def data_processing_surface_notracer(
     )
 
 
-def _data_processing_surface_notracer_from_options(
+def data_processing_surface_notracer(
+    species: str,
+    sites: Sequence[str] | str,
+    domain: str,
+    averaging_period: list[str | None] | str | None,
+    start_date: str,
+    end_date: str,
+    obs_data_level: list[str | None] | str | None = None,
+    platform: list[str | None] | str | None = None,
+    inlet: Sequence[str | slice | None] | str | None = None,
+    instrument: list[str | None] | str | None = None,
+    max_level: Sequence[int | None] | int | None = None,
+    calibration_scale: str | None = None,
+    met_model: list[str | None] | str | None = None,
+    fp_model: str | None = None,
+    fp_height: list[str | None | Literal["auto"]] | Literal["auto"] | str | None = None,
+    fp_species: str | None = None,
+    time_resolved: Sequence[bool | None] | bool | None = None,
+    emissions_name: list | None = None,
+    use_bc: bool = True,
+    bc_input: str | None = None,
+    bc_store: str | None = None,
+    obs_store: str | list[str] | None = None,
+    footprint_store: str | list[str] | None = None,
+    emissions_store: str | None = None,
+    emissions_domain: str | None = None,
+    split_by_sectors: bool = False,
+    averagingerror: bool = True,
+    save_merged_data: bool = False,
+    merged_data_name: str | None = None,
+    merged_data_dir: str | None = None,
+    output_name: str | None = None,
+    flux_non_finite_check: FluxNonFiniteCheck = "lazy",
+) -> tuple[dict, list, list, list, list, list]:
+    """Deprecated alias for :func:`retrieve_inversion_data`.
+
+    The established arguments, site shorthand and six-tuple result are
+    preserved. Reads stores and optionally saves merged data through the same
+    acquisition implementation as the neutral public name.
+    """
+    warnings.warn(
+        "data_processing_surface_notracer is deprecated; use retrieve_inversion_data instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return retrieve_inversion_data(
+        species=species,
+        sites=sites,
+        domain=domain,
+        averaging_period=averaging_period,
+        start_date=start_date,
+        end_date=end_date,
+        obs_data_level=obs_data_level,
+        platform=platform,
+        inlet=inlet,
+        instrument=instrument,
+        max_level=max_level,
+        calibration_scale=calibration_scale,
+        met_model=met_model,
+        fp_model=fp_model,
+        fp_height=fp_height,
+        fp_species=fp_species,
+        time_resolved=time_resolved,
+        emissions_name=emissions_name,
+        use_bc=use_bc,
+        bc_input=bc_input,
+        bc_store=bc_store,
+        obs_store=obs_store,
+        footprint_store=footprint_store,
+        emissions_store=emissions_store,
+        emissions_domain=emissions_domain,
+        split_by_sectors=split_by_sectors,
+        averagingerror=averagingerror,
+        save_merged_data=save_merged_data,
+        merged_data_name=merged_data_name,
+        merged_data_dir=merged_data_dir,
+        output_name=output_name,
+        flux_non_finite_check=flux_non_finite_check,
+    )
+
+
+def _retrieve_inversion_data_from_options(
     *,
-    site_options: _SiteOptions,
+    site_options: SiteOptions,
     species: str,
     domain: str,
     start_date: str,
@@ -358,7 +439,7 @@ def _data_processing_surface_notracer_from_options(
     calibration_scale: str | None = None,
     fp_model: str | None = None,
     fp_species: str | None = None,
-    emissions_name: list | None = None,
+    emissions_name: Sequence[str] | None = None,
     use_bc: bool = True,
     bc_input: str | None = None,
     bc_store: str | None = None,
