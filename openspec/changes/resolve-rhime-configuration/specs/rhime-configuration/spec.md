@@ -20,7 +20,7 @@ preparation. It SHALL expose named preparation, model, output and sampling
 choices with established configuration-only defaults and aliases resolved. It
 SHALL contain no raw site shorthand, acquired/prepared scientific handoff or
 retained-run description. File-specific parsing and interpretation SHALL belong
-to the corresponding frontend, which MAY invoke shared semantic resolution.
+to the corresponding frontend; runners SHALL resolve the effective recipe request.
 Equivalent file-derived and Python requests with equivalent winning overrides
 SHALL yield equivalent resolved choices. INI SHALL remain the current file
 frontend without requiring another format or imposing its document structure
@@ -42,13 +42,13 @@ those choices.
 
 #### Scenario: Construct and execute one resolved request
 
-- **WHEN** a caller uses `RhimeConfig.from_params` or `read_rhime_ini`
+- **WHEN** a caller uses `RhimeConfig.from_params` after decoding and editing any file options
 - **THEN** a standard or multisector runner can consume the returned `config`
   without resolving its options again
 - **AND** supplying that configuration together with a file or raw overrides
   is rejected before acquisition
 - **AND** `resolve_rhime_config` remains a compatibility wrapper around the
-  class-owned construction path
+  class-owned construction path, translating supported historical aliases before it
 
 #### Scenario: Equivalent file and Python inputs
 
@@ -270,7 +270,7 @@ handoff SHALL retain its authoritative options and no-acquisition behavior.
 
 ### Requirement: Compatible public adapters and scientific choices
 
-Except for the former stage adapter removal specified below, supported
+Except for the former stage adapter removal and the revised INI reader contract specified below, supported
 scientific Python and CLI entry points SHALL retain their signatures, shorthand,
 override behavior and return contracts through adapters to the same semantic
 resolution or shared applicable site translation. Direct preparation/retrieval
@@ -364,47 +364,56 @@ SHALL NOT route through the deprecated wrapper.
 - **AND** the call returns the same six-tuple and scientific data as the neutral
   entry point for equivalent inputs
 
-### Requirement: Format-specific reader returns resolved configuration
+### Requirement: INI decoding is independent of semantic construction
 
-`read_rhime_ini` SHALL accept an INI path, optional supported overrides and the
-standard/multisector recipe mode, and SHALL return complete `RhimeConfig`.
-It SHALL own INI parsing, section interpretation and value decoding, apply
-overrides before shared semantic resolution, and finish configuration-only
-defaults and shorthand before returning. It SHALL NOT perform scientific work.
-A flat raw mapping MAY remain an internal intermediate in that reader, but
-SHALL NOT be its public result or a required raw-document schema for other
-frontends. Shared semantic and site-alignment helpers SHALL be independent of
-INI section layout and value syntax; no new file format is required by this change.
+`read_rhime_ini(path)` SHALL return a dictionary of decoded file options. It
+SHALL own INI syntax, section flattening and value decoding, and preserve the
+existing first-occurrence rule for repeated bare keys. It SHALL NOT require
+complete run settings, select a model type, accept overrides, translate legacy
+names or resolve defaults/site shorthand. No new file format or section schema
+is introduced by this change.
 
-`params_from_config` SHALL retain its established dictionary return,
-normalization controls and override behavior through shared internal INI
-decoding, without projecting resolved configuration back into a raw dictionary.
+Standard, multisector, nested and custom runners SHALL combine decoded options
+with winning overrides, extract their own recipe choices, and construct canonical
+configuration once. Shorthand SHALL remain editable until that construction.
+Shared semantic/site-alignment helpers SHALL remain independent of file syntax.
 
-#### Scenario: Read a resolved INI configuration
+Historical fixedbasis translation and deprecated aliases SHALL be owned by a
+lightweight HBMCMC compatibility module. Existing raw runner entry points SHALL
+retain supported aliases with warnings before calling canonical construction;
+`RhimeConfig.from_params` SHALL accept canonical names without invoking legacy
+translation. Modern coercion and validation SHALL remain with the modern owners.
+The explicit `resolve_rhime_config` wrapper SHALL retain alias compatibility.
+The deprecated `params_from_config` adapter SHALL preserve its dictionary,
+normalization and override behavior using the same decoder. It SHALL NOT be
+needed by modern scientific runners.
 
-- **WHEN** a caller invokes `read_rhime_ini` with a valid file, supported
-  overrides and the selected recipe mode
-- **THEN** it returns complete `RhimeConfig` with winning values, defaults,
-  aliases and site shorthand resolved
-- **AND** the caller can inspect and use it without another resolution pass
-  or data acquisition
+#### Scenario: Read recipe-specific or incomplete options
 
-#### Scenario: Preserve INI interpretation without prescribing other formats
+- **WHEN** a caller reads an INI file with incomplete ordinary settings or
+  project-specific choices
+- **THEN** the reader returns decoded values without trying to construct a run
+- **AND** the recipe can remove its own options and apply overrides before
+  validating the remaining canonical request
 
-- **WHEN** a current RHIME INI file places supported options under different
-  section headers or repeats a key across sections
-- **THEN** the INI frontend preserves its existing section flattening and
-  first-occurrence behavior before applying overrides and resolving options
-- **AND** shared semantic and site-alignment helpers do not interpret headers
-  or impose those INI conventions on their callers
+#### Scenario: Override shorthand after reading
+
+- **WHEN** a caller reads site shorthand and changes the requested sites or periods
+- **THEN** semantic construction expands only the winning values
+- **AND** the reader performs no premature expansion or date-dependent resolution
+
+#### Scenario: Legacy translation stays outside canonical construction
+
+- **WHEN** an existing runner receives a supported deprecated option spelling
+- **THEN** its compatibility boundary warns and supplies the canonical option
+- **AND** a direct canonical factory call with that deprecated spelling rejects it
+- **AND** HBMCMC-specific historical behavior remains in the HBMCMC translator
 
 #### Scenario: Dictionary compatibility adapter
 
-- **WHEN** a caller uses `params_from_config` with its supported overrides and
-  normalization controls
-- **THEN** it retains the established dictionary contract
-- **AND** the resolved INI reader's `RhimeConfig` return does not require a
-  dictionary projection or change that compatibility behavior
+- **WHEN** a caller uses `params_from_config` with supported overrides and normalization controls
+- **THEN** the deprecated adapter retains its established dictionary contract
+- **AND** modern runners can instead read, combine and resolve without using it
 
 ### Requirement: Configuration is not a historical identity schema
 

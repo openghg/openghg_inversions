@@ -20,7 +20,9 @@ from time import perf_counter
 from typing import Any
 
 from openghg_inversions.inversion_data import load_rhime_data
+from openghg_inversions.hbmcmc.compatibility import translate_rhime_aliases
 from openghg_inversions.rhime import (
+    RhimeConfig,
     RhimeResult,
     assemble_rhime_inputs,
     build_rhime_basis,
@@ -31,7 +33,6 @@ from openghg_inversions.rhime import (
     make_standard_rhime_outputs,
     materialize_pymc_inputs,
     read_rhime_ini,
-    resolve_rhime_config,
     sample_rhime_model,
     standard_model_input_names,
 )
@@ -65,12 +66,10 @@ def run_custom_rhime(
         prepared inputs, runs sampling, and writes outputs requested by the
         resolved RHIME options.
     """
-    overrides = {**kwargs, "mismatch_model": None}
-    config = (
-        read_rhime_ini(config_file, overrides=overrides, multisector=False)
-        if config_file is not None
-        else resolve_rhime_config(params=overrides, multisector=False)
-    )
+    params = read_rhime_ini(config_file) if config_file is not None else {}
+    params.update(kwargs)
+    params["mismatch_model"] = None
+    config = RhimeConfig.from_params(translate_rhime_aliases(params), multisector=False)
 
     merged = load_rhime_data(
         **config.select(

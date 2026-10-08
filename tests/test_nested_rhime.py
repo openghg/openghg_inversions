@@ -521,6 +521,9 @@ def test_nested_preparation_uses_native_inner_domain_and_safe_basis_default(monk
     assert inner_args["emissions_domain"] == "EUROPE"
     assert inner_args["use_bc"] is False
     assert preparation_configs[1].basis_algorithm == "quadtree"
+    assert preparation_configs[1].model.domain == preparation_configs[1].domain == "EUROPE-6km"
+    assert preparation_configs[1].model.use_bc is preparation_configs[1].use_bc is False
+    assert preparation_configs[1].output.output_name == preparation_configs[1].output_name == "nested-test_inner"
     assert preparation_configs[1].nbasis == 40
     assert preparation_configs[1].fp_basis_case is None
     assert preparation_configs[1].basis_output_path is None
@@ -621,13 +624,13 @@ def test_nested_preparation_routes_automatic_basis_budget(monkeypatch) -> None:
 
 def test_legacy_outer_region_definition_name_normalizes_to_modern_path() -> None:
     with pytest.warns(UserWarning, match="outer_region_definition_file.*deprecated"):
-        normalized = rhime_params.normalise_rhime_params({"outer_region_definition_file": "/data/EUHROB.nc"})
+        normalized = nested_module.translate_rhime_aliases({"outer_region_definition_file": "/data/EUHROB.nc"})
 
     assert normalized == {"outer_regions_path": "/data/EUHROB.nc"}
 
 
 def test_outer_regions_path_routes_through_modern_rhime_setup() -> None:
-    setup = nested_module.resolve_rhime_config(
+    setup = rhime_params.RhimeConfig.from_params(
         params={
             "species": "ch4",
             "sites": ["TAC"],

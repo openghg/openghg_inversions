@@ -86,22 +86,14 @@ def test_custom_basis_runner_replaces_only_basis_stage(
     expected_result = object()
     calls: list[str] = []
 
-    def parse_config(
-        actual_config: str | Path,
-        *,
-        extra_kwargs: dict[str, Any],
-        normalise: bool,
-    ) -> dict[str, Any]:
-        """Record configuration parsing at the workflow boundary."""
+    def parse_config(actual_config: str | Path) -> dict[str, Any]:
+        """Record configuration decoding at the workflow boundary."""
         assert actual_config == config_file
-        assert extra_kwargs == overrides
-        assert normalise is False
         return parsed_params
 
-    def resolve(*, params: dict[str, Any], multisector: bool) -> Any:
-        """Record public option resolution."""
-        assert params is parsed_params
-        assert "max_child_pca_eccentricity" not in params
+    def resolve(cls, params: dict[str, Any], *, multisector: bool) -> Any:
+        """Record recipe resolution after project options have been consumed."""
+        assert params == {"from_config": True, **overrides}
         assert multisector is False
         calls.append("resolve")
         return config
@@ -199,8 +191,8 @@ def test_custom_basis_runner_replaces_only_basis_stage(
         assert kwargs == {"result": expected_result, "prepared": prepared}
         calls.append("outputs")
 
-    monkeypatch.setattr(custom_basis_runner, "params_from_config", parse_config)
-    monkeypatch.setattr(custom_basis_runner, "resolve_rhime_config", resolve)
+    monkeypatch.setattr(custom_basis_runner, "read_rhime_ini", parse_config)
+    monkeypatch.setattr(custom_basis_runner.RhimeConfig, "from_params", classmethod(resolve))
     monkeypatch.setattr(custom_basis_runner, "load_rhime_data", retrieve)
     monkeypatch.setattr(custom_basis_runner, "filter_rhime_observations", filter_observations)
     monkeypatch.setattr(custom_basis_runner, "build_project_basis", build_project_basis)
@@ -418,9 +410,9 @@ def test_incompatible_project_basis_failure_remains_owned_by_sensitivity_stage(
     incompatible_basis = object()
 
     monkeypatch.setattr(
-        custom_basis_runner,
-        "resolve_rhime_config",
-        lambda *, params, multisector: config,
+        custom_basis_runner.RhimeConfig,
+        "from_params",
+        classmethod(lambda cls, params, *, multisector: config),
     )
     monkeypatch.setattr(
         custom_basis_runner,
@@ -454,3 +446,46 @@ def test_incompatible_project_basis_failure_remains_owned_by_sensitivity_stage(
         match="build_rhime_sensitivities requires compatible BasisFunctions",
     ):
         custom_basis_runner.run_custom_rhime(species="ch4")
+
+
+@pytest.mark.parametrize("from_file", [False, True])
+@pytest.mark.parametrize("algorithm", [None, "project-only"])
+def test_custom_basis_runner_resolves_before_loading_project_artifact(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, from_file: bool, algorithm: str | None,
+) -> None:
+    """A project artifact bypasses unused built-in basis validation and fitting."""
+    stored = _basis_functions(artifact_source="external-project")
+    artifact_path = tmp_path / "project-basis.nc"
+    stored.save(artifact_path)
+    params = dict(
+        species="ch4", sites=["TAC"], domain="EUROPE", averaging_period="1h",
+        start_date="2019-01-01", end_date="2019-02-01", output_name="artifact",
+        output_format="none", flux_sources=["inventory"],
+        project_basis_path=str(artifact_path), basis_algorithm=algorithm, fp_basis_case="unused-builtin",
+        max_child_pca_eccentricity=7.0,
+    )
+    merged = SimpleNamespace(fp_all={".flux": {"inventory": stored.flux}, ".split_by_sectors": False})
+    monkeypatch.setattr(custom_basis_runner, "load_rhime_data", lambda **kwargs: merged)
+    monkeypatch.setattr(custom_basis_runner, "filter_rhime_observations", lambda value, **kwargs: value)
+    monkeypatch.setattr(
+        custom_basis_runner, "_guarded_basis", lambda *args, **kwargs: pytest.fail("unexpected fitting"),
+    )
+
+    class ReachedSensitivities(Exception):
+        pass
+
+    def check_loaded(actual, basis, **kwargs):
+        assert actual is merged
+        xr.testing.assert_identical(basis.operator.basis_matrix, stored.operator.basis_matrix)
+        assert basis.basis_artifact_source == "external-project"
+        raise ReachedSensitivities
+
+    monkeypatch.setattr(custom_basis_runner, "build_rhime_sensitivities", check_loaded)
+    if from_file:
+        config_file = tmp_path / "project.ini"
+        config_file.write_text("[PROJECT]\n" + "\n".join(f"{k} = {v!r}" for k, v in params.items()))
+        request = {"config_file": config_file}
+    else:
+        request = params
+    with pytest.raises(ReachedSensitivities):
+        custom_basis_runner.run_custom_rhime(**request)

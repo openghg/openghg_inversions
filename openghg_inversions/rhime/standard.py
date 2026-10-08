@@ -49,8 +49,9 @@ from openghg_inversions.inversion_data import load_rhime_data
 
 from .materialization import materialize_pymc_inputs
 from .outputs import RhimeResult, annotate_likelihood_trace, make_standard_rhime_outputs
-from .ini import params_from_config, read_rhime_ini
-from .params import RhimeConfig, resolve_rhime_config
+from openghg_inversions.hbmcmc.compatibility import translate_rhime_aliases
+from .ini import read_rhime_ini
+from .params import RhimeConfig
 from .preparation import (
     assemble_rhime_inputs,
     build_rhime_basis,
@@ -471,8 +472,8 @@ def run_rhime(
     Args:
         config_file: Optional INI configuration file. Values in ``kwargs``
             override values read from this file.
-        config: Complete request from ``RhimeConfig.from_params`` or
-            ``read_rhime_ini``. It is used without resolving again and cannot
+        config: Complete request from ``RhimeConfig.from_params``.
+            It is used without resolving again and cannot
             be combined with ``config_file`` or raw run parameters in ``kwargs``.
         merged_data: Optional externally supplied merged scientific data.
             Passing this borrowed handoff bypasses OpenGHG acquisition and
@@ -525,17 +526,11 @@ def run_rhime(
         if likelihood_builder is not None and config.model.likelihood is not None:
             raise ValueError("A custom likelihood cannot be combined with a built-in mismatch model.")
     else:
-        if config_file is not None and likelihood_builder is None:
-            config = read_rhime_ini(config_file, overrides=kwargs, multisector=False)
-        else:
-            params = (
-                params_from_config(config_file, extra_kwargs=kwargs, normalise=False)
-                if config_file is not None
-                else dict(kwargs)
-            )
-            if likelihood_builder is not None and params.get("mismatch_model") is not None:
-                raise ValueError("A custom likelihood cannot be combined with a built-in mismatch model.")
-            config = resolve_rhime_config(params=params, multisector=False)
+        params = read_rhime_ini(config_file) if config_file is not None else {}
+        params.update(kwargs)
+        if likelihood_builder is not None and params.get("mismatch_model") is not None:
+            raise ValueError("A custom likelihood cannot be combined with a built-in mismatch model.")
+        config = RhimeConfig.from_params(translate_rhime_aliases(params), multisector=False)
     log_timing("rhime.runner_setup", timer_seconds(setup_start), multisector=False)
     if likelihood_builder is None and config.model.likelihood is None:
         raise ValueError("A standard RHIME run requires a built-in or custom likelihood.")

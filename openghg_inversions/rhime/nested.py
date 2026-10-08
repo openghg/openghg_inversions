@@ -46,8 +46,9 @@ from .builders import (
 )
 from .materialization import materialize_pymc_inputs
 from .outputs import RhimeResult, _make_inversion_output
-from .ini import params_from_config
-from .params import RhimeConfig, resolve_rhime_config
+from openghg_inversions.hbmcmc.compatibility import translate_rhime_aliases
+from .ini import read_rhime_ini
+from .params import RhimeConfig
 from .preparation import (
     assemble_rhime_inputs,
     build_rhime_basis,
@@ -905,6 +906,8 @@ def prepare_nested_rhime_inputs(
     inner_config = replace(
         config,
         domain=inner_domain_name,
+        model=replace(config.model, domain=inner_domain_name, use_bc=False),
+        output=replace(config.output, output_name=f"{config.output_name}_inner"),
         footprint_store=inner_footprint_store or config.footprint_store,
         emissions_store=inner_emissions_store or config.emissions_store,
         emissions_domain=inner_emissions_domain,
@@ -1431,11 +1434,8 @@ def run_rhime_nested(
         )
     if likelihood_kwargs and likelihood_builder is None:
         raise ValueError("Non-empty `likelihood_kwargs` require an active `likelihood_builder`.")
-    params = (
-        params_from_config(config_file, extra_kwargs=kwargs, normalise=False)
-        if config_file is not None
-        else dict(kwargs)
-    )
+    params = read_rhime_ini(config_file) if config_file is not None else {}
+    params.update(kwargs)
     nested_options = {name: params.pop(name) for name in tuple(params) if name in _NESTED_PARAMETER_NAMES}
     inner_domain = nested_options.pop("inner_domain", None)
     if inner_domain is None:
@@ -1447,7 +1447,7 @@ def run_rhime_nested(
 
     if likelihood_builder is not None and params.get("mismatch_model") is not None:
         raise ValueError("A custom likelihood cannot be combined with a built-in mismatch model.")
-    config = resolve_rhime_config(params=params, multisector=False)
+    config = RhimeConfig.from_params(translate_rhime_aliases(params), multisector=False)
     if likelihood_builder is None and config.model.likelihood is None:
         raise ValueError("A nested RHIME run requires a built-in or custom likelihood.")
     if config.output.output_format not in ("none", "paris"):

@@ -64,7 +64,11 @@ def test_fixedbasis_params_to_rhime_translates_legacy_names(tmp_path: Path) -> N
     _fixedbasis_config(config_file)
     params = run_hbmcmc.hbmcmc_extract_param(str(config_file), print_param=False)
 
-    translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
+    with pytest.warns(UserWarning) as caught:
+        translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
+
+    for alias in ("nit", "nchain", "verbose", "sampler_kwargs"):
+        assert any(alias in str(item.message) for item in caught)
 
     assert translated["output_path"] == "out"
     assert translated["output_name"] == "legacy_run"
@@ -336,6 +340,11 @@ def test_run_hbmcmc_main_routes_to_run_rhime(monkeypatch: pytest.MonkeyPatch, tm
         seen["run_rhime_kwargs"] = kwargs
 
     monkeypatch.setattr(run_hbmcmc, "run_rhime", fake_run_rhime)
+
+    def fail_compatibility_resolution(*args, **kwargs):
+        raise AssertionError("Fixedbasis translation must be followed by canonical construction.")
+
+    monkeypatch.setattr(run_hbmcmc, "resolve_rhime_config", fail_compatibility_resolution)
 
     with pytest.warns(UserWarning, match="--all-chains"):
         run_hbmcmc.main(

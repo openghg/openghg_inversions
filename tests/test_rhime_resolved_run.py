@@ -43,7 +43,6 @@ def test_resolved_request_reaches_acquisition_without_resolution(monkeypatch, mu
         assert kwargs["save_merged_data"] is save
         raise ReachedAcquisition
 
-    monkeypatch.setattr(recipe, "resolve_rhime_config", unexpected_resolution)
     monkeypatch.setattr(RhimeConfig, "from_params", unexpected_resolution)
     monkeypatch.setattr(recipe, "load_rhime_data", acquire)
     with pytest.raises(ReachedAcquisition):
@@ -70,3 +69,45 @@ def test_resolved_request_checks_recipe_and_likelihood_before_acquisition(monkey
         runner(config=_config(not multisector_mode))
     with pytest.raises(ValueError, match="custom likelihood cannot be combined"):
         runner(config=_config(multisector_mode), likelihood_builder=lambda **kwargs: None)
+
+
+@pytest.mark.parametrize("multisector_mode", [False, True])
+def test_ini_runner_merges_and_translates_before_one_resolution(monkeypatch, tmp_path, multisector_mode):
+    """Raw file aliases and site overrides reach one semantic construction."""
+    recipe = multisector if multisector_mode else standard
+    runner = recipe.run_rhime_multisector if multisector_mode else recipe.run_rhime
+    sources = ["inventory", "ocean"] if multisector_mode else ["inventory"]
+    path = tmp_path / "request.ini"
+    path.write_text(
+        "[RHIME]\n" + "\n".join(f"{key} = {value!r}" for key, value in {
+            "species": "ch4", "domain": "EUROPE", "sites": ["TAC"],
+            "averaging_period": "1h", "start_date": "2019-01-01", "end_date": "2019-02-01",
+            "outputname": "file-name", "output_format": "none", "emissions_name": sources,
+            "mismatch_model": "fixed_error",
+        }.items()),
+        encoding="utf-8",
+    )
+    original_factory = RhimeConfig.from_params
+    configs = []
+
+    def resolve(cls, params, *, multisector):
+        assert "outputname" not in params
+        assert "emissions_name" not in params
+        resolved = original_factory(params, multisector=multisector)
+        configs.append(resolved)
+        return resolved
+
+    class ReachedAcquisition(Exception):
+        pass
+
+    def acquire(**kwargs):
+        assert len(configs) == 1
+        assert kwargs["site_options"].sites == ("TAC", "MHD")
+        assert kwargs["site_options"].averaging_period == ("1h", "1h")
+        assert kwargs["output_name"] == "winning-name"
+        raise ReachedAcquisition
+
+    monkeypatch.setattr(RhimeConfig, "from_params", classmethod(resolve))
+    monkeypatch.setattr(recipe, "load_rhime_data", acquire)
+    with pytest.warns(UserWarning, match="deprecated"), pytest.raises(ReachedAcquisition):
+        runner(config_file=path, sites=["TAC", "MHD"], output_name="winning-name")

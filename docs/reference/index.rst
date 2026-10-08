@@ -37,9 +37,10 @@ runner.
 Resolve a requested RHIME configuration
 --------------------------------------
 
-Inspect standard/multisector choices before data access. Read complete resolved
-configuration from an INI with supported overrides, or construct it from Python
-options with ``RhimeConfig.from_params``. Pass the result to the corresponding
+Inspect standard/multisector choices before data access. Decode an INI with
+``read_rhime_ini``, or start with Python options. Apply overrides and extract
+recipe-specific options, then construct canonical ``RhimeConfig.from_params``.
+Pass the result to the corresponding
 runner's ``config`` argument to reuse the resolved choices. The
 :doc:`configuration guide </usage/rhime>` explains requested site selectors,
 retained execution metadata and compatibility helpers.

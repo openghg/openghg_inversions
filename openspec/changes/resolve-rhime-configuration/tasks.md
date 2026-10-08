@@ -19,7 +19,7 @@ cleanup and its validation are tracked separately below.
 
 ## 3. Scientific boundaries and names
 
-- [x] 3.1 Replace load_rhime_config with read_rhime_ini(path, *, overrides=None, multisector=False) returning complete RhimeConfig; retain INI interpretation inside the frontend and apply overrides before shared semantic/site resolution; preserve params_from_config dictionary/normalization behavior through shared internal decoding; migrate configured consumers to use the result without resolving twice and verify reader results, override precedence and existing INI section behavior.
+- [x] 3.1 Replace load_rhime_config with read_rhime_ini(path) returning decoded options; retain INI interpretation inside the frontend, then apply overrides and extract recipe-specific options in runners before canonical semantic/site resolution. Preserve params_from_config dictionary/normalization behavior in the HBMCMC compatibility module; verify reader results, override precedence and existing INI section behavior. This contract supersedes the initially implemented resolved-reader contract; validation for this revision is recorded below.
 - [x] 3.2 Collapse retrieval/reload forwarding layers into load_rhime_data; verify supplied-data no-I/O behavior, cache loading/fallback, layout/selector checks and retained alignment across ordinary/nested/staged consumers.
 - [x] 3.3 Forward needed resolved values explicitly to named stages, retain aligned selectors by label and derive run descriptions after preparation; verify retrieval/reload/filter/drop/supplied-data authority, tracer rejection and requested-versus-retained metadata without request mutation.
 - [x] 3.4 Rename fresh acquisition to retrieve_inversion_data, sharing the resolved-selector body; preserve data_processing_surface_notracer as a deprecated same-signature/six-tuple wrapper; verify warning, forwarding, imports and equivalent surface/column results without repeated expansion.
@@ -142,3 +142,24 @@ Generated reference files match the tracked files. Inspection covered rendered
 HTML structure and text, not browser screenshots. Changed-path Ruff, strict
 OpenSpec and whitespace checks passed. This final validation record changes no
 implementation or examples.
+
+### Review follow-up: decoding and compatibility boundaries
+
+- [x] Make `read_rhime_ini` a dictionary decoder; apply runner overrides and
+  extract recipe-specific choices before calling `RhimeConfig.from_params` once.
+- [x] Move historical aliases, fixedbasis translation and the deprecated
+  `params_from_config` adapter to `hbmcmc.compatibility`; preserve supported
+  entrypoint warnings and keep canonical construction independent of aliases.
+- [x] Consume the custom-basis recipe's unused built-in basis options before
+  resolution and verify saved project artifacts through the real resolver.
+- [x] Keep nested direct fields and composed model/output settings coherent.
+- [x] Preserve borrowed flux/BC Dataset attrs at serialization by attaching
+  metadata to shallow copies; cover real NetCDF and Zarr saving.
+- [x] Reconcile public docstrings, usage/development guidance, release notes and
+  the active spec around these responsibilities.
+- [ ] Validate the combined change on supported Python versions and inspect
+  affected rendered documentation; SSH-push and update PR #813.
+
+Scientific default policy, INI template redesign and model selection are deferred.
+Existing defaults and automatic-saving policy remain unchanged. Shorthand is
+expanded after overrides and recipe-specific option extraction.

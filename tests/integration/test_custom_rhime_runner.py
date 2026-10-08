@@ -82,14 +82,15 @@ def test_custom_runner_uses_supported_stages_for_acquisition_and_reload(
     expected_result = object()
     calls: list[str] = []
 
-    def parse_config(actual_config: str | Path, *, overrides: dict[str, Any], multisector: bool) -> Any:
+    def parse_config(actual_config: str | Path) -> dict[str, Any]:
         assert actual_config == config_file
-        assert overrides == {"reload_merged_data": reload_merged_data, "draws": 3, "mismatch_model": None}
+        return {"output_format": "none"}
+
+    def resolve(cls, params: dict[str, Any], *, multisector: bool) -> Any:
+        assert params == {"output_format": "none", **overrides, "mismatch_model": None}
         assert multisector is False
         calls.append("resolve")
         return config
-
-
 
     def retrieve(**kwargs: Any) -> Any:
         assert kwargs["site_options"] is config.site_options
@@ -175,6 +176,7 @@ def test_custom_runner_uses_supported_stages_for_acquisition_and_reload(
         calls.append("outputs")
 
     monkeypatch.setattr(custom_runner, "read_rhime_ini", parse_config)
+    monkeypatch.setattr(custom_runner.RhimeConfig, "from_params", classmethod(resolve))
     monkeypatch.setattr(custom_runner, "load_rhime_data", retrieve)
     monkeypatch.setattr(custom_runner, "filter_rhime_observations", filter_observations)
     monkeypatch.setattr(custom_runner, "build_rhime_basis", build_basis)

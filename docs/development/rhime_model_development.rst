@@ -252,17 +252,22 @@ Configuration parsing should:
 * let each file frontend interpret its own sections and value syntax; and
 * pass resolved values explicitly to the functions that own them.
 
-Standard and multisector requests use ``rhime.params.RhimeConfig`` as this
-boundary. ``read_rhime_ini`` owns INI parsing and interpretation, applies
-supported overrides, and returns complete resolved configuration through
-``RhimeConfig.from_params``. This class method owns format-neutral semantic
-construction beside the record; the INI frontend stays separate. Python
-options enter the same constructor after overrides have won.
-``resolve_rhime_config`` remains a compatibility function. Both routes
-share RHIME defaults, supported aliases and site-shorthand resolution; another
-frontend need not adopt INI headers or value syntax. Keep the current INI
-first-occurrence rule for repeated bare option names inside that reader.
-``params_from_config`` remains the dictionary-returning compatibility adapter.
+Standard and multisector requests use ``rhime.params.RhimeConfig`` as the
+semantic boundary. ``read_rhime_ini`` only decodes an INI file into options;
+it has no recipe-mode or override arguments and does not construct configuration.
+Each runner combines winning overrides, extracts recipe-specific options and
+calls ``RhimeConfig.from_params`` once. This keeps shorthand editable until the
+final requested values are known. Preserve the existing first-occurrence rule
+for repeated INI keys without imposing it on other frontends.
+
+Historical fixedbasis conversion and deprecated RHIME spellings belong to the
+lightweight ``hbmcmc.compatibility`` boundary. Raw runner entry points translate
+supported aliases there with warnings before canonical construction. The
+configuration factory accepts modern names and does not invoke translation.
+``resolve_rhime_config`` remains an explicit compatibility wrapper;
+``params_from_config`` retains its historical dictionary/normalization contract
+as a deprecated adapter. Do not import the executable HBMCMC runner into modern
+configuration code. Existing default policy is unchanged by this ownership move.
 
 Keep accepted option names and defaults beside the preparation, model, output
 or sampling consumer that owns them. The configuration constructor composes

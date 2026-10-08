@@ -10,6 +10,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
 from collections.abc import Mapping
 
+from openghg_inversions.hbmcmc.compatibility import translate_rhime_aliases
+
 from . import _standard_stages
 from ._stage_checks import (
     CHECK_SCHEMA_VERSION,
@@ -72,7 +74,7 @@ def resolve_stage_setup(params: Mapping[str, Any], *, model: ModelKind) -> Rhime
         return resolve_co2_stage_setup(params=params)
     if model not in ("standard", "multisector"):
         raise ValueError(f"Unsupported staged model {model!r}.")
-    return RhimeConfig.from_params(params, multisector=model == "multisector")
+    return RhimeConfig.from_params(translate_rhime_aliases(params), multisector=model == "multisector")
 
 
 def effective_configuration(setup: RhimeConfig | Co2StageSetup, *, model: ModelKind) -> dict[str, Any]:

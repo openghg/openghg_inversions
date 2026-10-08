@@ -33,7 +33,7 @@ from .multisector import (
     multisector_model_input_names,
 )
 from .outputs import RhimeResult, make_multisector_rhime_outputs, make_standard_rhime_outputs
-from .ini import params_from_config
+from .ini import read_rhime_ini
 from .params import RHIME_PREPARATION_OPTION_NAMES, RhimeConfig
 from .preparation import (
     assemble_rhime_inputs,
@@ -117,7 +117,7 @@ def load_stage_params(
         raise ValueError("Pass exactly one of `config_file` or `params_file`.")
     if config_file is not None:
         source_path = Path(config_file).resolve()
-        params = params_from_config(source_path, normalise=False)
+        params = read_rhime_ini(source_path)
     else:
         source_path = Path(cast(str | Path, params_file)).resolve()
         loaded = json.loads(source_path.read_text(encoding="utf-8"))

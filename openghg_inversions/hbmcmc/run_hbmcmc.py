@@ -29,18 +29,11 @@ from typing import Any
 from openghg_inversions._timing import log_timing, timed, timer_seconds, timer_start
 from openghg_inversions.config import config
 from openghg_inversions.models.additive_sigma import DEFAULT_ADDITIVE_SIGMA_PRIOR
-from openghg_inversions.rhime import PollutionEventSettings, resolve_rhime_config, run_rhime
-from openghg_inversions.rhime.params import normalise_rhime_params
+from openghg_inversions.rhime import PollutionEventSettings, RhimeConfig, run_rhime
+from openghg_inversions.rhime import resolve_rhime_config as resolve_rhime_config
+from openghg_inversions.hbmcmc.compatibility import fixedbasis_params_to_rhime as fixedbasis_params_to_rhime
 
 
-_RUN_HBMCMC_RHIME_ALIASES = {
-    "nit": "draws",
-    "nchain": "chains",
-    "verbose": "progressbar",
-    "sampler_kwargs": "sample_kwargs",
-}
-_LOGNORMAL_PRIOR_NAMES = ("xprior", "x_prior", "bcprior", "bc_prior")
-_MIN_ERROR_METHODS = {"residual", "percentile"}
 _ADDITIVE_SIGMA_LIKELIHOOD = "additive_sigma"
 _ADDITIVE_SIGMA_PRIOR = "additive_sigma_prior"
 _ADDITIVE_SIGMA_OPTION_NAMES = (
@@ -60,120 +53,6 @@ _REQUIRED_FIXEDBASIS_PARAMS = (
     "outputpath",
     "outputname",
 )
-
-
-def _legacy_option_enabled(value: Any) -> bool:
-    """Return whether a legacy option value should be treated as enabled."""
-    if value is None or value is False:
-        return False
-    if isinstance(value, str):
-        return value.strip().lower() not in {"", "false", "none", "0"}
-    return True
-
-
-def _translate_legacy_aliases(params: dict[str, Any]) -> None:
-    """Translate legacy run_hbmcmc parameter names to RHIME names in-place."""
-    for old, new in _RUN_HBMCMC_RHIME_ALIASES.items():
-        if old not in params:
-            continue
-        if new in params:
-            print(f"Ignoring deprecated run_hbmcmc parameter {old!r} because {new!r} was also supplied.")
-        else:
-            params[new] = params[old]
-        del params[old]
-
-
-def _normalise_legacy_output_format(params: dict[str, Any]) -> None:
-    """Map old HBMCMC output names to the modern compatibility output."""
-    paris_postprocessing = params.pop("paris_postprocessing", False)
-    if _legacy_option_enabled(paris_postprocessing):
-        params["output_format"] = "paris"
-        return
-
-    raw_output_format = params.get("output_format")
-    if raw_output_format is None:
-        params["output_format"] = "legacy"
-        return
-
-    params["output_format"] = str(raw_output_format).lower()
-
-
-def _translate_calculate_min_error(params: dict[str, Any]) -> None:
-    """Translate legacy ``calculate_min_error`` to the modern ``min_error`` option."""
-    if "calculate_min_error" not in params:
-        return
-
-    value = params.pop("calculate_min_error")
-    if not _legacy_option_enabled(value):
-        return
-
-    method = str(value).strip().lower()
-    if method not in _MIN_ERROR_METHODS:
-        raise ValueError(
-            "`calculate_min_error` is deprecated and can only be translated when set to "
-            f"one of {sorted(_MIN_ERROR_METHODS)!r}; use `min_error` instead."
-        )
-
-    warnings.warn(
-        "`calculate_min_error` is deprecated. The run_hbmcmc compatibility shim is translating "
-        "it to `min_error`.",
-        FutureWarning,
-        stacklevel=3,
-    )
-    params["min_error"] = method
-
-
-def _translate_reparameterise_log_normal(params: dict[str, Any]) -> None:
-    """Translate legacy lognormal reparameterisation flag into prior dictionaries."""
-    value = params.pop("reparameterise_log_normal", False)
-    if not _legacy_option_enabled(value):
-        return
-
-    warnings.warn(
-        "`reparameterise_log_normal` is deprecated. The run_hbmcmc compatibility shim is setting "
-        "`reparameterise=True` in lognormal emissions and BC prior dictionaries.",
-        FutureWarning,
-        stacklevel=3,
-    )
-    for name in _LOGNORMAL_PRIOR_NAMES:
-        prior = params.get(name)
-        if not isinstance(prior, dict):
-            continue
-        if str(prior.get("pdf", "")).lower() != "lognormal":
-            continue
-        prior = prior.copy()
-        prior["reparameterise"] = True
-        params[name] = prior
-
-
-def _translate_legacy_options(params: dict[str, Any]) -> None:
-    """Translate legacy fixedbasis options that have modern RHIME equivalents."""
-    _translate_calculate_min_error(params)
-    _translate_reparameterise_log_normal(params)
-
-
-def fixedbasis_params_to_rhime(params: dict[str, Any]) -> dict[str, Any]:
-    """Translate fixedbasis-style script/config parameters into RHIME arguments.
-
-    The compatibility shim deliberately stays at the entrypoint boundary:
-    legacy config spellings are normalised here, then the modern ``run_rhime``
-    API performs its existing validation and spec construction. If supplied,
-    ``mcmc_type`` must be ``fixed_basis``.
-    """
-    translated = dict(params)
-    translated.pop("likelihood", None)
-    translated.pop(_ADDITIVE_SIGMA_PRIOR, None)
-    mcmc_type = translated.pop("mcmc_type", "fixed_basis")
-    if mcmc_type != "fixed_basis":
-        raise ValueError(f"Unsupported run_hbmcmc mcmc_type {mcmc_type!r}; expected 'fixed_basis'.")
-
-    _translate_legacy_aliases(translated)
-    _normalise_legacy_output_format(translated)
-    _translate_legacy_options(translated)
-    translated["output_filename_convention"] = "legacy"
-    if "save_inversion_output" not in translated and translated["output_format"] != "inv_out":
-        translated["save_inversion_output"] = False
-    return normalise_rhime_params(translated)
 
 
 def _select_additive_sigma_model_options(
@@ -409,7 +288,7 @@ def main(argv: list[str] | None = None) -> None:
             rhime_params["mismatch_model"] = "pollution_event"
 
     with timed("run_hbmcmc.validation"):
-        resolved_config = resolve_rhime_config(params=rhime_params, multisector=False)
+        resolved_config = RhimeConfig.from_params(rhime_params, multisector=False)
 
     _validate_country_file(rhime_params)
 

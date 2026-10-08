@@ -49,7 +49,7 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
     expected = object()
     calls: list[str] = []
 
-    def resolve(*, params: dict[str, Any], multisector: bool) -> Any:
+    def resolve(cls, params: dict[str, Any], *, multisector: bool) -> Any:
         assert params == {
             "species": "ch4",
             "output_format": "inv_out",
@@ -132,7 +132,7 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
         assert kwargs == {"result": expected, "prepared": prepared}
         calls.append("output")
 
-    monkeypatch.setattr(rhime_runner, "resolve_rhime_config", resolve)
+    monkeypatch.setattr(rhime_runner.RhimeConfig, "from_params", classmethod(resolve))
     monkeypatch.setattr(rhime_runner, "load_rhime_data", retrieve)
     monkeypatch.setattr(rhime_runner, "filter_rhime_observations", filter_observations)
     monkeypatch.setattr(rhime_runner, "build_rhime_basis", build_basis)

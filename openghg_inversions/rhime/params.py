@@ -1,15 +1,15 @@
-"""RHIME parameter loading, normalisation, and validation helpers.
+"""Canonical RHIME option normalization and requested configuration.
 
-The INI frontend interprets file options and applies overrides before shared
-semantic resolution. Resolution constructs the complete requested configuration
-before acquisition; retained run metadata is derived only after preparation.
+The INI frontend decodes file options; callers apply overrides and consume
+recipe-specific options before canonical resolution. Resolution constructs the
+complete requested configuration before acquisition; retained run metadata is
+derived only after preparation.
 The concrete configuration and its composed values own supported names and
 defaults; scientific callable signatures do not define the external schema.
 """
 
 from __future__ import annotations
 
-import warnings
 from collections.abc import Mapping, Sequence
 from dataclasses import MISSING, dataclass, field, fields
 from pathlib import Path
@@ -24,7 +24,13 @@ from openghg_inversions.model_error import normalise_min_error_options
 from openghg_inversions.models._flux import safe_pymc_name
 from openghg_inversions.observation_error import AggregationErrorMode
 from openghg_inversions.inference.sampling import RhimeSampler
-from .ini import params_from_config as params_from_config, read_rhime_ini as read_rhime_ini
+from openghg_inversions.hbmcmc.compatibility import (
+    normalise_param_aliases as normalise_param_aliases,
+    normalise_output_format_alias as normalise_output_format_alias,
+    params_from_config as params_from_config,
+    translate_rhime_aliases,
+)
+from .ini import read_rhime_ini as read_rhime_ini
 from openghg_inversions.rhime.specs import (
     DEFAULT_BC_PRIOR,
     DEFAULT_OFFSET_PRIOR,
@@ -41,20 +47,6 @@ from openghg_inversions.rhime.specs import (
     normalise_optional_mapping,
 )
 
-_ALIASES = {
-    "outputpath": "output_path",
-    "outputname": "output_name",
-    "xprior": "x_prior",
-    "bcprior": "bc_prior",
-    "sigprior": "sigma_prior",
-    "offsetprior": "offset_prior",
-    "emissions_name": "flux_sources",
-    "outer_region_definition_file": "outer_regions_path",
-}
-_OUTPUT_FORMAT_ALIASES = {
-    "hbmcmc": "legacy",
-    "hbmcmc_postprocessing": "legacy",
-}
 
 @dataclass(frozen=True, kw_only=True)
 class RhimeConfig:
@@ -65,9 +57,10 @@ class RhimeConfig:
     choices, ``output`` final-product policy and ``sampler`` sampling settings.
     Inference executes only when the sampler receives a constructed model.
 
-    Use :meth:`from_params` for external options; it owns ordinary configuration
-    containers and borrows opaque numerical values. Direct construction and
-    dataclass replacement expect already-resolved values and do not copy them.
+    Use :meth:`from_params` for canonically named external options; it owns
+    ordinary configuration containers and borrows opaque numerical values.
+    Direct construction and dataclass replacement expect already-resolved values
+    and do not copy them.
     A frozen record does not make contained mappings or the sampler immutable.
     Acquisition and filtering leave the requested choices intact. The record
     contains no scientific inputs, raw options or retained execution description.
@@ -156,10 +149,12 @@ class RhimeConfig:
         *,
         multisector: bool,
     ) -> RhimeConfig:
-        """Resolve effective external options into the complete requested run.
+        """Resolve canonical options into the complete requested run.
 
         Args:
-            params: Raw Python or file-derived options after supported overrides.
+            params: Canonically named Python or decoded file options after
+                overrides. Deprecated spellings belong to compatibility
+                entrypoints and are rejected here.
             multisector: Whether to resolve the multisector recipe.
 
         Returns:
@@ -173,8 +168,8 @@ class RhimeConfig:
                 incompatible with the selected runner mode.
         """
         normalized = normalise_rhime_params(params)
-        validate_required_params(normalized)
         validate_supported_params(normalized)
+        validate_required_params(normalized)
 
         for name, choices in (
             ("flux_non_finite_check", get_args(FluxNonFiniteCheck)),
@@ -380,7 +375,7 @@ def resolve_flux_sources(
         flux_sources: Preferred RHIME field containing OpenGHG flux
             ``source`` metadata values.
         emissions_name: Legacy compatibility spelling accepted only when
-            ``flux_sources`` is absent.
+            ``flux_sources`` is absent; supplying it emits ``UserWarning``.
 
     Returns:
         Resolved flux source names.
@@ -388,9 +383,12 @@ def resolve_flux_sources(
     Raises:
         ValueError: If no usable flux source is supplied.
     """
+    if emissions_name is not None:
+        raw_sources = {"emissions_name": emissions_name}
+        if flux_sources is not None:
+            raw_sources["flux_sources"] = flux_sources
+        flux_sources = translate_rhime_aliases(raw_sources)["flux_sources"]
     resolved = as_list(flux_sources)
-    if resolved is None:
-        resolved = as_list(emissions_name)
     if not resolved or any(source in {"", "None", "none"} for source in resolved):
         raise ValueError("At least one flux source must be supplied via `flux_sources`.")
     duplicates = _duplicate_names(resolved)
@@ -402,69 +400,23 @@ def resolve_flux_sources(
 
 
 def normalise_rhime_params(params: Mapping[str, Any]) -> dict[str, Any]:
-    """Normalize aliases, coerce simple scalars, and validate structured values."""
-    normalized = normalise_param_aliases(params)
+    """Copy canonical options, coerce scalars and validate structured values.
+
+    Deprecated spellings are translated by external compatibility entrypoints,
+    before this canonical value-normalization step.
+    """
+    normalized = dict(params)
     if normalized.pop("use_tracer", False):
         raise ValueError("`use_tracer=True` is not supported; tracer inversions are not implemented.")
-    normalise_output_format_alias(normalized)
     coerce_simple_param_types(normalized)
     validate_rhime_param_types(normalized)
     return normalized
 
 
-def normalise_param_aliases(params: Mapping[str, Any]) -> dict[str, Any]:
-    """Normalize legacy config spellings to modern snake-case names."""
-    normalized = dict(params)
-    for old, new in _ALIASES.items():
-        if old not in normalized:
-            continue
-        if new in normalized:
-            warnings.warn(
-                f"Ignoring deprecated RHIME parameter {old!r} because {new!r} was also supplied.",
-                UserWarning,
-                stacklevel=3,
-            )
-        else:
-            warnings.warn(
-                f"RHIME parameter {old!r} is deprecated; use {new!r} instead.",
-                UserWarning,
-                stacklevel=3,
-            )
-            normalized[new] = normalized[old]
-        del normalized[old]
-
-    if "calculate_min_error" in normalized:
-        raise ValueError("`calculate_min_error` is not supported by RHIME runners; use `min_error`.")
-    if "reparameterise_log_normal" in normalized:
-        raise ValueError(
-            "`reparameterise_log_normal` is not supported by RHIME runners; "
-            "set `reparameterise` in the relevant prior dictionary if needed."
-        )
-    if "mcmc_type" in normalized:
-        raise ValueError("`mcmc_type` is not supported by RHIME runners; use `nuts_sampler` if needed.")
-
-    return normalized
-
-
-def normalise_output_format_alias(params: dict[str, Any]) -> None:
-    """Normalize deprecated HBMCMC output format names in-place."""
-    output_format = params.get("output_format")
-    if output_format is None:
-        return
-    output_format = str(output_format).lower()
-    alias = _OUTPUT_FORMAT_ALIASES.get(output_format)
-    if alias is not None:
-        warnings.warn(
-            f"RHIME output_format {output_format!r} is deprecated; use {alias!r} instead.",
-            UserWarning,
-            stacklevel=3,
-        )
-        output_format = alias
-    params["output_format"] = output_format
-
-
 def coerce_simple_param_types(params: dict[str, Any]) -> None:
     """Coerce simple scalar options in-place before spec construction."""
+    if params.get("output_format") is not None:
+        params["output_format"] = str(params["output_format"]).lower()
     for name in RhimeSampler.INTEGER_OPTION_NAMES:
         if name not in params or params[name] is None:
             continue
@@ -699,9 +651,11 @@ def _make_model_spec(
 
 
 def resolve_rhime_config(params: Mapping[str, Any], *, multisector: bool) -> RhimeConfig:
-    """Resolve external options through :meth:`RhimeConfig.from_params`.
+    """Resolve external options while preserving deprecated spelling support.
 
-    Supported aliases, defaults and site shorthand are resolved before data
-    access; caller containers and opaque numerical values remain unchanged.
+    Deprecated aliases emit warnings before canonical ``RhimeConfig.from_params``
+    resolves defaults and site shorthand. New callers with canonical options
+    should use that classmethod directly. Caller containers and opaque numerical
+    payloads remain unchanged.
     """
-    return RhimeConfig.from_params(params, multisector=multisector)
+    return RhimeConfig.from_params(translate_rhime_aliases(params), multisector=multisector)

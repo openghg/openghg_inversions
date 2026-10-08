@@ -42,31 +42,27 @@ method. Existing model/output/sampler objects remain composed values because
 these already have independent consumers and contain coherent choices.
 
 ```text
-read_rhime_ini: INI parsing / interpretation --> winning overrides
-                                                       |
-Python options --> winning overrides ------------------+
-                                                       v
-                                             resolve_rhime_config
-                                                       |
-                                                       v
-                                                  RhimeConfig
-                                                       |
-                        explicit resolved values into scientific stages
-                                                       |
-                                     acquired / filtered / prepared data
-                                                       |
-                                       retained execution RhimeRunSpec
+read_rhime_ini --> decoded options
+                          |
+Python options -----------+--> winning overrides / recipe extraction
+                                         |
+                       legacy translation at compatibility boundaries
+                                         |
+                              RhimeConfig.from_params
+                                         |
+                                    RhimeConfig
+                                         |
+                      explicit selected values into scientific stages
+                                         |
+                         acquired / filtered / prepared data
+                                         |
+                           retained execution RhimeRunSpec
 ```
 
 Target API outline:
 
 ```python
-def read_rhime_ini(
-    path: str | Path,
-    *,
-    overrides: Mapping[str, object] | None = None,
-    multisector: bool = False,
-) -> RhimeConfig: ...
+def read_rhime_ini(path: str | Path) -> dict[str, object]: ...
 def resolve_rhime_config(
     params: Mapping[str, object], *, multisector: bool
 ) -> RhimeConfig: ...
@@ -115,8 +111,8 @@ adopted names for this revision; other established names are retained.
 
 | Name | Role | Input / output and boundary contract |
 | --- | --- | --- |
-| `read_rhime_ini` (replace `load_rhime_config` introduced in #813) | INI configuration frontend. | INI path, supported overrides and recipe mode -> complete `RhimeConfig`. Owns INI parsing, section interpretation and value decoding; applies overrides before invoking shared semantic resolution. |
-| `resolve_rhime_config` (keep) | Compatibility wrapper for `RhimeConfig.from_params`. | Effective RHIME options after winning overrides -> complete `RhimeConfig`. Resolves supported aliases/defaults/shorthand and fails before scientific work. Does not interpret file headers or impose INI structure on other frontends. |
+| `read_rhime_ini` (replace `load_rhime_config` introduced in #813) | INI configuration frontend. | INI path -> decoded options. Owns INI syntax and existing section interpretation; runners apply overrides, extract their own options and resolve the final request. |
+| `resolve_rhime_config` (keep) | Legacy-aware compatibility wrapper for `RhimeConfig.from_params`. | Effective RHIME options after winning overrides -> complete `RhimeConfig`. Resolves supported aliases/defaults/shorthand and fails before scientific work. Does not interpret file headers or impose INI structure on other frontends. |
 | `RhimeConfig` (keep; revise contents) | Complete resolved requested configuration. | Direct acquisition/preparation fields plus existing model/output/sampler values. Intended to be serializable as settings; export/INI-writing deferred to #814. No scientific data, retained run or historical identity contract. |
 | `SiteOptions` (promote existing `_SiteOptions`; export from `inversion_data`) | Public cohesive aligned selector record. | Complete ordered site/period/inlet/platform/etc. tuples. `from_inputs` normalizes external shorthand; direct construction accepts resolved aligned values. Requested when held by config; authoritative retained values when held by merged data. Selection creates a new complete record. |
 | `RhimeModelSpec` / `SectorSpec` (keep) | Scientific recipe choices and individual flux-sector definitions. | Priors, likelihood/component choices and source routing; no PyMC graph or acquired arrays. Independently usable by existing builders. |
@@ -134,13 +130,12 @@ adopted names for this revision; other established names are retained.
 | `RhimeRunSpec` (keep) | Execution description. | Constructed after ordinary preparation from requested dates, retained sites/periods, prepared layout and resolved model/output choices. No acquisition options or sampler execution. |
 | `RhimeRunnerSetup` / `make_rhime_runner_setup` / `resolve_rhime_options` (remove) | Redundant internal setup bundle and its constructors. | Migrate ordinary, nested, staged, shim and example consumers to `RhimeConfig` / `resolve_rhime_config`; construct retained run descriptions only after preparation. Do not retain a renamed bundle or compatibility projection. |
 | `RhimeResult` (keep) | Completed execution result. | Retained descriptions, prepared numerical inputs, posterior and outputs. Never represents an unresolved request. |
-| `run_rhime` / `run_rhime_multisector` (keep) | Ordinary procedural orchestration. | Existing file-plus-keyword inputs -> result. Read/resolve the effective request, prepare, build, sample and output in visible order. Consume the reader's resolved configuration without resolving it again. |
+| `run_rhime` / `run_rhime_multisector` (keep) | Ordinary procedural orchestration. | Existing file-plus-keyword inputs -> result. Read/resolve the effective request, prepare, build, sample and output in visible order. Decode options, combine overrides and extract recipe choices before canonical construction; reuse an already-resolved request when supplied. |
 
-`params_from_config` keeps its established normalized-dictionary default,
-`normalise=False` behavior and supported overrides. It shares internal INI
-decoding with `read_rhime_ini`, rather than calling the resolved reader and
-projecting a dictionary back out of `RhimeConfig`. This compatibility adapter
-does not define the public reader's return contract.
+The deprecated `params_from_config` adapter lives with HBMCMC compatibility
+and keeps its normalized-dictionary default, `normalise=False` behavior and
+supported overrides. It calls the same decoding reader. Modern runners no longer
+need this adapter to access unresolved options.
 
 Rename the existing acquisition-owned record to `SiteOptions` and export it
 from `inversion_data`; update public configuration and merged-data annotations,
@@ -167,19 +162,20 @@ contract differs from the higher-level numerical handoff.
 
 ### 3. Resolve after overrides and before any scientific phase
 
-`read_rhime_ini` owns file access, INI syntax, sections, value decoding and their
-translation into RHIME options. It applies supported overrides before calling
-`RhimeConfig.from_params`, and returns the resulting `RhimeConfig`.
-The `rhime.ini` module owns this frontend and the dictionary compatibility
-adapter; the configuration class owns semantic construction. The established
-`resolve_rhime_config` function delegates to that classmethod. The current
-flat option mapping may remain an internal intermediate: headings are discarded
-and repeated option names across sections select the first occurrence. Preserve
-that existing INI behavior here, without making it a common frontend contract.
-Other parsers may interpret their own structure and reuse semantic construction
-and site-alignment helpers; they need not share INI headers, interpolation,
-literal decoding or duplicate-key rules. No universal raw-document schema or
-frontend registry is introduced, and no new parser is required by this change.
+`read_rhime_ini` owns file access and the existing INI decoding rules, returning
+a flat dictionary without semantic resolution. The runner applies overrides and
+extracts recipe-specific options before calling `RhimeConfig.from_params`.
+Shorthand remains available for those edits. Preserve section flattening and
+first-occurrence precedence for now; redesigning the INI template or model-type
+selection is outside this cleanup.
+
+Canonical construction retains modern coercion, validation and existing default
+choices. Deprecated names and HBMCMC behavior belong in `hbmcmc.compatibility`.
+Raw runner entry points translate supported aliases with warnings, while the
+factory itself requires canonical names. `resolve_rhime_config` is the explicit
+legacy-aware wrapper. The dictionary reader compatibility adapter has the same
+legacy owner and remains reexported for existing callers. Do not import the
+executable HBMCMC runner into modern configuration code.
 
 Apply overrides before resolving defaults or site shorthand, including a changed
 site list or date bound. Expand scalar site selectors to the effective site
@@ -214,7 +210,7 @@ The shared resolver's responsibilities are:
 
 | Step | Work and dependency |
 | --- | --- |
-| Normalize and validate effective options | Resolve supported RHIME aliases, reject removed/unknown options, check required fields and value types. These aliases also support Python callers; file section interpretation belongs to the frontend. |
+| Normalize and validate effective options | Reject removed/unknown options and check required fields and value types. Compatibility entry points translate historical aliases before canonical construction; file section interpretation belongs to the frontend. |
 | Resolve sources and recipe choices | Normalize sources, enforce standard/multisector requirements and establish sector/source routing. |
 | Resolve scientific settings | Resolve priors, likelihood and active BC/offset settings; check incompatible choices. Date-dependent defaults use the effective overridden dates. |
 | Resolve sampler and output policy | Construct existing sampler/output values with their defaults and configuration checks; do not execute sampling or output. |
@@ -225,8 +221,8 @@ Consolidate repeated checks at the owning input boundary rather than validating
 locally constructed settings again. Shared diagnostics identify RHIME options;
 INI-specific syntax advice belongs to the INI frontend.
 
-Reuse existing alias, required-option, rejection, site expansion and likelihood
-rules. Preserve case normalization, optional selectors, inlet slices and
+Reuse existing required-option, rejection, site expansion and likelihood
+rules, retaining alias translation at compatibility boundaries. Preserve case normalization, optional selectors, inlet slices and
 `time_resolved=None`. Omitted/false `use_tracer` is consumed; effective true fails
 early, including direct preparation and supplied-data routes. No tracer field
 is retained. Keep established custom-likelihood conflict ordering.
@@ -252,7 +248,7 @@ helper may accept the resolved config while composing several stages; scientific
 components continue to accept their own named arguments. No dynamic option
 schema or second request/preparation record is introduced.
 
-Raw overrides are applied before `from_params` or through `read_rhime_ini`.
+Raw overrides are applied after decoding and before `from_params`.
 `dataclasses.replace` is for already coherent resolved changes, not for
 recomputing dependent defaults or shared model/output choices. Direct retrieval
 and deprecated preparation adapters resolve only applicable inputs and share the
@@ -343,7 +339,7 @@ logging behavior is required to complete #804.
 Update the existing proposal, design, behavioral spec and tasks on #813 first.
 Then use the apply workflow to remove the preparation class and its plumbing,
 remove the internal setup bundle, migrate ordinary/nested/staged/shim/example
-consumers, implement the resolved INI reader, promote/export `SiteOptions`,
+consumers, implement the decoding-only INI reader, promote/export `SiteOptions`,
 implement the neutral acquisition names and consolidate loading into
 `load_rhime_data`. Update documentation/exports. Reuse the existing equivalence, override,
 site/drop/reload, ownership, nested/shim and sampler coverage. Add focused checks

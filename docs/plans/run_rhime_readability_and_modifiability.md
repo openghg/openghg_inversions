@@ -178,7 +178,8 @@ Keep that source executable instead of maintaining another orchestration copy
 in this plan. Its visible order is:
 
 ```text
-read_rhime_ini / resolve_rhime_config -> RhimeConfig
+read_rhime_ini -> options + winning overrides + recipe extraction
+  -> RhimeConfig.from_params -> RhimeConfig
   -> load_rhime_data with explicit resolved acquisition values
   -> filter_rhime_observations
   -> build_rhime_basis
@@ -193,8 +194,8 @@ read_rhime_ini / resolve_rhime_config -> RhimeConfig
 
 `RhimeConfig` directly owns acquisition/preparation choices and composes public
 `SiteOptions`, existing model/output specifications and the existing sampler.
-The INI reader applies supported overrides and returns resolved configuration;
-Python mappings use the same semantic construction after overrides. Canonical
+The INI reader returns decoded options. Runners apply overrides and extract
+recipe choices before the same canonical construction used for Python mappings. Canonical
 scientific stages receive only their applicable explicit resolved values.
 Requested configuration stays unchanged when observations or sites are dropped.
 There is no preparation-config class or setup bundle carrying an early run spec.

@@ -184,10 +184,11 @@ For example, a scalar period broadcasts across the effective requested sites:
    assert config.site_options.sites == ("TAC", "MHD")
    assert config.site_options.averaging_period == ("1h", "1h")
 
-The constructor owns defaults, aliases, validation and site expansion beside
-the configuration it creates. ``resolve_rhime_config`` remains a compatibility
-function with the same result. Pass an inspected configuration to the matching
-runner to execute it without resolving its options again:
+The constructor applies established defaults, validation and site expansion
+beside the configuration it creates. ``resolve_rhime_config`` remains a
+compatibility function that first translates historical aliases. Pass an
+inspected configuration to the matching runner to execute it without resolving
+its options again:
 
 .. code-block:: python
 
@@ -209,31 +210,38 @@ before acquisition. Optional selectors retain their existing meanings:
 slices are preserved. Empty or case-insensitively duplicate site requests and
 incorrect selector lengths are rejected at resolution.
 
-For a configured INI file, use the resolved reader:
+For an INI file, read its options and resolve the effective request explicitly:
 
 .. code-block:: python
 
-   from openghg_inversions.rhime import read_rhime_ini
+   from openghg_inversions.rhime import RhimeConfig, read_rhime_ini
 
-   config = read_rhime_ini(
-       "rhime.ini",
-       overrides={"sites": ["TAC", "MHD"], "averaging_period": "1h"},
-   )
+   options = read_rhime_ini("rhime.ini")
+   options.update(sites=["TAC", "MHD"], averaging_period="1h")
+   config = RhimeConfig.from_params(options, multisector=False)
 
-``read_rhime_ini`` owns file parsing, section interpretation and value decoding.
-It applies winning overrides before resolving defaults and site shorthand, and
-returns complete ``RhimeConfig`` through ``RhimeConfig.from_params``. The INI
-frontend is separate from format-neutral configuration construction. Its result
-can also be passed as ``config`` to a runner without another resolution pass.
-The existing file-plus-keyword runner calls remain supported. The current INI
-reader flattens section options into bare names and uses the first occurrence
-when a name repeats across sections. Other file frontends can interpret their
-own structures and reuse RHIME resolution and site-alignment helpers.
-``params_from_config`` retains its dictionary return, normalized-dictionary
-default and ``normalise=False`` control through shared internal INI decoding.
-Configuration option names and defaults belong to their preparation, model,
-output or sampler consumers; changing an INI heading does not create another
-configuration object or change the scientific pipeline.
+``read_rhime_ini`` returns decoded options. It does not require a complete run,
+choose a recipe, apply overrides, translate deprecated names or expand shorthand.
+The current reader flattens section options into bare names and uses the first
+occurrence when a name repeats across sections. Other frontends need not adopt
+those INI conventions.
+
+Runners combine file options and winning keyword overrides, extract their own
+recipe-specific choices, then resolve the remaining request once. Shorthand
+stays available until that last step: changing sites or averaging periods before
+resolution expands the final values together. The resulting ``config`` can be
+passed to a runner without resolving again.
+
+``RhimeConfig.from_params`` accepts canonical RHIME names. Existing runner entry
+points and ``resolve_rhime_config`` still translate supported historical aliases
+with warnings through ``hbmcmc.compatibility``. The deprecated
+``params_from_config`` adapter retains its dictionary return, overrides and
+``normalise`` control there; modern readers and runners do not depend on that
+adapter. Prefer modern names such as ``x_prior``, ``output_name`` and
+``flux_sources`` when migrating code or files.
+
+Existing option defaults remain unchanged by this separation. Scientific default
+policy and a redesign of the INI sections are separate decisions.
 
 ``SiteOptions``, exported from ``openghg_inversions.inversion_data``, also works
 without a complete configured run. Its ``from_inputs`` factory expands external
@@ -296,7 +304,7 @@ identity/source arguments, sensitivity domain/source arguments, and assembly
 domain/start date by keyword; the API reference lists each function's signature.
 
 Apply external overrides to the raw options before ``RhimeConfig.from_params``,
-or pass ``overrides`` to ``read_rhime_ini``. ``dataclasses.replace`` is suitable
+after reading the INI file when applicable. ``dataclasses.replace`` is suitable
 only for already coherent resolved changes: it does not recompute dependent
 defaults or reconcile model/output fields when dates, sources or other shared
 choices change.
@@ -1094,7 +1102,8 @@ Output Formats
 Standard single-sector RHIME supports ``inv_out``, ``basic``, ``paris``, and
 ``legacy`` output formats. ``legacy`` writes the old HBMCMC-compatible NetCDF
 product from the modern ``InversionOutput``. The deprecated names ``hbmcmc``
-and ``hbmcmc_postprocessing`` are accepted as aliases for ``legacy``.
+and ``hbmcmc_postprocessing`` are accepted with warnings at runner compatibility
+entry points. Canonical configuration construction requires ``legacy``.
 
 Single-sector ``paris`` keeps the legacy template by default. Pass
 ``paris_postprocessing_kwargs={"template_version": "latest"}`` to write the

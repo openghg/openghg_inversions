@@ -178,14 +178,14 @@ def test_file_overrides_precede_site_expansion(tmp_path: Path, replace_periods):
         "[RHIME.OPTIONS]\n" + "\n".join(f"{name} = {value!r}" for name, value in configured.items()),
         encoding="utf-8",
     )
-    raw = rhime_params.params_from_config(path, normalise=False)
+    raw = rhime.read_rhime_ini(path)
     assert raw["sites"] == ["tac", "MHD"]
     assert raw["averaging_period"] == configured["averaging_period"]
     overrides = {"sites": ["TAC", "MHD", "BSD"]}
     if replace_periods:
         overrides["averaging_period"] = "1h"
 
-    config = rhime_params.read_rhime_ini(path, overrides=overrides)
+    config = rhime_params.RhimeConfig.from_params({**raw, **overrides}, multisector=False)
     direct = rhime_params.resolve_rhime_config({**configured, **overrides}, multisector=False)
 
     assert config == direct
@@ -195,7 +195,7 @@ def test_file_overrides_precede_site_expansion(tmp_path: Path, replace_periods):
 
 
 @pytest.mark.parametrize("multisector", [False, True])
-def test_ini_reader_owns_sections_and_effective_date_defaults(tmp_path: Path, multisector):
+def test_ini_decoding_precedes_recipe_defaults_and_overrides(tmp_path: Path, multisector):
     configured = _request(flux_sources=["inventory", "ocean"] if multisector else ["inventory"])
     path = tmp_path / "configuration.ini"
     path.write_text(
@@ -204,9 +204,10 @@ def test_ini_reader_owns_sections_and_effective_date_defaults(tmp_path: Path, mu
         + "\n[OTHER.SECTION]\nstart_date = '2001-01-01'\n",
         encoding="utf-8",
     )
-    initial = rhime_params.read_rhime_ini(path, multisector=multisector)
+    raw = rhime.read_rhime_ini(path)
+    initial = rhime_params.RhimeConfig.from_params(raw, multisector=multisector)
     overrides = {"start_date": "2020-02-01"}
-    updated = rhime_params.read_rhime_ini(path, overrides=overrides, multisector=multisector)
+    updated = rhime_params.RhimeConfig.from_params({**raw, **overrides}, multisector=multisector)
 
     assert initial.start_date == "2019-01-01"
     assert updated.start_date == updated.model.likelihood.sigma_freq_anchor == "2020-02-01"
@@ -217,9 +218,10 @@ def test_ini_reader_owns_sections_and_effective_date_defaults(tmp_path: Path, mu
 def test_ini_dictionary_adapter_retains_normalization_controls(tmp_path: Path):
     path = tmp_path / "adapter.ini"
     path.write_text("[RHIME]\noutputname = 'old-name'\ndraws = '7'\n", encoding="utf-8")
-    raw = rhime_params.params_from_config(path, normalise=False)
+    with pytest.warns(DeprecationWarning, match="params_from_config"):
+        raw = rhime_params.params_from_config(path, normalise=False)
     assert raw == {"outputname": "old-name", "draws": "7"}
-    with pytest.warns(UserWarning, match="outputname"):
+    with pytest.warns(DeprecationWarning, match="params_from_config"), pytest.warns(UserWarning, match="outputname"):
         normalized = rhime_params.params_from_config(
             path, output_path="cli-output", extra_kwargs={"output_path": "winning-output"}
         )
@@ -449,3 +451,21 @@ def test_sector_priors_are_owned_independently_and_borrow_numerical_values():
 def test_malformed_likelihood_selection_reports_the_option(invalid):
     with pytest.raises(ValueError, match="mismatch_model"):
         rhime_params.RhimeConfig.from_params(_request(mismatch_model=invalid), multisector=False)
+
+
+def test_ini_reader_decodes_recipe_options_without_semantic_resolution(tmp_path, monkeypatch):
+    path = tmp_path / "project.ini"
+    path.write_text(
+        "[PROJECT]\nproject_basis_path = 'basis.nc'\nbasis_algorithm = None\n"
+        "sites = ['tac', 'MHD']\naveraging_period = '1h'\noutputname = 'legacy'\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        rhime_params.RhimeConfig, "from_params",
+        lambda *args, **kwargs: pytest.fail("INI decoding must not resolve a recipe"),
+    )
+
+    assert rhime.read_rhime_ini(path) == {
+        "project_basis_path": "basis.nc", "basis_algorithm": None,
+        "sites": ["tac", "MHD"], "averaging_period": "1h", "outputname": "legacy",
+    }

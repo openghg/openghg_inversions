@@ -17,10 +17,11 @@ meant to simplify.
   from `inversion_data`; reuse it alongside `RhimeModelSpec`, `RhimeOutputSpec`
   and `RhimeSampler`. Give each a distinct contract; do not duplicate their
   model/output/sampling attributes in another settings class.
-- Let `read_rhime_ini` own INI parsing and interpretation, apply supported
-  overrides, and return a complete `RhimeConfig`. Share RHIME semantic resolution
-  with Python inputs without imposing INI sections or decoding rules on other
-  frontends. Reuse site-alignment helpers for common shorthand.
+- Let `read_rhime_ini` decode INI syntax into options. Runners apply winning
+  overrides, extract recipe-specific options, and construct `RhimeConfig` once.
+  Keep historical translation in the HBMCMC compatibility boundary and canonical
+  construction independent of it. Expand shorthand only after runner edits;
+  preserve existing defaults without redesigning their policy.
 - Keep requested sites in configuration and authoritative retained sites in
   acquired/prepared data. Create `RhimeRunSpec` after preparation.
 - Remove `RhimeRunnerSetup`, `make_rhime_runner_setup` and `resolve_rhime_options`;

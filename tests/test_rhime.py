@@ -3050,7 +3050,7 @@ def test_public_rhime_runners_follow_named_stage_order(
         assert kwargs == {"result": expected, "prepared": prepared}
         calls.append("outputs")
 
-    monkeypatch.setattr(recipe_module, "resolve_rhime_config", resolve)
+    monkeypatch.setattr(recipe_module.RhimeConfig, "from_params", staticmethod(resolve))
     monkeypatch.setattr(recipe_module, "load_rhime_data", retrieve)
     monkeypatch.setattr(recipe_module, "filter_rhime_observations", filter_observations)
     monkeypatch.setattr(recipe_module, "build_rhime_basis", build_basis)
@@ -3129,7 +3129,7 @@ def test_ordinary_runners_reject_orphaned_likelihood_options_before_config(
     recipe_module = rhime_multisector if runner is run_rhime_multisector else rhime_standard
     monkeypatch.setattr(
         recipe_module,
-        "params_from_config",
+        "read_rhime_ini",
         lambda *args, **kwargs: pytest.fail("orphaned options must fail before configuration"),
     )
 
@@ -3147,8 +3147,8 @@ def test_ordinary_runners_reject_custom_likelihood_with_configured_mismatch(
     """A Python likelihood cannot compete with an explicit built-in selection."""
     recipe_module = rhime_multisector if runner is run_rhime_multisector else rhime_standard
     monkeypatch.setattr(
-        recipe_module,
-        "resolve_rhime_config",
+        recipe_module.RhimeConfig,
+        "from_params",
         lambda *args, **kwargs: pytest.fail("the selection conflict must fail before resolution"),
     )
 
@@ -3236,7 +3236,7 @@ def test_each_rhime_recipe_keeps_the_scientific_process_visible(recipe: Callable
     source = inspect.getsource(recipe)
     multisector = recipe is run_rhime_multisector
     stages = (
-        "resolve_rhime_config",
+        "RhimeConfig.from_params",
         "load_rhime_data",
         "filter_rhime_observations",
         "build_rhime_basis",
@@ -4006,7 +4006,7 @@ def test_run_rhime_rejects_noncanonical_custom_likelihood_before_sampling(
         """Prove compatibility validation precedes sampler execution."""
         raise AssertionError("invalid likelihood must fail before sampling")
 
-    monkeypatch.setattr(rhime_standard, "resolve_rhime_config", lambda *args, **kwargs: config)
+    monkeypatch.setattr(rhime_standard.RhimeConfig, "from_params", lambda *args, **kwargs: config)
     monkeypatch.setattr(rhime_standard, "load_rhime_data", lambda *args, **kwargs: object())
     monkeypatch.setattr(rhime_standard, "filter_rhime_observations", lambda *args, **kwargs: object())
     monkeypatch.setattr(rhime_standard, "build_rhime_basis", lambda *args, **kwargs: prepared.basis_functions)
@@ -4545,8 +4545,13 @@ def test_rhime_normalises_legacy_output_format_aliases(
     legacy_output_format: str, expected_output_format: str
 ) -> None:
     """Old HBMCMC output names now select the modern legacy formatter."""
-    params = rhime_params.normalise_rhime_params({"output_format": legacy_output_format})
+    from openghg_inversions.hbmcmc.compatibility import translate_rhime_aliases
 
+    if legacy_output_format == "legacy":
+        params = translate_rhime_aliases({"output_format": legacy_output_format})
+    else:
+        with pytest.warns(UserWarning, match="output_format"):
+            params = translate_rhime_aliases({"output_format": legacy_output_format})
     assert params["output_format"] == expected_output_format
 
 

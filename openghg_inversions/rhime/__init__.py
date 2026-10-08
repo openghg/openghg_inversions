@@ -29,7 +29,8 @@ from .co2 import build_co2_model, co2_model_input_names, run_rhime_co2
 from openghg_inversions.inversion_data import load_rhime_data
 
 from .materialization import materialize_pymc_inputs
-from .ini import params_from_config, read_rhime_ini
+from openghg_inversions.hbmcmc.compatibility import params_from_config
+from .ini import read_rhime_ini
 from .params import (
     RhimeConfig,
     resolve_flux_sources,

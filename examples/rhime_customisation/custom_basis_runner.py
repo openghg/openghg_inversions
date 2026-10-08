@@ -46,7 +46,9 @@ from openghg_inversions.basis.algorithms import (
     region_constrained_basis,
 )
 from openghg_inversions.inversion_data import RhimeMergedData, load_rhime_data
+from openghg_inversions.hbmcmc.compatibility import translate_rhime_aliases
 from openghg_inversions.rhime import (
+    RhimeConfig,
     RhimeResult,
     assemble_rhime_inputs,
     build_rhime_sensitivities,
@@ -55,8 +57,7 @@ from openghg_inversions.rhime import (
     make_standard_rhime_result,
     make_standard_rhime_outputs,
     materialize_pymc_inputs,
-    params_from_config,
-    resolve_rhime_config,
+    read_rhime_ini,
     sample_rhime_model,
     standard_model_input_names,
 )
@@ -257,12 +258,15 @@ def run_custom_rhime(
     Args:
         config_file: Optional RHIME INI configuration file.
         project_basis_path: Optional self-contained ``BasisFunctions`` artifact
-            to use instead of fitting the project guarded basis.
+            to use instead of fitting the project guarded basis. When omitted,
+            the decoded INI option of the same name is used.
         max_child_pca_eccentricity: Optional project split-policy threshold.
             When omitted, the merged config/keyword value is used, falling back
             to ``10``. This option is removed before standard RHIME resolution.
         **kwargs: Standard RHIME option names that override values from
-            ``config_file``.
+            ``config_file``. Built-in ``basis_algorithm`` and ``fp_basis_case``
+            choices are unused by this project basis stage and are discarded
+            before standard configuration resolution.
 
     Returns:
         The sampled result and any outputs requested by the RHIME options.
@@ -277,11 +281,8 @@ def run_custom_rhime(
         basis, eagerly materializes PyMC model inputs, runs sampling, and writes
         outputs requested by the resolved RHIME options.
     """
-    params = (
-        params_from_config(config_file, extra_kwargs=kwargs, normalise=False)
-        if config_file is not None
-        else dict(kwargs)
-    )
+    params = read_rhime_ini(config_file) if config_file is not None else {}
+    params.update(kwargs)
     configured_project_basis_path = params.pop("project_basis_path", None)
     if project_basis_path is None:
         project_basis_path = configured_project_basis_path
@@ -291,7 +292,11 @@ def run_custom_rhime(
     )
     if max_child_pca_eccentricity is None:
         max_child_pca_eccentricity = float(configured_eccentricity)
-    config = resolve_rhime_config(params=params, multisector=False)
+    # The project basis stage owns its algorithm and optional saved artifact.
+    # A built-in algorithm choice is irrelevant to this copied recipe.
+    params.pop("basis_algorithm", None)
+    params.pop("fp_basis_case", None)
+    config = RhimeConfig.from_params(translate_rhime_aliases(params), multisector=False)
 
     merged = load_rhime_data(
         **config.select(
