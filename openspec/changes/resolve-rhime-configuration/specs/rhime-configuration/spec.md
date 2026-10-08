@@ -6,6 +6,10 @@ Represent the complete resolved standard/multisector RHIME request before data
 access, with equivalent external shorthand and a clear separation between
 requested configuration and retained execution metadata.
 
+Serialization and INI writing are deferred to
+[#814](https://github.com/openghg/openghg_inversions/issues/814); they are not
+acceptance requirements for this implementation.
+
 ## ADDED Requirements
 
 ### Requirement: Complete format-neutral requested configuration
@@ -138,8 +142,18 @@ handoff, requested date bounds, the selected prepared layout, and the resolved
 model/output choices. Requested configuration SHALL remain unchanged and SHALL
 NOT contain a pre-preparation execution run description. Model and output
 specifications SHALL be composed into the retained run description without
-reinterpreting raw options. Established public prepared-input and compatibility
-setup contracts SHALL remain supported through adapters.
+reinterpreting raw options. Independent prepared-input scientific contracts SHALL
+remain supported. In-repository configured orchestration SHALL use the same
+requested configuration rather than a second setup bundle holding a
+pre-preparation run description and a preparation dictionary.
+
+#### Scenario: Unified configured orchestration
+
+- **WHEN** ordinary, nested, staged, shim or example consumers resolve supported
+  standard/multisector requested options
+- **THEN** they use the same complete requested configuration
+- **AND** no distinct setup bundle or pre-preparation execution description is
+  required to access configuration choices
 
 #### Scenario: One requested site is removed
 
@@ -195,7 +209,7 @@ handoff SHALL retain its authoritative options and no-acquisition behavior.
 
 ### Requirement: Compatible public adapters and scientific choices
 
-Supported Python and CLI entry points SHALL retain their signatures, shorthand,
+Supported scientific Python and CLI entry points SHALL retain their signatures, shorthand,
 override behavior and return contracts through adapters to the same semantic
 resolution or shared applicable site translation. Direct preparation/retrieval
 APIs SHALL resolve only applicable choices without requiring likelihood, final
@@ -205,6 +219,10 @@ and flux-source routing SHALL retain consistent existing meanings across data
 preparation and model construction. Current INI section interpretation, path
 conventions, file vocabulary, scientific calculations and sampling defaults
 SHALL remain unchanged.
+
+Internal orchestration/setup records and their constructor/helper return shapes
+SHALL NOT be required compatibility contracts. Their in-repository consumers
+SHALL migrate to the unified requested configuration.
 
 Resolution SHALL consume omitted/false `use_tracer` without retaining a config
 field. Effective true SHALL retain early rejection at resolution and relevant
@@ -274,3 +292,27 @@ be identified explicitly rather than silently assigned its old contract.
 - **THEN** canonical consumers use those equivalent resolved values
 - **AND** configuration adapters are not required to reconstruct different raw
   forms to preserve their historical staged identities
+
+### Requirement: Shared supplied, cached and freshly acquired data boundary
+
+Configured workflows SHALL share one data-loading boundary that accepts valid
+supplied merged data, loads a compatible merged cache, or performs fresh
+acquisition. It SHALL preserve established cache-load failure fallback,
+time-resolution and sector-layout checks and aligned retained-site selection.
+A valid supplied handoff SHALL bypass acquisition and reload and be returned
+unchanged. Canonical calls SHALL consume resolved selectors without further
+shorthand expansion.
+
+#### Scenario: Supplied data bypasses I/O
+
+- **WHEN** valid compatible merged data is supplied to the loading boundary
+- **THEN** its scientific data and authoritative site options are returned
+  unchanged, without cache or object-store I/O
+
+#### Scenario: Cache loading falls back to acquisition
+
+- **WHEN** cache reload is requested and loading fails under the established
+  recoverable cache-load rule
+- **THEN** the shared loading boundary performs fresh acquisition
+- **AND** the returned handoff has aligned retained options without another
+  scalar-expansion pass

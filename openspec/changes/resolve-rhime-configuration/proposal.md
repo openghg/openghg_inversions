@@ -21,9 +21,13 @@ meant to simplify.
   Python inputs share this format-neutral boundary.
 - Keep requested sites in configuration and authoritative retained sites in
   acquired/prepared data. Create `RhimeRunSpec` after preparation.
+- Remove `RhimeRunnerSetup`, `make_rhime_runner_setup` and `resolve_rhime_options`;
+  migrate ordinary, nested, staged, shim and example consumers to `RhimeConfig`.
 - Use `read_rhime_ini` for raw decoding and `retrieve_inversion_data` for fresh
   acquisition covering surface and column observations. Retain the old public
   acquisition name as a deprecated wrapper with the same signature and return.
+- Collapse retrieval/reload forwarding layers into `load_rhime_data`, the shared
+  supplied-data/cache/fresh-acquisition boundary returning `RhimeMergedData`.
 - Preserve public scientific input/return contracts and ownership through small
   adapters. Remove requirements to reconstruct original spellings or sparse
   defaults solely to preserve historical staged hashes.
@@ -33,6 +37,9 @@ reconciliation. [tasks.md](tasks.md) tracks that work. INI remains the file
 frontend. CO2 recipe configuration is unchanged. Manifest, identity and release
 compatibility policy remain with [#808](https://github.com/openghg/openghg_inversions/issues/808)
 and [#802](https://github.com/openghg/openghg_inversions/pull/802).
+Configuration serialization, resolved-settings logging and an INI writer are
+deferred to [#814](https://github.com/openghg/openghg_inversions/issues/814).
+Serializability is the intended direction; no writer/export API is added here.
 
 ## Capabilities
 
@@ -51,6 +58,8 @@ None. This checkout has no synced durable capability specs.
 Reconcile the existing `rhime.params` owner, ordinary runners, acquisition and
 preparation adapters, public exports, focused tests and configuration guidance.
 Keep the landed #773/#774 numerical-data and sampler owners and #807 tracer
-handling. Existing independent builders, prepared-input APIs and nested/shim
-consumers retain their contracts. No dependency, equation, new file format,
+handling. Independent builders and prepared-input APIs retain their scientific
+contracts. Nested/shim/staged consumers migrate off the internal setup bundle;
+retaining that type or its helper returns is not a compatibility requirement.
+No dependency, equation, new file format,
 shared context hierarchy or hashing framework is introduced.

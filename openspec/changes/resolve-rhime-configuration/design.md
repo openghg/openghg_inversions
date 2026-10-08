@@ -28,6 +28,7 @@ and neutral acquisition naming for surface and column observations.
 **Non-goals:** Flatten every established model/output/sampler type, add another
 settings hierarchy, change equations or array execution, introduce a frontend
 registry, unify CO2 configuration, or design manifest/hash migration.
+Configuration export and an INI writer are deferred to #814.
 
 ## Decisions
 
@@ -101,7 +102,7 @@ recommendations adopted for this revision; other established names are retained.
 | --- | --- | --- |
 | `read_rhime_ini` (rename `load_rhime_config` introduced in #813) | Format-specific decoder. | INI path -> raw option mapping. File I/O only; no aliases, defaults, overrides or site expansion. The name does not promise a `RhimeConfig` return. |
 | `resolve_rhime_config` (keep) | Format-neutral semantic boundary. | Effective mapping after winning overrides -> complete `RhimeConfig`. Resolves supported aliases/defaults/shorthand and fails before scientific work. |
-| `RhimeConfig` (keep; revise contents) | Complete resolved requested configuration. | Direct acquisition/preparation fields plus existing model/output/sampler values. No scientific data, retained run or persisted identity contract. |
+| `RhimeConfig` (keep; revise contents) | Complete resolved requested configuration. | Direct acquisition/preparation fields plus existing model/output/sampler values. Intended to be serializable as settings; export/INI-writing deferred to #814. No scientific data, retained run or historical identity contract. |
 | `_SiteOptions` (keep existing type) | Cohesive aligned selector record. | Complete ordered site/period/inlet/platform/etc. tuples. Requested when held by config; authoritative retained values when held by merged data. Selection creates a new complete record. |
 | `RhimeModelSpec` / `SectorSpec` (keep) | Scientific recipe choices and individual flux-sector definitions. | Priors, likelihood/component choices and source routing; no PyMC graph or acquired arrays. Independently usable by existing builders. |
 | Built-in likelihood settings (keep) | Choices for the selected observation-error component. | Contained in the model specification. `None` retains the custom-likelihood meaning; do not create another configuration vocabulary. |
@@ -110,13 +111,13 @@ recommendations adopted for this revision; other established names are retained.
 | `retrieve_inversion_data` (rename public `data_processing_surface_notracer`) | Fresh acquisition and merge, covering surface and column data. | Existing shorthand arguments -> existing six-tuple of merged data and retained metadata lists. Includes existing observation-error construction and optional merged saving; no reload, basis construction or inference. |
 | `_retrieve_inversion_data_from_options` (rename private canonical body) | Fresh acquisition with resolved selectors. | Complete site-options record plus explicit non-site arguments -> same six-tuple. No second shorthand expansion. |
 | `data_processing_surface_notracer` (deprecated compatibility wrapper) | Preserve existing public calls/imports. | Same established signature, shorthand, six-tuple return and errors; issue `DeprecationWarning` naming `retrieve_inversion_data`, then delegate to the same body. No duplicate acquisition implementation. |
-| `retrieve_or_reload_rhime_data` (keep) | Select supplied, reloaded or freshly acquired data. | Applicable resolved choices or established public adapter inputs -> `RhimeMergedData`. May perform cache I/O; a valid supplied handoff bypasses acquisition and reload. |
+| `load_rhime_data` (replace retrieval/reload forwarding layers) | One shared data-loading boundary. | Resolved selectors and applicable choices, plus optional supplied data -> `RhimeMergedData`. Handles cache loading/fallback, selector/layout checks and retained-site alignment. A valid supplied handoff is returned unchanged and bypasses I/O. |
 | `RhimeMergedData` (keep) | Acquired/reloaded numerical handoff. | Merged scientific datasets plus authoritative retained site options. Borrowed, potentially lazy arrays; no hidden materialization. |
 | `prepare_rhime_inputs` (keep) | Independent preparation entry point. | Applicable preparation arguments -> `RhimePreparedInputs`; does not require a complete model/output/sampler request. Resolves applicable shorthand at its input boundary. |
 | `filter_rhime_observations`, `build_rhime_basis`, `build_rhime_sensitivities`, `assemble_rhime_inputs` (keep) | Named scientific stages in the ordinary recipe. | Borrowed numerical handoffs and explicit resolved values -> filtered data, basis, sensitivities and assembled inputs. No phase-config class, reparsing or generic request context threaded through components. |
 | `RhimePreparedInputs` (keep) | Labelled prepared model-input handoff. | Numerical inputs, basis and retained metadata; independent of full requested configuration. |
 | `RhimeRunSpec` (keep) | Execution description. | Constructed after ordinary preparation from requested dates, retained sites/periods, prepared layout and resolved model/output choices. No acquisition options or sampler execution. |
-| `RhimeRunnerSetup` / `make_rhime_runner_setup` / `resolve_rhime_options` (compatibility only) | Established setup return shape. | Shared resolution -> existing run-spec/sampler/dictionary shape where existing consumers require it. No independent semantics or restoration of original spellings for hash preservation. |
+| `RhimeRunnerSetup` / `make_rhime_runner_setup` / `resolve_rhime_options` (remove) | Redundant internal setup bundle and its constructors. | Migrate ordinary, nested, staged, shim and example consumers to `RhimeConfig` / `resolve_rhime_config`; construct retained run descriptions only after preparation. Do not retain a renamed bundle or compatibility projection. |
 | `RhimeResult` (keep) | Completed execution result. | Retained descriptions, prepared numerical inputs, posterior and outputs. Never represents an unresolved request. |
 | `run_rhime` / `run_rhime_multisector` (keep) | Ordinary procedural orchestration. | Existing file-plus-keyword inputs -> result. Decode, override, resolve, prepare, build, sample and output in visible order. |
 
@@ -131,6 +132,14 @@ quietly replace it with `RhimeMergedData`: that handoff belongs to the higher
 retrieval/reload boundary. The canonical body shares scientific work with both
 public names. Internal calls use the neutral name and must not emit deprecated
 wrapper warnings.
+
+`load_rhime_data` remains a function because cache loading is shared substantive
+work. Keep the existing load-failure fallback, time-resolution and sector-layout
+checks, retained-option selection and numerical normalization at their owning
+boundary. Collapse the forwarding layers in `rhime.preparation` and acquisition;
+do not replace each with another alias or `from_options` wrapper. Fresh retrieval
+and the deprecated public wrapper remain distinct because their six-tuple
+contract differs from the higher-level numerical handoff.
 
 ### 3. Resolve after overrides and before any scientific phase
 
@@ -176,10 +185,11 @@ keeps its authoritative site record and performs no acquisition/reload.
 After preparation, compose `RhimeRunSpec` with `config.start_date`,
 `config.end_date`, `prepared.sites`, `prepared.averaging_period`, the prepared
 layout, `config.model` and `config.output`. A TAC/MHD request retaining TAC stays
-a TAC/MHD configuration; the execution description contains TAC. Compatibility
-setup helpers retain their pre-preparation run-shaped return as an explicit
-legacy exception. Existing independent prepared-input runners and alignment
-helpers retain their contracts.
+a TAC/MHD configuration; the execution description contains TAC. Remove the
+pre-preparation run-shaped setup exception. Nested, staged and example recipes
+also start from `RhimeConfig`; local option overrides do not require a second
+setup record. Independent prepared-input runners and alignment helpers retain
+their scientific contracts.
 
 A frozen configuration is not recursively immutable: existing mappings and the
 sampler remain mutable. Own ordinary supported containers at resolution;
@@ -189,8 +199,11 @@ hide those operations in accessors. Preserve numerical execution boundaries.
 
 ### 5. Compatibility follows public behavior, not historical encodings
 
-Preserve established public signatures, supported shorthand, result shapes,
-scientific behavior and sampling defaults. This does not require restoring raw
+Preserve supported scientific entry points, shorthand, result shapes,
+scientific behavior and sampling defaults. The internal setup dataclass and
+constructor/helper return shapes are deliberately removed; migrate in-repository
+consumers, imports, tests and documentation together. Exported names alone do
+not justify retaining redundant orchestration types. This does not require restoring raw
 scalar/list/None spellings or sparse default-prior metadata after resolution.
 Remove #813's compatibility logic whose sole purpose is unchanged staged hashes.
 Do not add old-spelling fields, identity methods or hash migration bridges.
@@ -207,6 +220,23 @@ Keep current flat INI interpretation, canonical-alias precedence and warnings,
 ordinary cwd-relative paths and staged source-relative paths. CO2 TOML recipe
 configuration and its prepared-axis interpretation remain separate.
 
+### 6. Serializable configuration is a deferred follow-up
+
+`RhimeConfig` should be serializable as resolved values, including sampler
+settings rather than execution methods. This is distinct from a stable manifest
+schema or historical identity. Keep existing composed model/output/sampler
+choices; do not add duplicate settings classes to anticipate export. The precise
+representation, supported-value encodings, round-trip contract and writer API
+belong to [#814](https://github.com/openghg/openghg_inversions/issues/814),
+including a writer for the existing RHIME INI format.
+
+The HBMCMC shim prints extracted parameters before full resolution; staged
+workflows construct effective-configuration mappings for manifests. Neither is
+a direct `RhimeConfig` serialization contract. The follow-up may reuse a
+configuration-only representation for resolved logging without computing
+scientific data through general artifact serializers. No serialization or new
+logging behavior is required to complete #804.
+
 ## Risks / Trade-offs
 
 - The current implementation/docs no longer match this plan: reopen affected
@@ -215,8 +245,8 @@ configuration and its prepared-axis interpretation remain separate.
   preserve the deprecated wrapper, share the body and update internal callers.
 - Model/output views repeat a few shared facts: resolve once and forward values;
   do not create independent defaults or validation authorities.
-- Existing setup consumers expect a requested-site run shape: keep that adapter
-  contract while removing encoding-only reconstruction.
+- Nested/staged/example consumers use the removed setup bundle: migrate them to
+  one request type and identify supported persisted-contract effects explicitly.
 - A resolved request has many options: group the documentation by purpose rather
   than adding another phase configuration class.
 
@@ -224,8 +254,9 @@ configuration and its prepared-axis interpretation remain separate.
 
 Update the existing proposal, design, behavioral spec and tasks on #813 first.
 Then use the apply workflow to remove the preparation class and its plumbing,
-revise ordinary/compatibility consumers, implement the neutral decoder/acquisition
-names and update documentation/exports. Reuse the existing equivalence, override,
+remove the internal setup bundle, migrate ordinary/nested/staged/shim/example
+consumers, implement the neutral names and consolidate loading into
+`load_rhime_data`. Update documentation/exports. Reuse the existing equivalence, override,
 site/drop/reload, ownership, nested/shim and sampler coverage. Add focused checks
 for direct configuration access and deprecated-wrapper forwarding/warnings;
 preserve scientific output checks. Run relevant broader coverage before handoff.
