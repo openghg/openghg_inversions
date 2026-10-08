@@ -201,6 +201,7 @@ def test_configuration_identity_serialises_slice_inlet_selectors() -> None:
 def test_prepare_is_independent_and_writes_inspectable_contract(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     from openghg_inversions.rhime import _standard_stages as stages
 
@@ -243,6 +244,8 @@ def test_prepare_is_independent_and_writes_inspectable_contract(
         {"type": "slice", "start": 3, "stop": 10, "step": None}
     ]
     xr.testing.assert_identical(RhimePreparedInputs.load(prepared_path).inv_inputs, prepared.inv_inputs)
+
+    assert capsys.readouterr().out.count("TIMING rhime.prepare_inputs.merged_data ") == 1
 
 
 def test_prepare_fails_when_a_requested_site_was_dropped(

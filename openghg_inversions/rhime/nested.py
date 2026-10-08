@@ -23,7 +23,7 @@ import pandas as pd
 import pymc as pm
 import xarray as xr
 
-from openghg_inversions._timing import log_timing, timer_seconds, timer_start
+from openghg_inversions._timing import log_timing, timed, timer_seconds, timer_start
 from openghg_inversions.array_ops import to_dense
 from ._domain_support import rectangular_extent_mask, remove_domain_overlap
 from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs
@@ -930,42 +930,52 @@ def prepare_nested_rhime_inputs(
     )
 
     preparation_start = timer_start()
-    if outer_config.reload_merged_data:
-        outer_merged = RhimeMergedData.load(
-            **outer_config.select(
-                "merged_data_dir", "site_options", "species", "start_date", "output_name",
-                "merged_data_name", "split_by_sectors", "flux_non_finite_check",
-            ),
-        )
-    else:
-        outer_merged = RhimeMergedData.from_options(
-            **outer_config.select(
-                "site_options", "species", "domain", "start_date",
-                "end_date", "output_name", "flux_sources", "split_by_sectors",
-                "bc_store", "obs_store", "footprint_store", "emissions_store",
-                "emissions_domain", "fp_model", "fp_species", "calibration_scale",
-                "use_bc", "bc_input", "averaging_error",
-                "save_merged_data", "merged_data_dir", "merged_data_name", "flux_non_finite_check",
-            ),
-        )
-    if inner_config.reload_merged_data:
-        inner_merged = RhimeMergedData.load(
-            **inner_config.select(
-                "merged_data_dir", "site_options", "species", "start_date", "output_name",
-                "merged_data_name", "split_by_sectors", "flux_non_finite_check",
-            ),
-        )
-    else:
-        inner_merged = RhimeMergedData.from_options(
-            **inner_config.select(
-                "site_options", "species", "domain", "start_date",
-                "end_date", "output_name", "flux_sources", "split_by_sectors",
-                "bc_store", "obs_store", "footprint_store", "emissions_store",
-                "emissions_domain", "fp_model", "fp_species", "calibration_scale",
-                "use_bc", "bc_input", "averaging_error",
-                "save_merged_data", "merged_data_dir", "merged_data_name", "flux_non_finite_check",
-            ),
-        )
+    with timed(
+        "rhime.prepare_inputs.merged_data",
+        sites=len(outer_config.site_options.sites),
+        split_by_sectors=outer_config.split_by_sectors,
+    ):
+        if outer_config.reload_merged_data:
+            outer_merged = RhimeMergedData.load(
+                **outer_config.select(
+                    "merged_data_dir", "site_options", "species", "start_date", "output_name",
+                    "merged_data_name", "split_by_sectors", "flux_non_finite_check",
+                ),
+            )
+        else:
+            outer_merged = RhimeMergedData.from_options(
+                **outer_config.select(
+                    "site_options", "species", "domain", "start_date",
+                    "end_date", "output_name", "flux_sources", "split_by_sectors",
+                    "bc_store", "obs_store", "footprint_store", "emissions_store",
+                    "emissions_domain", "fp_model", "fp_species", "calibration_scale",
+                    "use_bc", "bc_input", "averaging_error",
+                    "save_merged_data", "merged_data_dir", "merged_data_name", "flux_non_finite_check",
+                ),
+            )
+    with timed(
+        "rhime.prepare_inputs.merged_data",
+        sites=len(inner_config.site_options.sites),
+        split_by_sectors=inner_config.split_by_sectors,
+    ):
+        if inner_config.reload_merged_data:
+            inner_merged = RhimeMergedData.load(
+                **inner_config.select(
+                    "merged_data_dir", "site_options", "species", "start_date", "output_name",
+                    "merged_data_name", "split_by_sectors", "flux_non_finite_check",
+                ),
+            )
+        else:
+            inner_merged = RhimeMergedData.from_options(
+                **inner_config.select(
+                    "site_options", "species", "domain", "start_date",
+                    "end_date", "output_name", "flux_sources", "split_by_sectors",
+                    "bc_store", "obs_store", "footprint_store", "emissions_store",
+                    "emissions_domain", "fp_model", "fp_species", "calibration_scale",
+                    "use_bc", "bc_input", "averaging_error",
+                    "save_merged_data", "merged_data_dir", "merged_data_name", "flux_non_finite_check",
+                ),
+            )
     outer_merged, inner_merged = _retain_common_sites(outer_merged, inner_merged)
     outer_filtered = filter_rhime_observations(outer_merged, filters=outer_config.filters)
     outer_filtered, inner_merged = _retain_common_sites(outer_filtered, inner_merged)

@@ -460,7 +460,7 @@ def test_cli_run_rhime_nested_passes_config(monkeypatch, tmp_path: Path) -> None
     assert seen == {"config_file": str(config_file), "kwargs": {}}
 
 
-def test_nested_preparation_uses_native_inner_domain_and_safe_basis_default(monkeypatch) -> None:
+def test_nested_preparation_uses_native_inner_domain_and_safe_basis_default(monkeypatch, capsys) -> None:
     basis = _basis([50.0], [-2.0], np.array([[1]]))
     prepared = _prepared(
         times=["2019-01-01T00:00"],
@@ -514,6 +514,7 @@ def test_nested_preparation_uses_native_inner_domain_and_safe_basis_default(monk
         inner_nbasis=40,
     )
 
+    assert capsys.readouterr().out.count("TIMING rhime.prepare_inputs.merged_data ") == 2
     assert len(retrieval_args) == 2
     inner_args = retrieval_args[1]
     assert inner_args["domain"] == "EUROPE-6km"

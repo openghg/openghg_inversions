@@ -19,6 +19,7 @@ import numpy as np
 import pymc as pm
 import xarray as xr
 
+from openghg_inversions._timing import timed
 from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs
 from .specs import RhimeRunSpec
 from openghg_inversions.serialization import (
@@ -189,24 +190,29 @@ def prepare_rhime_stage(
         save_merged_data=False,
         basis_output_path=str(destination / "basis") if setup.basis_output_path is not None else None,
     )
-    if executed_setup.reload_merged_data:
-        merged = RhimeMergedData.load(
-            **executed_setup.select(
-                "merged_data_dir", "site_options", "species", "start_date", "output_name",
-                "merged_data_name", "split_by_sectors", "flux_non_finite_check",
-            ),
-        )
-    else:
-        merged = RhimeMergedData.from_options(
-            **executed_setup.select(
-                "site_options", "species", "domain", "start_date",
-                "end_date", "output_name", "flux_sources", "split_by_sectors",
-                "bc_store", "obs_store", "footprint_store", "emissions_store",
-                "emissions_domain", "fp_model", "fp_species", "calibration_scale",
-                "use_bc", "bc_input", "averaging_error",
-                "save_merged_data", "merged_data_dir", "merged_data_name", "flux_non_finite_check",
-            ),
-        )
+    with timed(
+        "rhime.prepare_inputs.merged_data",
+        sites=len(executed_setup.site_options.sites),
+        split_by_sectors=executed_setup.split_by_sectors,
+    ):
+        if executed_setup.reload_merged_data:
+            merged = RhimeMergedData.load(
+                **executed_setup.select(
+                    "merged_data_dir", "site_options", "species", "start_date", "output_name",
+                    "merged_data_name", "split_by_sectors", "flux_non_finite_check",
+                ),
+            )
+        else:
+            merged = RhimeMergedData.from_options(
+                **executed_setup.select(
+                    "site_options", "species", "domain", "start_date",
+                    "end_date", "output_name", "flux_sources", "split_by_sectors",
+                    "bc_store", "obs_store", "footprint_store", "emissions_store",
+                    "emissions_domain", "fp_model", "fp_species", "calibration_scale",
+                    "use_bc", "bc_input", "averaging_error",
+                    "save_merged_data", "merged_data_dir", "merged_data_name", "flux_non_finite_check",
+                ),
+            )
     filtered = filter_rhime_observations(merged, filters=executed_setup.filters)
     retained_sites = {str(site).upper() for site in filtered.sites}
     missing_sites = [site for site in executed_setup.site_options.sites if str(site).upper() not in retained_sites]
