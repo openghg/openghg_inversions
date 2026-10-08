@@ -2948,7 +2948,12 @@ def test_public_rhime_runners_follow_named_stage_order(
         return config
 
     merged = cast(Any, object())
-    external_merged = RhimeMergedData.from_legacy_fp_all({".split_by_sectors": multisector}, config.site_options)
+    external_merged = RhimeMergedData(
+        site_data={"TAC": _site_dataset()},
+        flux_data={},
+        site_options=config.site_options,
+        split_by_sectors=multisector,
+    )
     if external_data:
         merged = external_merged
     filtered = cast(Any, object())
@@ -6736,7 +6741,10 @@ def test_prepare_rhime_inputs_filters_multisector_sites_before_basis_generation(
         return (
             {
                 **site_data,
-                ".flux": {source: object() for source in flux_sources},
+                ".flux": {
+                    source: xr.Dataset({"flux": ("time", [1.0, 2.0, 3.0])}, coords={"time": site_dataset.time})
+                    for source in flux_sources
+                },
                 ".species": "CH4",
                 ".split_by_sectors": True,
             },
