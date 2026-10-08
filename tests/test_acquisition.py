@@ -88,3 +88,37 @@ def test_current_codec_load_requires_explicit_selectors(merged_data_dir, merged_
     reopened = RhimeMergedData.load(tmp_path, merged_data_name="roundtrip.nc")
     assert reopened.site_options == merged.site_options
     xr.testing.assert_equal(reopened.to_legacy_fp_all()["TAC"], merged.to_legacy_fp_all()["TAC"])
+
+
+@pytest.mark.parametrize("entrypoint", ["retrieve_inversion_data", "data_processing_surface_notracer"])
+def test_public_retrieval_hides_private_provenance_transport(monkeypatch, entrypoint):
+    """Both public six-tuple APIs retain their established mapping keys."""
+    from contextlib import nullcontext
+
+    site = xr.Dataset({"mf": ("time", [1.0])})
+    retained = (["TAC"], ["185m"], ["185m"], ["picarro"], ["1h"])
+    private_provenance = {"openghg": {"version": "known", "commit": "known"}}
+
+    def retrieve(**kwargs):
+        return (
+            {
+                ".flux": {},
+                ".provenance": private_provenance,
+                ".split_by_sectors": False,
+                ".bc": xr.Dataset(),
+                "TAC": site,
+            },
+            *retained,
+        )
+
+    monkeypatch.setattr(get_data, "_retrieve_inversion_data_from_options", retrieve)
+    warning = pytest.warns(DeprecationWarning) if entrypoint == "data_processing_surface_notracer" else nullcontext()
+    with warning:
+        result = getattr(get_data, entrypoint)(
+            "ch4", ["TAC"], "EUROPE", "1h", "2020-01-01", "2020-01-02"
+        )
+    assert len(result) == 6
+    assert result[1:] == retained
+    assert list(result[0]) == [".flux", ".split_by_sectors", ".bc", "TAC"]
+    assert result[0]["TAC"] is site
+    assert private_provenance["openghg"]["version"] == "known"

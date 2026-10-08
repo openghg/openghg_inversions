@@ -294,7 +294,7 @@ def retrieve_inversion_data(
         max_level=max_level,
         time_resolved=time_resolved,
     )
-    return _retrieve_inversion_data_from_options(
+    result = _retrieve_inversion_data_from_options(
         site_options=site_options,
         species=species,
         domain=domain,
@@ -319,6 +319,10 @@ def retrieve_inversion_data(
         output_name=output_name,
         flux_non_finite_check=flux_non_finite_check,
     )
+
+    # Private acquisition provenance belongs to the modern record, not this legacy mapping.
+    result[0].pop(".provenance", None)
+    return result
 
 
 def _retrieve_inversion_data_from_options(
