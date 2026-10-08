@@ -46,6 +46,12 @@ The review test is:
   not need to learn a compiler, dependency-injection system, manifest, or
   framework lifecycle first.
 
+Use :doc:`architecture_principles` to assess module responsibilities,
+six-layer handoffs, and consumer interfaces. Different recipes may retain
+similar orchestration; equivalent execution routes through one recipe should
+share its scientific operations. Explicit interfaces for actual consumers are
+compatible with ordinary callable components and procedural runners.
+
 Model recipes
 -------------
 
