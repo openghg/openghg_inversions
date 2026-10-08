@@ -117,7 +117,7 @@ separately; this validation does not claim those design concerns are resolved.
   and verify matching prepared metadata, footprint provenance and warnings.
 - [x] Reconcile user/developer/reference documentation and release notes; review
   any remaining deprecated helper exposure such as `convert_to_list`.
-- [ ] Run focused and relevant broader tests, changed-path Ruff, strict OpenSpec,
+- [x] Run focused and relevant broader tests, changed-path Ruff, strict OpenSpec,
   whitespace and rendered-documentation checks before marking this round complete.
 
 The filtered staged checkpoint, retained-site policy across all execution routes,
@@ -126,4 +126,19 @@ and replacement manifest/handoff contracts remain with the planning-only
 `1ec45fc`. This cleanup shares existing scientific stages and their provenance;
 it does not claim to implement that broader workflow replacement.
 
-Focused validation passed: 69 configuration tests, 55 runner/shim/documentation-example and integration tests, 69 preparation/acquisition/site-resolution and tracer checks, and 10 nested/runner composition checks (some selections overlap). Independent review found no actionable forwarding or scientific-contract regressions. Broader supported-version tests and a fresh documentation build remain pending.
+Focused validation passed: 69 configuration tests, 55 runner/shim/documentation-example
+and integration tests, 69 preparation/acquisition/site-resolution and tracer checks,
+and 10 nested/runner composition checks (some selections overlap). Independent
+review found no actionable forwarding or scientific-contract regressions.
+
+Implementation commit `2b80e490` passed relevant configuration, acquisition,
+standard/nested/staged runner, shim, serialization and integration coverage on
+Python 3.12 and 3.13, plus `docs-full`, in SLURM job `19280761` (exit zero).
+The test environments used locked dependencies and ran sequentially with one
+pytest worker. Eight affected rendered API, usage, migration and development
+pages were checked for the selection, required-keyword and deprecation contracts;
+all 1,316 inspected anchor links had valid local targets where applicable.
+Generated reference files match the tracked files. Inspection covered rendered
+HTML structure and text, not browser screenshots. Changed-path Ruff, strict
+OpenSpec and whitespace checks passed. This final validation record changes no
+implementation or examples.
