@@ -536,9 +536,15 @@ def test_native_openghg_public_retrieval_preserves_selected_version(monkeypatch,
         return dataset
 
     monkeypatch.setattr(_basedata, "get_datasource", lambda **kw: SimpleNamespace(get_data=get_dataset))
-    monkeypatch.setattr(
-        openghg.retrieve, "search", lambda **kw: SearchResults(metadata={"native-uuid": dict(metadata)})
-    )
+    def search(**kwargs):
+        selected = dict(metadata)
+        if kind == "footprints-multiple":
+            height = kwargs["inlet"].removesuffix("m")
+            selected["uuid"] = f"native-{height}"
+            selected["latest_version"] = "v2" if height == "10" else "v7"
+        return SearchResults(metadata={selected["uuid"]: selected})
+
+    monkeypatch.setattr(openghg.retrieve, "search", search)
     if kind == "older":
         result = SearchResults(metadata={"native-uuid": dict(metadata)}).retrieve_all(version="v2")
         expected = "v2"
@@ -573,7 +579,12 @@ def test_native_openghg_public_retrieval_preserves_selected_version(monkeypatch,
             end_date="2020-01-02",
             averaging_period="1h",
         )
-        expected = ["v7", "v7"] if kind.endswith("multiple") else "v7"
-    assert loaded_versions == (["v7", "v7"] if kind.endswith("multiple") else [expected])
-    assert selected_provenance(result)["dataversion"] == expected
+        expected = ["v2", "v7"] if kind.endswith("multiple") else "v7"
+    assert loaded_versions == (expected if kind.endswith("multiple") else [expected])
+    provenance = selected_provenance(result)
+    assert provenance["dataversion"] == expected
+    if kind == "footprints-multiple":
+        assert list(zip(provenance["uuid"], provenance["dataversion"], strict=True)) == [
+            ("native-10", "v2"), ("native-100", "v7")
+        ]
     assert "dataversion" not in metadata
