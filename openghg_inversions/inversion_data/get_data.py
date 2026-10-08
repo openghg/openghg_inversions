@@ -169,7 +169,9 @@ def convert_to_list(
     length: int,
     name: str | None = None,
 ) -> list[Any]:
-    """Convert a scalar or sequence to a list of the expected size.
+    """Deprecated helper converting a scalar or sequence to an aligned list.
+
+    Use :meth:`SiteOptions.from_inputs` to resolve complete site selectors.
 
     Args:
         x: Scalar string/integer/slice/``None`` to broadcast, or an iterable
@@ -183,7 +185,15 @@ def convert_to_list(
     Raises:
         ValueError: If an iterable has the wrong length, or if ``x`` is neither
             a supported scalar nor an iterable.
+
+    Warns:
+        DeprecationWarning: On every call; use the complete selector factory.
     """
+    warnings.warn(
+        "convert_to_list is deprecated; use SiteOptions.from_inputs for site selectors instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     return list(expand_site_option(x, nsites=length, name=name or "value"))
 
 

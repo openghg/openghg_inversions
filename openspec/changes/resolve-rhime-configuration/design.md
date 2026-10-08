@@ -89,6 +89,8 @@ class RhimeConfig:
 
     @classmethod
     def from_params(cls, params: Mapping[str, object], *, multisector: bool) -> RhimeConfig: ...
+
+    def select(self, *names: str) -> dict[str, object]: ...
 ```
 
 The configuration is equivalent to fully resolved options, not necessarily a
@@ -126,8 +128,8 @@ adopted names for this revision; other established names are retained.
 | `data_processing_surface_notracer` (deprecated compatibility wrapper) | Preserve existing public calls/imports. | Same established signature, shorthand, six-tuple return and errors; issue `DeprecationWarning` naming `retrieve_inversion_data`, then delegate to the same body. No duplicate acquisition implementation. |
 | `load_rhime_data` (replace retrieval/reload forwarding layers) | One shared data-loading boundary. | Resolved selectors and applicable choices, plus optional supplied data -> `RhimeMergedData`. Handles cache loading/fallback, selector/layout checks and retained-site alignment. A valid supplied handoff is returned unchanged and bypasses I/O. |
 | `RhimeMergedData` (keep) | Acquired/reloaded numerical handoff. | Merged scientific datasets plus authoritative retained site options. Borrowed, potentially lazy arrays; no hidden materialization. |
-| `prepare_rhime_inputs` (keep) | Independent preparation entry point. | Applicable preparation arguments -> `RhimePreparedInputs`; does not require a complete model/output/sampler request. Resolves applicable shorthand at its input boundary. |
-| `filter_rhime_observations`, `build_rhime_basis`, `build_rhime_sensitivities`, `assemble_rhime_inputs` (keep) | Named scientific stages in the ordinary recipe. | Borrowed numerical handoffs and explicit resolved values -> filtered data, basis, sensitivities and assembled inputs. No phase-config class, reparsing or generic request context threaded through components. |
+| `prepare_rhime_inputs` (deprecate; retain adapter) | Acquisition-and-preparation convenience entry point. | Preserves applicable arguments and `RhimePreparedInputs` return, warns with the explicit loading/preparation replacements, and delegates to the same named scientific stages. Resolves applicable shorthand without a complete model/output/sampler request. |
+| `filter_rhime_observations`, `build_rhime_basis`, `build_rhime_sensitivities`, `assemble_rhime_inputs` (keep) | Named scientific stages in the ordinary recipe. | Borrowed numerical handoffs and explicit resolved values -> filtered data, basis, sensitivities and assembled inputs. Named keyword options with required scientific identity/source inputs; remove the former positional `data_args` adapter. No phase-config class, reparsing or generic request context threaded through scientific components. |
 | `RhimePreparedInputs` (keep) | Labelled prepared model-input handoff. | Numerical inputs, basis and retained metadata; independent of full requested configuration. |
 | `RhimeRunSpec` (keep) | Execution description. | Constructed after ordinary preparation from requested dates, retained sites/periods, prepared layout and resolved model/output choices. No acquisition options or sampler execution. |
 | `RhimeRunnerSetup` / `make_rhime_runner_setup` / `resolve_rhime_options` (remove) | Redundant internal setup bundle and its constructors. | Migrate ordinary, nested, staged, shim and example consumers to `RhimeConfig` / `resolve_rhime_config`; construct retained run descriptions only after preparation. Do not retain a renamed bundle or compatibility projection. |
@@ -241,11 +243,24 @@ following inventory describes fields on `RhimeConfig`, not another class:
 | Filters, averaging error, BC frequency, minimum error and normalized error options | Existing contracts; data-dependent materialization remains in preparation. |
 | Reload/save merged data, merged directory/name, basis destination and non-finite flux check | Existing preparation-artifact policy and flux-check choices. |
 
-The runner forwards needed named values at each scientific call. A small shallow
-keyword mapping at an existing compatibility boundary is acceptable; it does not
-justify a generic `as_data_args()` method, dynamic option schema or another
-request/preparation record. Direct retrieval/preparation adapters resolve only
-applicable inputs and share the scientific bodies with ordinary configured runs.
+The runner forwards needed named values at each scientific call, directly or
+with `**config.select("name", ...)`. `select` returns a fresh shallow dictionary
+of explicitly named attributes; values remain borrowed and missing attributes
+raise `AttributeError`. It does not infer consumer signatures, copy nested values,
+resolve defaults or export a durable settings schema. A private orchestration
+helper may accept the resolved config while composing several stages; scientific
+components continue to accept their own named arguments. No dynamic option
+schema or second request/preparation record is introduced.
+
+Raw overrides are applied before `from_params` or through `read_rhime_ini`.
+`dataclasses.replace` is for already coherent resolved changes, not for
+recomputing dependent defaults or shared model/output choices. Direct retrieval
+and deprecated preparation adapters resolve only applicable inputs and share the
+scientific bodies with ordinary configured runs. Deprecate the standalone
+`convert_to_list` selector helper in favour of `SiteOptions.from_inputs`, retaining
+its calling and list-return contract through the shared scalar-expansion helper.
+The preparation adapter must
+preserve canonical footprint provenance instead of assembling a second result.
 
 ### 4. Requested options and retained data have different meanings
 

@@ -31,7 +31,13 @@ meant to simplify.
   dictionary-returning INI compatibility adapter.
 - Collapse retrieval/reload forwarding layers into `load_rhime_data`, the shared
   supplied-data/cache/fresh-acquisition boundary returning `RhimeMergedData`.
-- Preserve public scientific input/return contracts and ownership through small
+- Add shallow `RhimeConfig.select(*names)` for explicitly selected keyword
+  forwarding. Keep scientific components directly callable and remove their
+  former positional `data_args` adapters.
+- Deprecate the acquisition-and-preparation `prepare_rhime_inputs` convenience
+  API while retaining its signature and return through the canonical named
+  stages, including their footprint provenance.
+- Preserve other public scientific input/return contracts and ownership through small
   adapters. Remove requirements to reconstruct original spellings or sparse
   defaults solely to preserve historical staged hashes.
 

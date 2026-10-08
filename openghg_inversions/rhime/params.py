@@ -309,6 +309,22 @@ class RhimeConfig:
             **remaining,
         )
 
+    def select(self, *names: str) -> dict[str, Any]:
+        """Select named resolved attributes for an explicit scientific call.
+
+        Args:
+            *names: Attribute names to forward, written at the call site.
+
+        Returns:
+            A new dictionary containing the selected values by reference.
+            Selection does not copy containers or numerical arrays, resolve
+            defaults, or apply overrides.
+
+        Raises:
+            AttributeError: If a requested attribute does not exist.
+        """
+        return {name: getattr(self, name) for name in names}
+
     def retained_run_spec(self, prepared: RhimePreparedInputs) -> RhimeRunSpec:
         """Describe execution using prepared sites and requested date bounds.
 

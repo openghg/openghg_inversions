@@ -294,63 +294,41 @@ def run_custom_rhime(
     config = resolve_rhime_config(params=params, multisector=False)
 
     merged = load_rhime_data(
-        site_options=config.site_options,
-        species=config.species,
-        domain=config.domain,
-        start_date=config.start_date,
-        end_date=config.end_date,
-        output_name=config.output_name,
-        flux_sources=config.flux_sources,
-        split_by_sectors=config.split_by_sectors,
-        bc_store=config.bc_store,
-        obs_store=config.obs_store,
-        footprint_store=config.footprint_store,
-        emissions_store=config.emissions_store,
-        emissions_domain=config.emissions_domain,
-        fp_model=config.fp_model,
-        fp_species=config.fp_species,
-        calibration_scale=config.calibration_scale,
-        use_bc=config.use_bc,
-        bc_input=config.bc_input,
-        averaging_error=config.averaging_error,
-        reload_merged_data=config.reload_merged_data,
-        save_merged_data=config.save_merged_data,
-        merged_data_dir=config.merged_data_dir,
-        merged_data_name=config.merged_data_name,
-        flux_non_finite_check=config.flux_non_finite_check,
+        **config.select(
+            "site_options", "species", "domain", "start_date",
+            "end_date", "output_name", "flux_sources", "split_by_sectors",
+            "bc_store", "obs_store", "footprint_store", "emissions_store",
+            "emissions_domain", "fp_model", "fp_species", "calibration_scale",
+            "use_bc", "bc_input", "averaging_error", "reload_merged_data",
+            "save_merged_data", "merged_data_dir", "merged_data_name", "flux_non_finite_check",
+        ),
     )
     # 2. Keep the scientific preparation order visible in this recipe.
     filtered = filter_rhime_observations(merged, filters=config.filters)
     # Replace only basis construction; subsequent scientific stages stay visible.
     basis_functions = build_project_basis(
         filtered,
-        domain=config.domain,
-        flux_sources=config.flux_sources,
-        nbasis=config.nbasis,
-        country_directory=config.country_directory,
+        **config.select("domain", "flux_sources", "nbasis", "country_directory"),
         project_basis_path=project_basis_path,
         max_child_pca_eccentricity=max_child_pca_eccentricity,
     )
     site_data = build_rhime_sensitivities(
         filtered,
         basis_functions,
-        domain=config.domain,
-        flux_sources=config.flux_sources,
-        use_bc=config.use_bc,
-        bc_basis_case=config.bc_basis_case,
-        bc_basis_directory=config.bc_basis_directory,
+        **config.select(
+            "domain", "flux_sources", "use_bc", "bc_basis_case",
+            "bc_basis_directory",
+        ),
         multisector=False,
     )
     prepared = assemble_rhime_inputs(
         filtered,
         basis_functions,
         site_data,
-        domain=config.domain,
-        start_date=config.start_date,
-        bc_freq=config.bc_freq,
-        min_error=config.min_error,
-        min_error_options=config.min_error_options,
-        use_bc=config.use_bc,
+        **config.select(
+            "domain", "start_date", "bc_freq", "min_error",
+            "min_error_options", "use_bc",
+        ),
     )
     run_spec = config.retained_run_spec(prepared)
 

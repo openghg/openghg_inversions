@@ -171,15 +171,16 @@ the retained RHIME abstractions:
      - Current API
      - Migration note
    * - ``prepare_fixedbasis_inversion_data``
-     - ``prepare_rhime_inputs``
-     - Returns the inputs used by the standard RHIME recipe
+     - Named RHIME preparation stages
+     - Load data, then filter, build basis and sensitivities, and assemble inputs;
+       ``prepare_rhime_inputs`` remains a deprecated convenience adapter
    * - ``FixedBasisPreparedData``
      - ``RhimePreparedInputs``
      - Backend-neutral prepared observations and sensitivities
    * - ``basis_functions_wrapper``
      - ``make_basis_functions``
      - Call ``BasisFunctions.sensitivity`` when applying the retained basis;
-       full workflows should normally use ``prepare_rhime_inputs``
+       complete inversions should normally use ``run_rhime``
    * - ``add_inferpymc_likelihood_component``
      - RHIME likelihood selection
      - Configure a built-in likelihood, or pass a ``likelihood_builder`` for a
@@ -187,6 +188,13 @@ the retained RHIME abstractions:
 
 See :doc:`rhime` for preparation and recipe APIs and
 :doc:`customising_rhime` for the custom-likelihood boundary.
+
+The named RHIME preparation stages accept ordinary keyword arguments. Replace
+former positional ``data_args`` mappings with named arguments or an explicit
+``**config.select("name", ...)`` selection. See :doc:`rhime` for selection
+ownership and the acquisition-to-preparation sequence. The low-level
+``convert_to_list`` selector helper is also deprecated: use
+``SiteOptions.from_inputs`` to normalize and align the complete selector record.
 
 Legacy merged-data metadata
 ---------------------------

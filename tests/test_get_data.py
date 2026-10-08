@@ -523,11 +523,13 @@ def test_column_inlet_labels_scenario_as_site_column(
 
 def test_convert_to_list_accepts_numpy_integer_scalar() -> None:
     """NumPy scalars and arrays retain the legacy list-returning contract."""
-    result = convert_to_list(np.int64(17), length=2, name="max_level")
+    with pytest.warns(DeprecationWarning, match="use SiteOptions.from_inputs"):
+        result = convert_to_list(np.int64(17), length=2, name="max_level")
 
     assert result == [17, 17]
     assert all(type(value) is int for value in result)
-    assert convert_to_list(np.array(["a", "b"]), length=2, name="inlet") == ["a", "b"]
+    with pytest.warns(DeprecationWarning, match="use SiteOptions.from_inputs"):
+        assert convert_to_list(np.array(["a", "b"]), length=2, name="inlet") == ["a", "b"]
 
 
 def test_data_processing_rejects_boolean_max_level_before_retrieval() -> None:

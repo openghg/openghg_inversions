@@ -1856,8 +1856,8 @@ def test_assemble_rhime_inputs_preserves_borrowed_site_datasets(
 
     monkeypatch.setattr(prep_module, "_make_inv_inputs", make_inputs)
     monkeypatch.setattr(
-        prep_module,
-        "_scale_satellite_bc_sensitivity_to_column_signal",
+        rhime_preparation,
+        "scale_satellite_boundary_sensitivity_to_column_signal",
         lambda inputs, **kwargs: inputs,
     )
     monkeypatch.setattr(prep_module, "_warn_for_nan_inputs", lambda *args, **kwargs: None)
@@ -2888,6 +2888,7 @@ def test_run_rhime_from_prepared_inputs_routes_without_preparation(
         ),
     ],
 )
+@pytest.mark.filterwarnings("error::DeprecationWarning:openghg_inversions")
 def test_public_rhime_runners_follow_named_stage_order(
     monkeypatch: pytest.MonkeyPatch,
     runner_name: str,
@@ -3444,10 +3445,64 @@ def test_build_rhime_basis_forwards_fixed_outer_region_asset(monkeypatch: pytest
         "basis_output_path": None,
     }
 
-    actual = rhime_public.build_rhime_basis(merged, data_args)
+    actual = rhime_public.build_rhime_basis(merged, **data_args)
 
     assert actual is expected
     assert captured["outer_regions_path"] == "intem_region_definition_EUHROB.nc"
+
+
+@pytest.mark.filterwarnings("error::DeprecationWarning")
+def test_deprecated_preparation_matches_explicit_stage_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Compatibility preparation retains the modern stages' transport provenance."""
+    site_data = _site_dataset([2.0]).assign_attrs(
+        footprint_transport_model="FLEXPART",
+        footprint_transport_model_version="10.4",
+        footprint_met_model="ERA5",
+    )
+    merged = RhimeMergedData(
+        fp_all={"TAC": site_data},
+        site_options=_site_options(["TAC"], averaging_period="1h"),
+    )
+    basis = _fake_basis_functions()
+    monkeypatch.setattr(prep_module, "load_rhime_data", lambda **kwargs: merged)
+    monkeypatch.setattr(rhime_preparation, "make_basis_functions", lambda **kwargs: basis)
+    monkeypatch.setattr(
+        prep_module, "_rhime_site_data_from_basis_functions", lambda **kwargs: {"TAC": site_data}
+    )
+    monkeypatch.setattr(prep_module, "_make_inv_inputs", lambda **kwargs: _minimal_prepared_inv_inputs())
+    monkeypatch.setattr(
+        rhime_preparation, "scale_satellite_boundary_sensitivity_to_column_signal", lambda inputs, **kwargs: inputs
+    )
+    monkeypatch.setattr(prep_module, "_warn_for_nan_inputs", lambda *args, **kwargs: None)
+
+    with pytest.warns(DeprecationWarning, match="prepare_rhime_inputs is deprecated") as recorded:
+        compatible = prepare_rhime_inputs(
+            species="ch4", sites=["TAC"], domain="EUROPE", averaging_period="1h",
+            start_date="2019-01-01", end_date="2019-01-02", output_name="metadata-test",
+            flux_sources=["inventory"], use_bc=False,
+        )
+    assert len(recorded) == 1
+    assert recorded[0].filename == __file__
+
+    filtered = rhime_public.filter_rhime_observations(merged)
+    stage_basis = rhime_public.build_rhime_basis(
+        filtered, species="ch4", domain="EUROPE", start_date="2019-01-01",
+        flux_sources=["inventory"], output_name="metadata-test",
+    )
+    sensitivities = rhime_public.build_rhime_sensitivities(
+        filtered, stage_basis, domain="EUROPE", flux_sources=["inventory"],
+        use_bc=False, multisector=False,
+    )
+    explicit = rhime_public.assemble_rhime_inputs(
+        filtered, stage_basis, sensitivities, domain="EUROPE", start_date="2019-01-01",
+        use_bc=False,
+    )
+    xr.testing.assert_identical(compatible.inv_inputs, explicit.inv_inputs)
+    xr.testing.assert_identical(compatible.site_metadata, explicit.site_metadata)
+    for name, expected in (
+        ("transport_model", "FLEXPART"), ("transport_model_version", "10.4"), ("met_model", "ERA5")
+    ):
+        assert compatible.site_metadata[name].sel(site="TAC").item() == expected
 
 
 def test_run_rhime_from_prepared_inputs_accepts_complete_model_builder(
@@ -5766,7 +5821,7 @@ def test_rhime_preparation_uses_platform_for_sites_retained_after_filtering(
 
     monkeypatch.setattr(prep_module, "load_rhime_data", retrieve)
     monkeypatch.setattr(prep_module, "_filter_merged_inversion_data", lambda **kwargs: filtered_merged)
-    monkeypatch.setattr(prep_module, "make_basis_functions", lambda **kwargs: _fake_basis_functions())
+    monkeypatch.setattr(rhime_preparation, "make_basis_functions", lambda **kwargs: _fake_basis_functions())
     monkeypatch.setattr(
         prep_module,
         "_rhime_site_data_from_basis_functions",
@@ -5782,7 +5837,7 @@ def test_rhime_preparation_uses_platform_for_sites_retained_after_filtering(
         captured.update(kwargs)
         return inv_inputs
 
-    monkeypatch.setattr(prep_module, "_scale_satellite_bc_sensitivity_to_column_signal", capture_scaling)
+    monkeypatch.setattr(rhime_preparation, "scale_satellite_boundary_sensitivity_to_column_signal", capture_scaling)
 
     prepare_rhime_inputs(
         species="co2",
@@ -5853,7 +5908,7 @@ def test_prepare_rhime_inputs_uses_basis_sensitivity_without_legacy_side_channel
         "_retrieve_inversion_data_from_options",
         fake_data_processing_surface_notracer,
     )
-    monkeypatch.setattr(prep_module, "make_basis_functions", fake_make_basis_functions)
+    monkeypatch.setattr(rhime_preparation, "make_basis_functions", fake_make_basis_functions)
     monkeypatch.setattr(prep_module, "make_inv_inputs", fake_make_inv_inputs)
     prepared = prepare_rhime_inputs(
         species="ch4",
@@ -5900,7 +5955,7 @@ def test_prepare_rhime_inputs_matches_direct_sensitivity_inv_inputs(
         "_retrieve_inversion_data_from_options",
         fake_data_processing_surface_notracer,
     )
-    monkeypatch.setattr(prep_module, "make_basis_functions", fake_make_basis_functions)
+    monkeypatch.setattr(rhime_preparation, "make_basis_functions", fake_make_basis_functions)
 
     prepared = prepare_rhime_inputs(
         species="ch4",
@@ -5954,7 +6009,7 @@ def test_prepare_rhime_inputs_prunes_reloaded_merged_data_to_requested_sites(
         return _minimal_prepared_inv_inputs()
 
     monkeypatch.setattr(acquisition_module, "load_merged_data", fake_load_merged_data)
-    monkeypatch.setattr(prep_module, "make_basis_functions", fake_make_basis_functions)
+    monkeypatch.setattr(rhime_preparation, "make_basis_functions", fake_make_basis_functions)
     monkeypatch.setattr(prep_module, "make_inv_inputs", fake_make_inv_inputs)
 
     prepare_rhime_inputs(
@@ -6251,7 +6306,7 @@ def test_prepare_rhime_inputs_reload_all_sites_missing_fails_before_basis(
         """Fail if basis construction starts without a requested site."""
         raise AssertionError("Basis generation should not run without a requested site.")
 
-    monkeypatch.setattr(prep_module, "make_basis_functions", fail_make_basis_functions)
+    monkeypatch.setattr(rhime_preparation, "make_basis_functions", fail_make_basis_functions)
 
     with pytest.raises(ValueError, match="does not include any requested sites"):
         prepare_rhime_inputs(
@@ -6362,7 +6417,7 @@ def test_prepare_rhime_inputs_normalises_averaging_period_to_site_count(
         "_retrieve_inversion_data_from_options",
         fake_data_processing_surface_notracer,
     )
-    monkeypatch.setattr(prep_module, "make_basis_functions", fake_make_basis_functions)
+    monkeypatch.setattr(rhime_preparation, "make_basis_functions", fake_make_basis_functions)
     monkeypatch.setattr(prep_module, "make_inv_inputs", fake_make_inv_inputs)
 
     prepared = prepare_rhime_inputs(
@@ -6480,7 +6535,7 @@ def test_prepare_rhime_inputs_treats_min_error_none_as_default(
         "_retrieve_inversion_data_from_options",
         fake_data_processing_surface_notracer,
     )
-    monkeypatch.setattr(prep_module, "make_basis_functions", fake_make_basis_functions)
+    monkeypatch.setattr(rhime_preparation, "make_basis_functions", fake_make_basis_functions)
     monkeypatch.setattr(prep_module, "make_inv_inputs", fake_make_inv_inputs)
 
     prepare_rhime_inputs(
@@ -6618,7 +6673,7 @@ def test_prepare_rhime_inputs_filters_sites_before_basis_generation(
         fake_data_processing_surface_notracer,
     )
     monkeypatch.setattr(prep_module, "filtering", fake_filtering)
-    monkeypatch.setattr(prep_module, "make_basis_functions", fake_make_basis_functions)
+    monkeypatch.setattr(rhime_preparation, "make_basis_functions", fake_make_basis_functions)
     monkeypatch.setattr(prep_module, "bc_sensitivity", fake_bc_sensitivity)
     monkeypatch.setattr(prep_module, "make_inv_inputs", fake_make_inv_inputs)
 
@@ -6658,7 +6713,7 @@ def test_satellite_bc_sensitivity_is_scaled_to_corrected_column_signal() -> None
         }
     )
 
-    result = prep_module._scale_satellite_bc_sensitivity_to_column_signal(
+    result = rhime_preparation.scale_satellite_boundary_sensitivity_to_column_signal(
         inv_inputs,
         sites=["OCO2-EASTASIA"],
         platform=["satellite"],
@@ -6686,7 +6741,7 @@ def test_surface_bc_sensitivity_is_not_scaled_by_column_factors() -> None:
         }
     )
 
-    result = prep_module._scale_satellite_bc_sensitivity_to_column_signal(
+    result = rhime_preparation.scale_satellite_boundary_sensitivity_to_column_signal(
         inv_inputs,
         sites=["TAC"],
         platform=[None],
@@ -6743,7 +6798,7 @@ def test_prepare_rhime_inputs_applies_daily_median_before_sensitivity(
         "_retrieve_inversion_data_from_options",
         fake_data_processing_surface_notracer,
     )
-    monkeypatch.setattr(prep_module, "make_basis_functions", fake_make_basis_functions)
+    monkeypatch.setattr(rhime_preparation, "make_basis_functions", fake_make_basis_functions)
     monkeypatch.setattr(prep_module, "make_inv_inputs", fake_make_inv_inputs)
 
     prepare_rhime_inputs(
@@ -6832,7 +6887,7 @@ def test_prepare_rhime_inputs_filters_multisector_sites_before_basis_generation(
         fake_data_processing_surface_notracer,
     )
     monkeypatch.setattr(prep_module, "filtering", fake_filtering)
-    monkeypatch.setattr(prep_module, "make_basis_functions", fake_make_basis_functions)
+    monkeypatch.setattr(rhime_preparation, "make_basis_functions", fake_make_basis_functions)
     monkeypatch.setattr(prep_module, "make_inv_inputs", fake_make_inv_inputs)
 
     prepared = prepare_rhime_inputs(
@@ -6905,7 +6960,7 @@ def test_prepare_rhime_inputs_filters_loaded_basis_before_sensitivity(
         "_retrieve_inversion_data_from_options",
         fake_data_processing_surface_notracer,
     )
-    monkeypatch.setattr(prep_module, "make_basis_functions", fake_make_basis_functions)
+    monkeypatch.setattr(rhime_preparation, "make_basis_functions", fake_make_basis_functions)
     monkeypatch.setattr(prep_module, "filtering", fake_filtering)
     monkeypatch.setattr(prep_module, "make_inv_inputs", fake_make_inv_inputs)
 
@@ -6965,7 +7020,7 @@ def test_prepare_rhime_inputs_aligns_averaging_period_after_empty_site_drop(
         "_retrieve_inversion_data_from_options",
         fake_data_processing_surface_notracer,
     )
-    monkeypatch.setattr(prep_module, "make_basis_functions", fake_make_basis_functions)
+    monkeypatch.setattr(rhime_preparation, "make_basis_functions", fake_make_basis_functions)
     monkeypatch.setattr(prep_module, "make_inv_inputs", fake_make_inv_inputs)
 
     prepared = prepare_rhime_inputs(
@@ -7011,7 +7066,7 @@ def test_prepare_rhime_inputs_rejects_all_sites_dropped_before_basis_generation(
         "_retrieve_inversion_data_from_options",
         fake_data_processing_surface_notracer,
     )
-    monkeypatch.setattr(prep_module, "make_basis_functions", fake_make_basis_functions)
+    monkeypatch.setattr(rhime_preparation, "make_basis_functions", fake_make_basis_functions)
 
     with pytest.raises(ValueError, match="No sites remain"):
         prepare_rhime_inputs(

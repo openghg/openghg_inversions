@@ -4,7 +4,8 @@ This checklist supersedes the previous completed implementation checklist.
 PR #813 originally implemented the former preparation-config design. Prior
 locked Python 3.12/3.13 coverage (job 19270831) and docs-full (job 19270662) passed,
 but do not verify the revised plan. The planning artifacts are approved and
-finalized; all revised implementation and delivery tasks are complete.
+finalized. The recorded implementation rounds are complete; the newly approved
+cleanup and its validation are tracked separately below.
 
 ## 1. Revised planning
 
@@ -102,3 +103,27 @@ Changed-path Ruff, strict OpenSpec and whitespace checks passed. Earlier
 validation records above apply to their named commits. New review comments
 about argument forwarding and preparation boundaries are being assessed
 separately; this validation does not claim those design concerns are resolved.
+
+
+### Review follow-up: selected forwarding and canonical preparation
+
+- [x] Add shallow `RhimeConfig.select(*names)` and test borrowed-value ownership,
+  missing names and ordinary keyword use without another resolution pass.
+- [x] Convert repeated runner, nested, staged and example forwarding to explicit
+  selections; keep scientific functions independently callable.
+- [x] Remove the named stages' former positional `data_args` adapters and
+  update their public docstrings and callers.
+- [x] Deprecate `prepare_rhime_inputs`, delegate its science to the named stages,
+  and verify matching prepared metadata, footprint provenance and warnings.
+- [x] Reconcile user/developer/reference documentation and release notes; review
+  any remaining deprecated helper exposure such as `convert_to_list`.
+- [ ] Run focused and relevant broader tests, changed-path Ruff, strict OpenSpec,
+  whitespace and rendered-documentation checks before marking this round complete.
+
+The filtered staged checkpoint, retained-site policy across all execution routes,
+and replacement manifest/handoff contracts remain with the planning-only
+[PR #802](https://github.com/openghg/openghg_inversions/pull/802), reviewed at
+`1ec45fc`. This cleanup shares existing scientific stages and their provenance;
+it does not claim to implement that broader workflow replacement.
+
+Focused validation passed: 69 configuration tests, 55 runner/shim/documentation-example and integration tests, 69 preparation/acquisition/site-resolution and tracer checks, and 10 nested/runner composition checks (some selections overlap). Independent review found no actionable forwarding or scientific-contract regressions. Broader supported-version tests and a fresh documentation build remain pending.

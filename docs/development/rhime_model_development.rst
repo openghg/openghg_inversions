@@ -30,8 +30,8 @@ The following principles are requirements for production RHIME development:
   workflows visible.
 * Dataclasses are reserved for concrete scientific concepts or durable
   boundaries.
-* Configuration is normalized once at the boundary. Values are forwarded
-  explicitly after that boundary.
+* Configuration is normalized once at the boundary. Forward named values
+  directly or with an explicit ``config.select("name", ...)`` selection.
 * Tiny registries are appropriate for homogeneous families such as filters.
 * Private numerical helpers are acceptable, but reading the main path must not
   require reconstructing a framework.
@@ -295,8 +295,20 @@ acquisition through one substantive loading boundary. The deprecated
 internal calls use the neutral names.
 
 Keep the procedural runner's acquisition, preparation, model construction and
-sampling sequence visible. Pass needed resolved values explicitly to each
-scientific stage, rather than forwarding configuration or an options mapping.
+sampling sequence visible. Pass needed resolved values directly or unpack an
+explicit ``config.select("name", ...)`` selection into the scientific function's
+named arguments. Selection creates a shallow dictionary with borrowed values;
+it does not inspect signatures, resolve options or define another schema.
+A private orchestration helper may accept the resolved configuration to coordinate
+several stages, while scientific components retain independently usable inputs.
+The named preparation functions no longer accept positional ``data_args`` maps.
+The deprecated ``prepare_rhime_inputs`` acquisition-and-preparation wrapper
+normalizes its applicable inputs and delegates to these same scientific stages;
+it must not retain a second implementation of assembly or provenance policy.
+
+Apply raw overrides before resolution. Use ``dataclasses.replace`` only when the
+replacement fields are already mutually consistent; it does not recompute
+site expansion, date-dependent defaults or repeated model/output facts.
 Shared species/domain, source, BC-use and artifact-naming facts come from one
 resolution boundary; their small explicit duplication in independently usable
 model/output specifications does not justify a shared context hierarchy or

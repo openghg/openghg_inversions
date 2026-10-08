@@ -6,7 +6,7 @@ by :func:`openghg_inversions.rhime.run_rhime` and copied project runners:
 ``filter -> basis -> sensitivities -> labelled assembly``.
 
 Acquisition is owned by :mod:`openghg_inversions.inversion_data.acquisition`;
-stages accept explicit resolved choices and established mapping calls.
+stages accept explicit resolved choices.
 
 Merged data and xarray objects supplied to these stages are borrowed.  Stages
 return new handoffs when they need to attach variables or metadata and never
@@ -33,9 +33,10 @@ import xarray as xr
 from openghg_inversions._timing import log_timing, timed
 from openghg_inversions.basis import make_basis_functions
 from openghg_inversions.basis.basis_functions import BasisFunctions
+from openghg_inversions.boundary_sensitivity import scale_satellite_boundary_sensitivity_to_column_signal
 from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs
 from openghg_inversions.inversion_data import preparation as inversion_preparation
-from openghg_inversions.model_error import normalise_min_error_options
+from openghg_inversions.inversion_data.prepared_inputs import _make_site_metadata
 from openghg_inversions.rhime.specs import RhimeRunSpec
 
 __all__ = [
@@ -61,7 +62,6 @@ def with_prepared_rhime_sites(
 
 def filter_rhime_observations(
     merged: RhimeMergedData,
-    data_args: Mapping[str, Any] | None = None,
     *,
     filters: Any = None,
 ) -> RhimeMergedData:
@@ -74,8 +74,6 @@ def filter_rhime_observations(
     Args:
         merged: Borrowed observations, shared scientific data and aligned
             site selectors from acquisition or reload.
-        data_args: Optional compatibility mapping. When supplied, its required
-            ``filters`` entry replaces the explicit ``filters`` argument.
         filters: Filter name, list of names, or mapping from site names to
             filters accepted by :func:`openghg_inversions.filters.filtering`.
             ``None`` applies no filters. The caller's mapping is not modified.
@@ -87,11 +85,8 @@ def filter_rhime_observations(
 
     Raises:
         ValueError: If no sites remain after filtering.
-        KeyError: If a requested filter is unknown or the compatibility
-            mapping lacks ``filters``.
+        KeyError: If a requested filter is unknown.
     """
-    if data_args is not None:
-        filters = data_args["filters"]
     if isinstance(filters, dict):
         # The legacy filter implementation normalizes this working mapping.
         filters = dict(filters)
@@ -106,13 +101,12 @@ def filter_rhime_observations(
 
 def build_rhime_basis(
     merged: RhimeMergedData,
-    data_args: Mapping[str, Any] | None = None,
     *,
-    species: str | None = None,
-    domain: str | None = None,
-    start_date: str | None = None,
-    flux_sources: Sequence[str] | None = None,
-    output_name: str | None = None,
+    species: str,
+    domain: str,
+    start_date: str,
+    flux_sources: Sequence[str],
+    output_name: str,
     basis_algorithm: str = "weighted",
     nbasis: int = 100,
     fp_basis_case: str | None = None,
@@ -132,10 +126,6 @@ def build_rhime_basis(
     Args:
         merged: Filtered observations and prior fluxes used to load or fit the
             basis. Its scientific arrays remain borrowed.
-        data_args: Optional compatibility mapping containing the named basis
-            options below. Its entries replace the explicit keyword values;
-            only ``allow_empty_inner_region`` may be omitted, defaulting to
-            ``False`` in this mapping form.
         species: Gas used in basis artifact naming.
         domain: Domain used for basis and country-grid lookup.
         start_date: Run start date used to select and name basis artifacts.
@@ -165,24 +155,7 @@ def build_rhime_basis(
         ValueError: If neither a saved basis nor an algorithm is selected,
             the algorithm is unknown, or the selected basis inputs are
             incompatible.
-        KeyError: If a required compatibility mapping entry is absent.
     """
-    if data_args is not None:
-        basis_algorithm = data_args["basis_algorithm"]
-        nbasis = data_args["nbasis"]
-        fp_basis_case = data_args["fp_basis_case"]
-        basis_directory = data_args["basis_directory"]
-        country_directory = data_args["country_directory"]
-        outer_regions_path = data_args["outer_regions_path"]
-        species = data_args["species"]
-        domain = data_args["domain"]
-        start_date = data_args["start_date"]
-        fix_basis_outer_regions = data_args["fix_basis_outer_regions"]
-        flux_sources = data_args["flux_sources"]
-        output_name = data_args["output_name"]
-        basis_output_path = data_args["basis_output_path"]
-        allow_empty_inner_region = data_args.get("allow_empty_inner_region", False)
-
     with timed(
         "rhime.prepare_inputs.basis_build",
         basis_algorithm=basis_algorithm,
@@ -211,10 +184,9 @@ def build_rhime_basis(
 def build_rhime_sensitivities(
     merged: RhimeMergedData,
     basis_functions: BasisFunctions,
-    data_args: Mapping[str, Any] | None = None,
     *,
-    domain: str | None = None,
-    flux_sources: Sequence[str] | None = None,
+    domain: str,
+    flux_sources: Sequence[str],
     use_bc: bool = True,
     bc_basis_case: str = "NESW",
     bc_basis_directory: str | Path | None = None,
@@ -229,10 +201,6 @@ def build_rhime_sensitivities(
     Args:
         merged: Filtered observations and footprints with aligned site options.
         basis_functions: Retained basis and fluxes to project onto observations.
-        data_args: Optional compatibility mapping containing ``domain``,
-            ``flux_sources``, ``use_bc``, ``bc_basis_case`` and
-            ``bc_basis_directory``. These entries replace their explicit
-            keyword arguments; ``multisector`` remains independent.
         domain: Domain used for boundary-condition basis lookup.
         flux_sources: Source names used to align the flux sensitivities.
         use_bc: Whether to construct boundary-condition sensitivities.
@@ -249,15 +217,7 @@ def build_rhime_sensitivities(
     Raises:
         ValueError: If the basis or source layout is incompatible with the
             selected sensitivity layout.
-        KeyError: If a required compatibility mapping entry is absent.
     """
-    if data_args is not None:
-        domain = data_args["domain"]
-        flux_sources = data_args["flux_sources"]
-        use_bc = data_args["use_bc"]
-        bc_basis_case = data_args["bc_basis_case"]
-        bc_basis_directory = data_args["bc_basis_directory"]
-
     with timed("rhime.prepare_inputs.footprint_sensitivity_total", sites=len(merged.sites)):
         return inversion_preparation._rhime_site_data_from_basis_functions(
             merged=merged,
@@ -277,10 +237,9 @@ def assemble_rhime_inputs(
     merged: RhimeMergedData,
     basis_functions: BasisFunctions,
     site_data: Mapping[str, xr.Dataset],
-    data_args: Mapping[str, Any] | None = None,
     *,
-    domain: str | None = None,
-    start_date: str | None = None,
+    domain: str,
+    start_date: str,
     bc_freq: str | None = None,
     min_error: inversion_preparation.MinErrorConfig = 0.0,
     min_error_options: Mapping[str, Any] | None = None,
@@ -302,10 +261,6 @@ def assemble_rhime_inputs(
         site_data: Per-site datasets from sensitivity construction. Domain
             metadata is attached to shallow copies, leaving these datasets
             unchanged.
-        data_args: Optional compatibility mapping containing ``domain``,
-            ``start_date``, ``bc_freq``, ``min_error``, ``min_error_options``
-            and ``use_bc``. Its entries replace the explicit keyword values;
-            its minimum-error options are normalized at this adapter boundary.
         domain: Domain label attached to the assembled site data.
         start_date: Requested start date used to anchor temporal parameters.
         bc_freq: Frequency of boundary-condition scaling parameters; ``None``
@@ -325,19 +280,9 @@ def assemble_rhime_inputs(
 
     Raises:
         ValueError: If assembled inputs fail their alignment or scientific
-            input contracts, or compatibility minimum-error options are invalid.
-        KeyError: If a required compatibility mapping entry or the resolved
-            ``by_site`` option is absent.
+            input contracts.
+        KeyError: If the resolved ``by_site`` option is absent.
     """
-    if data_args is not None:
-        domain = data_args["domain"]
-        start_date = data_args["start_date"]
-        bc_freq = data_args["bc_freq"]
-        min_error = data_args["min_error"]
-        use_bc = data_args["use_bc"]
-
-        min_error_options = normalise_min_error_options(data_args["min_error_options"])
-
     owned_site_data = {site: dataset.copy(deep=False) for site, dataset in site_data.items()}
     inversion_preparation._set_domain_attrs(owned_site_data, merged.sites, domain)
     # These inverse-model settings are materialized into labelled arrays here
@@ -352,7 +297,7 @@ def assemble_rhime_inputs(
             calculate_min_error=None,
             min_error_per_site=False if min_error_options is None else min_error_options["by_site"],
         )
-    inv_inputs = inversion_preparation._scale_satellite_bc_sensitivity_to_column_signal(
+    inv_inputs = scale_satellite_boundary_sensitivity_to_column_signal(
         inv_inputs,
         sites=merged.sites,
         platform=merged.platform,
@@ -372,7 +317,7 @@ def assemble_rhime_inputs(
         sources=inv_inputs.sizes.get("source"),
         basis_source=basis_source,
     )
-    site_metadata = inversion_preparation._make_site_metadata(
+    site_metadata = _make_site_metadata(
         sites=merged.sites,
         averaging_period=merged.averaging_period,
     )

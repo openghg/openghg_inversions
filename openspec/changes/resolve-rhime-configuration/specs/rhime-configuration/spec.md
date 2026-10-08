@@ -64,6 +64,30 @@ those choices.
 - **THEN** the returned configuration exposes their resolved canonical values
 - **AND** downstream canonical consumers need no alias or default-resolution pass
 
+### Requirement: Explicit shallow selection for scientific keyword calls
+
+`RhimeConfig.select(*names)` SHALL return a new dictionary containing the
+explicitly named attributes. Selected values SHALL remain borrowed, including
+mutable containers and opaque objects. Selection SHALL NOT copy nested values,
+resolve defaults, inspect consumer signatures, execute scientific work or define
+a serialization schema. An unknown attribute SHALL raise `AttributeError`.
+Scientific stage functions SHALL retain named inputs and remain callable without
+configuration. A private orchestration helper MAY receive resolved configuration
+when composing several stages.
+
+#### Scenario: Forward selected resolved values
+
+- **WHEN** a caller unpacks `config.select("filters")` into the observation filter
+- **THEN** the function receives the same resolved value as `filters=config.filters`
+- **AND** changing the selection dictionary does not change the configuration
+- **AND** mutable values inside the dictionary retain their existing identity
+
+#### Scenario: Selection does not resolve overrides
+
+- **WHEN** a caller needs to change raw options that affect shorthand or dependent defaults
+- **THEN** it applies those overrides before semantic resolution
+- **AND** selection and direct dataclass replacement do not recompute those defaults
+
 ### Requirement: Apply overrides before resolving shorthand
 
 Supported overrides SHALL be applied before semantic resolution and site-option
@@ -246,7 +270,8 @@ handoff SHALL retain its authoritative options and no-acquisition behavior.
 
 ### Requirement: Compatible public adapters and scientific choices
 
-Supported scientific Python and CLI entry points SHALL retain their signatures, shorthand,
+Except for the former stage adapter removal specified below, supported
+scientific Python and CLI entry points SHALL retain their signatures, shorthand,
 override behavior and return contracts through adapters to the same semantic
 resolution or shared applicable site translation. Direct preparation/retrieval
 APIs SHALL resolve only applicable choices without requiring likelihood, final
@@ -289,6 +314,39 @@ and custom-likelihood conflict precedence SHALL remain unchanged.
 - **THEN** it rejects the option before acquisition, reload or scientific execution
 - **AND** omitted and false options remain accepted with equivalent resolved
   configuration containing no tracer field
+
+### Requirement: One implementation of named preparation stages
+
+`filter_rhime_observations`, `build_rhime_basis`, `build_rhime_sensitivities`
+and `assemble_rhime_inputs` SHALL accept their named scientific inputs and
+keyword options. Their former positional `data_args` mappings SHALL be
+removed, without a compatibility projection. Required basis identity and source
+arguments, sensitivity domain/source arguments, and assembly domain/start date
+SHALL be required keyword arguments rather than placeholder `None` defaults.
+
+The acquisition-and-preparation convenience function `prepare_rhime_inputs`
+SHALL be deprecated with a warning naming the loading and scientific preparation
+replacements. It SHALL retain its established signature, shorthand and prepared
+return, while delegating science to these same named stages. Equivalent inputs
+SHALL retain the same prepared metadata, including footprint provenance; the
+adapter SHALL NOT retain independent filtering or assembly policy.
+`convert_to_list` SHALL warn in favour of `SiteOptions.from_inputs` while retaining
+its calling and list-return contract through the shared selector expansion.
+
+#### Scenario: Deprecated preparation delegates to canonical science
+
+- **WHEN** a caller invokes `prepare_rhime_inputs` with valid inputs
+- **THEN** it emits a deprecation warning and returns prepared inputs through the
+  same filter, basis, sensitivity and assembly operations used by ordinary runners
+- **AND** transport-model and meteorological-model provenance is retained when
+  present in the source observations
+- **AND** it does not require full model, output or sampler configuration
+
+#### Scenario: Direct scientific stages use named inputs
+
+- **WHEN** a caller supplies acquired data and named required scientific choices
+- **THEN** each stage can execute without a `RhimeConfig` or raw parameter mapping
+- **AND** omitting a required keyword is rejected at the function-call boundary
 
 ### Requirement: Neutral acquisition naming with a compatible deprecated entry point
 

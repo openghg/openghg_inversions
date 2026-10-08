@@ -389,6 +389,22 @@ def test_class_factory_preserves_inputs_and_matches_compatibility_wrapper():
     assert resolved.filters["TAC"] is not request["filters"]["TAC"]
 
 
+def test_config_selection_borrows_values_and_rejects_unknown_attributes():
+    config = rhime_params.RhimeConfig.from_params(
+        _request(filters={"TAC": ["six_hr_mean"]}), multisector=False,
+    )
+
+    selected = config.select("site_options", "species", "filters")
+
+    assert tuple(selected) == ("site_options", "species", "filters")
+    assert selected["site_options"] is config.site_options
+    assert selected["filters"] is config.filters
+    selected["species"] = "co2"
+    assert config.species == "ch4"
+    with pytest.raises(AttributeError, match="misspelled"):
+        config.select("misspelled")
+
+
 def test_configuration_uses_the_sampler_owning_defaults(monkeypatch):
     original_init = RhimeSampler.__init__
 

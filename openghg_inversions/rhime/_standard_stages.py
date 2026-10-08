@@ -188,30 +188,14 @@ def prepare_rhime_stage(
         basis_output_path=str(destination / "basis") if setup.basis_output_path is not None else None,
     )
     merged = load_rhime_data(
-        site_options=executed_setup.site_options,
-        species=executed_setup.species,
-        domain=executed_setup.domain,
-        start_date=executed_setup.start_date,
-        end_date=executed_setup.end_date,
-        output_name=executed_setup.output_name,
-        flux_sources=executed_setup.flux_sources,
-        split_by_sectors=executed_setup.split_by_sectors,
-        bc_store=executed_setup.bc_store,
-        obs_store=executed_setup.obs_store,
-        footprint_store=executed_setup.footprint_store,
-        emissions_store=executed_setup.emissions_store,
-        emissions_domain=executed_setup.emissions_domain,
-        fp_model=executed_setup.fp_model,
-        fp_species=executed_setup.fp_species,
-        calibration_scale=executed_setup.calibration_scale,
-        use_bc=executed_setup.use_bc,
-        bc_input=executed_setup.bc_input,
-        averaging_error=executed_setup.averaging_error,
-        reload_merged_data=executed_setup.reload_merged_data,
-        save_merged_data=executed_setup.save_merged_data,
-        merged_data_dir=executed_setup.merged_data_dir,
-        merged_data_name=executed_setup.merged_data_name,
-        flux_non_finite_check=executed_setup.flux_non_finite_check,
+        **executed_setup.select(
+            "site_options", "species", "domain", "start_date",
+            "end_date", "output_name", "flux_sources", "split_by_sectors",
+            "bc_store", "obs_store", "footprint_store", "emissions_store",
+            "emissions_domain", "fp_model", "fp_species", "calibration_scale",
+            "use_bc", "bc_input", "averaging_error", "reload_merged_data",
+            "save_merged_data", "merged_data_dir", "merged_data_name", "flux_non_finite_check",
+        ),
     )
     filtered = filter_rhime_observations(merged, filters=executed_setup.filters)
     retained_sites = {str(site).upper() for site in filtered.sites}
@@ -227,40 +211,30 @@ def prepare_rhime_stage(
     filtered.save(merged_dir, merged_data_name="merged-data.nc")
     basis = build_rhime_basis(
         filtered,
-        species=executed_setup.species,
-        domain=executed_setup.domain,
-        start_date=executed_setup.start_date,
-        flux_sources=executed_setup.flux_sources,
-        output_name=executed_setup.output_name,
-        basis_algorithm=executed_setup.basis_algorithm,
-        nbasis=executed_setup.nbasis,
-        fp_basis_case=executed_setup.fp_basis_case,
-        basis_directory=executed_setup.basis_directory,
-        country_directory=executed_setup.country_directory,
-        outer_regions_path=executed_setup.outer_regions_path,
-        fix_basis_outer_regions=executed_setup.fix_basis_outer_regions,
-        basis_output_path=executed_setup.basis_output_path,
+        **executed_setup.select(
+            "species", "domain", "start_date", "flux_sources",
+            "output_name", "basis_algorithm", "nbasis", "fp_basis_case",
+            "basis_directory", "country_directory", "outer_regions_path",
+            "fix_basis_outer_regions", "basis_output_path",
+        ),
     )
     site_data = build_rhime_sensitivities(
         filtered,
         basis,
-        domain=executed_setup.domain,
-        flux_sources=executed_setup.flux_sources,
-        use_bc=executed_setup.use_bc,
-        bc_basis_case=executed_setup.bc_basis_case,
-        bc_basis_directory=executed_setup.bc_basis_directory,
+        **executed_setup.select(
+            "domain", "flux_sources", "use_bc", "bc_basis_case",
+            "bc_basis_directory",
+        ),
         multisector=multisector,
     )
     prepared = assemble_rhime_inputs(
         filtered,
         basis,
         site_data,
-        domain=executed_setup.domain,
-        start_date=executed_setup.start_date,
-        bc_freq=executed_setup.bc_freq,
-        min_error=executed_setup.min_error,
-        min_error_options=executed_setup.min_error_options,
-        use_bc=executed_setup.use_bc,
+        **executed_setup.select(
+            "domain", "start_date", "bc_freq", "min_error",
+            "min_error_options", "use_bc",
+        ),
     )
     prepared_sites = {str(site).upper() for site in prepared.sites}
     missing_sites = [site for site in setup.site_options.sites if str(site).upper() not in prepared_sites]

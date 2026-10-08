@@ -250,8 +250,14 @@ aligned values and checks their structural alignment. For example:
    assert selectors.sites == ("TAC", "MHD")
    assert selectors.averaging_period == ("1h", "1h")
 
-Direct preparation and retrieval APIs retain their scalar shorthand without
-requiring model, output or sampler settings. ``retrieve_inversion_data`` performs
+Direct retrieval APIs retain their scalar shorthand without requiring model,
+output or sampler settings. The acquisition-and-preparation convenience function
+``prepare_rhime_inputs`` is deprecated. For a complete inversion, use
+``run_rhime``; for custom preparation, call ``load_rhime_data`` followed by
+``filter_rhime_observations``, ``build_rhime_basis``,
+``build_rhime_sensitivities`` and ``assemble_rhime_inputs``. The deprecated
+function retains its arguments and result while delegating to those same
+scientific stages. ``retrieve_inversion_data`` performs
 fresh surface or column acquisition and returns its established six-tuple of
 merged data and retained metadata lists. The former
 ``data_processing_surface_notracer`` name is a deprecated wrapper with the same
@@ -270,6 +276,30 @@ TAC/MHD request, the configuration continues to name both sites while the run
 specification names TAC. A supplied compatible merged handoff keeps its own
 authoritative site options. The prepared-input API below remains independent
 of ``RhimeConfig``.
+
+Given an acquired ``merged`` handoff, copied runners can select explicitly named
+values for an ordinary keyword call:
+
+.. code-block:: python
+
+   from openghg_inversions.rhime import filter_rhime_observations
+
+   filtered = filter_rhime_observations(merged, **config.select("filters"))
+
+``config.select(*names)`` returns a fresh dictionary of the named attributes.
+Values are borrowed: mutable mappings and objects are shared with ``config``.
+Selection does not normalize, validate, copy nested values or serialize settings;
+an unknown attribute raises ``AttributeError``. Scientific stages still accept
+named keyword arguments and can be called without configuration. Their former
+positional ``data_args`` mappings have been removed. Supply the required basis
+identity/source arguments, sensitivity domain/source arguments, and assembly
+domain/start date by keyword; the API reference lists each function's signature.
+
+Apply external overrides to the raw options before ``RhimeConfig.from_params``,
+or pass ``overrides`` to ``read_rhime_ini``. ``dataclasses.replace`` is suitable
+only for already coherent resolved changes: it does not recompute dependent
+defaults or reconcile model/output fields when dates, sources or other shared
+choices change.
 
 The configuration record is frozen; its existing mapping and sampler members
 remain mutable. Resolution leaves caller options unchanged, and retained-site
@@ -330,7 +360,7 @@ model, output, and sampler specifications:
        run_rhime_from_prepared_inputs,
    )
 
-   # Produced by prepare_rhime_inputs or by another source adapter that
+   # Produced by assemble_rhime_inputs or by another source adapter that
    # satisfies the same canonical contract.
    prepared = prepare_inputs_elsewhere()
    prepared.save("prepared-inputs.nc")

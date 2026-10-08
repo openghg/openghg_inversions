@@ -482,16 +482,16 @@ def test_nested_preparation_uses_native_inner_domain_and_safe_basis_default(monk
             "output_format": "none",
         }, multisector=False)
     retrieval_args: list[dict[str, object]] = []
-    preparation_args: list[dict[str, object]] = []
+    preparation_configs: list[rhime_params.RhimeConfig] = []
 
     def fake_retrieve(**kwargs):
         assert kwargs["split_by_sectors"] is False
         retrieval_args.append(kwargs)
         return merged
 
-    def fake_prepare(domain_merged, **kwargs):
+    def fake_prepare(domain_merged, *, config, allow_empty_inner_region=False):
         assert domain_merged.sites == ("TAC",)
-        preparation_args.append(kwargs)
+        preparation_configs.append(config)
         return prepared
 
     monkeypatch.setattr(nested_module, "load_rhime_data", fake_retrieve)
@@ -520,13 +520,15 @@ def test_nested_preparation_uses_native_inner_domain_and_safe_basis_default(monk
     assert inner_args["emissions_store"] == "inner-flux"
     assert inner_args["emissions_domain"] == "EUROPE"
     assert inner_args["use_bc"] is False
-    assert preparation_args[1]["basis_algorithm"] == "quadtree"
-    assert preparation_args[1]["nbasis"] == 40
-    assert preparation_args[1]["fp_basis_case"] is None
-    assert preparation_args[1]["basis_output_path"] is None
-    assert preparation_args[0]["basis_algorithm"] == "weighted"
-    assert preparation_args[1]["basis_algorithm"] == "quadtree"
+    assert preparation_configs[1].basis_algorithm == "quadtree"
+    assert preparation_configs[1].nbasis == 40
+    assert preparation_configs[1].fp_basis_case is None
+    assert preparation_configs[1].basis_output_path is None
+    assert preparation_configs[0].basis_algorithm == "weighted"
+    assert preparation_configs[1].basis_algorithm == "quadtree"
     assert nested.outer_overlap_mask_policy.startswith("outer_footprint_and_flux_zeroed")
+
+    assert setup.nbasis == 100
 
 
 def test_nested_automatic_basis_budget_uses_bounded_sensitivity_share() -> None:
@@ -584,7 +586,7 @@ def test_nested_preparation_routes_automatic_basis_budget(monkeypatch) -> None:
             "nbasis": 100,
             "output_format": "none",
         }, multisector=False)
-    preparation_args: list[dict[str, object]] = []
+    preparation_configs: list[rhime_params.RhimeConfig] = []
 
     def fake_retrieve(**kwargs):
         assert kwargs["split_by_sectors"] is False
@@ -595,8 +597,8 @@ def test_nested_preparation_routes_automatic_basis_budget(monkeypatch) -> None:
         )
         return RhimeMergedData(fp_all={"TAC": dataset}, site_options=_site_options())
 
-    def fake_prepare(domain_merged, **kwargs):
-        preparation_args.append(kwargs)
+    def fake_prepare(domain_merged, *, config, allow_empty_inner_region=False):
+        preparation_configs.append(config)
         return prepared
 
     monkeypatch.setattr(nested_module, "load_rhime_data", fake_retrieve)
@@ -611,8 +613,10 @@ def test_nested_preparation_routes_automatic_basis_budget(monkeypatch) -> None:
 
     nested_module.prepare_nested_rhime_inputs(setup, inner_domain="6km")
 
-    assert preparation_args[0]["nbasis"] == 40
-    assert preparation_args[1]["nbasis"] == 60
+    assert preparation_configs[0].nbasis == 40
+    assert preparation_configs[1].nbasis == 60
+
+    assert setup.nbasis == 100
 
 
 def test_legacy_outer_region_definition_name_normalizes_to_modern_path() -> None:
