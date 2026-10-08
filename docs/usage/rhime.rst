@@ -271,12 +271,14 @@ fresh surface or column acquisition and returns its established six-tuple of
 merged data and retained metadata lists. The former
 ``data_processing_surface_notracer`` name is a deprecated wrapper with the same
 signature and return. ``RhimeMergedData.from_options`` performs fresh acquisition
-from resolved selectors. ``RhimeMergedData.load`` explicitly loads an existing
-cache, requires caller-supplied selectors, and validates its layout and explicit
-time-resolution choices. Missing paths or unreadable/incompatible artifacts
+from resolved selectors. ``RhimeMergedData.load`` lazily loads a versioned
+acquisition artifact and restores its saved selectors and source layout; it
+does not accept caller-supplied selectors. Use ``RhimeMergedData.load_legacy``
+with the original selectors for old caches, as described in
+:doc:`legacy_and_migration`. Missing paths or unreadable/incompatible artifacts
 raise without fresh retrieval. Runners reuse a valid supplied handoff unchanged
 before choosing either factory, bypassing I/O. Fresh saving remains opt-in.
-See :doc:`customising_rhime` for current-codec loading and saving examples.
+See :doc:`customising_rhime` for loading and saving examples.
 
 The requested configuration contains no acquired/prepared handoff or
 ``RhimeRunSpec``.

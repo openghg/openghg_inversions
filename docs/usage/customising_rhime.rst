@@ -60,14 +60,15 @@ the same retrieval stage and reads the configured artifact from disk. Missing
 directories, missing or corrupt artifacts, and incompatible selector/layout
 metadata raise an error; an explicit reload never falls back to fresh retrieval.
 
-Acquire or load a merged handoff explicitly
--------------------------------------------
+Acquire, save or load a merged handoff
+-------------------------------------
 
 ``SiteOptions`` keeps all observation and footprint selectors aligned to one
 site order. Normalize scalar or per-site inputs once, then choose fresh
 acquisition or an existing merged artifact::
 
    from openghg_inversions.inversion_data import RhimeMergedData, SiteOptions
+   from openghg_inversions.rhime import run_rhime
 
    selectors = SiteOptions.from_inputs(
        sites=["TAC", "MHD"], averaging_period="4h", inlet=["185m", "10m"],
@@ -83,31 +84,7 @@ acquisition or an existing merged artifact::
 
 Use your configured object stores and flux source names. Fresh acquisition may
 drop unavailable sites; the returned ``merged.site_options`` retains every
-selector in the resulting site order. Saving is disabled by default. An
-explicit save uses the established merged-data codec::
-
-   merged.save("merged-cache", merged_data_name="example.nc")
-   reopened = RhimeMergedData.load(
-       "merged-cache", merged_data_name="example.nc", site_options=selectors,
-   )
-
-The current cache stores scientific datasets, not the complete selector
-record, so ``load`` requires caller-supplied ``site_options``. It retains
-available sites in requested order and checks explicit ``time_resolved``
-selectors and the ``split_by_sectors`` layout. Failed loading raises without
-contacting stores. Reading and writing are explicit I/O boundaries and may
-materialize lazy arrays; ordinary handoff construction and access do not.
-These caches precede filtering. Supply the returned handoff as ``merged_data``
-to resume the standard runner at filtering.
-
-For the existing tuple-returning retrieval API, use
-``openghg_inversions.inversion_data.retrieve_inversion_data``. The former
-``data_processing_surface_notracer`` name forwards the same arguments and
-return value and now emits ``DeprecationWarning``. ``convert_to_list`` now lives in ``inversion_data._site_options``;
-its old ``inversion_data.get_data`` import path has been removed.
-
-Save and reload acquired datasets
----------------------------------
+selector in the resulting site order. Saving is disabled by default.
 
 ``RhimeMergedData`` stores per-site xarray datasets in ``site_data``,
 source-labelled flux datasets in ``flux_data``, optional boundary conditions
@@ -119,13 +96,10 @@ for data known to precede configured filters and sensitivity preparation.
 Temporary explicit ``from_legacy_fp_all`` and
 ``to_legacy_fp_all`` adapters support remaining scientific consumers until 0.9.
 
-Acquire with ``RhimeMergedData.from_options(site_options=selectors, ...)``.
 Saving is opt-in through ``save_merged_data=True`` and ``merged_data_dir``, or
 an explicit call after acquisition::
 
-   from openghg_inversions.inversion_data import RhimeMergedData
-
-   acquired.save("artifacts", merged_data_name="acquired.zarr")
+   merged.save("artifacts", merged_data_name="acquired.zarr")
    reloaded = RhimeMergedData.load("artifacts", merged_data_name="acquired.zarr")
    try:
        result = run_rhime(config_file="config.ini", merged_data=reloaded)
@@ -134,13 +108,14 @@ an explicit call after acquisition::
 
 The modern schema records data after acquisition and alignment, before
 configured observation filters, basis construction and sensitivities. All
-site selectors, including inlet slices, survive the round trip. Dataset and
-variable scientific attributes retain units, calibration scales and transport
+site selectors, including inlet slices, survive the round trip. ``load`` restores
+the saved selectors and source layout; it takes no ``site_options`` argument.
+Dataset and variable scientific attributes retain units, calibration scales and transport
 metadata. Selected provenance includes each input's available store, UUID and
 dataversion, plus the acquisition OpenGHG version and commit; unavailable
 values are explicitly ``unknown``. When several footprint inlets contribute,
-identifier lists retain the contributing input order. Arbitrary OpenGHG wrapper metadata is not
-saved, and loading does not reconstruct OpenGHG wrappers.
+identifier lists retain the contributing input order. Arbitrary OpenGHG wrapper
+metadata is not saved, and loading does not reconstruct OpenGHG wrappers.
 
 ``.nc``, ``.zarr`` and ``.zarr.zip`` select NetCDF, directory Zarr and zipped
 Zarr. A name without a suffix uses ``output_format`` (default ``zarr.zip``).
@@ -150,9 +125,14 @@ retrieving data again. Keep the loaded record open while consuming its lazy
 arrays, and call ``close`` afterwards. Saving is an explicit numerical
 execution boundary.
 
-For old merged caches, use the explicit deprecated importer described in
-:doc:`legacy_and_migration`. The staged workflow's ``merged-data.nc`` is a
-filtered legacy snapshot, not a modern acquisition artifact.
+For old merged caches, use ``RhimeMergedData.load_legacy`` with the original
+selectors, as described in :doc:`legacy_and_migration`. The staged workflow's
+``merged-data.nc`` is a filtered legacy snapshot, not a modern acquisition artifact.
+
+For the existing tuple-returning retrieval API, use
+``openghg_inversions.inversion_data.retrieve_inversion_data``. The former
+``data_processing_surface_notracer`` name forwards the same arguments and
+return value and emits ``DeprecationWarning``.
 
 Change the likelihood with a Python function
 --------------------------------------------
