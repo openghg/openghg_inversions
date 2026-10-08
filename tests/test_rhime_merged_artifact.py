@@ -4,6 +4,7 @@ from dataclasses import fields
 from types import SimpleNamespace
 import json
 
+import dask
 import dask.array as da
 from dask.callbacks import Callback
 import numpy as np
@@ -454,3 +455,37 @@ def test_filtered_adapter_round_trip_preserves_phase():
     legacy = record.to_legacy_fp_all()
     with pytest.raises(ValueError, match="conflicts"):
         RhimeMergedData.from_legacy_fp_all(legacy, record.site_options, acquisition={"stage": "acquired"})
+
+
+@pytest.mark.parametrize("suffix", ["nc", "zarr", "zarr.zip"])
+def test_save_computes_shared_site_and_flux_source_once(tmp_path, suffix):
+    """One serialization boundary computes shared graph dependencies together."""
+    calls = []
+
+    @dask.delayed
+    def source():
+        calls.append("computed")
+        return np.array([1.0, 2.0])
+
+    shared = da.from_delayed(source(), shape=(2,), dtype=float)
+    original = RhimeMergedData(
+        site_data={
+            "TAC": xr.Dataset({"mf": ("time", shared)}),
+            "BSD": xr.Dataset({"mf": ("time", shared + 10)}),
+        },
+        flux_data={"total": xr.Dataset({"flux": ("time", shared * 2)})},
+        site_options=SiteOptions.from_inputs(sites=["TAC", "BSD"], averaging_period="1h"),
+        acquisition={"stage": "acquired"},
+    )
+    with dask.config.set(scheduler="synchronous"):
+        original.save(tmp_path, merged_data_name=f"shared.{suffix}")
+    assert calls == ["computed"]
+    assert original.site_data["TAC"].mf.data is shared
+    restored = RhimeMergedData.load(tmp_path, merged_data_name=f"shared.{suffix}")
+    try:
+        np.testing.assert_array_equal(restored.site_data["TAC"].mf.values, [1.0, 2.0])
+        np.testing.assert_array_equal(restored.site_data["BSD"].mf.values, [11.0, 12.0])
+        np.testing.assert_array_equal(restored.flux_data["total"].flux.values, [2.0, 4.0])
+    finally:
+        restored.close()
+    assert calls == ["computed"]
