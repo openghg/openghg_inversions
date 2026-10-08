@@ -43,6 +43,16 @@ reviews found no actionable correctness, contract or development-guidance issues
 PR #813 targets `devel`, is attached to this task and is ready for review.
 This final checklist update changes no implementation or documentation examples.
 
+### Review follow-up: configuration-only finite choices
+
+The shared resolver now rejects invalid `flux_non_finite_check` and
+`aggregation_error_mode` values using their existing declared choice types.
+Regression tests first reproduced the missing rejection, then verified that
+Python and INI requests through both ordinary runners raise before acquisition
+and that all seven supported choices are preserved. The 36 configuration tests
+and 60 selected broader configuration/consumer tests passed on Python 3.13;
+changed-path Ruff, strict OpenSpec and whitespace checks also passed.
+
 Configuration serialization, resolved-settings logging and an INI writer are
 deferred to [#814](https://github.com/openghg/openghg_inversions/issues/814).
 No serializer or writer implementation is part of this checklist.

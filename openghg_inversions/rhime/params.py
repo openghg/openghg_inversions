@@ -14,7 +14,7 @@ import warnings
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, cast, get_args
 
 from openghg_inversions.config import config
 from openghg_inversions.flux_sanitization import FluxNonFiniteCheck
@@ -847,6 +847,13 @@ def resolve_rhime_config(
     normalized = normalise_rhime_params(params)
     validate_required_params(normalized)
     validate_supported_params(normalized)
+
+    for name, choices in (
+        ("flux_non_finite_check", get_args(FluxNonFiniteCheck)),
+        ("aggregation_error_mode", get_args(AggregationErrorMode)),
+    ):
+        if name in normalized and normalized[name] not in choices:
+            raise ValueError(f"`{name}` must be one of {choices!r}; got {normalized[name]!r}.")
 
     remaining = dict(normalized)
     flux_sources = resolve_flux_sources(flux_sources=remaining.pop("flux_sources", None))

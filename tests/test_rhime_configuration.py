@@ -4,6 +4,7 @@ from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import dask.array as da
 from dask.callbacks import Callback
@@ -13,6 +14,7 @@ import xarray as xr
 import openghg_inversions.rhime as rhime
 from openghg_inversions.inference.sampling import RhimeSampler
 from openghg_inversions.inversion_data import RhimeMergedData, SiteOptions
+from openghg_inversions.rhime import multisector, standard
 from openghg_inversions.rhime import params as rhime_params
 from openghg_inversions.rhime import specs as rhime_specs
 
@@ -83,6 +85,53 @@ def test_invalid_effective_requests_fail_without_acquisition(monkeypatch, overri
     monkeypatch.setattr(RhimeSampler, "sample", fail)
     with pytest.raises(ValueError, match=option):
         rhime_params.resolve_rhime_config(_request(**overrides), multisector=False)
+
+
+@pytest.mark.parametrize("option", ["flux_non_finite_check", "aggregation_error_mode"])
+@pytest.mark.parametrize("multisector_mode", [False, True])
+@pytest.mark.parametrize("from_ini", [False, True])
+def test_invalid_finite_choices_fail_before_acquisition(
+    monkeypatch, tmp_path, option, multisector_mode, from_ini
+):
+    request = _request(
+        flux_sources=["inventory", "ocean"] if multisector_mode else ["inventory"],
+        **{option: "typo"},
+    )
+    with pytest.raises(ValueError, match=option):
+        rhime_params.resolve_rhime_config(request, multisector=multisector_mode)
+
+    recipe = multisector if multisector_mode else standard
+    runner = recipe.run_rhime_multisector if multisector_mode else recipe.run_rhime
+    acquire = Mock(side_effect=AssertionError("invalid configuration must fail before acquisition"))
+    monkeypatch.setattr(recipe, "load_rhime_data", acquire)
+    if from_ini:
+        path = tmp_path / "invalid.ini"
+        path.write_text(
+            "[RHIME]\n" + "\n".join(f"{name} = {value!r}" for name, value in request.items()),
+            encoding="utf-8",
+        )
+        request = {"config_file": path}
+    with pytest.raises(ValueError, match=option):
+        runner(**request)
+    acquire.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("option", "value"),
+    [
+        ("flux_non_finite_check", "lazy"),
+        ("flux_non_finite_check", "count"),
+        ("aggregation_error_mode", "auto"),
+        ("aggregation_error_mode", "none"),
+        ("aggregation_error_mode", "dense"),
+        ("aggregation_error_mode", "low_rank"),
+        ("aggregation_error_mode", "diagonal"),
+    ],
+)
+def test_valid_finite_choices_are_preserved(option, value):
+    config = rhime_params.resolve_rhime_config(_request(**{option: value}), multisector=False)
+    owner = config.model if option == "aggregation_error_mode" else config
+    assert getattr(owner, option) == value
 
 
 @pytest.mark.parametrize("replace_periods", [False, True])
