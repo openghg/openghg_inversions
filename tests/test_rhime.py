@@ -3193,7 +3193,7 @@ def test_rhime_public_package_exports_supported_orchestration_stages() -> None:
     stage_names = (
         "RhimeConfig",
         "read_rhime_ini",
-        "RhimeMergedData.from_options",
+        "RhimeMergedData",
         "filter_rhime_observations",
         "build_rhime_basis",
         "build_rhime_sensitivities",
@@ -3212,6 +3212,9 @@ def test_rhime_public_package_exports_supported_orchestration_stages() -> None:
     for name in stage_names:
         assert name in rhime_public.__all__
         assert getattr(rhime_public, name) is not None
+
+    assert callable(rhime_public.RhimeMergedData.from_options)
+    assert callable(rhime_public.RhimeMergedData.load)
 
 
 def test_standard_and_multisector_runners_are_owned_by_readable_recipe_modules() -> None:

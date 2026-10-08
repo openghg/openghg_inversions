@@ -557,6 +557,12 @@ def run_rhime(
                 "save_merged_data", "merged_data_dir", "merged_data_name", "flux_non_finite_check",
             ),
         )
+    log_timing(
+        "rhime.prepare_inputs.merged_data",
+        timer_seconds(preparation_start),
+        sites=len(config.site_options.sites),
+        split_by_sectors=config.split_by_sectors,
+    )
     # 2. Keep the scientific preparation order visible in this recipe.
     filtered = filter_rhime_observations(merged, filters=config.filters)
     basis_functions = build_rhime_basis(
