@@ -72,8 +72,8 @@ def test_resolved_request_checks_recipe_and_likelihood_before_acquisition(monkey
 
 
 @pytest.mark.parametrize("multisector_mode", [False, True])
-def test_ini_runner_merges_and_translates_before_one_resolution(monkeypatch, tmp_path, multisector_mode):
-    """Raw file aliases and site overrides reach one semantic construction."""
+def test_ini_runner_merges_before_one_resolution_and_alias_translation(monkeypatch, tmp_path, multisector_mode):
+    """Raw file aliases and winning overrides reach the single factory boundary."""
     recipe = multisector if multisector_mode else standard
     runner = recipe.run_rhime_multisector if multisector_mode else recipe.run_rhime
     sources = ["inventory", "ocean"] if multisector_mode else ["inventory"]
@@ -91,8 +91,8 @@ def test_ini_runner_merges_and_translates_before_one_resolution(monkeypatch, tmp
     configs = []
 
     def resolve(cls, params, *, multisector):
-        assert "outputname" not in params
-        assert "emissions_name" not in params
+        assert params["outputname"] == "file-name"
+        assert params["emissions_name"] == sources
         resolved = original_factory(params, multisector=multisector)
         configs.append(resolved)
         return resolved
@@ -109,5 +109,5 @@ def test_ini_runner_merges_and_translates_before_one_resolution(monkeypatch, tmp
 
     monkeypatch.setattr(RhimeConfig, "from_params", classmethod(resolve))
     monkeypatch.setattr(recipe, "load_rhime_data", acquire)
-    with pytest.warns(UserWarning, match="deprecated"), pytest.raises(ReachedAcquisition):
+    with pytest.warns(DeprecationWarning, match="deprecated"), pytest.raises(ReachedAcquisition):
         runner(config_file=path, sites=["TAC", "MHD"], output_name="winning-name")

@@ -147,11 +147,12 @@ Legacy-format output
 RHIME. It creates the HBMCMC-compatible NetCDF product from the modern
 ``InversionOutput``; it does not invoke ``fixedbasisMCMC`` or ``inferpymc``.
 The deprecated output names ``hbmcmc`` and ``hbmcmc_postprocessing`` remain
-aliases for ``legacy`` at runner entry points and in ``resolve_rhime_config``,
-with warnings. ``RhimeConfig.from_params`` accepts canonical names only;
-use ``legacy`` when constructing a configuration directly. Historical option
-translation lives in ``hbmcmc.compatibility`` and runs before canonical
-construction, after file options and Python overrides have been combined.
+aliases for ``legacy`` with ``DeprecationWarning``. ``RhimeConfig.from_params``
+calls the translator in ``hbmcmc.compatibility`` before modern normalization,
+after file options and Python overrides have been combined. It warns when a
+deprecated spelling is replaced or removed; canonical inputs remain quiet.
+Prefer ``legacy`` in new configurations. The former ``resolve_rhime_config``
+wrapper is removed; use the classmethod directly.
 
 The compatibility product uses variables such as ``Yobs``, ``Yerror``,
 ``Ymodmean``, ``Ymodmedian``, ``Ymodmode``, ``xtrace``, ``sigtrace``,

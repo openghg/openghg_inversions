@@ -9,7 +9,7 @@ from typing import Any
 import pytest
 import xarray as xr
 
-from openghg_inversions.rhime.params import resolve_rhime_config
+from openghg_inversions.rhime.params import RhimeConfig
 
 from examples.rhime_customisation import likelihoods
 from examples.rhime_customisation import runner as custom_runner
@@ -57,7 +57,7 @@ def test_custom_runner_uses_supported_stages_for_acquisition_and_reload(
     config_file = tmp_path / "rhime.ini"
     config_file.write_text('[RHIME.OUTPUT]\noutput_format = "none"\n', encoding="utf-8")
     overrides = {"reload_merged_data": reload_merged_data, "draws": 3}
-    config = resolve_rhime_config(
+    config = RhimeConfig.from_params(
         params=dict(species="ch4", sites=["TAC", "MHD"], domain="EUROPE",
                     averaging_period="1h", start_date="2019-01-01", end_date="2019-02-01",
                     output_name="example", output_format="none", mismatch_model=None, flux_sources=["inventory"],

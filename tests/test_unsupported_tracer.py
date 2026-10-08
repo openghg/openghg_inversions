@@ -6,14 +6,14 @@ import pytest
 
 from openghg_inversions.inversion_data import prepare_rhime_inputs
 from openghg_inversions.rhime import run_rhime, run_rhime_multisector
-from openghg_inversions.rhime.params import normalise_rhime_params, params_from_config, resolve_rhime_config
+from openghg_inversions.rhime.params import RhimeConfig, normalise_rhime_params, params_from_config
 from openghg_inversions.inversion_data import SiteOptions, load_rhime_data
 
 
 @pytest.mark.parametrize("multisector", [False, True])
 def test_option_resolution_rejects_tracer_before_required_options(multisector):
     with pytest.raises(ValueError, match="use_tracer=True.*not supported"):
-        resolve_rhime_config(params={"use_tracer": True}, multisector=multisector)
+        RhimeConfig.from_params(params={"use_tracer": True}, multisector=multisector)
 
 
 @pytest.mark.parametrize("tracer_options", [{}, {"use_tracer": False}])
@@ -53,7 +53,7 @@ def test_false_or_omitted_tracer_is_not_forwarded_after_resolution(tracer_option
         **tracer_options,
     }
     original = params.copy()
-    config = resolve_rhime_config(params=params, multisector=multisector)
+    config = RhimeConfig.from_params(params=params, multisector=multisector)
     assert not hasattr(config, "use_tracer")
     assert params == original
 

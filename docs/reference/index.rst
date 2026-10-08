@@ -52,7 +52,6 @@ retained execution metadata and compatibility helpers.
    openghg_inversions.rhime.RhimeConfig
    openghg_inversions.rhime.RhimeConfig.from_params
    openghg_inversions.rhime.RhimeConfig.select
-   openghg_inversions.rhime.resolve_rhime_config
    openghg_inversions.inversion_data.SiteOptions
 
 Run specifications and results

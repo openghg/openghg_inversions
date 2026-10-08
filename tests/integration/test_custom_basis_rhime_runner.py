@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from openghg_inversions.rhime.params import resolve_rhime_config
+from openghg_inversions.rhime.params import RhimeConfig
 
 from openghg_inversions.basis.basis_functions import BasisFunctions
 
@@ -60,7 +60,7 @@ def test_custom_basis_runner_replaces_only_basis_stage(
         "max_child_pca_eccentricity": 6.5,
         **overrides,
     }
-    config = resolve_rhime_config(
+    config = RhimeConfig.from_params(
         params=dict(species="ch4", sites=["TAC", "MHD"], domain="EUROPE",
                     averaging_period="1h", start_date="2019-01-01", end_date="2019-02-01",
                     output_name="example", output_format="none", flux_sources=["inventory"],
@@ -398,7 +398,7 @@ def test_incompatible_project_basis_failure_remains_owned_by_sensitivity_stage(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Let the unchanged downstream stage explain an incompatible custom basis."""
-    config = resolve_rhime_config(
+    config = RhimeConfig.from_params(
         params=dict(species="ch4", sites=["TAC", "MHD"], domain="EUROPE",
                     averaging_period="1h", start_date="2019-01-01", end_date="2019-02-01",
                     output_name="example", output_format="none", flux_sources=["inventory"],

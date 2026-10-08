@@ -30,7 +30,6 @@ from openghg_inversions._timing import log_timing, timed, timer_seconds, timer_s
 from openghg_inversions.config import config
 from openghg_inversions.models.additive_sigma import DEFAULT_ADDITIVE_SIGMA_PRIOR
 from openghg_inversions.rhime import PollutionEventSettings, RhimeConfig, run_rhime
-from openghg_inversions.rhime import resolve_rhime_config as resolve_rhime_config
 from openghg_inversions.hbmcmc.compatibility import fixedbasis_params_to_rhime as fixedbasis_params_to_rhime
 
 

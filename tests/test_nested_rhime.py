@@ -36,7 +36,8 @@ from openghg_inversions.rhime.nested import (
 )
 from openghg_inversions.rhime.materialization import materialize_pymc_inputs
 from openghg_inversions.rhime.outputs import RhimeResult
-from openghg_inversions.rhime.params import resolve_rhime_config
+from openghg_inversions.hbmcmc.compatibility import translate_rhime_aliases
+from openghg_inversions.rhime.params import RhimeConfig
 from openghg_inversions.rhime import params as rhime_params
 from openghg_inversions.rhime.sampling import RhimeSampler
 from openghg_inversions.rhime.specs import (
@@ -467,7 +468,7 @@ def test_nested_preparation_uses_native_inner_domain_and_safe_basis_default(monk
         basis=basis,
     )
     merged = RhimeMergedData(fp_all={"TAC": xr.Dataset()}, site_options=_site_options())
-    setup = resolve_rhime_config(params={
+    setup = RhimeConfig.from_params(params={
             "species": "ch4",
             "sites": ["TAC"],
             "averaging_period": ["1h"],
@@ -577,7 +578,7 @@ def test_nested_preparation_routes_automatic_basis_budget(monkeypatch) -> None:
         sensitivity=np.array([[1.0]]),
         basis=basis,
     )
-    setup = resolve_rhime_config(params={
+    setup = RhimeConfig.from_params(params={
             "species": "ch4",
             "sites": ["TAC"],
             "averaging_period": ["1h"],
@@ -623,8 +624,8 @@ def test_nested_preparation_routes_automatic_basis_budget(monkeypatch) -> None:
 
 
 def test_legacy_outer_region_definition_name_normalizes_to_modern_path() -> None:
-    with pytest.warns(UserWarning, match="outer_region_definition_file.*deprecated"):
-        normalized = nested_module.translate_rhime_aliases({"outer_region_definition_file": "/data/EUHROB.nc"})
+    with pytest.warns(DeprecationWarning, match="outer_region_definition_file.*deprecated"):
+        normalized = translate_rhime_aliases({"outer_region_definition_file": "/data/EUHROB.nc"})
 
     assert normalized == {"outer_regions_path": "/data/EUHROB.nc"}
 

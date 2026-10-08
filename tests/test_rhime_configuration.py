@@ -51,10 +51,10 @@ def test_scalar_and_expanded_requests_resolve_equally(multisector):
         "time_resolved": None,
     }
     sources = ["inventory", "ocean"] if multisector else ["inventory"]
-    scalar = rhime_params.resolve_rhime_config(
+    scalar = rhime_params.RhimeConfig.from_params(
         _request(flux_sources=sources, **selectors), multisector=multisector
     )
-    expanded = rhime_params.resolve_rhime_config(
+    expanded = rhime_params.RhimeConfig.from_params(
         _request(flux_sources=sources, **{name: [value, value] for name, value in selectors.items()}),
         multisector=multisector,
     )
@@ -85,7 +85,7 @@ def test_invalid_effective_requests_fail_without_acquisition(monkeypatch, overri
     monkeypatch.setattr(rhime, "load_rhime_data", fail)
     monkeypatch.setattr(RhimeSampler, "sample", fail)
     with pytest.raises(ValueError, match=option):
-        rhime_params.resolve_rhime_config(_request(**overrides), multisector=False)
+        rhime_params.RhimeConfig.from_params(_request(**overrides), multisector=False)
 
 
 @pytest.mark.parametrize(
@@ -108,7 +108,7 @@ def test_invalid_active_choices_fail_before_acquisition(
         **{option: value},
     )
     with pytest.raises(ValueError, match=option):
-        rhime_params.resolve_rhime_config(request, multisector=multisector_mode)
+        rhime_params.RhimeConfig.from_params(request, multisector=multisector_mode)
 
     recipe = multisector if multisector_mode else standard
     runner = recipe.run_rhime_multisector if multisector_mode else recipe.run_rhime
@@ -141,14 +141,14 @@ def test_invalid_active_choices_fail_before_acquisition(
     ],
 )
 def test_valid_finite_choices_are_preserved(option, value):
-    config = rhime_params.resolve_rhime_config(_request(**{option: value}), multisector=False)
+    config = rhime_params.RhimeConfig.from_params(_request(**{option: value}), multisector=False)
     owner = config.model if option == "aggregation_error_mode" else config
     assert getattr(owner, option) == value
 
 
 @pytest.mark.parametrize("algorithm", ["typo", None])
 def test_saved_basis_case_takes_precedence_during_resolution(algorithm):
-    config = rhime_params.resolve_rhime_config(
+    config = rhime_params.RhimeConfig.from_params(
         _request(fp_basis_case="saved_case", basis_algorithm=algorithm), multisector=False
     )
     assert config.fp_basis_case == "saved_case"
@@ -157,13 +157,13 @@ def test_saved_basis_case_takes_precedence_during_resolution(algorithm):
 
 @pytest.mark.parametrize("algorithm", tuple(basis_functions))
 def test_registered_basis_algorithms_resolve(algorithm):
-    config = rhime_params.resolve_rhime_config(_request(basis_algorithm=algorithm), multisector=False)
+    config = rhime_params.RhimeConfig.from_params(_request(basis_algorithm=algorithm), multisector=False)
     assert config.basis_algorithm == algorithm
 
 
 def test_basis_resolution_uses_live_registry(monkeypatch):
     monkeypatch.setitem(basis_functions, "project_algorithm", object())
-    config = rhime_params.resolve_rhime_config(
+    config = rhime_params.RhimeConfig.from_params(
         _request(basis_algorithm="project_algorithm"), multisector=False
     )
     assert config.basis_algorithm == "project_algorithm"
@@ -186,7 +186,7 @@ def test_file_overrides_precede_site_expansion(tmp_path: Path, replace_periods):
         overrides["averaging_period"] = "1h"
 
     config = rhime_params.RhimeConfig.from_params({**raw, **overrides}, multisector=False)
-    direct = rhime_params.resolve_rhime_config({**configured, **overrides}, multisector=False)
+    direct = rhime_params.RhimeConfig.from_params({**configured, **overrides}, multisector=False)
 
     assert config == direct
     assert config.site_options.averaging_period == ("1h", "1h", "1h")
@@ -211,7 +211,7 @@ def test_ini_decoding_precedes_recipe_defaults_and_overrides(tmp_path: Path, mul
 
     assert initial.start_date == "2019-01-01"
     assert updated.start_date == updated.model.likelihood.sigma_freq_anchor == "2020-02-01"
-    assert updated == rhime_params.resolve_rhime_config({**configured, **overrides}, multisector=multisector)
+    assert updated == rhime_params.RhimeConfig.from_params({**configured, **overrides}, multisector=multisector)
     assert overrides == {"start_date": "2020-02-01"}
 
 
@@ -221,7 +221,7 @@ def test_ini_dictionary_adapter_retains_normalization_controls(tmp_path: Path):
     with pytest.warns(DeprecationWarning, match="params_from_config"):
         raw = rhime_params.params_from_config(path, normalise=False)
     assert raw == {"outputname": "old-name", "draws": "7"}
-    with pytest.warns(DeprecationWarning, match="params_from_config"), pytest.warns(UserWarning, match="outputname"):
+    with pytest.warns(DeprecationWarning, match="params_from_config"), pytest.warns(DeprecationWarning, match="outputname"):
         normalized = rhime_params.params_from_config(
             path, output_path="cli-output", extra_kwargs={"output_path": "winning-output"}
         )
@@ -247,12 +247,12 @@ def test_resolution_preserves_caller_containers_and_lazy_keywords(monkeypatch, i
         pytest.fail("resolution must not execute sampling")
 
     monkeypatch.setattr(RhimeSampler, "sample", fail)
-    with Callback(pretask=fail), pytest.warns(UserWarning, match="xprior"):
+    with Callback(pretask=fail), pytest.warns(DeprecationWarning, match="xprior"):
         if invalid:
             with pytest.raises(ValueError, match="instrument"):
-                rhime_params.resolve_rhime_config(original, multisector=False)
+                rhime_params.RhimeConfig.from_params(original, multisector=False)
         else:
-            config = rhime_params.resolve_rhime_config(original, multisector=False)
+            config = rhime_params.RhimeConfig.from_params(original, multisector=False)
             assert config.sampler.sample_kwargs["opaque_value"] is lazy
             assert config.site_options.inlet == (slice("10m", "100m"), None)
             assert config.model.sectors[0].x_prior == before["xprior"]
@@ -267,7 +267,7 @@ def test_resolution_preserves_caller_containers_and_lazy_keywords(monkeypatch, i
 
 
 def test_retained_run_uses_prepared_metadata_without_changing_request():
-    config = rhime_params.resolve_rhime_config(
+    config = rhime_params.RhimeConfig.from_params(
         _request(averaging_period=["1h", "2h"]), multisector=False
     )
     prepared = SimpleNamespace(sites=("MHD",), averaging_period=("2h",))
@@ -285,7 +285,7 @@ def test_retained_run_uses_prepared_metadata_without_changing_request():
 
 def test_resolved_choices_are_available_without_a_preparation_record():
     request = _request(use_bc=False, mismatch_model=None, draws="7", time_resolved=True)
-    config = rhime_params.resolve_rhime_config(request, multisector=False)
+    config = rhime_params.RhimeConfig.from_params(request, multisector=False)
 
     assert config.use_bc is config.model.use_bc is False
     assert config.sampler.draws == 7
@@ -298,7 +298,7 @@ def test_resolved_choices_are_available_without_a_preparation_record():
 
 
 def test_canonical_configuration_exposes_active_prior_defaults():
-    config = rhime_params.resolve_rhime_config(_request(add_offset=True), multisector=False)
+    config = rhime_params.RhimeConfig.from_params(_request(add_offset=True), multisector=False)
 
     assert config.model.bc_prior == rhime_specs.DEFAULT_BC_PRIOR
     assert config.model.offset_prior == rhime_specs.DEFAULT_OFFSET_PRIOR
@@ -306,8 +306,8 @@ def test_canonical_configuration_exposes_active_prior_defaults():
 
 
 def test_minimum_error_none_resolves_to_numeric_default():
-    unspecified = rhime_params.resolve_rhime_config(_request(min_error=None), multisector=False)
-    explicit = rhime_params.resolve_rhime_config(_request(min_error=0.0), multisector=False)
+    unspecified = rhime_params.RhimeConfig.from_params(_request(min_error=None), multisector=False)
+    explicit = rhime_params.RhimeConfig.from_params(_request(min_error=0.0), multisector=False)
 
     assert unspecified == explicit
     assert unspecified.min_error == 0.0
@@ -316,7 +316,7 @@ def test_minimum_error_none_resolves_to_numeric_default():
 def test_filtering_preserves_typed_filter_request():
     """The legacy filtering function can normalize a copy of owned choices."""
     request = _request(filters={"TAC": "six_hr_mean", "MHD": None})
-    config = rhime_params.resolve_rhime_config(request, multisector=False)
+    config = rhime_params.RhimeConfig.from_params(request, multisector=False)
     before = deepcopy(config.filters)
     data = xr.Dataset(
         {"mf": ("time", [1.0, 3.0])},
@@ -337,13 +337,13 @@ def test_filtering_preserves_typed_filter_request():
 
 
 def test_configuration_api_is_public():
-    for name in ("RhimeConfig", "read_rhime_ini", "resolve_rhime_config"):
+    for name in ("RhimeConfig", "read_rhime_ini"):
         assert getattr(rhime, name) is getattr(rhime_params, name)
-    config = rhime_params.resolve_rhime_config(_request(), multisector=False)
+    config = rhime_params.RhimeConfig.from_params(_request(), multisector=False)
     assert isinstance(config.site_options, SiteOptions)
     for name in (
         "RhimePreparationConfig", "RhimeRunnerSetup", "make_rhime_runner_setup",
-        "resolve_rhime_options", "load_rhime_config",
+        "resolve_rhime_options", "load_rhime_config", "resolve_rhime_config",
     ):
         assert not hasattr(rhime_params, name)
         assert not hasattr(rhime, name)
@@ -351,7 +351,7 @@ def test_configuration_api_is_public():
 
 def test_multisector_preparation_selects_sources_from_typed_request():
     """Tuple configuration labels remain a list selection at the xarray boundary."""
-    config = rhime_params.resolve_rhime_config(
+    config = rhime_params.RhimeConfig.from_params(
         _request(sites=["TAC"], flux_sources=["second", "first"], use_bc=False),
         multisector=True,
     )
@@ -378,14 +378,11 @@ def test_multisector_preparation_selects_sources_from_typed_request():
     assert config.flux_sources == ("second", "first")
 
 
-def test_class_factory_preserves_inputs_and_matches_compatibility_wrapper():
+def test_class_factory_preserves_inputs():
     request = _request(filters={"TAC": ["six_hr_mean"], "MHD": None})
     before = deepcopy(request)
 
     resolved = rhime_params.RhimeConfig.from_params(request, multisector=False)
-    adapted = rhime_params.resolve_rhime_config(request, multisector=False)
-
-    assert resolved == adapted
     assert request == before
     assert resolved.filters is not request["filters"]
     assert resolved.filters["TAC"] is not request["filters"]["TAC"]

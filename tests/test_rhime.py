@@ -1862,7 +1862,7 @@ def test_assemble_rhime_inputs_preserves_borrowed_site_datasets(
     )
     monkeypatch.setattr(prep_module, "_warn_for_nan_inputs", lambda *args, **kwargs: None)
 
-    setup = rhime_public.resolve_rhime_config(
+    setup = rhime_public.RhimeConfig.from_params(
         params={
             "species": "ch4",
             "sites": ["TAC"],
@@ -2915,7 +2915,7 @@ def test_public_rhime_runners_follow_named_stage_order(
     )
     sampler = RhimeSampler()
     config = replace(
-        rhime_params.resolve_rhime_config(
+        rhime_params.RhimeConfig.from_params(
             {
                 "species": "ch4",
                 "domain": "EUROPE",
@@ -3188,7 +3188,7 @@ def test_prepared_complete_model_rejects_orphaned_likelihood_options_before_vali
 def test_rhime_public_package_exports_supported_orchestration_stages() -> None:
     """External runners can import every supported stage from the RHIME package."""
     stage_names = (
-        "resolve_rhime_config",
+        "RhimeConfig",
         "read_rhime_ini",
         "load_rhime_data",
         "filter_rhime_observations",
@@ -3352,7 +3352,7 @@ def test_public_stages_compose_as_complete_external_runner(monkeypatch: pytest.M
     monkeypatch.setattr(prep_module, "_make_inv_inputs", lambda **kwargs: inv_inputs_fixture)
     monkeypatch.setattr(RhimeSampler, "sample", lambda self, model, **kwargs: idata)
 
-    setup = rhime_public.resolve_rhime_config(
+    setup = rhime_public.RhimeConfig.from_params(
         params={
             "species": "ch4",
             "sites": ["TAC"],
@@ -3979,7 +3979,7 @@ def test_run_rhime_rejects_noncanonical_custom_likelihood_before_sampling(
         site_metadata=_prepared_site_metadata(),
     )
     config = replace(
-        rhime_params.resolve_rhime_config(
+        rhime_params.RhimeConfig.from_params(
             {
                 "species": "ch4", "sites": ["TAC"], "averaging_period": "1h",
                 "domain": "EUROPE", "start_date": run_spec.start_date,
@@ -4342,7 +4342,7 @@ def test_rhime_configuration_builds_specs_before_preparation(tmp_path: Path) -> 
         "time_resolved": True,
     }
 
-    setup = rhime_params.resolve_rhime_config(
+    setup = rhime_params.RhimeConfig.from_params(
         params=params,
         multisector=True,
     )
@@ -4462,7 +4462,7 @@ def test_configuration_requires_explicit_likelihood_selection() -> None:
         "output_format": "none",
     }
 
-    setup = rhime_params.resolve_rhime_config(params=params, multisector=False)
+    setup = rhime_params.RhimeConfig.from_params(params=params, multisector=False)
 
     assert setup.model.likelihood is None
 
@@ -4511,7 +4511,7 @@ def test_rhime_configuration_rejects_removed_builder_strategy() -> None:
     }
 
     with pytest.raises(ValueError, match="Unsupported RHIME parameter.*builder_strategy"):
-        rhime_params.resolve_rhime_config(
+        rhime_params.RhimeConfig.from_params(
             params=params,
             multisector=False,
         )
@@ -4550,7 +4550,7 @@ def test_rhime_normalises_legacy_output_format_aliases(
     if legacy_output_format == "legacy":
         params = translate_rhime_aliases({"output_format": legacy_output_format})
     else:
-        with pytest.warns(UserWarning, match="output_format"):
+        with pytest.warns(DeprecationWarning, match="output_format"):
             params = translate_rhime_aliases({"output_format": legacy_output_format})
     assert params["output_format"] == expected_output_format
 
@@ -5083,7 +5083,7 @@ output_name = "test"
 
     params = params_from_config(config_file)
     with pytest.raises(ValueError, match="Unsupported RHIME parameter.*builder_strategy"):
-        rhime_params.resolve_rhime_config(params=params, multisector=False)
+        rhime_params.RhimeConfig.from_params(params=params, multisector=False)
 
 
 @pytest.mark.parametrize("prior_name", ["x_prior", "bc_prior", "sigma_prior", "offset_prior"])
@@ -5282,7 +5282,7 @@ def test_run_rhime_multisector_rejects_non_mapping_sector_sources(
 def test_run_rhime_multisector_rejects_duplicate_sanitized_sector_names() -> None:
     """Duplicate PyMC suffixes fail during setup, before RHIME data preparation."""
     with pytest.raises(ValueError, match="duplicate sanitized name"):
-        rhime_params.resolve_rhime_config(
+        rhime_params.RhimeConfig.from_params(
             params={
                 "species": "ch4",
                 "sites": ["TAC"],
@@ -5308,7 +5308,7 @@ def test_resolve_flux_sources_rejects_duplicates() -> None:
 def test_run_rhime_multisector_rejects_duplicate_sector_source_mappings() -> None:
     """Current independent sector states require distinct source sensitivities."""
     with pytest.raises(ValueError, match="source 'ff-inventory'.*\\['FF', 'other'\\]"):
-        rhime_params.resolve_rhime_config(
+        rhime_params.RhimeConfig.from_params(
             params={
                 "species": "ch4",
                 "sites": ["TAC"],
@@ -5351,7 +5351,7 @@ def test_run_rhime_multisector_rejects_inexact_sector_prior_keys(
 ) -> None:
     """Missing and unused sector prior keys fail before data preparation."""
     with pytest.raises(ValueError, match=error_fragment):
-        rhime_params.resolve_rhime_config(
+        rhime_params.RhimeConfig.from_params(
             params={
                 "species": "ch4",
                 "sites": ["TAC"],
@@ -7265,7 +7265,7 @@ def test_required_parameter_validation_allows_missing_output_path_for_in_memory_
 
 def test_rhime_configuration_forwards_satellite_platform_to_preparation() -> None:
     """Satellite runs use the public ``platform`` preparation parameter."""
-    setup = rhime_params.resolve_rhime_config(
+    setup = rhime_params.RhimeConfig.from_params(
         params={
             "species": "co2",
             "sites": ["OCO2-EASTASIA"],
@@ -7341,11 +7341,11 @@ def test_configuration_defaults_inv_out_save_only_for_inv_out_format(tmp_path: P
         "flux_sources": ["total-ukghg-edgar7"],
         "output_name": "test",
     }
-    inv_out_setup = rhime_params.resolve_rhime_config(
+    inv_out_setup = rhime_params.RhimeConfig.from_params(
         params={**base_params, "output_format": "inv_out", "output_path": str(tmp_path)},
         multisector=False,
     )
-    paris_setup = rhime_params.resolve_rhime_config(
+    paris_setup = rhime_params.RhimeConfig.from_params(
         params={**base_params, "output_format": "paris"},
         multisector=False,
     )
@@ -9325,7 +9325,7 @@ def test_satellite_rhime_template_matches_modern_input_schema() -> None:
     assert "nchain" not in satellite
 
     normalized = params_from_config(satellite_path)
-    setup = rhime_params.resolve_rhime_config(
+    setup = rhime_params.RhimeConfig.from_params(
         params=normalized,
         multisector=False,
     )

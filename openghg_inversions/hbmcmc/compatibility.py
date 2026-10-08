@@ -36,13 +36,13 @@ def normalise_param_aliases(params: Mapping[str, Any]) -> dict[str, Any]:
         if new in normalized:
             warnings.warn(
                 f"Ignoring deprecated RHIME parameter {old!r} because {new!r} was also supplied.",
-                UserWarning,
+                DeprecationWarning,
                 stacklevel=3,
             )
         else:
             warnings.warn(
                 f"RHIME parameter {old!r} is deprecated; use {new!r} instead.",
-                UserWarning,
+                DeprecationWarning,
                 stacklevel=3,
             )
             normalized[new] = normalized[old]
@@ -71,7 +71,7 @@ def normalise_output_format_alias(params: dict[str, Any]) -> None:
     if alias is not None:
         warnings.warn(
             f"RHIME output_format {output_format!r} is deprecated; use {alias!r} instead.",
-            UserWarning,
+            DeprecationWarning,
             stacklevel=3,
         )
         output_format = alias
@@ -92,7 +92,7 @@ def translate_rhime_aliases(params: Mapping[str, Any]) -> dict[str, Any]:
     Raises:
         ValueError: If obsolete fixedbasis switches have no RHIME equivalent.
 
-    Deprecated parameter and output-format spellings emit ``UserWarning``.
+    Deprecated parameter and output-format spellings emit ``DeprecationWarning``.
     ``outer_region_definition_file`` is a deprecated RHIME spelling rather than
     a fixedbasis scientific switch and is translated at the same boundary.
     """
@@ -128,7 +128,7 @@ def _translate_legacy_aliases(params: dict[str, Any]) -> None:
         warnings.warn(
             f"run_hbmcmc parameter {old!r} is deprecated; use {new!r} instead."
             + (f" Ignoring {old!r} because {new!r} was also supplied." if new in params else ""),
-            UserWarning,
+            DeprecationWarning,
             stacklevel=3,
         )
         if new not in params:

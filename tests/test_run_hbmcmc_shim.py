@@ -64,7 +64,7 @@ def test_fixedbasis_params_to_rhime_translates_legacy_names(tmp_path: Path) -> N
     _fixedbasis_config(config_file)
     params = run_hbmcmc.hbmcmc_extract_param(str(config_file), print_param=False)
 
-    with pytest.warns(UserWarning) as caught:
+    with pytest.warns(DeprecationWarning) as caught:
         translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
 
     for alias in ("nit", "nchain", "verbose", "sampler_kwargs"):
@@ -96,7 +96,7 @@ def test_fixedbasis_default_does_not_opt_into_aggregation_error(tmp_path: Path) 
 
     translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
     translated["mismatch_model"] = "pollution_event"
-    setup = run_hbmcmc.resolve_rhime_config(params=translated, multisector=False)
+    setup = run_hbmcmc.RhimeConfig.from_params(translated, multisector=False)
 
     assert "aggregation_error_mode" not in translated
     assert setup.model.aggregation_error_mode == "none"
@@ -341,10 +341,7 @@ def test_run_hbmcmc_main_routes_to_run_rhime(monkeypatch: pytest.MonkeyPatch, tm
 
     monkeypatch.setattr(run_hbmcmc, "run_rhime", fake_run_rhime)
 
-    def fail_compatibility_resolution(*args, **kwargs):
-        raise AssertionError("Fixedbasis translation must be followed by canonical construction.")
-
-    monkeypatch.setattr(run_hbmcmc, "resolve_rhime_config", fail_compatibility_resolution)
+    assert not hasattr(run_hbmcmc, "resolve_rhime_config")
 
     with pytest.warns(UserWarning, match="--all-chains"):
         run_hbmcmc.main(

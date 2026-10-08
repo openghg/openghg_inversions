@@ -34,7 +34,6 @@ from .ini import read_rhime_ini
 from .params import (
     RhimeConfig,
     resolve_flux_sources,
-    resolve_rhime_config,
 )
 from .preparation import (
     assemble_rhime_inputs,
@@ -99,7 +98,6 @@ from .specs import (
 __all__ = [
     "RhimeConfig",
     "read_rhime_ini",
-    "resolve_rhime_config",
     "SectorSpec",
     "AdditiveSigmaSettings",
     "FixedErrorSettings",

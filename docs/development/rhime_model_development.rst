@@ -261,10 +261,11 @@ final requested values are known. Preserve the existing first-occurrence rule
 for repeated INI keys without imposing it on other frontends.
 
 Historical fixedbasis conversion and deprecated RHIME spellings belong to the
-lightweight ``hbmcmc.compatibility`` boundary. Raw runner entry points translate
-supported aliases there with warnings before canonical construction. The
-configuration factory accepts modern names and does not invoke translation.
-``resolve_rhime_config`` remains an explicit compatibility wrapper;
+lightweight ``hbmcmc.compatibility`` module. ``RhimeConfig.from_params`` invokes
+the alias translator once before modern normalization and construction; runners
+do not repeat it. Translation emits ``DeprecationWarning`` only when it replaces
+or removes deprecated names or output values. Modern options remain quiet.
+The former ``resolve_rhime_config`` wrapper is removed;
 ``params_from_config`` retains its historical dictionary/normalization contract
 as a deprecated adapter. Do not import the executable HBMCMC runner into modern
 configuration code. Existing default policy is unchanged by this ownership move.

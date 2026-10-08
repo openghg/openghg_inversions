@@ -19,7 +19,7 @@ cleanup and its validation are tracked separately below.
 
 ## 3. Scientific boundaries and names
 
-- [x] 3.1 Replace load_rhime_config with read_rhime_ini(path) returning decoded options; retain INI interpretation inside the frontend, then apply overrides and extract recipe-specific options in runners before canonical semantic/site resolution. Preserve params_from_config dictionary/normalization behavior in the HBMCMC compatibility module; verify reader results, override precedence and existing INI section behavior. This contract supersedes the initially implemented resolved-reader contract; validation for this revision is recorded below.
+- [x] 3.1 Replace load_rhime_config with read_rhime_ini(path, *, overrides=None, multisector=False) returning complete RhimeConfig; retain INI interpretation inside the frontend and apply overrides before shared semantic/site resolution; preserve params_from_config dictionary/normalization behavior through shared internal decoding; migrate configured consumers to use the result without resolving twice and verify reader results, override precedence and existing INI section behavior.
 - [x] 3.2 Collapse retrieval/reload forwarding layers into load_rhime_data; verify supplied-data no-I/O behavior, cache loading/fallback, layout/selector checks and retained alignment across ordinary/nested/staged consumers.
 - [x] 3.3 Forward needed resolved values explicitly to named stages, retain aligned selectors by label and derive run descriptions after preparation; verify retrieval/reload/filter/drop/supplied-data authority, tracer rejection and requested-versus-retained metadata without request mutation.
 - [x] 3.4 Rename fresh acquisition to retrieve_inversion_data, sharing the resolved-selector body; preserve data_processing_surface_notracer as a deprecated same-signature/six-tuple wrapper; verify warning, forwarding, imports and equivalent surface/column results without repeated expansion.
@@ -145,6 +145,10 @@ implementation or examples.
 
 ### Review follow-up: decoding and compatibility boundaries
 
+This records the implementation at `7c58af3b`. The approved amendment below
+supersedes its canonical-only factory and separate runner translation choices,
+and supersedes the resolved-reader contract originally completed in task 3.1.
+
 - [x] Make `read_rhime_ini` a dictionary decoder; apply runner overrides and
   extract recipe-specific choices before calling `RhimeConfig.from_params` once.
 - [x] Move historical aliases, fixedbasis translation and the deprecated
@@ -157,9 +161,41 @@ implementation or examples.
   metadata to shallow copies; cover real NetCDF and Zarr saving.
 - [x] Reconcile public docstrings, usage/development guidance, release notes and
   the active spec around these responsibilities.
-- [ ] Validate the combined change on supported Python versions and inspect
-  affected rendered documentation; SSH-push and update PR #813.
+- [x] Validate the combined change on supported Python versions and inspect
+  affected rendered documentation. Delivery awaits the approved amendment below.
 
 Scientific default policy, INI template redesign and model selection are deferred.
 Existing defaults and automatic-saving policy remain unchanged. Shorthand is
 expanded after overrides and recipe-specific option extraction.
+
+
+Commit `7c58af3b` passed the relevant Python 3.12 and 3.13 suites and `docs-full`
+in SLURM job `19281228` (exit zero). Eight rendered pages and 940 local
+links/anchors passed inspection. The new compatibility module adds one generated
+API reference page. This validation predates the constructor amendment below.
+
+### Approved amendment: one constructor and conditional alias warnings (2026-10-08)
+
+The user approved the decoding/resolution responsibility changes and clarified
+that the construction wrapper can be removed because users are working from
+0.7.x. The final sequence is: decode file values, apply winning overrides,
+consume recipe-owned options, then construct the remaining configuration through
+`RhimeConfig.from_params`. This refers to all remaining run options, not only
+options unique to a recipe. Existing completed tasks above retain their history.
+
+- [x] Reconcile proposal, design and requirements with that sequence and the
+  removal of `resolve_rhime_config`.
+- [x] Move the shared alias-translation call into `RhimeConfig.from_params`,
+  remove repeated runner translation and the wrapper, and migrate callers/tests.
+- [x] Emit `DeprecationWarning` when deprecated names or output values are
+  translated or removed; verify canonical inputs remain quiet.
+- [ ] Reconcile public documentation and generated API exposure, validate the
+  final implementation, SSH-push and update PR #813.
+
+The future dataset-only serialization/provenance contract is recorded in
+[#718](https://github.com/openghg/openghg_inversions/issues/718). It does not
+change the current artifact format in this PR.
+
+Focused amendment validation passed: 173 consumer tests and 35 compatibility/shim
+tests, changed-path Ruff, strict OpenSpec validation and whitespace checks.
+Supported-version and documentation validation for this amendment remains pending.

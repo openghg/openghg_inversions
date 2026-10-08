@@ -10,7 +10,7 @@ from typing import Any
 import pytest
 import xarray as xr
 
-from openghg_inversions.rhime.params import resolve_rhime_config
+from openghg_inversions.rhime.params import RhimeConfig
 
 from examples.rhime_cookiecutter.my_inversion import likelihoods
 from examples.rhime_cookiecutter.my_inversion import runner as consumer_runner
@@ -21,7 +21,7 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Run the downstream wrapper through controlled library-owned stages."""
-    config = resolve_rhime_config(
+    config = RhimeConfig.from_params(
         params=dict(species="ch4", sites=["TAC", "MHD"], domain="EUROPE",
                     averaging_period="1h", start_date="2019-01-01", end_date="2019-02-01",
                     output_name="example", output_format="inv_out", save_inversion_output=False,

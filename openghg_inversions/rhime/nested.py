@@ -46,7 +46,6 @@ from .builders import (
 )
 from .materialization import materialize_pymc_inputs
 from .outputs import RhimeResult, _make_inversion_output
-from openghg_inversions.hbmcmc.compatibility import translate_rhime_aliases
 from .ini import read_rhime_ini
 from .params import RhimeConfig
 from .preparation import (
@@ -1447,7 +1446,7 @@ def run_rhime_nested(
 
     if likelihood_builder is not None and params.get("mismatch_model") is not None:
         raise ValueError("A custom likelihood cannot be combined with a built-in mismatch model.")
-    config = RhimeConfig.from_params(translate_rhime_aliases(params), multisector=False)
+    config = RhimeConfig.from_params(params, multisector=False)
     if likelihood_builder is None and config.model.likelihood is None:
         raise ValueError("A nested RHIME run requires a built-in or custom likelihood.")
     if config.output.output_format not in ("none", "paris"):

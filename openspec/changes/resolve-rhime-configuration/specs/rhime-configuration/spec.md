@@ -20,7 +20,9 @@ preparation. It SHALL expose named preparation, model, output and sampling
 choices with established configuration-only defaults and aliases resolved. It
 SHALL contain no raw site shorthand, acquired/prepared scientific handoff or
 retained-run description. File-specific parsing and interpretation SHALL belong
-to the corresponding frontend; runners SHALL resolve the effective recipe request.
+to the corresponding frontend. Runners SHALL combine decoded file options with
+winning overrides, consume options handled by their own recipe, and pass the
+remaining configuration options to `RhimeConfig.from_params` before scientific work.
 Equivalent file-derived and Python requests with equivalent winning overrides
 SHALL yield equivalent resolved choices. INI SHALL remain the current file
 frontend without requiring another format or imposing its document structure
@@ -47,8 +49,8 @@ those choices.
   without resolving its options again
 - **AND** supplying that configuration together with a file or raw overrides
   is rejected before acquisition
-- **AND** `resolve_rhime_config` remains a compatibility wrapper around the
-  class-owned construction path, translating supported historical aliases before it
+- **AND** `RhimeConfig.from_params` is the single construction entry point;
+  `resolve_rhime_config` is removed
 
 #### Scenario: Equivalent file and Python inputs
 
@@ -270,7 +272,8 @@ handoff SHALL retain its authoritative options and no-acquisition behavior.
 
 ### Requirement: Compatible public adapters and scientific choices
 
-Except for the former stage adapter removal and the revised INI reader contract specified below, supported
+Except for the former stage adapter and `resolve_rhime_config` removals and the
+revised INI reader contract specified below, supported
 scientific Python and CLI entry points SHALL retain their signatures, shorthand,
 override behavior and return contracts through adapters to the same semantic
 resolution or shared applicable site translation. Direct preparation/retrieval
@@ -378,12 +381,15 @@ with winning overrides, extract their own recipe choices, and construct canonica
 configuration once. Shorthand SHALL remain editable until that construction.
 Shared semantic/site-alignment helpers SHALL remain independent of file syntax.
 
-Historical fixedbasis translation and deprecated aliases SHALL be owned by a
-lightweight HBMCMC compatibility module. Existing raw runner entry points SHALL
-retain supported aliases with warnings before calling canonical construction;
-`RhimeConfig.from_params` SHALL accept canonical names without invoking legacy
-translation. Modern coercion and validation SHALL remain with the modern owners.
-The explicit `resolve_rhime_config` wrapper SHALL retain alias compatibility.
+Historical fixedbasis translation and deprecated alias definitions SHALL be
+owned by a lightweight HBMCMC compatibility module. `RhimeConfig.from_params`
+SHALL invoke alias translation before modern coercion, validation and construction.
+Runners SHALL call that classmethod without repeating alias translation.
+The translator SHALL emit `DeprecationWarning` when it replaces or removes a
+deprecated option name or output-format value; canonical options SHALL pass
+without a deprecation warning. Canonical spellings SHALL win when both spellings
+are supplied. Fixedbasis-specific scientific policy SHALL remain in its separate
+compatibility adapter. The `resolve_rhime_config` wrapper SHALL be removed.
 The deprecated `params_from_config` adapter SHALL preserve its dictionary,
 normalization and override behavior using the same decoder. It SHALL NOT be
 needed by modern scientific runners.
@@ -402,11 +408,12 @@ needed by modern scientific runners.
 - **THEN** semantic construction expands only the winning values
 - **AND** the reader performs no premature expansion or date-dependent resolution
 
-#### Scenario: Legacy translation stays outside canonical construction
+#### Scenario: Construction translates deprecated spellings once
 
-- **WHEN** an existing runner receives a supported deprecated option spelling
-- **THEN** its compatibility boundary warns and supplies the canonical option
-- **AND** a direct canonical factory call with that deprecated spelling rejects it
+- **WHEN** a runner or direct factory caller supplies a supported deprecated spelling
+- **THEN** `RhimeConfig.from_params` invokes the compatibility translator and resolves
+  the canonical value, emitting a deprecation warning for the changed option
+- **AND** canonical inputs do not emit deprecation warnings
 - **AND** HBMCMC-specific historical behavior remains in the HBMCMC translator
 
 #### Scenario: Dictionary compatibility adapter

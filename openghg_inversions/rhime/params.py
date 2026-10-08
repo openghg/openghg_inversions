@@ -1,4 +1,4 @@
-"""Canonical RHIME option normalization and requested configuration.
+"""RHIME option resolution and complete requested configuration.
 
 The INI frontend decodes file options; callers apply overrides and consume
 recipe-specific options before canonical resolution. Resolution constructs the
@@ -57,10 +57,10 @@ class RhimeConfig:
     choices, ``output`` final-product policy and ``sampler`` sampling settings.
     Inference executes only when the sampler receives a constructed model.
 
-    Use :meth:`from_params` for canonically named external options; it owns
-    ordinary configuration containers and borrows opaque numerical values.
-    Direct construction and dataclass replacement expect already-resolved values
-    and do not copy them.
+    Use :meth:`from_params` for external options; deprecated spellings emit
+    warnings. It owns ordinary configuration containers and borrows opaque
+    numerical values. Direct construction and dataclass replacement expect
+    already-resolved values and do not copy them.
     A frozen record does not make contained mappings or the sampler immutable.
     Acquisition and filtering leave the requested choices intact. The record
     contains no scientific inputs, raw options or retained execution description.
@@ -149,12 +149,12 @@ class RhimeConfig:
         *,
         multisector: bool,
     ) -> RhimeConfig:
-        """Resolve canonical options into the complete requested run.
+        """Resolve external options into the complete requested run.
 
         Args:
-            params: Canonically named Python or decoded file options after
-                overrides. Deprecated spellings belong to compatibility
-                entrypoints and are rejected here.
+            params: Python or decoded file options after winning overrides.
+                Canonical names are preferred; deprecated spellings are
+                translated with ``DeprecationWarning``.
             multisector: Whether to resolve the multisector recipe.
 
         Returns:
@@ -167,7 +167,7 @@ class RhimeConfig:
             ValueError: If options are missing, unsupported, malformed, or
                 incompatible with the selected runner mode.
         """
-        normalized = normalise_rhime_params(params)
+        normalized = normalise_rhime_params(translate_rhime_aliases(params))
         validate_supported_params(normalized)
         validate_required_params(normalized)
 
@@ -375,7 +375,7 @@ def resolve_flux_sources(
         flux_sources: Preferred RHIME field containing OpenGHG flux
             ``source`` metadata values.
         emissions_name: Legacy compatibility spelling accepted only when
-            ``flux_sources`` is absent; supplying it emits ``UserWarning``.
+            ``flux_sources`` is absent; supplying it emits ``DeprecationWarning``.
 
     Returns:
         Resolved flux source names.
@@ -402,8 +402,8 @@ def resolve_flux_sources(
 def normalise_rhime_params(params: Mapping[str, Any]) -> dict[str, Any]:
     """Copy canonical options, coerce scalars and validate structured values.
 
-    Deprecated spellings are translated by external compatibility entrypoints,
-    before this canonical value-normalization step.
+    ``RhimeConfig.from_params`` translates deprecated spellings before this
+    canonical value-normalization step.
     """
     normalized = dict(params)
     if normalized.pop("use_tracer", False):
@@ -648,14 +648,3 @@ def _make_model_spec(
         offset_args=offset_args,
         aggregation_error_mode=aggregation_error_mode,
     )
-
-
-def resolve_rhime_config(params: Mapping[str, Any], *, multisector: bool) -> RhimeConfig:
-    """Resolve external options while preserving deprecated spelling support.
-
-    Deprecated aliases emit warnings before canonical ``RhimeConfig.from_params``
-    resolves defaults and site shorthand. New callers with canonical options
-    should use that classmethod directly. Caller containers and opaque numerical
-    payloads remain unchanged.
-    """
-    return RhimeConfig.from_params(translate_rhime_aliases(params), multisector=multisector)

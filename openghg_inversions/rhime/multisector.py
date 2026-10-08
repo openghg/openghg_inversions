@@ -66,7 +66,6 @@ from openghg_inversions.inversion_data import load_rhime_data
 
 from .materialization import materialize_pymc_inputs
 from .outputs import RhimeResult, annotate_likelihood_trace, make_multisector_rhime_outputs
-from openghg_inversions.hbmcmc.compatibility import translate_rhime_aliases
 from .ini import read_rhime_ini
 from .params import RhimeConfig
 from .preparation import (
@@ -697,7 +696,7 @@ def run_rhime_multisector(
         params.update(kwargs)
         if likelihood_builder is not None and params.get("mismatch_model") is not None:
             raise ValueError("A custom likelihood cannot be combined with a built-in mismatch model.")
-        config = RhimeConfig.from_params(translate_rhime_aliases(params), multisector=True)
+        config = RhimeConfig.from_params(params, multisector=True)
     log_timing("rhime.runner_setup", timer_seconds(setup_start), multisector=True)
     if likelihood_builder is None and config.model.likelihood is None:
         raise ValueError("A multisector RHIME run requires a built-in or custom likelihood.")

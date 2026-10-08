@@ -1,4 +1,4 @@
-"""Legacy request adapters keep canonical RHIME construction independent."""
+"""Resolved construction contains one warned legacy-spelling boundary."""
 
 import subprocess
 import sys
@@ -39,38 +39,59 @@ def test_translation_import_does_not_load_a_runner_or_scientific_backend():
     )
 
 
-def test_canonical_factory_coerces_without_calling_legacy_translation(monkeypatch):
-    def forbidden_translation(*args, **kwargs):
-        raise AssertionError("Canonical construction must not translate legacy options.")
+def test_factory_translates_once_and_canonical_coercion_is_silent(monkeypatch):
+    calls = []
 
-    monkeypatch.setattr(rhime_params, "translate_rhime_aliases", forbidden_translation)
+    def capture_translation(params):
+        calls.append(params)
+        return compatibility.translate_rhime_aliases(params)
+
+    monkeypatch.setattr(rhime_params, "translate_rhime_aliases", capture_translation)
+    params = _request(draws="12", output_format="NONE")
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        resolved = rhime_params.RhimeConfig.from_params(
-            _request(draws="12", output_format="NONE"), multisector=False
-        )
+        resolved = rhime_params.RhimeConfig.from_params(params, multisector=False)
 
+    assert calls == [params]
     assert resolved.sampler.draws == 12
     assert resolved.output.output_format == "none"
     assert not caught
 
 
-@pytest.mark.parametrize("name", ["outputname", "sigprior", "calculate_min_error", "mcmc_type"])
-def test_canonical_factory_rejects_legacy_names_as_unknown_options(name):
-    with pytest.raises(ValueError, match=f"Unsupported RHIME parameter.*{name}"):
+@pytest.mark.parametrize("name", ["calculate_min_error", "reparameterise_log_normal", "mcmc_type"])
+def test_factory_rejects_obsolete_fixedbasis_switches(name):
+    with pytest.raises(ValueError, match=f"{name}.*not supported"):
         rhime_params.RhimeConfig.from_params(_request(**{name: None}), multisector=False)
 
 
-def test_compatibility_resolver_warns_and_keeps_canonical_precedence():
+def test_factory_warns_on_alias_removal_and_keeps_canonical_precedence():
     params = _request(outputname="ignored", outer_region_definition_file="outer.nc")
-    with pytest.warns(UserWarning) as caught:
-        resolved = rhime_params.resolve_rhime_config(params, multisector=False)
+    with pytest.warns(DeprecationWarning) as caught:
+        resolved = rhime_params.RhimeConfig.from_params(params, multisector=False)
 
     assert resolved.output_name == "compatibility"
     assert resolved.outer_regions_path == "outer.nc"
     assert len(caught) == 2
     assert params["outputname"] == "ignored"
     assert "outer_regions_path" not in params
+
+
+def test_factory_accepts_legacy_names_and_warns_only_for_changed_inputs():
+    params = _request(
+        sigprior={"pdf": "halfnormal", "sigma": 2.0},
+        output_format="hbmcmc",
+        mismatch_model="pollution_event",
+    )
+    params["outputname"] = params.pop("output_name")
+    params["output_path"] = "out"
+    with pytest.warns(DeprecationWarning) as caught:
+        resolved = rhime_params.RhimeConfig.from_params(params, multisector=False)
+
+    assert len(caught) == 3
+    assert resolved.output_name == "compatibility"
+    assert resolved.output.output_format == "legacy"
+    assert resolved.model.likelihood.sigma_prior == {"pdf": "halfnormal", "sigma": 2.0}
+    assert "output_name" not in params
 
 
 def test_dictionary_adapter_preserves_raw_and_normalized_modes(tmp_path):
@@ -81,7 +102,7 @@ def test_dictionary_adapter_preserves_raw_and_normalized_modes(tmp_path):
         raw = rhime_params.params_from_config(path, normalise=False)
     assert raw == {"outputname": "file", "draws": "invalid"}
 
-    with pytest.warns((DeprecationWarning, UserWarning)) as caught:
+    with pytest.warns(DeprecationWarning) as caught:
         normalized = compatibility.params_from_config(
             path, start_date="2019-01-01", extra_kwargs={"draws": "17", "output_name": "override"}
         )
@@ -93,7 +114,7 @@ def test_dictionary_adapter_preserves_raw_and_normalized_modes(tmp_path):
 
 def test_fixedbasis_aliases_warn_and_leave_value_coercion_to_factory():
     params = _request(nit="12", nchain=2, draws="17")
-    with pytest.warns(UserWarning) as caught:
+    with pytest.warns(DeprecationWarning) as caught:
         translated = compatibility.fixedbasis_params_to_rhime(params)
 
     assert len(caught) == 2

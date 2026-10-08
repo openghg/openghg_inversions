@@ -46,7 +46,6 @@ from openghg_inversions.basis.algorithms import (
     region_constrained_basis,
 )
 from openghg_inversions.inversion_data import RhimeMergedData, load_rhime_data
-from openghg_inversions.hbmcmc.compatibility import translate_rhime_aliases
 from openghg_inversions.rhime import (
     RhimeConfig,
     RhimeResult,
@@ -296,7 +295,7 @@ def run_custom_rhime(
     # A built-in algorithm choice is irrelevant to this copied recipe.
     params.pop("basis_algorithm", None)
     params.pop("fp_basis_case", None)
-    config = RhimeConfig.from_params(translate_rhime_aliases(params), multisector=False)
+    config = RhimeConfig.from_params(params, multisector=False)
 
     merged = load_rhime_data(
         **config.select(

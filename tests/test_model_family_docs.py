@@ -4,7 +4,7 @@ import importlib
 import re
 from pathlib import Path
 
-from openghg_inversions.rhime.params import resolve_rhime_config
+from openghg_inversions.rhime.params import RhimeConfig
 from openghg_inversions.rhime.specs import PollutionEventSettings
 
 
@@ -209,7 +209,7 @@ def test_nested_documented_examples_resolve_supported_likelihoods() -> None:
     )
 
     for params in examples:
-        setup = resolve_rhime_config(params=params, multisector=False)
+        setup = RhimeConfig.from_params(params=params, multisector=False)
         assert isinstance(setup.model.likelihood, PollutionEventSettings)
 
 

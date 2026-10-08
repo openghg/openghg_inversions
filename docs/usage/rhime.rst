@@ -184,9 +184,8 @@ For example, a scalar period broadcasts across the effective requested sites:
    assert config.site_options.sites == ("TAC", "MHD")
    assert config.site_options.averaging_period == ("1h", "1h")
 
-The constructor applies established defaults, validation and site expansion
-beside the configuration it creates. ``resolve_rhime_config`` remains a
-compatibility function that first translates historical aliases. Pass an
+The constructor translates supported deprecated aliases, then applies established
+defaults, validation and site expansion beside the configuration it creates. Pass an
 inspected configuration to the matching runner to execute it without resolving
 its options again:
 
@@ -232,9 +231,11 @@ stays available until that last step: changing sites or averaging periods before
 resolution expands the final values together. The resulting ``config`` can be
 passed to a runner without resolving again.
 
-``RhimeConfig.from_params`` accepts canonical RHIME names. Existing runner entry
-points and ``resolve_rhime_config`` still translate supported historical aliases
-with warnings through ``hbmcmc.compatibility``. The deprecated
+``RhimeConfig.from_params`` is the single construction entry point; the former
+``resolve_rhime_config`` wrapper has been removed. The constructor calls the
+translator in ``hbmcmc.compatibility`` and emits ``DeprecationWarning`` when a
+deprecated name or output-format value is replaced or removed. Canonical names
+take precedence over aliases; canonical inputs emit no deprecation warning. The deprecated
 ``params_from_config`` adapter retains its dictionary return, overrides and
 ``normalise`` control there; modern readers and runners do not depend on that
 adapter. Prefer modern names such as ``x_prior``, ``output_name`` and
@@ -1102,8 +1103,8 @@ Output Formats
 Standard single-sector RHIME supports ``inv_out``, ``basic``, ``paris``, and
 ``legacy`` output formats. ``legacy`` writes the old HBMCMC-compatible NetCDF
 product from the modern ``InversionOutput``. The deprecated names ``hbmcmc``
-and ``hbmcmc_postprocessing`` are accepted with warnings at runner compatibility
-entry points. Canonical configuration construction requires ``legacy``.
+and ``hbmcmc_postprocessing`` are accepted with ``DeprecationWarning`` during
+configuration construction. Prefer ``legacy`` in new configurations.
 
 Single-sector ``paris`` keeps the legacy template by default. Pass
 ``paris_postprocessing_kwargs={"template_version": "latest"}`` to write the

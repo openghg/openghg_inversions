@@ -46,9 +46,8 @@ read_rhime_ini --> decoded options
                           |
 Python options -----------+--> winning overrides / recipe extraction
                                          |
-                       legacy translation at compatibility boundaries
-                                         |
                               RhimeConfig.from_params
+                         (translate aliases, then resolve)
                                          |
                                     RhimeConfig
                                          |
@@ -63,9 +62,6 @@ Target API outline:
 
 ```python
 def read_rhime_ini(path: str | Path) -> dict[str, object]: ...
-def resolve_rhime_config(
-    params: Mapping[str, object], *, multisector: bool
-) -> RhimeConfig: ...
 
 @dataclass(frozen=True, kw_only=True)
 class RhimeConfig:
@@ -112,7 +108,7 @@ adopted names for this revision; other established names are retained.
 | Name | Role | Input / output and boundary contract |
 | --- | --- | --- |
 | `read_rhime_ini` (replace `load_rhime_config` introduced in #813) | INI configuration frontend. | INI path -> decoded options. Owns INI syntax and existing section interpretation; runners apply overrides, extract their own options and resolve the final request. |
-| `resolve_rhime_config` (keep) | Legacy-aware compatibility wrapper for `RhimeConfig.from_params`. | Effective RHIME options after winning overrides -> complete `RhimeConfig`. Resolves supported aliases/defaults/shorthand and fails before scientific work. Does not interpret file headers or impose INI structure on other frontends. |
+| `resolve_rhime_config` (remove) | Former construction wrapper. | All callers use `RhimeConfig.from_params`; no compatibility alias is retained. |
 | `RhimeConfig` (keep; revise contents) | Complete resolved requested configuration. | Direct acquisition/preparation fields plus existing model/output/sampler values. Intended to be serializable as settings; export/INI-writing deferred to #814. No scientific data, retained run or historical identity contract. |
 | `SiteOptions` (promote existing `_SiteOptions`; export from `inversion_data`) | Public cohesive aligned selector record. | Complete ordered site/period/inlet/platform/etc. tuples. `from_inputs` normalizes external shorthand; direct construction accepts resolved aligned values. Requested when held by config; authoritative retained values when held by merged data. Selection creates a new complete record. |
 | `RhimeModelSpec` / `SectorSpec` (keep) | Scientific recipe choices and individual flux-sector definitions. | Priors, likelihood/component choices and source routing; no PyMC graph or acquired arrays. Independently usable by existing builders. |
@@ -128,7 +124,7 @@ adopted names for this revision; other established names are retained.
 | `filter_rhime_observations`, `build_rhime_basis`, `build_rhime_sensitivities`, `assemble_rhime_inputs` (keep) | Named scientific stages in the ordinary recipe. | Borrowed numerical handoffs and explicit resolved values -> filtered data, basis, sensitivities and assembled inputs. Named keyword options with required scientific identity/source inputs; remove the former positional `data_args` adapter. No phase-config class, reparsing or generic request context threaded through scientific components. |
 | `RhimePreparedInputs` (keep) | Labelled prepared model-input handoff. | Numerical inputs, basis and retained metadata; independent of full requested configuration. |
 | `RhimeRunSpec` (keep) | Execution description. | Constructed after ordinary preparation from requested dates, retained sites/periods, prepared layout and resolved model/output choices. No acquisition options or sampler execution. |
-| `RhimeRunnerSetup` / `make_rhime_runner_setup` / `resolve_rhime_options` (remove) | Redundant internal setup bundle and its constructors. | Migrate ordinary, nested, staged, shim and example consumers to `RhimeConfig` / `resolve_rhime_config`; construct retained run descriptions only after preparation. Do not retain a renamed bundle or compatibility projection. |
+| `RhimeRunnerSetup` / `make_rhime_runner_setup` / `resolve_rhime_options` (remove) | Redundant internal setup bundle and its constructors. | Migrate ordinary, nested, staged, shim and example consumers to `RhimeConfig.from_params`; construct retained run descriptions only after preparation. Do not retain a renamed bundle or compatibility projection. |
 | `RhimeResult` (keep) | Completed execution result. | Retained descriptions, prepared numerical inputs, posterior and outputs. Never represents an unresolved request. |
 | `run_rhime` / `run_rhime_multisector` (keep) | Ordinary procedural orchestration. | Existing file-plus-keyword inputs -> result. Read/resolve the effective request, prepare, build, sample and output in visible order. Decode options, combine overrides and extract recipe choices before canonical construction; reuse an already-resolved request when supplied. |
 
@@ -169,13 +165,16 @@ Shorthand remains available for those edits. Preserve section flattening and
 first-occurrence precedence for now; redesigning the INI template or model-type
 selection is outside this cleanup.
 
-Canonical construction retains modern coercion, validation and existing default
-choices. Deprecated names and HBMCMC behavior belong in `hbmcmc.compatibility`.
-Raw runner entry points translate supported aliases with warnings, while the
-factory itself requires canonical names. `resolve_rhime_config` is the explicit
-legacy-aware wrapper. The dictionary reader compatibility adapter has the same
-legacy owner and remains reexported for existing callers. Do not import the
-executable HBMCMC runner into modern configuration code.
+`RhimeConfig.from_params` is the single construction entry point. It calls the
+alias translator from `hbmcmc.compatibility`, then performs modern coercion,
+validation and existing default resolution. Translation emits `DeprecationWarning`
+only when replacing or removing deprecated spellings, including old output-format
+values; canonical spellings win when both are present. Canonical options need no
+deprecation warning. Remove the `resolve_rhime_config` wrapper and repeated
+translation calls in runners. Fixedbasis scientific behavior and the deprecated
+dictionary reader adapter remain in the compatibility module. The adapter stays
+reexported for existing callers. Do not import the executable HBMCMC runner into
+modern configuration code.
 
 Apply overrides before resolving defaults or site shorthand, including a changed
 site list or date bound. Expand scalar site selectors to the effective site
@@ -210,7 +209,7 @@ The shared resolver's responsibilities are:
 
 | Step | Work and dependency |
 | --- | --- |
-| Normalize and validate effective options | Reject removed/unknown options and check required fields and value types. Compatibility entry points translate historical aliases before canonical construction; file section interpretation belongs to the frontend. |
+| Normalize and validate effective options | Translate deprecated spellings once in the classmethod, then reject removed/unknown options and check required fields and value types. Alias definitions belong to the compatibility module; file section interpretation belongs to the frontend. |
 | Resolve sources and recipe choices | Normalize sources, enforce standard/multisector requirements and establish sector/source routing. |
 | Resolve scientific settings | Resolve priors, likelihood and active BC/offset settings; check incompatible choices. Date-dependent defaults use the effective overridden dates. |
 | Resolve sampler and output policy | Construct existing sampler/output values with their defaults and configuration checks; do not execute sampling or output. |
@@ -222,7 +221,8 @@ locally constructed settings again. Shared diagnostics identify RHIME options;
 INI-specific syntax advice belongs to the INI frontend.
 
 Reuse existing required-option, rejection, site expansion and likelihood
-rules, retaining alias translation at compatibility boundaries. Preserve case normalization, optional selectors, inlet slices and
+rules, retaining alias definitions in the compatibility module. Preserve case
+normalization, optional selectors, inlet slices and
 `time_resolved=None`. Omitted/false `use_tracer` is consumed; effective true fails
 early, including direct preparation and supplied-data routes. No tracer field
 is retained. Keep established custom-likelihood conflict ordering.
