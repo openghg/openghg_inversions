@@ -156,6 +156,12 @@ def get_flux_data(
 
         logging.Logger.disabled = False  # resume confusing OpenGHG warnings
 
+        # OpenGHG's public retrieval selects latest, but its typed rewrap loses _version.
+        flux_data.metadata = {
+            **flux_data.metadata,
+            "dataversion": selected_provenance(flux_data, requested_version="latest")["dataversion"],
+        }
+
         # Preserve source period metadata for downstream post-processing.
         # Variable metadata is more specific and must not be overwritten.
         variable_period = flux_data.data.flux.attrs.get("time_period")
@@ -469,10 +475,11 @@ def get_footprint_to_match(
     # make FootprintData to return
     metadata = dict(indexed_footprints[0][1].metadata)
 
+    identities = [selected_provenance(fp, store, requested_version="latest") for _, fp in indexed_footprints]
+    metadata.update(identities[0])
     if len(indexed_footprints) > 1:
         metadata["inlet"] = "varies"
         metadata["height"] = "varies"
-        identities = [selected_provenance(fp) for _, fp in indexed_footprints]
         for name in ("store", "uuid", "dataversion"):
             metadata[name] = [identity[name] for identity in identities]
 

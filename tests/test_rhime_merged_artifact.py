@@ -354,7 +354,7 @@ def test_fresh_acquisition_records_each_input_identity_and_saves_only_on_request
         }
 
 
-@pytest.mark.parametrize("suffix", ["zarr", "nc"])
+@pytest.mark.parametrize("suffix", ["zarr", "zarr.zip", "nc"])
 def test_sparse_lazy_payload_densifies_only_at_serialization(tmp_path, suffix):
     import sparse
 
@@ -363,11 +363,18 @@ def test_sparse_lazy_payload_densifies_only_at_serialization(tmp_path, suffix):
     original.site_data["TAC"]["mf"] = xr.DataArray(
         payload, dims="time", coords={"time": original.site_data["TAC"].time}
     )
+    original.site_data["TAC"] = original.site_data["TAC"].assign_coords(release_lon=("time", payload))
+    original.site_data["TAC"].release_lon.attrs["units"] = "degrees_east"
     original.save(tmp_path, merged_data_name="sparse." + suffix)
     assert isinstance(original.site_data["TAC"].mf.data._meta, sparse.COO)
+    assert original.site_data["TAC"].release_lon.data is payload
+    assert isinstance(payload._meta, sparse.COO)
     restored = RhimeMergedData.load(tmp_path, merged_data_name="sparse." + suffix)
     try:
         np.testing.assert_array_equal(restored.site_data["TAC"].mf.compute(), [1.0, 0.0])
+        assert "release_lon" in restored.site_data["TAC"].coords
+        assert restored.site_data["TAC"].release_lon.attrs == {"units": "degrees_east"}
+        np.testing.assert_array_equal(restored.site_data["TAC"].release_lon.compute(), [1.0, 0.0])
     finally:
         restored.close()
 
@@ -489,3 +496,84 @@ def test_save_computes_shared_site_and_flux_source_once(tmp_path, suffix):
     finally:
         restored.close()
     assert calls == ["computed"]
+
+
+@pytest.mark.parametrize("selected_version", [None, "v2"])
+def test_catalog_latest_version_requires_retrieval_context(selected_version):
+    wrapped = SimpleNamespace(metadata={"latest_version": "v7", "versions": ["v2", "v7"]})
+    if selected_version is not None:
+        wrapped._version = selected_version
+    assert selected_provenance(wrapped)["dataversion"] == (selected_version or "unknown")
+    assert selected_provenance(wrapped, requested_version="latest")["dataversion"] == (
+        selected_version or "v7"
+    )
+
+
+@pytest.mark.parametrize("kind", ["flux", "footprints-single", "footprints-multiple", "older"])
+def test_native_openghg_public_retrieval_preserves_selected_version(monkeypatch, kind):
+    """Exercise real search-result selection and public typed-wrapper reconstruction."""
+    import pandas as pd
+    import openghg.retrieve
+    from openghg.dataobjects import SearchResults
+    from openghg.dataobjects import _basedata
+    from openghg_inversions.inversion_data import getters
+
+    times = pd.date_range("2020-01-01", periods=2, freq="h")
+    loaded_versions = []
+    metadata = {
+        "uuid": "native-uuid",
+        "object_store": "archive",
+        "latest_version": "v7",
+        "versions": ["v2", "v7"],
+        "data_type": "flux" if kind == "flux" else "footprints",
+    }
+
+    def get_dataset(*, version):
+        loaded_versions.append(version)
+        variable = "flux" if kind == "flux" else "fp"
+        dataset = xr.Dataset({variable: ("time", [1.0, 2.0])}, coords={"time": times})
+        dataset[variable].attrs["units"] = "mol m-2 s-1" if kind == "flux" else "mol mol-1 / (mol m-2 s-1)"
+        return dataset
+
+    monkeypatch.setattr(_basedata, "get_datasource", lambda **kw: SimpleNamespace(get_data=get_dataset))
+    monkeypatch.setattr(
+        openghg.retrieve, "search", lambda **kw: SearchResults(metadata={"native-uuid": dict(metadata)})
+    )
+    if kind == "older":
+        result = SearchResults(metadata={"native-uuid": dict(metadata)}).retrieve_all(version="v2")
+        expected = "v2"
+        assert selected_provenance(result, requested_version="latest")["dataversion"] == "v2"
+    elif kind == "flux":
+        monkeypatch.setattr(getters, "adjust_flux_start_date", lambda *args: "2020-01-01")
+        result = getters.get_flux_data(
+            sources=["inventory"],
+            species="ch4",
+            domain="EUROPE",
+            store="archive",
+            start_date="2020-01-01",
+            end_date="2020-01-02",
+        )["inventory"]
+        expected = "v7"
+    else:
+        inlets = [10.0, 100.0] if kind.endswith("multiple") else [10.0, 10.0]
+        obs = SimpleNamespace(
+            data=xr.Dataset({"inlet": ("time", inlets)}, coords={"time": times}),
+            metadata={"site": "TAC"},
+        )
+        monkeypatch.setattr(
+            getters,
+            "search_footprints",
+            lambda **kw: SimpleNamespace(results=pd.DataFrame({"inlet": ["10m", "100m"]})),
+        )
+        result = getters.get_footprint_to_match(
+            obs,
+            domain="EUROPE",
+            store="archive",
+            start_date="2020-01-01",
+            end_date="2020-01-02",
+            averaging_period="1h",
+        )
+        expected = ["v7", "v7"] if kind.endswith("multiple") else "v7"
+    assert loaded_versions == (["v7", "v7"] if kind.endswith("multiple") else [expected])
+    assert selected_provenance(result)["dataversion"] == expected
+    assert "dataversion" not in metadata

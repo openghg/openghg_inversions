@@ -389,7 +389,10 @@ def _retrieve_inversion_data_from_options(
             raise SearchError("Could not find matching boundary conditions.") from e
         else:
             fp_all[".bc"] = bc_data
-            fp_all[".provenance"]["inputs"]["boundary"] = selected_provenance(bc_data, bc_store)
+            # This public getter rejects multiple UUIDs and selects latest.
+            fp_all[".provenance"]["inputs"]["boundary"] = selected_provenance(
+                bc_data, bc_store, requested_version="latest"
+            )
     else:
         bc_data = None
 
@@ -499,9 +502,11 @@ def _retrieve_inversion_data_from_options(
             )
             output_units = scenario_units
         fp_all[site] = scenario_combined
+        # Observation retrieval can combine UUIDs and discard their selected versions;
+        # never infer those versions from the remaining catalog metadata.
         fp_all[".provenance"]["inputs"].update({
             f"observations:{site}": selected_provenance(site_data, obs_store),
-            f"footprints:{site}": selected_provenance(footprint_data, footprint_store),
+            f"footprints:{site}": selected_provenance(footprint_data, footprint_store, requested_version="latest"),
         })
 
         if not is_satellite_platform(site_platform):

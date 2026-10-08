@@ -23,8 +23,15 @@ SCHEMA = "openghg-inversions-rhime-acquisition"
 SCHEMA_VERSION = 1
 
 
-def selected_provenance(value: Any, store: Any = None) -> dict:
-    """Keep only available input identifiers, explicitly marking unknowns."""
+def selected_provenance(value: Any, store: Any = None, *, requested_version: str | None = None) -> dict:
+    """Keep input identifiers; resolve latest only for a known retrieval request.
+
+    OpenGHG typed wrappers can lose the generic object's selected ``_version``.
+    Retrieval owners may supply ``requested_version="latest"`` for that public
+    retrieval path only when it guarantees a single UUID. Combined observation
+    retrievals do not establish this. Catalog ``latest_version`` alone does not
+    identify arbitrary supplied data, which may come from an older version.
+    """
     metadata = getattr(value, "metadata", {})
     attrs = (
         value.attrs if isinstance(value, xr.Dataset) else getattr(getattr(value, "data", None), "attrs", {})
@@ -43,6 +50,8 @@ def selected_provenance(value: Any, store: Any = None) -> dict:
             result = store
         if result is None and name in {"uuid", "dataversion"}:
             result = getattr(value, "_uuid" if name == "uuid" else "_version", None)
+        if name == "dataversion" and result is None and requested_version is not None:
+            result = metadata.get("latest_version") if requested_version == "latest" else requested_version
         if isinstance(result, list | tuple) and all(isinstance(item, str | int) for item in result):
             selected[name] = list(result)
         else:
@@ -102,7 +111,9 @@ def _encode_dataset(dataset: xr.Dataset) -> xr.Dataset:
     result.attrs = {"scientific_attributes": json.dumps(attributes, default=_json_default)}
     result.encoding = {}
     for name in result.variables:
-        if name in result.data_vars:
+        if name in result.coords:
+            result = result.assign_coords({name: to_dense(result[name])})
+        else:
             result[name] = to_dense(result[name])
         result[name].attrs = {}
         result[name].encoding = {}
