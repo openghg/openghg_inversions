@@ -189,7 +189,7 @@ options unique to a recipe. Existing completed tasks above retain their history.
   remove repeated runner translation and the wrapper, and migrate callers/tests.
 - [x] Emit `DeprecationWarning` when deprecated names or output values are
   translated or removed; verify canonical inputs remain quiet.
-- [ ] Reconcile public documentation and generated API exposure, validate the
+- [x] Reconcile public documentation and generated API exposure, validate the
   final implementation, SSH-push and update PR #813.
 
 The future dataset-only serialization/provenance contract is recorded in
@@ -198,4 +198,10 @@ change the current artifact format in this PR.
 
 Focused amendment validation passed: 173 consumer tests and 35 compatibility/shim
 tests, changed-path Ruff, strict OpenSpec validation and whitespace checks.
-Supported-version and documentation validation for this amendment remains pending.
+Implementation commit `81405294` passed the relevant configuration, acquisition,
+standard/nested/staged runner, compatibility, serialization and integration suites
+on Python 3.12 and 3.13, plus `docs-full`, in SLURM job `19281458` (exit zero).
+Eight affected rendered pages and 936 local links/anchors passed inspection;
+generated API reference files match the tracked files. Inspection checked HTML
+structure and text, not browser screenshots. The implementation was SSH-pushed
+to PR #813 for review; this final record changes no implementation or examples.
