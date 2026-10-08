@@ -47,8 +47,8 @@ from openghg_inversions.inversion_data.prepared_inputs import (
     RHIME_PREPARED_INPUTS_SCHEMA_VERSION as RHIME_PREPARED_INPUTS_SCHEMA_VERSION,
     RhimePreparedInputs as RhimePreparedInputs,
 )
+from openghg_inversions import model_error
 from openghg_inversions.model_error import (
-    MinErrorConfig as MinErrorConfig,
     normalise_min_error,
     normalise_min_error_options,
 )
@@ -101,7 +101,7 @@ def prepare_rhime_inputs(
     merged_data_dir: str | None = None,
     merged_data_name: str | None = None,
     basis_output_path: str | None = None,
-    min_error: MinErrorConfig = 0.0,
+    min_error: model_error.MinErrorConfig = 0.0,
     min_error_options: Mapping[str, Any] | None = None,
     flux_non_finite_check: FluxNonFiniteCheck = "lazy",
 ) -> RhimePreparedInputs:
