@@ -40,7 +40,6 @@ from openghg_inversions.boundary_sensitivity import scale_satellite_boundary_sen
 from openghg_inversions.filters import filtering
 from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs
 from openghg_inversions.inversion_data._site_options import SiteOptions
-from openghg_inversions.inversion_data.acquisition import _select_fp_all_sites
 from openghg_inversions.inversion_data.prepared_inputs import _make_site_metadata
 from openghg_inversions.inversion_inputs import make_inv_inputs
 from openghg_inversions.model_error import MinErrorConfig
@@ -176,7 +175,7 @@ def build_rhime_basis(
             basis_directory=basis_directory,
             country_directory=country_directory,
             outer_regions_path=outer_regions_path,
-            fp_all=merged.fp_all,
+            fp_all=merged.to_legacy_fp_all(),
             species=species,
             domain=domain,
             start_date=start_date,
@@ -476,7 +475,7 @@ def _rhime_site_data_from_basis_functions(
     bc_basis_directory: str | None,
 ) -> dict:
     """Apply retained basis functions to one prepared merged-data stage."""
-    fp_data = {site: merged.fp_all[site].copy() for site in merged.sites}
+    fp_data = {site: merged.site_data[site].copy() for site in merged.sites}
     fp_x_flux_name = "fp_x_flux_sectoral" if split_by_sectors else "fp_x_flux"
 
     for site in merged.sites:
@@ -554,14 +553,28 @@ def _filter_merged_inversion_data(
     Raises:
         ValueError: If every requested site is removed by filtering.
     """
-    if filters is None and all(merged.fp_all[site].sizes.get("time", 0) > 0 for site in merged.sites):
+    if filters is None and all(merged.site_data[site].sizes.get("time", 0) > 0 for site in merged.sites):
         return merged
 
-    fp_data = {site: merged.fp_all[site].copy() for site in merged.sites}
+    fp_data = {site: merged.site_data[site].copy() for site in merged.sites}
     fp_data, site_options = _apply_filters_and_drop_empty_sites(
         fp_data=fp_data,
         site_options=merged.site_options,
         filters=filters,
     )
-    fp_all = _select_fp_all_sites({**merged.fp_all, **fp_data}, site_options.sites)
-    return RhimeMergedData(fp_all=fp_all, site_options=site_options)
+    return RhimeMergedData(
+        site_data={site: fp_data[site] for site in site_options.sites},
+        flux_data=merged.flux_data,
+        boundary_data=merged.boundary_data,
+        site_options=site_options,
+        split_by_sectors=merged.split_by_sectors,
+        provenance={
+            **merged.provenance,
+            "inputs": {
+                key: value for key, value in merged.provenance["inputs"].items()
+                if not key.startswith(("observations:", "footprints:"))
+                or key.split(":", 1)[1] in site_options.sites
+            },
+        },
+        acquisition={**merged.acquisition, "stage": "filtered"},
+    )

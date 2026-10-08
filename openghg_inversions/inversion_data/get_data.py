@@ -30,6 +30,7 @@ from openghg_inversions.inversion_data._site_options import (
     is_column_platform,
     is_satellite_platform,
 )
+from openghg_inversions.inversion_data._merged_artifact import selected_provenance, software_provenance
 from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
 from openghg_inversions.inversion_data.getters import (
     get_flux_data,
@@ -363,6 +364,10 @@ def _retrieve_inversion_data_from_options(
         flux_non_finite_check=flux_non_finite_check,
     )
     fp_all[".flux"] = flux_dict
+    fp_all[".provenance"] = {
+        "openghg": software_provenance(),
+        "inputs": {f"flux:{source}": selected_provenance(value, emissions_store) for source, value in flux_dict.items()},
+    }
     fp_all[".split_by_sectors"] = split_by_sectors
 
     # Get BC data
@@ -380,6 +385,7 @@ def _retrieve_inversion_data_from_options(
             raise SearchError("Could not find matching boundary conditions.") from e
         else:
             fp_all[".bc"] = bc_data
+            fp_all[".provenance"]["inputs"]["boundary"] = selected_provenance(bc_data, bc_store)
     else:
         bc_data = None
 
@@ -489,6 +495,10 @@ def _retrieve_inversion_data_from_options(
             )
             output_units = scenario_units
         fp_all[site] = scenario_combined
+        fp_all[".provenance"]["inputs"].update({
+            f"observations:{site}": selected_provenance(site_data, obs_store),
+            f"footprints:{site}": selected_provenance(footprint_data, footprint_store),
+        })
 
         if not is_satellite_platform(site_platform):
             check_scales.add(scenario_combined.scale)

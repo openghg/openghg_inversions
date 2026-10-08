@@ -1,43 +1,114 @@
 """Retrieve or reload RHIME observations, transport, flux and boundary data.
 
-Acquisition owns store/cache access and the complete site-aligned selection
-record. It returns a borrowed ``RhimeMergedData`` handoff for subsequent
+Acquisition owns store/cache access and consumes the complete site-aligned
+selection record. It returns a borrowed ``RhimeMergedData`` handoff for subsequent
 scientific filtering, basis construction and sensitivity preparation.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+import warnings
 
 import xarray as xr
 
-from openghg_inversions.flux_sanitization import FluxNonFiniteCheck, sanitize_flux_nonfinite
+from openghg_inversions.flux_sanitization import FluxNonFiniteCheck
 from openghg_inversions.inversion_data import _site_options
-from openghg_inversions.inversion_data.get_data import _retrieve_inversion_data_from_options
-from openghg_inversions.inversion_data.serialise import OutputFormat, _save_merged_data, load_merged_data
+from openghg_inversions.inversion_data.get_data import (
+    _retrieve_inversion_data_from_options,
+)
+from openghg_inversions.inversion_data.serialise import OutputFormat, load_merged_data
 
 
 @dataclass
 class RhimeMergedData:
-    """Merged RHIME data and complete site-aligned metadata between stages.
+    """Borrowed merged datasets, selectors and selected retrieval provenance.
 
-    Args:
-        fp_all: Merged per-site datasets plus shared flux, boundary-condition,
-            and calibration entries.
-        site_options: Complete site-aligned acquisition options retained after
-            retrieval or filtering.
-
-    Notes:
-        This is a supported orchestration handoff. Its datasets remain
-        backend-neutral and may be Dask-backed; later stages must treat them as
-        borrowed.
+    ``site_data`` contains merged observations and transport for each retained
+    site; ``flux_data`` maps source labels to datasets. Construction never
+    computes or copies numerical arrays. ``save`` writes the acquisition
+    boundary, before configured filters, basis functions or sensitivities.
+    ``boundary_data`` holds optional boundary conditions. ``split_by_sectors``
+    identifies the source layout; ``provenance`` contains selected input and
+    OpenGHG identifiers; ``acquisition`` records retrieval facts and processing
+    stage. Records may carry acquired or subsequently filtered data, but saving
+    requires an explicit ``acquisition["stage"] == "acquired"`` declaration.
+    Modern loading restores selectors and never accesses OpenGHG stores.
     """
 
-    fp_all: dict
+    site_data: dict[str, xr.Dataset]
+    flux_data: dict[str, xr.Dataset]
     site_options: _site_options.SiteOptions
+    boundary_data: xr.Dataset | None = None
+    split_by_sectors: bool = False
+    provenance: dict = field(default_factory=dict)
+    acquisition: dict = field(default_factory=dict)
+    _artifact: xr.DataTree | None = field(default=None, init=False, repr=False)
+    _zip_store: Any = field(default=None, init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        if set(self.site_data) != set(self.site_options.sites):
+            raise ValueError("Site datasets must match retained SiteOptions labels.")
+        datasets = [*self.site_data.values(), *self.flux_data.values()]
+        if self.boundary_data is not None:
+            datasets.append(self.boundary_data)
+        if any(not isinstance(data, xr.Dataset) for data in datasets):
+            raise TypeError("RhimeMergedData accepts xarray datasets, not OpenGHG wrappers.")
+        if any(not isinstance(source, str) for source in self.flux_data):
+            raise TypeError("Flux source labels must be strings.")
+        from ._merged_artifact import selected_provenance
+
+        inputs = {
+            **{f"observations:{site}": selected_provenance(None) for site in self.site_data},
+            **{f"footprints:{site}": selected_provenance(None) for site in self.site_data},
+            **{f"flux:{source}": selected_provenance(data) for source, data in self.flux_data.items()},
+            **(
+                {"boundary": selected_provenance(self.boundary_data)}
+                if self.boundary_data is not None
+                else {}
+            ),
+        }
+        if not self.provenance:
+            self.provenance = {"openghg": {"version": "unknown", "commit": "unknown"}, "inputs": inputs}
+        if set(self.provenance) != {"openghg", "inputs"}:
+            raise ValueError("Provenance contains unsupported metadata.")
+        software = self.provenance["openghg"]
+        if set(software) != {"version", "commit"} or any(
+            not isinstance(value, str) for value in software.values()
+        ):
+            raise ValueError("OpenGHG provenance requires version and commit strings (or 'unknown').")
+        if set(self.provenance["inputs"]) != set(inputs):
+            raise ValueError("Provenance must identify each retained input.")
+        for identity in self.provenance["inputs"].values():
+            if set(identity) != {"store", "uuid", "dataversion"} or any(
+                not isinstance(value, str | int)
+                and not (isinstance(value, list) and all(isinstance(item, str | int) for item in value))
+                for value in identity.values()
+            ):
+                raise ValueError("Input provenance supports only store, uuid and dataversion.")
+        allowed_facts = {
+            "stage",
+            "species",
+            "domain",
+            "start_date",
+            "end_date",
+            "emissions_domain",
+            "fp_model",
+            "fp_species",
+            "calibration_scale",
+            "use_bc",
+            "bc_input",
+            "averaging_error",
+            "flux_non_finite_check",
+            "legacy_import",
+        }
+        if set(self.acquisition) - allowed_facts or any(
+            value is not None and not isinstance(value, str | bool) for value in self.acquisition.values()
+        ):
+            raise ValueError("Unsupported acquisition metadata.")
 
     @property
     def sites(self) -> tuple[str, ...]:
@@ -46,16 +117,112 @@ class RhimeMergedData:
 
     @property
     def averaging_period(self) -> tuple[str | None, ...]:
-        """Retained averaging periods aligned to :attr:`sites`."""
+        """Retained averaging periods aligned to sites."""
         return self.site_options.averaging_period
 
     @property
     def platform(self) -> tuple[str | None, ...]:
-        """Retained observation platforms aligned to :attr:`sites`."""
+        """Retained observation platforms aligned to sites."""
         return self.site_options.platform
 
     @classmethod
+    def from_legacy_fp_all(
+        cls, fp_all: dict, site_options: _site_options.SiteOptions, *, acquisition: dict | None = None
+    ) -> RhimeMergedData:
+        """Adapt the remaining legacy scientific producers (#821; remove in 0.9)."""
+        from ._merged_artifact import selected_provenance
+
+        stored_stage = fp_all.get(".artifact_stage")
+        acquisition = dict(acquisition or {})
+        requested_stage = acquisition.get("stage", stored_stage or "unknown")
+        if stored_stage is not None and requested_stage != stored_stage:
+            raise ValueError("Requested acquisition stage conflicts with the stored artifact stage.")
+        acquisition["stage"] = requested_stage
+        fluxes = fp_all.get(".flux", {})
+        boundary = fp_all.get(".bc")
+        provenance = fp_all.get(
+            ".provenance",
+            {
+                "openghg": {"version": "unknown", "commit": "unknown"},
+                "inputs": {
+                    **{f"flux:{source}": selected_provenance(value) for source, value in fluxes.items()},
+                    **({"boundary": selected_provenance(boundary)} if boundary is not None else {}),
+                    **{f"observations:{site}": selected_provenance(None) for site in site_options.sites},
+                    **{f"footprints:{site}": selected_provenance(None) for site in site_options.sites},
+                },
+            },
+        )
+        retained_inputs = {
+            f"{kind}:{site}" for kind in ("observations", "footprints") for site in site_options.sites
+        }
+        retained_inputs.update(f"flux:{source}" for source in fluxes)
+        if boundary is not None:
+            retained_inputs.add("boundary")
+        provenance = {
+            **provenance,
+            "inputs": {key: value for key, value in provenance["inputs"].items() if key in retained_inputs},
+        }
+        return cls(
+            site_data={site: fp_all[site] for site in site_options.sites},
+            flux_data={
+                source: value if isinstance(value, xr.Dataset) else value.data
+                for source, value in fluxes.items()
+            },
+            boundary_data=boundary if isinstance(boundary, xr.Dataset) else getattr(boundary, "data", None),
+            site_options=site_options,
+            split_by_sectors=bool(fp_all.get(".split_by_sectors", False)),
+            provenance=provenance,
+            acquisition=acquisition or {},
+        )
+
+    def to_legacy_fp_all(self) -> dict:
+        """Adapt to remaining wrapper-based scientific consumers (#821; remove in 0.9).
+
+        Only this explicit adapter reconstructs OpenGHG wrappers. Flux and boundary
+        dataset containers are shallow copies; site datasets remain borrowed.
+        Consumers must copy site containers before assigning variables or attrs.
+        Numerical arrays remain shared.
+        """
+        from openghg.dataobjects import BoundaryConditionsData, FluxData
+
+        result = dict(self.site_data)
+        result[".flux"] = {
+            source: FluxData(data=data.copy(deep=False), metadata={"data_type": "flux"})
+            for source, data in self.flux_data.items()
+        }
+        if self.boundary_data is not None:
+            result[".bc"] = BoundaryConditionsData(data=self.boundary_data.copy(deep=False), metadata={})
+        result[".split_by_sectors"] = self.split_by_sectors
+        if self.acquisition.get("stage") in {"acquired", "filtered"}:
+            result[".artifact_stage"] = self.acquisition["stage"]
+        return result
+
+    @classmethod
     def load(
+        cls,
+        merged_data_dir: str | Path,
+        *,
+        species: str | None = None,
+        start_date: str | None = None,
+        output_name: str | None = None,
+        merged_data_name: str | None = None,
+        output_format: OutputFormat | None = None,
+    ) -> RhimeMergedData:
+        """Open one versioned artifact lazily, restoring all acquisition selectors.
+
+        Missing, corrupt, legacy or unsupported artifacts raise without format
+        fallback or reacquisition. Call ``close`` after consuming loaded arrays.
+        Names without a suffix use ``output_format`` or ``zarr.zip``.
+        """
+        from ._merged_artifact import artifact_path, load_artifact
+
+        path, output_format = artifact_path(
+            merged_data_dir, species, start_date, output_name, merged_data_name, output_format
+        )
+        return load_artifact(cls, path, output_format)
+
+    @classmethod
+    def load_legacy(
         cls,
         merged_data_dir: str | Path,
         *,
@@ -66,37 +233,38 @@ class RhimeMergedData:
         merged_data_name: str | None = None,
         output_format: OutputFormat | None = None,
         split_by_sectors: bool = False,
-        flux_non_finite_check: FluxNonFiniteCheck = "lazy",
+        acquisition_stage: str = "unknown",
     ) -> RhimeMergedData:
-        """Read a current-format merged artifact with caller-supplied selectors.
+        """Import an old cache using its missing selectors (deprecated in 0.8).
 
-        The codec does not store complete site options. ``site_options`` must
-        therefore describe the requested sites; loading retains their requested
-        order and drops absent sites. Explicit time-resolution selectors and
-        sector layout must match the artifact. Naming and format follow
-        :func:`load_merged_data`. Flux sanitation follows fresh acquisition.
-
-        This filesystem boundary may materialize arrays through the current
-        codec. Missing paths, invalid artifacts, incompatible selectors and
-        empty retained selections raise; loading never retrieves fresh data.
+        Removed in 0.9. Supply the complete selectors used for acquisition;
+        legacy files cannot recover them. Calling ``save`` on the returned
+        record migrates it to the modern format only when ``acquisition_stage`` is
+        explicitly ``"acquired"``. The default ``"unknown"`` preserves uncertainty
+        in old files. A stored filtered-stage marker cannot be overridden.
         """
-        if merged_data_dir is None:
-            raise ValueError("Explicit merged-data reload requires `merged_data_dir`.")
-        fp_all = load_merged_data(
-            merged_data_dir,
-            species,
-            start_date,
-            output_name,
-            merged_data_name,
-            output_format=output_format,
+        if acquisition_stage not in {"unknown", "acquired", "filtered"}:
+            raise ValueError("acquisition_stage must be unknown, acquired or filtered.")
+        if output_format is not None and output_format not in {"netcdf", "zarr", "zarr.zip"}:
+            raise ValueError(f"Unsupported merged-data format {output_format!r}.")
+        warnings.warn(
+            "RhimeMergedData.load_legacy is deprecated in 0.8 and will be removed in 0.9; save the result to migrate.",
+            DeprecationWarning,
+            stacklevel=2,
         )
+        fp_all = load_merged_data(
+            merged_data_dir, species, start_date, output_name, merged_data_name, output_format=output_format
+        )
+        stored_stage = fp_all.get(".artifact_stage")
+        if stored_stage is not None and acquisition_stage not in {"unknown", stored_stage}:
+            raise ValueError("Requested acquisition_stage conflicts with the stored artifact stage.")
+        acquisition_stage = stored_stage or acquisition_stage
         _validate_loaded_time_resolved_selector(fp_all, site_options)
         _validate_loaded_sector_layout(fp_all, split_by_sectors=split_by_sectors)
         site_options = _drop_sites_missing_from_loaded_data(fp_all=fp_all, site_options=site_options)
-        fp_all = _select_fp_all_sites(fp_all, site_options.sites)
-        fp_all[".split_by_sectors"] = split_by_sectors
-        _sanitize_merged_flux(fp_all, flux_non_finite_check)
-        return cls(fp_all=fp_all, site_options=site_options)
+        return cls.from_legacy_fp_all(
+            fp_all, site_options, acquisition={"stage": acquisition_stage, "legacy_import": True}
+        )
 
     @classmethod
     def from_options(
@@ -132,10 +300,12 @@ class RhimeMergedData:
         are unavailable. Returned datasets may be lazy and remain borrowed by
         later preparation. ``flux_sources`` names OpenGHG sources; ``averaging_error``
         controls inclusion of observation variability. Optional saving uses the
-        current merged-data codec and is disabled by default. Retrieval never
+        versioned dataset-only codec and is disabled by default. Retrieval never
         attempts cache loading; use :meth:`load` for an explicit artifact request.
         Store, selector, merge and optional serialization errors propagate.
         """
+        if save_merged_data and merged_data_dir is None:
+            raise ValueError("Saving merged data requires merged_data_dir.")
         # Requested options remain authoritative; legacy metadata is redundant.
         fp_all, retained_sites, *_ = _retrieve_inversion_data_from_options(
             species=species,
@@ -156,7 +326,7 @@ class RhimeMergedData:
             emissions_domain=emissions_domain,
             split_by_sectors=split_by_sectors,
             averagingerror=averaging_error,
-            save_merged_data=save_merged_data,
+            save_merged_data=False,
             merged_data_name=merged_data_name,
             merged_data_dir=merged_data_dir,
             output_name=output_name,
@@ -164,8 +334,34 @@ class RhimeMergedData:
         )
         site_options = site_options.retain_sites(retained_sites, context="Data gathering")
         fp_all = _select_fp_all_sites(fp_all, site_options.sites)
-        _sanitize_merged_flux(fp_all, flux_non_finite_check)
-        return cls(fp_all=fp_all, site_options=site_options)
+        result = cls.from_legacy_fp_all(
+            fp_all,
+            site_options,
+            acquisition={
+                "stage": "acquired",
+                "species": species,
+                "domain": domain,
+                "start_date": start_date,
+                "end_date": end_date,
+                "emissions_domain": emissions_domain,
+                "fp_model": fp_model,
+                "fp_species": fp_species,
+                "calibration_scale": calibration_scale,
+                "use_bc": use_bc,
+                "bc_input": bc_input,
+                "averaging_error": averaging_error,
+                "flux_non_finite_check": flux_non_finite_check,
+            },
+        )
+        if save_merged_data and merged_data_dir is not None:
+            result.save(
+                merged_data_dir,
+                species=species,
+                start_date=start_date,
+                output_name=output_name,
+                merged_data_name=merged_data_name,
+            )
+        return result
 
     def save(
         self,
@@ -177,37 +373,28 @@ class RhimeMergedData:
         merged_data_name: str | None = None,
         output_format: OutputFormat = "zarr.zip",
     ) -> None:
-        """Write the merged scientific datasets in the established cache format.
+        """Serialize explicitly acquired datasets and selectors, executing lazy arrays.
 
-        This is an explicit filesystem and numerical execution boundary:
-        serialization computes lazy payloads and may rechunk them for Zarr.
-        It writes ``fp_all``; it does not introduce a serialized site-options
-        schema. Cache loading aligns selectors from the current request.
-
-        Args:
-            merged_data_dir: Destination directory, created if absent.
-            species: Gas name used in the default artifact filename.
-            start_date: Requested start date used in the default filename.
-            output_name: Run name used in the default filename.
-            merged_data_name: Explicit artifact name. When omitted, ``species``,
-                ``start_date`` and ``output_name`` must all be supplied.
-                An ``.nc``, ``.zarr`` or ``.zarr.zip`` suffix selects its format.
-            output_format: Format used when the name has no recognized suffix:
-                ``"netcdf"``, ``"zarr"`` or ``"zarr.zip"``.
-
-        Raises:
-            ValueError: If naming inputs are missing, the format is unsupported,
-                or the obsolete pickle suffix is used.
+        ``acquisition["stage"]`` must be ``"acquired"``. Unknown-phase legacy
+        imports and filtered records are rejected; use a new acquisition or
+        explicitly identify a known pre-filter legacy input when importing.
+        Names ending in ``.nc``, ``.zarr`` or ``.zarr.zip`` select the format;
+        otherwise ``output_format`` applies. Naming requires ``merged_data_name``
+        or all of ``species``, ``start_date`` and ``output_name``.
         """
-        _save_merged_data(
-            self.fp_all,
-            merged_data_dir,
-            species=species,
-            start_date=start_date,
-            output_name=output_name,
-            merged_data_name=merged_data_name,
-            output_format=output_format,
+        from ._merged_artifact import artifact_path, save_artifact
+
+        path, output_format = artifact_path(
+            merged_data_dir, species, start_date, output_name, merged_data_name, output_format
         )
+        save_artifact(self, path, output_format)
+
+    def close(self) -> None:
+        """Release files backing a loaded artifact after its arrays are consumed."""
+        if self._artifact is not None:
+            self._artifact.close()
+        if self._zip_store is not None:
+            self._zip_store.close()
 
 
 def _drop_sites_missing_from_loaded_data(
@@ -257,24 +444,24 @@ def _validate_loaded_time_resolved_selector(
 
 
 def _validate_loaded_sector_layout(fp_all: Mapping[str, Any], *, split_by_sectors: bool) -> None:
-    """Reject a cached merged-data artifact with a different sector layout.
+    """Reject supplied or cached merged data with a different sector layout.
 
     The serialized ``.split_by_sectors`` marker records whether the cache
     contains source-resolved sensitivities.  Missing provenance is treated as
     the legacy combined layout, so it cannot be relabelled as sector-resolved.
 
     Args:
-        fp_all: Loaded merged-data artifact and its serialized metadata.
+        fp_all: Supplied or loaded merged data and its layout metadata.
         split_by_sectors: Whether the current run requires source-resolved
             sensitivities.
 
     Raises:
-        ValueError: If the cached sector layout cannot satisfy this run.
+        ValueError: If the sector layout cannot satisfy this run.
     """
     stored_split_by_sectors = bool(fp_all.get(".split_by_sectors", False))
     if stored_split_by_sectors != split_by_sectors:
         raise ValueError(
-            "Loaded merged data has an incompatible `split_by_sectors` layout: "
+            "Merged data has an incompatible `split_by_sectors` layout: "
             f"artifact split_by_sectors={stored_split_by_sectors!r}, "
             f"requested split_by_sectors={split_by_sectors!r}."
         )
@@ -353,16 +540,17 @@ def _retrieve_or_reload_merged_data(
     if reload_merged_data:
         if merged_data_dir is None:
             raise ValueError("Explicit merged-data reload requires `merged_data_dir`.")
-        return RhimeMergedData.load(
+        merged = RhimeMergedData.load(
             merged_data_dir,
-            site_options=site_options,
             species=species,
             start_date=start_date,
             output_name=output_name,
             merged_data_name=merged_data_name,
-            split_by_sectors=split_by_sectors,
-            flux_non_finite_check=flux_non_finite_check,
         )
+        if merged.split_by_sectors != split_by_sectors:
+            merged.close()
+            raise ValueError("Loaded merged data has an incompatible split_by_sectors layout.")
+        return merged
     return RhimeMergedData.from_options(
         species=species,
         site_options=site_options,
@@ -388,19 +576,3 @@ def _retrieve_or_reload_merged_data(
         merged_data_name=merged_data_name,
         flux_non_finite_check=flux_non_finite_check,
     )
-
-
-def _sanitize_merged_flux(fp_all: dict, flux_non_finite_check: FluxNonFiniteCheck) -> None:
-    """Apply the established flux policy at acquisition and cache boundaries."""
-    flux_entries = fp_all.get(".flux")
-    if isinstance(flux_entries, Mapping):
-        for source, flux_data in flux_entries.items():
-            data = getattr(flux_data, "data", None)
-            if isinstance(data, xr.Dataset) and "flux" in data:
-                data["flux"] = sanitize_flux_nonfinite(
-                    data["flux"],
-                    context="merged inversion data preparation",
-                    source=str(source),
-                    check=flux_non_finite_check,
-                    warn=flux_non_finite_check == "count",
-                )

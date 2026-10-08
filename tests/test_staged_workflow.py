@@ -16,7 +16,7 @@ import xarray as xr
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.cli import build_parser
 from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs, SiteOptions
-from openghg_inversions.inversion_data import acquisition
+from openghg_inversions.inversion_data import serialise
 from openghg_inversions.inference import diagnostics as inference_diagnostics
 from openghg_inversions.rhime.stages import (
     CONVERGENCE_CHECK_NAME,
@@ -206,13 +206,13 @@ def test_prepare_is_independent_and_writes_inspectable_contract(
     from openghg_inversions.rhime import _standard_stages as stages
 
     prepared = _prepared()
-    sentinel = RhimeMergedData({}, SiteOptions.from_inputs(sites=("TAC",), averaging_period="1h"))
+    sentinel = RhimeMergedData.from_legacy_fp_all({"TAC": xr.Dataset()}, SiteOptions.from_inputs(sites=("TAC",), averaging_period="1h"))
     monkeypatch.setattr(stages.RhimeMergedData, "from_options", lambda *args, **kwargs: sentinel)
     monkeypatch.setattr(stages, "filter_rhime_observations", lambda *args, **kwargs: sentinel)
     monkeypatch.setattr(stages, "build_rhime_basis", lambda *args, **kwargs: prepared.basis_functions)
     monkeypatch.setattr(stages, "build_rhime_sensitivities", lambda *args, **kwargs: {})
     monkeypatch.setattr(stages, "assemble_rhime_inputs", lambda *args, **kwargs: prepared)
-    monkeypatch.setattr(acquisition, "_save_merged_data", _fake_save_merged)
+    monkeypatch.setattr(serialise, "_save_merged_data", _fake_save_merged)
     monkeypatch.setattr(stages, "sample_rhime_model", lambda *args, **kwargs: pytest.fail("sampled"))
 
     setup = resolve_stage_setup(
@@ -255,13 +255,13 @@ def test_prepare_fails_when_a_requested_site_was_dropped(
     from openghg_inversions.rhime import _standard_stages as stages
 
     prepared = _prepared()
-    merged = RhimeMergedData({}, SiteOptions.from_inputs(sites=("TAC",), averaging_period="1h"))
+    merged = RhimeMergedData.from_legacy_fp_all({"TAC": xr.Dataset()}, SiteOptions.from_inputs(sites=("TAC",), averaging_period="1h"))
     monkeypatch.setattr(stages.RhimeMergedData, "from_options", lambda *args, **kwargs: merged)
     monkeypatch.setattr(stages, "filter_rhime_observations", lambda *args, **kwargs: merged)
     monkeypatch.setattr(stages, "build_rhime_basis", lambda *args, **kwargs: prepared.basis_functions)
     monkeypatch.setattr(stages, "build_rhime_sensitivities", lambda *args, **kwargs: {})
     monkeypatch.setattr(stages, "assemble_rhime_inputs", lambda *args, **kwargs: prepared)
-    monkeypatch.setattr(acquisition, "_save_merged_data", _fake_save_merged)
+    monkeypatch.setattr(serialise, "_save_merged_data", _fake_save_merged)
 
     with pytest.raises(ValueError, match="could not produce required site.*MHD"):
         prepare_rhime_stage(
@@ -281,13 +281,13 @@ def test_prepare_accepts_canonicalised_site_labels(
     from openghg_inversions.rhime import _standard_stages as stages
 
     prepared = _prepared()
-    merged = RhimeMergedData({}, SiteOptions.from_inputs(sites=("TAC",), averaging_period="1h"))
+    merged = RhimeMergedData.from_legacy_fp_all({"TAC": xr.Dataset()}, SiteOptions.from_inputs(sites=("TAC",), averaging_period="1h"))
     monkeypatch.setattr(stages.RhimeMergedData, "from_options", lambda *args, **kwargs: merged)
     monkeypatch.setattr(stages, "filter_rhime_observations", lambda *args, **kwargs: merged)
     monkeypatch.setattr(stages, "build_rhime_basis", lambda *args, **kwargs: prepared.basis_functions)
     monkeypatch.setattr(stages, "build_rhime_sensitivities", lambda *args, **kwargs: {})
     monkeypatch.setattr(stages, "assemble_rhime_inputs", lambda *args, **kwargs: prepared)
-    monkeypatch.setattr(acquisition, "_save_merged_data", _fake_save_merged)
+    monkeypatch.setattr(serialise, "_save_merged_data", _fake_save_merged)
 
     manifest = prepare_rhime_stage(
         setup=resolve_stage_setup(_params(sites=["tac"]), model="standard"),
@@ -399,13 +399,13 @@ def test_preparation_manifest_authenticates_supplied_prepared_inputs(
     from openghg_inversions.rhime import _standard_stages as stages
 
     prepared = _prepared()
-    merged = RhimeMergedData({}, SiteOptions.from_inputs(sites=("TAC",), averaging_period="1h"))
+    merged = RhimeMergedData.from_legacy_fp_all({"TAC": xr.Dataset()}, SiteOptions.from_inputs(sites=("TAC",), averaging_period="1h"))
     monkeypatch.setattr(stages.RhimeMergedData, "from_options", lambda *args, **kwargs: merged)
     monkeypatch.setattr(stages, "filter_rhime_observations", lambda *args, **kwargs: merged)
     monkeypatch.setattr(stages, "build_rhime_basis", lambda *args, **kwargs: prepared.basis_functions)
     monkeypatch.setattr(stages, "build_rhime_sensitivities", lambda *args, **kwargs: {})
     monkeypatch.setattr(stages, "assemble_rhime_inputs", lambda *args, **kwargs: prepared)
-    monkeypatch.setattr(acquisition, "_save_merged_data", _fake_save_merged)
+    monkeypatch.setattr(serialise, "_save_merged_data", _fake_save_merged)
     setup = resolve_stage_setup(_params(), model="standard")
     preparation = prepare_rhime_stage(setup=setup, model="standard", output_dir=tmp_path / "prepare")
 
@@ -678,13 +678,13 @@ def test_synthetic_staged_tracer_bullet(
     from openghg_inversions.rhime import _standard_stages as stages
 
     prepared = _prepared()
-    sentinel = RhimeMergedData({}, SiteOptions.from_inputs(sites=("TAC",), averaging_period="1h"))
+    sentinel = RhimeMergedData.from_legacy_fp_all({"TAC": xr.Dataset()}, SiteOptions.from_inputs(sites=("TAC",), averaging_period="1h"))
     monkeypatch.setattr(stages.RhimeMergedData, "from_options", lambda *args, **kwargs: sentinel)
     monkeypatch.setattr(stages, "filter_rhime_observations", lambda *args, **kwargs: sentinel)
     monkeypatch.setattr(stages, "build_rhime_basis", lambda *args, **kwargs: prepared.basis_functions)
     monkeypatch.setattr(stages, "build_rhime_sensitivities", lambda *args, **kwargs: {})
     monkeypatch.setattr(stages, "assemble_rhime_inputs", lambda *args, **kwargs: prepared)
-    monkeypatch.setattr(acquisition, "_save_merged_data", _fake_save_merged)
+    monkeypatch.setattr(serialise, "_save_merged_data", _fake_save_merged)
     setup = resolve_stage_setup(
         _params(sample_kwargs={"random_seed": 42}),
         model="standard",

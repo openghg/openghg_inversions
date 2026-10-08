@@ -1843,7 +1843,7 @@ def test_assemble_rhime_inputs_preserves_borrowed_site_datasets(
         attrs={"source": "caller", "footprint_transport_model": "FLEXPART"},
     )
     site_data = {"TAC": supplied}
-    merged = prep_module.RhimeMergedData(
+    merged = prep_module.RhimeMergedData.from_legacy_fp_all(
         fp_all=site_data,
         site_options=_site_options(["TAC"], averaging_period=["1h"]),
     )
@@ -2948,7 +2948,7 @@ def test_public_rhime_runners_follow_named_stage_order(
         return config
 
     merged = cast(Any, object())
-    external_merged = RhimeMergedData({".split_by_sectors": multisector}, config.site_options)
+    external_merged = RhimeMergedData.from_legacy_fp_all({".split_by_sectors": multisector}, config.site_options)
     if external_data:
         merged = external_merged
     filtered = cast(Any, object())
@@ -3276,7 +3276,7 @@ def test_public_stages_compose_as_complete_external_runner(monkeypatch: pytest.M
         met_model=None,
         max_level=None,
     )
-    merged_fixture = prep_module.RhimeMergedData(
+    merged_fixture = prep_module.RhimeMergedData.from_legacy_fp_all(
         fp_all={"TAC": xr.Dataset(coords={"time": pd.to_datetime(["2019-01-01"])})},
         site_options=site_options,
     )
@@ -3371,7 +3371,7 @@ def test_build_rhime_basis_forwards_fixed_outer_region_asset(monkeypatch: pytest
         return expected
 
     monkeypatch.setattr(rhime_preparation, "make_basis_functions", make_basis)
-    merged = cast(RhimeMergedData, SimpleNamespace(fp_all={"TAC": xr.Dataset()}))
+    merged = RhimeMergedData(site_data={"TAC": xr.Dataset()}, flux_data={}, site_options=_site_options(["TAC"], averaging_period="1h"))
     data_args = {
         "basis_algorithm": "weighted",
         "nbasis": 40,
@@ -3447,7 +3447,7 @@ def test_deprecated_preparation_matches_explicit_stage_metadata(monkeypatch: pyt
         footprint_transport_model_version="10.4",
         footprint_met_model="ERA5",
     )
-    merged = RhimeMergedData(
+    merged = RhimeMergedData.from_legacy_fp_all(
         fp_all={"TAC": site_data},
         site_options=_site_options(["TAC"], averaging_period="1h"),
     )
@@ -5636,7 +5636,7 @@ def test_multisector_runner_rejects_shared_basis_h_layout_mismatch() -> None:
 
 @pytest.mark.rhime_contract
 def test_prepare_rhime_inputs_single_sector_reloads_merged_data(
-    tac_ch4_data_args, merged_data_dir, merged_data_file_name, default_bc_basis_directory
+    tac_ch4_data_args, merged_data_dir, merged_data_file_name, default_bc_basis_directory, tmp_path
 ) -> None:
     """Characterize reload preparation as a single-sector public contract."""
     args = _rhime_preparation_args(
@@ -5644,11 +5644,18 @@ def test_prepare_rhime_inputs_single_sector_reloads_merged_data(
         tac_ch4_data_args["emissions_name"],
         default_bc_basis_directory,
     )
+    with pytest.warns(DeprecationWarning):
+        acquired = RhimeMergedData.load_legacy(
+            merged_data_dir, merged_data_name=merged_data_file_name,
+            site_options=_site_options(["TAC"], averaging_period=args["averaging_period"]),
+            acquisition_stage="acquired",
+        )
+    acquired.save(tmp_path, merged_data_name="modern.zarr")
     args.update(
         {
             "reload_merged_data": True,
-            "merged_data_dir": str(merged_data_dir),
-            "merged_data_name": merged_data_file_name,
+            "merged_data_dir": str(tmp_path),
+            "merged_data_name": "modern.zarr",
         }
     )
 
@@ -5710,7 +5717,7 @@ def test_multisector_sensitivity_sources_fail_before_site_gathering() -> None:
         def sensitivity(self, _: xr.DataArray) -> xr.DataArray:
             return sensitivity
 
-    merged = prep_module.RhimeMergedData(
+    merged = prep_module.RhimeMergedData.from_legacy_fp_all(
         fp_all={"TAC": xr.Dataset({"fp_x_flux_sectoral": fp_x_flux})},
         site_options=_site_options(["TAC"], averaging_period=["1H"]),
     )
@@ -5760,7 +5767,7 @@ def test_multisector_site_preparation_keeps_gathered_source_state() -> None:
         def sensitivity(self, _: xr.DataArray) -> xr.DataArray:
             return sensitivity
 
-    merged = prep_module.RhimeMergedData(
+    merged = prep_module.RhimeMergedData.from_legacy_fp_all(
         fp_all={"TAC": xr.Dataset({"fp_x_flux_sectoral": fp_x_flux})},
         site_options=_site_options(["TAC"], averaging_period=["1H"]),
     )
@@ -5789,7 +5796,7 @@ def test_rhime_preparation_uses_platform_for_sites_retained_after_filtering(
 ) -> None:
     """RHIME scaling receives preserved footprint provenance after filtering."""
     satellite_data = _site_dataset([2.0]).assign_attrs(footprint_max_level=17)
-    merged = prep_module.RhimeMergedData(
+    merged = prep_module.RhimeMergedData.from_legacy_fp_all(
         fp_all={"TAC": _site_dataset([]), "OCO2-EASTASIA": satellite_data},
         site_options=_site_options(
             ["TAC", "OCO2-EASTASIA"],
@@ -5798,7 +5805,7 @@ def test_rhime_preparation_uses_platform_for_sites_retained_after_filtering(
             max_level=[None, 3],
         ),
     )
-    filtered_merged = prep_module.RhimeMergedData(
+    filtered_merged = prep_module.RhimeMergedData.from_legacy_fp_all(
         fp_all={"OCO2-EASTASIA": satellite_data},
         site_options=merged.site_options.select_indices([1]),
     )
@@ -5974,55 +5981,12 @@ def test_prepare_rhime_inputs_matches_direct_sensitivity_inv_inputs(
     xr.testing.assert_identical(prepared.inv_inputs["mf"], expected_inv_inputs["mf"])
 
 
-def test_prepare_rhime_inputs_prunes_reloaded_merged_data_to_requested_sites(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """Reload pruning removes unrequested sites and site-keyed metadata."""
-    captured_fp_all_keys: set[str] = set()
-
-    def fake_load_merged_data(*args: object, **kwargs: object) -> dict:
-        return {
-            "TAC": _site_dataset([2.0]),
-            "MHD": _site_dataset([3.0]),
-            ".flux": object(),
-        }
-
-    def fake_make_basis_functions(**kwargs: object) -> BasisFunctions:
-        nonlocal captured_fp_all_keys
-        fp_all = kwargs["fp_all"]
-        assert isinstance(fp_all, dict)
-        captured_fp_all_keys = set(fp_all)
-        return _fake_basis_functions()
-
-    def fake_make_inv_inputs(fp_data: dict, sites: list[str], **kwargs: object) -> xr.Dataset:
-        """Return minimal inputs after checking retained reload sites."""
-        assert sites == ["TAC"]
-        return _minimal_prepared_inv_inputs()
-
-    monkeypatch.setattr(acquisition_module, "load_merged_data", fake_load_merged_data)
-    monkeypatch.setattr(rhime_preparation, "make_basis_functions", fake_make_basis_functions)
-    monkeypatch.setattr(rhime_preparation, "make_inv_inputs", fake_make_inv_inputs)
-
-    prepare_rhime_inputs(
-        species="ch4",
-        sites=["TAC"],
-        domain="EUROPE",
-        averaging_period=["1H"],
-        start_date="2019-01-01",
-        end_date="2019-02-01",
-        output_name="reload_prune",
-        flux_sources=["total-ukghg-edgar7"],
-        reload_merged_data=True,
-        merged_data_dir=str(tmp_path),
-        use_bc=False,
-    )
-
-    assert "TAC" in captured_fp_all_keys
-    assert "MHD" not in captured_fp_all_keys
-    assert {key for key in captured_fp_all_keys if key.startswith(".")} == {
-        ".flux",
-        ".split_by_sectors",
-    }
+def test_legacy_import_prunes_to_explicit_original_sites(monkeypatch, tmp_path):
+    legacy = {"TAC": _site_dataset([2.0]), "MHD": _site_dataset([3.0])}
+    monkeypatch.setattr(acquisition_module, "load_merged_data", lambda *a, **kw: legacy)
+    with pytest.warns(DeprecationWarning):
+        merged = RhimeMergedData.load_legacy(tmp_path, site_options=_site_options(["TAC"], averaging_period="1h"))
+    assert set(merged.site_data) == {"TAC"}
 
 
 def test_retrieve_or_reload_merged_data_reload_keeps_all_options_aligned(
@@ -6037,7 +6001,7 @@ def test_retrieve_or_reload_merged_data_reload_keeps_all_options_aligned(
         },
     )
 
-    merged = acquisition_module.RhimeMergedData.load(site_options=_site_options(
+    merged = acquisition_module.RhimeMergedData.load_legacy(site_options=_site_options(
             sites=["TAC", "MHD", "RGL"],
             averaging_period=["1H", "2H", "3H"],
             inlet=["100m", "200m", "300m"],
@@ -6062,7 +6026,7 @@ def test_retrieve_or_reload_merged_data_reload_keeps_all_options_aligned(
         max_level=[20],
         time_resolved=[False],
     )
-    assert set(merged.fp_all) == {"MHD", ".split_by_sectors"}
+    assert set(merged.site_data) == {"MHD"}
 
 
 def test_site_options_direct_construction_enforces_immutable_alignment() -> None:
@@ -6162,7 +6126,7 @@ def test_retrieve_or_reload_merged_data_reload_rejects_time_resolved_selector_mi
     )
 
     with pytest.raises(ValueError, match="does not match the requested `time_resolved` selector"):
-        acquisition_module.RhimeMergedData.load(site_options=_site_options(
+        acquisition_module.RhimeMergedData.load_legacy(site_options=_site_options(
                 sites=["TAC"],
                 averaging_period=["1H"],
                 time_resolved=True,
@@ -6192,7 +6156,7 @@ def test_retrieve_or_reload_merged_data_reload_rejects_sector_layout_mismatch(
     )
 
     with pytest.raises(ValueError, match="incompatible `split_by_sectors` layout"):
-        acquisition_module.RhimeMergedData.load(site_options=_site_options(
+        acquisition_module.RhimeMergedData.load_legacy(site_options=_site_options(
                 sites=["TAC"],
                 averaging_period=["1H"],
             ), species="ch4", start_date="2019-01-01", output_name="reload_sector_layout", split_by_sectors=requested_split_by_sectors, merged_data_dir=str(tmp_path))
@@ -6245,40 +6209,10 @@ def test_site_options_accept_numpy_integer_max_levels() -> None:
     assert type(aligned.max_level[1]) is int
 
 
-def test_prepare_rhime_inputs_reload_all_sites_missing_fails_before_basis(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """Reloading with no requested sites fails before basis construction."""
-    monkeypatch.setattr(
-        acquisition_module,
-        "load_merged_data",
-        lambda *args, **kwargs: {
-            "RGL": _site_dataset([4.0]),
-            ".species": "CH4",
-            ".units": 1e-9,
-        },
-    )
-
-    def fail_make_basis_functions(**kwargs: object) -> BasisFunctions:
-        """Fail if basis construction starts without a requested site."""
-        raise AssertionError("Basis generation should not run without a requested site.")
-
-    monkeypatch.setattr(rhime_preparation, "make_basis_functions", fail_make_basis_functions)
-
-    with pytest.raises(ValueError, match="does not include any requested sites"):
-        prepare_rhime_inputs(
-            species="ch4",
-            sites=["TAC", "MHD"],
-            domain="EUROPE",
-            averaging_period=["1H", "2H"],
-            start_date="2019-01-01",
-            end_date="2019-02-01",
-            output_name="reload_all_missing",
-            flux_sources=["total-ukghg-edgar7"],
-            reload_merged_data=True,
-            merged_data_dir=str(tmp_path),
-            use_bc=False,
-        )
+def test_legacy_import_rejects_missing_original_sites(monkeypatch, tmp_path):
+    monkeypatch.setattr(acquisition_module, "load_merged_data", lambda *a, **kw: {"RGL": _site_dataset([4.0])})
+    with pytest.warns(DeprecationWarning), pytest.raises(ValueError, match="does not include any requested sites"):
+        RhimeMergedData.load_legacy(tmp_path, site_options=_site_options(["TAC", "MHD"], averaging_period="1h"))
 
 
 def test_apply_filters_drops_complete_site_option_record() -> None:
@@ -6312,8 +6246,8 @@ def test_apply_filters_drops_complete_site_option_record() -> None:
 
 def test_filtering_preserves_shared_merged_data_when_dropping_sites() -> None:
     """Filtering keeps active shared inputs while removing an empty site."""
-    flux = object()
-    merged = prep_module.RhimeMergedData(
+    flux = {"inventory": xr.Dataset({"flux": ("time", [1.])})}
+    merged = prep_module.RhimeMergedData.from_legacy_fp_all(
         fp_all={
             "TAC": _site_dataset([]),
             "MHD": _site_dataset([3.0]),
@@ -6326,8 +6260,8 @@ def test_filtering_preserves_shared_merged_data_when_dropping_sites() -> None:
     filtered = rhime_preparation._filter_merged_inversion_data(merged=merged, filters=None)
 
     assert filtered.sites == ("MHD",)
-    assert filtered.fp_all[".flux"] is flux
-    assert filtered.fp_all[".split_by_sectors"] is False
+    assert filtered.flux_data is merged.flux_data
+    assert filtered.to_legacy_fp_all()[".split_by_sectors"] is False
 
 
 @pytest.mark.parametrize(
@@ -9284,35 +9218,25 @@ def test_satellite_rhime_template_matches_modern_input_schema() -> None:
 
 
 @pytest.mark.parametrize("reload", [False, True])
-def test_retrieve_or_reload_merged_data_sanitizes_flux_lazily(
-    monkeypatch: pytest.MonkeyPatch, reload: bool
-) -> None:
-    """Both acquisition paths sanitize flux without computing its Dask payload."""
-    flux = SimpleNamespace(data=xr.Dataset({"flux": ("time", da.from_array([np.nan, np.inf, 2.0]))}))
+def test_acquisition_and_reload_keep_acquired_flux_lazy(monkeypatch, reload, tmp_path):
+    """Acquisition keeps the retrieval owner's sanitation; reload preserves saved values."""
+    flux = xr.Dataset({"flux": ("time", da.from_array([0., 0., 2.]))})
     fp_all = {"TAC": _site_dataset([2.0]), ".flux": {"inventory": flux}}
-    monkeypatch.setattr(acquisition_module, "load_merged_data", lambda *args, **kwargs: fp_all)
-
-    def retrieve(**kwargs: Any) -> tuple:
-        assert not reload
-        return fp_all, ["TAC"], [None], [None], [None], ["1h"]
-
-    monkeypatch.setattr(acquisition_module, "_retrieve_inversion_data_from_options", retrieve)
-    with Callback(pretask=lambda *args: pytest.fail("acquisition must preserve lazy flux")):
-        merged = acquisition_module._retrieve_or_reload_merged_data(
-            species="ch4",
-            sites=["TAC"],
-            domain="EUROPE",
-            averaging_period="1h",
-            start_date="2019-01-01",
-            end_date="2019-02-01",
-            output_name="sanitation",
-            flux_sources=["inventory"],
-            reload_merged_data=reload,
-            merged_data_dir="unused",
-        )
-    sanitized = merged.fp_all[".flux"]["inventory"].data.flux
-    assert isinstance(sanitized.data, da.Array)
-    np.testing.assert_array_equal(sanitized.compute(), [0.0, 0.0, 2.0])
+    options = _site_options(["TAC"], averaging_period="1h")
+    monkeypatch.setattr(acquisition_module, "_retrieve_inversion_data_from_options", lambda **kw: (fp_all, ["TAC"]))
+    if reload:
+        cached = RhimeMergedData.from_legacy_fp_all(fp_all, options, acquisition={"stage": "acquired"})
+        cached.save(tmp_path, merged_data_name="acquired.zarr")
+    with Callback(pretask=lambda *args: pytest.fail("factory computed borrowed flux")):
+        if reload:
+            merged = RhimeMergedData.load(tmp_path, merged_data_name="acquired.zarr")
+        else:
+            merged = RhimeMergedData.from_options(site_options=options, species="ch4", domain="EUROPE", start_date="2019-01-01", end_date="2019-02-01", output_name="lazy", flux_sources=["inventory"])
+    try:
+        assert isinstance(merged.flux_data["inventory"].flux.data, da.Array)
+        np.testing.assert_array_equal(merged.flux_data["inventory"].flux.compute(), [0., 0., 2.])
+    finally:
+        merged.close()
 
 
 @pytest.mark.parametrize("merged_data_dir", [None, "unused"])
@@ -9326,7 +9250,7 @@ def test_retrieve_or_reload_merged_data_reload_failure_is_explicit(
     def retrieve(**kwargs: Any) -> tuple:
         pytest.fail("Explicit reload must not retrieve fresh data")
 
-    monkeypatch.setattr(acquisition_module, "load_merged_data", load)
+    monkeypatch.setattr(acquisition_module.RhimeMergedData, "load", load)
     monkeypatch.setattr(acquisition_module, "_retrieve_inversion_data_from_options", retrieve)
     with pytest.raises(ValueError, match="merged_data_dir|missing merged artifact"):
         acquisition_module._retrieve_or_reload_merged_data(

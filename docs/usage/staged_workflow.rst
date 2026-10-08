@@ -123,7 +123,9 @@ directory.
   Retrieves/reloads merged data, filters observations, constructs basis and
   sensitivities, assembles canonical inputs, and writes an inspectable
   ``merged-data/merged-data.nc``, ``prepared-inputs.nc`` and
-  ``prepare-manifest.json``.  It never builds a
+  ``prepare-manifest.json``. The merged snapshot is explicitly marked filtered
+  and uses the legacy merged-data codec; it is not a modern acquisition
+  artifact and cannot be reloaded with ``RhimeMergedData.load``. It never builds a
   PyMC graph or samples a posterior.  The NetCDF is a versioned
   ``RhimePreparedInputs`` artifact and is independently inspectable/loadable.
   For ``co2``, preparation validates and copies the configured

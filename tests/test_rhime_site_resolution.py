@@ -80,19 +80,14 @@ def test_canonical_acquisition_and_retrieval_never_expand_selectors(monkeypatch)
         acquisition.RhimeMergedData.from_options(site_options=options, **_data_inputs())
 
 
-def test_canonical_reload_selects_options_without_expansion(monkeypatch, tmp_path):
+def test_canonical_reload_restores_complete_options(tmp_path):
     options = SiteOptions.from_inputs(**_site_inputs())
-
-    def fail(*args, **kwargs):
-        raise AssertionError("reload must not expand selectors")
-
-    monkeypatch.setattr(SiteOptions, "from_inputs", classmethod(fail))
-    monkeypatch.setattr(acquisition, "load_merged_data", lambda *args, **kwargs: {"MHD": xr.Dataset()})
-    merged = acquisition.RhimeMergedData.load(site_options=options, merged_data_dir=str(tmp_path))
+    cached = acquisition.RhimeMergedData.from_legacy_fp_all({"MHD": xr.Dataset()}, options.select_indices([1]), acquisition={"stage": "acquired"})
+    cached.save(tmp_path, merged_data_name="acquired.zarr")
+    merged = acquisition.RhimeMergedData.load(tmp_path, merged_data_name="acquired.zarr")
     assert merged.site_options == options.select_indices([1])
     assert options.sites == ("TAC", "MHD")
-
-
+    merged.close()
 
 
 def test_site_options_public_factory_resolved_constructor_and_selection():
@@ -112,14 +107,14 @@ def test_site_options_public_factory_resolved_constructor_and_selection():
         SiteOptions(**{**values, "averaging_period": ("1h",)})
 
 
-def test_merged_data_save_uses_existing_serializer(monkeypatch, tmp_path):
-    merged = acquisition.RhimeMergedData({}, SiteOptions.from_inputs(**_site_inputs()))
-    serialize = Mock()
-    monkeypatch.setattr(acquisition, "_save_merged_data", serialize)
+def test_merged_data_save_uses_modern_serializer(monkeypatch, tmp_path):
+    from openghg_inversions.inversion_data import _merged_artifact
 
-    assert merged.save(tmp_path, merged_data_name="merged.nc") is None
-
-    serialize.assert_called_once_with(
-        merged.fp_all, tmp_path, species=None, start_date=None, output_name=None,
-        merged_data_name="merged.nc", output_format="zarr.zip",
+    options = SiteOptions.from_inputs(**_site_inputs())
+    merged = acquisition.RhimeMergedData.from_legacy_fp_all(
+        {site: xr.Dataset() for site in options.sites}, options,
     )
+    serialize = Mock()
+    monkeypatch.setattr(_merged_artifact, "save_artifact", serialize)
+    assert merged.save(tmp_path, merged_data_name="merged.nc") is None
+    serialize.assert_called_once_with(merged, tmp_path / "merged.nc", "netcdf")

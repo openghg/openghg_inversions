@@ -225,6 +225,43 @@ discards those redundant copies. Pickle merged-data files can no longer be
 saved or loaded. To migrate one, use an older environment to reload it and
 save it as Zarr before upgrading.
 
+Migrate an old merged cache
+---------------------------
+
+The modern ``RhimeMergedData.load`` reader accepts only versioned acquisition
+artifacts. In 0.8, ``RhimeMergedData.load_legacy`` provides an explicit,
+deprecated migration path; it is scheduled for removal in 0.9. Supply the
+complete original ``SiteOptions`` because old files did not store all
+selectors. The importer never acquires replacement data.
+
+Old files also do not reliably identify whether observations were already
+filtered. The default ``acquisition_stage="unknown"`` permits inspection but
+prevents saving as a modern acquisition. Declare ``"acquired"`` only when the
+file is known to precede configured observation filters, basis construction
+and sensitivity preparation::
+
+   from openghg_inversions.inversion_data import RhimeMergedData, SiteOptions
+
+   selectors = SiteOptions.from_inputs(
+       sites=["TAC"], averaging_period="1h", inlet="100m",
+       fp_height="100m", platform="surface",
+   )
+   acquired = RhimeMergedData.load_legacy(
+       "old-artifacts", merged_data_name="merged.zarr",
+       site_options=selectors, acquisition_stage="acquired",
+   )
+   acquired.save("new-artifacts", merged_data_name="acquired.zarr")
+
+Use the original values for every applicable selector, including instrument,
+observation data level, meteorology, column level and time resolution; the
+example shows only a simple surface selection. Set ``split_by_sectors=True``
+when the original cache contains source-resolved sensitivities. The stored
+layout must agree. Missing provenance remains explicitly ``unknown``.
+A stored filtered-stage marker cannot be overridden. Current file-backed
+stages deliberately keep their filtered ``merged-data.nc`` on the legacy codec
+until staged artifact migration is completed; those snapshots cannot be
+converted into acquisition artifacts.
+
 Removed interfaces
 ------------------
 

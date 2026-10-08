@@ -1,6 +1,7 @@
 """Resolved configuration reaches execution without another parsing pass."""
 
 import pytest
+import xarray as xr
 
 from openghg_inversions.rhime import RhimeConfig, multisector, standard
 
@@ -117,7 +118,7 @@ def test_ini_runner_merges_before_one_resolution_and_alias_translation(monkeypat
 def test_supplied_data_reaches_filtering_without_acquisition(monkeypatch, multisector_mode):
     from openghg_inversions.inversion_data import RhimeMergedData
     config = _config(multisector_mode, reload_merged_data=True, save_merged_data=True)
-    supplied = RhimeMergedData({".split_by_sectors": multisector_mode}, config.site_options)
+    supplied = RhimeMergedData.from_legacy_fp_all({"TAC": xr.Dataset(), ".split_by_sectors": multisector_mode}, config.site_options)
     recipe = multisector if multisector_mode else standard
     runner = recipe.run_rhime_multisector if multisector_mode else recipe.run_rhime
     def forbidden(*args, **kwargs):
@@ -138,9 +139,25 @@ def test_supplied_data_reaches_filtering_without_acquisition(monkeypatch, multis
 def test_supplied_layout_is_checked_before_filtering(monkeypatch, multisector_mode):
     from openghg_inversions.inversion_data import RhimeMergedData
     config = _config(multisector_mode)
-    supplied = RhimeMergedData({".split_by_sectors": not multisector_mode}, config.site_options)
+    supplied = RhimeMergedData.from_legacy_fp_all({"TAC": xr.Dataset(), ".split_by_sectors": not multisector_mode}, config.site_options)
     recipe = multisector if multisector_mode else standard
     runner = recipe.run_rhime_multisector if multisector_mode else recipe.run_rhime
     monkeypatch.setattr(recipe, "filter_rhime_observations", lambda *a, **kw: pytest.fail("layout not checked"))
+    monkeypatch.setattr(supplied, "close", lambda: pytest.fail("Supplied record is borrowed"))
     with pytest.raises(ValueError, match="incompatible.*layout"):
         runner(config=config, merged_data=supplied)
+
+
+@pytest.mark.parametrize("multisector_mode", [False, True])
+def test_loaded_layout_rejection_closes_owned_record(monkeypatch, multisector_mode):
+    from openghg_inversions.inversion_data import RhimeMergedData
+    config = _config(multisector_mode, reload_merged_data=True, merged_data_dir="unused")
+    loaded = RhimeMergedData(site_data={"TAC": xr.Dataset()}, flux_data={}, site_options=config.site_options, split_by_sectors=not multisector_mode)
+    closed = []
+    monkeypatch.setattr(loaded, "close", lambda: closed.append(True))
+    monkeypatch.setattr(RhimeMergedData, "load", lambda **kw: loaded)
+    recipe = multisector if multisector_mode else standard
+    runner = recipe.run_rhime_multisector if multisector_mode else recipe.run_rhime
+    with pytest.raises(ValueError, match="incompatible.*layout"):
+        runner(config=config)
+    assert closed == [True]

@@ -59,7 +59,7 @@ def test_fresh_factory_retains_selectors_and_borrows_lazy_datasets(monkeypatch):
             flux_sources=["inventory"],
         )
     assert result.site_options == options.select_indices([2, 1])
-    assert result.fp_all["RGL"] is dataset
+    assert result.to_legacy_fp_all()["RGL"] is dataset
     assert options.sites == ("TAC", "MHD", "RGL")
 
 
@@ -67,23 +67,24 @@ def test_fresh_factory_retains_selectors_and_borrows_lazy_datasets(monkeypatch):
 def test_missing_or_corrupt_artifact_never_retrieves(tmp_path, monkeypatch, artifact):
     if artifact == "corrupt.nc":
         (tmp_path / artifact).write_text("not a netCDF file")
-    monkeypatch.setattr(acquisition, "_retrieve_inversion_data_from_options", lambda **kw: pytest.fail("load retrieved"))
-    options = SiteOptions.from_inputs(sites=["TAC"], averaging_period="1h")
+    monkeypatch.setattr(
+        acquisition, "_retrieve_inversion_data_from_options", lambda **kw: pytest.fail("load retrieved")
+    )
     with pytest.raises((ValueError, OSError)):
-        RhimeMergedData.load(tmp_path, site_options=options, merged_data_name=artifact)
-
-
+        RhimeMergedData.load(tmp_path, merged_data_name=artifact)
 
 
 def test_current_codec_load_requires_explicit_selectors(merged_data_dir, merged_data_file_name, tmp_path):
     options = SiteOptions.from_inputs(sites=["TAC", "MHD"], averaging_period=["1h", "2h"])
-    merged = RhimeMergedData.load(
-        merged_data_dir,
-        site_options=options,
-        merged_data_name=merged_data_file_name,
-    )
+    with pytest.warns(DeprecationWarning):
+        merged = RhimeMergedData.load_legacy(
+            merged_data_dir,
+            site_options=options,
+            merged_data_name=merged_data_file_name,
+            acquisition_stage="acquired",
+        )
     assert merged.sites == ("TAC",)
     merged.save(tmp_path, merged_data_name="roundtrip.nc")
-    reopened = RhimeMergedData.load(tmp_path, site_options=options, merged_data_name="roundtrip.nc")
+    reopened = RhimeMergedData.load(tmp_path, merged_data_name="roundtrip.nc")
     assert reopened.site_options == merged.site_options
-    xr.testing.assert_equal(reopened.fp_all["TAC"], merged.fp_all["TAC"])
+    xr.testing.assert_equal(reopened.to_legacy_fp_all()["TAC"], merged.to_legacy_fp_all()["TAC"])

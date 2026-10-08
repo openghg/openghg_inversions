@@ -198,10 +198,13 @@ def prepare_rhime_stage(
         if executed_setup.reload_merged_data:
             merged = RhimeMergedData.load(
                 **executed_setup.select(
-                    "merged_data_dir", "site_options", "species", "start_date", "output_name",
-                    "merged_data_name", "split_by_sectors", "flux_non_finite_check",
+                    "merged_data_dir", "species", "start_date", "output_name",
+                    "merged_data_name",
                 ),
             )
+            if merged.split_by_sectors != executed_setup.split_by_sectors:
+                merged.close()
+                raise ValueError("Loaded merged data has an incompatible split_by_sectors layout.")
         else:
             merged = RhimeMergedData.from_options(
                 **executed_setup.select(
@@ -224,7 +227,14 @@ def prepare_rhime_stage(
         )
     merged_path = _output_path(destination, None, "merged-data/merged-data.nc")
     merged_dir = merged_path.parent
-    filtered.save(merged_dir, merged_data_name="merged-data.nc")
+    # TODO(#802): remove this old-codec checkpoint when stage replay migrates.
+    # Never label this post-filter product as a modern acquisition.
+    from openghg_inversions.inversion_data.serialise import _save_merged_data
+
+    _save_merged_data(
+        {**filtered.to_legacy_fp_all(), ".artifact_stage": "filtered"},
+        merged_dir, merged_data_name="merged-data.nc",
+    )
     basis = build_rhime_basis(
         filtered,
         **executed_setup.select(

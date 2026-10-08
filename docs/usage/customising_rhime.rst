@@ -106,6 +106,54 @@ For the existing tuple-returning retrieval API, use
 return value and now emits ``DeprecationWarning``. ``convert_to_list`` now lives in ``inversion_data._site_options``;
 its old ``inversion_data.get_data`` import path has been removed.
 
+Save and reload acquired datasets
+---------------------------------
+
+``RhimeMergedData`` stores per-site xarray datasets in ``site_data``,
+source-labelled flux datasets in ``flux_data``, optional boundary conditions
+in ``boundary_data``, complete ``SiteOptions``, acquisition facts and selected
+provenance. Its arrays remain borrowed and may be Dask-backed. It has no
+``fp_all`` property. Externally constructed records must explicitly declare
+``acquisition={"stage": "acquired"}`` to be saved; make this declaration only
+for data known to precede configured filters and sensitivity preparation.
+Temporary explicit ``from_legacy_fp_all`` and
+``to_legacy_fp_all`` adapters support remaining scientific consumers until 0.9.
+
+Acquire with ``RhimeMergedData.from_options(site_options=selectors, ...)``.
+Saving is opt-in through ``save_merged_data=True`` and ``merged_data_dir``, or
+an explicit call after acquisition::
+
+   from openghg_inversions.inversion_data import RhimeMergedData
+
+   acquired.save("artifacts", merged_data_name="acquired.zarr")
+   reloaded = RhimeMergedData.load("artifacts", merged_data_name="acquired.zarr")
+   try:
+       result = run_rhime(config_file="config.ini", merged_data=reloaded)
+   finally:
+       reloaded.close()
+
+The modern schema records data after acquisition and alignment, before
+configured observation filters, basis construction and sensitivities. All
+site selectors, including inlet slices, survive the round trip. Dataset and
+variable scientific attributes retain units, calibration scales and transport
+metadata. Selected provenance includes each input's available store, UUID and
+dataversion, plus the acquisition OpenGHG version and commit; unavailable
+values are explicitly ``unknown``. When several footprint inlets contribute,
+identifier lists retain the contributing input order. Arbitrary OpenGHG wrapper metadata is not
+saved, and loading does not reconstruct OpenGHG wrappers.
+
+``.nc``, ``.zarr`` and ``.zarr.zip`` select NetCDF, directory Zarr and zipped
+Zarr. A name without a suffix uses ``output_format`` (default ``zarr.zip``).
+Loading opens that exact artifact lazily: missing or corrupt files, unsupported
+schema versions and old-format files raise without trying another format or
+retrieving data again. Keep the loaded record open while consuming its lazy
+arrays, and call ``close`` afterwards. Saving is an explicit numerical
+execution boundary.
+
+For old merged caches, use the explicit deprecated importer described in
+:doc:`legacy_and_migration`. The staged workflow's ``merged-data.nc`` is a
+filtered legacy snapshot, not a modern acquisition artifact.
+
 Change the likelihood with a Python function
 --------------------------------------------
 

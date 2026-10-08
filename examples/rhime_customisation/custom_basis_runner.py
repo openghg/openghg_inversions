@@ -128,8 +128,9 @@ def _guarded_basis(
             maximum, or geometry, allocation, or guarded splitting is invalid.
     """
     # 1. Turn the filtered footprints and flux into one spatial importance map.
+    fp_all = merged.to_legacy_fp_all()
     weights = basis_weights_from_fp_all(
-        merged.fp_all,
+        fp_all,
         flux_sources,
         abs_flux=True,
     )
@@ -186,7 +187,7 @@ def _guarded_basis(
     basis_flat.attrs.update(provenance)
     # 5. Attach the current flux so standard RHIME sensitivity code can use it.
     return basis_functions_from_fp_all_flat_basis(
-        fp_all=merged.fp_all,
+        fp_all=fp_all,
         basis_flat=basis_flat,
         metadata=provenance,
     )
@@ -300,10 +301,13 @@ def run_custom_rhime(
     if config.reload_merged_data:
         merged = RhimeMergedData.load(
             **config.select(
-                "merged_data_dir", "site_options", "species", "start_date", "output_name",
-                "merged_data_name", "split_by_sectors", "flux_non_finite_check",
+                "merged_data_dir", "species", "start_date", "output_name",
+                "merged_data_name",
             ),
         )
+        if merged.split_by_sectors != config.split_by_sectors:
+            merged.close()
+            raise ValueError("Loaded merged data has an incompatible split_by_sectors layout.")
     else:
         merged = RhimeMergedData.from_options(
             **config.select(

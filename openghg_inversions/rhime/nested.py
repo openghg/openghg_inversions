@@ -11,7 +11,7 @@ built, and combines only the two observation-aligned sensitivity matrices.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, is_dataclass, replace
+from dataclasses import dataclass, replace
 import hashlib
 from numbers import Integral
 from pathlib import Path
@@ -540,31 +540,19 @@ def _mask_spatial_variables(dataset: xr.Dataset, mask: xr.DataArray) -> xr.Datas
     return result
 
 
-def _replace_data_object_data(value: Any, dataset: xr.Dataset) -> Any:
-    """Return an OpenGHG data object with replacement data and retained metadata."""
-    if is_dataclass(value):
-        return replace(value, data=dataset)
-    metadata = getattr(value, "metadata", None)
-    try:
-        return type(value)(data=dataset, metadata=metadata)
-    except TypeError as exc:
-        raise TypeError(
-            "Nested-domain masking requires flux entries with replaceable `data` and `metadata`."
-        ) from exc
-
-
 def _select_merged_sites(merged: RhimeMergedData, sites: Sequence[str]) -> RhimeMergedData:
     """Return a borrowed merged-data view restricted to a common site set."""
     selected_sites = tuple(str(site) for site in sites)
-    selected = {
-        key: value for key, value in merged.fp_all.items() if key.startswith(".") or key in selected_sites
-    }
-    scales = selected.get(".scales")
-    if isinstance(scales, Mapping):
-        selected[".scales"] = {site: scales[site] for site in selected_sites if site in scales}
-    return RhimeMergedData(
-        fp_all=selected,
+    return replace(
+        merged,
+        site_data={site: merged.site_data[site] for site in selected_sites},
         site_options=merged.site_options.retain_sites(selected_sites, context="Nested-domain alignment"),
+        provenance={**merged.provenance, "inputs": {
+            key: value for key, value in merged.provenance["inputs"].items()
+            if not key.startswith(("observations:", "footprints:"))
+            or key.split(":", 1)[1] in selected_sites
+        }},
+        acquisition={**merged.acquisition, "stage": "filtered"},
     )
 
 
@@ -595,10 +583,10 @@ def align_inner_merged_to_outer_observations(
     if outer.sites != inner.sites:
         raise ValueError("Nested time alignment requires identical outer and inner site order.")
     tolerance = None if time_tolerance is None else pd.Timedelta(time_tolerance)
-    fp_all = dict(inner.fp_all)
+    site_data = dict(inner.site_data)
     for site in outer.sites:
-        outer_dataset = outer.fp_all[site]
-        inner_dataset = inner.fp_all[site]
+        outer_dataset = outer.site_data[site]
+        inner_dataset = inner.site_data[site]
         if not isinstance(outer_dataset, xr.Dataset) or not isinstance(inner_dataset, xr.Dataset):
             raise TypeError("Modern nested time alignment requires per-site xarray Datasets.")
         if "time" not in outer_dataset.indexes or "time" not in inner_dataset.indexes:
@@ -634,8 +622,8 @@ def align_inner_merged_to_outer_observations(
         )
         native_positions = order[indexer]
         aligned = inner_dataset.isel(time=native_positions).assign_coords(time=outer_dataset["time"].variable)
-        fp_all[site] = aligned
-    return RhimeMergedData(fp_all=fp_all, site_options=inner.site_options)
+        site_data[site] = aligned
+    return replace(inner, site_data=site_data, acquisition={**inner.acquisition, "stage": "filtered"})
 
 
 def mask_outer_merged_for_inner_domain(
@@ -652,10 +640,10 @@ def mask_outer_merged_for_inner_domain(
     if outer.sites != inner.sites:
         raise ValueError("Masking requires outer and inner merged data aligned to identical sites.")
 
-    fp_all = dict(outer.fp_all)
+    site_data = dict(outer.site_data)
     for site in outer.sites:
-        outer_dataset = outer.fp_all[site]
-        inner_dataset = inner.fp_all[site]
+        outer_dataset = outer.site_data[site]
+        inner_dataset = inner.site_data[site]
         if not isinstance(outer_dataset, xr.Dataset) or not isinstance(inner_dataset, xr.Dataset):
             raise TypeError("Modern nested-domain preparation requires per-site xarray Datasets.")
         if "lat" not in outer_dataset.coords or "lon" not in outer_dataset.coords:
@@ -665,14 +653,13 @@ def mask_outer_merged_for_inner_domain(
             target_lat=outer_dataset["lat"],
             target_lon=outer_dataset["lon"],
         )
-        fp_all[site] = _mask_spatial_variables(outer_dataset, site_mask)
+        site_data[site] = _mask_spatial_variables(outer_dataset, site_mask)
 
-    flux_entries = outer.fp_all.get(".flux")
+    flux_entries = outer.flux_data
     if not isinstance(flux_entries, Mapping) or not flux_entries:
-        raise ValueError("Outer nested-domain merged data requires flux entries under `.flux`.")
+        raise ValueError("Outer nested-domain merged data requires source-labelled flux datasets.")
     masked_flux_entries: dict[str, Any] = {}
-    for source, flux_data in flux_entries.items():
-        flux_dataset = getattr(flux_data, "data", None)
+    for source, flux_dataset in flux_entries.items():
         if not isinstance(flux_dataset, xr.Dataset) or "flux" not in flux_dataset:
             raise TypeError(f"Outer flux entry {source!r} does not contain an xarray `flux` field.")
         flux = flux_dataset["flux"]
@@ -681,7 +668,7 @@ def mask_outer_merged_for_inner_domain(
         union_mask: xr.DataArray | None = None
         for site in inner.sites:
             site_mask = rectangular_extent_mask(
-                inner.fp_all[site],
+                inner.site_data[site],
                 target_lat=flux["lat"],
                 target_lon=flux["lon"],
             )
@@ -690,10 +677,12 @@ def mask_outer_merged_for_inner_domain(
             raise ValueError("Nested-domain masking requires at least one retained site.")
         masked_dataset = flux_dataset.copy(deep=False)
         masked_dataset["flux"] = remove_domain_overlap(flux, union_mask)
-        masked_flux_entries[str(source)] = _replace_data_object_data(flux_data, masked_dataset)
-    fp_all[".flux"] = masked_flux_entries
+        masked_flux_entries[source] = masked_dataset
 
-    return RhimeMergedData(fp_all=fp_all, site_options=outer.site_options)
+    return replace(
+        outer, site_data=site_data, flux_data=masked_flux_entries,
+        acquisition={**outer.acquisition, "stage": "filtered"},
+    )
 
 
 def _inner_domain_name(outer_domain: str, inner_domain: str) -> str:
@@ -749,7 +738,7 @@ def _nested_sensitivity_reductions(
     """Return lazy per-site absolute ``fp_x_flux`` reductions."""
     reductions: list[xr.DataArray] = []
     for site in merged.sites:
-        dataset = merged.fp_all[site]
+        dataset = merged.site_data[site]
         if not isinstance(dataset, xr.Dataset):
             raise TypeError(f"{label} nested site {site!r} must be an xarray Dataset.")
         if "fp_x_flux" in dataset:
@@ -938,10 +927,13 @@ def prepare_nested_rhime_inputs(
         if outer_config.reload_merged_data:
             outer_merged = RhimeMergedData.load(
                 **outer_config.select(
-                    "merged_data_dir", "site_options", "species", "start_date", "output_name",
-                    "merged_data_name", "split_by_sectors", "flux_non_finite_check",
+                    "merged_data_dir", "species", "start_date", "output_name",
+                    "merged_data_name",
                 ),
             )
+            if outer_merged.split_by_sectors != outer_config.split_by_sectors:
+                outer_merged.close()
+                raise ValueError("Loaded merged data has an incompatible split_by_sectors layout.")
         else:
             outer_merged = RhimeMergedData.from_options(
                 **outer_config.select(
@@ -961,10 +953,13 @@ def prepare_nested_rhime_inputs(
         if inner_config.reload_merged_data:
             inner_merged = RhimeMergedData.load(
                 **inner_config.select(
-                    "merged_data_dir", "site_options", "species", "start_date", "output_name",
-                    "merged_data_name", "split_by_sectors", "flux_non_finite_check",
+                    "merged_data_dir", "species", "start_date", "output_name",
+                    "merged_data_name",
                 ),
             )
+            if inner_merged.split_by_sectors != inner_config.split_by_sectors:
+                inner_merged.close()
+                raise ValueError("Loaded merged data has an incompatible split_by_sectors layout.")
         else:
             inner_merged = RhimeMergedData.from_options(
                 **inner_config.select(

@@ -45,7 +45,6 @@ from .builders import (
     callable_metadata,
     validate_model_build_result,
 )
-from openghg_inversions.inversion_data.acquisition import _validate_loaded_sector_layout
 
 from .materialization import materialize_pymc_inputs
 from .outputs import RhimeResult, annotate_likelihood_trace, make_standard_rhime_outputs
@@ -537,15 +536,19 @@ def run_rhime(
     # 1. Resolve acquisition through the data owner.
     preparation_start = timer_start()
     if merged_data is not None:
-        _validate_loaded_sector_layout(merged_data.fp_all, split_by_sectors=config.split_by_sectors)
+        if merged_data.split_by_sectors != config.split_by_sectors:
+            raise ValueError("Supplied merged data has an incompatible split_by_sectors layout.")
         merged = merged_data
     elif config.reload_merged_data:
         merged = RhimeMergedData.load(
             **config.select(
-                "merged_data_dir", "site_options", "species", "start_date", "output_name",
-                "merged_data_name", "split_by_sectors", "flux_non_finite_check",
+                "merged_data_dir", "species", "start_date", "output_name",
+                "merged_data_name",
             ),
         )
+        if merged.split_by_sectors != config.split_by_sectors:
+            merged.close()
+            raise ValueError("Loaded merged data has an incompatible split_by_sectors layout.")
     else:
         merged = RhimeMergedData.from_options(
             **config.select(
