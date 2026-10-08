@@ -47,7 +47,8 @@ from .builders import (
 )
 from .materialization import materialize_pymc_inputs
 from .outputs import RhimeResult, _make_inversion_output
-from .params import RhimeConfig, params_from_config, resolve_rhime_config
+from .ini import params_from_config
+from .params import RhimeConfig, resolve_rhime_config
 from .preparation import (
     assemble_rhime_inputs,
     build_rhime_basis,
@@ -862,7 +863,68 @@ def prepare_nested_rhime_inputs(
     inner_merged_data_name: str | None = None,
     time_tolerance: str | pd.Timedelta | None = None,
 ) -> NestedRhimePreparedInputs:
-    """Retrieve and prepare native outer and inner grids with no double count."""
+    """Retrieve and prepare native outer and inner grids with no double count.
+
+    Retain sites available on both grids, apply the requested filters to the
+    outer observations, and align inner footprints to those retained rows.
+    Mask outer footprints and prior flux over the inner extent before basis
+    construction. The request is unchanged; returned inputs retain both
+    native bases and their combined observation-aligned sensitivities.
+
+    Args:
+        config: Resolved outer-domain request with exactly one flux source
+            and ``split_by_sectors=False``. Inner acquisition inherits its
+            site selectors, dates and ordinary settings unless overridden
+            below. Only the outer domain supplies boundary conditions.
+        inner_domain: Full nested domain name or suffix to append to the
+            outer domain with a hyphen.
+        inner_footprint_store: Inner footprint store; defaults to the outer
+            request's store.
+        inner_emissions_store: Inner emissions store; defaults to the outer
+            request's store.
+        inner_emissions_domain: Optional inner flux-domain selector. ``None``
+            uses the inner domain rather than inheriting the outer selector.
+        inner_basis_algorithm: Inner basis algorithm; defaults to ``quadtree``
+            when no saved inner basis is selected.
+        inner_nbasis: Explicit inner basis-region count. When omitted and
+            neither grid uses a saved basis, ``config.nbasis`` is a shared
+            total budget split by the square-root sensitivity ratio, with an
+            inner share bounded to 35--60 percent. Otherwise the inner count
+            defaults to ``config.nbasis``.
+        inner_fp_basis_case: Saved inner basis case; takes precedence over
+            an inner basis algorithm.
+        inner_basis_directory: Saved inner basis directory; defaults to the
+            outer request's directory.
+        inner_country_directory: Inner country-grid directory; defaults to
+            the outer request's directory.
+        inner_basis_output_path: Optional destination for a generated inner
+            basis. ``None`` disables saving the inner basis.
+        inner_reload_merged_data: Whether to try reloading an inner merged
+            artifact before fresh acquisition.
+        inner_save_merged_data: Whether fresh inner acquisition saves merged
+            data. This does not inherit the outer saving choice.
+        inner_merged_data_dir: Directory for inner merged artifacts.
+        inner_merged_data_name: Optional inner merged-artifact filename.
+        time_tolerance: Maximum difference for nearest-time inner footprint
+            matching. ``None`` requires exact times; matching never reuses an
+            inner footprint for multiple outer rows.
+
+    Returns:
+        Prepared outer and inner inputs with separate native-grid bases and
+        combined sensitivities aligned to the retained outer observations.
+
+    Raises:
+        ValueError: If the request is not single-source, the inner domain is
+            empty, the sites or observation times cannot be aligned, or the
+            automatic basis budget is not an integer of at least two.
+
+    Notes:
+        Acquisition and basis construction may read or write configured
+        artifacts. Automatic budget allocation computes sensitivity sums;
+        filtering and basis algorithms may also compute their inputs. The
+        returned scientific arrays may remain Dask-backed, and PyMC model
+        materialization is a separate boundary.
+    """
     if config.split_by_sectors or len(config.model.sectors) != 1:
         raise ValueError("Nested RHIME preparation currently requires a standard one-source request.")
 
@@ -879,7 +941,6 @@ def prepare_nested_rhime_inputs(
         use_bc=False,
         bc_input=None,
         output_name=f"{config.output_name}_inner",
-        model=replace(config.model, domain=inner_domain_name, use_bc=False, bc_prior=None),
         basis_algorithm=(
             inner_basis_algorithm if inner_basis_algorithm is not None
             else (None if inner_fp_basis_case is not None else "quadtree")
@@ -1489,10 +1550,8 @@ def run_rhime_nested(
         raise ValueError("`inner_x_prior` must be a prior mapping/dict or None.")
     time_tolerance = nested_options.pop("inner_time_tolerance", None)
 
-    if likelihood_builder is not None:
-        if params.get("mismatch_model") is not None:
-            raise ValueError("A custom likelihood cannot be combined with a built-in mismatch model.")
-        params["mismatch_model"] = None
+    if likelihood_builder is not None and params.get("mismatch_model") is not None:
+        raise ValueError("A custom likelihood cannot be combined with a built-in mismatch model.")
     config = resolve_rhime_config(params=params, multisector=False)
     if likelihood_builder is None and config.model.likelihood is None:
         raise ValueError("A nested RHIME run requires a built-in or custom likelihood.")

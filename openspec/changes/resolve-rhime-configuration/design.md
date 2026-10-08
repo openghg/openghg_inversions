@@ -15,8 +15,8 @@ instead kept a second configuration record and required callers to use
 section also required historical encoding preservation while prohibiting a hash
 preservation layer. Those requirements are superseded here.
 
-Acquisition owns the existing `_SiteOptions` (promoted to public `SiteOptions`)
-and `RhimeMergedData`;
+The shared `inversion_data._site_options` module owns public `SiteOptions`;
+acquisition owns `RhimeMergedData`;
 `inversion_data.prepared_inputs` owns `RhimePreparedInputs`; `inference.sampling`
 owns `RhimeSampler`. Keep those owners and the procedural scientific recipes.
 
@@ -71,7 +71,7 @@ def resolve_rhime_config(
     params: Mapping[str, object], *, multisector: bool
 ) -> RhimeConfig: ...
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class RhimeConfig:
     site_options: SiteOptions
     species: str
@@ -86,6 +86,9 @@ class RhimeConfig:
     model: RhimeModelSpec
     output: RhimeOutputSpec
     sampler: RhimeSampler
+
+    @classmethod
+    def from_params(cls, params: Mapping[str, object], *, multisector: bool) -> RhimeConfig: ...
 ```
 
 The configuration is equivalent to fully resolved options, not necessarily a
@@ -111,7 +114,7 @@ adopted names for this revision; other established names are retained.
 | Name | Role | Input / output and boundary contract |
 | --- | --- | --- |
 | `read_rhime_ini` (replace `load_rhime_config` introduced in #813) | INI configuration frontend. | INI path, supported overrides and recipe mode -> complete `RhimeConfig`. Owns INI parsing, section interpretation and value decoding; applies overrides before invoking shared semantic resolution. |
-| `resolve_rhime_config` (keep) | Shared RHIME semantic construction. | Effective RHIME options after winning overrides -> complete `RhimeConfig`. Resolves supported aliases/defaults/shorthand and fails before scientific work. Does not interpret file headers or impose INI structure on other frontends. |
+| `resolve_rhime_config` (keep) | Compatibility wrapper for `RhimeConfig.from_params`. | Effective RHIME options after winning overrides -> complete `RhimeConfig`. Resolves supported aliases/defaults/shorthand and fails before scientific work. Does not interpret file headers or impose INI structure on other frontends. |
 | `RhimeConfig` (keep; revise contents) | Complete resolved requested configuration. | Direct acquisition/preparation fields plus existing model/output/sampler values. Intended to be serializable as settings; export/INI-writing deferred to #814. No scientific data, retained run or historical identity contract. |
 | `SiteOptions` (promote existing `_SiteOptions`; export from `inversion_data`) | Public cohesive aligned selector record. | Complete ordered site/period/inlet/platform/etc. tuples. `from_inputs` normalizes external shorthand; direct construction accepts resolved aligned values. Requested when held by config; authoritative retained values when held by merged data. Selection creates a new complete record. |
 | `RhimeModelSpec` / `SectorSpec` (keep) | Scientific recipe choices and individual flux-sector definitions. | Priors, likelihood/component choices and source routing; no PyMC graph or acquired arrays. Independently usable by existing builders. |
@@ -164,7 +167,10 @@ contract differs from the higher-level numerical handoff.
 
 `read_rhime_ini` owns file access, INI syntax, sections, value decoding and their
 translation into RHIME options. It applies supported overrides before calling
-`resolve_rhime_config`, and returns the resulting `RhimeConfig`. The current
+`RhimeConfig.from_params`, and returns the resulting `RhimeConfig`.
+The `rhime.ini` module owns this frontend and the dictionary compatibility
+adapter; the configuration class owns semantic construction. The established
+`resolve_rhime_config` function delegates to that classmethod. The current
 flat option mapping may remain an internal intermediate: headings are discarded
 and repeated option names across sections select the first occurrence. Preserve
 that existing INI behavior here, without making it a common frontend contract.
@@ -183,6 +189,24 @@ independent of INI syntax so direct adapters and other parsers can share them.
 Extract an ordinary helper only where needed; do not add a parser framework or
 duplicate the existing normalization algorithm. Canonical scientific consumers
 receive complete aligned values and do not perform this expansion again.
+
+Supported names and defaults follow their consumers: configuration fields and
+site inputs, likelihood settings, output policy, and the sampler's supported
+configuration subset. Required raw inputs derive from those declarations;
+composed and recipe-derived values are not required external parameters. Keep
+aliases and external spelling translation at the input boundary. Do not infer
+configuration choices from scientific callable signatures or introduce a registry.
+
+Standard and multisector runners accept a complete `config=` as an alternative
+to an INI path and raw options. They reuse it without another resolution pass;
+combining these input modes is an error. The compatibility shim retains its
+preflight validation before file-copy side effects and passes that resolved
+request into the standard runner.
+
+`RhimeMergedData.save` delegates to the existing merged-data serializer at an
+explicit write boundary. Existing fresh-retrieval save flags remain optional
+and default to false; supplied data and successful reloads do not trigger them.
+This does not add configuration export or a new cache format.
 
 The shared resolver's responsibilities are:
 

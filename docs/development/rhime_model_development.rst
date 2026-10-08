@@ -254,12 +254,24 @@ Configuration parsing should:
 
 Standard and multisector requests use ``rhime.params.RhimeConfig`` as this
 boundary. ``read_rhime_ini`` owns INI parsing and interpretation, applies
-supported overrides, and returns complete resolved configuration. Python
-options enter ``resolve_rhime_config`` after overrides have won. Both routes
+supported overrides, and returns complete resolved configuration through
+``RhimeConfig.from_params``. This class method owns format-neutral semantic
+construction beside the record; the INI frontend stays separate. Python
+options enter the same constructor after overrides have won.
+``resolve_rhime_config`` remains a compatibility function. Both routes
 share RHIME defaults, supported aliases and site-shorthand resolution; another
 frontend need not adopt INI headers or value syntax. Keep the current INI
 first-occurrence rule for repeated bare option names inside that reader.
 ``params_from_config`` remains the dictionary-returning compatibility adapter.
+
+Keep accepted option names and defaults beside the preparation, model, output
+or sampling consumer that owns them. The configuration constructor composes
+those declared choices explicitly; do not infer options from runtime signatures
+or add a generic option registry. INI headings do not require matching classes.
+Complete runners accept an already resolved ``config`` and start scientific
+work without resolving it again. That input is exclusive with ``config_file``
+and raw configuration keywords. Compatibility entry points can therefore
+validate once before their own side effects and pass the same request onward.
 
 ``RhimeConfig`` owns acquisition and preparation fields directly, alongside
 one public ``inversion_data.SiteOptions`` and the existing ``RhimeModelSpec``,

@@ -38,7 +38,9 @@ Resolve a requested RHIME configuration
 --------------------------------------
 
 Inspect standard/multisector choices before data access. Read complete resolved
-configuration from an INI with supported overrides, or resolve Python options. The
+configuration from an INI with supported overrides, or construct it from Python
+options with ``RhimeConfig.from_params``. Pass the result to the corresponding
+runner's ``config`` argument to reuse the resolved choices. The
 :doc:`configuration guide </usage/rhime>` explains requested site selectors,
 retained execution metadata and compatibility helpers.
 
@@ -46,8 +48,9 @@ retained execution metadata and compatibility helpers.
    :nosignatures:
 
    openghg_inversions.rhime.read_rhime_ini
-   openghg_inversions.rhime.resolve_rhime_config
    openghg_inversions.rhime.RhimeConfig
+   openghg_inversions.rhime.RhimeConfig.from_params
+   openghg_inversions.rhime.resolve_rhime_config
    openghg_inversions.inversion_data.SiteOptions
 
 Run specifications and results

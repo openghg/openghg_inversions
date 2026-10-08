@@ -49,7 +49,8 @@ from openghg_inversions.inversion_data import load_rhime_data
 
 from .materialization import materialize_pymc_inputs
 from .outputs import RhimeResult, annotate_likelihood_trace, make_standard_rhime_outputs
-from .params import params_from_config, read_rhime_ini, resolve_rhime_config
+from .ini import params_from_config, read_rhime_ini
+from .params import RhimeConfig, resolve_rhime_config
 from .preparation import (
     assemble_rhime_inputs,
     build_rhime_basis,
@@ -451,6 +452,7 @@ def make_standard_rhime_result(
 def run_rhime(
     *,
     config_file: str | Path | None = None,
+    config: RhimeConfig | None = None,
     merged_data: RhimeMergedData | None = None,
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
     likelihood_kwargs: Mapping[str, Any] | None = None,
@@ -469,6 +471,9 @@ def run_rhime(
     Args:
         config_file: Optional INI configuration file. Values in ``kwargs``
             override values read from this file.
+        config: Complete request from ``RhimeConfig.from_params`` or
+            ``read_rhime_ini``. It is used without resolving again and cannot
+            be combined with ``config_file`` or raw run parameters in ``kwargs``.
         merged_data: Optional externally supplied merged scientific data.
             Passing this borrowed handoff bypasses OpenGHG acquisition and
             merged-cache I/O, then resumes at the visible filtering stage.
@@ -512,19 +517,25 @@ def run_rhime(
     if likelihood_kwargs and likelihood_builder is None:
         raise ValueError("Non-empty `likelihood_kwargs` require an active `likelihood_builder`.")
     setup_start = timer_start()
-    if config_file is not None and likelihood_builder is None:
-        config = read_rhime_ini(config_file, overrides=kwargs, multisector=False)
+    if config is not None:
+        if config_file is not None or kwargs:
+            raise ValueError("Pass either resolved `config` or `config_file`/run parameters, not both.")
+        if config.split_by_sectors:
+            raise ValueError("`run_rhime` received configuration for a different sector layout.")
+        if likelihood_builder is not None and config.model.likelihood is not None:
+            raise ValueError("A custom likelihood cannot be combined with a built-in mismatch model.")
     else:
-        params = (
-            params_from_config(config_file, extra_kwargs=kwargs, normalise=False)
-            if config_file is not None
-            else dict(kwargs)
-        )
-        if likelihood_builder is not None:
-            if params.get("mismatch_model") is not None:
+        if config_file is not None and likelihood_builder is None:
+            config = read_rhime_ini(config_file, overrides=kwargs, multisector=False)
+        else:
+            params = (
+                params_from_config(config_file, extra_kwargs=kwargs, normalise=False)
+                if config_file is not None
+                else dict(kwargs)
+            )
+            if likelihood_builder is not None and params.get("mismatch_model") is not None:
                 raise ValueError("A custom likelihood cannot be combined with a built-in mismatch model.")
-            params["mismatch_model"] = None
-        config = resolve_rhime_config(params=params, multisector=False)
+            config = resolve_rhime_config(params=params, multisector=False)
     log_timing("rhime.runner_setup", timer_seconds(setup_start), multisector=False)
     if likelihood_builder is None and config.model.likelihood is None:
         raise ValueError("A standard RHIME run requires a built-in or custom likelihood.")

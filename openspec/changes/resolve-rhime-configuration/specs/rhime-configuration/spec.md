@@ -40,6 +40,16 @@ those choices.
 - **AND** accessing them does not require a nested preparation configuration,
   data acquisition or an execution run description
 
+#### Scenario: Construct and execute one resolved request
+
+- **WHEN** a caller uses `RhimeConfig.from_params` or `read_rhime_ini`
+- **THEN** a standard or multisector runner can consume the returned `config`
+  without resolving its options again
+- **AND** supplying that configuration together with a file or raw overrides
+  is rejected before acquisition
+- **AND** `resolve_rhime_config` remains a compatibility wrapper around the
+  class-owned construction path
+
 #### Scenario: Equivalent file and Python inputs
 
 - **WHEN** an INI file and a Python mapping express the same supported standard

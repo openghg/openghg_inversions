@@ -19,7 +19,7 @@ import numpy as np
 import pymc as pm
 import xarray as xr
 
-from openghg_inversions.inversion_data import RhimePreparedInputs, _save_merged_data, load_rhime_data
+from openghg_inversions.inversion_data import RhimePreparedInputs, load_rhime_data
 from .specs import RhimeRunSpec
 from openghg_inversions.serialization import (
     load_trace,
@@ -33,7 +33,8 @@ from .multisector import (
     multisector_model_input_names,
 )
 from .outputs import RhimeResult, make_multisector_rhime_outputs, make_standard_rhime_outputs
-from .params import RHIME_PREPARATION_OPTION_NAMES, RhimeConfig, params_from_config, resolve_rhime_config
+from .ini import params_from_config
+from .params import RHIME_PREPARATION_OPTION_NAMES, RhimeConfig
 from .preparation import (
     assemble_rhime_inputs,
     build_rhime_basis,
@@ -126,11 +127,6 @@ def load_stage_params(
     if overrides:
         params.update(overrides)
     return _resolve_stage_paths(params, base_dir=source_path.parent)
-
-
-def resolve_stage_setup(params: Mapping[str, Any], *, model: ModelKind) -> RhimeConfig:
-    """Resolve stage parameters through the canonical RHIME boundary."""
-    return resolve_rhime_config(params=params, multisector=model == "multisector")
 
 
 def effective_configuration(setup: RhimeConfig, *, model: ModelKind) -> dict[str, Any]:
@@ -228,7 +224,7 @@ def prepare_rhime_stage(
         )
     merged_path = _output_path(destination, None, "merged-data/merged-data.nc")
     merged_dir = merged_path.parent
-    _save_merged_data(filtered.fp_all, merged_dir, merged_data_name="merged-data.nc")
+    filtered.save(merged_dir, merged_data_name="merged-data.nc")
     basis = build_rhime_basis(
         filtered,
         species=executed_setup.species,

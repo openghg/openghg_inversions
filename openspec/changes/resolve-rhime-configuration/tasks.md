@@ -66,3 +66,24 @@ scientific owners retain their data-dependent checks.
 Configuration serialization, resolved-settings logging and an INI writer are
 deferred to [#814](https://github.com/openghg/openghg_inversions/issues/814).
 No serializer or writer implementation is part of this checklist.
+
+### Review follow-up: configuration ownership and readability
+
+- [x] Place semantic construction on `RhimeConfig.from_params`, retain the
+  function compatibility wrapper, and separate the INI frontend.
+- [x] Derive supported and required options from their owning configuration
+  records and advertised consumer subsets; preserve accepted names and defaults.
+- [x] Reuse resolved requests in the standard/multisector runners and HBMCMC shim.
+- [x] Move site selectors into the shared selector owner, retain the complete
+  record through retrieval, and consolidate copying and layout validation.
+- [x] Document changed public contracts and explicit merged-data saving while
+  retaining existing opt-in saving behaviour and cache formats.
+- [ ] Validate the final follow-up on supported Python versions, regenerate and
+  inspect affected API documentation, and SSH-push the reviewed changes.
+
+Focused configuration, acquisition, runner, shim and documentation-example
+checks passed in the existing environment. That environment contains PyMC
+5.26.1; the synthetic staged sampling test fails there on both the untouched
+PR head and this follow-up because it returns the former InferenceData type.
+The final cluster checks use current project dependencies and include that
+sampling test. Earlier validation records above apply to their named commits.

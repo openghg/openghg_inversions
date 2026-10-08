@@ -10,7 +10,7 @@ import xarray as xr
 
 import openghg_inversions.hbmcmc.run_hbmcmc as run_hbmcmc
 import openghg_inversions.rhime.standard as rhime_standard
-from openghg_inversions.rhime import PollutionEventSettings
+from openghg_inversions.rhime import AdditiveSigmaSettings, FixedErrorSettings, PollutionEventSettings
 from openghg_inversions.sigma import SigmaAlignment
 
 
@@ -359,14 +359,16 @@ def test_run_hbmcmc_main_routes_to_run_rhime(monkeypatch: pytest.MonkeyPatch, tm
         .replace("nchain = 3", "nchain = 2")
     )
     assert copied_config.read_text(encoding="utf-8") == expected_config
-    assert seen["run_rhime_kwargs"]["start_date"] == "2020-01-01"
-    assert seen["run_rhime_kwargs"]["end_date"] == "2020-02-01"
-    assert seen["run_rhime_kwargs"]["output_path"] == str(output_path)
-    assert seen["run_rhime_kwargs"]["chains"] == 2
-    assert seen["run_rhime_kwargs"]["nuts_sampler"] == "numpyro"
-    assert seen["run_rhime_kwargs"]["output_format"] == "legacy"
-    assert seen["run_rhime_kwargs"]["output_filename_convention"] == "legacy"
-    assert seen["run_rhime_kwargs"]["mismatch_model"] == "pollution_event"
+    config = seen["run_rhime_kwargs"]["config"]
+    assert config.start_date == "2020-01-01"
+    assert config.end_date == "2020-02-01"
+    assert config.output.output_path == str(output_path)
+    assert config.sampler.chains == 2
+    assert config.sampler.nuts_sampler == "numpyro"
+    assert config.output.output_format == "legacy"
+    assert config.output.output_filename_convention == "legacy"
+    assert isinstance(config.model.likelihood, PollutionEventSettings)
+    assert config.save_merged_data is False
     assert seen["run_rhime_kwargs"]["preserve_legacy_likelihood"] is True
     assert seen["run_rhime_kwargs"]["compatibility_output_chain"] == 0
 
@@ -438,7 +440,7 @@ def test_run_hbmcmc_no_model_error_retains_legacy_unused_sigma(
 
     run_hbmcmc.main(["-c", str(config_file)])
 
-    assert seen["mismatch_model"] == "fixed_error"
+    assert isinstance(seen["config"].model.likelihood, FixedErrorSettings)
     assert seen["preserve_legacy_likelihood"] is True
     assert "use_minimum_error_floor" not in seen
     assert seen["_compatibility_minimum_error_floor"] is False
@@ -470,7 +472,7 @@ def test_run_hbmcmc_additive_no_model_error_uses_fixed_error_with_floor(
 
     run_hbmcmc.main(["-c", str(config_file)])
 
-    assert seen["mismatch_model"] == "fixed_error"
+    assert isinstance(seen["config"].model.likelihood, FixedErrorSettings)
     assert "use_minimum_error_floor" not in seen
     assert seen["_compatibility_minimum_error_floor"] is True
     assert seen["preserve_legacy_likelihood"] is False
@@ -506,10 +508,11 @@ def test_run_hbmcmc_main_selects_additive_sigma_from_ini(
 
     assert "likelihood_builder" not in seen
     assert "likelihood_kwargs" not in seen
-    assert seen["mismatch_model"] == "additive_sigma"
-    assert seen["use_minimum_error_floor"] is True
-    assert seen["sigma_prior"] == {"pdf": "halfnormal", "sigma": {"TAC": 2.0}}
-    assert seen["aggregation_error_mode"] == "none"
+    likelihood = seen["config"].model.likelihood
+    assert isinstance(likelihood, AdditiveSigmaSettings)
+    assert likelihood.use_minimum_error_floor is True
+    assert likelihood.sigma_prior == {"pdf": "halfnormal", "sigma": {"TAC": 2.0}}
+    assert seen["config"].model.aggregation_error_mode == "none"
     assert seen["preserve_legacy_likelihood"] is False
     assert "_compatibility_likelihood_provenance" not in seen
 

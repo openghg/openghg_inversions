@@ -614,11 +614,15 @@ def test_data_processing_reuses_first_successful_observation_units(
     monkeypatch.setattr(get_data_module, "get_footprint_data", lambda **kwargs: object())
     monkeypatch.setattr(get_data_module, "merged_scenario_data", fake_scenario)
 
-    fp_all, retained_sites, *_ = retrieve_inversion_data(
+    fp_all, retained_sites, inlet, fp_height, instrument, periods = retrieve_inversion_data(
         species="ch4",
-        sites=["BSD", "TAC", "GOSAT-BRAZIL"],
+        sites=["TAC", "BSD", "GOSAT-BRAZIL"],
         domain="EUROPE",
-        averaging_period="1h",
+        averaging_period=["1h", "2h", "3h"],
+        inlet=["10m", "20m", "column"],
+        fp_height=["10m", "20m", "column"],
+        instrument=["first", "dropped", "third"],
+        time_resolved=[True, None, False],
         start_date="2019-01-01",
         end_date="2019-01-02",
         platform=["surface", "surface", "satellite"],
@@ -628,6 +632,12 @@ def test_data_processing_reuses_first_successful_observation_units(
 
     assert requested_output_units == [None, "ppb"]
     assert retained_sites == ["TAC", "GOSAT-BRAZIL"]
+    assert (inlet, fp_height, instrument, periods) == (
+        ["10m", "column"], ["10m", "column"], ["first", "third"], ["1h", "3h"],
+    )
+    assert all(isinstance(values, list) for values in (retained_sites, inlet, fp_height, instrument, periods))
+    assert fp_all["TAC"].attrs["openghg_inversions_time_resolved"] == "true"
+    assert fp_all["GOSAT-BRAZIL"].attrs["openghg_inversions_time_resolved"] == "false"
     np.testing.assert_allclose(fp_all["TAC"]["mf"], [1000.0])
     np.testing.assert_allclose(fp_all["GOSAT-BRAZIL"]["mf"], [1000.0])
     np.testing.assert_allclose(fp_all["GOSAT-BRAZIL"]["mf_mod"], [900.0])

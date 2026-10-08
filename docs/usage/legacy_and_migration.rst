@@ -195,7 +195,6 @@ Fresh acquisition is named ``retrieve_inversion_data`` for both surface and
 column observations. ``data_processing_surface_notracer`` remains a deprecated
 wrapper preserving its existing signature, shorthand and six-tuple return.
 
-
 The merged-data mapping returned by ``retrieve_inversion_data`` and
 ``load_merged_data`` no longer includes the unused ``.species``, ``.units``,
 or ``.scales`` entries.  The species remains an explicit run option,

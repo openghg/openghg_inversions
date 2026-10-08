@@ -1953,16 +1953,14 @@ def test_prepared_replay_computes_selected_error_only_at_pymc_boundary(
     assert prepared.inv_inputs["aggregation_error_covariance"].data is covariance_array
 
 
-def test_explicit_preparation_option_ownership_matches_current_preparer() -> None:
-    """Routing tracks preparation options after consuming the unsupported tracer flag."""
-    parameters = dict(inspect.signature(prepare_rhime_inputs).parameters)
-    parameters.pop("use_tracer")
-    assert rhime_params.RHIME_PREPARATION_OPTION_NAMES == frozenset(parameters)
-    assert rhime_params.RHIME_PREPARATION_DEFAULTS == {
-        name: parameter.default
-        for name, parameter in parameters.items()
-        if parameter.default is not inspect.Parameter.empty
-    }
+def test_configured_surface_excludes_internal_composed_values() -> None:
+    """Resolution accepts external choices instead of internal handoff fields."""
+    for name in ("site_options", "model", "output", "sampler", "bc_state_activity", "state_activity"):
+        with pytest.raises(ValueError, match=name):
+            rhime_params.validate_supported_params({name: object()})
+    for name in ("sample_prior_predictive", "sample_posterior_predictive"):
+        with pytest.raises(ValueError, match=name):
+            rhime_params.validate_supported_params({name: True})
 
 
 def test_build_rhime_multisector_model_uses_sector_names_for_variables(
@@ -3313,7 +3311,7 @@ def test_external_merged_data_fails_at_retrieval_for_incompatible_layout() -> No
         site_options=site_options,
     )
 
-    with pytest.raises(ValueError, match="incompatible sector layout"):
+    with pytest.raises(ValueError, match="incompatible.*layout"):
         rhime_public.load_rhime_data(
             site_options=site_options, species="ch4", domain="EUROPE",
             start_date="2019-01-01", end_date="2019-02-01", output_name="external",

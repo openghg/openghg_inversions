@@ -374,3 +374,62 @@ def test_multisector_preparation_selects_sources_from_typed_request():
     assert site_data["TAC"].H.source.values.tolist() == ["first", "second"]
     assert site_data["TAC"].H.sel(source="second").item() == 2.0
     assert config.flux_sources == ("second", "first")
+
+
+def test_class_factory_preserves_inputs_and_matches_compatibility_wrapper():
+    request = _request(filters={"TAC": ["six_hr_mean"], "MHD": None})
+    before = deepcopy(request)
+
+    resolved = rhime_params.RhimeConfig.from_params(request, multisector=False)
+    adapted = rhime_params.resolve_rhime_config(request, multisector=False)
+
+    assert resolved == adapted
+    assert request == before
+    assert resolved.filters is not request["filters"]
+    assert resolved.filters["TAC"] is not request["filters"]["TAC"]
+
+
+def test_configuration_uses_the_sampler_owning_defaults(monkeypatch):
+    original_init = RhimeSampler.__init__
+
+    def init_with_a_new_default(self, **kwargs):
+        kwargs.setdefault("draws", 17)
+        original_init(self, **kwargs)
+
+    monkeypatch.setattr(RhimeSampler, "__init__", init_with_a_new_default)
+    config = rhime_params.RhimeConfig.from_params(_request(), multisector=False)
+    overridden = rhime_params.RhimeConfig.from_params(_request(draws=23), multisector=False)
+
+    assert config.sampler.draws == 17
+    assert overridden.sampler.draws == 23
+
+
+@pytest.mark.parametrize("format_name", ["inv_out", "INV_OUT", "paris", "none"])
+def test_output_owner_resolves_the_active_format_save_default(format_name, tmp_path):
+    params = {"output_format": format_name, "output_path": str(tmp_path)}
+    before = dict(params)
+    output = rhime_specs.RhimeOutputSpec.from_params(params, multisector=False)
+
+    assert output.output_format == format_name.lower()
+    assert output.save_inversion_output is (format_name.lower() == "inv_out")
+    assert params == before
+
+
+def test_sector_priors_are_owned_independently_and_borrow_numerical_values():
+    opaque = da.arange(3, chunks=2)
+    prior = {"pdf": "normal", "mu": opaque, "parameters": {"labels": ["a"]}}
+    config = rhime_params.RhimeConfig.from_params(
+        _request(flux_sources=["first", "second"], x_prior=prior), multisector=True,
+    )
+    first, second = config.model.sectors
+
+    assert first.x_prior["mu"] is second.x_prior["mu"] is opaque
+    first.x_prior["parameters"]["labels"].append("b")
+    assert second.x_prior["parameters"]["labels"] == ["a"]
+    assert prior["parameters"]["labels"] == ["a"]
+
+
+@pytest.mark.parametrize("invalid", [[], {}, 1, False, "unknown"])
+def test_malformed_likelihood_selection_reports_the_option(invalid):
+    with pytest.raises(ValueError, match="mismatch_model"):
+        rhime_params.RhimeConfig.from_params(_request(mismatch_model=invalid), multisector=False)

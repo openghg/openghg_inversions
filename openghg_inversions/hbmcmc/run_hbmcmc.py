@@ -409,7 +409,7 @@ def main(argv: list[str] | None = None) -> None:
             rhime_params["mismatch_model"] = "pollution_event"
 
     with timed("run_hbmcmc.validation"):
-        resolve_rhime_config(params=rhime_params, multisector=False)
+        resolved_config = resolve_rhime_config(params=rhime_params, multisector=False)
 
     _validate_country_file(rhime_params)
 
@@ -431,7 +431,7 @@ def main(argv: list[str] | None = None) -> None:
         _compatibility_unused_sigma_settings=legacy_unused_sigma_settings,
         _compatibility_minimum_error_floor=legacy_minimum_error_floor,
         compatibility_output_chain=None if args.all_chains else 0,
-        **rhime_params,
+        config=resolved_config,
     )
 
 

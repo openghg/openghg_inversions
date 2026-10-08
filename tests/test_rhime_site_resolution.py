@@ -1,9 +1,12 @@
 """Site shorthand is translated once before shared retrieval executes."""
 
+from dataclasses import fields
+from unittest.mock import Mock
+
 import pytest
 import xarray as xr
 
-from openghg_inversions.inversion_data import acquisition, get_data, preparation
+from openghg_inversions.inversion_data import _site_options, acquisition, get_data, preparation
 
 
 def _site_inputs():
@@ -72,7 +75,7 @@ def test_canonical_acquisition_and_retrieval_never_expand_selectors(monkeypatch)
 
     monkeypatch.setattr(acquisition.SiteOptions, "from_inputs", classmethod(fail))
     monkeypatch.setattr(get_data, "expand_site_option", fail)
-    monkeypatch.setattr(acquisition, "expand_site_option", fail)
+    monkeypatch.setattr(_site_options, "expand_site_option", fail)
     monkeypatch.setattr(get_data, "get_flux_data", stop)
     with pytest.raises(RuntimeError, match="retrieval reached"):
         acquisition.load_rhime_data(site_options=options, **_data_inputs())
@@ -123,7 +126,8 @@ def test_site_options_public_factory_resolved_constructor_and_selection():
     assert options == SiteOptions.from_inputs(
         **{**_site_inputs(), "averaging_period": ["1h", "1h"]}
     )
-    values = {name: getattr(options, name) for name in options.__dataclass_fields__}
+    assert SiteOptions is _site_options.SiteOptions is acquisition.SiteOptions
+    values = {field.name: getattr(options, field.name) for field in fields(options)}
     assert SiteOptions(**values) == options
     selected = options.retain_sites(["mhd"], context="test")
     assert selected.sites == ("MHD",)
@@ -131,3 +135,16 @@ def test_site_options_public_factory_resolved_constructor_and_selection():
     assert options.sites == ("TAC", "MHD")
     with pytest.raises(ValueError, match="same length"):
         SiteOptions(**{**values, "averaging_period": ("1h",)})
+
+
+def test_merged_data_save_uses_existing_serializer(monkeypatch, tmp_path):
+    merged = acquisition.RhimeMergedData({}, acquisition.SiteOptions.from_inputs(**_site_inputs()))
+    serialize = Mock()
+    monkeypatch.setattr(acquisition, "_save_merged_data", serialize)
+
+    assert merged.save(tmp_path, merged_data_name="merged.nc") is None
+
+    serialize.assert_called_once_with(
+        merged.fp_all, tmp_path, species=None, start_date=None, output_name=None,
+        merged_data_name="merged.nc", output_format="zarr.zip",
+    )

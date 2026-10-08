@@ -146,7 +146,7 @@ Resolving a requested configuration
 ----------------------------------
 
 Standard and multisector runners resolve their effective options before
-acquisition. Use ``resolve_rhime_config`` to inspect the same choices without
+acquisition. Use ``RhimeConfig.from_params`` to inspect the same choices without
 retrieving observations, loading a merged cache, building a model or sampling.
 The returned ``RhimeConfig`` is the complete requested configuration:
 
@@ -166,7 +166,7 @@ For example, a scalar period broadcasts across the effective requested sites:
 
 .. code-block:: python
 
-   from openghg_inversions.rhime import resolve_rhime_config
+   from openghg_inversions.rhime import RhimeConfig
 
    options = {
        "species": "ch4",
@@ -180,9 +180,27 @@ For example, a scalar period broadcasts across the effective requested sites:
        "output_format": "none",
        "mismatch_model": "fixed_error",
    }
-   config = resolve_rhime_config(options, multisector=False)
+   config = RhimeConfig.from_params(options, multisector=False)
    assert config.site_options.sites == ("TAC", "MHD")
    assert config.site_options.averaging_period == ("1h", "1h")
+
+The constructor owns defaults, aliases, validation and site expansion beside
+the configuration it creates. ``resolve_rhime_config`` remains a compatibility
+function with the same result. Pass an inspected configuration to the matching
+runner to execute it without resolving its options again:
+
+.. code-block:: python
+
+   from openghg_inversions.rhime import run_rhime
+
+   result = run_rhime(config=config)
+
+For multisector requests, construct with ``multisector=True`` and use
+``run_rhime_multisector(config=config)``. A resolved ``config`` cannot be
+combined with ``config_file`` or raw configuration keyword arguments. Python
+execution inputs such as ``merged_data`` and a custom ``likelihood_builder``
+remain separate arguments; a custom likelihood still requires the resolved
+request to have ``mismatch_model=None``.
 
 ``averaging_period=["1h", "1h"]`` resolves to the same period tuple.
 An explicit ``["1h"]`` sequence for these two sites raises ``ValueError``
@@ -204,13 +222,18 @@ For a configured INI file, use the resolved reader:
 
 ``read_rhime_ini`` owns file parsing, section interpretation and value decoding.
 It applies winning overrides before resolving defaults and site shorthand, and
-returns complete ``RhimeConfig``. Complete runners consume that result without
-another resolution pass; their signatures remain unchanged. The current INI
+returns complete ``RhimeConfig`` through ``RhimeConfig.from_params``. The INI
+frontend is separate from format-neutral configuration construction. Its result
+can also be passed as ``config`` to a runner without another resolution pass.
+The existing file-plus-keyword runner calls remain supported. The current INI
 reader flattens section options into bare names and uses the first occurrence
 when a name repeats across sections. Other file frontends can interpret their
 own structures and reuse RHIME resolution and site-alignment helpers.
 ``params_from_config`` retains its dictionary return, normalized-dictionary
 default and ``normalise=False`` control through shared internal INI decoding.
+Configuration option names and defaults belong to their preparation, model,
+output or sampler consumers; changing an INI heading does not create another
+configuration object or change the scientific pipeline.
 
 ``SiteOptions``, exported from ``openghg_inversions.inversion_data``, also works
 without a complete configured run. Its ``from_inputs`` factory expands external

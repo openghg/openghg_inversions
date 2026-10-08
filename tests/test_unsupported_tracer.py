@@ -81,7 +81,7 @@ def test_canonical_load_checks_supplied_layout(multisector):
     merged = SimpleNamespace(fp_all={".split_by_sectors": multisector})
     assert load_rhime_data(**kwargs, merged_data=merged) is merged
     merged.fp_all[".split_by_sectors"] = not multisector
-    with pytest.raises(ValueError, match="incompatible sector layout"):
+    with pytest.raises(ValueError, match="incompatible.*layout"):
         load_rhime_data(**kwargs, merged_data=merged)
 
 

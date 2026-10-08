@@ -49,7 +49,22 @@ def load_stage_params(
 
 
 def resolve_stage_setup(params: Mapping[str, Any], *, model: ModelKind) -> RhimeConfig | Co2StageSetup:
-    """Resolve stage parameters through the canonical RHIME boundary."""
+    """Resolve effective stage options through the selected recipe's boundary.
+
+    Args:
+        params: File-derived or Python options after invocation overrides and
+            staged path resolution.
+        model: Recipe whose configuration and staged workflow will be used.
+
+    Returns:
+        Complete ``RhimeConfig`` for standard or multisector execution, or
+        the CO2 workflow's setup. Resolution does not acquire scientific data
+        or execute inference.
+
+    Raises:
+        ValueError: If the recipe is unsupported or its effective options are
+            invalid.
+    """
 
     if model == "co2":
         from .co2.stages import resolve_co2_stage_setup
@@ -57,11 +72,24 @@ def resolve_stage_setup(params: Mapping[str, Any], *, model: ModelKind) -> Rhime
         return resolve_co2_stage_setup(params=params)
     if model not in ("standard", "multisector"):
         raise ValueError(f"Unsupported staged model {model!r}.")
-    return _standard_stages.resolve_stage_setup(params=params, model=cast(_standard_stages.ModelKind, model))
+    return RhimeConfig.from_params(params, multisector=model == "multisector")
 
 
 def effective_configuration(setup: RhimeConfig | Co2StageSetup, *, model: ModelKind) -> dict[str, Any]:
-    """Return the resolved scientific configuration used by every stage."""
+    """Project resolved choices into the selected workflow's manifest vocabulary.
+
+    Args:
+        setup: Resolved configuration for the selected recipe.
+        model: Recipe that owns the manifest representation.
+
+    Returns:
+        Manifest settings for provenance and replay. Standard and multisector
+        mappings contain ``model``, ``preparation``, ``model_spec``, ``output``
+        and ``sampler``; preparation includes the complete requested site
+        selectors. CO2 uses its own recipe, reconstruction and output fields.
+        This is a staged artifact representation, not a general configuration
+        serialization API or a retained execution run specification.
+    """
 
     if model == "co2":
         from .co2.stages import effective_co2_configuration
