@@ -19,10 +19,12 @@ complete resolved requested-run configuration before acquisition or scientific
 preparation. It SHALL expose named preparation, model, output and sampling
 choices with established configuration-only defaults and aliases resolved. It
 SHALL contain no raw site shorthand, acquired/prepared scientific handoff or
-retained-run description. INI decoding SHALL remain separate from semantic
-resolution. Equivalent file-derived and Python mappings with equivalent winning
-overrides SHALL yield equivalent resolved choices. INI SHALL remain the current
-file frontend without requiring another format.
+retained-run description. File-specific parsing and interpretation SHALL belong
+to the corresponding frontend, which MAY invoke shared semantic resolution.
+Equivalent file-derived and Python requests with equivalent winning overrides
+SHALL yield equivalent resolved choices. INI SHALL remain the current file
+frontend without requiring another format or imposing its document structure
+on other frontends.
 
 The public requested configuration SHALL expose acquisition and preparation
 choices directly, without requiring a second preparation-configuration object.
@@ -60,6 +62,7 @@ values, preserve established precedence and rejection rules, and reject malforme
 effective options before acquisition, reload or scientific preparation. A returned
 configuration SHALL already contain the complete equivalent of external
 shorthand; no scientific phase SHALL be responsible for completing the request.
+Date-dependent configuration defaults SHALL use effective overridden dates.
 
 #### Scenario: Override changes the requested site count
 
@@ -82,6 +85,13 @@ shorthand; no scientific phase SHALL be responsible for completing the request.
 - **THEN** resolution fails before retrieval, reload or scientific execution
 - **AND** the error identifies the offending option
 
+#### Scenario: Override changes a date-dependent default
+
+- **WHEN** a supported override changes the start date and the selected
+  likelihood derives a configuration default from that date
+- **THEN** resolution derives the default from the winning start date
+- **AND** the returned configuration needs no downstream default-resolution pass
+
 ### Requirement: Complete requested-site options
 
 Resolution SHALL normalize requested site labels to uppercase, reject empty or
@@ -91,6 +101,14 @@ explicit sequences SHALL match that count. The same convention SHALL apply to
 file-derived and supported direct Python inputs. Optional selectors SHALL retain
 their existing meaning. Canonical acquisition/preparation SHALL consume the
 resolved entries without another scalar-expansion pass.
+
+The existing aligned selector record SHALL be public `SiteOptions`, exported
+from `inversion_data` and used by requested configuration and merged-data
+handoffs. Its `from_inputs` factory and applicable alignment helpers SHALL
+provide reusable shorthand normalization independent of file syntax. Direct
+construction SHALL accept complete resolved values and enforce structural
+alignment without another shorthand-expansion pass. Selection SHALL return a
+new complete record without modifying the requested record.
 
 #### Scenario: Scalar and expanded averaging periods
 
@@ -106,6 +124,15 @@ resolved entries without another scalar-expansion pass.
 - **THEN** labels resolve to `("TAC", "MHD")`, unspecified time resolution
   remains unspecified for both sites, and supported selector values are preserved
 - **AND** boolean maximum levels and case-insensitive duplicate sites are rejected
+
+#### Scenario: Public site-options construction
+
+- **WHEN** a caller imports `SiteOptions` from `inversion_data` and constructs
+  it through `from_inputs` with supported external selectors
+- **THEN** the result has the same complete aligned values used by requested
+  configuration and acquisition handoffs
+- **AND** construction does not require INI sections or a complete model,
+  output or sampler configuration
 
 ### Requirement: Configuration ownership without scientific execution
 
@@ -259,9 +286,7 @@ Fresh acquisition SHALL expose a name covering both surface and column
 observations. The established acquisition entry point SHALL remain a deprecated
 forwarding wrapper with its existing signature, shorthand, six-tuple return and
 error behavior. Internal canonical calls SHALL share the acquisition body and
-SHALL NOT route through the deprecated wrapper. Raw INI decoding SHALL have a
-format-specific name and SHALL return a raw mapping rather than a resolved
-configuration.
+SHALL NOT route through the deprecated wrapper.
 
 #### Scenario: Call the deprecated acquisition name
 
@@ -271,11 +296,47 @@ configuration.
 - **AND** the call returns the same six-tuple and scientific data as the neutral
   entry point for equivalent inputs
 
-#### Scenario: Decode before resolving
+### Requirement: Format-specific reader returns resolved configuration
 
-- **WHEN** a caller reads an INI file through the format-specific decoder
-- **THEN** the result is a raw mapping whose shorthand and aliases are unresolved
-- **AND** overrides can be applied before semantic configuration resolution
+`read_rhime_ini` SHALL accept an INI path, optional supported overrides and the
+standard/multisector recipe mode, and SHALL return complete `RhimeConfig`.
+It SHALL own INI parsing, section interpretation and value decoding, apply
+overrides before shared semantic resolution, and finish configuration-only
+defaults and shorthand before returning. It SHALL NOT perform scientific work.
+A flat raw mapping MAY remain an internal intermediate in that reader, but
+SHALL NOT be its public result or a required raw-document schema for other
+frontends. Shared semantic and site-alignment helpers SHALL be independent of INI section layout
+and value syntax; no new file format is required by this change.
+
+`params_from_config` SHALL retain its established dictionary return,
+normalization controls and override behavior through shared internal INI
+decoding, without projecting resolved configuration back into a raw dictionary.
+
+#### Scenario: Read a resolved INI configuration
+
+- **WHEN** a caller invokes `read_rhime_ini` with a valid file, supported
+  overrides and the selected recipe mode
+- **THEN** it returns complete `RhimeConfig` with winning values, defaults,
+  aliases and site shorthand resolved
+- **AND** the caller can inspect and use it without another resolution pass
+  or data acquisition
+
+#### Scenario: Preserve INI interpretation without prescribing other formats
+
+- **WHEN** a current RHIME INI file places supported options under different
+  section headers or repeats a key across sections
+- **THEN** the INI frontend preserves its existing section flattening and
+  first-occurrence behavior before applying overrides and resolving options
+- **AND** shared semantic and site-alignment helpers do not interpret headers
+  or impose those INI conventions on their callers
+
+#### Scenario: Dictionary compatibility adapter
+
+- **WHEN** a caller uses `params_from_config` with its supported overrides and
+  normalization controls
+- **THEN** it retains the established dictionary contract
+- **AND** the resolved INI reader's `RhimeConfig` return does not require a
+  dictionary projection or change that compatibility behavior
 
 ### Requirement: Configuration is not a historical identity schema
 

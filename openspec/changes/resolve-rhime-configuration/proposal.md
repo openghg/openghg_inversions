@@ -13,19 +13,22 @@ meant to simplify.
 - Make `RhimeConfig` the complete resolved standard/multisector request. Put
   acquisition and preparation fields directly on it; remove the proposed
   `RhimePreparationConfig` and its projection methods.
-- Reuse the existing site-options record, `RhimeModelSpec`, `RhimeOutputSpec`
+- Promote the existing aligned selector record to public `SiteOptions`, exported
+  from `inversion_data`; reuse it alongside `RhimeModelSpec`, `RhimeOutputSpec`
   and `RhimeSampler`. Give each a distinct contract; do not duplicate their
   model/output/sampling attributes in another settings class.
-- Decode INI into a raw mapping, apply supported overrides, then resolve aliases,
-  defaults and all site shorthand before returning configuration. File and
-  Python inputs share this format-neutral boundary.
+- Let `read_rhime_ini` own INI parsing and interpretation, apply supported
+  overrides, and return a complete `RhimeConfig`. Share RHIME semantic resolution
+  with Python inputs without imposing INI sections or decoding rules on other
+  frontends. Reuse site-alignment helpers for common shorthand.
 - Keep requested sites in configuration and authoritative retained sites in
   acquired/prepared data. Create `RhimeRunSpec` after preparation.
 - Remove `RhimeRunnerSetup`, `make_rhime_runner_setup` and `resolve_rhime_options`;
   migrate ordinary, nested, staged, shim and example consumers to `RhimeConfig`.
-- Use `read_rhime_ini` for raw decoding and `retrieve_inversion_data` for fresh
-  acquisition covering surface and column observations. Retain the old public
-  acquisition name as a deprecated wrapper with the same signature and return.
+- Use `retrieve_inversion_data` for fresh acquisition covering surface and column
+  observations. Retain the old public acquisition name as a deprecated wrapper
+  with the same signature and return. Preserve `params_from_config` as the
+  dictionary-returning INI compatibility adapter.
 - Collapse retrieval/reload forwarding layers into `load_rhime_data`, the shared
   supplied-data/cache/fresh-acquisition boundary returning `RhimeMergedData`.
 - Preserve public scientific input/return contracts and ownership through small

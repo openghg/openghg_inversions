@@ -11,14 +11,16 @@ but do not verify the revised plan. Pending boxes track its reconciliation.
 
 ## 2. Configuration and compatibility
 
-- [ ] 2.1 Remove RhimePreparationConfig and its projection plumbing; put its explicit fields directly on RhimeConfig while reusing existing site/model/output/sampler values; verify direct option access, file/Python equivalence, winning overrides, defaults, early errors and caller ownership.
+- [ ] 2.1 Remove RhimePreparationConfig and its projection plumbing; put its explicit fields directly on RhimeConfig while reusing existing site/model/output/sampler values; verify direct option access, file/Python equivalence, winning overrides (including date-dependent defaults), early errors and caller ownership; consolidate checks at their owning input boundaries.
 - [ ] 2.2 Remove RhimeRunnerSetup, make_rhime_runner_setup and resolve_rhime_options and migrate ordinary/nested/staged/shim/example consumers to RhimeConfig; remove encoding-only restoration of raw site forms and sparse priors; verify scientific behavior and entry-point results, absence of removed-type imports and explicit supported staged-contract handling.
+- [ ] 2.3 Promote the existing acquisition-owned _SiteOptions to SiteOptions and export it from inversion_data; update annotations/imports/consumers while keeping one record; reuse its from_inputs and applicable small alignment helpers independently of file syntax; verify public construction, scalar/list equivalence, resolved-constructor invariants and selection without request mutation or repeated expansion.
 
 ## 3. Scientific boundaries and names
 
-- [ ] 3.1 Rename the raw decoder to read_rhime_ini and fresh acquisition to retrieve_inversion_data, sharing the resolved-selector body; preserve data_processing_surface_notracer as a deprecated same-signature/six-tuple wrapper; verify warning, forwarding, imports and equivalent surface/column results without repeated expansion.
+- [ ] 3.1 Replace load_rhime_config with read_rhime_ini(path, *, overrides=None, multisector=False) returning complete RhimeConfig; retain INI interpretation inside the frontend and apply overrides before shared semantic/site resolution; preserve params_from_config dictionary/normalization behavior through shared internal decoding; migrate configured consumers to use the result without resolving twice and verify reader results, override precedence and existing INI section behavior.
 - [ ] 3.2 Collapse retrieval/reload forwarding layers into load_rhime_data; verify supplied-data no-I/O behavior, cache loading/fallback, layout/selector checks and retained alignment across ordinary/nested/staged consumers.
 - [ ] 3.3 Forward needed resolved values explicitly to named stages, retain aligned selectors by label and derive run descriptions after preparation; verify retrieval/reload/filter/drop/supplied-data authority, tracer rejection and requested-versus-retained metadata without request mutation.
+- [ ] 3.4 Rename fresh acquisition to retrieve_inversion_data, sharing the resolved-selector body; preserve data_processing_surface_notracer as a deprecated same-signature/six-tuple wrapper; verify warning, forwarding, imports and equivalent surface/column results without repeated expansion.
 
 ## 4. Documentation and delivery
 
