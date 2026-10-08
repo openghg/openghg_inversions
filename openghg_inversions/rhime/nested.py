@@ -869,8 +869,8 @@ def prepare_nested_rhime_inputs(
             the outer request's directory.
         inner_basis_output_path: Optional destination for a generated inner
             basis. ``None`` disables saving the inner basis.
-        inner_reload_merged_data: Whether to try reloading an inner merged
-            artifact before fresh acquisition.
+        inner_reload_merged_data: Require an inner merged artifact instead of
+            fresh acquisition. Loading errors propagate without reacquisition.
         inner_save_merged_data: Whether fresh inner acquisition saves merged
             data. This does not inherit the outer saving choice.
         inner_merged_data_dir: Directory for inner merged artifacts.
