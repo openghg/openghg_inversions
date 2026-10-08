@@ -18,3 +18,10 @@ chains = 4
 nuts_sampler = "numpyro"
 target_accept = 0.95
 random_seed = 12345
+
+# Optional centred additive boundary corrections (observation concentration units).
+# Requires prepared G_bc and explicit bc_centering_weights; replaces BC scaling.
+# [model.boundary]
+# enabled = true
+# anomaly_scale = 0.5
+# mean_shift_prior = { pdf = "normal", mu = 0.0, sigma = 0.5 }

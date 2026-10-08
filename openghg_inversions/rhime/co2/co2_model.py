@@ -39,6 +39,8 @@ from openghg_inversions.rhime.builders import RhimeLikelihoodBuilder
 from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR
 from openghg_inversions.sigma import SigmaAlignment
 
+from .co2_boundary import add_centered_boundary, prepare_centered_boundary
+
 
 def _fixed_mismatch_array(
     observations: xr.DataArray,
@@ -100,6 +102,10 @@ def build_co2_model(
     boundary_sensitivity: xr.DataArray | None = None,
     bc_prior: PriorArgs | None = None,
     bc_state_activity: StateActivity | None = None,
+    bc_mean_shift_prior: PriorArgs | None = None,
+    bc_anomaly_scale: float | None = None,
+    boundary_correction_sensitivity: xr.DataArray | None = None,
+    bc_centering_weights: xr.DataArray | None = None,
     offset_prior: PriorArgs | None = None,
     offset_args: Mapping[str, Any] | None = None,
 ) -> pm.Model:
@@ -159,6 +165,21 @@ def build_co2_model(
         bc_prior: Optional prior arguments for boundary-condition scaling.
         bc_state_activity: Optional labelled activity policy for boundary
             states.
+        bc_mean_shift_prior: Prior for one common additive boundary correction
+            over the inversion window, in concentration units. Selects centred
+            additive boundaries instead of sampled multiplicative scales;
+            cannot be combined with ``bc_prior`` or ``bc_state_activity``.
+        bc_anomaly_scale: Positive fixed Gaussian scale before weighted
+            centring, in concentration units. Required in additive mode.
+        boundary_correction_sensitivity: Dimensionless unit boundary transport
+            on the observation and ``bc_region`` axes, labelled exactly as
+            ``boundary_sensitivity``. Required in additive mode.
+        bc_centering_weights: Positive dimensionless ``bc_region`` weights
+            defining the mean across curtain/period states. Normalized within
+            the model; the weighted mean of additive anomalies is exactly zero.
+            Required in additive mode. See the centred-boundary explanation in
+            :doc:`/usage/co2_models` and Stan's parameterizing-centred-vectors
+            discussion for the constraint and its prior covariance.
         offset_prior: Optional prior for an offset component. When omitted, no
             offset is added. Site codes are derived from the ``site`` coordinate
             on ``observations``.
@@ -187,6 +208,10 @@ def build_co2_model(
             "additive-sigma or fixed-mismatch options; pass its options in "
             "likelihood_kwargs."
         )
+    centered_boundary = prepare_centered_boundary(
+        boundary_sensitivity, boundary_correction_sensitivity, bc_centering_weights,
+        observations, bc_mean_shift_prior, bc_anomaly_scale, bc_prior, bc_state_activity,
+    )
     bc_prior = dict(DEFAULT_BC_PRIOR if bc_prior is None else bc_prior)
     if offset_prior is not None:
         offset_prior = dict(offset_prior)
@@ -214,7 +239,12 @@ def build_co2_model(
             output_name="co2_flux_contribution",
         )
         boundary_contribution = None
-        if boundary_sensitivity is not None:
+        if centered_boundary is not None:
+            assert bc_mean_shift_prior is not None and bc_anomaly_scale is not None
+            boundary_contribution, _, _ = add_centered_boundary(
+                centered_boundary, bc_mean_shift_prior, bc_anomaly_scale
+            )
+        elif boundary_sensitivity is not None:
             boundary_contribution = add_linear_component(
                 prepare_linear_sensitivity(boundary_sensitivity),
                 data_name="hbc",

@@ -245,6 +245,16 @@ def _validate_co2_dataset(inputs: xr.Dataset) -> None:
     if mean.attrs.get("units") != "1" or covariance.attrs.get("units") != "1":
         raise ValueError("CO2 retained prior mean and covariance must be dimensionless.")
 
+    correction_names = {"G_bc", "bc_centering_weights"}
+    if correction_names & set(inputs):
+        if not correction_names <= set(inputs) or "H_bc" not in inputs:
+            raise ValueError("G_bc and bc_centering_weights must be supplied together with H_bc.")
+        correction = inputs["G_bc"].transpose("nmeasure", "bc_region")
+        weights = inputs["bc_centering_weights"].transpose("bc_region")
+        xr.align(correction, weights, inputs["H_bc"], observations, join="exact", copy=False)
+        for name in correction_names:
+            _require_equivalent_units(inputs[name].attrs.get("units"), "1", name=name)
+
     squared_units = f"({concentration_units})**2"
     if AGGREGATION_ERROR_COVARIANCE in inputs:
         _require_equivalent_units(
@@ -499,6 +509,8 @@ def prepare_co2_inputs(
     reduction: CoherentGaussianReduction,
     *,
     aggregation_error_rank: int | None = 512,
+    boundary_correction_sensitivity: xr.DataArray | None = None,
+    bc_centering_weights: xr.DataArray | None = None,
     provenance: Mapping[str, Any] | None = None,
 ) -> Co2PreparedInputs:
     """Map one coherent Gaussian reduction into the CO2 replay contract.
@@ -531,6 +543,16 @@ def prepare_co2_inputs(
             larger than the observation count are capped at that count; the
             actual factor width is further limited by numerical positive rank.
             Pass ``None`` to store the exact dense covariance.
+        boundary_correction_sensitivity: Dimensionless response to a unit
+            additive concentration correction in each boundary state, with
+            dimensions ``(nmeasure, bc_region)`` and exactly the canonical
+            ``H_bc`` indexes. Stored as ``G_bc``. Supply transport and column
+            weighting consistent with ``H_bc``; values cannot be recovered
+            from concentration-weighted ``H_bc`` alone.
+        bc_centering_weights: Explicit positive dimensionless weights on
+            ``bc_region`` defining the boundary mean. Model construction
+            normalizes the weights to sum to one. Supply both correction
+            arrays together; if omitted, an existing canonical pair is retained.
         provenance: Optional JSON-serializable project or preparation
             provenance. The reduction strategy and LRPD diagnostics are added
             by this boundary.
@@ -674,6 +696,23 @@ def prepare_co2_inputs(
         ),
         "nmeasure",
     )
+
+    if (boundary_correction_sensitivity is None) != (bc_centering_weights is None):
+        raise ValueError("boundary_correction_sensitivity and bc_centering_weights must be supplied together.")
+    if boundary_correction_sensitivity is not None:
+        if "H_bc" not in inputs:
+            raise ValueError("Boundary corrections require canonical H_bc.")
+        assert bc_centering_weights is not None
+        correction = boundary_correction_sensitivity.transpose("nmeasure", "bc_region")
+        weights = bc_centering_weights.transpose("bc_region")
+        for dim in ("nmeasure", "bc_region"):
+            _require_axis(correction, dim, name="Boundary correction sensitivity")
+        _require_axis(weights, "bc_region", name="Boundary centering weights")
+        correction, weights, _, _ = xr.align(
+            correction, weights, inputs["H_bc"], observations, join="exact", copy=False
+        )
+        mapped["G_bc"] = _borrow_without_axis_coordinates(correction, "nmeasure")
+        mapped["bc_centering_weights"] = weights
 
     approximation = None
     if aggregation_error_rank is None:

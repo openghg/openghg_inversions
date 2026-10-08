@@ -83,6 +83,14 @@ def _annotate_co2_trace(
         "hbc": ["boundary_sensitivity"],
         "bc": ["boundary_scale"],
         "mu_bc": ["boundary_concentration"],
+        "bc_mean_shift": ["boundary_mean_shift"],
+        "G_bc": ["boundary_correction_sensitivity"],
+        "bc_centering_weights": ["boundary_centering_weights"],
+        "bc_anomaly": ["boundary_anomaly"],
+        "bc_correction": ["boundary_correction"],
+        "mu_bc_anomaly": ["boundary_anomaly_concentration"],
+        "mu_bc_mean_shift": ["boundary_mean_shift_concentration"],
+        "mu_bc_reference": ["reference_boundary_concentration"],
         "offset_latent": ["offset_coefficient"],
         "offset": ["offset_concentration"],
         "sigma_global": ["global_iid_mismatch_standard_deviation"],
@@ -99,6 +107,12 @@ def _annotate_co2_trace(
         "modelled_concentration",
         "co2_flux_contribution",
         "mu_bc",
+        "mu_bc_reference",
+        "mu_bc_anomaly",
+        "bc_anomaly",
+        "bc_correction",
+        "mu_bc_mean_shift",
+        "bc_mean_shift",
         "offset_latent",
         "offset",
         "sigma_global",
@@ -116,6 +130,8 @@ def _annotate_co2_trace(
                 variable.attrs["rhime_scientific_roles"] = json.dumps(scientific_roles)
             if name in {
                 "bc",
+                "G_bc",
+                "bc_centering_weights",
                 "flux_scaling",
                 "flux_scaling_active",
             }:
@@ -143,6 +159,7 @@ def co2_model_input_names(
     *,
     preserve_prepared_fixed_mismatch: bool,
     use_bc: bool = False,
+    use_bc_mean_shift: bool = False,
 ) -> tuple[str, ...]:
     """Declare prepared arrays consumed by the selected CO2 components.
 
@@ -152,6 +169,8 @@ def co2_model_input_names(
         preserve_prepared_fixed_mismatch: Include a prepared fixed mismatch
             field when present.
         use_bc: Include the prepared boundary-condition sensitivity.
+        use_bc_mean_shift: Include the prepared dimensionless boundary correction
+            operator ``G_bc`` and ``bc_centering_weights``. Requires ``use_bc=True``.
 
     Returns:
         Names of the arrays to materialize for model construction.
@@ -163,6 +182,10 @@ def co2_model_input_names(
     names = list(_CO2_SCIENTIFIC_INPUT_NAMES)
     if use_bc:
         names.append("H_bc")
+    if use_bc_mean_shift:
+        if not use_bc:
+            raise ValueError("A boundary mean shift requires use_bc=True.")
+        names.extend(("G_bc", "bc_centering_weights"))
     names.extend(
         aggregation_error_input_names(inputs, prepared_inputs.aggregation_error_mode)
     )
@@ -264,6 +287,8 @@ def run_rhime_co2(
     use_bc: bool = False,
     bc_prior: PriorArgs | None = None,
     bc_state_activity: StateActivity | None = None,
+    bc_mean_shift_prior: PriorArgs | None = None,
+    bc_anomaly_scale: float | None = None,
     offset_prior: PriorArgs | None = None,
     offset_args: Mapping[str, Any] | None = None,
 ) -> az.InferenceData:
@@ -301,6 +326,13 @@ def run_rhime_co2(
         use_bc: Whether to include prepared ``H_bc`` boundary sensitivity.
         bc_prior: Optional prior for boundary-condition scaling.
         bc_state_activity: Optional active/fixed boundary-state policy.
+        bc_mean_shift_prior: Prior for the global additive boundary mean
+            correction, in observation concentration units. Selects centred
+            additive corrections and requires ``use_bc=True``, ``G_bc``,
+            ``bc_centering_weights`` and ``bc_anomaly_scale``. Cannot be
+            combined with multiplicative ``bc_prior`` or ``bc_state_activity``.
+        bc_anomaly_scale: Positive Gaussian standard deviation in observation
+            concentration units before subtracting the weighted boundary mean.
         offset_prior: Optional prior for an offset component. When omitted, no
             offset is added.
         offset_args: Optional offset settings: ``offset_freq``, ``drop_first``,
@@ -321,8 +353,15 @@ def run_rhime_co2(
         )
     if likelihood_builder is None and likelihood_kwargs:
         raise ValueError("likelihood_kwargs require likelihood_builder.")
-    if not use_bc and (bc_prior is not None or bc_state_activity is not None):
-        raise ValueError("bc_prior and bc_state_activity require use_bc=True.")
+    if not use_bc and (
+        bc_prior is not None or bc_state_activity is not None
+        or bc_mean_shift_prior is not None or bc_anomaly_scale is not None
+    ):
+        raise ValueError("Boundary prior and activity options require use_bc=True.")
+    if (bc_mean_shift_prior is None) != (bc_anomaly_scale is None):
+        raise ValueError("bc_mean_shift_prior and bc_anomaly_scale must be supplied together.")
+    if bc_mean_shift_prior is not None and (bc_prior is not None or bc_state_activity is not None):
+        raise ValueError("Centred boundary corrections cannot use bc_prior or bc_state_activity.")
     if offset_prior is None and offset_args:
         raise ValueError("offset_args require offset_prior.")
     if likelihood_builder is not None and (
@@ -340,6 +379,7 @@ def run_rhime_co2(
         prepared,
         preserve_prepared_fixed_mismatch=(likelihood_builder is None and fixed_model_mismatch is None),
         use_bc=use_bc,
+        use_bc_mean_shift=bc_mean_shift_prior is not None,
     )
     model_inputs = materialize_pymc_inputs(prepared.rhime_inputs, variable_names=names)
     if likelihood_builder is None and not no_model_error and sigma_alignment is None:
@@ -382,6 +422,14 @@ def run_rhime_co2(
         boundary_sensitivity=model_inputs.get("H_bc") if use_bc else None,
         bc_prior=bc_prior,
         bc_state_activity=bc_state_activity,
+        bc_mean_shift_prior=bc_mean_shift_prior,
+        boundary_correction_sensitivity=(
+            model_inputs["G_bc"] if bc_mean_shift_prior is not None else None
+        ),
+        bc_centering_weights=(
+            model_inputs["bc_centering_weights"] if bc_mean_shift_prior is not None else None
+        ),
+        bc_anomaly_scale=bc_anomaly_scale,
         offset_prior=offset_prior,
         offset_args=offset_args,
     )
@@ -401,8 +449,22 @@ def run_rhime_co2(
         variable_roles.update(
             {
                 "boundary_concentration": "mu_bc",
-                "boundary_scale": "bc",
                 "boundary_sensitivity": "hbc",
+            }
+        )
+    if use_bc and bc_mean_shift_prior is None:
+        variable_roles["boundary_scale"] = "bc"
+    if bc_mean_shift_prior is not None:
+        variable_roles.update(
+            {
+                "boundary_mean_shift": "bc_mean_shift",
+                "boundary_correction_sensitivity": "G_bc",
+                "boundary_centering_weights": "bc_centering_weights",
+                "boundary_anomaly": "bc_anomaly",
+                "boundary_correction": "bc_correction",
+                "boundary_anomaly_concentration": "mu_bc_anomaly",
+                "boundary_mean_shift_concentration": "mu_bc_mean_shift",
+                "reference_boundary_concentration": "mu_bc_reference",
             }
         )
     if offset_prior is not None:
