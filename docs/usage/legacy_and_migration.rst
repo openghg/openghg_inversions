@@ -199,8 +199,14 @@ former positional ``data_args`` mappings with named arguments or an explicit
 ``**config.select("name", ...)`` selection. See :doc:`rhime` for selection
 ownership and the acquisition-to-preparation sequence. Use
 ``SiteOptions.from_inputs`` to normalize and align the complete selector record.
-The low-level ``convert_to_list`` helper remains available from its established
-``inversion_data.get_data`` path without a deprecation warning.
+Import ``SiteOptions`` from ``openghg_inversions.inversion_data``. Selector
+implementation types and the low-level ``convert_to_list`` helper live in
+``inversion_data._site_options``; their former ``acquisition`` and
+``get_data.convert_to_list`` import aliases are removed.
+
+Import legacy option translators from ``hbmcmc.compatibility`` instead of
+``rhime.params`` or ``hbmcmc.run_hbmcmc``. Import ``read_rhime_ini`` from
+``rhime.ini`` or the public ``rhime`` package instead of ``rhime.params``.
 
 Legacy merged-data metadata
 ---------------------------

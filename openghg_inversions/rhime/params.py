@@ -27,7 +27,6 @@ from openghg_inversions.inference.sampling import RhimeSampler
 from openghg_inversions.hbmcmc.compatibility import (
     translate_rhime_aliases,
 )
-from .ini import read_rhime_ini as read_rhime_ini
 from openghg_inversions.rhime.specs import (
     DEFAULT_BC_PRIOR,
     DEFAULT_OFFSET_PRIOR,

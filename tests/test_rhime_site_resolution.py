@@ -6,7 +6,7 @@ from unittest.mock import Mock
 import pytest
 import xarray as xr
 
-from openghg_inversions.inversion_data import _site_options, acquisition, get_data, preparation
+from openghg_inversions.inversion_data import SiteOptions, _site_options, acquisition, get_data, preparation
 
 
 def _site_inputs():
@@ -38,7 +38,7 @@ def _data_inputs():
 
 @pytest.mark.parametrize("boundary", ["retrieval", "preparation"])
 def test_public_site_shorthand_expands_once_before_retrieval(monkeypatch, boundary):
-    original = acquisition.SiteOptions.from_inputs
+    original = SiteOptions.from_inputs
     resolved = []
 
     def resolve(cls, **kwargs):
@@ -49,7 +49,7 @@ def test_public_site_shorthand_expands_once_before_retrieval(monkeypatch, bounda
     def stop(**kwargs):
         raise RuntimeError("retrieval reached")
 
-    monkeypatch.setattr(acquisition.SiteOptions, "from_inputs", classmethod(resolve))
+    monkeypatch.setattr(SiteOptions, "from_inputs", classmethod(resolve))
     monkeypatch.setattr(get_data, "get_flux_data", stop)
     kwargs = {**_site_inputs(), **_data_inputs()}
     with pytest.raises(RuntimeError, match="retrieval reached"):
@@ -65,7 +65,7 @@ def test_public_site_shorthand_expands_once_before_retrieval(monkeypatch, bounda
 
 
 def test_canonical_acquisition_and_retrieval_never_expand_selectors(monkeypatch):
-    options = acquisition.SiteOptions.from_inputs(**_site_inputs())
+    options = SiteOptions.from_inputs(**_site_inputs())
 
     def fail(*args, **kwargs):
         raise AssertionError("canonical selectors must not be expanded")
@@ -73,7 +73,7 @@ def test_canonical_acquisition_and_retrieval_never_expand_selectors(monkeypatch)
     def stop(**kwargs):
         raise RuntimeError("retrieval reached")
 
-    monkeypatch.setattr(acquisition.SiteOptions, "from_inputs", classmethod(fail))
+    monkeypatch.setattr(SiteOptions, "from_inputs", classmethod(fail))
     monkeypatch.setattr(_site_options, "expand_site_option", fail)
     monkeypatch.setattr(get_data, "get_flux_data", stop)
     with pytest.raises(RuntimeError, match="retrieval reached"):
@@ -81,12 +81,12 @@ def test_canonical_acquisition_and_retrieval_never_expand_selectors(monkeypatch)
 
 
 def test_canonical_reload_selects_options_without_expansion(monkeypatch, tmp_path):
-    options = acquisition.SiteOptions.from_inputs(**_site_inputs())
+    options = SiteOptions.from_inputs(**_site_inputs())
 
     def fail(*args, **kwargs):
         raise AssertionError("reload must not expand selectors")
 
-    monkeypatch.setattr(acquisition.SiteOptions, "from_inputs", classmethod(fail))
+    monkeypatch.setattr(SiteOptions, "from_inputs", classmethod(fail))
     monkeypatch.setattr(acquisition, "load_merged_data", lambda *args, **kwargs: {"MHD": xr.Dataset()})
     merged = acquisition.RhimeMergedData.load(site_options=options, merged_data_dir=str(tmp_path))
     assert merged.site_options == options.select_indices([1])
@@ -96,13 +96,12 @@ def test_canonical_reload_selects_options_without_expansion(monkeypatch, tmp_pat
 
 
 def test_site_options_public_factory_resolved_constructor_and_selection():
-    from openghg_inversions.inversion_data import SiteOptions
 
     options = SiteOptions.from_inputs(**_site_inputs())
     assert options == SiteOptions.from_inputs(
         **{**_site_inputs(), "averaging_period": ["1h", "1h"]}
     )
-    assert SiteOptions is _site_options.SiteOptions is acquisition.SiteOptions
+    assert SiteOptions is _site_options.SiteOptions
     values = {field.name: getattr(options, field.name) for field in fields(options)}
     assert SiteOptions(**values) == options
     selected = options.retain_sites(["mhd"], context="test")
@@ -114,7 +113,7 @@ def test_site_options_public_factory_resolved_constructor_and_selection():
 
 
 def test_merged_data_save_uses_existing_serializer(monkeypatch, tmp_path):
-    merged = acquisition.RhimeMergedData({}, acquisition.SiteOptions.from_inputs(**_site_inputs()))
+    merged = acquisition.RhimeMergedData({}, SiteOptions.from_inputs(**_site_inputs()))
     serialize = Mock()
     monkeypatch.setattr(acquisition, "_save_merged_data", serialize)
 
