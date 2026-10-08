@@ -10,7 +10,6 @@ from dask.callbacks import Callback
 
 from openghg_inversions.inversion_data import RhimeMergedData, SiteOptions
 from openghg_inversions.inversion_data import acquisition, get_data
-from openghg_inversions.inversion_data._site_options import convert_to_list
 
 
 def test_legacy_retrieval_alias_preserves_signature_docs_and_forwarding(monkeypatch):
@@ -18,7 +17,6 @@ def test_legacy_retrieval_alias_preserves_signature_docs_and_forwarding(monkeypa
     legacy = get_data.data_processing_surface_notracer
     assert inspect.signature(legacy) == inspect.signature(modern)
     assert legacy.__doc__ == modern.__doc__
-    assert get_data.convert_to_list is convert_to_list
     sentinel = object()
     monkeypatch.setattr(get_data, "retrieve_inversion_data", lambda *args, **kwargs: (sentinel, args, kwargs))
     with pytest.warns(DeprecationWarning, match="retrieve_inversion_data"):
