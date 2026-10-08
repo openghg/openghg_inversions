@@ -20,6 +20,20 @@ resolution. Equivalent file-derived and Python mappings with equivalent winning
 overrides SHALL yield equivalent resolved choices. INI SHALL remain the current
 file frontend without requiring another format.
 
+The public requested configuration SHALL expose acquisition and preparation
+choices directly, without requiring a second preparation-configuration object.
+Existing cohesive site, model, output and sampler values SHALL retain their
+distinct roles; the request SHALL NOT introduce duplicate settings objects for
+those choices.
+
+#### Scenario: Inspect one complete requested configuration
+
+- **WHEN** a caller resolves a complete request and inspects requested store,
+  basis, filter and date options
+- **THEN** those choices are available directly on the returned configuration
+- **AND** accessing them does not require a nested preparation configuration,
+  data acquisition or an execution run description
+
 #### Scenario: Equivalent file and Python inputs
 
 - **WHEN** an INI file and a Python mapping express the same supported standard
@@ -220,3 +234,43 @@ and custom-likelihood conflict precedence SHALL remain unchanged.
 - **THEN** it rejects the option before acquisition, reload or scientific execution
 - **AND** omitted and false options remain accepted with equivalent resolved
   configuration containing no tracer field
+
+### Requirement: Neutral acquisition naming with a compatible deprecated entry point
+
+Fresh acquisition SHALL expose a name covering both surface and column
+observations. The established acquisition entry point SHALL remain a deprecated
+forwarding wrapper with its existing signature, shorthand, six-tuple return and
+error behavior. Internal canonical calls SHALL share the acquisition body and
+SHALL NOT route through the deprecated wrapper. Raw INI decoding SHALL have a
+format-specific name and SHALL return a raw mapping rather than a resolved
+configuration.
+
+#### Scenario: Call the deprecated acquisition name
+
+- **WHEN** a caller invokes the established acquisition name with valid surface
+  or column inputs
+- **THEN** a deprecation warning identifies the replacement
+- **AND** the call returns the same six-tuple and scientific data as the neutral
+  entry point for equivalent inputs
+
+#### Scenario: Decode before resolving
+
+- **WHEN** a caller reads an INI file through the format-specific decoder
+- **THEN** the result is a raw mapping whose shorthand and aliases are unresolved
+- **AND** overrides can be applied before semantic configuration resolution
+
+### Requirement: Configuration is not a historical identity schema
+
+Requested configuration SHALL represent resolved choices without reconstructing
+original scalar/list spellings or sparse defaults solely to preserve historical
+staged hashes. Public scientific behavior and return contracts SHALL remain
+supported; equality of historical encoding hashes SHALL NOT be an acceptance
+requirement. Changes affecting a currently supported persisted contract SHALL
+be identified explicitly rather than silently assigned its old contract.
+
+#### Scenario: Equivalent shorthand and historical encodings
+
+- **WHEN** scalar and expanded site inputs resolve to equivalent choices
+- **THEN** canonical consumers use those equivalent resolved values
+- **AND** configuration adapters are not required to reconstruct different raw
+  forms to preserve their historical staged identities

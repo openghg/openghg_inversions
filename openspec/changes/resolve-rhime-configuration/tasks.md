@@ -1,17 +1,26 @@
 # Tasks
 
-## 1. Resolved request
+This checklist supersedes the previous completed implementation checklist.
+Python code on #813 still reflects the former preparation-config design. Prior
+locked Python 3.12/3.13 coverage (job 19270831) and docs-full (job 19270662) passed,
+but do not verify the revised plan. Pending boxes track its reconciliation.
 
-- [x] 1.1 Add explicit preparation and full configuration records, raw INI loading and format-neutral resolution; verify scalar/list, override, default, ownership and early-error checks.
-- [x] 1.2 Preserve legacy setup helpers as projections of the shared resolver and export the canonical API; verify nested, shim and composition consumers retain their contracts.
+## 1. Revised planning
 
-## 2. Scientific integration
+- [x] 1.1 Reconcile proposal, design and behavioral requirements around one requested configuration, direct preparation fields and explicit roles/contracts; verify strict OpenSpec validation and the key-name table.
 
-- [x] 2.1 Share the canonical site-options retrieval body with public shorthand adapters so selectors expand once; verify retrieval/reload/drop/supplied-data and tracer checks.
-- [x] 2.2 Switch ordinary standard/multisector recipes to typed configuration and derive run specifications after preparation; verify named-stage forwarding and requested/retained metadata checks.
+## 2. Configuration and compatibility
 
-## 3. Delivery
+- [ ] 2.1 Remove RhimePreparationConfig and its projection plumbing; put its explicit fields directly on RhimeConfig while reusing existing site/model/output/sampler values; verify direct option access, file/Python equivalence, winning overrides, defaults, early errors and caller ownership.
+- [ ] 2.2 Reconcile ordinary recipes and legacy setup projections with the single configuration; remove encoding-only restoration of raw site forms and sparse priors; verify nested, shim and composition return contracts and identify any supported staged-contract impact explicitly.
 
-- [x] 3.1 Document record roles and the resolve-before-acquisition workflow and add the Issue 804 Towncrier fragment; verify guidance and examples match the public API.
-- [x] 3.2 Run focused and relevant broader tests, changed-path Ruff, strict OpenSpec and whitespace checks, and review staged compatibility and input ownership; resolve failures before marking complete. Locked Python 3.12/3.13 coverage passed in Slurm job 19270831; docs-full passed in job 19270662 and the affected rendered pages were inspected.
-- [ ] 3.3 Commit and SSH-push the implementation, then create or update the GitHub PR using the repository template; verify the remote head and attach the PR. PR #813 is pushed and verified; app attachment confirmation is pending.
+## 3. Scientific boundaries and names
+
+- [ ] 3.1 Rename the raw decoder to read_rhime_ini and fresh acquisition to retrieve_inversion_data, sharing the resolved-selector body; preserve data_processing_surface_notracer as a deprecated same-signature/six-tuple wrapper; verify warning, forwarding, imports and equivalent surface/column results without repeated expansion.
+- [ ] 3.2 Forward needed resolved values explicitly to named stages, retain aligned selectors by label and derive run descriptions after preparation; verify retrieval/reload/filter/drop/supplied-data authority, tracer rejection and requested-versus-retained metadata without request mutation.
+
+## 4. Documentation and delivery
+
+- [ ] 4.1 Reconcile user/developer/API guidance, examples and the existing Issue 804 fragment with the new roles and names; verify examples and affected rendered documentation.
+- [ ] 4.2 Run focused and relevant broader tests, changed-path Ruff, strict OpenSpec and whitespace checks for the reconciled implementation; inspect ownership and public compatibility before marking complete.
+- [ ] 4.3 SSH-push the reconciled implementation and update #813 using the repository template; verify remote head, target branch, review readiness and app attachment confirmation.
