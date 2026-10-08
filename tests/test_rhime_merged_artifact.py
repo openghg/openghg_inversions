@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from openghg_inversions.inversion_data.acquisition import RhimeMergedData, SiteOptions
+from openghg_inversions.inversion_data import RhimeMergedData, SiteOptions
 from openghg_inversions.inversion_data._merged_artifact import selected_provenance
 
 
