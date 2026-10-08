@@ -7,7 +7,7 @@ orchestrator or scheduler.
 
 from __future__ import annotations
 
-from dataclasses import asdict, replace
+from dataclasses import asdict, fields, replace
 from hashlib import sha256
 import json
 from numbers import Integral
@@ -19,7 +19,8 @@ import numpy as np
 import pymc as pm
 import xarray as xr
 
-from openghg_inversions.inversion_data import RhimePreparedInputs, _save_merged_data
+from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs
+from .specs import RhimeRunSpec
 from openghg_inversions.serialization import (
     load_trace,
     reset_serialisation_multiindexes,
@@ -32,15 +33,13 @@ from .multisector import (
     multisector_model_input_names,
 )
 from .outputs import RhimeResult, make_multisector_rhime_outputs, make_standard_rhime_outputs
-from .params import RhimeRunnerSetup, resolve_rhime_options
-from openghg_inversions.hbmcmc.compatibility import params_from_config
+from .ini import read_rhime_ini
+from .params import RHIME_PREPARATION_OPTION_NAMES, RhimeConfig
 from .preparation import (
     assemble_rhime_inputs,
     build_rhime_basis,
     build_rhime_sensitivities,
     filter_rhime_observations,
-    retrieve_or_reload_rhime_data,
-    with_prepared_rhime_sites,
 )
 from .sampling import sample_rhime_model
 from .standard import (
@@ -118,7 +117,7 @@ def load_stage_params(
         raise ValueError("Pass exactly one of `config_file` or `params_file`.")
     if config_file is not None:
         source_path = Path(config_file).resolve()
-        params = params_from_config(source_path, normalise=False)
+        params = read_rhime_ini(source_path)
     else:
         source_path = Path(cast(str | Path, params_file)).resolve()
         loaded = json.loads(source_path.read_text(encoding="utf-8"))
@@ -130,42 +129,43 @@ def load_stage_params(
     return _resolve_stage_paths(params, base_dir=source_path.parent)
 
 
-def resolve_stage_setup(params: Mapping[str, Any], *, model: ModelKind) -> RhimeRunnerSetup:
-    """Resolve stage parameters through the canonical RHIME boundary."""
-    return resolve_rhime_options(params=params, multisector=model == "multisector")
+def effective_configuration(setup: RhimeConfig, *, model: ModelKind) -> dict[str, Any]:
+    """Project resolved choices into this workflow's manifest vocabulary.
 
-
-def effective_configuration(setup: RhimeRunnerSetup, *, model: ModelKind) -> dict[str, Any]:
-    """Return the resolved scientific configuration used by every stage."""
+    This is a staged artifact representation, not a configuration export API.
+    No pre-preparation run description or raw shorthand is reconstructed.
+    """
+    site_names = {field.name for field in fields(setup.site_options)}
+    preparation = {
+        name: getattr(setup, name)
+        for name in RHIME_PREPARATION_OPTION_NAMES if name not in site_names
+    }
+    preparation.update({name: getattr(setup.site_options, name) for name in site_names})
     return {
         "model": model,
-        "run_spec": asdict(setup.run_spec),
+        "model_spec": asdict(setup.model),
+        "output": asdict(setup.output),
         "sampler": {name: getattr(setup.sampler, name) for name in setup.sampler.__slots__},
-        "preparation": setup.data_args,
+        "preparation": preparation,
     }
 
 
-def configuration_identity(setup: RhimeRunnerSetup, *, model: ModelKind) -> str:
-    """Hash resolved data, period, model, and prior choices."""
-    run_spec = setup.run_spec
-    preparation = {
-        name: value
-        for name, value in setup.data_args.items()
-        if name not in _PREPARATION_IDENTITY_EXCLUDED_OPTIONS
-    }
-    if "sites" in preparation:
-        preparation["sites"] = [str(site).upper() for site in preparation["sites"]]
+def configuration_identity(setup: RhimeConfig, *, model: ModelKind) -> str:
+    """Hash resolved preparation and scientific model choices.
+
+    The resolved encoding supersedes historical raw/default projections;
+    existing artifacts with a different configuration identity require preparation.
+    """
+    site_names = {field.name for field in fields(setup.site_options)}
+    preparation = setup.select(*(RHIME_PREPARATION_OPTION_NAMES - site_names))
+    preparation.update({name: getattr(setup.site_options, name) for name in site_names})
     identity_configuration = {
         "model": model,
-        "preparation": preparation,
-        "run": {
-            "start_date": run_spec.start_date,
-            "end_date": run_spec.end_date,
-            "sites": tuple(site.upper() for site in run_spec.sites),
-            "averaging_period": run_spec.averaging_period,
-            "model": asdict(run_spec.model),
-            "split_by_sectors": run_spec.split_by_sectors,
+        "preparation": {
+            name: value for name, value in preparation.items()
+            if name not in _PREPARATION_IDENTITY_EXCLUDED_OPTIONS
         },
+        "model_spec": asdict(setup.model),
     }
     encoded = json.dumps(
         _json_value(identity_configuration),
@@ -177,45 +177,82 @@ def configuration_identity(setup: RhimeRunnerSetup, *, model: ModelKind) -> str:
 
 def prepare_rhime_stage(
     *,
-    setup: RhimeRunnerSetup,
+    setup: RhimeConfig,
     model: ModelKind,
     output_dir: str | Path,
 ) -> dict[str, Any]:
     """Prepare and persist independently inspectable RHIME inputs."""
     destination = _stage_output_directory(output_dir)
     multisector = model == "multisector"
-    data_args = dict(setup.data_args)
-    data_args["save_merged_data"] = False
-    if data_args["basis_output_path"] is not None:
-        data_args["basis_output_path"] = str(destination / "basis")
-    executed_setup = RhimeRunnerSetup(
-        run_spec=setup.run_spec,
-        sampler=setup.sampler,
-        data_args=data_args,
+    executed_setup = replace(
+        setup,
+        save_merged_data=False,
+        basis_output_path=str(destination / "basis") if setup.basis_output_path is not None else None,
     )
-    merged = retrieve_or_reload_rhime_data(data_args, multisector=multisector)
-    filtered = filter_rhime_observations(merged, data_args)
+    if executed_setup.reload_merged_data:
+        merged = RhimeMergedData.load(
+            **executed_setup.select(
+                "merged_data_dir", "site_options", "species", "start_date", "output_name",
+                "merged_data_name", "split_by_sectors", "flux_non_finite_check",
+            ),
+        )
+    else:
+        merged = RhimeMergedData.from_options(
+            **executed_setup.select(
+                "site_options", "species", "domain", "start_date",
+                "end_date", "output_name", "flux_sources", "split_by_sectors",
+                "bc_store", "obs_store", "footprint_store", "emissions_store",
+                "emissions_domain", "fp_model", "fp_species", "calibration_scale",
+                "use_bc", "bc_input", "averaging_error",
+                "save_merged_data", "merged_data_dir", "merged_data_name", "flux_non_finite_check",
+            ),
+        )
+    filtered = filter_rhime_observations(merged, filters=executed_setup.filters)
     retained_sites = {str(site).upper() for site in filtered.sites}
-    missing_sites = [site for site in data_args["sites"] if str(site).upper() not in retained_sites]
+    missing_sites = [site for site in executed_setup.site_options.sites if str(site).upper() not in retained_sites]
     if missing_sites:
         raise ValueError(
             "RHIME preparation could not produce required site input(s) "
-            f"{missing_sites!r} for species {data_args['species']!r} and period "
-            f"{data_args['start_date']} to {data_args['end_date']}."
+            f"{missing_sites!r} for species {executed_setup.species!r} and period "
+            f"{executed_setup.start_date} to {executed_setup.end_date}."
         )
     merged_path = _output_path(destination, None, "merged-data/merged-data.nc")
     merged_dir = merged_path.parent
-    _save_merged_data(filtered.fp_all, merged_dir, merged_data_name="merged-data.nc")
-    basis = build_rhime_basis(filtered, data_args)
-    site_data = build_rhime_sensitivities(filtered, basis, data_args, multisector=multisector)
-    prepared = assemble_rhime_inputs(filtered, basis, site_data, data_args)
+    filtered.save(merged_dir, merged_data_name="merged-data.nc")
+    basis = build_rhime_basis(
+        filtered,
+        **executed_setup.select(
+            "species", "domain", "start_date", "flux_sources",
+            "output_name", "basis_algorithm", "nbasis", "fp_basis_case",
+            "basis_directory", "country_directory", "outer_regions_path",
+            "fix_basis_outer_regions", "basis_output_path",
+        ),
+    )
+    site_data = build_rhime_sensitivities(
+        filtered,
+        basis,
+        **executed_setup.select(
+            "domain", "flux_sources", "use_bc", "bc_basis_case",
+            "bc_basis_directory",
+        ),
+        multisector=multisector,
+    )
+    prepared = assemble_rhime_inputs(
+        filtered,
+        basis,
+        site_data,
+        **executed_setup.select(
+            "domain", "start_date", "bc_freq", "min_error",
+            "min_error_options", "use_bc",
+        ),
+    )
     prepared_sites = {str(site).upper() for site in prepared.sites}
-    missing_sites = [site for site in setup.data_args["sites"] if str(site).upper() not in prepared_sites]
+    missing_sites = [site for site in setup.site_options.sites if str(site).upper() not in prepared_sites]
     if missing_sites:
         raise ValueError(
             "RHIME preparation could not produce required site input(s) "
-            f"{missing_sites!r} for species {setup.data_args['species']!r} and period "
-            f"{setup.data_args['start_date']} to {setup.data_args['end_date']}."
+            f"{missing_sites!r} for species {setup.species!r} and period "
+            f"{setup.start_date} to {setup.end_date}."
         )
     prepared_path = _output_path(destination, None, "prepared-inputs.nc")
     prepared.save(prepared_path)
@@ -243,10 +280,10 @@ def prepare_rhime_stage(
 def _load_prepared(
     path: str | Path,
     *,
-    setup: RhimeRunnerSetup,
+    setup: RhimeConfig,
     model: ModelKind,
     preparation_manifest: str | Path,
-) -> tuple[RhimePreparedInputs, RhimeRunnerSetup]:
+) -> tuple[RhimePreparedInputs, RhimeRunSpec]:
     prepared_path = Path(path).resolve()
     manifest_path, manifest = _load_stage_manifest(preparation_manifest, stage="prepare")
     expected = configuration_identity(setup, model=model)
@@ -262,29 +299,28 @@ def _load_prepared(
         artifact_path=prepared_path,
     )
     prepared = RhimePreparedInputs.load(prepared_path)
-    run_spec = with_prepared_rhime_sites(setup.run_spec, prepared)
-    return prepared, RhimeRunnerSetup(run_spec=run_spec, sampler=setup.sampler, data_args=setup.data_args)
+    return prepared, setup.retained_run_spec(prepared)
 
 
 def _build_prepared_model(
     prepared: RhimePreparedInputs,
-    setup: RhimeRunnerSetup,
+    run_spec: RhimeRunSpec,
     *,
     model: ModelKind,
 ):
     if model == "multisector":
-        names = multisector_model_input_names(prepared, setup.run_spec.model)
+        names = multisector_model_input_names(prepared, run_spec.model)
         build = build_multisector_rhime_model_result
     else:
-        names = standard_model_input_names(prepared, setup.run_spec.model)
+        names = standard_model_input_names(prepared, run_spec.model)
         build = build_standard_rhime_model_result
     inputs = materialize_pymc_inputs(prepared, variable_names=names)
-    return build(prepared=prepared, model_inputs=inputs, run_spec=setup.run_spec)
+    return build(prepared=prepared, model_inputs=inputs, run_spec=run_spec)
 
 
 def prior_predictive_stage(
     *,
-    setup: RhimeRunnerSetup,
+    setup: RhimeConfig,
     model: ModelKind,
     prepared_inputs: str | Path,
     output_dir: str | Path,
@@ -299,14 +335,14 @@ def prior_predictive_stage(
         raise ValueError("Prior-predictive draws must be a positive integer.")
     destination = _stage_output_directory(output_dir)
     prior_path = _output_path(destination, None, "prior-predictive.nc")
-    prepared, resolved = _load_prepared(
+    prepared, run_spec = _load_prepared(
         prepared_inputs,
         setup=setup,
         model=model,
         preparation_manifest=preparation_manifest,
     )
     try:
-        built = _build_prepared_model(prepared, resolved, model=model)
+        built = _build_prepared_model(prepared, run_spec, model=model)
         with built.model:
             prior = pm.sample_prior_predictive(draws, built.model)
         values = [
@@ -342,7 +378,7 @@ def prior_predictive_stage(
 
 def sample_rhime_stage(
     *,
-    setup: RhimeRunnerSetup,
+    setup: RhimeConfig,
     model: ModelKind,
     prepared_inputs: str | Path,
     output_dir: str | Path,
@@ -355,14 +391,14 @@ def sample_rhime_stage(
     invoked implicitly.
     """
     destination = _stage_output_directory(output_dir)
-    prepared, resolved = _load_prepared(
+    prepared, run_spec = _load_prepared(
         prepared_inputs,
         setup=setup,
         model=model,
         preparation_manifest=preparation_manifest,
     )
-    built = _build_prepared_model(prepared, resolved, model=model)
-    idata = sample_rhime_model(built, resolved.sampler)
+    built = _build_prepared_model(prepared, run_spec, model=model)
+    idata = sample_rhime_model(built, setup.sampler)
     trace_path = _output_path(destination, None, "posterior.nc")
     save_trace(idata, trace_path)
     identities = {
@@ -382,8 +418,8 @@ def sample_rhime_stage(
         "schema_version": 2,
         "producer": "openghg_inversions",
         "stage": "sample",
-        "configuration_identity": configuration_identity(resolved, model=model),
-        "effective_configuration": effective_configuration(resolved, model=model),
+        "configuration_identity": configuration_identity(setup, model=model),
+        "effective_configuration": effective_configuration(setup, model=model),
         "artifacts": {
             "posterior": _artifact_path(trace_path),
             "prepared_inputs": _artifact_path(Path(prepared_inputs)),
@@ -401,7 +437,7 @@ def sample_rhime_stage(
 
 def postprocess_rhime_stage(
     *,
-    setup: RhimeRunnerSetup,
+    setup: RhimeConfig,
     model: ModelKind,
     prepared_inputs: str | Path,
     posterior: str | Path,
@@ -417,12 +453,12 @@ def postprocess_rhime_stage(
     Output settings may change; the sampled scientific configuration may not.
     """
     destination = _stage_output_directory(output_dir)
-    configured_output = setup.run_spec.output
+    configured_output = setup.output
     _filename_component("output_name", configured_output.output_name)
-    _filename_component("species", setup.run_spec.model.species)
-    _filename_component("domain", setup.run_spec.model.domain)
-    _filename_component("start_date", setup.run_spec.start_date)
-    prepared, resolved = _load_prepared(
+    _filename_component("species", setup.model.species)
+    _filename_component("domain", setup.model.domain)
+    _filename_component("start_date", setup.start_date)
+    prepared, run_spec = _load_prepared(
         prepared_inputs,
         setup=setup,
         model=model,
@@ -432,7 +468,7 @@ def postprocess_rhime_stage(
     sample_contract = _verify_sample_manifest(
         sample_manifest,
         posterior=posterior_path,
-        configuration_identity=configuration_identity(resolved, model=model),
+        configuration_identity=configuration_identity(setup, model=model),
         prepared_inputs=prepared_inputs,
     )
     sampled_sampler = _sampler_from_sample_manifest(sample_contract, path=sample_manifest)
@@ -442,11 +478,11 @@ def postprocess_rhime_stage(
         save_trace=False,
         save_inversion_output=bool(configured_output.save_inversion_output),
     )
-    run_spec = replace(resolved.run_spec, output=output_spec)
-    resolved = RhimeRunnerSetup(run_spec=run_spec, sampler=sampled_sampler, data_args=resolved.data_args)
+    run_spec = replace(run_spec, output=output_spec)
+    resolved = replace(setup, output=output_spec, sampler=sampled_sampler)
     if sample_contract["schema_version"] == 1:
         # Older manifests did not persist roles; preserve their explicit graph replay.
-        built = _build_prepared_model(prepared, resolved, model=model)
+        built = _build_prepared_model(prepared, run_spec, model=model)
         output_contract = built.output_contract
     else:
         built = None

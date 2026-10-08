@@ -484,7 +484,7 @@ def _site_options(
     max_level: list[int | None] | int | None = None,
     time_resolved: list[bool | None] | bool | None = None,
 ) -> SiteOptions:
-    """Build normalized site-aligned options for private preparation tests."""
+    """Build public normalized site-aligned options for preparation tests."""
     return SiteOptions.from_inputs(
         sites=sites,
         averaging_period=averaging_period,
@@ -1856,13 +1856,13 @@ def test_assemble_rhime_inputs_preserves_borrowed_site_datasets(
 
     monkeypatch.setattr(prep_module, "_make_inv_inputs", make_inputs)
     monkeypatch.setattr(
-        prep_module,
-        "_scale_satellite_bc_sensitivity_to_column_signal",
+        rhime_preparation,
+        "scale_satellite_boundary_sensitivity_to_column_signal",
         lambda inputs, **kwargs: inputs,
     )
     monkeypatch.setattr(prep_module, "_warn_for_nan_inputs", lambda *args, **kwargs: None)
 
-    setup = rhime_public.resolve_rhime_options(
+    setup = rhime_public.RhimeConfig.from_params(
         params={
             "species": "ch4",
             "sites": ["TAC"],
@@ -1881,7 +1881,8 @@ def test_assemble_rhime_inputs_preserves_borrowed_site_datasets(
         merged,
         _fake_basis_functions(),
         site_data,
-        setup.data_args,
+        domain=setup.domain, start_date=setup.start_date, bc_freq=setup.bc_freq,
+        min_error=setup.min_error, min_error_options=setup.min_error_options, use_bc=setup.use_bc,
     )
 
     assert supplied.attrs == {"source": "caller", "footprint_transport_model": "FLEXPART"}
@@ -1952,16 +1953,14 @@ def test_prepared_replay_computes_selected_error_only_at_pymc_boundary(
     assert prepared.inv_inputs["aggregation_error_covariance"].data is covariance_array
 
 
-def test_explicit_preparation_option_ownership_matches_current_preparer() -> None:
-    """Routing tracks preparation options after consuming the unsupported tracer flag."""
-    parameters = dict(inspect.signature(prepare_rhime_inputs).parameters)
-    parameters.pop("use_tracer")
-    assert rhime_params.RHIME_PREPARATION_OPTION_NAMES == frozenset(parameters)
-    assert rhime_params.RHIME_PREPARATION_DEFAULTS == {
-        name: parameter.default
-        for name, parameter in parameters.items()
-        if parameter.default is not inspect.Parameter.empty
-    }
+def test_configured_surface_excludes_internal_composed_values() -> None:
+    """Resolution accepts external choices instead of internal handoff fields."""
+    for name in ("site_options", "model", "output", "sampler", "bc_state_activity", "state_activity"):
+        with pytest.raises(ValueError, match=name):
+            rhime_params.validate_supported_params({name: object()})
+    for name in ("sample_prior_predictive", "sample_posterior_predictive"):
+        with pytest.raises(ValueError, match=name):
+            rhime_params.validate_supported_params({name: True})
 
 
 def test_build_rhime_multisector_model_uses_sector_names_for_variables(
@@ -2659,9 +2658,10 @@ def test_rhime_modules_import_independently_in_fresh_process(module_name: str) -
     assert completed.returncode == 0, completed.stderr
 
 
-def test_resolve_flux_sources_prefers_new_name() -> None:
-    assert resolve_flux_sources(flux_sources=["new"], emissions_name=["legacy"]) == ["new"]
-    assert resolve_flux_sources(emissions_name=["legacy"]) == ["legacy"]
+def test_resolve_flux_sources_accepts_canonical_names_only() -> None:
+    assert resolve_flux_sources(flux_sources=["new"]) == ["new"]
+    with pytest.raises(TypeError, match="emissions_name"):
+        resolve_flux_sources(emissions_name=["legacy"])
 
 
 def test_direct_sector_spec_records_source_backing() -> None:
@@ -2889,6 +2889,7 @@ def test_run_rhime_from_prepared_inputs_routes_without_preparation(
         ),
     ],
 )
+@pytest.mark.filterwarnings("error::DeprecationWarning:openghg_inversions")
 def test_public_rhime_runners_follow_named_stage_order(
     monkeypatch: pytest.MonkeyPatch,
     runner_name: str,
@@ -2914,7 +2915,26 @@ def test_public_rhime_runners_follow_named_stage_order(
         site_metadata=_prepared_site_metadata(),
     )
     sampler = RhimeSampler()
-    setup = SimpleNamespace(data_args={"species": "ch4"}, run_spec=run_spec, sampler=sampler)
+    config = replace(
+        rhime_params.RhimeConfig.from_params(
+            {
+                "species": "ch4",
+                "domain": "EUROPE",
+                "sites": ["TAC"],
+                "averaging_period": "1h",
+                "start_date": run_spec.start_date,
+                "end_date": run_spec.end_date,
+                "output_name": "stages",
+                "output_format": "none",
+                "flux_sources": ["inventory", "ocean"] if multisector else ["inventory"],
+                "use_bc": False,
+            },
+            multisector=multisector,
+        ),
+        model=run_spec.model,
+        output=run_spec.output,
+        sampler=sampler,
+    )
     model_inputs = xr.Dataset({"sentinel": xr.DataArray(1)})
     build_result = RhimeModelBuildResult(model=pm.Model(), variable_roles={"concentration": "y"})
     idata = _minimal_output_idata()
@@ -2922,65 +2942,71 @@ def test_public_rhime_runners_follow_named_stage_order(
     calls: list[str] = []
     recipe_module = rhime_multisector if multisector else rhime_standard
 
-    def resolve(*, params: dict[str, Any], multisector: bool) -> Any:
+    def resolve(params: dict[str, Any], *, multisector: bool) -> Any:
         """Record public option resolution."""
         calls.append("resolve")
-        return setup
+        return config
 
     merged = cast(Any, object())
-    external_merged = cast(RhimeMergedData, object())
+    external_merged = RhimeMergedData({".split_by_sectors": multisector}, config.site_options)
+    if external_data:
+        merged = external_merged
     filtered = cast(Any, object())
     basis = cast(Any, object())
     site_data = cast(Any, object())
 
-    def retrieve(
-        data_args: dict[str, Any],
-        *,
-        multisector: bool,
-        merged_data: RhimeMergedData | None = None,
-    ) -> Any:
+    def retrieve(*, site_options: SiteOptions, merged_data=None, **kwargs: Any) -> Any:
         """Record ordinary acquisition or external-data validation."""
+        assert site_options is config.site_options
+        assert kwargs["species"] == config.species
+        assert kwargs["split_by_sectors"] is config.split_by_sectors
         assert merged_data is (external_merged if external_data else None)
         calls.append("retrieve")
         return merged
 
-    def filter_observations(actual: Any, data_args: dict[str, Any]) -> Any:
+    def filter_observations(actual: Any, *, filters: Any) -> Any:
         """Record public filtering and site alignment."""
         assert actual is merged
+        assert filters is config.filters
         calls.append("filter")
         return filtered
 
-    def build_basis(actual: Any, data_args: dict[str, Any]) -> Any:
-        """Record public basis construction."""
+    def build_basis(actual: Any, **kwargs: Any) -> Any:
+        """Record public basis construction with resolved named values."""
         assert actual is filtered
+        assert kwargs["species"] == config.species
+        assert kwargs["domain"] == config.domain
+        assert kwargs["basis_algorithm"] == config.basis_algorithm
         calls.append("basis")
         return basis
 
-    def build_sensitivities(
-        actual: Any,
-        actual_basis: Any,
-        data_args: dict[str, Any],
-        *,
-        multisector: bool,
-    ) -> Any:
+    def build_sensitivities(actual: Any, actual_basis: Any, **kwargs: Any) -> Any:
         """Record public sensitivity construction."""
         assert actual is filtered
         assert actual_basis is basis
+        assert kwargs["domain"] == config.domain
+        assert kwargs["use_bc"] is config.use_bc
+        assert kwargs["multisector"] is multisector
         calls.append("sensitivities")
         return site_data
 
-    def assemble(actual: Any, actual_basis: Any, actual_site_data: Any, data_args: dict[str, Any]) -> Any:
+    def assemble(actual: Any, actual_basis: Any, actual_site_data: Any, **kwargs: Any) -> Any:
         """Record public labelled-input assembly."""
         assert actual is filtered
         assert actual_basis is basis
         assert actual_site_data is site_data
+        assert kwargs["domain"] == config.domain
+        assert kwargs["start_date"] == config.start_date
+        assert kwargs["min_error_options"] is config.min_error_options
         calls.append("assemble")
         return prepared
 
-    def align(spec: RhimeRunSpec, actual: RhimePreparedInputs) -> RhimeRunSpec:
+    def align(actual_config: rhime_params.RhimeConfig, actual: RhimePreparedInputs) -> RhimeRunSpec:
         """Record public retained-site alignment."""
+        assert actual_config is config
+        assert actual is prepared
         calls.append("align")
-        return spec
+        return run_spec
 
     def materialize(
         actual: RhimePreparedInputs,
@@ -3002,6 +3028,7 @@ def test_public_rhime_runners_follow_named_stage_order(
         assert kwargs["likelihood_builder"] is expected_builder
         expected_options = {"project_option": 42} if custom_likelihood else None
         assert kwargs["likelihood_kwargs"] == expected_options
+        assert kwargs["run_spec"] is run_spec
         calls.append("build")
         return build_result
 
@@ -3026,13 +3053,13 @@ def test_public_rhime_runners_follow_named_stage_order(
         assert kwargs == {"result": expected, "prepared": prepared}
         calls.append("outputs")
 
-    monkeypatch.setattr(recipe_module, "resolve_rhime_options", resolve)
-    monkeypatch.setattr(recipe_module, "retrieve_or_reload_rhime_data", retrieve)
+    monkeypatch.setattr(recipe_module.RhimeConfig, "from_params", staticmethod(resolve))
+    monkeypatch.setattr(recipe_module.RhimeMergedData, "from_options", retrieve)
     monkeypatch.setattr(recipe_module, "filter_rhime_observations", filter_observations)
     monkeypatch.setattr(recipe_module, "build_rhime_basis", build_basis)
     monkeypatch.setattr(recipe_module, "build_rhime_sensitivities", build_sensitivities)
     monkeypatch.setattr(recipe_module, "assemble_rhime_inputs", assemble)
-    monkeypatch.setattr(recipe_module, "with_prepared_rhime_sites", align)
+    monkeypatch.setattr(rhime_params.RhimeConfig, "retained_run_spec", align)
     monkeypatch.setattr(recipe_module, "materialize_pymc_inputs", materialize)
     monkeypatch.setattr(recipe_module, build_stage, build)
     monkeypatch.setattr(recipe_module, "sample_rhime_model", sample)
@@ -3054,7 +3081,7 @@ def test_public_rhime_runners_follow_named_stage_order(
     assert actual is expected
     assert calls == [
         "resolve",
-        "retrieve",
+        *([] if external_data else ["retrieve"]),
         "filter",
         "basis",
         "sensitivities",
@@ -3105,7 +3132,7 @@ def test_ordinary_runners_reject_orphaned_likelihood_options_before_config(
     recipe_module = rhime_multisector if runner is run_rhime_multisector else rhime_standard
     monkeypatch.setattr(
         recipe_module,
-        "params_from_config",
+        "read_rhime_ini",
         lambda *args, **kwargs: pytest.fail("orphaned options must fail before configuration"),
     )
 
@@ -3123,8 +3150,8 @@ def test_ordinary_runners_reject_custom_likelihood_with_configured_mismatch(
     """A Python likelihood cannot compete with an explicit built-in selection."""
     recipe_module = rhime_multisector if runner is run_rhime_multisector else rhime_standard
     monkeypatch.setattr(
-        recipe_module,
-        "resolve_rhime_options",
+        recipe_module.RhimeConfig,
+        "from_params",
         lambda *args, **kwargs: pytest.fail("the selection conflict must fail before resolution"),
     )
 
@@ -3164,8 +3191,9 @@ def test_prepared_complete_model_rejects_orphaned_likelihood_options_before_vali
 def test_rhime_public_package_exports_supported_orchestration_stages() -> None:
     """External runners can import every supported stage from the RHIME package."""
     stage_names = (
-        "resolve_rhime_options",
-        "retrieve_or_reload_rhime_data",
+        "RhimeConfig",
+        "read_rhime_ini",
+        "RhimeMergedData.from_options",
         "filter_rhime_observations",
         "build_rhime_basis",
         "build_rhime_sensitivities",
@@ -3211,13 +3239,13 @@ def test_each_rhime_recipe_keeps_the_scientific_process_visible(recipe: Callable
     source = inspect.getsource(recipe)
     multisector = recipe is run_rhime_multisector
     stages = (
-        "resolve_rhime_options",
-        "retrieve_or_reload_rhime_data",
+        "RhimeConfig.from_params",
+        "RhimeMergedData.from_options",
         "filter_rhime_observations",
         "build_rhime_basis",
         "build_rhime_sensitivities",
         "assemble_rhime_inputs",
-        "with_prepared_rhime_sites",
+        "retained_run_spec",
         "materialize_pymc_inputs",
         "build_multisector_rhime_model_result" if multisector else "build_standard_rhime_model_result",
         "sample_rhime_model",
@@ -3228,70 +3256,8 @@ def test_each_rhime_recipe_keeps_the_scientific_process_visible(recipe: Callable
     assert positions == sorted(positions)
 
 
-def test_external_merged_data_bypasses_acquisition_without_mutation(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """An external scientific handoff re-enters at retrieval without store or cache I/O."""
-    site_options = SiteOptions.from_inputs(
-        sites=["TAC"],
-        averaging_period=["1h"],
-        inlet=None,
-        fp_height=None,
-        instrument=None,
-        platform=None,
-        obs_data_level=None,
-        met_model=None,
-        max_level=None,
-    )
-    site_data = xr.Dataset(
-        {"mf": ("time", [1.0])},
-        coords={"time": pd.to_datetime(["2019-01-01"])},
-        attrs={"provenance": "external-test"},
-    )
-    merged = prep_module.RhimeMergedData(
-        fp_all={"TAC": site_data, "MHD": xr.Dataset(), ".split_by_sectors": False},
-        site_options=site_options,
-    )
-
-    def fail_acquisition(**kwargs: Any) -> None:
-        raise AssertionError("external merged data must bypass acquisition")
-
-    monkeypatch.setattr(acquisition_module, "_retrieve_or_reload_merged_data", fail_acquisition)
-    result = rhime_public.retrieve_or_reload_rhime_data(
-        {"sites": ["TAC"]},
-        multisector=False,
-        merged_data=merged,
-    )
-
-    assert result is merged
-    assert result.fp_all["TAC"] is site_data
-    assert result.fp_all["TAC"].attrs == {"provenance": "external-test"}
 
 
-def test_external_merged_data_fails_at_retrieval_for_incompatible_layout() -> None:
-    """The owning retrieval stage rejects a cache from the other recipe layout."""
-    site_options = SiteOptions.from_inputs(
-        sites=["TAC"],
-        averaging_period=["1h"],
-        inlet=None,
-        fp_height=None,
-        instrument=None,
-        platform=None,
-        obs_data_level=None,
-        met_model=None,
-        max_level=None,
-    )
-    merged = prep_module.RhimeMergedData(
-        fp_all={"TAC": xr.Dataset(), ".split_by_sectors": True},
-        site_options=site_options,
-    )
-
-    with pytest.raises(ValueError, match="incompatible sector layout"):
-        rhime_public.retrieve_or_reload_rhime_data(
-            {"sites": ["TAC"]},
-            multisector=False,
-            merged_data=merged,
-        )
 
 
 def test_public_stages_compose_as_complete_external_runner(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -3316,7 +3282,7 @@ def test_public_stages_compose_as_complete_external_runner(monkeypatch: pytest.M
     inv_inputs_fixture = _minimal_output_inv_inputs()
     idata = _minimal_output_idata()
 
-    monkeypatch.setattr(acquisition_module, "_retrieve_or_reload_merged_data", lambda **kwargs: merged_fixture)
+    monkeypatch.setattr(rhime_public.RhimeMergedData, "from_options", lambda **kwargs: merged_fixture)
     monkeypatch.setattr(rhime_preparation, "make_basis_functions", lambda **kwargs: basis_fixture)
     monkeypatch.setattr(
         prep_module,
@@ -3326,7 +3292,7 @@ def test_public_stages_compose_as_complete_external_runner(monkeypatch: pytest.M
     monkeypatch.setattr(prep_module, "_make_inv_inputs", lambda **kwargs: inv_inputs_fixture)
     monkeypatch.setattr(RhimeSampler, "sample", lambda self, model, **kwargs: idata)
 
-    setup = rhime_public.resolve_rhime_options(
+    setup = rhime_public.RhimeConfig.from_params(
         params={
             "species": "ch4",
             "sites": ["TAC"],
@@ -3342,22 +3308,31 @@ def test_public_stages_compose_as_complete_external_runner(monkeypatch: pytest.M
         },
         multisector=False,
     )
-    merged = rhime_public.retrieve_or_reload_rhime_data(setup.data_args, multisector=False)
-    filtered = rhime_public.filter_rhime_observations(merged, setup.data_args)
-    basis_functions = rhime_public.build_rhime_basis(filtered, setup.data_args)
+    merged = rhime_public.RhimeMergedData.from_options(
+        site_options=setup.site_options, species=setup.species, domain=setup.domain,
+        start_date=setup.start_date, end_date=setup.end_date, output_name=setup.output_name,
+        flux_sources=list(setup.flux_sources), use_bc=setup.use_bc,
+    )
+    filtered = rhime_public.filter_rhime_observations(merged, filters=setup.filters)
+    basis_functions = rhime_public.build_rhime_basis(
+        filtered, species=setup.species, domain=setup.domain, start_date=setup.start_date,
+        flux_sources=setup.flux_sources, output_name=setup.output_name,
+    )
     site_data = rhime_public.build_rhime_sensitivities(
         filtered,
         basis_functions,
-        setup.data_args,
+        domain=setup.domain, flux_sources=setup.flux_sources, use_bc=setup.use_bc,
+        bc_basis_case=setup.bc_basis_case, bc_basis_directory=setup.bc_basis_directory,
         multisector=False,
     )
     prepared = rhime_public.assemble_rhime_inputs(
         filtered,
         basis_functions,
         site_data,
-        setup.data_args,
+        domain=setup.domain, start_date=setup.start_date, bc_freq=setup.bc_freq,
+        min_error=setup.min_error, min_error_options=setup.min_error_options, use_bc=setup.use_bc,
     )
-    run_spec = rhime_public.with_prepared_rhime_sites(setup.run_spec, prepared)
+    run_spec = setup.retained_run_spec(prepared)
     model_inputs = rhime_public.materialize_pymc_inputs(
         prepared,
         variable_names=rhime_public.standard_model_input_names(prepared, run_spec.model),
@@ -3410,10 +3385,64 @@ def test_build_rhime_basis_forwards_fixed_outer_region_asset(monkeypatch: pytest
         "basis_output_path": None,
     }
 
-    actual = rhime_public.build_rhime_basis(merged, data_args)
+    actual = rhime_public.build_rhime_basis(merged, **data_args)
 
     assert actual is expected
     assert captured["outer_regions_path"] == "intem_region_definition_EUHROB.nc"
+
+
+@pytest.mark.filterwarnings("error::DeprecationWarning")
+def test_deprecated_preparation_matches_explicit_stage_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Compatibility preparation retains the modern stages' transport provenance."""
+    site_data = _site_dataset([2.0]).assign_attrs(
+        footprint_transport_model="FLEXPART",
+        footprint_transport_model_version="10.4",
+        footprint_met_model="ERA5",
+    )
+    merged = RhimeMergedData(
+        fp_all={"TAC": site_data},
+        site_options=_site_options(["TAC"], averaging_period="1h"),
+    )
+    basis = _fake_basis_functions()
+    monkeypatch.setattr(prep_module.RhimeMergedData, "from_options", lambda **kwargs: merged)
+    monkeypatch.setattr(rhime_preparation, "make_basis_functions", lambda **kwargs: basis)
+    monkeypatch.setattr(
+        prep_module, "_rhime_site_data_from_basis_functions", lambda **kwargs: {"TAC": site_data}
+    )
+    monkeypatch.setattr(prep_module, "_make_inv_inputs", lambda **kwargs: _minimal_prepared_inv_inputs())
+    monkeypatch.setattr(
+        rhime_preparation, "scale_satellite_boundary_sensitivity_to_column_signal", lambda inputs, **kwargs: inputs
+    )
+    monkeypatch.setattr(prep_module, "_warn_for_nan_inputs", lambda *args, **kwargs: None)
+
+    with pytest.warns(DeprecationWarning, match="prepare_rhime_inputs is deprecated") as recorded:
+        compatible = prepare_rhime_inputs(
+            species="ch4", sites=["TAC"], domain="EUROPE", averaging_period="1h",
+            start_date="2019-01-01", end_date="2019-01-02", output_name="metadata-test",
+            flux_sources=["inventory"], use_bc=False,
+        )
+    assert len(recorded) == 1
+    assert recorded[0].filename == __file__
+
+    filtered = rhime_public.filter_rhime_observations(merged)
+    stage_basis = rhime_public.build_rhime_basis(
+        filtered, species="ch4", domain="EUROPE", start_date="2019-01-01",
+        flux_sources=["inventory"], output_name="metadata-test",
+    )
+    sensitivities = rhime_public.build_rhime_sensitivities(
+        filtered, stage_basis, domain="EUROPE", flux_sources=["inventory"],
+        use_bc=False, multisector=False,
+    )
+    explicit = rhime_public.assemble_rhime_inputs(
+        filtered, stage_basis, sensitivities, domain="EUROPE", start_date="2019-01-01",
+        use_bc=False,
+    )
+    xr.testing.assert_identical(compatible.inv_inputs, explicit.inv_inputs)
+    xr.testing.assert_identical(compatible.site_metadata, explicit.site_metadata)
+    for name, expected in (
+        ("transport_model", "FLEXPART"), ("transport_model_version", "10.4"), ("met_model", "ERA5")
+    ):
+        assert compatible.site_metadata[name].sel(site="TAC").item() == expected
 
 
 def test_run_rhime_from_prepared_inputs_accepts_complete_model_builder(
@@ -3889,10 +3918,18 @@ def test_run_rhime_rejects_noncanonical_custom_likelihood_before_sampling(
         basis_functions=_fake_basis_functions(),
         site_metadata=_prepared_site_metadata(),
     )
-    setup = SimpleNamespace(
-        data_args={"species": "ch4"},
-        run_spec=run_spec,
-        sampler=RhimeSampler(),
+    config = replace(
+        rhime_params.RhimeConfig.from_params(
+            {
+                "species": "ch4", "sites": ["TAC"], "averaging_period": "1h",
+                "domain": "EUROPE", "start_date": run_spec.start_date,
+                "end_date": run_spec.end_date, "output_name": "noncanonical",
+                "output_format": "none", "flux_sources": [model_spec.sectors[0].flux_source],
+                "use_bc": False,
+            },
+            multisector=False,
+        ),
+        model=run_spec.model, output=run_spec.output,
     )
 
     def noncanonical_likelihood(**kwargs: Any) -> Any:
@@ -3909,8 +3946,8 @@ def test_run_rhime_rejects_noncanonical_custom_likelihood_before_sampling(
         """Prove compatibility validation precedes sampler execution."""
         raise AssertionError("invalid likelihood must fail before sampling")
 
-    monkeypatch.setattr(rhime_standard, "resolve_rhime_options", lambda **kwargs: setup)
-    monkeypatch.setattr(rhime_standard, "retrieve_or_reload_rhime_data", lambda *args, **kwargs: object())
+    monkeypatch.setattr(rhime_standard.RhimeConfig, "from_params", lambda *args, **kwargs: config)
+    monkeypatch.setattr(rhime_standard.RhimeMergedData, "from_options", lambda *args, **kwargs: object())
     monkeypatch.setattr(rhime_standard, "filter_rhime_observations", lambda *args, **kwargs: object())
     monkeypatch.setattr(rhime_standard, "build_rhime_basis", lambda *args, **kwargs: prepared.basis_functions)
     monkeypatch.setattr(rhime_standard, "build_rhime_sensitivities", lambda *args, **kwargs: object())
@@ -4208,7 +4245,7 @@ def test_unreleased_sampling_compatibility_shims_are_absent() -> None:
         )
 
 
-def test_rhime_runner_setup_builds_specs_before_preparation(tmp_path: Path) -> None:
+def test_rhime_configuration_builds_specs_before_preparation(tmp_path: Path) -> None:
     """Route sigma frequency into the model spec, not data preparation."""
     params = {
         "species": "ch4",
@@ -4245,25 +4282,27 @@ def test_rhime_runner_setup_builds_specs_before_preparation(tmp_path: Path) -> N
         "time_resolved": True,
     }
 
-    setup = rhime_params.make_rhime_runner_setup(
+    setup = rhime_params.RhimeConfig.from_params(
         params=params,
         multisector=True,
     )
 
-    assert setup.data_args["flux_sources"] == ["ff-source", "gpp-source", "ter-source", "ocean-source"]
-    assert setup.data_args["split_by_sectors"] is True
-    assert setup.data_args["time_resolved"] is True
-    assert setup.data_args["basis_algorithm"] == "weighted"
-    assert setup.data_args["nbasis"] == 100
-    assert setup.data_args["bc_basis_case"] == "NESW"
-    assert setup.data_args["min_error_options"] == {"by_site": False}
-    for selector in ("inlet", "instrument", "platform", "fp_model", "fp_height", "calibration_scale"):
-        assert setup.data_args[selector] is None
-    assert "sector_sources" not in setup.data_args
-    assert "sigma_freq" not in setup.data_args
-    assert setup.run_spec.sites == ("TAC",)
-    assert setup.run_spec.averaging_period == ("1h",)
-    assert setup.run_spec.output.output_format == "none"
+    assert setup.flux_sources == ("ff-source", "gpp-source", "ter-source", "ocean-source")
+    assert setup.split_by_sectors is True
+    assert setup.site_options.time_resolved == (True,)
+    assert setup.basis_algorithm == "weighted"
+    assert setup.nbasis == 100
+    assert setup.bc_basis_case == "NESW"
+    assert setup.min_error_options == {"by_site": False}
+    for selector in ("inlet", "instrument", "platform", "fp_height"):
+        assert getattr(setup.site_options, selector) == (None,)
+    assert setup.fp_model is None
+    assert setup.calibration_scale is None
+    assert not hasattr(setup, "sector_sources")
+    assert not hasattr(setup, "sigma_freq")
+    assert setup.site_options.sites == ("TAC",)
+    assert setup.site_options.averaging_period == ("1h",)
+    assert setup.output.output_format == "none"
     assert setup.sampler == RhimeSampler(
         draws=7,
         burn=1,
@@ -4274,20 +4313,20 @@ def test_rhime_runner_setup_builds_specs_before_preparation(tmp_path: Path) -> N
         sample_kwargs={"random_seed": 42},
         posterior_predictive_kwargs={"random_seed": 43},
     )
-    assert [sector.name for sector in setup.run_spec.model.sectors] == ["FF", "GPP", "TER", "ocean"]
-    assert [sector.flux_source for sector in setup.run_spec.model.sectors] == [
+    assert [sector.name for sector in setup.model.sectors] == ["FF", "GPP", "TER", "ocean"]
+    assert [sector.flux_source for sector in setup.model.sectors] == [
         "ff-source",
         "gpp-source",
         "ter-source",
         "ocean-source",
     ]
-    assert setup.run_spec.model.sectors[0].x_prior == {"pdf": "normal", "mu": 1.0, "sigma": 0.5}
-    assert setup.run_spec.model.sectors[1].x_prior == {"pdf": "normal", "mu": 0.7, "sigma": 0.2}
-    assert isinstance(setup.run_spec.model.likelihood, AdditiveSigmaSettings)
-    assert setup.run_spec.model.likelihood.sigma_freq == "8D"
-    assert setup.run_spec.model.likelihood.sigma_freq_anchor == "2019-01-01"
-    assert setup.run_spec.model.likelihood.use_minimum_error_floor is False
-    assert "mismatch_model" not in setup.data_args
+    assert setup.model.sectors[0].x_prior == {"pdf": "normal", "mu": 1.0, "sigma": 0.5}
+    assert setup.model.sectors[1].x_prior == {"pdf": "normal", "mu": 0.7, "sigma": 0.2}
+    assert isinstance(setup.model.likelihood, AdditiveSigmaSettings)
+    assert setup.model.likelihood.sigma_freq == "8D"
+    assert setup.model.likelihood.sigma_freq_anchor == "2019-01-01"
+    assert setup.model.likelihood.use_minimum_error_floor is False
+    assert not hasattr(setup, "mismatch_model")
 
 
 @pytest.mark.parametrize(
@@ -4349,7 +4388,7 @@ def test_pollution_event_default_sigma_prior_is_fractional() -> None:
     }
 
 
-def test_runner_setup_requires_explicit_likelihood_selection() -> None:
+def test_configuration_requires_explicit_likelihood_selection() -> None:
     """The ordinary runner does not silently select a scientific likelihood."""
     params = {
         "species": "ch4",
@@ -4363,9 +4402,9 @@ def test_runner_setup_requires_explicit_likelihood_selection() -> None:
         "output_format": "none",
     }
 
-    setup = rhime_params.make_rhime_runner_setup(params=params, multisector=False)
+    setup = rhime_params.RhimeConfig.from_params(params=params, multisector=False)
 
-    assert setup.run_spec.model.likelihood is None
+    assert setup.model.likelihood is None
 
 
 @pytest.mark.parametrize("runner", [run_rhime, run_rhime_multisector])
@@ -4375,9 +4414,7 @@ def test_ordinary_runner_rejects_omitted_likelihood_before_retrieval(
 ) -> None:
     """Omission is not a hidden pollution-event selection in either runner."""
     recipe_module = rhime_multisector if runner is run_rhime_multisector else rhime_standard
-    monkeypatch.setattr(
-        recipe_module,
-        "retrieve_or_reload_rhime_data",
+    monkeypatch.setattr(recipe_module.RhimeMergedData, "from_options",
         lambda *args, **kwargs: pytest.fail("selection must fail before retrieval"),
     )
     flux_sources = ["ff", "ocean"] if runner is run_rhime_multisector else ["ff"]
@@ -4396,7 +4433,7 @@ def test_ordinary_runner_rejects_omitted_likelihood_before_retrieval(
         )
 
 
-def test_rhime_runner_setup_rejects_removed_builder_strategy() -> None:
+def test_rhime_configuration_rejects_removed_builder_strategy() -> None:
     """The former compiled strategy is no longer accepted by configuration."""
     params = {
         "species": "ch4",
@@ -4412,7 +4449,7 @@ def test_rhime_runner_setup_rejects_removed_builder_strategy() -> None:
     }
 
     with pytest.raises(ValueError, match="Unsupported RHIME parameter.*builder_strategy"):
-        rhime_params.make_rhime_runner_setup(
+        rhime_params.RhimeConfig.from_params(
             params=params,
             multisector=False,
         )
@@ -4446,8 +4483,13 @@ def test_rhime_normalises_legacy_output_format_aliases(
     legacy_output_format: str, expected_output_format: str
 ) -> None:
     """Old HBMCMC output names now select the modern legacy formatter."""
-    params = rhime_params.normalise_rhime_params({"output_format": legacy_output_format})
+    from openghg_inversions.hbmcmc.compatibility import translate_rhime_aliases
 
+    if legacy_output_format == "legacy":
+        params = translate_rhime_aliases({"output_format": legacy_output_format})
+    else:
+        with pytest.warns(DeprecationWarning, match="output_format"):
+            params = translate_rhime_aliases({"output_format": legacy_output_format})
     assert params["output_format"] == expected_output_format
 
 
@@ -4979,7 +5021,7 @@ output_name = "test"
 
     params = params_from_config(config_file)
     with pytest.raises(ValueError, match="Unsupported RHIME parameter.*builder_strategy"):
-        rhime_params.resolve_rhime_options(params=params, multisector=False)
+        rhime_params.RhimeConfig.from_params(params=params, multisector=False)
 
 
 @pytest.mark.parametrize("prior_name", ["x_prior", "bc_prior", "sigma_prior", "offset_prior"])
@@ -5019,9 +5061,9 @@ def test_run_rhime_rejects_string_prior_before_data_preparation(
     """Invalid prior types fail before RHIME data preparation is called."""
 
     def fail_prepare(**kwargs):
-        raise AssertionError("retrieve_or_reload_rhime_data should not be called")
+        raise AssertionError("load_rhime_data should not be called")
 
-    monkeypatch.setattr(rhime_standard, "retrieve_or_reload_rhime_data", fail_prepare)
+    monkeypatch.setattr(rhime_standard.RhimeMergedData, "from_options", fail_prepare)
 
     with pytest.raises(ValueError, match="x_prior"):
         run_rhime(
@@ -5053,9 +5095,9 @@ def test_run_rhime_rejects_malformed_min_error_options_before_data_preparation(
     """Invalid min-error options fail before RHIME data preparation."""
 
     def fail_prepare(**kwargs):
-        raise AssertionError("retrieve_or_reload_rhime_data should not be called")
+        raise AssertionError("load_rhime_data should not be called")
 
-    monkeypatch.setattr(rhime_standard, "retrieve_or_reload_rhime_data", fail_prepare)
+    monkeypatch.setattr(rhime_standard.RhimeMergedData, "from_options", fail_prepare)
 
     with pytest.raises(ValueError, match="min_error_options"):
         run_rhime(
@@ -5078,9 +5120,9 @@ def test_run_rhime_rejects_malformed_power_before_data_preparation(
     """Invalid likelihood power values fail before RHIME data preparation."""
 
     def fail_prepare(**kwargs):
-        raise AssertionError("retrieve_or_reload_rhime_data should not be called")
+        raise AssertionError("load_rhime_data should not be called")
 
-    monkeypatch.setattr(rhime_standard, "retrieve_or_reload_rhime_data", fail_prepare)
+    monkeypatch.setattr(rhime_standard.RhimeMergedData, "from_options", fail_prepare)
 
     with pytest.raises(ValueError, match="power"):
         run_rhime(
@@ -5103,9 +5145,9 @@ def test_run_rhime_multisector_rejects_non_mapping_sector_prior_values(
     """Invalid sector prior values fail before RHIME data preparation is called."""
 
     def fail_prepare(**kwargs):
-        raise AssertionError("retrieve_or_reload_rhime_data should not be called")
+        raise AssertionError("load_rhime_data should not be called")
 
-    monkeypatch.setattr(rhime_multisector, "retrieve_or_reload_rhime_data", fail_prepare)
+    monkeypatch.setattr(rhime_multisector.RhimeMergedData, "from_options", fail_prepare)
 
     with pytest.raises(ValueError, match="sector_priors"):
         run_rhime_multisector(
@@ -5128,9 +5170,9 @@ def test_run_rhime_multisector_rejects_source_keyed_xprior_before_data_preparati
     """Legacy source-keyed ``xprior`` fails before RHIME data preparation."""
 
     def fail_prepare(**kwargs):
-        raise AssertionError("retrieve_or_reload_rhime_data should not be called")
+        raise AssertionError("load_rhime_data should not be called")
 
-    monkeypatch.setattr(rhime_multisector, "retrieve_or_reload_rhime_data", fail_prepare)
+    monkeypatch.setattr(rhime_multisector.RhimeMergedData, "from_options", fail_prepare)
 
     with pytest.raises(ValueError, match="source-keyed priors"):
         run_rhime_multisector(
@@ -5156,9 +5198,9 @@ def test_run_rhime_multisector_rejects_non_mapping_sector_sources(
     """Invalid sector-source mappings fail before RHIME data preparation."""
 
     def fail_prepare(**kwargs):
-        raise AssertionError("retrieve_or_reload_rhime_data should not be called")
+        raise AssertionError("load_rhime_data should not be called")
 
-    monkeypatch.setattr(rhime_multisector, "retrieve_or_reload_rhime_data", fail_prepare)
+    monkeypatch.setattr(rhime_multisector.RhimeMergedData, "from_options", fail_prepare)
 
     with pytest.raises(ValueError, match="sector_sources"):
         run_rhime_multisector(
@@ -5178,7 +5220,7 @@ def test_run_rhime_multisector_rejects_non_mapping_sector_sources(
 def test_run_rhime_multisector_rejects_duplicate_sanitized_sector_names() -> None:
     """Duplicate PyMC suffixes fail during setup, before RHIME data preparation."""
     with pytest.raises(ValueError, match="duplicate sanitized name"):
-        rhime_params.resolve_rhime_options(
+        rhime_params.RhimeConfig.from_params(
             params={
                 "species": "ch4",
                 "sites": ["TAC"],
@@ -5204,7 +5246,7 @@ def test_resolve_flux_sources_rejects_duplicates() -> None:
 def test_run_rhime_multisector_rejects_duplicate_sector_source_mappings() -> None:
     """Current independent sector states require distinct source sensitivities."""
     with pytest.raises(ValueError, match="source 'ff-inventory'.*\\['FF', 'other'\\]"):
-        rhime_params.resolve_rhime_options(
+        rhime_params.RhimeConfig.from_params(
             params={
                 "species": "ch4",
                 "sites": ["TAC"],
@@ -5247,7 +5289,7 @@ def test_run_rhime_multisector_rejects_inexact_sector_prior_keys(
 ) -> None:
     """Missing and unused sector prior keys fail before data preparation."""
     with pytest.raises(ValueError, match=error_fragment):
-        rhime_params.resolve_rhime_options(
+        rhime_params.RhimeConfig.from_params(
             params={
                 "species": "ch4",
                 "sites": ["TAC"],
@@ -5714,9 +5756,15 @@ def test_rhime_preparation_uses_platform_for_sites_retained_after_filtering(
     )
     captured: dict[str, object] = {}
 
-    monkeypatch.setattr(prep_module, "_retrieve_or_reload_merged_data", lambda **kwargs: merged)
+    def retrieve(*, site_options: SiteOptions, **kwargs: object) -> RhimeMergedData:
+        """Accept resolved requested selectors at the canonical acquisition seam."""
+        assert site_options.sites == ("TAC", "OCO2-EASTASIA")
+        assert site_options.platform == ("surface", "satellite")
+        return merged
+
+    monkeypatch.setattr(prep_module.RhimeMergedData, "from_options", retrieve)
     monkeypatch.setattr(prep_module, "_filter_merged_inversion_data", lambda **kwargs: filtered_merged)
-    monkeypatch.setattr(prep_module, "make_basis_functions", lambda **kwargs: _fake_basis_functions())
+    monkeypatch.setattr(rhime_preparation, "make_basis_functions", lambda **kwargs: _fake_basis_functions())
     monkeypatch.setattr(
         prep_module,
         "_rhime_site_data_from_basis_functions",
@@ -5732,7 +5780,7 @@ def test_rhime_preparation_uses_platform_for_sites_retained_after_filtering(
         captured.update(kwargs)
         return inv_inputs
 
-    monkeypatch.setattr(prep_module, "_scale_satellite_bc_sensitivity_to_column_signal", capture_scaling)
+    monkeypatch.setattr(rhime_preparation, "scale_satellite_boundary_sensitivity_to_column_signal", capture_scaling)
 
     prepare_rhime_inputs(
         species="co2",
@@ -5800,10 +5848,10 @@ def test_prepare_rhime_inputs_uses_basis_sensitivity_without_legacy_side_channel
 
     monkeypatch.setattr(
         acquisition_module,
-        "retrieve_inversion_data",
+        "_retrieve_inversion_data_from_options",
         fake_data_processing_surface_notracer,
     )
-    monkeypatch.setattr(prep_module, "make_basis_functions", fake_make_basis_functions)
+    monkeypatch.setattr(rhime_preparation, "make_basis_functions", fake_make_basis_functions)
     monkeypatch.setattr(prep_module, "make_inv_inputs", fake_make_inv_inputs)
     prepared = prepare_rhime_inputs(
         species="ch4",
@@ -5847,10 +5895,10 @@ def test_prepare_rhime_inputs_matches_direct_sensitivity_inv_inputs(
 
     monkeypatch.setattr(
         acquisition_module,
-        "retrieve_inversion_data",
+        "_retrieve_inversion_data_from_options",
         fake_data_processing_surface_notracer,
     )
-    monkeypatch.setattr(prep_module, "make_basis_functions", fake_make_basis_functions)
+    monkeypatch.setattr(rhime_preparation, "make_basis_functions", fake_make_basis_functions)
 
     prepared = prepare_rhime_inputs(
         species="ch4",
@@ -5904,7 +5952,7 @@ def test_prepare_rhime_inputs_prunes_reloaded_merged_data_to_requested_sites(
         return _minimal_prepared_inv_inputs()
 
     monkeypatch.setattr(acquisition_module, "load_merged_data", fake_load_merged_data)
-    monkeypatch.setattr(prep_module, "make_basis_functions", fake_make_basis_functions)
+    monkeypatch.setattr(rhime_preparation, "make_basis_functions", fake_make_basis_functions)
     monkeypatch.setattr(prep_module, "make_inv_inputs", fake_make_inv_inputs)
 
     prepare_rhime_inputs(
@@ -5941,27 +5989,18 @@ def test_retrieve_or_reload_merged_data_reload_keeps_all_options_aligned(
         },
     )
 
-    merged = prep_module._retrieve_or_reload_merged_data(
-        species="ch4",
-        sites=["TAC", "MHD", "RGL"],
-        domain="EUROPE",
-        averaging_period=["1H", "2H", "3H"],
-        start_date="2019-01-01",
-        end_date="2019-02-01",
-        output_name="reload_alignment",
-        flux_sources=["total-ukghg-edgar7"],
-        inlet=["100m", "200m", "300m"],
-        fp_height=["110m", "210m", "310m"],
-        instrument=["inst-tac", "inst-mhd", "inst-rgl"],
-        platform=["surface", "flask", "site-column"],
-        obs_data_level=["level-tac", "level-mhd", "level-rgl"],
-        met_model=["met-tac", "met-mhd", "met-rgl"],
-        max_level=[10, 20, 30],
-        time_resolved=[True, False, None],
-        reload_merged_data=True,
-        merged_data_dir=str(tmp_path),
-        use_bc=False,
-    )
+    merged = acquisition_module.RhimeMergedData.load(site_options=_site_options(
+            sites=["TAC", "MHD", "RGL"],
+            averaging_period=["1H", "2H", "3H"],
+            inlet=["100m", "200m", "300m"],
+            fp_height=["110m", "210m", "310m"],
+            instrument=["inst-tac", "inst-mhd", "inst-rgl"],
+            platform=["surface", "flask", "site-column"],
+            obs_data_level=["level-tac", "level-mhd", "level-rgl"],
+            met_model=["met-tac", "met-mhd", "met-rgl"],
+            max_level=[10, 20, 30],
+            time_resolved=[True, False, None],
+        ), species="ch4", start_date="2019-01-01", output_name="reload_alignment", merged_data_dir=str(tmp_path))
 
     assert merged.site_options == _site_options(
         ["MHD"],
@@ -6024,26 +6063,28 @@ def test_retrieve_or_reload_merged_data_retrieval_keeps_requested_metadata_autho
 
     monkeypatch.setattr(
         acquisition_module,
-        "retrieve_inversion_data",
+        "_retrieve_inversion_data_from_options",
         fake_data_processing,
     )
 
-    merged = prep_module._retrieve_or_reload_merged_data(
+    merged = acquisition_module.RhimeMergedData.from_options(
+        site_options=_site_options(
+            sites=["TAC", "MHD", "RGL"],
+            averaging_period=["1H", "2H", "3H"],
+            inlet=["100m", "200m", "300m"],
+            fp_height=["110m", "210m", "310m"],
+            instrument=["inst-tac", "inst-mhd", "inst-rgl"],
+            platform=["surface", "flask", "site-column"],
+            obs_data_level=["level-tac", "level-mhd", "level-rgl"],
+            met_model=["met-tac", "met-mhd", "met-rgl"],
+            max_level=[10, 20, 30],
+        ),
         species="ch4",
-        sites=["TAC", "MHD", "RGL"],
         domain="EUROPE",
-        averaging_period=["1H", "2H", "3H"],
         start_date="2019-01-01",
         end_date="2019-02-01",
         output_name="retrieval_alignment",
         flux_sources=["inventory"],
-        inlet=["100m", "200m", "300m"],
-        fp_height=["110m", "210m", "310m"],
-        instrument=["inst-tac", "inst-mhd", "inst-rgl"],
-        platform=["surface", "flask", "site-column"],
-        obs_data_level=["level-tac", "level-mhd", "level-rgl"],
-        met_model=["met-tac", "met-mhd", "met-rgl"],
-        max_level=[10, 20, 30],
         use_bc=False,
     )
 
@@ -6073,20 +6114,11 @@ def test_retrieve_or_reload_merged_data_reload_rejects_time_resolved_selector_mi
     )
 
     with pytest.raises(ValueError, match="does not match the requested `time_resolved` selector"):
-        prep_module._retrieve_or_reload_merged_data(
-            species="ch4",
-            sites=["TAC"],
-            domain="EUROPE",
-            averaging_period=["1H"],
-            start_date="2019-01-01",
-            end_date="2019-02-01",
-            output_name="reload_resolution",
-            flux_sources=["inventory"],
-            time_resolved=True,
-            reload_merged_data=True,
-            merged_data_dir=str(tmp_path),
-            use_bc=False,
-        )
+        acquisition_module.RhimeMergedData.load(site_options=_site_options(
+                sites=["TAC"],
+                averaging_period=["1H"],
+                time_resolved=True,
+            ), species="ch4", start_date="2019-01-01", output_name="reload_resolution", merged_data_dir=str(tmp_path))
 
 
 @pytest.mark.parametrize(
@@ -6112,20 +6144,10 @@ def test_retrieve_or_reload_merged_data_reload_rejects_sector_layout_mismatch(
     )
 
     with pytest.raises(ValueError, match="incompatible `split_by_sectors` layout"):
-        prep_module._retrieve_or_reload_merged_data(
-            species="ch4",
-            sites=["TAC"],
-            domain="EUROPE",
-            averaging_period=["1H"],
-            start_date="2019-01-01",
-            end_date="2019-02-01",
-            output_name="reload_sector_layout",
-            flux_sources=["inventory"],
-            split_by_sectors=requested_split_by_sectors,
-            reload_merged_data=True,
-            merged_data_dir=str(tmp_path),
-            use_bc=False,
-        )
+        acquisition_module.RhimeMergedData.load(site_options=_site_options(
+                sites=["TAC"],
+                averaging_period=["1H"],
+            ), species="ch4", start_date="2019-01-01", output_name="reload_sector_layout", split_by_sectors=requested_split_by_sectors, merged_data_dir=str(tmp_path))
 
 
 def test_retrieve_or_reload_merged_data_ignores_redundant_retrieval_metadata(
@@ -6134,7 +6156,7 @@ def test_retrieve_or_reload_merged_data_ignores_redundant_retrieval_metadata(
     """Unused legacy metadata cannot replace requested site pairings."""
     monkeypatch.setattr(
         acquisition_module,
-        "retrieve_inversion_data",
+        "_retrieve_inversion_data_from_options",
         lambda **kwargs: (
             {"TAC": _site_dataset([2.0]), ".species": "CH4"},
             ["TAC"],
@@ -6145,18 +6167,20 @@ def test_retrieve_or_reload_merged_data_ignores_redundant_retrieval_metadata(
         ),
     )
 
-    merged = prep_module._retrieve_or_reload_merged_data(
+    merged = acquisition_module.RhimeMergedData.from_options(
+        site_options=_site_options(
+            sites=["TAC"],
+            averaging_period=["1H"],
+            inlet=["100m"],
+            fp_height=["110m"],
+            instrument=["inst-tac"],
+        ),
         species="ch4",
-        sites=["TAC"],
         domain="EUROPE",
-        averaging_period=["1H"],
         start_date="2019-01-01",
         end_date="2019-02-01",
         output_name="retrieval_disagreement",
         flux_sources=["inventory"],
-        inlet=["100m"],
-        fp_height=["110m"],
-        instrument=["inst-tac"],
         use_bc=False,
     )
 
@@ -6191,7 +6215,7 @@ def test_prepare_rhime_inputs_reload_all_sites_missing_fails_before_basis(
         """Fail if basis construction starts without a requested site."""
         raise AssertionError("Basis generation should not run without a requested site.")
 
-    monkeypatch.setattr(prep_module, "make_basis_functions", fail_make_basis_functions)
+    monkeypatch.setattr(rhime_preparation, "make_basis_functions", fail_make_basis_functions)
 
     with pytest.raises(ValueError, match="does not include any requested sites"):
         prepare_rhime_inputs(
@@ -6278,9 +6302,8 @@ def test_prepare_rhime_inputs_normalises_averaging_period_to_site_count(
         **kwargs: object,
     ) -> tuple[dict, list[str], list[str], list[str], list[str], list[str | None]]:
         nonlocal captured_averaging_period
-        averaging_period_arg = kwargs["averaging_period"]
-        assert isinstance(averaging_period_arg, list)
-        captured_averaging_period = averaging_period_arg
+        options = cast(SiteOptions, kwargs["site_options"])
+        captured_averaging_period = list(options.averaging_period)
         return (
             {**site_data, ".species": "CH4"},
             ["TAC", "MHD"],
@@ -6300,10 +6323,10 @@ def test_prepare_rhime_inputs_normalises_averaging_period_to_site_count(
 
     monkeypatch.setattr(
         acquisition_module,
-        "retrieve_inversion_data",
+        "_retrieve_inversion_data_from_options",
         fake_data_processing_surface_notracer,
     )
-    monkeypatch.setattr(prep_module, "make_basis_functions", fake_make_basis_functions)
+    monkeypatch.setattr(rhime_preparation, "make_basis_functions", fake_make_basis_functions)
     monkeypatch.setattr(prep_module, "make_inv_inputs", fake_make_inv_inputs)
 
     prepared = prepare_rhime_inputs(
@@ -6356,25 +6379,20 @@ def test_prepare_rhime_inputs_rejects_non_string_averaging_period_values(
 
 
 @pytest.mark.rhime_contract
-def test_run_rhime_leaves_scalar_averaging_period_for_shared_preparation(
+def test_run_rhime_resolves_scalar_averaging_period_before_acquisition(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Ensure scalar averaging periods reach shared preparation unchanged."""
+    """Acquisition receives canonical requested selectors instead of shorthand."""
     captured_averaging_period: object = None
 
-    def fake_retrieve(
-        data_args: dict[str, object],
-        *,
-        multisector: bool,
-        merged_data: RhimeMergedData | None = None,
-    ) -> None:
+    def fake_retrieve(*, site_options: SiteOptions, merged_data=None, **kwargs: Any) -> None:
         """Capture acquisition options before any data access."""
         nonlocal captured_averaging_period
         assert merged_data is None
-        captured_averaging_period = data_args["averaging_period"]
+        captured_averaging_period = site_options.averaging_period
         raise RuntimeError("stop after data argument capture")
 
-    monkeypatch.setattr(rhime_standard, "retrieve_or_reload_rhime_data", fake_retrieve)
+    monkeypatch.setattr(rhime_standard.RhimeMergedData, "from_options", fake_retrieve)
 
     with pytest.raises(RuntimeError, match="stop after data argument capture"):
         run_rhime(
@@ -6390,7 +6408,7 @@ def test_run_rhime_leaves_scalar_averaging_period_for_shared_preparation(
             output_format="none",
         )
 
-    assert captured_averaging_period == "1H"
+    assert captured_averaging_period == ("1H", "1H")
 
 
 def test_prepare_rhime_inputs_treats_min_error_none_as_default(
@@ -6423,10 +6441,10 @@ def test_prepare_rhime_inputs_treats_min_error_none_as_default(
 
     monkeypatch.setattr(
         acquisition_module,
-        "retrieve_inversion_data",
+        "_retrieve_inversion_data_from_options",
         fake_data_processing_surface_notracer,
     )
-    monkeypatch.setattr(prep_module, "make_basis_functions", fake_make_basis_functions)
+    monkeypatch.setattr(rhime_preparation, "make_basis_functions", fake_make_basis_functions)
     monkeypatch.setattr(prep_module, "make_inv_inputs", fake_make_inv_inputs)
 
     prepare_rhime_inputs(
@@ -6483,7 +6501,7 @@ def test_prepare_rhime_inputs_rejects_min_error_options_before_retrieval(
 
     monkeypatch.setattr(
         acquisition_module,
-        "retrieve_inversion_data",
+        "_retrieve_inversion_data_from_options",
         fail_data_processing,
     )
 
@@ -6560,11 +6578,11 @@ def test_prepare_rhime_inputs_filters_sites_before_basis_generation(
 
     monkeypatch.setattr(
         acquisition_module,
-        "retrieve_inversion_data",
+        "_retrieve_inversion_data_from_options",
         fake_data_processing_surface_notracer,
     )
     monkeypatch.setattr(prep_module, "filtering", fake_filtering)
-    monkeypatch.setattr(prep_module, "make_basis_functions", fake_make_basis_functions)
+    monkeypatch.setattr(rhime_preparation, "make_basis_functions", fake_make_basis_functions)
     monkeypatch.setattr(prep_module, "bc_sensitivity", fake_bc_sensitivity)
     monkeypatch.setattr(prep_module, "make_inv_inputs", fake_make_inv_inputs)
 
@@ -6604,7 +6622,7 @@ def test_satellite_bc_sensitivity_is_scaled_to_corrected_column_signal() -> None
         }
     )
 
-    result = prep_module._scale_satellite_bc_sensitivity_to_column_signal(
+    result = rhime_preparation.scale_satellite_boundary_sensitivity_to_column_signal(
         inv_inputs,
         sites=["OCO2-EASTASIA"],
         platform=["satellite"],
@@ -6632,7 +6650,7 @@ def test_surface_bc_sensitivity_is_not_scaled_by_column_factors() -> None:
         }
     )
 
-    result = prep_module._scale_satellite_bc_sensitivity_to_column_signal(
+    result = rhime_preparation.scale_satellite_boundary_sensitivity_to_column_signal(
         inv_inputs,
         sites=["TAC"],
         platform=[None],
@@ -6686,10 +6704,10 @@ def test_prepare_rhime_inputs_applies_daily_median_before_sensitivity(
 
     monkeypatch.setattr(
         acquisition_module,
-        "retrieve_inversion_data",
+        "_retrieve_inversion_data_from_options",
         fake_data_processing_surface_notracer,
     )
-    monkeypatch.setattr(prep_module, "make_basis_functions", fake_make_basis_functions)
+    monkeypatch.setattr(rhime_preparation, "make_basis_functions", fake_make_basis_functions)
     monkeypatch.setattr(prep_module, "make_inv_inputs", fake_make_inv_inputs)
 
     prepare_rhime_inputs(
@@ -6774,11 +6792,11 @@ def test_prepare_rhime_inputs_filters_multisector_sites_before_basis_generation(
 
     monkeypatch.setattr(
         acquisition_module,
-        "retrieve_inversion_data",
+        "_retrieve_inversion_data_from_options",
         fake_data_processing_surface_notracer,
     )
     monkeypatch.setattr(prep_module, "filtering", fake_filtering)
-    monkeypatch.setattr(prep_module, "make_basis_functions", fake_make_basis_functions)
+    monkeypatch.setattr(rhime_preparation, "make_basis_functions", fake_make_basis_functions)
     monkeypatch.setattr(prep_module, "make_inv_inputs", fake_make_inv_inputs)
 
     prepared = prepare_rhime_inputs(
@@ -6848,10 +6866,10 @@ def test_prepare_rhime_inputs_filters_loaded_basis_before_sensitivity(
 
     monkeypatch.setattr(
         acquisition_module,
-        "retrieve_inversion_data",
+        "_retrieve_inversion_data_from_options",
         fake_data_processing_surface_notracer,
     )
-    monkeypatch.setattr(prep_module, "make_basis_functions", fake_make_basis_functions)
+    monkeypatch.setattr(rhime_preparation, "make_basis_functions", fake_make_basis_functions)
     monkeypatch.setattr(prep_module, "filtering", fake_filtering)
     monkeypatch.setattr(prep_module, "make_inv_inputs", fake_make_inv_inputs)
 
@@ -6908,10 +6926,10 @@ def test_prepare_rhime_inputs_aligns_averaging_period_after_empty_site_drop(
 
     monkeypatch.setattr(
         acquisition_module,
-        "retrieve_inversion_data",
+        "_retrieve_inversion_data_from_options",
         fake_data_processing_surface_notracer,
     )
-    monkeypatch.setattr(prep_module, "make_basis_functions", fake_make_basis_functions)
+    monkeypatch.setattr(rhime_preparation, "make_basis_functions", fake_make_basis_functions)
     monkeypatch.setattr(prep_module, "make_inv_inputs", fake_make_inv_inputs)
 
     prepared = prepare_rhime_inputs(
@@ -6954,10 +6972,10 @@ def test_prepare_rhime_inputs_rejects_all_sites_dropped_before_basis_generation(
 
     monkeypatch.setattr(
         acquisition_module,
-        "retrieve_inversion_data",
+        "_retrieve_inversion_data_from_options",
         fake_data_processing_surface_notracer,
     )
-    monkeypatch.setattr(prep_module, "make_basis_functions", fake_make_basis_functions)
+    monkeypatch.setattr(rhime_preparation, "make_basis_functions", fake_make_basis_functions)
 
     with pytest.raises(ValueError, match="No sites remain"):
         prepare_rhime_inputs(
@@ -7073,7 +7091,7 @@ output_name = "test"
         """Prove invalid executable configuration fails before acquisition."""
         raise AssertionError("configured likelihood builders must fail before retrieval")
 
-    monkeypatch.setattr(rhime_standard, "retrieve_or_reload_rhime_data", fail_retrieval)
+    monkeypatch.setattr(rhime_standard.RhimeMergedData, "from_options", fail_retrieval)
     with pytest.raises(ValueError, match="likelihood_builder"):
         run_rhime(config_file=config_file)
 
@@ -7149,9 +7167,9 @@ def test_required_parameter_validation_allows_missing_output_path_for_in_memory_
     rhime_params.validate_required_params(args)
 
 
-def test_rhime_runner_setup_forwards_satellite_platform_to_preparation() -> None:
+def test_rhime_configuration_forwards_satellite_platform_to_preparation() -> None:
     """Satellite runs use the public ``platform`` preparation parameter."""
-    setup = rhime_params.make_rhime_runner_setup(
+    setup = rhime_params.RhimeConfig.from_params(
         params={
             "species": "co2",
             "sites": ["OCO2-EASTASIA"],
@@ -7167,7 +7185,7 @@ def test_rhime_runner_setup_forwards_satellite_platform_to_preparation() -> None
         multisector=False,
     )
 
-    assert setup.data_args["platform"] == ["satellite"]
+    assert setup.site_options.platform == ("satellite",)
 
 
 @pytest.mark.parametrize(
@@ -7215,7 +7233,7 @@ def test_output_path_validation_rejects_default_standard_save_without_path() -> 
         )
 
 
-def test_runner_setup_defaults_inv_out_save_only_for_inv_out_format(tmp_path: Path) -> None:
+def test_configuration_defaults_inv_out_save_only_for_inv_out_format(tmp_path: Path) -> None:
     """Derived RHIME products should not save large inv_out sidecars unless requested."""
     base_params = {
         "species": "ch4",
@@ -7227,17 +7245,17 @@ def test_runner_setup_defaults_inv_out_save_only_for_inv_out_format(tmp_path: Pa
         "flux_sources": ["total-ukghg-edgar7"],
         "output_name": "test",
     }
-    inv_out_setup = rhime_params.make_rhime_runner_setup(
+    inv_out_setup = rhime_params.RhimeConfig.from_params(
         params={**base_params, "output_format": "inv_out", "output_path": str(tmp_path)},
         multisector=False,
     )
-    paris_setup = rhime_params.make_rhime_runner_setup(
+    paris_setup = rhime_params.RhimeConfig.from_params(
         params={**base_params, "output_format": "paris"},
         multisector=False,
     )
 
-    assert inv_out_setup.run_spec.output.save_inversion_output is True
-    assert paris_setup.run_spec.output.save_inversion_output is False
+    assert inv_out_setup.output.save_inversion_output is True
+    assert paris_setup.output.save_inversion_output is False
 
 
 @pytest.mark.rhime_contract
@@ -9029,18 +9047,23 @@ output_format = "inv_out"
     basis = cast(Any, object())
     site_data = cast(Any, object())
 
-    def fake_assemble(
-        actual_merged: Any,
-        actual_basis: Any,
-        actual_site_data: Any,
-        data_args: dict[str, Any],
-    ) -> RhimePreparedInputs:
-        """Capture post-merge preparation arguments and return minimal inputs."""
+    def fake_assemble(actual_merged: Any, actual_basis: Any, actual_site_data: Any, **kwargs: Any) -> RhimePreparedInputs:
+        """Capture resolved named assembly arguments and return minimal inputs."""
         assert actual_merged is filtered
         assert actual_basis is basis
         assert actual_site_data is site_data
-        seen["preparation"] = dict(data_args)
+        seen["assembly"] = kwargs
         return prepared
+
+    def fake_load(*, site_options: SiteOptions, **kwargs: Any) -> Any:
+        """Capture resolved requested selectors and acquisition values."""
+        seen["acquisition"] = {**kwargs, "sites": site_options.sites, "averaging_period": site_options.averaging_period}
+        return merged
+
+    def fake_basis(value: Any, **kwargs: Any) -> Any:
+        """Capture the basis choices forwarded from the effective request."""
+        seen["basis"] = kwargs
+        return basis
 
     build_result = RhimeModelBuildResult(model=pm.Model(), variable_roles={"concentration": "y"})
     idata = _minimal_output_idata()
@@ -9055,17 +9078,15 @@ output_format = "inv_out"
         seen["sampler"] = kwargs["sampler"]
         return cast(RhimeResult, SimpleNamespace())
 
-    monkeypatch.setattr(
-        rhime_standard,
-        "retrieve_or_reload_rhime_data",
-        lambda data_args, *, multisector, merged_data=None: merged,
+    monkeypatch.setattr(rhime_standard.RhimeMergedData, "from_options",
+        fake_load,
     )
-    monkeypatch.setattr(rhime_standard, "filter_rhime_observations", lambda value, data_args: filtered)
-    monkeypatch.setattr(rhime_standard, "build_rhime_basis", lambda value, data_args: basis)
+    monkeypatch.setattr(rhime_standard, "filter_rhime_observations", lambda value, **kwargs: filtered)
+    monkeypatch.setattr(rhime_standard, "build_rhime_basis", fake_basis)
     monkeypatch.setattr(
         rhime_standard,
         "build_rhime_sensitivities",
-        lambda value, actual_basis, data_args, *, multisector: site_data,
+        lambda value, actual_basis, **kwargs: site_data,
     )
     monkeypatch.setattr(rhime_standard, "assemble_rhime_inputs", fake_assemble)
     monkeypatch.setattr(rhime_params, "normalise_rhime_params", track_normalise)
@@ -9099,14 +9120,14 @@ output_format = "inv_out"
         ]
     )
 
-    preparation = seen["preparation"]
+    preparation = {**seen["acquisition"], **seen["basis"], **seen["assembly"]}
     assert preparation["species"] == "ch4"
-    assert preparation["sites"] == ["TAC"]
-    assert preparation["averaging_period"] == ["1h"]
+    assert preparation["sites"] == ("TAC",)
+    assert preparation["averaging_period"] == ("1h",)
     assert preparation["domain"] == "DIRECT-DOMAIN"
     assert preparation["start_date"] == "2019-01-01"
     assert preparation["end_date"] == "2019-01-02"
-    assert preparation["flux_sources"] == ["direct-source"]
+    assert tuple(preparation["flux_sources"]) == ("direct-source",)
     assert preparation["basis_algorithm"] == "weighted"
     assert preparation["bc_store"] == "config-bc-store"
     assert preparation["output_name"] == "direct-name"
@@ -9162,30 +9183,20 @@ def test_rhime_acquisition_forwards_satellite_footprint_mode(
 ) -> None:
     """The public runner stage must not drop the time-resolved selector."""
     captured: dict[str, Any] = {}
-    expected = object()
-
-    def fake_retrieve_or_reload_merged_data(**kwargs: Any) -> object:
+    def stop_after_capture(**kwargs: Any) -> object:
         captured.update(kwargs)
-        return expected
+        raise RuntimeError("selectors captured")
 
-    monkeypatch.setattr(acquisition_module, "_retrieve_or_reload_merged_data", fake_retrieve_or_reload_merged_data)
-    data_args = {
-        **rhime_params.RHIME_PREPARATION_DEFAULTS,
-        "species": "co2",
-        "sites": ["OCO2-EASTASIA"],
-        "domain": "EASTASIA",
-        "averaging_period": ["1H"],
-        "start_date": "2022-03-31 04:00:00",
-        "end_date": "2022-04-01 04:08:10",
-        "output_name": "satellite_multisector",
-        "flux_sources": ["anth", "resp", "gpp_atm"],
-        "time_resolved": [True],
-    }
-
-    actual = rhime_preparation.retrieve_or_reload_rhime_data(data_args, multisector=True)
-
-    assert actual is expected
-    assert captured["time_resolved"] == [True]
+    monkeypatch.setattr(rhime_multisector.RhimeMergedData, "from_options", stop_after_capture)
+    with pytest.raises(RuntimeError, match="selectors captured"):
+        run_rhime_multisector(
+            species="co2", sites=["OCO2-EASTASIA"], domain="EASTASIA",
+            averaging_period=["1H"], start_date="2022-03-31 04:00:00",
+            end_date="2022-04-01 04:08:10", output_name="satellite_multisector",
+            flux_sources=["anth", "resp", "gpp_atm"], time_resolved=[True],
+            mismatch_model="pollution_event", output_format="none",
+        )
+    assert captured["site_options"].time_resolved == (True,)
     assert captured["split_by_sectors"] is True
 
 
@@ -9216,13 +9227,13 @@ def test_satellite_rhime_template_matches_modern_input_schema() -> None:
     assert "nchain" not in satellite
 
     normalized = params_from_config(satellite_path)
-    setup = rhime_params.make_rhime_runner_setup(
+    setup = rhime_params.RhimeConfig.from_params(
         params=normalized,
         multisector=False,
     )
-    assert setup.run_spec.sites == ("GOSAT-BRAZIL",)
-    assert setup.data_args["platform"] == ["satellite"]
-    assert setup.data_args["max_level"] == [3]
+    assert setup.site_options.sites == ("GOSAT-BRAZIL",)
+    assert setup.site_options.platform == ("satellite",)
+    assert setup.site_options.max_level == (3,)
 
 
 @pytest.mark.parametrize("reload", [False, True])
@@ -9238,9 +9249,9 @@ def test_retrieve_or_reload_merged_data_sanitizes_flux_lazily(
         assert not reload
         return fp_all, ["TAC"], [None], [None], [None], ["1h"]
 
-    monkeypatch.setattr(acquisition_module, "retrieve_inversion_data", retrieve)
+    monkeypatch.setattr(acquisition_module, "_retrieve_inversion_data_from_options", retrieve)
     with Callback(pretask=lambda *args: pytest.fail("acquisition must preserve lazy flux")):
-        merged = prep_module._retrieve_or_reload_merged_data(
+        merged = acquisition_module._retrieve_or_reload_merged_data(
             species="ch4",
             sites=["TAC"],
             domain="EUROPE",
@@ -9269,9 +9280,9 @@ def test_retrieve_or_reload_merged_data_reload_failure_is_explicit(
         pytest.fail("Explicit reload must not retrieve fresh data")
 
     monkeypatch.setattr(acquisition_module, "load_merged_data", load)
-    monkeypatch.setattr(acquisition_module, "retrieve_inversion_data", retrieve)
+    monkeypatch.setattr(acquisition_module, "_retrieve_inversion_data_from_options", retrieve)
     with pytest.raises(ValueError, match="merged_data_dir|missing merged artifact"):
-        prep_module._retrieve_or_reload_merged_data(
+        acquisition_module._retrieve_or_reload_merged_data(
             species="ch4",
             sites=["TAC"],
             domain="EUROPE",

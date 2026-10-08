@@ -80,28 +80,6 @@ legacy tuple or sampler dictionary. Its principal attributes are ``idata``
 ``inv_out`` (the modern ``InversionOutput`` when constructed), and ``outputs``
 (requested derived products).
 
-Reading INI options in Python
------------------------------
-
-``openghg_inversions.rhime.ini.read_rhime_ini(path)`` returns decoded file
-options as a dictionary. It flattens sections, keeps the first occurrence of
-repeated names, and preserves legacy names and recipe-specific options. It
-performs no default resolution, alias translation, scalar coercion, or I/O
-other than reading the configuration. Apply overrides to that dictionary,
-then pass it to ``resolve_rhime_options(params=options, multisector=False)``
-for canonical validation and setup.
-
-``params_from_config`` remains available through its established imports and
-now lives in ``openghg_inversions.hbmcmc.compatibility``. This deprecated
-adapter still applies date/path overrides followed by ``extra_kwargs``;
-``normalise=False`` returns decoded options with overrides, while the default
-translates aliases, coerces scalar options, and validates structured values.
-The adapter emits ``DeprecationWarning``. Legacy aliases emit that warning
-only when translated or removed; canonical options alone do not warn.
-The compatibility translation module can be imported without loading runners
-or the model backend. Importing the INI reader still uses the RHIME package's
-normal initialization.
-
 Parameter mapping
 -----------------
 
@@ -169,7 +147,12 @@ Legacy-format output
 RHIME. It creates the HBMCMC-compatible NetCDF product from the modern
 ``InversionOutput``; it does not invoke ``fixedbasisMCMC`` or ``inferpymc``.
 The deprecated output names ``hbmcmc`` and ``hbmcmc_postprocessing`` remain
-aliases for ``legacy``.
+aliases for ``legacy`` with ``DeprecationWarning``. ``RhimeConfig.from_params``
+calls the translator in ``hbmcmc.compatibility`` before modern normalization,
+after file options and Python overrides have been combined. It warns when a
+deprecated spelling is replaced or removed; canonical inputs remain quiet.
+Prefer ``legacy`` in new configurations. The former ``resolve_rhime_config``
+wrapper is removed; use the classmethod directly.
 
 The compatibility product uses variables such as ``Yobs``, ``Yerror``,
 ``Ymodmean``, ``Ymodmedian``, ``Ymodmode``, ``xtrace``, ``sigtrace``,
@@ -193,15 +176,16 @@ the retained RHIME abstractions:
      - Current API
      - Migration note
    * - ``prepare_fixedbasis_inversion_data``
-     - ``prepare_rhime_inputs``
-     - Returns the inputs used by the standard RHIME recipe
+     - Named RHIME preparation stages
+     - Load data, then filter, build basis and sensitivities, and assemble inputs;
+       ``prepare_rhime_inputs`` remains a deprecated convenience adapter
    * - ``FixedBasisPreparedData``
      - ``RhimePreparedInputs``
      - Backend-neutral prepared observations and sensitivities
    * - ``basis_functions_wrapper``
      - ``make_basis_functions``
      - Call ``BasisFunctions.sensitivity`` when applying the retained basis;
-       full workflows should normally use ``prepare_rhime_inputs``
+       complete inversions should normally use ``run_rhime``
    * - ``add_inferpymc_likelihood_component``
      - RHIME likelihood selection
      - Configure a built-in likelihood, or pass a ``likelihood_builder`` for a
@@ -210,10 +194,22 @@ the retained RHIME abstractions:
 See :doc:`rhime` for preparation and recipe APIs and
 :doc:`customising_rhime` for the custom-likelihood boundary.
 
+The named RHIME preparation stages accept ordinary keyword arguments. Replace
+former positional ``data_args`` mappings with named arguments or an explicit
+``**config.select("name", ...)`` selection. See :doc:`rhime` for selection
+ownership and the acquisition-to-preparation sequence. Use
+``SiteOptions.from_inputs`` to normalize and align the complete selector record.
+The low-level ``convert_to_list`` helper remains available from its established
+``inversion_data.get_data`` path without a deprecation warning.
+
 Legacy merged-data metadata
 ---------------------------
 
-The merged-data mapping returned by ``data_processing_surface_notracer`` and
+Fresh acquisition is named ``retrieve_inversion_data`` for both surface and
+column observations. ``data_processing_surface_notracer`` remains a deprecated
+wrapper preserving its existing signature, shorthand and six-tuple return.
+
+The merged-data mapping returned by ``retrieve_inversion_data`` and
 ``load_merged_data`` no longer includes the unused ``.species``, ``.units``,
 or ``.scales`` entries.  The species remains an explicit run option,
 observation units remain on each site's ``mf.attrs["units"]``, and each

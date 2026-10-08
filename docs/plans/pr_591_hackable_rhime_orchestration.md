@@ -5,6 +5,12 @@ This sidecar records the intended developer-facing consequence of PR 591,
 replacement for user documentation: it captures the questions that future
 documentation needs to answer with explicit, tested contracts.
 
+The API examples below are a historical snapshot of PR 591. Current names,
+explicit resolved-value forwarding and runnable copied recipes are documented
+in [`docs/usage/customising_rhime.rst`](../usage/customising_rhime.rst) and
+[`docs/usage/rhime.rst`](../usage/rhime.rst); the former setup bundle and loader
+layers are no longer current interfaces.
+
 ## Claim
 
 PR 591 changes RHIME from a convenient but largely monolithic runner into a
@@ -58,7 +64,7 @@ from openghg_inversions.rhime import (
     make_standard_rhime_result,
     materialize_pymc_inputs,
     resolve_rhime_options,
-    retrieve_or_reload_rhime_data,
+    retrieve_or_reRhimeMergedData.from_options,
     sample_rhime_model,
     with_prepared_rhime_sites,
 )
@@ -98,7 +104,7 @@ while retaining the current filter-before-sensitivity order:
 
 ```python
 setup = resolve_rhime_options(params=params, multisector=False)
-merged = retrieve_or_reload_rhime_data(setup.data_args, multisector=False)
+merged = retrieve_or_reRhimeMergedData.from_options(setup.data_args, multisector=False)
 
 # Deliberate custom choice: derive/load the basis from unfiltered coverage.
 basis = build_rhime_basis(merged, setup.data_args)

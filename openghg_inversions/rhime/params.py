@@ -1,183 +1,336 @@
-"""RHIME parameter loading, normalisation, and validation helpers.
+"""RHIME option resolution and complete requested configuration.
 
-This module owns canonical scalar coercion, validation, and runner setup.
-INI decoding lives in ``rhime.ini`` and historical option translation in
-``hbmcmc.compatibility``.
-Preparation-option ownership is fixed by
-``RHIME_PREPARATION_OPTION_NAMES`` rather than inferred from a callable
-signature.
+The INI frontend decodes file options; callers apply overrides and consume
+recipe-specific options before canonical resolution. Resolution constructs the
+complete requested configuration before acquisition; retained run metadata is
+derived only after preparation.
+The concrete configuration and its composed values own supported names and
+defaults; scientific callable signatures do not define the external schema.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
-from typing import Any, cast
+from dataclasses import MISSING, dataclass, field, fields
+from pathlib import Path
+from typing import Any, ClassVar, cast, get_args
 
-from openghg_inversions._timing import log_timing, timer_seconds, timer_start
+from openghg_inversions.basis._functions import basis_functions
+from openghg_inversions.flux_sanitization import FluxNonFiniteCheck
+from openghg_inversions.inversion_data._site_options import SiteOptions
+from openghg_inversions.inversion_data.preparation import MinErrorConfig
+from openghg_inversions.inversion_data.prepared_inputs import RhimePreparedInputs
+from openghg_inversions.model_error import normalise_min_error, normalise_min_error_options
+from openghg_inversions.models._flux import safe_pymc_name
+from openghg_inversions.observation_error import AggregationErrorMode
+from openghg_inversions.inference.sampling import RhimeSampler
 from openghg_inversions.hbmcmc.compatibility import (
     translate_rhime_aliases,
 )
-from openghg_inversions.model_error import normalise_min_error_options
-from openghg_inversions.models._flux import safe_pymc_name
-from openghg_inversions.observation_error import AggregationErrorMode
-from openghg_inversions.rhime.sampling import RhimeSampler
+from .ini import read_rhime_ini as read_rhime_ini
 from openghg_inversions.rhime.specs import (
+    DEFAULT_BC_PRIOR,
+    DEFAULT_OFFSET_PRIOR,
     DEFAULT_X_PRIOR,
-    AdditiveSigmaSettings,
-    FixedErrorSettings,
     LikelihoodSettings,
-    MismatchModel,
-    PollutionEventSettings,
     RhimeModelSpec,
+    RhimeOutputSpec,
     RhimeRunSpec,
     SectorSpec,
-    make_output_spec,
-)
-
-_SIGMA_OPTIONS = {
-    "sigma_prior",
-    "sigma_freq",
-    "sigma_per_site",
-    "sigma_freq_anchor",
-}
-_POLLUTION_EVENT_OPTIONS = {"pollution_events_from_obs", "power"}
-_MINIMUM_ERROR_FLOOR_OPTIONS = {"use_minimum_error_floor"}
-_LIKELIHOOD_OPTIONS = _SIGMA_OPTIONS | _POLLUTION_EVENT_OPTIONS | _MINIMUM_ERROR_FLOOR_OPTIONS
-
-_INT_OPTIONS = ("draws", "burn", "tune", "chains")
-_MAPPING_OPTIONS = (
-    "sample_kwargs",
-    "posterior_predictive_kwargs",
-    "paris_postprocessing_kwargs",
-    "offset_args",
-    "min_error_options",
-    "sector_sources",
-)
-_PRIOR_OPTIONS = ("x_prior", "bc_prior", "sigma_prior", "offset_prior")
-
-#: This is the authoritative routing schema between raw RHIME options and
-# ``prepare_rhime_inputs``.  Keep it explicit: accepted configuration must not
-# change merely because an implementation helper gains a parameter.
-RHIME_PREPARATION_OPTION_NAMES = frozenset(
-    {
-        "species",
-        "sites",
-        "domain",
-        "averaging_period",
-        "start_date",
-        "end_date",
-        "output_name",
-        "flux_sources",
-        "split_by_sectors",
-        "bc_store",
-        "obs_store",
-        "footprint_store",
-        "emissions_store",
-        "emissions_domain",
-        "met_model",
-        "fp_model",
-        "fp_height",
-        "fp_species",
-        "time_resolved",
-        "inlet",
-        "instrument",
-        "max_level",
-        "calibration_scale",
-        "obs_data_level",
-        "platform",
-        "use_bc",
-        "fp_basis_case",
-        "basis_directory",
-        "bc_basis_case",
-        "bc_basis_directory",
-        "country_directory",
-        "outer_regions_path",
-        "bc_input",
-        "basis_algorithm",
-        "nbasis",
-        "filters",
-        "fix_basis_outer_regions",
-        "averaging_error",
-        "bc_freq",
-        "reload_merged_data",
-        "save_merged_data",
-        "merged_data_dir",
-        "merged_data_name",
-        "basis_output_path",
-        "min_error",
-        "min_error_options",
-        "flux_non_finite_check",
-    }
+    LIKELIHOOD_OPTION_NAMES,
+    LIKELIHOOD_PRIOR_OPTION_NAMES,
+    _copy_option_containers,
+    make_likelihood_settings as _make_likelihood_settings,
+    normalise_optional_mapping,
 )
 
 
-def resolve_rhime_options(
-    *,
-    params: Mapping[str, Any],
-    multisector: bool,
-) -> RhimeRunnerSetup:
-    """Normalize raw options into preparation, model, sampling, and output settings."""
-    timing_start = timer_start()
-    setup = make_rhime_runner_setup(params=params, multisector=multisector)
-    log_timing("rhime.runner_setup", timer_seconds(timing_start), multisector=multisector)
-    return setup
+@dataclass(frozen=True, kw_only=True)
+class RhimeConfig:
+    """Complete resolved requested configuration before scientific data access.
 
+    Acquisition and preparation choices are direct fields. ``site_options``
+    holds complete requested selectors; ``model`` holds scientific recipe
+    choices, ``output`` final-product policy and ``sampler`` sampling settings.
+    Inference executes only when the sampler receives a constructed model.
 
-# Resolve stage defaults once, before the scientific recipe starts.  Keeping
-# this mapping beside the explicit routing schema makes ``data_args`` a
-# complete, inspectable preparation contract rather than asking individual
-# stages to infer omitted values independently.
-RHIME_PREPARATION_DEFAULTS: dict[str, Any] = {
-    "split_by_sectors": False,
-    "bc_store": "user",
-    "obs_store": "user",
-    "footprint_store": "user",
-    "emissions_store": "user",
-    "emissions_domain": None,
-    "met_model": None,
-    "fp_model": None,
-    "fp_height": None,
-    "fp_species": None,
-    "time_resolved": None,
-    "inlet": None,
-    "instrument": None,
-    "max_level": None,
-    "calibration_scale": None,
-    "obs_data_level": None,
-    "platform": None,
-    "use_bc": True,
-    "fp_basis_case": None,
-    "basis_directory": None,
-    "bc_basis_case": "NESW",
-    "bc_basis_directory": None,
-    "country_directory": None,
-    "outer_regions_path": None,
-    "bc_input": None,
-    "basis_algorithm": "weighted",
-    "nbasis": 100,
-    "filters": None,
-    "fix_basis_outer_regions": False,
-    "averaging_error": True,
-    "bc_freq": None,
-    "reload_merged_data": False,
-    "save_merged_data": False,
-    "merged_data_dir": None,
-    "merged_data_name": None,
-    "basis_output_path": None,
-    "min_error": 0.0,
-    "min_error_options": None,
-    "flux_non_finite_check": "lazy",
-}
+    Use :meth:`from_params` for external options; deprecated spellings emit
+    warnings. It owns ordinary configuration containers and borrows opaque
+    numerical values. Direct construction and dataclass replacement expect
+    already-resolved values and do not copy them.
+    A frozen record does not make contained mappings or the sampler immutable.
+    Acquisition and filtering leave the requested choices intact. The record
+    contains no scientific inputs, raw options or retained execution description.
+    """
 
+    site_options: SiteOptions
+    species: str
+    domain: str
+    start_date: str
+    end_date: str
+    output_name: str
+    flux_sources: tuple[str, ...]
+    split_by_sectors: bool = False
+    bc_store: str = "user"
+    obs_store: str = "user"
+    footprint_store: str = "user"
+    emissions_store: str = "user"
+    emissions_domain: str | None = None
+    fp_model: str | None = None
+    fp_species: str | None = None
+    calibration_scale: str | None = None
+    use_bc: bool = True
+    fp_basis_case: str | None = None
+    basis_directory: str | Path | None = None
+    bc_basis_case: str = "NESW"
+    bc_basis_directory: str | Path | None = None
+    country_directory: str | Path | None = None
+    outer_regions_path: str | Path | None = None
+    bc_input: str | None = None
+    basis_algorithm: str | None = "weighted"
+    nbasis: int = 100
+    filters: str | list[str | None] | dict[str, str | None | list[str | None]] | None = None
+    fix_basis_outer_regions: bool = False
+    averaging_error: bool = True
+    bc_freq: str | None = None
+    reload_merged_data: bool = False
+    save_merged_data: bool = False
+    merged_data_dir: str | Path | None = None
+    merged_data_name: str | None = None
+    basis_output_path: str | Path | None = None
+    min_error: MinErrorConfig = 0.0
+    min_error_options: dict[str, bool] = field(default_factory=lambda: normalise_min_error_options(None))
+    flux_non_finite_check: FluxNonFiniteCheck = "lazy"
 
-@dataclass(frozen=True)
-class RhimeRunnerSetup:
-    """Normalized RHIME setup derived from config or direct API parameters."""
-
-    run_spec: RhimeRunSpec
+    model: RhimeModelSpec
+    output: RhimeOutputSpec
     sampler: RhimeSampler
-    data_args: dict[str, Any]
+
+    _COMPOSED_FIELDS: ClassVar[frozenset[str]] = frozenset({"site_options", "model", "output", "sampler"})
+
+    @classmethod
+    def preparation_option_names(cls) -> frozenset[str]:
+        """Declare external preparation choices through their concrete owners."""
+        return frozenset(setting.name for setting in fields(cls)) - cls._COMPOSED_FIELDS | frozenset(
+            setting.name for setting in fields(SiteOptions)
+        )
+
+    @classmethod
+    def required_option_names(cls) -> frozenset[str]:
+        """Declare required raw values before translating composed settings.
+
+        Sources keep their own validation and layout comes from the recipe;
+        neither replaces the required site shorthand or ordinary request values.
+        """
+        return frozenset(
+            setting.name for setting in fields(cls)
+            if setting.default is MISSING and setting.default_factory is MISSING
+            and setting.name not in cls._COMPOSED_FIELDS | {"flux_sources"}
+        ) | frozenset(SiteOptions.REQUIRED_INPUT_NAMES)
+
+    @classmethod
+    def supported_option_names(cls) -> frozenset[str]:
+        """Combine advertised external choices without exposing internal fields."""
+        return (
+            cls.preparation_option_names()
+            | frozenset(RhimeModelSpec.CONFIG_OPTION_NAMES)
+            | LIKELIHOOD_OPTION_NAMES
+            | RhimeOutputSpec.option_names()
+            | frozenset(RhimeSampler.CONFIG_OPTION_NAMES)
+        )
+
+    @classmethod
+    def from_params(
+        cls,
+        params: Mapping[str, Any],
+        *,
+        multisector: bool,
+    ) -> RhimeConfig:
+        """Resolve external options into the complete requested run.
+
+        Args:
+            params: Python or decoded file options after winning overrides.
+                Canonical names are preferred; deprecated spellings are
+                translated with ``DeprecationWarning``.
+            multisector: Whether to resolve the multisector recipe.
+
+        Returns:
+            Direct acquisition/preparation fields, scientific model, output and
+            existing sampler choices.
+            Site shorthand is completely expanded before this returns. No data
+            access, model construction or sampling is performed.
+
+        Raises:
+            ValueError: If options are missing, unsupported, malformed, or
+                incompatible with the selected runner mode.
+        """
+        normalized = normalise_rhime_params(translate_rhime_aliases(params))
+        validate_supported_params(normalized)
+        validate_required_params(normalized)
+
+        for name, choices in (
+            ("flux_non_finite_check", get_args(FluxNonFiniteCheck)),
+            ("aggregation_error_mode", get_args(AggregationErrorMode)),
+        ):
+            if name in normalized and normalized[name] not in choices:
+                raise ValueError(f"`{name}` must be one of {choices!r}; got {normalized[name]!r}.")
+
+        remaining = normalized
+        flux_sources = resolve_flux_sources(flux_sources=remaining.pop("flux_sources", None))
+        sector_sources = normalise_sector_sources(remaining.pop("sector_sources", None))
+        if not multisector and sector_sources is not None:
+            raise ValueError("`sector_sources` is only supported by `run_rhime_multisector`.")
+        data_flux_sources = (
+            _validate_sector_source_mapping(flux_sources, sector_sources)
+            if sector_sources is not None
+            else flux_sources
+        )
+        if multisector and len(data_flux_sources) < 2:
+            raise ValueError("`run_rhime_multisector` requires at least two flux sources.")
+        if not multisector and len(flux_sources) != 1:
+            raise ValueError("`run_rhime` requires exactly one flux source.")
+
+        species = remaining.pop("species")
+        sites = as_list(remaining.pop("sites")) or []
+        domain = remaining.pop("domain")
+        averaging_period = remaining.pop("averaging_period")
+        start_date = remaining.pop("start_date")
+        end_date = remaining.pop("end_date")
+        output_name = remaining.pop("output_name")
+
+        x_prior = remaining.pop("x_prior", None)
+        bc_prior = normalise_optional_mapping(remaining.pop("bc_prior", None))
+        offset_prior = normalise_optional_mapping(remaining.pop("offset_prior", None))
+        raw_sector_priors = remaining.pop("sector_priors", None)
+        sector_priors = None if raw_sector_priors is None else {
+            str(sector): prior for sector, prior in raw_sector_priors.items()
+        }
+        if multisector:
+            validate_multisector_x_prior(x_prior)
+        offset_args = normalise_optional_mapping(remaining.pop("offset_args", None))
+
+        use_bc = remaining.get("use_bc", cls.use_bc)
+        if use_bc and bc_prior is None:
+            bc_prior = dict(DEFAULT_BC_PRIOR)
+        mismatch_model = remaining.pop("mismatch_model", None)
+        likelihood = _make_likelihood_settings(
+            remaining,
+            mismatch_model=mismatch_model,
+            start_date=start_date,
+        )
+        add_offset = remaining.pop("add_offset", RhimeModelSpec.add_offset)
+        if add_offset and offset_prior is None:
+            offset_prior = dict(DEFAULT_OFFSET_PRIOR)
+        aggregation_error_mode = cast(
+            AggregationErrorMode,
+            remaining.pop("aggregation_error_mode", RhimeModelSpec.aggregation_error_mode),
+        )
+
+        sampler_options = {
+            name: remaining.pop(name) for name in RhimeSampler.CONFIG_OPTION_NAMES if name in remaining
+        }
+        for name in RhimeSampler.MAPPING_OPTION_NAMES:
+            if name in sampler_options:
+                sampler_options[name] = normalise_optional_mapping(sampler_options[name])
+        sampler = RhimeSampler(**sampler_options)
+        output_options = {
+            name: remaining.pop(name) for name in RhimeOutputSpec.option_names() if name in remaining
+        }
+        output_spec = RhimeOutputSpec.from_params(
+            {**output_options, "output_name": output_name}, multisector=multisector,
+        )
+        model_spec = _make_model_spec(
+            species=species,
+            domain=domain,
+            flux_sources=flux_sources,
+            x_prior=x_prior,
+            sector_priors=sector_priors,
+            sector_sources=sector_sources,
+            bc_prior=bc_prior,
+            offset_prior=offset_prior,
+            use_bc=use_bc,
+            likelihood=likelihood,
+            add_offset=add_offset,
+            offset_args=offset_args,
+            aggregation_error_mode=aggregation_error_mode,
+        )
+        basis_algorithm = remaining.get("basis_algorithm", cls.basis_algorithm)
+        if remaining.get("fp_basis_case") is None and basis_algorithm not in basis_functions:
+            raise ValueError(
+                f"`basis_algorithm` must be one of {tuple(basis_functions)!r} when no `fp_basis_case` "
+                f"is supplied; got {basis_algorithm!r}."
+            )
+        min_error = normalise_min_error(remaining.pop("min_error", cls.min_error))
+        min_error_options = normalise_min_error_options(remaining.pop("min_error_options", None))
+        site_options = SiteOptions.from_inputs(
+            sites=sites,
+            averaging_period=averaging_period,
+            **{
+                setting.name: remaining.pop(setting.name)
+                for setting in fields(SiteOptions)
+                if setting.name in remaining
+            },
+        )
+        filters = _copy_option_containers(remaining.pop("filters", cls.filters))
+        # Recipe mode owns the resolved layout, preserving its precedence over
+        # the legacy duplicate raw flag. Everything left is a direct field.
+        remaining.pop("split_by_sectors", None)
+        return cls(
+            site_options=site_options,
+            species=species,
+            domain=domain,
+            start_date=start_date,
+            end_date=end_date,
+            output_name=output_name,
+            flux_sources=tuple(data_flux_sources),
+            split_by_sectors=multisector,
+            model=model_spec,
+            output=output_spec,
+            sampler=sampler,
+            filters=filters,
+            min_error=min_error,
+            min_error_options=min_error_options,
+            **remaining,
+        )
+
+    def select(self, *names: str) -> dict[str, Any]:
+        """Select named resolved attributes for an explicit scientific call.
+
+        Args:
+            *names: Attribute names to forward, written at the call site.
+
+        Returns:
+            A new dictionary containing the selected values by reference.
+            Selection does not copy containers or numerical arrays, resolve
+            defaults, or apply overrides.
+
+        Raises:
+            AttributeError: If a requested attribute does not exist.
+        """
+        return {name: getattr(self, name) for name in names}
+
+    def retained_run_spec(self, prepared: RhimePreparedInputs) -> RhimeRunSpec:
+        """Describe execution using prepared sites and requested date bounds.
+
+        Args:
+            prepared: Canonical model inputs with authoritative retained sites
+                and averaging periods. Its numerical arrays remain borrowed.
+
+        Returns:
+            Run metadata composed with the resolved model and output choices.
+        """
+        return RhimeRunSpec(
+            start_date=self.start_date,
+            end_date=self.end_date,
+            sites=tuple(prepared.sites),
+            averaging_period=tuple(prepared.averaging_period),
+            model=self.model,
+            output=self.output,
+            split_by_sectors=self.split_by_sectors,
+        )
+
+
+RHIME_PREPARATION_OPTION_NAMES = RhimeConfig.preparation_option_names()
 
 
 def as_list(value: str | Sequence[str] | None) -> list[str] | None:
@@ -203,15 +356,12 @@ def _duplicate_names(values: Sequence[str]) -> list[str]:
 def resolve_flux_sources(
     *,
     flux_sources: str | Sequence[str] | None = None,
-    emissions_name: str | Sequence[str] | None = None,
 ) -> list[str]:
-    """Resolve new ``flux_sources`` and legacy ``emissions_name`` arguments.
+    """Validate canonical OpenGHG flux source names.
 
     Args:
         flux_sources: Preferred RHIME field containing OpenGHG flux
             ``source`` metadata values.
-        emissions_name: Legacy compatibility spelling accepted only when
-            ``flux_sources`` is absent.
 
     Returns:
         Resolved flux source names.
@@ -220,8 +370,6 @@ def resolve_flux_sources(
         ValueError: If no usable flux source is supplied.
     """
     resolved = as_list(flux_sources)
-    if resolved is None:
-        resolved = as_list(emissions_name)
     if not resolved or any(source in {"", "None", "none"} for source in resolved):
         raise ValueError("At least one flux source must be supplied via `flux_sources`.")
     duplicates = _duplicate_names(resolved)
@@ -233,8 +381,12 @@ def resolve_flux_sources(
 
 
 def normalise_rhime_params(params: Mapping[str, Any]) -> dict[str, Any]:
-    """Normalize aliases, coerce simple scalars, and validate structured values."""
-    normalized = translate_rhime_aliases(params)
+    """Copy canonical options, coerce scalars and validate structured values.
+
+    ``RhimeConfig.from_params`` translates deprecated spellings before this
+    canonical value-normalization step.
+    """
+    normalized = dict(params)
     coerce_simple_param_types(normalized)
     validate_rhime_param_types(normalized)
     return normalized
@@ -242,7 +394,9 @@ def normalise_rhime_params(params: Mapping[str, Any]) -> dict[str, Any]:
 
 def coerce_simple_param_types(params: dict[str, Any]) -> None:
     """Coerce simple scalar options in-place before spec construction."""
-    for name in _INT_OPTIONS:
+    if params.get("output_format") is not None:
+        params["output_format"] = str(params["output_format"]).lower()
+    for name in RhimeSampler.INTEGER_OPTION_NAMES:
         if name not in params or params[name] is None:
             continue
         params[name] = _coerce_int_option(name, params[name])
@@ -264,7 +418,7 @@ def _invalid_config_type_message(name: str, expected: str, value: Any) -> str:
     """Build an actionable RHIME config type error."""
     return (
         f"Invalid RHIME config value for `{name}`: expected {expected}, "
-        f"but got {type(value).__name__}. Check braces/quotes in the .ini file."
+        f"but got {type(value).__name__}."
     )
 
 
@@ -278,7 +432,7 @@ def _validate_mapping_option(params: Mapping[str, Any], name: str) -> None:
 
 def validate_rhime_param_types(params: Mapping[str, Any]) -> None:
     """Validate structured RHIME parameter types before preparation begins."""
-    for prior_name in _PRIOR_OPTIONS:
+    for prior_name in RhimeModelSpec.PRIOR_OPTION_NAMES + LIKELIHOOD_PRIOR_OPTION_NAMES:
         _validate_mapping_option(params, prior_name)
 
     if "sector_priors" in params and params["sector_priors"] is not None:
@@ -295,7 +449,11 @@ def validate_rhime_param_types(params: Mapping[str, Any]) -> None:
                     )
                 )
 
-    for mapping_name in _MAPPING_OPTIONS:
+    mapping_names = (
+        RhimeSampler.MAPPING_OPTION_NAMES + RhimeOutputSpec.MAPPING_OPTION_NAMES
+        + RhimeModelSpec.MAPPING_OPTION_NAMES + ("min_error_options",)
+    )
+    for mapping_name in mapping_names:
         _validate_mapping_option(params, mapping_name)
 
     if "min_error_options" in params:
@@ -305,20 +463,6 @@ def validate_rhime_param_types(params: Mapping[str, Any]) -> None:
         power = params["power"]
         if not isinstance(power, Mapping | int | float):
             raise ValueError(_invalid_config_type_message("power", "a mapping/dict or number", power))
-
-
-def normalise_optional_mapping(value: Mapping[str, Any] | None) -> dict[str, Any] | None:
-    """Copy an optional mapping so specs do not retain caller-owned dicts."""
-    return None if value is None else dict(value)
-
-
-def normalise_sector_priors(
-    sector_priors: Mapping[str, Mapping[str, Any]] | None,
-) -> dict[str, dict[str, Any]] | None:
-    """Copy optional sector-prior mappings with string sector keys."""
-    if sector_priors is None:
-        return None
-    return {str(sector): dict(prior) for sector, prior in sector_priors.items()}
 
 
 def validate_multisector_x_prior(x_prior: Mapping[str, Any] | None) -> None:
@@ -353,16 +497,8 @@ def normalise_sector_sources(
 
 
 def required_run_params() -> set[str]:
-    """Return RHIME parameters required before data preparation."""
-    return {
-        "species",
-        "sites",
-        "averaging_period",
-        "domain",
-        "start_date",
-        "end_date",
-        "output_name",
-    }
+    """Return external requirements declared by the requested configuration."""
+    return set(RhimeConfig.required_option_names())
 
 
 def is_missing_required_value(value: Any) -> bool:
@@ -388,66 +524,10 @@ def validate_required_params(params: Mapping[str, Any]) -> None:
 
 
 def validate_supported_params(params: Mapping[str, Any]) -> None:
-    """Raise if normalized run parameters contain unsupported keys.
-
-    Preparation-option ownership is explicit in
-    :data:`RHIME_PREPARATION_OPTION_NAMES`; this validator never reflects over
-    a callable signature.
-
-    Args:
-        params: Normalized RHIME parameters to validate.
-
-    Raises:
-        ValueError: If ``params`` contains one or more unsupported names.
-    """
-    runner_params = {
-        "x_prior",
-        "bc_prior",
-        "sigma_prior",
-        "offset_prior",
-        "sector_priors",
-        "sector_sources",
-        "pollution_events_from_obs",
-        "power",
-        "draws",
-        "burn",
-        "tune",
-        "chains",
-        "nuts_sampler",
-        "progressbar",
-        "sample_kwargs",
-        "posterior_predictive_kwargs",
-        "output_format",
-        "output_path",
-        "save_trace",
-        "save_inversion_output",
-        "paris_postprocessing_kwargs",
-        "output_filename_convention",
-        "offset_args",
-        "country_file",
-        "add_offset",
-        "sigma_per_site",
-        "sigma_freq",
-        "sigma_freq_anchor",
-        "mismatch_model",
-        "use_minimum_error_floor",
-        "aggregation_error_mode",
-    }
-    supported = RHIME_PREPARATION_OPTION_NAMES | runner_params | required_run_params()
-    unsupported = sorted(set(params) - supported)
+    """Reject names absent from the configuration's consumer-owned choices."""
+    unsupported = sorted(set(params) - RhimeConfig.supported_option_names())
     if unsupported:
-        raise ValueError(f"Unsupported RHIME parameter(s) for `resolve_rhime_options`: {unsupported!r}")
-
-
-def _tuple_from_optional_sequence(value: Any) -> tuple[str | None, ...]:
-    """Convert optional scalar or sequence values into tuple metadata."""
-    if value is None:
-        return ()
-    if isinstance(value, str):
-        return (value,)
-    if isinstance(value, Sequence) and not isinstance(value, bytes):
-        return tuple(cast(str | None, item) for item in value)
-    return (str(value),)
+        raise ValueError(f"Unsupported RHIME parameter(s): {unsupported!r}")
 
 
 def _validate_sector_source_mapping(
@@ -499,11 +579,10 @@ def _make_model_spec(
     aggregation_error_mode: AggregationErrorMode,
 ) -> RhimeModelSpec:
     """Create a lightweight model spec from normalized run parameters."""
-    default_x_prior = DEFAULT_X_PRIOR.copy() if x_prior is None else x_prior.copy()
+    default_x_prior = DEFAULT_X_PRIOR if x_prior is None else x_prior
     sectors = []
     used_suffixes: set[str] = set()
     if sector_sources is not None:
-        _validate_sector_source_mapping(flux_sources, sector_sources)
         sector_items = list(sector_sources.items())
     else:
         sector_items = [(source, source) for source in flux_sources]
@@ -532,7 +611,7 @@ def _make_model_spec(
             SectorSpec(
                 name=name,
                 flux_source=source,
-                x_prior=dict(prior),
+                x_prior=_copy_option_containers(dict(prior)),
                 variable_suffix=suffix,
             )
         )
@@ -548,201 +627,3 @@ def _make_model_spec(
         offset_args=offset_args,
         aggregation_error_mode=aggregation_error_mode,
     )
-
-
-def _make_likelihood_settings(
-    remaining: dict[str, Any],
-    *,
-    mismatch_model: MismatchModel | None,
-    start_date: str,
-) -> LikelihoodSettings | None:
-    """Consume only options owned by the selected built-in likelihood."""
-    if mismatch_model not in (None, "pollution_event", "additive_sigma", "fixed_error"):
-        raise ValueError(
-            "`mismatch_model` must be None, 'pollution_event', 'additive_sigma', or "
-            "'fixed_error'; "
-            f"got {mismatch_model!r}."
-        )
-    if mismatch_model is None:
-        unused = sorted(_LIKELIHOOD_OPTIONS & remaining.keys())
-        if unused:
-            raise ValueError(
-                "Built-in likelihood option(s) cannot be used with `mismatch_model=None`: "
-                f"{unused!r}. Pass custom options through `likelihood_kwargs`."
-            )
-        return None
-
-    if mismatch_model == "pollution_event":
-        invalid = _MINIMUM_ERROR_FLOOR_OPTIONS & remaining.keys()
-    elif mismatch_model == "additive_sigma":
-        invalid = _POLLUTION_EVENT_OPTIONS & remaining.keys()
-    else:
-        invalid = (
-            _SIGMA_OPTIONS | _POLLUTION_EVENT_OPTIONS | _MINIMUM_ERROR_FLOOR_OPTIONS
-        ) & remaining.keys()
-    if invalid:
-        raise ValueError(
-            f"`mismatch_model={mismatch_model!r}` does not accept option(s) {sorted(invalid)!r}."
-        )
-
-    if mismatch_model == "fixed_error":
-        return FixedErrorSettings()
-
-    common = {
-        "sigma_prior": normalise_optional_mapping(remaining.pop("sigma_prior", None)),
-        "sigma_freq": remaining.pop("sigma_freq", None),
-        "sigma_per_site": remaining.pop("sigma_per_site", True),
-        "sigma_freq_anchor": remaining.pop("sigma_freq_anchor", start_date),
-    }
-    if mismatch_model == "pollution_event":
-        return PollutionEventSettings(
-            **common,
-            pollution_events_from_obs=remaining.pop("pollution_events_from_obs", False),
-            power=remaining.pop("power", 1.99),
-        )
-    return AdditiveSigmaSettings(
-        **common,
-        use_minimum_error_floor=remaining.pop("use_minimum_error_floor", False),
-    )
-
-
-def make_rhime_runner_setup(
-    *,
-    params: Mapping[str, Any],
-    multisector: bool,
-) -> RhimeRunnerSetup:
-    """Normalize raw RHIME parameters into specs and preparation arguments.
-
-    Args:
-        params: Raw direct-Python or configuration-derived RHIME options.
-        multisector: Whether to construct the multi-sector runner setup.
-
-    Returns:
-        Resolved run specification, sampler, and preparation arguments.
-
-    Raises:
-        ValueError: If options are missing, unsupported, malformed, or
-            incompatible with the selected runner mode.
-    """
-    normalized = normalise_rhime_params(params)
-    validate_required_params(normalized)
-    validate_supported_params(normalized)
-
-    remaining = dict(normalized)
-    flux_sources = resolve_flux_sources(flux_sources=remaining.pop("flux_sources", None))
-    sector_sources = normalise_sector_sources(remaining.pop("sector_sources", None))
-    if not multisector and sector_sources is not None:
-        raise ValueError("`sector_sources` is only supported by `run_rhime_multisector`.")
-    data_flux_sources = (
-        _validate_sector_source_mapping(flux_sources, sector_sources)
-        if sector_sources is not None
-        else flux_sources
-    )
-    if multisector and len(data_flux_sources) < 2:
-        raise ValueError("`run_rhime_multisector` requires at least two flux sources.")
-    if not multisector and len(flux_sources) != 1:
-        raise ValueError("`run_rhime` requires exactly one flux source.")
-
-    species = remaining.pop("species")
-    sites = as_list(remaining.pop("sites")) or []
-    domain = remaining.pop("domain")
-    averaging_period = remaining.pop("averaging_period")
-    start_date = remaining.pop("start_date")
-    end_date = remaining.pop("end_date")
-    output_path = remaining.pop("output_path", None)
-    output_name = remaining.pop("output_name")
-
-    x_prior = normalise_optional_mapping(remaining.pop("x_prior", None))
-    bc_prior = normalise_optional_mapping(remaining.pop("bc_prior", None))
-    offset_prior = normalise_optional_mapping(remaining.pop("offset_prior", None))
-    sector_priors = normalise_sector_priors(remaining.pop("sector_priors", None))
-    if multisector:
-        validate_multisector_x_prior(x_prior)
-    offset_args = normalise_optional_mapping(remaining.get("offset_args"))
-
-    use_bc = remaining.get("use_bc", True)
-    mismatch_model = cast(
-        MismatchModel | None,
-        remaining.pop("mismatch_model", None),
-    )
-    likelihood = _make_likelihood_settings(
-        remaining,
-        mismatch_model=mismatch_model,
-        start_date=start_date,
-    )
-    add_offset = remaining.get("add_offset", False)
-    aggregation_error_mode = cast(
-        AggregationErrorMode,
-        remaining.pop("aggregation_error_mode", "none"),
-    )
-
-    sampler = RhimeSampler(
-        draws=remaining.pop("draws", 1000),
-        burn=remaining.pop("burn", 0),
-        tune=remaining.pop("tune", 1000),
-        chains=remaining.pop("chains", 4),
-        nuts_sampler=remaining.pop("nuts_sampler", "pymc"),
-        progressbar=remaining.pop("progressbar", False),
-        sample_kwargs=normalise_optional_mapping(remaining.pop("sample_kwargs", None)),
-        posterior_predictive_kwargs=normalise_optional_mapping(
-            remaining.pop("posterior_predictive_kwargs", None)
-        ),
-    )
-    output_format = remaining.pop("output_format", "inv_out")
-    save_inversion_output = remaining.pop("save_inversion_output", output_format == "inv_out")
-    output_spec = make_output_spec(
-        output_format=output_format,
-        output_path=output_path,
-        output_name=output_name,
-        save_trace=remaining.pop("save_trace", False),
-        save_inversion_output=save_inversion_output,
-        country_file=remaining.get("country_file"),
-        paris_postprocessing_kwargs=normalise_optional_mapping(
-            remaining.pop("paris_postprocessing_kwargs", None)
-        ),
-        output_filename_convention=remaining.pop("output_filename_convention", "rhime"),
-        multisector=multisector,
-    )
-    model_spec = _make_model_spec(
-        species=species,
-        domain=domain,
-        flux_sources=flux_sources,
-        x_prior=x_prior,
-        sector_priors=sector_priors,
-        sector_sources=sector_sources,
-        bc_prior=bc_prior,
-        offset_prior=offset_prior,
-        use_bc=use_bc,
-        likelihood=likelihood,
-        add_offset=add_offset,
-        offset_args=offset_args,
-        aggregation_error_mode=aggregation_error_mode,
-    )
-    run_spec = RhimeRunSpec(
-        start_date=start_date,
-        end_date=end_date,
-        sites=tuple(sites),
-        averaging_period=_tuple_from_optional_sequence(averaging_period),
-        model=model_spec,
-        output=output_spec,
-        split_by_sectors=multisector,
-    )
-
-    data_candidate_args = {
-        **RHIME_PREPARATION_DEFAULTS,
-        **remaining,
-        "species": species,
-        "sites": sites,
-        "domain": domain,
-        "averaging_period": averaging_period,
-        "start_date": start_date,
-        "end_date": end_date,
-        "output_name": output_name,
-        "flux_sources": data_flux_sources,
-        "split_by_sectors": multisector,
-    }
-    data_args = {
-        name: value for name, value in data_candidate_args.items() if name in RHIME_PREPARATION_OPTION_NAMES
-    }
-    data_args["min_error_options"] = normalise_min_error_options(data_args["min_error_options"])
-    return RhimeRunnerSetup(run_spec=run_spec, sampler=sampler, data_args=data_args)
