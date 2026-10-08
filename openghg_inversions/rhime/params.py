@@ -1,10 +1,8 @@
 """RHIME parameter loading, normalisation, and validation helpers.
 
-This internal package module keeps raw config/API parameter handling out of the
-public RHIME runner. It is intentionally limited to INI compatibility, legacy
-alias handling, simple scalar coercion, and validation of raw dictionaries.
-Future YAML/schema frontends should target the same normalized parameter model
-before constructing RHIME specs.
+This module owns canonical scalar coercion, validation, and runner setup.
+INI decoding lives in ``rhime.ini`` and historical option translation in
+``hbmcmc.compatibility``.
 Preparation-option ownership is fixed by
 ``RHIME_PREPARATION_OPTION_NAMES`` rather than inferred from a callable
 signature.
@@ -12,14 +10,14 @@ signature.
 
 from __future__ import annotations
 
-import warnings
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, cast
 
 from openghg_inversions._timing import log_timing, timer_seconds, timer_start
-from openghg_inversions.config import config
+from openghg_inversions.hbmcmc.compatibility import (
+    translate_rhime_aliases,
+)
 from openghg_inversions.model_error import normalise_min_error_options
 from openghg_inversions.models._flux import safe_pymc_name
 from openghg_inversions.observation_error import AggregationErrorMode
@@ -46,21 +44,6 @@ _SIGMA_OPTIONS = {
 _POLLUTION_EVENT_OPTIONS = {"pollution_events_from_obs", "power"}
 _MINIMUM_ERROR_FLOOR_OPTIONS = {"use_minimum_error_floor"}
 _LIKELIHOOD_OPTIONS = _SIGMA_OPTIONS | _POLLUTION_EVENT_OPTIONS | _MINIMUM_ERROR_FLOOR_OPTIONS
-
-_ALIASES = {
-    "outputpath": "output_path",
-    "outputname": "output_name",
-    "xprior": "x_prior",
-    "bcprior": "bc_prior",
-    "sigprior": "sigma_prior",
-    "offsetprior": "offset_prior",
-    "emissions_name": "flux_sources",
-    "outer_region_definition_file": "outer_regions_path",
-}
-_OUTPUT_FORMAT_ALIASES = {
-    "hbmcmc": "legacy",
-    "hbmcmc_postprocessing": "legacy",
-}
 
 _INT_OPTIONS = ("draws", "burn", "tune", "chains")
 _MAPPING_OPTIONS = (
@@ -249,105 +232,12 @@ def resolve_flux_sources(
     return resolved
 
 
-def params_from_config(
-    config_file: str | Path,
-    *,
-    start_date: str | None = None,
-    end_date: str | None = None,
-    output_path: str | None = None,
-    extra_kwargs: Mapping[str, Any] | None = None,
-    normalise: bool = True,
-) -> dict[str, Any]:
-    """Load RHIME run parameters from an INI config file.
-
-    Args:
-        config_file: Path to an INI configuration file.
-        start_date: Optional command-line start-date override.
-        end_date: Optional command-line end-date override.
-        output_path: Optional command-line output-path override.
-        extra_kwargs: Optional keyword overrides, normally parsed from CLI JSON.
-        normalise: Whether to normalize and validate the merged parameters.
-            Complete runners defer this to their public resolution stage.
-
-    Returns:
-        Normalized RHIME run parameters using snake-case public names.
-
-    Raises:
-        ValueError: If deprecated unsupported parameters are present or a
-            structured RHIME option has an invalid type.
-    """
-    params = dict(config.all_param(str(config_file), exclude_not_found=True, allow_new=True))
-    if start_date is not None:
-        params["start_date"] = start_date
-    if end_date is not None:
-        params["end_date"] = end_date
-    if output_path is not None:
-        params["output_path"] = output_path
-    if extra_kwargs:
-        params.update(extra_kwargs)
-    return normalise_rhime_params(params) if normalise else params
-
-
 def normalise_rhime_params(params: Mapping[str, Any]) -> dict[str, Any]:
     """Normalize aliases, coerce simple scalars, and validate structured values."""
-    normalized = normalise_param_aliases(params)
-    if normalized.pop("use_tracer", False):
-        raise ValueError("`use_tracer=True` is not supported; tracer inversions are not implemented.")
-    normalise_output_format_alias(normalized)
+    normalized = translate_rhime_aliases(params)
     coerce_simple_param_types(normalized)
     validate_rhime_param_types(normalized)
     return normalized
-
-
-def normalise_param_aliases(params: Mapping[str, Any]) -> dict[str, Any]:
-    """Normalize legacy config spellings to modern snake-case names."""
-    normalized = dict(params)
-    for old, new in _ALIASES.items():
-        if old not in normalized:
-            continue
-        if new in normalized:
-            warnings.warn(
-                f"Ignoring deprecated RHIME parameter {old!r} because {new!r} was also supplied.",
-                UserWarning,
-                stacklevel=3,
-            )
-        else:
-            warnings.warn(
-                f"RHIME parameter {old!r} is deprecated; use {new!r} instead.",
-                UserWarning,
-                stacklevel=3,
-            )
-            normalized[new] = normalized[old]
-        del normalized[old]
-
-    if "calculate_min_error" in normalized:
-        raise ValueError("`calculate_min_error` is not supported by RHIME runners; use `min_error`.")
-    if "reparameterise_log_normal" in normalized:
-        raise ValueError(
-            "`reparameterise_log_normal` is not supported by RHIME runners; "
-            "set `reparameterise` in the relevant prior dictionary if needed."
-        )
-    if "mcmc_type" in normalized:
-        raise ValueError("`mcmc_type` is not supported by RHIME runners; use `nuts_sampler` if needed.")
-
-    return normalized
-
-
-def normalise_output_format_alias(params: dict[str, Any]) -> None:
-    """Normalize deprecated HBMCMC output format names in-place."""
-    output_format = params.get("output_format")
-    if output_format is None:
-        return
-    output_format = str(output_format).lower()
-    alias = _OUTPUT_FORMAT_ALIASES.get(output_format)
-    if alias is not None:
-        warnings.warn(
-            f"RHIME output_format {output_format!r} is deprecated; use {alias!r} instead.",
-            UserWarning,
-            stacklevel=3,
-        )
-        output_format = alias
-    params["output_format"] = output_format
 
 
 def coerce_simple_param_types(params: dict[str, Any]) -> None:
