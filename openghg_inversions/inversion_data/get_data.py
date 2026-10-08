@@ -23,9 +23,9 @@ from openghg.retrieve import get_bc
 from openghg.types import SearchError
 
 from openghg_inversions.flux_sanitization import FluxNonFiniteCheck
+from openghg_inversions.inversion_data import _site_options
 from openghg_inversions.inversion_data._site_options import (
     expand_site_boolean_option,
-    convert_to_list as convert_to_list,
     is_column_observation,
     is_column_platform,
     is_satellite_platform,
@@ -285,14 +285,14 @@ def retrieve_inversion_data(
 
     # Convert 'None' args to list
     nsites = len(sites)
-    inlet = convert_to_list(inlet, nsites, "inlet")
-    instrument = convert_to_list(instrument, nsites, "instrument")
-    fp_height = convert_to_list(fp_height, nsites, "fp_height")
-    obs_data_level = convert_to_list(obs_data_level, nsites, "obs_data_level")
-    met_model = convert_to_list(met_model, nsites, "met_model")
-    averaging_period = convert_to_list(averaging_period, nsites, "averaging_period")
-    platform = convert_to_list(platform, nsites, "platform")
-    max_level = convert_to_list(max_level, nsites, "max_level")
+    inlet = _site_options.convert_to_list(inlet, nsites, "inlet")
+    instrument = _site_options.convert_to_list(instrument, nsites, "instrument")
+    fp_height = _site_options.convert_to_list(fp_height, nsites, "fp_height")
+    obs_data_level = _site_options.convert_to_list(obs_data_level, nsites, "obs_data_level")
+    met_model = _site_options.convert_to_list(met_model, nsites, "met_model")
+    averaging_period = _site_options.convert_to_list(averaging_period, nsites, "averaging_period")
+    platform = _site_options.convert_to_list(platform, nsites, "platform")
+    max_level = _site_options.convert_to_list(max_level, nsites, "max_level")
     time_resolved = list(expand_site_boolean_option(time_resolved, nsites=nsites, name="time_resolved"))
     invalid_max_levels = [
         value

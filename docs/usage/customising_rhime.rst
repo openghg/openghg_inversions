@@ -103,9 +103,8 @@ to resume the standard runner at filtering.
 For the existing tuple-returning retrieval API, use
 ``openghg_inversions.inversion_data.retrieve_inversion_data``. The former
 ``data_processing_surface_notracer`` name forwards the same arguments and
-return value and now emits ``DeprecationWarning``. ``convert_to_list`` remains
-available from its old ``inversion_data.get_data`` import path without a
-warning.
+return value and now emits ``DeprecationWarning``. ``convert_to_list`` now lives in ``inversion_data._site_options``;
+its old ``inversion_data.get_data`` import path has been removed.
 
 Change the likelihood with a Python function
 --------------------------------------------

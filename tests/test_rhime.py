@@ -47,7 +47,7 @@ from openghg_inversions.flux_sanitization import (
     FluxNonFiniteMetadata,
     NonFiniteFluxWarning,
 )
-from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs, prepare_rhime_inputs
+from openghg_inversions.inversion_data import SiteOptions, RhimeMergedData, RhimePreparedInputs, prepare_rhime_inputs
 from openghg_inversions.inversion_inputs import make_inv_inputs
 from openghg_inversions.models import StateActivity
 from openghg_inversions.models._flux import safe_pymc_name
@@ -483,9 +483,9 @@ def _site_options(
     met_model: list[str | None] | str | None = None,
     max_level: list[int | None] | int | None = None,
     time_resolved: list[bool | None] | bool | None = None,
-) -> prep_module._SiteOptions:
+) -> SiteOptions:
     """Build normalized site-aligned options for private preparation tests."""
-    return prep_module._SiteOptions.from_inputs(
+    return SiteOptions.from_inputs(
         sites=sites,
         averaging_period=averaging_period,
         inlet=inlet,
@@ -3232,7 +3232,7 @@ def test_external_merged_data_bypasses_acquisition_without_mutation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """An external scientific handoff re-enters at retrieval without store or cache I/O."""
-    site_options = prep_module._SiteOptions.from_inputs(
+    site_options = SiteOptions.from_inputs(
         sites=["TAC"],
         averaging_period=["1h"],
         inlet=None,
@@ -3270,7 +3270,7 @@ def test_external_merged_data_bypasses_acquisition_without_mutation(
 
 def test_external_merged_data_fails_at_retrieval_for_incompatible_layout() -> None:
     """The owning retrieval stage rejects a cache from the other recipe layout."""
-    site_options = prep_module._SiteOptions.from_inputs(
+    site_options = SiteOptions.from_inputs(
         sites=["TAC"],
         averaging_period=["1h"],
         inlet=None,
@@ -3296,7 +3296,7 @@ def test_external_merged_data_fails_at_retrieval_for_incompatible_layout() -> No
 
 def test_public_stages_compose_as_complete_external_runner(monkeypatch: pytest.MonkeyPatch) -> None:
     """Real public handoffs compose a full runner without private glue or manifests."""
-    site_options = prep_module._SiteOptions.from_inputs(
+    site_options = SiteOptions.from_inputs(
         sites=["TAC"],
         averaging_period=["1h"],
         inlet=None,
@@ -5981,7 +5981,7 @@ def test_retrieve_or_reload_merged_data_reload_keeps_all_options_aligned(
 def test_site_options_direct_construction_enforces_immutable_alignment() -> None:
     """The tuple-backed record rejects direct construction with drifted fields."""
     with pytest.raises(ValueError, match="same length"):
-        prep_module._SiteOptions(
+        SiteOptions(
             sites=("TAC", "MHD"),
             averaging_period=("1H",),
             inlet=(None, None),

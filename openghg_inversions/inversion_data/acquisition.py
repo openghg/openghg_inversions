@@ -16,22 +16,9 @@ import xarray as xr
 
 from openghg_inversions._timing import timed
 from openghg_inversions.flux_sanitization import FluxNonFiniteCheck, sanitize_flux_nonfinite
-from openghg_inversions.inversion_data._site_options import (
-    SiteBooleanOption as SiteBooleanOption,
-    SiteInletOption as SiteInletOption,
-    SiteIntegerOption as SiteIntegerOption,
-    SiteStringOption as SiteStringOption,
-    SiteOptions as SiteOptions,
-    _normalise_site_booleans as _normalise_site_booleans,
-    _normalise_site_inlets as _normalise_site_inlets,
-    _normalise_site_integers as _normalise_site_integers,
-    _normalise_site_strings as _normalise_site_strings,
-)
+from openghg_inversions.inversion_data import _site_options
 from openghg_inversions.inversion_data.get_data import retrieve_inversion_data
 from openghg_inversions.inversion_data.serialise import OutputFormat, _save_merged_data, load_merged_data
-
-# Compatibility for existing preparation imports.
-_SiteOptions = SiteOptions
 
 
 @dataclass
@@ -51,7 +38,7 @@ class RhimeMergedData:
     """
 
     fp_all: dict
-    site_options: SiteOptions
+    site_options: _site_options.SiteOptions
 
     @property
     def sites(self) -> tuple[str, ...]:
@@ -73,7 +60,7 @@ class RhimeMergedData:
         cls,
         merged_data_dir: str | Path,
         *,
-        site_options: SiteOptions,
+        site_options: _site_options.SiteOptions,
         species: str | None = None,
         start_date: str | None = None,
         output_name: str | None = None,
@@ -117,7 +104,7 @@ class RhimeMergedData:
         cls,
         *,
         species: str,
-        site_options: SiteOptions,
+        site_options: _site_options.SiteOptions,
         domain: str,
         start_date: str,
         end_date: str,
@@ -236,8 +223,8 @@ class RhimeMergedData:
 def _drop_sites_missing_from_loaded_data(
     *,
     fp_all: dict,
-    site_options: SiteOptions,
-) -> SiteOptions:
+    site_options: _site_options.SiteOptions,
+) -> _site_options.SiteOptions:
     """Align site-level options when loaded merged data lacks requested sites."""
     sites_merged = [site for site in fp_all if not site.startswith(".")]
     if all(site in sites_merged for site in site_options.sites):
@@ -257,7 +244,7 @@ def _drop_sites_missing_from_loaded_data(
 
 def _validate_loaded_time_resolved_selector(
     fp_all: Mapping[str, Any],
-    site_options: SiteOptions,
+    site_options: _site_options.SiteOptions,
 ) -> None:
     """Reject cached sites whose explicit time-resolution selector differs."""
     mismatched_sites: list[str] = []
@@ -314,7 +301,7 @@ def _retrieve_or_reload_merged_data(
     species: str,
     sites: list[str],
     domain: str,
-    averaging_period: SiteStringOption,
+    averaging_period: _site_options.SiteStringOption,
     start_date: str,
     end_date: str,
     output_name: str,
@@ -325,17 +312,17 @@ def _retrieve_or_reload_merged_data(
     footprint_store: str = "user",
     emissions_store: str = "user",
     emissions_domain: str | None = None,
-    met_model: SiteStringOption = None,
+    met_model: _site_options.SiteStringOption = None,
     fp_model: str | None = None,
-    fp_height: SiteStringOption = None,
+    fp_height: _site_options.SiteStringOption = None,
     fp_species: str | None = None,
-    time_resolved: SiteBooleanOption = None,
-    inlet: SiteInletOption = None,
-    instrument: SiteStringOption = None,
-    max_level: SiteIntegerOption = None,
+    time_resolved: _site_options.SiteBooleanOption = None,
+    inlet: _site_options.SiteInletOption = None,
+    instrument: _site_options.SiteStringOption = None,
+    max_level: _site_options.SiteIntegerOption = None,
     calibration_scale: str | None = None,
-    obs_data_level: SiteStringOption = None,
-    platform: SiteStringOption = None,
+    obs_data_level: _site_options.SiteStringOption = None,
+    platform: _site_options.SiteStringOption = None,
     use_bc: bool = True,
     bc_input: str | None = None,
     averaging_error: bool = True,
@@ -351,7 +338,7 @@ def _retrieve_or_reload_merged_data(
     helper passes them to lower-level data loading through the legacy
     ``emissions_name`` argument. Retrieval may access OpenGHG object stores,
     print progress, and optionally save merged data. Reload reads a local
-    artifact. Both paths retain one complete :class:`SiteOptions` record. Explicit
+    artifact. Both paths retain one complete :class:`_site_options.SiteOptions` record. Explicit
     reload errors propagate without attempting fresh acquisition.
 
     Returns:
@@ -361,7 +348,7 @@ def _retrieve_or_reload_merged_data(
         ValueError: If site options are invalid, no requested sites are loaded,
             or retrieval returns invalid retained-site names.
     """
-    site_options = SiteOptions.from_inputs(
+    site_options = _site_options.SiteOptions.from_inputs(
         sites=sites,
         averaging_period=averaging_period,
         inlet=inlet,
