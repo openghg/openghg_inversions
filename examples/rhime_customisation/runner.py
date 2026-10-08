@@ -73,10 +73,13 @@ def run_custom_rhime(
     if config.reload_merged_data:
         merged = RhimeMergedData.load(
             **config.select(
-                "merged_data_dir", "site_options", "species", "start_date", "output_name",
-                "merged_data_name", "split_by_sectors", "flux_non_finite_check",
+                "merged_data_dir", "species", "start_date", "output_name",
+                "merged_data_name",
             ),
         )
+        if merged.split_by_sectors != config.split_by_sectors:
+            merged.close()
+            raise ValueError("Loaded merged data has an incompatible split_by_sectors layout.")
     else:
         merged = RhimeMergedData.from_options(
             **config.select(

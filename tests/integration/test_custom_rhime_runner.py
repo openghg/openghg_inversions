@@ -66,7 +66,7 @@ def test_custom_runner_uses_supported_stages_for_acquisition_and_reload(
     )
     sampler = config.sampler
 
-    merged = object()
+    merged = SimpleNamespace(split_by_sectors=False)
     filtered = object()
     basis = object()
     site_data = object()
@@ -93,9 +93,15 @@ def test_custom_runner_uses_supported_stages_for_acquisition_and_reload(
         return config
 
     def retrieve(**kwargs: Any) -> Any:
-        assert kwargs["site_options"] is config.site_options
+        if not reload_merged_data:
+            assert kwargs["site_options"] is config.site_options
+        else:
+            assert "site_options" not in kwargs
         assert "reload_merged_data" not in kwargs
-        assert kwargs["split_by_sectors"] is False
+        if not reload_merged_data:
+            assert kwargs["split_by_sectors"] is False
+        else:
+            assert "split_by_sectors" not in kwargs
         assert "project_basis_path" not in kwargs
         calls.append("retrieve")
         return merged
@@ -267,3 +273,52 @@ def test_custom_runner_main_forwards_cli_config_and_overrides(
             "chains": 1,
         },
     }
+
+
+@pytest.mark.parametrize("split_by_sectors", [False, True])
+def test_plain_custom_runner_reloads_actual_modern_artifact(monkeypatch, tmp_path, split_by_sectors):
+    """Use the actual loader signature and close owned incompatible snapshots."""
+    from openghg_inversions.inversion_data import RhimeMergedData, SiteOptions
+
+    selectors = SiteOptions.from_inputs(sites=["TAC"], averaging_period="2h")
+    acquired = RhimeMergedData(
+        site_data={"TAC": xr.Dataset({"mf": ("time", [1.0, 2.0])})},
+        flux_data={}, site_options=selectors, split_by_sectors=split_by_sectors,
+        acquisition={"stage": "acquired"},
+    )
+    acquired.save(tmp_path, merged_data_name="acquired.zarr")
+    closed = []
+    filtered = []
+    original_close = RhimeMergedData.close
+
+    def close(record):
+        closed.append(record)
+        original_close(record)
+
+    class ReachedFiltering(Exception):
+        pass
+
+    def filter_loaded(record, **kwargs):
+        filtered.append(record)
+        assert record.site_options == selectors
+        xr.testing.assert_equal(record.site_data["TAC"], acquired.site_data["TAC"])
+        raise ReachedFiltering
+
+    monkeypatch.setattr(RhimeMergedData, "close", close)
+    monkeypatch.setattr(RhimeMergedData, "from_options", lambda **kwargs: pytest.fail("Reload reacquired data"))
+    monkeypatch.setattr(custom_runner, "filter_rhime_observations", filter_loaded)
+    expected = ValueError if split_by_sectors else ReachedFiltering
+    with pytest.raises(expected):
+        custom_runner.run_custom_rhime(
+            species="ch4", sites=["TAC"], domain="EUROPE", averaging_period="1h",
+            start_date="2020-01-01", end_date="2020-01-02", output_name="reload",
+            flux_sources=["inventory"], use_bc=False, output_format="none",
+            reload_merged_data=True, merged_data_dir=str(tmp_path), merged_data_name="acquired.zarr",
+        )
+    if split_by_sectors:
+        assert len(closed) == 1
+        assert not filtered
+    else:
+        assert not closed
+        assert len(filtered) == 1
+        filtered[0].close()
