@@ -1,5 +1,5 @@
-RHIME INI reader
-================
+openghg\_inversions.rhime.ini
+=============================
 
 .. automodule:: openghg_inversions.rhime.ini
    :members:
