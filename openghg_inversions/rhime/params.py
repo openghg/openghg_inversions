@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast, get_args
 
+from openghg_inversions.basis._functions import basis_functions
 from openghg_inversions.config import config
 from openghg_inversions.flux_sanitization import FluxNonFiniteCheck
 from openghg_inversions.inversion_data.acquisition import SiteOptions
@@ -965,6 +966,14 @@ def resolve_rhime_config(
     data_args = {
         name: value for name, value in data_candidate_args.items() if name in RHIME_PREPARATION_OPTION_NAMES
     }
+    if data_args["fp_basis_case"] is None and data_args["basis_algorithm"] not in basis_functions:
+        raise ValueError(
+            f"`basis_algorithm` must be one of {tuple(basis_functions)!r} when no `fp_basis_case` "
+            f"is supplied; got {data_args['basis_algorithm']!r}."
+        )
+    min_error = data_args["min_error"]
+    if isinstance(min_error, str) and min_error not in ("residual", "percentile"):
+        raise ValueError(f"Named `min_error` methods must be 'residual' or 'percentile'; got {min_error!r}.")
     data_args["min_error_options"] = normalise_min_error_options(data_args["min_error_options"])
     site_options = SiteOptions.from_inputs(
         sites=data_args.pop("sites"),

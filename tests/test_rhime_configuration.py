@@ -12,6 +12,7 @@ import pytest
 import xarray as xr
 
 import openghg_inversions.rhime as rhime
+from openghg_inversions.basis._functions import basis_functions
 from openghg_inversions.inference.sampling import RhimeSampler
 from openghg_inversions.inversion_data import RhimeMergedData, SiteOptions
 from openghg_inversions.rhime import multisector, standard
@@ -87,15 +88,24 @@ def test_invalid_effective_requests_fail_without_acquisition(monkeypatch, overri
         rhime_params.resolve_rhime_config(_request(**overrides), multisector=False)
 
 
-@pytest.mark.parametrize("option", ["flux_non_finite_check", "aggregation_error_mode"])
+@pytest.mark.parametrize(
+    ("option", "value"),
+    [
+        ("flux_non_finite_check", "typo"),
+        ("aggregation_error_mode", "typo"),
+        ("basis_algorithm", "typo"),
+        ("basis_algorithm", None),
+        ("min_error", "typo"),
+    ],
+)
 @pytest.mark.parametrize("multisector_mode", [False, True])
 @pytest.mark.parametrize("from_ini", [False, True])
-def test_invalid_finite_choices_fail_before_acquisition(
-    monkeypatch, tmp_path, option, multisector_mode, from_ini
+def test_invalid_active_choices_fail_before_acquisition(
+    monkeypatch, tmp_path, option, value, multisector_mode, from_ini
 ):
     request = _request(
         flux_sources=["inventory", "ocean"] if multisector_mode else ["inventory"],
-        **{option: "typo"},
+        **{option: value},
     )
     with pytest.raises(ValueError, match=option):
         rhime_params.resolve_rhime_config(request, multisector=multisector_mode)
@@ -126,12 +136,37 @@ def test_invalid_finite_choices_fail_before_acquisition(
         ("aggregation_error_mode", "dense"),
         ("aggregation_error_mode", "low_rank"),
         ("aggregation_error_mode", "diagonal"),
+        ("min_error", "residual"),
+        ("min_error", "percentile"),
     ],
 )
 def test_valid_finite_choices_are_preserved(option, value):
     config = rhime_params.resolve_rhime_config(_request(**{option: value}), multisector=False)
     owner = config.model if option == "aggregation_error_mode" else config
     assert getattr(owner, option) == value
+
+
+@pytest.mark.parametrize("algorithm", ["typo", None])
+def test_saved_basis_case_takes_precedence_during_resolution(algorithm):
+    config = rhime_params.resolve_rhime_config(
+        _request(fp_basis_case="saved_case", basis_algorithm=algorithm), multisector=False
+    )
+    assert config.fp_basis_case == "saved_case"
+    assert config.basis_algorithm == algorithm
+
+
+@pytest.mark.parametrize("algorithm", tuple(basis_functions))
+def test_registered_basis_algorithms_resolve(algorithm):
+    config = rhime_params.resolve_rhime_config(_request(basis_algorithm=algorithm), multisector=False)
+    assert config.basis_algorithm == algorithm
+
+
+def test_basis_resolution_uses_live_registry(monkeypatch):
+    monkeypatch.setitem(basis_functions, "project_algorithm", object())
+    config = rhime_params.resolve_rhime_config(
+        _request(basis_algorithm="project_algorithm"), multisector=False
+    )
+    assert config.basis_algorithm == "project_algorithm"
 
 
 @pytest.mark.parametrize("replace_periods", [False, True])

@@ -53,6 +53,16 @@ and that all seven supported choices are preserved. The 36 configuration tests
 and 60 selected broader configuration/consumer tests passed on Python 3.13;
 changed-path Ruff, strict OpenSpec and whitespace checks also passed.
 
+The active-preparation follow-up also validates `basis_algorithm` against the
+existing live registry only when no saved `fp_basis_case` is supplied, and
+rejects unknown named `min_error` methods. Acquisition-uncalled coverage includes
+Python and INI requests through both ordinary runners; saved-case precedence,
+registered algorithms and both minimum-error methods are preserved. All 56
+configuration tests and 67 selected broader configuration, consumer and basis
+checks passed on Python 3.13, along with changed-path Ruff, strict OpenSpec and
+whitespace checks. This reconciles existing configuration-only late checks;
+scientific owners retain their data-dependent checks.
+
 Configuration serialization, resolved-settings logging and an INI writer are
 deferred to [#814](https://github.com/openghg/openghg_inversions/issues/814).
 No serializer or writer implementation is part of this checklist.
