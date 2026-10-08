@@ -21,9 +21,9 @@ import openghg_inversions.inversion_data.scenario as scenario_module
 from openghg_inversions.flux_sanitization import FluxNonFiniteMetadata, NonFiniteFluxWarning
 from openghg_inversions.inversion_data._site_options import expand_site_boolean_option, expand_site_option
 from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
+from openghg_inversions.inversion_data._site_options import convert_to_list
 from openghg_inversions.inversion_data.get_data import (
     add_obs_error,
-    convert_to_list,
     data_processing_surface_notracer,
     interpolate_flux_to_footprint_grid,
 )

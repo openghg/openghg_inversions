@@ -18,7 +18,7 @@ from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.cli import main
 from openghg_inversions.rhime._domain_support import rectangular_extent_mask, remove_domain_overlap
 from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs
-from openghg_inversions.inversion_data.preparation import _SiteOptions
+from openghg_inversions.inversion_data import SiteOptions
 from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.postprocessing.nested_paris_outputs import (
     _regridded_inner_country_file,
@@ -231,8 +231,8 @@ class _FluxData:
     metadata: dict[str, str]
 
 
-def _site_options() -> _SiteOptions:
-    return _SiteOptions.from_inputs(
+def _site_options() -> SiteOptions:
+    return SiteOptions.from_inputs(
         sites=["TAC"],
         averaging_period=["1h"],
         inlet=["100m"],

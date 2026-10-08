@@ -1,6 +1,6 @@
 """Retrieve and merge observations, footprints, fluxes, and boundary data.
 
-``data_processing_surface_notracer`` expands scalar site options, keeps their
+``retrieve_inversion_data`` expands scalar site options, keeps their
 positions aligned during retrieval failures, assembles per-site model
 scenarios, and can save the resulting merged-data artifact. Retrieval and
 optional saving have external object-store and filesystem side effects; loading
@@ -11,7 +11,8 @@ OpenGHG ``ModelScenario`` merges.
 
 import logging
 import warnings
-from collections.abc import Iterable, Sequence
+from collections.abc import Sequence
+from functools import wraps
 from numbers import Integral
 from typing import Any, Literal
 
@@ -22,9 +23,9 @@ from openghg.retrieve import get_bc
 from openghg.types import SearchError
 
 from openghg_inversions.flux_sanitization import FluxNonFiniteCheck
+from openghg_inversions.inversion_data import _site_options
 from openghg_inversions.inversion_data._site_options import (
     expand_site_boolean_option,
-    expand_site_option,
     is_column_observation,
     is_column_platform,
     is_satellite_platform,
@@ -162,30 +163,7 @@ def add_obs_error(sites: list[str], fp_all: dict, add_averaging_error: bool = Tr
             logger.info(info_msg)
 
 
-def convert_to_list(
-    x: Iterable[Any] | str | slice | int | Integral | None,
-    length: int,
-    name: str | None = None,
-) -> list[Any]:
-    """Convert a scalar or sequence to a list of the expected size.
-
-    Args:
-        x: Scalar string/integer/slice/``None`` to broadcast, or an iterable
-            to copy.
-        length: Required output length.
-        name: Optional argument name used in error messages.
-
-    Returns:
-        A new list of the requested length.
-
-    Raises:
-        ValueError: If an iterable has the wrong length, or if ``x`` is neither
-            a supported scalar nor an iterable.
-    """
-    return list(expand_site_option(x, nsites=length, name=name or "value"))
-
-
-def data_processing_surface_notracer(
+def retrieve_inversion_data(
     species: str,
     sites: Sequence[str] | str,
     domain: str,
@@ -307,14 +285,14 @@ def data_processing_surface_notracer(
 
     # Convert 'None' args to list
     nsites = len(sites)
-    inlet = convert_to_list(inlet, nsites, "inlet")
-    instrument = convert_to_list(instrument, nsites, "instrument")
-    fp_height = convert_to_list(fp_height, nsites, "fp_height")
-    obs_data_level = convert_to_list(obs_data_level, nsites, "obs_data_level")
-    met_model = convert_to_list(met_model, nsites, "met_model")
-    averaging_period = convert_to_list(averaging_period, nsites, "averaging_period")
-    platform = convert_to_list(platform, nsites, "platform")
-    max_level = convert_to_list(max_level, nsites, "max_level")
+    inlet = _site_options.convert_to_list(inlet, nsites, "inlet")
+    instrument = _site_options.convert_to_list(instrument, nsites, "instrument")
+    fp_height = _site_options.convert_to_list(fp_height, nsites, "fp_height")
+    obs_data_level = _site_options.convert_to_list(obs_data_level, nsites, "obs_data_level")
+    met_model = _site_options.convert_to_list(met_model, nsites, "met_model")
+    averaging_period = _site_options.convert_to_list(averaging_period, nsites, "averaging_period")
+    platform = _site_options.convert_to_list(platform, nsites, "platform")
+    max_level = _site_options.convert_to_list(max_level, nsites, "max_level")
     time_resolved = list(expand_site_boolean_option(time_resolved, nsites=nsites, name="time_resolved"))
     invalid_max_levels = [
         value
@@ -513,3 +491,13 @@ def data_processing_surface_notracer(
             print(f"\nfp_all saved in {merged_data_dir}\n")
 
     return fp_all, sites, inlet, fp_height, instrument, averaging_period
+
+
+@wraps(retrieve_inversion_data)
+def data_processing_surface_notracer(*args, **kwargs):
+    warnings.warn(
+        "data_processing_surface_notracer is deprecated; use retrieve_inversion_data instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return retrieve_inversion_data(*args, **kwargs)
