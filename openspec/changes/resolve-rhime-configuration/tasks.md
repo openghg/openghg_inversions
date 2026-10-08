@@ -4,7 +4,7 @@ This checklist supersedes the previous completed implementation checklist.
 PR #813 originally implemented the former preparation-config design. Prior
 locked Python 3.12/3.13 coverage (job 19270831) and docs-full (job 19270662) passed,
 but do not verify the revised plan. The planning artifacts are approved and
-finalized; pending boxes track implementation against those contracts.
+finalized; all revised implementation and delivery tasks are complete.
 
 ## 1. Revised planning
 
@@ -25,9 +25,23 @@ finalized; pending boxes track implementation against those contracts.
 
 ## 4. Documentation and delivery
 
-- [ ] 4.1 Reconcile user/developer/API guidance, examples and the existing Issue 804 fragment with the new roles and names; verify examples and affected rendered documentation.
-- [ ] 4.2 Run focused and relevant broader tests, changed-path Ruff, strict OpenSpec and whitespace checks for the reconciled implementation; inspect ownership and public compatibility before marking complete.
-- [ ] 4.3 SSH-push the reconciled implementation and update #813 using the repository template; verify remote head, target branch, review readiness and app attachment confirmation.
+- [x] 4.1 Reconcile user/developer/API guidance, examples and the existing Issue 804 fragment with the new roles and names; verify examples and affected rendered documentation.
+- [x] 4.2 Run focused and relevant broader tests, changed-path Ruff, strict OpenSpec and whitespace checks for the reconciled implementation; inspect ownership and public compatibility before marking complete.
+- [x] 4.3 SSH-push the reconciled implementation and update #813 using the repository template; verify remote head, target branch, review readiness and app attachment confirmation.
+
+## Final validation
+
+Implementation commit `436379ca` includes synchronization with `devel` at
+`e49632fd`. Relevant broader configuration, acquisition, ordinary/nested/staged
+runner, compatibility, serialization and integration coverage passed on Python
+3.12 and 3.13 in SLURM job `19278392`. The isolated `docs-full` build passed in
+job `19278394`. Both jobs completed with exit status zero. Eight affected
+rendered usage, migration, development and API pages were inspected, including
+their local links and anchors. Focused tests, changed-path Ruff, strict OpenSpec,
+whitespace and executable documentation examples passed; independent subagent
+reviews found no actionable correctness, contract or development-guidance issues.
+PR #813 targets `devel`, is attached to this task and is ready for review.
+This final checklist update changes no implementation or documentation examples.
 
 Configuration serialization, resolved-settings logging and an INI writer are
 deferred to [#814](https://github.com/openghg/openghg_inversions/issues/814).
