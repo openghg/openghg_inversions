@@ -225,7 +225,7 @@ def test_fixedbasis_params_to_rhime_translates_reparameterise_log_normal(tmp_pat
     params["xprior"] = {"pdf": "lognormal", "mean": 1.0, "stdev": 2.0}
     params["bcprior"] = {"pdf": "lognormal", "mean": 1.0, "stdev": 1.0}
 
-    with pytest.warns(FutureWarning, match="reparameterise_log_normal"):
+    with pytest.warns(DeprecationWarning, match="reparameterise_log_normal"):
         translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
 
     assert translated["x_prior"]["reparameterise"] is True
@@ -239,7 +239,7 @@ def test_fixedbasis_params_to_rhime_translates_calculate_min_error(tmp_path: Pat
     params = run_hbmcmc.hbmcmc_extract_param(str(config_file), print_param=False)
     params["calculate_min_error"] = "percentile"
 
-    with pytest.warns(FutureWarning, match="calculate_min_error"):
+    with pytest.warns(DeprecationWarning, match="calculate_min_error"):
         translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
 
     assert translated["min_error"] == "percentile"
@@ -371,9 +371,7 @@ def test_run_hbmcmc_main_routes_to_run_rhime(monkeypatch: pytest.MonkeyPatch, tm
     assert seen["run_rhime_kwargs"]["compatibility_output_chain"] == 0
 
 
-def test_run_hbmcmc_all_chains_is_explicit_opt_in(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_run_hbmcmc_all_chains_is_explicit_opt_in(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """The compatibility CLI can use all chains without restoring the old executor."""
     config_file = tmp_path / "hbmcmc.ini"
     _fixedbasis_config(config_file)
@@ -594,4 +592,22 @@ def test_run_hbmcmc_main_checks_country_file_before_copying_or_running(
     monkeypatch.setattr(run_hbmcmc, "run_rhime", fail_run_rhime)
 
     with pytest.raises(FileNotFoundError, match="country_file"):
+        run_hbmcmc.main(["-c", str(config_file)])
+
+
+def test_unused_sigma_prior_is_validated_before_config_copy(monkeypatch, tmp_path):
+    config_file = tmp_path / "hbmcmc.ini"
+    _fixedbasis_config(config_file)
+    config_file.write_text(
+        config_file.read_text()
+        .replace("[MCMC.OPTIONS]", "[MCMC.OPTIONS]\nno_model_error = True")
+        .replace('sigprior = {"pdf": "uniform", "lower": 0.1, "upper": 10.0}', 'sigprior = "invalid-prior"')
+    )
+
+    def unexpected(*args, **kwargs):
+        pytest.fail("Invalid sigma prior reached config copying or acquisition")
+
+    monkeypatch.setattr(run_hbmcmc, "_copy_config_file", unexpected)
+    monkeypatch.setattr(run_hbmcmc, "run_rhime", unexpected)
+    with pytest.raises(ValueError, match="sigma_prior.*mapping/dict"):
         run_hbmcmc.main(["-c", str(config_file)])
