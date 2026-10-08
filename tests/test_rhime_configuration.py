@@ -12,6 +12,8 @@ import pytest
 import xarray as xr
 
 import openghg_inversions.rhime as rhime
+from openghg_inversions.hbmcmc.compatibility import params_from_config
+from openghg_inversions.rhime.ini import read_rhime_ini
 from openghg_inversions.basis._functions import basis_functions
 from openghg_inversions.inference.sampling import RhimeSampler
 from openghg_inversions.inversion_data import RhimeMergedData, SiteOptions
@@ -219,10 +221,10 @@ def test_ini_dictionary_adapter_retains_normalization_controls(tmp_path: Path):
     path = tmp_path / "adapter.ini"
     path.write_text("[RHIME]\noutputname = 'old-name'\ndraws = '7'\n", encoding="utf-8")
     with pytest.warns(DeprecationWarning, match="params_from_config"):
-        raw = rhime_params.params_from_config(path, normalise=False)
+        raw = params_from_config(path, normalise=False)
     assert raw == {"outputname": "old-name", "draws": "7"}
     with pytest.warns(DeprecationWarning, match="params_from_config"), pytest.warns(DeprecationWarning, match="outputname"):
-        normalized = rhime_params.params_from_config(
+        normalized = params_from_config(
             path, output_path="cli-output", extra_kwargs={"output_path": "winning-output"}
         )
     assert normalized == {"output_name": "old-name", "draws": 7, "output_path": "winning-output"}
@@ -337,8 +339,8 @@ def test_filtering_preserves_typed_filter_request():
 
 
 def test_configuration_api_is_public():
-    for name in ("RhimeConfig", "read_rhime_ini"):
-        assert getattr(rhime, name) is getattr(rhime_params, name)
+    assert rhime.RhimeConfig is rhime_params.RhimeConfig
+    assert rhime.read_rhime_ini is read_rhime_ini
     config = rhime_params.RhimeConfig.from_params(_request(), multisector=False)
     assert isinstance(config.site_options, SiteOptions)
     for name in (
