@@ -28,9 +28,7 @@ from typing import Any
 
 from openghg_inversions._timing import log_timing, timed, timer_seconds, timer_start
 from openghg_inversions.config import config
-from openghg_inversions.hbmcmc.compatibility import (
-    fixedbasis_params_to_rhime as fixedbasis_params_to_rhime,
-)
+from openghg_inversions.hbmcmc import compatibility
 from openghg_inversions.models.additive_sigma import DEFAULT_ADDITIVE_SIGMA_PRIOR
 from openghg_inversions.rhime import PollutionEventSettings, resolve_rhime_options, run_rhime
 from openghg_inversions.rhime.params import validate_rhime_param_types
@@ -258,7 +256,7 @@ def main(argv: list[str] | None = None) -> None:
     print("Routing fixedbasis-style config to run_rhime(...)")
 
     with timed("run_hbmcmc.fixedbasis_to_rhime_translation"):
-        rhime_params = fixedbasis_params_to_rhime(param)
+        rhime_params = compatibility.fixedbasis_params_to_rhime(param)
         additive_sigma_options = _select_additive_sigma_model_options(param, rhime_params)
         no_model_error = bool(rhime_params.pop("no_model_error", False))
         legacy_unused_sigma_settings: PollutionEventSettings | None = None

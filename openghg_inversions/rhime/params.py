@@ -2,7 +2,7 @@
 
 This module owns canonical scalar coercion, validation, and runner setup.
 INI decoding lives in ``rhime.ini`` and historical option translation in
-``hbmcmc.compatibility``; established helper imports remain available here.
+``hbmcmc.compatibility``.
 Preparation-option ownership is fixed by
 ``RHIME_PREPARATION_OPTION_NAMES`` rather than inferred from a callable
 signature.
@@ -16,9 +16,6 @@ from typing import Any, cast
 
 from openghg_inversions._timing import log_timing, timer_seconds, timer_start
 from openghg_inversions.hbmcmc.compatibility import (
-    normalise_output_format_alias as normalise_output_format_alias,
-    normalise_param_aliases as normalise_param_aliases,
-    params_from_config as params_from_config,
     translate_rhime_aliases,
 )
 from openghg_inversions.model_error import normalise_min_error_options

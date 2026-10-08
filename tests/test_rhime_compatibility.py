@@ -97,12 +97,9 @@ assert "pytensor" not in sys.modules
     subprocess.run([sys.executable, "-c", code], env=os.environ.copy(), check=True)
 
 
-def test_output_alias_and_established_adapter_imports():
-    from openghg_inversions.hbmcmc import run_hbmcmc
+def test_output_alias_and_public_adapter_import():
     from openghg_inversions.rhime import params_from_config as public_adapter
-    from openghg_inversions.rhime.params import params_from_config as old_adapter
 
-    assert public_adapter is old_adapter is params_from_config
-    assert run_hbmcmc.fixedbasis_params_to_rhime is fixedbasis_params_to_rhime
+    assert public_adapter is params_from_config
     with pytest.warns(DeprecationWarning, match="output_format"):
         assert translate_rhime_aliases({"output_format": "HBMCMC"}) == {"output_format": "legacy"}
