@@ -305,8 +305,8 @@ overrides before shared semantic resolution, and finish configuration-only
 defaults and shorthand before returning. It SHALL NOT perform scientific work.
 A flat raw mapping MAY remain an internal intermediate in that reader, but
 SHALL NOT be its public result or a required raw-document schema for other
-frontends. Shared semantic and site-alignment helpers SHALL be independent of INI section layout
-and value syntax; no new file format is required by this change.
+frontends. Shared semantic and site-alignment helpers SHALL be independent of
+INI section layout and value syntax; no new file format is required by this change.
 
 `params_from_config` SHALL retain its established dictionary return,
 normalization controls and override behavior through shared internal INI

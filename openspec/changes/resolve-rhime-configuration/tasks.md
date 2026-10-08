@@ -3,7 +3,8 @@
 This checklist supersedes the previous completed implementation checklist.
 Python code on #813 still reflects the former preparation-config design. Prior
 locked Python 3.12/3.13 coverage (job 19270831) and docs-full (job 19270662) passed,
-but do not verify the revised plan. Pending boxes track its reconciliation.
+but do not verify the revised plan. The planning artifacts are approved and
+finalized; pending boxes track implementation against those contracts.
 
 ## 1. Revised planning
 

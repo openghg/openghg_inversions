@@ -103,10 +103,10 @@ repeated consistency checks. Model specifications describe scientific choices;
 they are not constructed PyMC models. Requested source ordering and resolved
 sector routing keep their existing meanings.
 
-### 2. Contracts and recommended names
+### 2. Contracts and adopted names
 
 The table describes the target after reconciliation. Names marked rename are
-recommendations adopted for this revision; other established names are retained.
+adopted names for this revision; other established names are retained.
 
 | Name | Role | Input / output and boundary contract |
 | --- | --- | --- |
