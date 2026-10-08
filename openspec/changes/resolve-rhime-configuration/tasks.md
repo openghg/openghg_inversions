@@ -78,12 +78,27 @@ No serializer or writer implementation is part of this checklist.
   record through retrieval, and consolidate copying and layout validation.
 - [x] Document changed public contracts and explicit merged-data saving while
   retaining existing opt-in saving behaviour and cache formats.
-- [ ] Validate the final follow-up on supported Python versions, regenerate and
+- [x] Validate the final follow-up on supported Python versions, regenerate and
   inspect affected API documentation, and SSH-push the reviewed changes.
 
 Focused configuration, acquisition, runner, shim and documentation-example
 checks passed in the existing environment. That environment contains PyMC
 5.26.1; the synthetic staged sampling test fails there on both the untouched
 PR head and this follow-up because it returns the former InferenceData type.
-The final cluster checks use current project dependencies and include that
-sampling test. Earlier validation records above apply to their named commits.
+The cluster retry passed the relevant configuration, acquisition, ordinary,
+nested, staged, shim, serialization and integration suites on Python 3.12 and
+3.13 in job `19280326`, including that sampling test. It used locked project
+dependencies for both interpreters and ran environments sequentially with one
+pytest worker. The initial parallel attempt exhausted its memory allocation;
+its Python 3.13 environment also exposed unpinned dependency incompatibilities.
+These validation-only environment adjustments do not change repository tox
+configuration.
+
+The `docs-full` environment passed in job `19280272`. Both jobs validated
+implementation commit `f0f47030`. Nine affected rendered usage, development and
+reference pages were checked for expected content and local links/anchors;
+the three changed generated reference files are included in the follow-up.
+Changed-path Ruff, strict OpenSpec and whitespace checks passed. Earlier
+validation records above apply to their named commits. New review comments
+about argument forwarding and preparation boundaries are being assessed
+separately; this validation does not claim those design concerns are resolved.
