@@ -298,13 +298,10 @@ data, bind a model or execute inference.
 selectors independently of file syntax. Direct construction accepts resolved
 aligned values. Canonical acquisition consumes those values without another
 shorthand pass; retained-site selection selects every applicable selector
-together and returns a new record. Public preparation and fresh-retrieval
-adapters share applicable translation without requiring the full configured
-request. ``retrieve_inversion_data`` is fresh acquisition, while
-``RhimeMergedData.from_options`` performs fresh acquisition and
-``RhimeMergedData.load`` owns strict cache loading and compatibility checks.
-The recipe first reuses compatible supplied data, then explicitly selects the
-requested factory. Failed reloads never silently retrieve fresh data (#806). The deprecated
+together and returns a new record. ``RhimeMergedData.from_options`` performs
+fresh in-memory acquisition. The recipe first reuses compatible supplied data,
+then acquires fresh data when no handoff was supplied. Repeated sampling uses
+the durable prepared-input artifact. The deprecated
 ``data_processing_surface_notracer`` wrapper preserves its six-tuple contract;
 internal calls use the neutral names.
 
@@ -316,12 +313,9 @@ it does not inspect signatures, resolve options or define another schema.
 A private orchestration helper may accept the resolved configuration to coordinate
 several stages, while scientific components retain independently usable inputs.
 The named preparation functions no longer accept positional ``data_args`` maps.
-The deprecated ``prepare_rhime_inputs`` acquisition-and-preparation wrapper
-normalizes its applicable inputs and delegates to these same scientific stages;
-it must not retain a second implementation of assembly or provenance policy.
 The stages and their scientific helpers live together in ``rhime.preparation``.
-They do not call back into the deprecated ``inversion_data.preparation`` module;
-compatibility delegation runs only towards the canonical stages.
+The combined ``prepare_rhime_inputs`` adapter has been removed; compose the
+named stages directly when custom preparation is required.
 
 Apply raw overrides before resolution. Use ``dataclasses.replace`` only when the
 replacement fields are already mutually consistent; it does not recompute

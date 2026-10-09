@@ -39,13 +39,13 @@ Choose the smallest starting point that fits the change:
 The cached-sigma CO₂ recipe documentation moved to the
 :ref:`package-supported cached-sigma recipe <co2-cached-sigma-recipe>`.
 
-Resume from cached or external scientific data
+Resume from external scientific data
 ----------------------------------------------
 
 ``run_rhime`` and ``run_rhime_multisector`` accept ``merged_data`` as a
-Python-only handoff.  It bypasses OpenGHG acquisition and merged-cache I/O,
-checks the single- or multi-sector layout, and then re-enters the visible
-recipe at filtering::
+Python-only handoff. It bypasses OpenGHG acquisition,
+checks the recorded scientific facts and single- or multi-sector layout, and
+then re-enters the visible recipe at filtering::
 
    result = run_rhime(
        config_file="config.ini",
@@ -55,19 +55,34 @@ recipe at filtering::
 The supplied ``RhimeMergedData`` and its xarray or Dask arrays remain borrowed.
 Filtering returns a replacement handoff when it changes observations; basis
 construction and labelled assembly consume that result without mutating the
-external object.  A normal ``reload_merged_data`` request instead belongs to
-the same retrieval stage and reads the configured artifact from disk. Missing
-directories, missing or corrupt artifacts, and incompatible selector/layout
-metadata raise an error; an explicit reload never falls back to fresh retrieval.
+external object.
 
-Acquire or load a merged handoff explicitly
--------------------------------------------
+Before preparation, ``RhimeMergedData.validate_for_preparation`` checks known
+species, domain and acquisition date bounds against the requested run. A
+conflict raises before filtering or basis construction. Changed windows,
+including narrower ones, are unsupported: acquire data for the new window
+instead. Dates are compared as UTC instants; timezone-naive dates mean UTC,
+so equivalent timezone spellings are accepted. Reuse keeps the recorded
+selectors even when the configuration requests different retrieval selectors;
+later priors and sampling choices do not determine acquisition compatibility.
+Missing historical facts remain unknown and are not filled from the new
+request. Validation neither selects observations nor executes lazy arrays.
+
+When a custom preparation step retains or replaces site datasets, use
+``merged.with_site_data(site_data)``. The mapping order sets
+the retained site order; the owner selects matching ``SiteOptions`` and input
+provenance together. It returns new metadata while borrowing the numerical
+arrays. The caller owns any files backing supplied datasets.
+
+Acquire a merged handoff
+-------------------------
 
 ``SiteOptions`` keeps all observation and footprint selectors aligned to one
-site order. Normalize scalar or per-site inputs once, then choose fresh
-acquisition or an existing merged artifact::
+site order. Normalize scalar or per-site inputs once, then acquire an in-memory
+merged handoff::
 
    from openghg_inversions.inversion_data import RhimeMergedData, SiteOptions
+   from openghg_inversions.rhime import run_rhime
 
    selectors = SiteOptions.from_inputs(
        sites=["TAC", "MHD"], averaging_period="4h", inlet=["185m", "10m"],
@@ -76,35 +91,61 @@ acquisition or an existing merged artifact::
        site_options=selectors,
        species="ch4", domain="EUROPE",
        start_date="2020-01-01", end_date="2020-02-01",
-       output_name="example", flux_sources=["inventory"],
+       flux_sources=["inventory"],
        obs_store="user", footprint_store="user", emissions_store="user",
        bc_store="user",
    )
 
 Use your configured object stores and flux source names. Fresh acquisition may
 drop unavailable sites; the returned ``merged.site_options`` retains every
-selector in the resulting site order. Saving is disabled by default. An
-explicit save uses the established merged-data codec::
+selector in the resulting site order.
+Fresh retrieval constructs this dataset handoff directly; the older
+tuple-returning API derives its ``fp_all`` mapping from the handoff.
 
-   merged.save("merged-cache", merged_data_name="example.nc")
-   reopened = RhimeMergedData.load(
-       "merged-cache", merged_data_name="example.nc", site_options=selectors,
-   )
+``RhimeMergedData`` stores per-site xarray datasets in ``site_data``,
+source-labelled flux datasets in ``flux_data``, optional boundary conditions
+in ``boundary_data``, complete ``SiteOptions``, acquisition facts and selected
+provenance. Its arrays remain borrowed and may be Dask-backed. It has no
+``fp_all`` property. ``AcquisitionFacts`` records known species, domain and
+window bounds alongside other retrieval choices. For example,
+``AcquisitionFacts(species="ch4", domain="EUROPE")`` makes no claim about dates.
+Temporary explicit ``from_legacy_fp_all`` and ``to_legacy_fp_all`` adapters
+support remaining scientific consumers until 0.9.
 
-The current cache stores scientific datasets, not the complete selector
-record, so ``load`` requires caller-supplied ``site_options``. It retains
-available sites in requested order and checks explicit ``time_resolved``
-selectors and the ``split_by_sectors`` layout. Failed loading raises without
-contacting stores. Reading and writing are explicit I/O boundaries and may
-materialize lazy arrays; ordinary handoff construction and access do not.
-These caches precede filtering. Supply the returned handoff as ``merged_data``
-to resume the standard runner at filtering.
+Acquisition stays in memory. For a reusable file, prepare the data with the
+named stages below and call ``RhimePreparedInputs.save``; the staged
+``prepare`` command writes this same durable contract. See :doc:`rhime` for
+prepared-input persistence and reuse. Selected provenance
+includes each input's available store, UUID and dataversion, plus the
+acquisition OpenGHG version and commit. Unavailable identities remain
+``unknown``. When several footprint inlets contribute, identifier tuples
+retain the contributing input order.
+
+In Python, ``merged.provenance`` is a ``MergedDataProvenance`` value with
+``observations``, ``footprints`` and ``flux`` mappings and optional ``boundary``
+identity. Each ``InputProvenance`` exposes ``store``, ``uuid`` and
+``dataversion``; for example, ``merged.provenance.footprints["TAC"].uuid``.
+The software fields are ``openghg_version`` and ``openghg_commit``.
+Both classes are available from ``openghg_inversions.inversion_data``.
+They describe selected inputs; scientific compatibility remains the
+responsibility of ``validate_for_preparation``. Empty or all-unknown provenance
+is false in boolean tests; that does not establish data validity. Missing
+input identities default to unknown without replacing supplied identities.
+
+Selected ``MergedDataProvenance`` remains on the in-memory merged handoff. It
+is not included in saved ``RhimePreparedInputs`` or the staged preparation
+manifest. Retain it separately when an audit requires selected input identities;
+persistence of acquisition provenance is deferred to
+`issue #829 <https://github.com/openghg/openghg_inversions/issues/829>`_.
 
 For the existing tuple-returning retrieval API, use
 ``openghg_inversions.inversion_data.retrieve_inversion_data``. The former
 ``data_processing_surface_notracer`` name forwards the same arguments and
-return value and now emits ``DeprecationWarning``. ``convert_to_list`` now lives in ``inversion_data._site_options``;
-its old ``inversion_data.get_data`` import path has been removed.
+return value and emits ``DeprecationWarning``.
+The tuple's flux and boundary wrappers are reconstructed from the modern
+datasets and selected source identities. Their metadata no longer includes
+arbitrary OpenGHG catalogue fields; scientific dataset attributes remain
+available on the datasets.
 
 Change the likelihood with a Python function
 --------------------------------------------
@@ -359,7 +400,7 @@ Run it with a normal RHIME configuration and optional overrides::
 Less common Python/config options can be supplied as a JSON object::
 
    python -m package_name.rhime_runner config.ini \
-       --kwargs '{"reload_merged_data": true, "output_format": "inv_out"}'
+       --kwargs '{"output_format": "inv_out"}'
 
 The test suite imports all three sources, exercises both runners, and validates
 the likelihood contract directly, so the documentation and runnable examples

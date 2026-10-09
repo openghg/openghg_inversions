@@ -13,7 +13,7 @@ Inspecting the resolved request
 
 Standard and multisector runners resolve their effective options before
 acquisition. Use ``RhimeConfig.from_params`` to inspect the same choices without
-retrieving observations, loading a merged cache, building a model or sampling.
+retrieving observations, building a model or sampling.
 The returned ``RhimeConfig`` is the complete requested configuration:
 
 * Acquisition and preparation choices are direct fields, including
@@ -133,22 +133,22 @@ aligned values and checks their structural alignment. For example:
 
 Direct retrieval APIs retain their scalar shorthand without requiring model,
 output or sampler settings. The acquisition-and-preparation convenience function
-``prepare_rhime_inputs`` is deprecated. For a complete inversion, use
+``prepare_rhime_inputs`` has been removed. For a complete inversion, use
 ``run_rhime``; for custom preparation, call ``RhimeMergedData.from_options`` followed by
 ``filter_rhime_observations``, ``build_rhime_basis``,
-``build_rhime_sensitivities`` and ``assemble_rhime_inputs``. The deprecated
-function retains its arguments and result while delegating to those same
-scientific stages. ``retrieve_inversion_data`` performs
+``build_rhime_sensitivities`` and ``assemble_rhime_inputs``. ``retrieve_inversion_data`` performs
 fresh surface or column acquisition and returns its established six-tuple of
 merged data and retained metadata lists. The former
 ``data_processing_surface_notracer`` name is a deprecated wrapper with the same
 signature and return. ``RhimeMergedData.from_options`` performs fresh acquisition
-from resolved selectors. ``RhimeMergedData.load`` explicitly loads an existing
-cache, requires caller-supplied selectors, and validates its layout and explicit
-time-resolution choices. Missing paths or unreadable/incompatible artifacts
-raise without fresh retrieval. Runners reuse a valid supplied handoff unchanged
-before choosing either factory, bypassing I/O. Fresh saving remains opt-in.
-See :doc:`customising_rhime` for current-codec loading and saving examples.
+from resolved selectors. Acquisition stays in memory; persist the completed
+``RhimePreparedInputs`` for reuse. Runners reuse a supplied ``merged_data``
+handoff before acquisition, bypassing store access. Before preparation, the merged
+owner checks known species, domain, date bounds and source layout against the
+request. Conflicts, including changed acquisition windows, raise without
+relabeling or selecting observations. Recorded selectors remain authoritative;
+unknown historical facts stay unknown. See :doc:`customising_rhime` for
+in-memory acquisition and :doc:`rhime` for saving and loading prepared inputs.
 
 The requested configuration contains no acquired/prepared handoff or
 ``RhimeRunSpec``.
@@ -170,6 +170,9 @@ values for an ordinary keyword call:
 
    from openghg_inversions.rhime import filter_rhime_observations
 
+   merged.validate_for_preparation(
+       **config.select("species", "domain", "start_date", "end_date", "split_by_sectors")
+   )
    filtered = filter_rhime_observations(merged, **config.select("filters"))
 
 ``config.select(*names)`` returns a fresh dictionary of the named attributes.

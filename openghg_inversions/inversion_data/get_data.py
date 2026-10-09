@@ -15,7 +15,7 @@ import logging
 import warnings
 from collections.abc import Sequence
 from functools import wraps
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 import xarray as xr
@@ -30,6 +30,7 @@ from openghg_inversions.inversion_data._site_options import (
     is_column_platform,
     is_satellite_platform,
 )
+from openghg_inversions.inversion_data._provenance import MergedDataProvenance, selected_provenance
 from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
 from openghg_inversions.inversion_data.getters import (
     get_flux_data,
@@ -38,6 +39,9 @@ from openghg_inversions.inversion_data.getters import (
 )
 from openghg_inversions.inversion_data.scenario import merged_scenario_data
 from openghg_inversions.inversion_data.serialise import _save_merged_data
+
+if TYPE_CHECKING:
+    from .acquisition import RhimeMergedData
 
 logger = logging.getLogger(__name__)
 
@@ -278,7 +282,11 @@ def retrieve_inversion_data(
     Notes:
         This function reads OpenGHG stores, emits progress messages and
         warnings, and may save a merged-data artifact. The first retained
-        scenario defines the unit target requested for later sites.
+        scenario defines the unit target requested for later sites. Acquisition
+        constructs ``RhimeMergedData`` first; this compatibility API projects
+        its datasets into historical wrappers rather than retaining arbitrary
+        OpenGHG wrapper metadata. Selected input identities belong to the
+        modern record's provenance.
     """
     site_values = [sites] if isinstance(sites, str) else sites
     site_options = SiteOptions.from_inputs(
@@ -293,7 +301,7 @@ def retrieve_inversion_data(
         max_level=max_level,
         time_resolved=time_resolved,
     )
-    return _retrieve_inversion_data_from_options(
+    merged = _retrieve_inversion_data_from_options(
         site_options=site_options,
         species=species,
         domain=domain,
@@ -312,11 +320,33 @@ def retrieve_inversion_data(
         emissions_domain=emissions_domain,
         split_by_sectors=split_by_sectors,
         averagingerror=averagingerror,
-        save_merged_data=save_merged_data,
-        merged_data_name=merged_data_name,
-        merged_data_dir=merged_data_dir,
-        output_name=output_name,
         flux_non_finite_check=flux_non_finite_check,
+    )
+
+    # Keep the historical public tuple and its mapping layout at this adapter.
+    legacy = merged.to_legacy_fp_all()
+    fp_all = {".flux": legacy[".flux"], ".split_by_sectors": merged.split_by_sectors}
+    if ".bc" in legacy:
+        fp_all[".bc"] = legacy[".bc"]
+    fp_all.update(merged.site_data)
+    if save_merged_data:
+        if merged_data_dir is None:
+            print("`merged_data_dir` not specified; could not save merged data")
+        else:
+            _save_merged_data(
+                fp_all,
+                merged_data_dir,
+                merged_data_name=merged_data_name,
+                species=species,
+                start_date=start_date,
+                output_name=output_name,
+            )
+            print(f"\nfp_all saved in {merged_data_dir}\n")
+
+    retained = merged.site_options
+    return (
+        fp_all, list(retained.sites), list(retained.inlet), list(retained.fp_height),
+        list(retained.instrument), list(retained.averaging_period),
     )
 
 
@@ -340,14 +370,15 @@ def _retrieve_inversion_data_from_options(
     emissions_domain: str | None = None,
     split_by_sectors: bool = False,
     averagingerror: bool = True,
-    save_merged_data: bool = False,
-    merged_data_name: str | None = None,
-    merged_data_dir: str | None = None,
-    output_name: str | None = None,
     flux_non_finite_check: FluxNonFiniteCheck = "lazy",
-) -> tuple[dict, list, list, list, list, list]:
-    """Retrieve using resolved site options without expanding external shorthand."""
-    fp_all: dict[str, Any] = {}
+) -> RhimeMergedData:
+    """Acquire the modern dataset record from already resolved site selectors."""
+    from .acquisition import AcquisitionFacts, RhimeMergedData
+
+    merged_sites: dict[str, xr.Dataset] = {}
+    observation_provenance = {}
+    footprint_provenance = {}
+    boundary_provenance = None
 
     # Get flux data
     if emissions_name is None:
@@ -362,8 +393,8 @@ def _retrieve_inversion_data_from_options(
         store=emissions_store,
         flux_non_finite_check=flux_non_finite_check,
     )
-    fp_all[".flux"] = flux_dict
-    fp_all[".split_by_sectors"] = split_by_sectors
+    retained_flux_dict = flux_dict
+    flux_provenance = {source: selected_provenance(value, emissions_store) for source, value in flux_dict.items()}
 
     # Get BC data
     if use_bc is True:
@@ -379,7 +410,10 @@ def _retrieve_inversion_data_from_options(
         except SearchError as e:
             raise SearchError("Could not find matching boundary conditions.") from e
         else:
-            fp_all[".bc"] = bc_data
+            # This public getter rejects multiple UUIDs and selects latest.
+            boundary_provenance = selected_provenance(
+                bc_data, bc_store, requested_version="latest"
+            )
     else:
         bc_data = None
 
@@ -460,7 +494,7 @@ def _retrieve_inversion_data_from_options(
             else flux_dict
         )
         if scenario_flux_dict is not flux_dict:
-            fp_all[".flux"] = scenario_flux_dict
+            retained_flux_dict = scenario_flux_dict
 
         try:
             scenario_combined = merged_scenario_data(
@@ -488,7 +522,13 @@ def _retrieve_inversion_data_from_options(
                 context=f"site {site!r} variable 'mf'",
             )
             output_units = scenario_units
-        fp_all[site] = scenario_combined
+        merged_sites[site] = scenario_combined
+        # Observation retrieval can combine UUIDs and discard their selected versions;
+        # never infer those versions from the remaining catalog metadata.
+        observation_provenance[site] = selected_provenance(site_data, obs_store)
+        footprint_provenance[site] = selected_provenance(
+            footprint_data, footprint_store, requested_version="latest"
+        )
 
         if not is_satellite_platform(site_platform):
             check_scales.add(scenario_combined.scale)
@@ -499,7 +539,7 @@ def _retrieve_inversion_data_from_options(
 
     retained = site_options.select_indices(site_indices_to_keep)
     for site, selector in zip(retained.sites, retained.time_resolved, strict=True):
-        fp_all[site].attrs["openghg_inversions_time_resolved"] = str(selector).lower()
+        merged_sites[site].attrs["openghg_inversions_time_resolved"] = str(selector).lower()
 
     # if "satellite" not in footprint_data.metadata:
     # check for consistency of calibration scales
@@ -508,25 +548,34 @@ def _retrieve_inversion_data_from_options(
         logger.warning(msg)
 
     # create `mf_error`
-    add_obs_error(retained.sites, fp_all, add_averaging_error=averagingerror)
+    add_obs_error(retained.sites, merged_sites, add_averaging_error=averagingerror)
 
-    if save_merged_data:
-        if merged_data_dir is None:
-            print("`merged_data_dir` not specified; could not save merged data")
-        else:
-            _save_merged_data(
-                fp_all,
-                merged_data_dir,
-                merged_data_name=merged_data_name,
-                species=species,
-                start_date=start_date,
-                output_name=output_name,
-            )
-            print(f"\nfp_all saved in {merged_data_dir}\n")
-
-    return (
-        fp_all, list(retained.sites), list(retained.inlet), list(retained.fp_height),
-        list(retained.instrument), list(retained.averaging_period),
+    return RhimeMergedData(
+        site_data=merged_sites,
+        flux_data={source: value.data for source, value in retained_flux_dict.items()},
+        boundary_data=bc_data.data if bc_data is not None else None,
+        site_options=retained,
+        split_by_sectors=split_by_sectors,
+        provenance=MergedDataProvenance.from_retrieval(
+            observations=observation_provenance,
+            footprints=footprint_provenance,
+            flux=flux_provenance,
+            boundary=boundary_provenance,
+        ),
+        acquisition=AcquisitionFacts(
+            species=species,
+            domain=domain,
+            start_date=start_date,
+            end_date=end_date,
+            emissions_domain=emissions_domain,
+            fp_model=fp_model,
+            fp_species=fp_species,
+            calibration_scale=calibration_scale,
+            use_bc=use_bc,
+            bc_input=bc_input,
+            averaging_error=averagingerror,
+            flux_non_finite_check=flux_non_finite_check,
+        ),
     )
 
 

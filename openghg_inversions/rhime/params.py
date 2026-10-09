@@ -92,10 +92,6 @@ class RhimeConfig:
     fix_basis_outer_regions: bool = False
     averaging_error: bool = True
     bc_freq: str | None = None
-    reload_merged_data: bool = False
-    save_merged_data: bool = False
-    merged_data_dir: str | Path | None = None
-    merged_data_name: str | None = None
     basis_output_path: str | Path | None = None
     min_error: MinErrorConfig = 0.0
     min_error_options: dict[str, bool] = field(default_factory=lambda: normalise_min_error_options(None))

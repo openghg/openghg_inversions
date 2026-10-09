@@ -29,6 +29,7 @@ from openghg.types import SearchError
 
 from openghg_inversions import utils
 from openghg_inversions.flux_sanitization import FluxNonFiniteCheck, sanitize_flux_nonfinite
+from openghg_inversions.inversion_data._provenance import selected_provenance
 from openghg_inversions.inversion_data._site_options import (
     is_column_observation,
     is_satellite_platform,
@@ -154,6 +155,12 @@ def get_flux_data(
                 )  # set time to start_date
 
         logging.Logger.disabled = False  # resume confusing OpenGHG warnings
+
+        # OpenGHG's public retrieval selects latest, but its typed rewrap loses _version.
+        flux_data.metadata = {
+            **flux_data.metadata,
+            "dataversion": selected_provenance(flux_data, requested_version="latest").dataversion,
+        }
 
         # Preserve source period metadata for downstream post-processing.
         # Variable metadata is more specific and must not be overwritten.
@@ -466,11 +473,17 @@ def get_footprint_to_match(
         fp.data = fp.data.sel(time=fp_idx)
 
     # make FootprintData to return
-    metadata = indexed_footprints[0][1].metadata
+    metadata = dict(indexed_footprints[0][1].metadata)
 
+    identities = [selected_provenance(fp, store, requested_version="latest") for _, fp in indexed_footprints]
+    metadata.update(
+        store=identities[0].store, uuid=identities[0].uuid, dataversion=identities[0].dataversion
+    )
     if len(indexed_footprints) > 1:
         metadata["inlet"] = "varies"
         metadata["height"] = "varies"
+        for name in ("store", "uuid", "dataversion"):
+            metadata[name] = [getattr(identity, name) for identity in identities]
 
     data = xr.concat([fp.data for _, fp in indexed_footprints], dim="time").sortby("time")
 

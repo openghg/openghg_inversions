@@ -120,12 +120,12 @@ working directory and reject pre-existing symlinks beneath a stage output
 directory.
 
 ``prepare``
-  Retrieves/reloads merged data, filters observations, constructs basis and
-  sensitivities, assembles canonical inputs, and writes an inspectable
-  ``merged-data/merged-data.nc``, ``prepared-inputs.nc`` and
-  ``prepare-manifest.json``.  It never builds a
-  PyMC graph or samples a posterior.  The NetCDF is a versioned
-  ``RhimePreparedInputs`` artifact and is independently inspectable/loadable.
+  Retrieves merged data, filters observations, constructs basis and
+  sensitivities, assembles canonical inputs, and writes ``prepared-inputs.nc``
+  and ``prepare-manifest.json``. It never builds a PyMC graph or samples a
+  posterior. The NetCDF is a versioned ``RhimePreparedInputs`` artifact and is
+  independently inspectable/loadable. Later stages consume this artifact;
+  preparation does not write a filtered merged-data snapshot.
   For ``co2``, preparation validates and copies the configured
   ``Co2PreparedInputs`` artifact and optional bound affine reconstruction,
   preserving their content identities; it does not acquire observation data.

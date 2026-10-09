@@ -4,8 +4,9 @@ This is the preferred low-ceremony customization route. It keeps RHIME's
 complete acquisition-to-output pipeline and changes only the direct-Python
 likelihood callable passed to :func:`openghg_inversions.rhime.run_rhime`.
 Use :func:`run_with_likelihood` from Python or :func:`main` from the command
-line with a normal RHIME configuration. The workflow may retrieve or reload
-data, materializes related model arrays together at the named PyMC boundary,
+line with a normal RHIME configuration. The workflow acquires data or accepts
+supplied in-memory inputs, materializes related model arrays together at the
+named PyMC boundary,
 samples, and writes requested outputs while canonical xarray/Dask inputs remain
 borrowed.
 """
@@ -46,8 +47,8 @@ def run_with_likelihood(
             ``epsilon`` variables.
 
     Notes:
-        This workflow may retrieve or reload data, materializes related model
-        arrays together at the named PyMC boundary without mutating canonical
+        This workflow acquires data or accepts supplied in-memory inputs,
+        materializes related model arrays together at the named PyMC boundary without mutating canonical
         prepared inputs, runs sampling, and writes configured outputs.
     """
     kwargs["mismatch_model"] = None

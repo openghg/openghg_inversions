@@ -6,8 +6,9 @@ that a project can make deeper scientific changes while continuing to reuse
 the supported acquisition, preparation, model, sampling, and output stages.
 Use :func:`run_custom_rhime` from Python or :func:`main` from the command line.
 The standard single-sector stages are preserved, model inputs materialize only
-at the explicit PyMC boundary, and a run may acquire or reload data, sample a
-model, and write its configured outputs.
+at the explicit PyMC boundary. This copied runner always acquires fresh data,
+samples a model, and writes its configured outputs. To reuse persisted prepared
+inputs, use :func:`openghg_inversions.rhime.run_rhime_from_prepared_inputs`.
 """
 
 from __future__ import annotations
@@ -60,7 +61,7 @@ def run_custom_rhime(
             unsupported, or likelihood roles or metadata are invalid.
 
     Notes:
-        This workflow may retrieve or reload data, materializes related model
+        This workflow always acquires fresh data, materializes related model
         arrays together at the named PyMC boundary without mutating canonical
         prepared inputs, runs sampling, and writes outputs requested by the
         resolved RHIME options.
@@ -70,24 +71,16 @@ def run_custom_rhime(
     params["mismatch_model"] = None
     config = RhimeConfig.from_params(params, multisector=False)
 
-    if config.reload_merged_data:
-        merged = RhimeMergedData.load(
-            **config.select(
-                "merged_data_dir", "site_options", "species", "start_date", "output_name",
-                "merged_data_name", "split_by_sectors", "flux_non_finite_check",
-            ),
-        )
-    else:
-        merged = RhimeMergedData.from_options(
-            **config.select(
-                "site_options", "species", "domain", "start_date",
-                "end_date", "output_name", "flux_sources", "split_by_sectors",
-                "bc_store", "obs_store", "footprint_store", "emissions_store",
-                "emissions_domain", "fp_model", "fp_species", "calibration_scale",
-                "use_bc", "bc_input", "averaging_error",
-                "save_merged_data", "merged_data_dir", "merged_data_name", "flux_non_finite_check",
-            ),
-        )
+    merged = RhimeMergedData.from_options(
+        **config.select(
+            "site_options", "species", "domain", "start_date",
+            "end_date",  "flux_sources", "split_by_sectors",
+            "bc_store", "obs_store", "footprint_store", "emissions_store",
+            "emissions_domain", "fp_model", "fp_species", "calibration_scale",
+            "use_bc", "bc_input", "averaging_error",
+            "flux_non_finite_check",
+        ),
+    )
     # 2. Keep the scientific preparation order visible in this recipe.
     filtered = filter_rhime_observations(merged, filters=config.filters)
     basis_functions = build_rhime_basis(

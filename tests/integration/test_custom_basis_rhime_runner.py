@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
+from openghg_inversions.inversion_data import RhimeMergedData
 from openghg_inversions.rhime.params import RhimeConfig
 
 from openghg_inversions.basis.basis_functions import BasisFunctions
@@ -69,7 +70,10 @@ def test_custom_basis_runner_replaces_only_basis_stage(
     )
     sampler = config.sampler
 
-    merged = object()
+    merged = RhimeMergedData(
+        site_data={site: xr.Dataset() for site in config.site_options.sites},
+        flux_data={}, site_options=config.site_options,
+    )
     filtered = object()
     basis = _basis_functions()
     site_data = object()
@@ -99,9 +103,15 @@ def test_custom_basis_runner_replaces_only_basis_stage(
         return config
 
     def retrieve(**kwargs: Any) -> Any:
-        assert kwargs["site_options"] is config.site_options
+        if not reload_merged_data:
+            assert kwargs["site_options"] is config.site_options
+        else:
+            assert "site_options" not in kwargs
         assert "reload_merged_data" not in kwargs
-        assert kwargs["split_by_sectors"] is False
+        if not reload_merged_data:
+            assert kwargs["split_by_sectors"] is False
+        else:
+            assert "split_by_sectors" not in kwargs
         assert "project_basis_path" not in kwargs
         calls.append("retrieve")
         return merged
@@ -288,8 +298,15 @@ def test_generated_project_basis_uses_guarded_connected_inertial_composition(
         name="raw_labels",
     )
     expected_basis = _basis_functions()
-    fp_all = object()
-    merged = SimpleNamespace(fp_all=fp_all)
+    from openghg_inversions.inversion_data import RhimeMergedData, SiteOptions
+    merged = RhimeMergedData(site_data={"TAC": xr.Dataset()}, flux_data={},
+        site_options=SiteOptions.from_inputs(sites=["TAC"], averaging_period="1h"))
+    adapters = []
+    def adapt():
+        value = RhimeMergedData.to_legacy_fp_all(merged)
+        adapters.append(value)
+        return value
+    monkeypatch.setattr(merged, "to_legacy_fp_all", adapt)
     data_args = {
         "species": "ch4",
         "domain": "EUROPE",
@@ -306,7 +323,7 @@ def test_generated_project_basis_uses_guarded_connected_inertial_composition(
         abs_flux: bool,
     ) -> xr.DataArray:
         """Return deterministic weights at the public custom-basis boundary."""
-        assert actual_fp_all is fp_all
+        assert actual_fp_all is adapters[0]
         assert emissions_name == ["inventory"]
         assert abs_flux is True
         return weights
@@ -368,7 +385,8 @@ def test_generated_project_basis_uses_guarded_connected_inertial_composition(
             "openghg_inversions:project_basis_class_policy": "land_ocean",
             "openghg_inversions:project_basis_weights": ("basis_weights_from_fp_all_abs_flux_normalized"),
         }
-        assert kwargs["fp_all"] is fp_all
+        assert kwargs["fp_all"] is adapters[0]
+        assert len(adapters) == 1
         assert kwargs["basis_flat"].name == "basis"
         assert kwargs["basis_flat"].dtype == np.dtype(np.int16)
         xr.testing.assert_equal(kwargs["basis_flat"], generated_labels.astype(np.int16).rename("basis"))
@@ -406,7 +424,10 @@ def test_incompatible_project_basis_failure_remains_owned_by_sensitivity_stage(
                     reload_merged_data=False, draws=3),
         multisector=False,
     )
-    merged = object()
+    merged = RhimeMergedData(
+        site_data={site: xr.Dataset() for site in config.site_options.sites},
+        flux_data={}, site_options=config.site_options,
+    )
     filtered = object()
     incompatible_basis = object()
 
