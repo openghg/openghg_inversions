@@ -1,13 +1,26 @@
 # `run_rhime` Readability and Modifiability Plan
 
+## Public naming delivery alongside #764/#776
+
+The public selector is `run(..., model="standard")`, with concrete
+`run_standard`, `run_multisector` and `run_nested` recipes. The `rhime` executable
+shares the existing command set and adds `run --model`; CO2-family Python model
+choices preserve their prepared-input-only contracts. Established runner and shared handoff imports
+and `openghg-inversions` commands remain compatible through 0.9. Shared
+`MergedData`, `PreparedInputs` and preparation names describe shared work, not
+standard-only policy. This selective naming delivery does not perform #776's
+recipe relocation or complete #802 route parity. Preserve procedural recipes
+and do not introduce a universal workflow engine.
+
+
 Status: approved delivery plan, P0 / highest project priority
 Date: 2026-08-15
 Owners: OpenGHG Inversions maintainers
 
 ## Summary
 
-`run_rhime` remains the canonical Python and CLI entry point for ordinary
-RHIME inversions. The immediate priority is to make its implementation a
+`run(..., model="standard")` is the canonical Python selector and `rhime run`
+is the CLI entry point. The concrete `run_standard` implementation remains a
 readable reference workflow that a scientific user can follow, modify, and run
 without reconstructing a framework from prepared inputs, cross-package specs,
 builder contexts, role manifests, and output manifests.
@@ -16,7 +29,8 @@ The target is the locality and code-reading experience of the release-0.6
 workflow, not the historical `fixedbasisMCMC` name or its monolithic
 implementation. OpenGHG Inversions no longer has a meaningful "non-fixed
 basis MCMC" alternative, so `fixedbasisMCMC` remains compatibility vocabulary
-only. New architecture and documentation continue to centre `run_rhime`.
+only. New architecture centres readable concrete recipes behind the small
+public model selector.
 
 This work superseded the assumption that the legacy path could be removed as
 soon as old configs executed through the then-layered `run_rhime`
@@ -68,10 +82,11 @@ was made usable; it is now retired with the direct implementation.
 
 ## Decision
 
-Keep `run_rhime` as the default public API and make it the readable reference
+Use `run(..., model="standard")` as the default public API and keep
+`run_standard` as the readable reference
 implementation of the complete RHIME workflow.
 
-Opening the implementation of `run_rhime` should reveal, in execution order:
+Opening the implementation of `run_standard` should reveal, in execution order:
 
 ```text
 resolve Python/config options
