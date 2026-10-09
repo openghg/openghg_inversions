@@ -369,6 +369,23 @@ an on-disk working cache may be preferable. The workflow must make that choice
 once rather than allowing each downstream helper to call `.compute()`
 independently.
 
+### Inversion-input assembly
+
+`inversion_inputs._drop_nan_and_compute`, called by `make_inv_inputs`, is an
+explicit eager assembly boundary. It jointly computes the core sensitivity,
+observation, error, column-factor and modelled-concentration payloads before
+`dropna` selects usable observation rows. Computing the row mask first and
+then these variables separately can execute their shared upstream source
+repeatedly. Any additional variables explicitly requested for NaN selection
+join the same materialization.
+
+The full selected payloads must fit in memory before row selection. This
+boundary preserves sparse storage, retained labels/order and borrowed inputs;
+it does not densify, persist or cache data. Unselected extension variables and
+auxiliary coordinates retain their existing lazy or eager backing. Later
+`rhime.materialization` selects and densifies the concrete model's inputs for
+PyMC; it is not the first eager boundary for inputs assembled here.
+
 ## Dask is preferred, not mandatory
 
 Dask preserves lazy I/O, parallelism, and shared upstream work, but it adds
