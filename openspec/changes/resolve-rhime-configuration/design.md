@@ -238,7 +238,7 @@ following inventory describes fields on `RhimeConfig`, not another class:
 | --- | --- |
 | `site_options` | Public `SiteOptions` containing complete aligned site-selector tuples. |
 | Species/domain, date bounds, flux sources, layout, BC use and basis output name | Requested/resolved strings, tuples and booleans; forwarded consistently to existing model/output views. |
-| BC/observation/footprint/emissions stores, emissions domain, footprint model/species, calibration scale and BC input | Existing supported typed selectors. |
+| BC/observation/footprint/flux stores, flux domain, footprint model/species, calibration scale and BC input | Existing supported typed selectors. |
 | Footprint/BC basis cases and directories, country directory, outer-regions path, basis algorithm/count and fixed outer regions | Existing supported path/string/integer/boolean choices. |
 | Filters, averaging error, BC frequency, minimum error and normalized error options | Existing contracts; data-dependent materialization remains in preparation. |
 | Basis destination and non-finite flux check | Basis output policy and flux-check choices. Modern acquisition-cache settings are rejected. |
