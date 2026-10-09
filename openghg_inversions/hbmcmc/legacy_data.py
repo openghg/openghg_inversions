@@ -1,14 +1,16 @@
-"""Functions for saving and loading data used for inversions.
+"""Explicit legacy acquisition and ``fp_all`` file utilities, supported until 0.9.
 
-- `_save_merged_data` saves the `fp_all` dict created by `get_data.data_processing_surface_notracer`
-  to disk as netCDF or zarr
-- `load_merged_data` restores the `fp_all` dict from these saved formats
-- `make_combined_scenario` converts the `fp_all` dict into a xr.Dataset
+``retrieve_inversion_data`` returns the historical six-tuple. Call
+``_save_merged_data`` and ``load_merged_data`` explicitly to persist or reload
+its mapping; modern RHIME acquisition and preparation do not use this codec.
 """
 
 import json
 import warnings
 from collections import defaultdict
+from collections.abc import Sequence
+from dataclasses import asdict
+from functools import wraps
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -20,7 +22,13 @@ from openghg.dataobjects import BoundaryConditionsData, FluxData
 from openghg.dataobjects._basedata import _BaseData
 from openghg.util import timestamp_now
 
+from openghg_inversions.flux_sanitization import FluxNonFiniteCheck
+from openghg_inversions.inversion_data._provenance import (
+    InputProvenance, MergedDataProvenance, selected_provenance,
+)
+from openghg_inversions.inversion_data._site_options import SiteOptions
 from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
+from openghg_inversions.inversion_data.acquisition import AcquisitionFacts, RhimeMergedData
 from openghg_inversions.utils import _flux_period_is_missing, datatree_ncdf_encoding
 
 OutputFormat = Literal["netcdf", "zarr", "zarr.zip"]  # for internal type hints
@@ -631,3 +639,249 @@ def clear_datatree_time_attrs(dt: xr.DataTree) -> xr.DataTree:
             result[g].coords["time"].attrs.pop("units", None)
 
     return result
+
+
+def to_legacy_fp_all(merged: RhimeMergedData) -> dict:
+    """Adapt to remaining wrapper-based scientific consumers (#821; remove in 0.9).
+
+    Only this explicit adapter reconstructs OpenGHG wrappers. Flux and boundary
+    dataset containers are shallow copies; site datasets remain borrowed.
+    Consumers must copy site containers before assigning variables or attrs.
+    Numerical arrays remain shared. Wrapper metadata carries selected source
+    identities, not arbitrary OpenGHG catalogue fields.
+    """
+    result = dict(merged.site_data)
+    result[".flux"] = {
+        source: FluxData(
+            data=data.copy(deep=False),
+            metadata={"data_type": "flux", **asdict(merged.provenance.flux[source])},
+        )
+        for source, data in merged.flux_data.items()
+    }
+    if merged.boundary_data is not None:
+        result[".bc"] = BoundaryConditionsData(
+            data=merged.boundary_data.copy(deep=False),
+            metadata=asdict(merged.provenance.boundary),
+        )
+    result[".split_by_sectors"] = merged.split_by_sectors
+    return result
+
+
+def retrieve_inversion_data(
+    species: str,
+    sites: Sequence[str] | str,
+    domain: str,
+    averaging_period: list[str | None] | str | None,
+    start_date: str,
+    end_date: str,
+    obs_data_level: list[str | None] | str | None = None,
+    platform: list[str | None] | str | None = None,
+    inlet: Sequence[str | slice | None] | str | None = None,
+    instrument: list[str | None] | str | None = None,
+    max_level: Sequence[int | None] | int | None = None,
+    calibration_scale: str | None = None,
+    met_model: list[str | None] | str | None = None,
+    fp_model: str | None = None,
+    fp_height: list[str | None | Literal["auto"]] | Literal["auto"] | str | None = None,
+    fp_species: str | None = None,
+    time_resolved: Sequence[bool | None] | bool | None = None,
+    emissions_name: list | None = None,
+    use_bc: bool = True,
+    bc_input: str | None = None,
+    bc_store: str | None = None,
+    obs_store: str | list[str] | None = None,
+    footprint_store: str | list[str] | None = None,
+    emissions_store: str | None = None,
+    emissions_domain: str | None = None,
+    split_by_sectors: bool = False,
+    averagingerror: bool = True,
+    save_merged_data: bool = False,
+    merged_data_name: str | None = None,
+    merged_data_dir: str | None = None,
+    output_name: str | None = None,
+    flux_non_finite_check: FluxNonFiniteCheck = "lazy",
+) -> tuple[dict, list, list, list, list, list]:
+    """Retrieve and prepare surface or column datasets from OpenGHG stores.
+
+    Use for forward simulations and model-data comparisons that do not
+    use tracers.
+
+    Args:
+        species: Atmospheric trace gas species of interest
+            e.g. "co2"
+        sites: Measurement station/site abbreviation, or a sequence of them,
+            e.g. ``"MHD"`` or ``["MHD", "TAC"]``.
+            NOTE: for satellite, pass as "satellitename-obs_region" eg "GOSAT-BRAZIL" and pass corresponding platform as "satellite"
+        domain: Model domain region of interest; e.g. "EUROPE"
+        averaging_period: Averaging period to apply to mole fraction data,
+            either scalar or aligned to ``sites``.
+        start_date: Date from which to gather data; e.g. "2020-01-01"
+        end_date: Date until which to gather data; e.g. "2020-02-01"
+        obs_data_level: ICOS observation data level, either scalar or aligned
+            to ``sites``. For non-ICOS sites use ``None``.
+        platform: Observation platform, either scalar or aligned to ``sites``.
+        inlet: Observation inlet selector, either scalar or aligned to
+            ``sites``. Entries may be strings, legacy ``slice`` selectors, or
+            ``None``.
+        instrument: Observation instrument, either scalar or aligned to
+            ``sites``.
+        max_level: Maximum atmospheric level to extract, either scalar or
+            aligned to ``sites``. This is required for satellite/site-column
+            data.
+        calibration_scale: Convert measurements to defined calibration scale
+        met_model: Meteorological model used in the LPDM, either scalar or
+            aligned to ``sites``.
+        fp_model: LPDM used for generating footprints.
+        fp_height: Inlet height used in footprints for corresponding sites.
+        fp_species: Species name associated with footprints in the object store
+        time_resolved: Select integrated (``False``) or time-resolved
+            high-frequency (``True``) footprints, either as one value for all
+            sites or aligned to ``sites``. ``None`` leaves selection to the
+            OpenGHG search metadata.
+        emissions_name: List of keywords args associated with emissions files in the object store.
+            Corresponds to `source` in OpenGHG.
+        use_bc: Option to include boundary conditions in model
+        bc_input: Variable for calling BC data from 'bc_store' - equivalent of 'emissions_name' for fluxes.
+        bc_store: Name of object store to retrieve boundary conditions data from.
+        obs_store: Name of object store to retrieve observations data from.
+        footprint_store: Name of object store to retrieve footprints data from.
+        emissions_store: Name of object store to retrieve emissions data from.
+        emissions_domain: Optional flux-domain metadata selector. When it is
+            different from ``domain``, flux density is interpolated with
+            nearest neighbours onto each footprint grid before merging.
+        flux_non_finite_check: Non-finite flux handling mode. ``"lazy"``
+            applies zero-fill lazily and records attrs; ``"count"`` computes
+            count metadata once and warns if non-finite values are present.
+        split_by_sectors: If True, calculate sector-resolved ``fp_x_flux_sectoral`` in ModelScenario.
+            If False (default), combine all flux sources into a single ``fp_x_flux`` pathway.
+        averagingerror: Adds the variability in the averaging period to the measurement
+            error if set to True.
+        save_merged_data: Save forward simulations data and observations.
+        merged_data_name: Filename for saved forward simulations data and observations.
+        merged_data_dir: Directory path for for saved forward simulations data and observations.
+        output_name: Optional name used to create merged data name.
+
+    Returns:
+        tuple: containing
+
+            - fp_all: dictionary containing flux data (key ".flux"), bc data (key ".bc"),
+              and observations data (site short name as key)
+            - sites: Updated list of sites. All put in upper case and if data was not extracted
+              correctly for any sites, drop these from the rest of the inversion.
+            - inlet: List of inlet height for the updated list of sites
+            - fp_height: List of footprint height for the updated list of sites
+            - instrument: List of instrument for the updated list of sites
+            - averaging_period: List of averaging_period for the updated list of sites
+
+    Raises:
+        SearchError: If no requested site has both observations and footprints.
+        ValueError: If aligned options have invalid lengths, emissions are not
+            specified, observation units are unavailable or incompatible, or
+            required error inputs are absent.
+
+    Notes:
+        This function reads OpenGHG stores, emits progress messages and
+        warnings, and may save a merged-data artifact. The first retained
+        scenario defines the unit target requested for later sites. Acquisition
+        constructs ``RhimeMergedData`` first; this compatibility API projects
+        its datasets into historical wrappers rather than retaining arbitrary
+        OpenGHG wrapper metadata. Selected input identities belong to the
+        modern record's provenance.
+    """
+    site_values = [sites] if isinstance(sites, str) else sites
+    site_options = SiteOptions.from_inputs(
+        sites=site_values,
+        averaging_period=averaging_period,
+        inlet=inlet,
+        fp_height=fp_height,
+        instrument=instrument,
+        platform=platform,
+        obs_data_level=obs_data_level,
+        met_model=met_model,
+        max_level=max_level,
+        time_resolved=time_resolved,
+    )
+    merged = RhimeMergedData.from_options(
+        site_options=site_options,
+        species=species,
+        domain=domain,
+        start_date=start_date,
+        end_date=end_date,
+        calibration_scale=calibration_scale,
+        fp_model=fp_model,
+        fp_species=fp_species,
+        flux_sources=emissions_name,
+        use_bc=use_bc,
+        bc_input=bc_input,
+        bc_store=bc_store,
+        obs_store=obs_store,
+        footprint_store=footprint_store,
+        emissions_store=emissions_store,
+        emissions_domain=emissions_domain,
+        split_by_sectors=split_by_sectors,
+        averaging_error=averagingerror,
+        flux_non_finite_check=flux_non_finite_check,
+    )
+
+    # Keep the historical public tuple and its mapping layout at this adapter.
+    legacy = to_legacy_fp_all(merged)
+    fp_all = {".flux": legacy[".flux"], ".split_by_sectors": merged.split_by_sectors}
+    if ".bc" in legacy:
+        fp_all[".bc"] = legacy[".bc"]
+    fp_all.update(merged.site_data)
+    if save_merged_data:
+        if merged_data_dir is None:
+            print("`merged_data_dir` not specified; could not save merged data")
+        else:
+            _save_merged_data(
+                fp_all,
+                merged_data_dir,
+                merged_data_name=merged_data_name,
+                species=species,
+                start_date=start_date,
+                output_name=output_name,
+            )
+            print(f"\nfp_all saved in {merged_data_dir}\n")
+
+    retained = merged.site_options
+    return (
+        fp_all, list(retained.sites), list(retained.inlet), list(retained.fp_height),
+        list(retained.instrument), list(retained.averaging_period),
+    )
+
+
+@wraps(retrieve_inversion_data)
+def data_processing_surface_notracer(*args, **kwargs):
+    warnings.warn(
+        "data_processing_surface_notracer is deprecated; use retrieve_inversion_data instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return retrieve_inversion_data(*args, **kwargs)
+
+
+def from_legacy_fp_all(
+    fp_all: dict, site_options: SiteOptions, *,
+    acquisition: AcquisitionFacts | None = None,
+) -> RhimeMergedData:
+    """Borrow legacy datasets with resolved selectors; unknown identities remain unknown."""
+    fluxes = fp_all.get(".flux", {})
+    boundary = fp_all.get(".bc")
+    provenance = MergedDataProvenance(
+        observations={site: InputProvenance() for site in site_options.sites},
+        footprints={site: InputProvenance() for site in site_options.sites},
+        flux={source: selected_provenance(value) for source, value in fluxes.items()},
+        boundary=selected_provenance(boundary) if boundary is not None else None,
+    )
+    return RhimeMergedData(
+        site_data={site: fp_all[site] for site in site_options.sites},
+        flux_data={
+            source: value if isinstance(value, xr.Dataset) else value.data
+            for source, value in fluxes.items()
+        },
+        boundary_data=boundary if isinstance(boundary, xr.Dataset) else getattr(boundary, "data", None),
+        site_options=site_options,
+        split_by_sectors=bool(fp_all.get(".split_by_sectors", False)),
+        provenance=provenance,
+        acquisition=acquisition or AcquisitionFacts(),
+    )

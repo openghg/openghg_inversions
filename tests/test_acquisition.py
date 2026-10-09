@@ -9,16 +9,17 @@ import xarray as xr
 from dask.callbacks import Callback
 
 from openghg_inversions.inversion_data import AcquisitionFacts, RhimeMergedData, SiteOptions
-from openghg_inversions.inversion_data import get_data
+from openghg_inversions.inversion_data import acquisition as get_data
+from openghg_inversions.hbmcmc import legacy_data
 
 
 def test_legacy_retrieval_alias_preserves_signature_docs_and_forwarding(monkeypatch):
-    modern = get_data.retrieve_inversion_data
-    legacy = get_data.data_processing_surface_notracer
+    modern = legacy_data.retrieve_inversion_data
+    legacy = legacy_data.data_processing_surface_notracer
     assert inspect.signature(legacy) == inspect.signature(modern)
     assert legacy.__doc__ == modern.__doc__
     sentinel = object()
-    monkeypatch.setattr(get_data, "retrieve_inversion_data", lambda *args, **kwargs: (sentinel, args, kwargs))
+    monkeypatch.setattr(legacy_data, "retrieve_inversion_data", lambda *args, **kwargs: (sentinel, args, kwargs))
     with pytest.warns(DeprecationWarning, match="retrieve_inversion_data"):
         assert legacy("ch4", domain="EUROPE") == (sentinel, ("ch4",), {"domain": "EUROPE"})
 
@@ -27,7 +28,7 @@ def test_neutral_retrieval_does_not_emit_deprecation():
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         with pytest.raises(ValueError, match="emissions"):
-            get_data.retrieve_inversion_data("ch4", ["TAC"], "EUROPE", "1h", "2020-01-01", "2020-02-01")
+            legacy_data.retrieve_inversion_data("ch4", ["TAC"], "EUROPE", "1h", "2020-01-01", "2020-02-01")
     assert not any(issubclass(item.category, DeprecationWarning) for item in caught)
 
 
@@ -52,8 +53,6 @@ def test_fresh_factory_retains_selectors_and_borrows_lazy_datasets(monkeypatch):
         )
 
     monkeypatch.setattr(get_data, "_retrieve_inversion_data_from_options", retrieve)
-    monkeypatch.setattr(RhimeMergedData, "from_legacy_fp_all", lambda *a, **kw: pytest.fail("fresh used fp_all"))
-    monkeypatch.setattr(RhimeMergedData, "to_legacy_fp_all", lambda *a, **kw: pytest.fail("fresh used fp_all"))
     with Callback(pretask=lambda *args: pytest.fail("factory computed borrowed observations")):
         result = RhimeMergedData.from_options(
             species="ch4",
@@ -93,7 +92,7 @@ def test_public_retrieval_hides_private_provenance_transport(monkeypatch, entryp
     monkeypatch.setattr(get_data, "_retrieve_inversion_data_from_options", retrieve)
     warning = pytest.warns(DeprecationWarning) if entrypoint == "data_processing_surface_notracer" else nullcontext()
     with warning:
-        result = getattr(get_data, entrypoint)(
+        result = getattr(legacy_data, entrypoint)(
             "ch4", ["TAC"], "EUROPE", "1h", "2020-01-01", "2020-01-02"
         )
     assert len(result) == 6
@@ -128,8 +127,8 @@ def test_retrieval_builds_modern_record_without_legacy_adapters(monkeypatch):
     monkeypatch.setattr(get_data, "get_footprint_data", lambda **kw: wrap(site, "footprint-id"))
     monkeypatch.setattr(get_data, "merged_scenario_data", lambda *a, **kw: site)
     monkeypatch.setattr(get_data, "add_obs_error", lambda *a, **kw: None)
-    monkeypatch.setattr(RhimeMergedData, "from_legacy_fp_all", lambda *a, **kw: pytest.fail("used fp_all"))
-    monkeypatch.setattr(RhimeMergedData, "to_legacy_fp_all", lambda *a, **kw: pytest.fail("used fp_all"))
+    monkeypatch.setattr(legacy_data, "from_legacy_fp_all", lambda *a, **kw: pytest.fail("used fp_all"))
+    monkeypatch.setattr(legacy_data, "to_legacy_fp_all", lambda *a, **kw: pytest.fail("used fp_all"))
     with Callback(pretask=lambda *a: pytest.fail("record construction computed borrowed data")):
         merged = RhimeMergedData.from_options(
             site_options=options,

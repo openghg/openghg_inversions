@@ -21,28 +21,21 @@ the centred reduced likelihood or unresolved covariance.
 """
 
 from ._functions import (
-    basis_weights_from_fp_all,
     basis_weights_from_data,
     bucket_basis_from_weights,
-    bucket_basis_function,
-    bucketbasisfunction,
-    fixed_outer_regions_basis,
     fixed_outer_regions_basis_from_data,
     load_country_region_classes,
     load_intem_outer_regions,
     paired_abs_response_weights,
     quadtree_basis_from_weights,
-    quadtree_basis_function,
-    quadtreebasisfunction,
     region_constrained_basis_from_weights,
     region_constrained_fixed_outer_basis_from_weights,
-    region_constrained_basis_function,
 )
 from ._wrapper import (
     load_basis_functions,
     make_basis_functions,
 )
-from .basis_functions import BasisFunctions, basis_functions_from_fp_all_flat_basis, basis_functions_from_flat_basis
+from .basis_functions import BasisFunctions, basis_functions_from_flat_basis
 from .affine_flux_map import AffineFluxMap
 from .affine_flux_map_io import (
     AffineFluxMapArtifact,
@@ -64,17 +57,12 @@ from .covariance_products import (
 )
 
 __all__ = [
-    "basis_functions_from_fp_all_flat_basis",
-    "basis_weights_from_fp_all",
     "basis_weights_from_data",
     "basis_functions_from_flat_basis",
     "AffineFluxMap",
     "AffineFluxMapArtifact",
     "BasisFunctions",
     "bucket_basis_from_weights",
-    "bucket_basis_function",
-    "bucketbasisfunction",
-    "fixed_outer_regions_basis",
     "fixed_outer_regions_basis_from_data",
     "load_basis_functions",
     "load_affine_flux_map",
@@ -92,10 +80,7 @@ __all__ = [
     "project_basis_prior_stdev",
     "project_native_covariance",
     "quadtree_basis_from_weights",
-    "quadtree_basis_function",
-    "quadtreebasisfunction",
     "region_constrained_basis_from_weights",
     "region_constrained_fixed_outer_basis_from_weights",
-    "region_constrained_basis_function",
     "calibrate_basis_prior_stdev",
 ]

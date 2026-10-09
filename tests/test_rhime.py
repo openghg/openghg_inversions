@@ -20,7 +20,7 @@ from dask.callbacks import Callback
 
 from examples.rhime_customisation import likelihoods as example_likelihoods
 import openghg_inversions.inversion_data.acquisition as acquisition_module
-import openghg_inversions.inversion_data.get_data as get_data_module
+import openghg_inversions.inversion_data.acquisition as get_data_module
 import openghg_inversions.models as models
 import openghg_inversions.postprocessing.inversion_output as inversion_output_module
 import openghg_inversions.rhime as rhime_public
@@ -92,6 +92,10 @@ from openghg_inversions.rhime.standard import (
     build_standard_rhime_model as _build_rhime_model,
 )
 from openghg_inversions.sigma import SigmaAlignment
+from openghg_inversions.hbmcmc.legacy_data import (
+    from_legacy_fp_all,
+    to_legacy_fp_all,
+)
 
 
 @pytest.fixture(scope="module")
@@ -1843,7 +1847,7 @@ def test_assemble_rhime_inputs_preserves_borrowed_site_datasets(
         attrs={"source": "caller", "footprint_transport_model": "FLEXPART"},
     )
     site_data = {"TAC": supplied}
-    merged = RhimeMergedData.from_legacy_fp_all(
+    merged = from_legacy_fp_all(
         fp_all=site_data,
         site_options=_site_options(["TAC"], averaging_period=["1h"]),
     )
@@ -3275,7 +3279,7 @@ def test_public_stages_compose_as_complete_external_runner(monkeypatch: pytest.M
         met_model=None,
         max_level=None,
     )
-    merged_fixture = RhimeMergedData.from_legacy_fp_all(
+    merged_fixture = from_legacy_fp_all(
         fp_all={"TAC": xr.Dataset(coords={"time": pd.to_datetime(["2019-01-01"])})},
         site_options=site_options,
     )
@@ -5602,7 +5606,7 @@ def test_multisector_sensitivity_sources_fail_before_site_gathering() -> None:
         def sensitivity(self, _: xr.DataArray) -> xr.DataArray:
             return sensitivity
 
-    merged = RhimeMergedData.from_legacy_fp_all(
+    merged = from_legacy_fp_all(
         fp_all={"TAC": xr.Dataset({"fp_x_flux_sectoral": fp_x_flux})},
         site_options=_site_options(["TAC"], averaging_period=["1H"]),
     )
@@ -5652,7 +5656,7 @@ def test_multisector_site_preparation_keeps_gathered_source_state() -> None:
         def sensitivity(self, _: xr.DataArray) -> xr.DataArray:
             return sensitivity
 
-    merged = RhimeMergedData.from_legacy_fp_all(
+    merged = from_legacy_fp_all(
         fp_all={"TAC": xr.Dataset({"fp_x_flux_sectoral": fp_x_flux})},
         site_options=_site_options(["TAC"], averaging_period=["1H"]),
     )
@@ -5681,7 +5685,7 @@ def test_rhime_preparation_uses_platform_for_sites_retained_after_filtering(
 ) -> None:
     """RHIME scaling receives preserved footprint provenance after filtering."""
     satellite_data = _site_dataset([2.0]).assign_attrs(footprint_max_level=17)
-    merged = RhimeMergedData.from_legacy_fp_all(
+    merged = from_legacy_fp_all(
         fp_all={"TAC": _site_dataset([]), "OCO2-EASTASIA": satellite_data},
         site_options=_site_options(
             ["TAC", "OCO2-EASTASIA"],
@@ -5690,7 +5694,7 @@ def test_rhime_preparation_uses_platform_for_sites_retained_after_filtering(
             max_level=[None, 3],
         ),
     )
-    filtered_merged = RhimeMergedData.from_legacy_fp_all(
+    filtered_merged = from_legacy_fp_all(
         fp_all={"OCO2-EASTASIA": satellite_data},
         site_options=merged.site_options.select_indices([1]),
     )
@@ -6009,7 +6013,7 @@ def test_apply_filters_drops_complete_site_option_record() -> None:
         "RGL": _site_dataset([4.0]),
     }
 
-    merged = RhimeMergedData.from_legacy_fp_all(fp_data, site_options)
+    merged = from_legacy_fp_all(fp_data, site_options)
     filtered = rhime_preparation.filter_rhime_observations(merged, filters=None)
 
     assert set(filtered.site_data) == {"TAC", "RGL"}
@@ -6019,7 +6023,7 @@ def test_apply_filters_drops_complete_site_option_record() -> None:
 def test_filtering_preserves_shared_merged_data_when_dropping_sites() -> None:
     """Filtering keeps active shared inputs while removing an empty site."""
     flux = {"inventory": xr.Dataset({"flux": ("time", [1.])})}
-    merged = RhimeMergedData.from_legacy_fp_all(
+    merged = from_legacy_fp_all(
         fp_all={
             "TAC": _site_dataset([]),
             "MHD": _site_dataset([3.0]),
@@ -6033,7 +6037,7 @@ def test_filtering_preserves_shared_merged_data_when_dropping_sites() -> None:
 
     assert filtered.sites == ("MHD",)
     assert filtered.flux_data["inventory"] is merged.flux_data["inventory"]
-    assert filtered.to_legacy_fp_all()[".split_by_sectors"] is False
+    assert to_legacy_fp_all(filtered)[".split_by_sectors"] is False
 
 
 @pytest.mark.parametrize(

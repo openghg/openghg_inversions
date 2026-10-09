@@ -14,12 +14,16 @@ import xarray as xr
 import openghg_inversions.rhime as rhime
 from openghg_inversions.hbmcmc.compatibility import params_from_config
 from openghg_inversions.rhime.ini import read_rhime_ini
-from openghg_inversions.basis._functions import basis_functions
+from openghg_inversions.hbmcmc.legacy_basis import basis_functions
 from openghg_inversions.inference.sampling import RhimeSampler
 from openghg_inversions.inversion_data import RhimeMergedData, SiteOptions
 from openghg_inversions.rhime import multisector, standard
 from openghg_inversions.rhime import params as rhime_params
 from openghg_inversions.rhime import specs as rhime_specs
+from openghg_inversions.hbmcmc.legacy_data import (
+    from_legacy_fp_all,
+    to_legacy_fp_all,
+)
 
 
 def _request(**overrides):
@@ -157,18 +161,18 @@ def test_saved_basis_case_takes_precedence_during_resolution(algorithm):
     assert config.basis_algorithm == algorithm
 
 
-@pytest.mark.parametrize("algorithm", tuple(basis_functions))
-def test_registered_basis_algorithms_resolve(algorithm):
+@pytest.mark.parametrize("algorithm", ("quadtree", "weighted", "region_constrained"))
+def test_builtin_basis_algorithms_resolve(algorithm):
     config = rhime_params.RhimeConfig.from_params(_request(basis_algorithm=algorithm), multisector=False)
     assert config.basis_algorithm == algorithm
 
 
-def test_basis_resolution_uses_live_registry(monkeypatch):
+def test_basis_resolution_is_independent_of_legacy_registry(monkeypatch):
     monkeypatch.setitem(basis_functions, "project_algorithm", object())
-    config = rhime_params.RhimeConfig.from_params(
-        _request(basis_algorithm="project_algorithm"), multisector=False
-    )
-    assert config.basis_algorithm == "project_algorithm"
+    with pytest.raises(ValueError, match="basis_algorithm.*project_algorithm"):
+        rhime_params.RhimeConfig.from_params(
+            _request(basis_algorithm="project_algorithm"), multisector=False
+        )
 
 
 @pytest.mark.parametrize("replace_periods", [False, True])
@@ -324,18 +328,18 @@ def test_filtering_preserves_typed_filter_request():
         {"mf": ("time", [1.0, 3.0])},
         coords={"time": [datetime(2019, 1, 1, 12), datetime(2019, 1, 1, 13)]},
     )
-    merged = RhimeMergedData.from_legacy_fp_all(
+    merged = from_legacy_fp_all(
         fp_all={"TAC": data, "MHD": data}, site_options=config.site_options
     )
 
     filtered = rhime.filter_rhime_observations(merged, filters=config.filters)
 
-    assert filtered.to_legacy_fp_all()["TAC"].sizes["time"] == 1
-    assert filtered.to_legacy_fp_all()["TAC"].mf.item() == 2.0
-    assert filtered.to_legacy_fp_all()["MHD"].sizes["time"] == 2
+    assert to_legacy_fp_all(filtered)["TAC"].sizes["time"] == 1
+    assert to_legacy_fp_all(filtered)["TAC"].mf.item() == 2.0
+    assert to_legacy_fp_all(filtered)["MHD"].sizes["time"] == 2
     assert config.filters == before
     assert request["filters"] == before
-    assert merged.to_legacy_fp_all()["TAC"].sizes["time"] == 2
+    assert to_legacy_fp_all(merged)["TAC"].sizes["time"] == 2
 
 
 def test_configuration_api_is_public():
@@ -362,7 +366,7 @@ def test_multisector_preparation_selects_sources_from_typed_request():
         dims=("source", "region", "time"),
         coords={"source": ["first", "second"], "region": [0], "time": [datetime(2019, 1, 1)]},
     )
-    merged = RhimeMergedData.from_legacy_fp_all(
+    merged = from_legacy_fp_all(
         {"TAC": sensitivity.sum("region").rename("fp_x_flux_sectoral").to_dataset()},
         config.site_options,
     )
@@ -475,7 +479,6 @@ def test_ini_reader_decodes_recipe_options_without_semantic_resolution(tmp_path,
 def test_invalid_minimum_error_fails_before_acquisition(monkeypatch, value, multisector_mode):
     def forbidden(*args, **kwargs):
         pytest.fail("invalid minimum error reached acquisition")
-    monkeypatch.setattr(RhimeMergedData, "load", forbidden)
     monkeypatch.setattr(RhimeMergedData, "from_options", forbidden)
     recipe = multisector if multisector_mode else standard
     runner = recipe.run_rhime_multisector if multisector_mode else recipe.run_rhime

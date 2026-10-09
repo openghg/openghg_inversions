@@ -302,8 +302,9 @@ together and returns a new record. ``RhimeMergedData.from_options`` performs
 fresh in-memory acquisition. The recipe first reuses compatible supplied data,
 then acquires fresh data when no handoff was supplied. Repeated sampling uses
 the durable prepared-input artifact. The deprecated
-``data_processing_surface_notracer`` wrapper preserves its six-tuple contract;
-internal calls use the neutral names.
+``openghg_inversions.hbmcmc.legacy_data.data_processing_surface_notracer``
+wrapper preserves its six-tuple contract. Modern acquisition calls only the
+dataset owner.
 
 Keep the procedural runner's acquisition, preparation, model construction and
 sampling sequence visible. Pass needed resolved values directly or unpack an

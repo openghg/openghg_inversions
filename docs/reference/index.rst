@@ -90,14 +90,12 @@ value and its unchanged version-1 schema live in
    :nosignatures:
 
    openghg_inversions.inversion_data.SiteOptions
-   openghg_inversions.inversion_data.retrieve_inversion_data
    openghg_inversions.inversion_data.RhimeMergedData
    openghg_inversions.inversion_data.AcquisitionFacts
    openghg_inversions.inversion_data.InputProvenance
    openghg_inversions.inversion_data.MergedDataProvenance
    openghg_inversions.inversion_data.RhimePreparedInputs
    openghg_inversions.inversion_data.prepare_rhime_inputs_from_xarray
-   openghg_inversions.inversion_data.load_merged_data
    openghg_inversions.inversion_data.RhimeMergedData.from_options
    openghg_inversions.inversion_data.RhimeMergedData.validate_for_preparation
    openghg_inversions.inversion_data.RhimeMergedData.with_site_data

@@ -6,7 +6,8 @@ The direct ``fixedbasisMCMC`` and ``inferpymc`` implementation was removed in
 0.8 after its remaining known active user agreed to migrate. The 0.7.x release
 line is the last line containing that implementation and the
 ``--legacy-fixedbasis`` option. The ``openghg_inversions.hbmcmc`` namespace
-remains to host the transitional ``run_hbmcmc`` compatibility wrapper.
+hosts the transitional ``run_hbmcmc`` wrapper and explicit legacy data
+utilities until 0.9.
 
 This page is for users with fixedbasis-style Python calls, INI files, batch
 scripts, or HBMCMC outputs. For a new inversion, start with the
@@ -272,3 +273,19 @@ single RHIME implementation, not a second model executor. Migrating a config
 to canonical RHIME names should therefore be separated from intentional
 changes to priors, likelihood options, basis construction, or output format so
 that scientific changes remain reviewable.
+
+Explicit legacy merged-data utilities
+-------------------------------------
+
+Scripts that still create or reload ``fp_all`` mappings must import
+``retrieve_inversion_data``, ``_save_merged_data`` and ``load_merged_data`` from
+``openghg_inversions.hbmcmc.legacy_data``. The historical netCDF and Zarr
+codecs retain their existing behaviour. Dictionary-based basis adapters,
+including ``basis_weights_from_fp_all`` and ``make_basis_functions_from_fp_all``,
+now live in ``openghg_inversions.hbmcmc.legacy_basis``. The previous canonical
+module paths and exports have been removed.
+
+Modern acquisition uses ``RhimeMergedData.from_options`` or direct dataset
+construction. Modern basis functions accept explicit ``site_data`` and
+``flux_data`` datasets. For reusable RHIME runs, save ``RhimePreparedInputs``;
+legacy merged-data files are a separate explicit utility workflow.

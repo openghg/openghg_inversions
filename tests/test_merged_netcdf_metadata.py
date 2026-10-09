@@ -8,7 +8,7 @@ import pytest
 import xarray as xr
 from openghg.dataobjects import BoundaryConditionsData, FluxData
 
-from openghg_inversions.inversion_data.serialise import (
+from openghg_inversions.hbmcmc.legacy_data import (
     _save_merged_data,
     datatree_to_fp_all,
     fp_all_to_datatree,
