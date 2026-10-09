@@ -5,6 +5,12 @@ This sidecar records the intended developer-facing consequence of PR 591,
 replacement for user documentation: it captures the questions that future
 documentation needs to answer with explicit, tested contracts.
 
+The API examples below are a historical snapshot of PR 591. Current names,
+explicit resolved-value forwarding and runnable copied recipes are documented
+in [`docs/usage/customising_rhime.rst`](../usage/customising_rhime.rst) and
+[`docs/usage/rhime.rst`](../usage/rhime.rst); the former setup bundle and loader
+layers are no longer current interfaces.
+
 ## Claim
 
 PR 591 changes RHIME from a convenient but largely monolithic runner into a

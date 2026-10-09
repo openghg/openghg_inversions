@@ -28,8 +28,9 @@ except ``diagnose`` accepts exactly one of:
 
 ``--kwargs '{...}'`` can explicitly override either source. The JSON form
 supports ``openghg-run`` cases that do not declare an INI ``CONFIG_FILE``; it
-does not add new scientific keys. The existing ``resolve_rhime_options`` boundary still
-normalizes and validates every value.  The staged commands deliberately do not
+does not add new scientific keys. Both routes construct the same complete
+``RhimeConfig`` through the RHIME resolver, applying overrides before defaults
+and site shorthand.  The staged commands deliberately do not
 read ambient ``CONFIG_FILE``.  ``OUTPUT_DIR`` is the only automatic path
 default, and the effective ``openghg-run`` ``STAGE`` is the default check-stage
 label.
@@ -92,6 +93,17 @@ named if the existing acquisition layer could not produce it.
    consume those artifacts, or regenerate them with 0.8. Removing the unused
    ``use_tracer=False`` field from resolved preparation options changes the
    configuration hash even when scientific settings are unchanged.
+   Resolved configuration also expands site shorthand and applies defaults;
+   staged identity uses those canonical choices rather than reconstructing raw
+   input forms to preserve an older hash.
+
+The staged effective-configuration mapping records preparation choices,
+``model_spec``, output policy and sampler settings. It contains no requested-site
+execution run specification: ``RhimeRunSpec`` is created from retained prepared
+metadata. This mapping is owned by staged manifests, not a serialization API
+for ``RhimeConfig``. The resolved representation changes staged configuration
+identity; historical hash equality is not a compatibility guarantee. Existing
+prepared-content and manifest authentication checks still apply.
 
 The manifest also records a content SHA-256 for ``prepared-inputs.nc``.
 ``openghg-run``

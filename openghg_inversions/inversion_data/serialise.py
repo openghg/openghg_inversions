@@ -477,7 +477,11 @@ def fp_all_from_dataset(ds: xr.Dataset) -> dict:
 
 
 def openghg_data_to_dataset(openghg_data: _BaseData, netcdf_safe_attrs: bool = False) -> xr.Dataset:
-    ds = openghg_data.data
+    """Attach serialization metadata without modifying borrowed dataset attributes.
+
+    The shallow copy preserves the underlying numerical arrays and Dask graphs.
+    """
+    ds = openghg_data.data.copy(deep=False)
 
     if netcdf_safe_attrs:
         ds.attrs["openghg_metadata"] = json.dumps(openghg_data.metadata)

@@ -29,12 +29,8 @@ import numpy as np
 import xarray as xr
 
 from openghg_inversions._timing import log_timing, timed, timer_seconds, timer_start
-from openghg_inversions.basis import make_basis_functions
 from openghg_inversions.basis._helpers import bc_sensitivity
 from openghg_inversions.basis.basis_functions import BasisFunctions
-from openghg_inversions.boundary_sensitivity import (
-    scale_satellite_boundary_sensitivity_to_column_signal as _scale_satellite_bc_sensitivity_to_column_signal,
-)
 from openghg_inversions.filters import filtering
 from openghg_inversions.flux_sanitization import FluxNonFiniteCheck
 from openghg_inversions.inversion_data.acquisition import (
@@ -43,16 +39,9 @@ from openghg_inversions.inversion_data.acquisition import (
     SiteInletOption as SiteInletOption,
     SiteIntegerOption as SiteIntegerOption,
     SiteStringOption as SiteStringOption,
-    _SiteOptions,
-    _drop_sites_missing_from_loaded_data as _drop_sites_missing_from_loaded_data,
-    _normalise_site_booleans as _normalise_site_booleans,
-    _normalise_site_inlets as _normalise_site_inlets,
-    _normalise_site_integers as _normalise_site_integers,
-    _normalise_site_strings as _normalise_site_strings,
-    _retrieve_or_reload_merged_data,
+    SiteOptions,
+    load_rhime_data,
     _select_fp_all_sites as _select_fp_all_sites,
-    _validate_loaded_sector_layout as _validate_loaded_sector_layout,
-    _validate_loaded_time_resolved_selector as _validate_loaded_time_resolved_selector,
 )
 # Preserve the established preparation imports while the durable contract has
 # an owner independent of retrieval and preparation mechanics.
@@ -60,7 +49,6 @@ from openghg_inversions.inversion_data.prepared_inputs import (
     RHIME_PREPARED_INPUTS_SCHEMA as RHIME_PREPARED_INPUTS_SCHEMA,
     RHIME_PREPARED_INPUTS_SCHEMA_VERSION as RHIME_PREPARED_INPUTS_SCHEMA_VERSION,
     RhimePreparedInputs as RhimePreparedInputs,
-    _make_site_metadata,
 )
 from openghg_inversions.inversion_inputs import make_inv_inputs
 from openghg_inversions.model_error import normalise_min_error_options
@@ -142,9 +130,9 @@ def _warn_for_nan_inputs(inv_inputs: xr.Dataset, *, use_bc: bool) -> None:
 def _apply_filters_and_drop_empty_sites(
     *,
     fp_data: dict,
-    site_options: _SiteOptions,
+    site_options: SiteOptions,
     filters: Any,
-) -> tuple[dict, _SiteOptions]:
+) -> tuple[dict, SiteOptions]:
     """Apply filters and keep site-aligned metadata in sync."""
     if filters is not None:
         try:
@@ -185,7 +173,7 @@ def _validate_multisector_sensitivity_sources(
     sensitivity: xr.DataArray,
     *,
     site: str,
-    flux_sources: list[str],
+    flux_sources: Sequence[str],
 ) -> xr.DataArray:
     """Validate and order one site's source-resolved sensitivity."""
     if "source" not in sensitivity.coords:
@@ -210,7 +198,7 @@ def _validate_multisector_sensitivity_sources(
             f"duplicate source(s): {duplicate_sources!r}."
         )
     if "source" in sensitivity.dims:
-        return sensitivity.sel(source=flux_sources)
+        return sensitivity.sel(source=list(flux_sources))
     return sensitivity
 
 
@@ -220,7 +208,7 @@ def _rhime_site_data_from_basis_functions(
     basis_functions: BasisFunctions,
     domain: str,
     split_by_sectors: bool,
-    flux_sources: list[str],
+    flux_sources: Sequence[str],
     use_bc: bool,
     bc_basis_case: str,
     bc_basis_directory: str | None,
@@ -326,7 +314,7 @@ def prepare_rhime_inputs(
     start_date: str,
     end_date: str,
     output_name: str,
-    flux_sources: list[str],
+    flux_sources: Sequence[str],
     split_by_sectors: bool = False,
     bc_store: str = "user",
     obs_store: str = "user",
@@ -368,7 +356,11 @@ def prepare_rhime_inputs(
     min_error_options: Mapping[str, Any] | None = None,
     flux_non_finite_check: FluxNonFiniteCheck = "lazy",
 ) -> RhimePreparedInputs:
-    """Prepare modern RHIME inputs without exposing legacy fixedbasis containers.
+    """Deprecated acquisition-and-preparation compatibility entry point.
+
+    Use ``load_rhime_data`` followed by the named scientific stages in
+    :mod:`openghg_inversions.rhime.preparation`. This adapter preserves the
+    established arguments and returns the same durable prepared-input contract.
 
     Observation filters are applied once to merged data before basis loading or
     generation. The same filtered site datasets and aligned metadata are then
@@ -427,122 +419,101 @@ def prepare_rhime_inputs(
         ValueError: If site options are empty, duplicated, misaligned, or have
             invalid types, if minimum-error options are invalid, or if
             ``use_tracer=True``.
+
+    Warns:
+        DeprecationWarning: On every call; use acquisition and the named
+            scientific stages directly.
     """
+    from openghg_inversions.rhime.preparation import (
+        assemble_rhime_inputs,
+        build_rhime_basis,
+        build_rhime_sensitivities,
+        filter_rhime_observations,
+    )
+
+    warnings.warn(
+        "prepare_rhime_inputs is deprecated; use load_rhime_data followed by "
+        "the scientific stages in openghg_inversions.rhime.preparation instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     if use_tracer:
         raise ValueError("`use_tracer=True` is not supported; tracer inversions are not implemented.")
     min_error_options = normalise_min_error_options(min_error_options)
-    with timed("rhime.prepare_inputs.merged_data", sites=len(sites), split_by_sectors=split_by_sectors):
-        merged = _retrieve_or_reload_merged_data(
-            species=species,
-            sites=sites,
-            domain=domain,
-            averaging_period=averaging_period,
-            start_date=start_date,
-            end_date=end_date,
-            output_name=output_name,
-            flux_sources=flux_sources,
-            split_by_sectors=split_by_sectors,
-            bc_store=bc_store,
-            obs_store=obs_store,
-            footprint_store=footprint_store,
-            emissions_store=emissions_store,
-            emissions_domain=emissions_domain,
-            met_model=met_model,
-            fp_model=fp_model,
-            fp_height=fp_height,
-            fp_species=fp_species,
-            time_resolved=time_resolved,
-            inlet=inlet,
-            instrument=instrument,
-            max_level=max_level,
-            calibration_scale=calibration_scale,
-            obs_data_level=obs_data_level,
-            platform=platform,
-            use_bc=use_bc,
-            bc_input=bc_input,
-            averaging_error=averaging_error,
-            reload_merged_data=reload_merged_data,
-            save_merged_data=save_merged_data,
-            merged_data_dir=merged_data_dir,
-            merged_data_name=merged_data_name,
-            flux_non_finite_check=flux_non_finite_check,
-        )
+    site_options = SiteOptions.from_inputs(
+        sites=sites,
+        averaging_period=averaging_period,
+        inlet=inlet,
+        fp_height=fp_height,
+        instrument=instrument,
+        platform=platform,
+        obs_data_level=obs_data_level,
+        met_model=met_model,
+        max_level=max_level,
+        time_resolved=time_resolved,
+    )
+    merged = load_rhime_data(
+        site_options=site_options,
+        species=species,
+        domain=domain,
+        start_date=start_date,
+        end_date=end_date,
+        output_name=output_name,
+        flux_sources=flux_sources,
+        split_by_sectors=split_by_sectors,
+        bc_store=bc_store,
+        obs_store=obs_store,
+        footprint_store=footprint_store,
+        emissions_store=emissions_store,
+        emissions_domain=emissions_domain,
+        fp_model=fp_model,
+        fp_species=fp_species,
+        calibration_scale=calibration_scale,
+        use_bc=use_bc,
+        bc_input=bc_input,
+        averaging_error=averaging_error,
+        reload_merged_data=reload_merged_data,
+        save_merged_data=save_merged_data,
+        merged_data_dir=merged_data_dir,
+        merged_data_name=merged_data_name,
+        flux_non_finite_check=flux_non_finite_check,
+    )
 
-    with timed("rhime.prepare_inputs.obs_filtering", sites=len(merged.sites), filters=filters is not None):
-        filtered_merged = _filter_merged_inversion_data(merged=merged, filters=filters)
-
-    with timed(
-        "rhime.prepare_inputs.basis_build",
+    filtered = filter_rhime_observations(merged, filters=filters)
+    basis_functions = build_rhime_basis(
+        filtered,
+        species=species,
+        domain=domain,
+        start_date=start_date,
+        flux_sources=flux_sources,
+        output_name=output_name,
         basis_algorithm=basis_algorithm,
         nbasis=nbasis,
         fp_basis_case=fp_basis_case,
-    ):
-        basis_functions = make_basis_functions(
-            basis_algorithm=basis_algorithm,
-            nbasis=nbasis,
-            fp_basis_case=fp_basis_case,
-            basis_directory=basis_directory,
-            country_directory=country_directory,
-            outer_regions_path=outer_regions_path,
-            fp_all=filtered_merged.fp_all,
-            species=species,
-            domain=domain,
-            start_date=start_date,
-            fix_outer_regions=fix_basis_outer_regions,
-            emissions_name=flux_sources,
-            outputname=output_name,
-            output_path=basis_output_path,
-        )
-
-    with timed("rhime.prepare_inputs.footprint_sensitivity_total", sites=len(filtered_merged.sites)):
-        fp_data = _rhime_site_data_from_basis_functions(
-            merged=filtered_merged,
-            basis_functions=basis_functions,
-            domain=domain,
-            split_by_sectors=split_by_sectors,
-            flux_sources=flux_sources,
-            use_bc=use_bc,
-            bc_basis_case=bc_basis_case,
-            bc_basis_directory=_bc_basis_directory_arg(bc_basis_directory),
-        )
-    basis_source = basis_functions.basis_artifact_source or "generated"
-    _set_domain_attrs(fp_data, filtered_merged.sites, domain)
-
-    with timed("rhime.prepare_inputs.make_inv_inputs", sites=len(filtered_merged.sites)):
-        inv_inputs = _make_inv_inputs(
-            fp_data=fp_data,
-            sites=filtered_merged.sites,
-            start_date=start_date,
-            bc_freq=bc_freq,
-            min_error=min_error,
-            calculate_min_error=None,
-            min_error_per_site=min_error_options["by_site"],
-        )
-    inv_inputs = _scale_satellite_bc_sensitivity_to_column_signal(
-        inv_inputs,
-        sites=filtered_merged.sites,
-        platform=filtered_merged.site_options.platform,
-        observation_max_level=filtered_merged.site_options.max_level,
-        footprint_max_level=tuple(
-            fp_data[site].attrs.get("footprint_max_level") for site in filtered_merged.sites
-        ),
+        basis_directory=basis_directory,
+        country_directory=country_directory,
+        outer_regions_path=outer_regions_path,
+        fix_basis_outer_regions=fix_basis_outer_regions,
+        basis_output_path=basis_output_path,
     )
-    _warn_for_nan_inputs(inv_inputs, use_bc=use_bc)
-    log_timing(
-        "rhime.prepare_inputs.prepared_dims",
-        0.0,
-        nmeasure=inv_inputs.sizes.get("nmeasure"),
-        sites=len(filtered_merged.sites),
-        regions=inv_inputs.sizes.get("region"),
-        sources=inv_inputs.sizes.get("source"),
-        basis_source=basis_source,
+    site_data = build_rhime_sensitivities(
+        filtered,
+        basis_functions,
+        domain=domain,
+        flux_sources=flux_sources,
+        use_bc=use_bc,
+        bc_basis_case=bc_basis_case,
+        bc_basis_directory=bc_basis_directory,
+        multisector=split_by_sectors,
     )
-
-    return RhimePreparedInputs(
-        inv_inputs=inv_inputs,
-        basis_functions=basis_functions,
-        site_metadata=_make_site_metadata(
-            sites=filtered_merged.sites,
-            averaging_period=filtered_merged.averaging_period,
-        ),
+    return assemble_rhime_inputs(
+        filtered,
+        basis_functions,
+        site_data,
+        domain=domain,
+        start_date=start_date,
+        bc_freq=bc_freq,
+        min_error=min_error,
+        min_error_options=min_error_options,
+        use_bc=use_bc,
     )

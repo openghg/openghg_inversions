@@ -9,6 +9,8 @@ from typing import Any
 import pytest
 import xarray as xr
 
+from openghg_inversions.rhime.params import RhimeConfig
+
 from examples.rhime_customisation import likelihoods
 from examples.rhime_customisation import runner as custom_runner
 from examples.rhime_customisation import run_with_likelihood as short_runner
@@ -55,12 +57,14 @@ def test_custom_runner_uses_supported_stages_for_acquisition_and_reload(
     config_file = tmp_path / "rhime.ini"
     config_file.write_text('[RHIME.OUTPUT]\noutput_format = "none"\n', encoding="utf-8")
     overrides = {"reload_merged_data": reload_merged_data, "draws": 3}
-    parsed_params = {"from_config": True, **overrides}
-    data_args = {"reload_merged_data": reload_merged_data}
-    sampler = object()
-    initial_spec = SimpleNamespace(model=SimpleNamespace(aggregation_error_mode="diagonal"))
-    aligned_spec = SimpleNamespace(model=SimpleNamespace(aggregation_error_mode="low_rank"))
-    setup = SimpleNamespace(data_args=data_args, run_spec=initial_spec, sampler=sampler)
+    config = RhimeConfig.from_params(
+        params=dict(species="ch4", sites=["TAC", "MHD"], domain="EUROPE",
+                    averaging_period="1h", start_date="2019-01-01", end_date="2019-02-01",
+                    output_name="example", output_format="none", mismatch_model=None, flux_sources=["inventory"],
+                    reload_merged_data=reload_merged_data, draws=3),
+        multisector=False,
+    )
+    sampler = config.sampler
 
     merged = object()
     filtered = object()
@@ -69,6 +73,7 @@ def test_custom_runner_uses_supported_stages_for_acquisition_and_reload(
     prepared = SimpleNamespace(
         inv_inputs=xr.Dataset({"mf": ("nmeasure", [1.0])}),
         sites=("MHD",),
+        averaging_period=("1h",),
         basis_artifact_source="test-basis",
     )
     model_inputs = xr.Dataset({"mf": ("nmeasure", [1.0])})
@@ -77,83 +82,56 @@ def test_custom_runner_uses_supported_stages_for_acquisition_and_reload(
     expected_result = object()
     calls: list[str] = []
 
-    def parse_config(
-        actual_config: str | Path,
-        *,
-        extra_kwargs: dict[str, Any],
-        normalise: bool,
-    ) -> dict[str, Any]:
-        """Record configuration parsing at the workflow boundary."""
+    def parse_config(actual_config: str | Path) -> dict[str, Any]:
         assert actual_config == config_file
-        assert extra_kwargs == overrides
-        assert normalise is False
-        return parsed_params
+        return {"output_format": "none"}
 
-    def resolve(*, params: dict[str, Any], multisector: bool) -> Any:
-        """Record public option resolution."""
-        assert params is parsed_params
-        assert params["mismatch_model"] is None
+    def resolve(cls, params: dict[str, Any], *, multisector: bool) -> Any:
+        assert params == {"output_format": "none", **overrides, "mismatch_model": None}
         assert multisector is False
         calls.append("resolve")
-        return setup
+        return config
 
-    def retrieve(actual_data_args: dict[str, Any], *, multisector: bool) -> Any:
-        """Record ordinary acquisition or controlled merged-data reload."""
-        assert actual_data_args is data_args
-        assert actual_data_args["reload_merged_data"] is reload_merged_data
-        assert multisector is False
+    def retrieve(**kwargs: Any) -> Any:
+        assert kwargs["site_options"] is config.site_options
+        assert kwargs["reload_merged_data"] is reload_merged_data
+        assert kwargs["split_by_sectors"] is False
+        assert "project_basis_path" not in kwargs
         calls.append("retrieve")
         return merged
 
-    def filter_observations(actual: Any, actual_data_args: dict[str, Any]) -> Any:
-        """Record public observation filtering."""
+    def filter_observations(actual: Any, *, filters: Any) -> Any:
         assert actual is merged
-        assert actual_data_args is data_args
+        assert filters is config.filters
         calls.append("filter")
         return filtered
 
-    def build_basis(actual: Any, actual_data_args: dict[str, Any]) -> Any:
-        """Record public basis construction."""
+    def build_basis(actual: Any, **kwargs: Any) -> Any:
         assert actual is filtered
-        assert actual_data_args is data_args
+        assert kwargs["domain"] == config.domain
+        assert kwargs["nbasis"] == config.nbasis
         calls.append("basis")
         return basis
 
-    def build_sensitivities(
-        actual: Any,
-        actual_basis: Any,
-        actual_data_args: dict[str, Any],
-        *,
-        multisector: bool,
-    ) -> Any:
-        """Record public sensitivity construction."""
+    def build_sensitivities(actual: Any, actual_basis: Any, **kwargs: Any) -> Any:
         assert actual is filtered
         assert actual_basis is basis
-        assert actual_data_args is data_args
-        assert multisector is False
+        assert kwargs["domain"] == config.domain
+        assert kwargs["flux_sources"] == config.flux_sources
+        assert kwargs["multisector"] is False
         calls.append("sensitivities")
         return site_data
 
-    def assemble(
-        actual: Any,
-        actual_basis: Any,
-        actual_site_data: Any,
-        actual_data_args: dict[str, Any],
-    ) -> Any:
-        """Record public labelled-input assembly."""
+    def assemble(actual: Any, actual_basis: Any, actual_site_data: Any, **kwargs: Any) -> Any:
         assert actual is filtered
         assert actual_basis is basis
         assert actual_site_data is site_data
-        assert actual_data_args is data_args
+        assert kwargs["min_error_options"] == config.min_error_options
+        assert kwargs["start_date"] == config.start_date
         calls.append("assemble")
         return prepared
 
-    def align(actual_spec: Any, actual_prepared: Any) -> Any:
-        """Record retained-site alignment."""
-        assert actual_spec is initial_spec
-        assert actual_prepared is prepared
-        calls.append("align")
-        return aligned_spec
+
 
     def materialize(actual: Any, *, variable_names: tuple[str, ...]) -> xr.Dataset:
         """Record the explicit eager model-input boundary."""
@@ -167,7 +145,8 @@ def test_custom_runner_uses_supported_stages_for_acquisition_and_reload(
         """Record the project-owned Student-t likelihood handoff."""
         assert kwargs["prepared"] is prepared
         assert kwargs["model_inputs"] is model_inputs
-        assert kwargs["run_spec"] is aligned_spec
+        assert kwargs["run_spec"].sites == ("MHD",)
+        assert kwargs["run_spec"].model is config.model
         assert kwargs["likelihood_builder"] is custom_runner.likelihood_builder
         calls.append("build")
         return build_result
@@ -182,7 +161,8 @@ def test_custom_runner_uses_supported_stages_for_acquisition_and_reload(
     def make_result(**kwargs: Any) -> Any:
         """Record the supported output stage and its complete handoff."""
         assert kwargs["prepared"] is prepared
-        assert kwargs["run_spec"] is aligned_spec
+        assert kwargs["run_spec"].sites == ("MHD",)
+        assert kwargs["run_spec"].model is config.model
         assert kwargs["sampler"] is sampler
         assert kwargs["model_build_result"] is build_result
         assert kwargs["idata"] is idata
@@ -195,14 +175,13 @@ def test_custom_runner_uses_supported_stages_for_acquisition_and_reload(
         assert kwargs == {"result": expected_result, "prepared": prepared}
         calls.append("outputs")
 
-    monkeypatch.setattr(custom_runner, "params_from_config", parse_config)
-    monkeypatch.setattr(custom_runner, "resolve_rhime_options", resolve)
-    monkeypatch.setattr(custom_runner, "retrieve_or_reload_rhime_data", retrieve)
+    monkeypatch.setattr(custom_runner, "read_rhime_ini", parse_config)
+    monkeypatch.setattr(custom_runner.RhimeConfig, "from_params", classmethod(resolve))
+    monkeypatch.setattr(custom_runner, "load_rhime_data", retrieve)
     monkeypatch.setattr(custom_runner, "filter_rhime_observations", filter_observations)
     monkeypatch.setattr(custom_runner, "build_rhime_basis", build_basis)
     monkeypatch.setattr(custom_runner, "build_rhime_sensitivities", build_sensitivities)
     monkeypatch.setattr(custom_runner, "assemble_rhime_inputs", assemble)
-    monkeypatch.setattr(custom_runner, "with_prepared_rhime_sites", align)
     monkeypatch.setattr(
         custom_runner,
         "standard_model_input_names",
@@ -224,7 +203,6 @@ def test_custom_runner_uses_supported_stages_for_acquisition_and_reload(
         "basis",
         "sensitivities",
         "assemble",
-        "align",
         "materialize",
         "build",
         "sample",

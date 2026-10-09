@@ -170,40 +170,35 @@ not the name or conceptual basis of new design. The wrapper always selects
 
 ## Target code shape
 
-The exact names may change during implementation, but the public workflow
-should be approximately this direct:
+The complete runnable recipe is maintained in
+[`examples/rhime_customisation/runner.py`](../../examples/rhime_customisation/runner.py)
+and rendered in
+[`docs/usage/customising_rhime.rst`](../usage/customising_rhime.rst).
+Keep that source executable instead of maintaining another orchestration copy
+in this plan. Its visible order is:
 
-```python
-def run_rhime(
-    *,
-    config_file=None,
-    likelihood_builder=None,
-    **kwargs,
-):
-    options = resolve_rhime_options(config_file=config_file, kwargs=kwargs)
-
-    merged = get_rhime_data(options.data)
-    filtered = filter_rhime_data(merged, options.filters)
-    basis = make_rhime_basis(filtered, options.basis)
-    prepared = assemble_rhime_inputs(filtered, basis, options.model)
-
-    model_inputs = materialize_pymc_inputs(prepared)
-    likelihood, likelihood_options = resolve_likelihood(options.model, likelihood_builder)
-    built_model = build_standard_rhime_model(
-        model_inputs,
-        options.model,
-        likelihood_builder=likelihood,
-        likelihood_kwargs=likelihood_options,
-    )
-    idata = sample_rhime_model(built_model, options.sampling)
-
-    return make_rhime_result(
-        prepared=prepared,
-        built_model=built_model,
-        idata=idata,
-        output=options.output,
-    )
+```text
+read_rhime_ini -> options + winning overrides + recipe extraction
+  -> RhimeConfig.from_params -> RhimeConfig
+  -> load_rhime_data with explicit resolved acquisition values
+  -> filter_rhime_observations
+  -> build_rhime_basis
+  -> build_rhime_sensitivities
+  -> assemble_rhime_inputs
+  -> RhimeRunSpec from retained prepared sites and resolved model/output choices
+  -> materialize_pymc_inputs
+  -> build_standard_rhime_model_result
+  -> sample_rhime_model
+  -> make_standard_rhime_result
 ```
+
+`RhimeConfig` directly owns acquisition/preparation choices and composes public
+`SiteOptions`, existing model/output specifications and the existing sampler.
+The INI reader returns decoded options. Runners apply overrides and extract
+recipe choices before the same canonical construction used for Python mappings. Canonical
+scientific stages receive only their applicable explicit resolved values.
+Requested configuration stays unchanged when observations or sites are dropped.
+There is no preparation-config class or setup bundle carrying an early run spec.
 
 Configuration parsing may remain separate, but it should perform one clear
 translation at the workflow boundary. It must not determine accepted public
