@@ -42,7 +42,7 @@ Inspect standard/multisector choices before data access. Decode an INI with
 recipe-specific options, then construct canonical ``RhimeConfig.from_params``.
 Pass the result to the corresponding
 runner's ``config`` argument to reuse the resolved choices. The
-:doc:`configuration guide </usage/rhime>` explains requested site selectors,
+:doc:`configuration guide </usage/rhime_configuration>` explains requested site selectors,
 retained execution metadata and compatibility helpers.
 
 .. autosummary::
@@ -80,7 +80,7 @@ Prepared inversion data
 
 Use these interfaces to prepare, save, reload, or adapt canonical inputs
 before a separate model run. The
-:doc:`RHIME configuration and prepared-input reference </usage/rhime>`
+:doc:`RHIME terminology and prepared-input reference </usage/rhime>`
 documents the expected variables, dimensions, and coordinates. Acquisition
 and reload mechanics live in ``inversion_data.acquisition``; the prepared
 value and its unchanged version-1 schema live in

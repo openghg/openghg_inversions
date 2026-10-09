@@ -44,8 +44,9 @@ meant to simplify.
   adapters. Remove requirements to reconstruct original spellings or sparse
   defaults solely to preserve historical staged hashes.
 
-This change is delivered on #813; [tasks.md](tasks.md) tracks implementation,
-validation and delivery. INI remains the file
+The #813 implementation is now delivered through the #815 stack, with the
+configuration slice in #824; [tasks.md](tasks.md) separates current implementation
+and delivery from historical validation. INI remains the file
 frontend. CO2 recipe configuration is unchanged. Manifest, identity and release
 compatibility policy remain with [#808](https://github.com/openghg/openghg_inversions/issues/808)
 and [#802](https://github.com/openghg/openghg_inversions/pull/802).
