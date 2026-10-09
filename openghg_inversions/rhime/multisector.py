@@ -627,7 +627,7 @@ def make_multisector_rhime_result(
     return result
 
 
-def run_rhime_multisector(
+def run_multisector(
     *,
     config_file: str | Path | None = None,
     config: RhimeConfig | None = None,
@@ -820,3 +820,7 @@ def run_rhime_multisector(
         output_format=run_spec.output.output_format,
     )
     return result
+
+
+# Established public import retained through the 0.9 compatibility cycle.
+run_rhime_multisector = run_multisector

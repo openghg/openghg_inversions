@@ -485,3 +485,15 @@ The architecture is complete when:
 
 This is consolidation work. No new compiler, registry, universal component
 protocol, generic pipeline, or package-wide validation framework is required.
+
+
+## Public naming follow-up for #764/#776
+
+The separately delivered public API uses `run(..., model="standard")` and the
+`rhime` CLI while retaining established Python imports and
+`openghg-inversions` commands through the 0.9 compatibility cycle. Concrete
+runners are named by model; shared handoffs and preparation use shared names.
+Selection delegates directly to procedural recipes and preserves CO2-family
+prepared-input requirements. This does not implement the prototype's module
+relocation or imply additional checkpoint routes. Reconcile #764's reference
+walkthrough with these selective names when landing #776.

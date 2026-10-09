@@ -45,6 +45,8 @@ from openghg_inversions.model_error import MinErrorConfig
 from openghg_inversions.rhime.specs import RhimeRunSpec
 
 __all__ = [
+    "assemble_inputs",
+    "with_prepared_sites",
     "assemble_rhime_inputs",
     "prepare_observation_errors",
     "build_sensitivities",
@@ -53,7 +55,7 @@ __all__ = [
 ]
 
 
-def with_prepared_rhime_sites(
+def with_prepared_sites(
     run_spec: RhimeRunSpec,
     prepared: RhimePreparedInputs,
 ) -> RhimeRunSpec:
@@ -210,7 +212,7 @@ def build_sensitivities(
         return fp_data
 
 
-def assemble_rhime_inputs(
+def assemble_inputs(
     merged: RhimeMergedData,
     basis_functions: BasisFunctions,
     site_data: Mapping[str, xr.Dataset],
@@ -387,3 +389,8 @@ def _validate_multisector_sensitivity_sources(
     if "source" in sensitivity.dims:
         return sensitivity.sel(source=list(flux_sources))
     return sensitivity
+
+
+# Established public imports retained through the 0.9 compatibility cycle.
+assemble_rhime_inputs = assemble_inputs
+with_prepared_rhime_sites = with_prepared_sites

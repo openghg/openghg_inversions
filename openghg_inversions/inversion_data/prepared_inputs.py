@@ -37,6 +37,7 @@ RHIME_PREPARED_INPUTS_SCHEMA_VERSION = 1
 _SITE_AVERAGING_PERIOD = "averaging_period"
 
 __all__ = [
+    "PreparedInputs",
     "RHIME_PREPARED_INPUTS_SCHEMA",
     "RHIME_PREPARED_INPUTS_SCHEMA_VERSION",
     "RhimePreparedInputs",
@@ -44,7 +45,7 @@ __all__ = [
 
 
 @dataclass(frozen=True, init=False)
-class RhimePreparedInputs:
+class PreparedInputs:
     """Modern RHIME preparation and durable serialization contract.
 
     Site labels and site-aligned metadata are owned by ``site_metadata``.
@@ -583,3 +584,7 @@ def _canonicalize_rhime_inv_inputs(
         return result.isel(state_indexers), site_metadata
     result = result.assign_coords(source=("source", list(actual_sources)))
     return result.sel(source=list(expected_sources)), site_metadata
+
+
+# Established public import retained through the 0.9 compatibility cycle.
+RhimePreparedInputs = PreparedInputs

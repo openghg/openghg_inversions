@@ -107,6 +107,23 @@ Each public recipe should provide:
 The current model-family expansion plan is recorded in
 ``docs/plans/rhime_model_family_expansion.md``.
 
+Public names and model selection
+--------------------------------
+
+Use ``run(..., model="standard")`` as the ordinary Python selector and
+``rhime run --model standard`` at the command line. Selection calls concrete
+procedural recipes; it does not impose a common acquisition or checkpoint
+contract on unrelated model families. CO2-family Python selection starts from
+its existing prepared inputs.
+
+Name concrete runners ``run_standard``, ``run_multisector`` and ``run_nested``.
+Use shared names such as ``MergedData``, ``PreparedInputs`` and
+``assemble_inputs`` for shared handoffs and preparation. Keep ``standard`` for
+standard-specific science. Existing public imports and the
+``openghg-inversions`` executable remain supported through the 0.9 compatibility
+cycle; see :doc:`/usage/cli`. Do not add redundant ``rhime`` qualifiers or move
+whole modules solely to make names uniform.
+
 Components and composite components
 -----------------------------------
 

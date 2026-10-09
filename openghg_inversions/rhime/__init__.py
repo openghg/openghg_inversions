@@ -1,8 +1,8 @@
 """Public RHIME runners, specifications, builders, and orchestration stages.
 
-Use ``run_rhime``, ``run_rhime_multisector``, ``run_rhime_nested``, or the
+Use ``run(..., model="standard")`` with an explicit model selection, or the
 prepared-input entry points for complete runs. Copied runners may use
-the supported resolve, retrieve/reload, filter, basis, sensitivity, assembly,
+the supported resolve, acquire, observation-error, filter, basis, sensitivity, assembly,
 alignment, materialization, build, sample, result, and output stages directly.
 Alignment is pure; acquisition may access data, model materialization crosses
 the eager backend boundary, sampling executes PyMC, and output stages may write
@@ -26,8 +26,9 @@ from .builders import (
     RhimeModelBuildResult,
 )
 from .co2 import build_co2_model, co2_model_input_names, run_rhime_co2
-from openghg_inversions.inversion_data import RhimeMergedData, SiteOptions
+from openghg_inversions.inversion_data import MergedData, PreparedInputs, RhimeMergedData, SiteOptions
 
+from .api import run
 from .materialization import materialize_pymc_inputs
 from openghg_inversions.hbmcmc.compatibility import params_from_config
 from .ini import read_rhime_ini
@@ -36,10 +37,12 @@ from .params import (
     resolve_flux_sources,
 )
 from .preparation import (
+    assemble_inputs,
     assemble_rhime_inputs,
     build_sensitivities,
     filter_observations,
     prepare_observation_errors,
+    with_prepared_sites,
     with_prepared_rhime_sites,
 )
 from .multisector import (
@@ -47,6 +50,7 @@ from .multisector import (
     build_multisector_rhime_model_result,
     make_multisector_rhime_result,
     multisector_model_input_names,
+    run_multisector,
     run_rhime_multisector,
 )
 from .nested import (
@@ -59,6 +63,7 @@ from .nested import (
     mask_outer_merged_for_inner_domain,
     nested_model_input_names,
     prepare_nested_rhime_inputs,
+    run_nested,
     run_rhime_nested,
     run_rhime_nested_from_prepared_inputs,
 )
@@ -82,6 +87,7 @@ from .standard import (
     build_standard_rhime_model,
     build_standard_rhime_model_result,
     make_standard_rhime_result,
+    run_standard,
     run_rhime,
     standard_model_input_names,
 )
@@ -96,6 +102,14 @@ from .specs import (
 )
 
 __all__ = [
+    "run",
+    "run_standard",
+    "run_multisector",
+    "run_nested",
+    "MergedData",
+    "PreparedInputs",
+    "assemble_inputs",
+    "with_prepared_sites",
     "RhimeConfig",
     "read_rhime_ini",
     "SectorSpec",
