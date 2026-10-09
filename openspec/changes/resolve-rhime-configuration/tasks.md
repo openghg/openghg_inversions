@@ -1,223 +1,117 @@
 # Tasks
 
-This checklist supersedes the previous completed implementation checklist.
-PR #813 originally implemented the former preparation-config design. Prior
-locked Python 3.12/3.13 coverage (job 19270831) and docs-full (job 19270662) passed,
-but do not verify the revised plan. The planning artifacts are approved and
-finalized. The recorded implementation rounds are complete; the newly approved
-cleanup and its validation are tracked separately below.
+This is the current checklist for the configuration slice, PR #824 in the
+[#815 stack](https://github.com/openghg/openghg_inversions/issues/815).
+It replaces the accumulated #813 implementation amendments. Checked items
+record the implemented contracts in this slice; historical validation below
+applies only to the named revisions and does not certify the current stack.
 
-## 1. Revised planning
+## 1. One requested configuration
 
-- [x] 1.1 Reconcile proposal, design and behavioral requirements around one requested configuration, direct preparation fields and explicit roles/contracts; verify strict OpenSpec validation and the key-name table.
+- [x] 1.1 Put acquisition and preparation fields directly on `RhimeConfig`,
+  reusing `SiteOptions`, model/output specifications and the existing sampler.
+  Remove `RhimePreparationConfig`, its projections, `RhimeRunnerSetup`,
+  `make_rhime_runner_setup` and `resolve_rhime_options`.
+- [x] 1.2 Make `RhimeConfig.from_params` the single construction entry point;
+  remove `resolve_rhime_config`. Derive supported and required names from the
+  owning records and advertised consumer subsets without signature inspection.
+- [x] 1.3 Resolve configuration-only defaults and reject malformed effective
+  choices before acquisition, including scalar/per-site minimum errors,
+  non-finite-flux and aggregation-error modes, active basis algorithms and
+  unsupported tracer requests. Preserve saved-basis precedence.
+- [x] 1.4 Own ordinary caller containers, including arbitrary `Mapping` inputs,
+  while borrowing scientific arrays and opaque values. Configuration access
+  performs no scientific copying, computation, model construction or sampling.
 
-## 2. Configuration and compatibility
+## 2. Decode, edit and resolve once
 
-- [x] 2.1 Remove RhimePreparationConfig and its projection plumbing; put its explicit fields directly on RhimeConfig while reusing existing site/model/output/sampler values; verify direct option access, file/Python equivalence, winning overrides (including date-dependent defaults), early errors and caller ownership; consolidate checks at their owning input boundaries.
-- [x] 2.2 Remove RhimeRunnerSetup, make_rhime_runner_setup and resolve_rhime_options and migrate ordinary/nested/staged/shim/example consumers to RhimeConfig; remove encoding-only restoration of raw site forms and sparse priors; verify scientific behavior and entry-point results, absence of removed-type imports and explicit supported staged-contract handling.
-- [x] 2.3 Promote the existing acquisition-owned _SiteOptions to SiteOptions and export it from inversion_data; update annotations/imports/consumers while keeping one record; reuse its from_inputs and applicable small alignment helpers independently of file syntax; verify public construction, scalar/list equivalence, resolved-constructor invariants and selection without request mutation or repeated expansion.
+- [x] 2.1 Keep `read_rhime_ini(path)` in `rhime.ini`, returning a flat dictionary
+  with the existing section flattening and first-occurrence rules. The reader
+  does not return a configuration or accept resolution/override arguments.
+- [x] 2.2 Apply winning overrides and consume recipe-owned options before
+  `RhimeConfig.from_params`. Expand site shorthand and resolve date-dependent
+  defaults only after those edits; preserve file/Python equivalence.
+- [x] 2.3 Invoke historical alias translation once inside `from_params`, using
+  definitions owned by `hbmcmc.compatibility`. Warn only for translated or
+  removed deprecated spellings/values; canonical options win and remain quiet.
+- [x] 2.4 Preserve the deprecated `params_from_config` dictionary adapter and
+  fixedbasis translation at their compatibility owner. Remove transitional
+  old-location imports rather than adding forwarding aliases; retain intentional
+  package-level public exports and document the breaking imports.
+- [x] 2.5 Reuse complete `config=` requests in ordinary runners and the HBMCMC
+  shim without another resolution pass. Reject combining resolved configuration
+  with raw/file input, and preserve shim validation before copy side effects.
 
-## 3. Scientific boundaries and names
+## 3. Explicit scientific consumers
 
-- [x] 3.1 Replace load_rhime_config with read_rhime_ini(path, *, overrides=None, multisector=False) returning complete RhimeConfig; retain INI interpretation inside the frontend and apply overrides before shared semantic/site resolution; preserve params_from_config dictionary/normalization behavior through shared internal decoding; migrate configured consumers to use the result without resolving twice and verify reader results, override precedence and existing INI section behavior.
-- [x] 3.2 Use distinct RhimeMergedData.from_options and .load factories (#815); verify supplied-data reuse without I/O, strict cache failures (#806), layout/selector checks and retained alignment across ordinary/nested/staged consumers.
-- [x] 3.3 Forward needed resolved values explicitly to named stages, retain aligned selectors by label and derive run descriptions after preparation; verify retrieval/reload/filter/drop/supplied-data authority, tracer rejection and requested-versus-retained metadata without request mutation.
-- [x] 3.4 Rename fresh acquisition to retrieve_inversion_data, sharing the resolved-selector body; preserve data_processing_surface_notracer as a deprecated same-signature/six-tuple wrapper; verify warning, forwarding, imports and equivalent surface/column results without repeated expansion.
+- [x] 3.1 Consume the public, complete `SiteOptions` record and resolved-selector
+  retrieval body supplied by the acquisition slice. Preserve scalar/aligned
+  input equivalence, retained-label selection and no repeated expansion.
+- [x] 3.2 Use distinct `RhimeMergedData.from_options` and `.load` factories in
+  ordinary, nested, staged and example recipes. Reuse supplied handoffs without
+  I/O; propagate explicit reload failures without reacquisition. Preserve the
+  existing layout/selector checks, codec and opt-in saving at this slice.
+- [x] 3.3 Forward named scientific inputs directly or through shallow
+  `RhimeConfig.select(*names)`. Preserve borrowed selected values and errors for
+  unknown attributes; remove named stages' positional `data_args` adapters.
+- [x] 3.4 Keep requested options unchanged when preparation retains fewer sites.
+  Build `RhimeRunSpec` after preparation from retained sites/periods, requested
+  dates, prepared layout and resolved model/output choices.
+- [x] 3.5 Migrate nested, staged, shim and custom-runner consumers. Keep nested
+  model/output choices coherent, avoid traversing output options for preparation
+  identity, and exercise custom-basis resolution without an unused built-in
+  basis selector masking the test.
 
-## 4. Documentation and delivery
+## 4. Documentation and current delivery
 
-- [x] 4.1 Reconcile user/developer/API guidance, examples and the existing Issue 804 fragment with the new roles and names; verify examples and affected rendered documentation.
-- [x] 4.2 Run focused and relevant broader tests, changed-path Ruff, strict OpenSpec and whitespace checks for the reconciled implementation; inspect ownership and public compatibility before marking complete.
-- [x] 4.3 SSH-push the reconciled implementation and update #813 using the repository template; verify remote head, target branch, review readiness and app attachment confirmation.
+- [x] 4.1 Describe the current constructor, decoding reader, public owners,
+  selected forwarding and breaking imports in usage/development guidance,
+  examples, API documentation and release fragments. Separate advanced
+  configuration material from the ordinary run guide.
+- [x] 4.2 Consolidate this checklist so superseded resolved-reader and
+  compatibility-wrapper designs are no longer presented as current contracts.
+- [ ] 4.3 Record focused and relevant broader validation for the final #824
+  revision, including changed-path lint, strict OpenSpec, whitespace and
+  affected documentation checks. Identify any stack-tip results separately.
+- [ ] 4.4 Push the final #824 revision and update its review evidence with the
+  exact revision and validation scope. Historical #813 delivery is not current
+  delivery evidence.
 
-## Final validation
+## Separate slices and deferred work
 
-Implementation commit `436379ca` includes synchronization with `devel` at
-`e49632fd`. Relevant broader configuration, acquisition, ordinary/nested/staged
-runner, compatibility, serialization and integration coverage passed on Python
-3.12 and 3.13 in SLURM job `19278392`. The isolated `docs-full` build passed in
-job `19278394`. Both jobs completed with exit status zero. Eight affected
-rendered usage, migration, development and API pages were inspected, including
-their local links and anchors. Focused tests, changed-path Ruff, strict OpenSpec,
-whitespace and executable documentation examples passed; independent subagent
-reviews found no actionable correctness, contract or development-guidance issues.
-PR #813 targets `devel`, is attached to this task and is ready for review.
-This final checklist update changes no implementation or documentation examples.
+The acquisition rename, deprecated six-tuple retrieval wrapper and selector
+owner are supplied by #823. Canonical preparation-helper locality is delivered
+by #825. Dataset-only versioned artifacts, provenance and the acquisition-to-
+preparation compatibility follow-up for #718 belong to #826; this configuration
+slice does not implement or validate that later artifact contract.
 
-### Review follow-up: configuration-only finite choices
+The deprecated `prepare_rhime_inputs` adapter remains at this slice. Its removal
+and the private acquisition dispatcher's removal remain separately reviewable
+under #821; they do not depend on #719's HBMCMC retirement or imply that all
+compatibility must remain until 0.9. Historical import aliases already removed
+by this stack are distinct from these remaining scientific adapters.
 
-The shared resolver now rejects invalid `flux_non_finite_check` and
-`aggregation_error_mode` values using their existing declared choice types.
-Regression tests first reproduced the missing rejection, then verified that
-Python and INI requests through both ordinary runners raise before acquisition
-and that all seven supported choices are preserved. The 36 configuration tests
-and 60 selected broader configuration/consumer tests passed on Python 3.13;
-changed-path Ruff, strict OpenSpec and whitespace checks also passed.
+Configuration export, resolved-settings logging and an INI writer remain with
+[#814](https://github.com/openghg/openghg_inversions/issues/814). INI template
+redesign and scientific-default policy are not changed here. Filtered staged
+checkpoint retirement, route-wide retained-site policy and replacement
+manifest/handoff contracts remain with
+[#802](https://github.com/openghg/openghg_inversions/pull/802) and #808. This
+checklist does not claim those contracts or #719/#820/#821 are complete.
 
-The active-preparation follow-up also validates `basis_algorithm` against the
-existing live registry only when no saved `fp_basis_case` is supplied, and
-rejects unknown named `min_error` methods. Acquisition-uncalled coverage includes
-Python and INI requests through both ordinary runners; saved-case precedence,
-registered algorithms and both minimum-error methods are preserved. All 56
-configuration tests and 67 selected broader configuration, consumer and basis
-checks passed on Python 3.13, along with changed-path Ruff, strict OpenSpec and
-whitespace checks. This reconciles existing configuration-only late checks;
-scientific owners retain their data-dependent checks.
+## Historical validation ledger — not current acceptance
 
-Configuration serialization, resolved-settings logging and an INI writer are
-deferred to [#814](https://github.com/openghg/openghg_inversions/issues/814).
-No serializer or writer implementation is part of this checklist.
+These records preserve the validation history of #813 and its amendments.
+Passing an earlier implementation does not validate a later contract, the split
+PRs or their current heads. Earlier "ready for review" and delivery statements
+applied to #813 at those revisions only.
 
-### Review follow-up: configuration ownership and readability
-
-- [x] Place semantic construction on `RhimeConfig.from_params`, retain the
-  function compatibility wrapper, and separate the INI frontend.
-- [x] Derive supported and required options from their owning configuration
-  records and advertised consumer subsets; preserve accepted names and defaults.
-- [x] Reuse resolved requests in the standard/multisector runners and HBMCMC shim.
-- [x] Move site selectors into the shared selector owner, retain the complete
-  record through retrieval, and consolidate copying and layout validation.
-- [x] Document changed public contracts and explicit merged-data saving while
-  retaining existing opt-in saving behaviour and cache formats.
-- [x] Validate the final follow-up on supported Python versions, regenerate and
-  inspect affected API documentation, and SSH-push the reviewed changes.
-
-Focused configuration, acquisition, runner, shim and documentation-example
-checks passed in the existing environment. That environment contains PyMC
-5.26.1; the synthetic staged sampling test fails there on both the untouched
-PR head and this follow-up because it returns the former InferenceData type.
-The cluster retry passed the relevant configuration, acquisition, ordinary,
-nested, staged, shim, serialization and integration suites on Python 3.12 and
-3.13 in job `19280326`, including that sampling test. It used locked project
-dependencies for both interpreters and ran environments sequentially with one
-pytest worker. The initial parallel attempt exhausted its memory allocation;
-its Python 3.13 environment also exposed unpinned dependency incompatibilities.
-These validation-only environment adjustments do not change repository tox
-configuration.
-
-The `docs-full` environment passed in job `19280272`. Both jobs validated
-implementation commit `f0f47030`. Nine affected rendered usage, development and
-reference pages were checked for expected content and local links/anchors;
-the three changed generated reference files are included in the follow-up.
-Changed-path Ruff, strict OpenSpec and whitespace checks passed. Earlier
-validation records above apply to their named commits. New review comments
-about argument forwarding and preparation boundaries are being assessed
-separately; this validation does not claim those design concerns are resolved.
-
-
-### Review follow-up: selected forwarding and canonical preparation
-
-- [x] Add shallow `RhimeConfig.select(*names)` and test borrowed-value ownership,
-  missing names and ordinary keyword use without another resolution pass.
-- [x] Convert repeated runner, nested, staged and example forwarding to explicit
-  selections; keep scientific functions independently callable.
-- [x] Remove the named stages' former positional `data_args` adapters and
-  update their public docstrings and callers.
-- [x] Deprecate `prepare_rhime_inputs`, delegate its science to the named stages,
-  and verify matching prepared metadata, footprint provenance and warnings.
-- [x] Reconcile user/developer/reference documentation and release notes; review
-  remaining helper exposure; `convert_to_list` stays available without a warning.
-- [x] Run focused and relevant broader tests, changed-path Ruff, strict OpenSpec,
-  whitespace and rendered-documentation checks before marking this round complete.
-
-The filtered staged checkpoint, retained-site policy across all execution routes,
-and replacement manifest/handoff contracts remain with the planning-only
-[PR #802](https://github.com/openghg/openghg_inversions/pull/802), reviewed at
-`1ec45fc`. This cleanup shares existing scientific stages and their provenance;
-it does not claim to implement that broader workflow replacement.
-
-Focused validation passed: 69 configuration tests, 55 runner/shim/documentation-example
-and integration tests, 69 preparation/acquisition/site-resolution and tracer checks,
-and 10 nested/runner composition checks (some selections overlap). Independent
-review found no actionable forwarding or scientific-contract regressions.
-
-Implementation commit `2b80e490` passed relevant configuration, acquisition,
-standard/nested/staged runner, shim, serialization and integration coverage on
-Python 3.12 and 3.13, plus `docs-full`, in SLURM job `19280761` (exit zero).
-The test environments used locked dependencies and ran sequentially with one
-pytest worker. Eight affected rendered API, usage, migration and development
-pages were checked for the selection, required-keyword and deprecation contracts;
-all 1,316 inspected anchor links had valid local targets where applicable.
-Generated reference files match the tracked files. Inspection covered rendered
-HTML structure and text, not browser screenshots. Changed-path Ruff, strict
-OpenSpec and whitespace checks passed. This final validation record changes no
-implementation or examples.
-
-### Review follow-up: decoding and compatibility boundaries
-
-This records the implementation at `7c58af3b`. The approved amendment below
-supersedes its canonical-only factory and separate runner translation choices,
-and supersedes the resolved-reader contract originally completed in task 3.1.
-
-- [x] Make `read_rhime_ini` a dictionary decoder; apply runner overrides and
-  extract recipe-specific choices before calling `RhimeConfig.from_params` once.
-- [x] Move historical aliases, fixedbasis translation and the deprecated
-  `params_from_config` adapter to `hbmcmc.compatibility`; preserve supported
-  entrypoint warnings and keep canonical construction independent of aliases.
-- [x] Consume the custom-basis recipe's unused built-in basis options before
-  resolution and verify saved project artifacts through the real resolver.
-- [x] Keep nested direct fields and composed model/output settings coherent.
-- [x] Preserve borrowed flux/BC Dataset attrs at serialization by attaching
-  metadata to shallow copies; cover real NetCDF and Zarr saving.
-- [x] Reconcile public docstrings, usage/development guidance, release notes and
-  the active spec around these responsibilities.
-- [x] Validate the combined change on supported Python versions and inspect
-  affected rendered documentation. Delivery awaits the approved amendment below.
-
-Scientific default policy, INI template redesign and model selection are deferred.
-Existing defaults and automatic-saving policy remain unchanged. Shorthand is
-expanded after overrides and recipe-specific option extraction.
-
-
-Commit `7c58af3b` passed the relevant Python 3.12 and 3.13 suites and `docs-full`
-in SLURM job `19281228` (exit zero). Eight rendered pages and 940 local
-links/anchors passed inspection. The new compatibility module adds one generated
-API reference page. This validation predates the constructor amendment below.
-
-### Approved amendment: one constructor and conditional alias warnings (2026-10-08)
-
-The user approved the decoding/resolution responsibility changes and clarified
-that the construction wrapper can be removed because users are working from
-0.7.x. The final sequence is: decode file values, apply winning overrides,
-consume recipe-owned options, then construct the remaining configuration through
-`RhimeConfig.from_params`. This refers to all remaining run options, not only
-options unique to a recipe. Existing completed tasks above retain their history.
-
-- [x] Reconcile proposal, design and requirements with that sequence and the
-  removal of `resolve_rhime_config`.
-- [x] Move the shared alias-translation call into `RhimeConfig.from_params`,
-  remove repeated runner translation and the wrapper, and migrate callers/tests.
-- [x] Emit `DeprecationWarning` when deprecated names or output values are
-  translated or removed; verify canonical inputs remain quiet.
-- [x] Reconcile public documentation and generated API exposure, validate the
-  final implementation, SSH-push and update PR #813.
-
-The future dataset-only serialization/provenance contract is recorded in
-[#718](https://github.com/openghg/openghg_inversions/issues/718). It does not
-change the current artifact format in this PR.
-
-Focused amendment validation passed: 173 consumer tests and 35 compatibility/shim
-tests, changed-path Ruff, strict OpenSpec validation and whitespace checks.
-Implementation commit `81405294` passed the relevant configuration, acquisition,
-standard/nested/staged runner, compatibility, serialization and integration suites
-on Python 3.12 and 3.13, plus `docs-full`, in SLURM job `19281458` (exit zero).
-Eight affected rendered pages and 936 local links/anchors passed inspection;
-generated API reference files match the tracked files. Inspection checked HTML
-structure and text, not browser screenshots. The implementation was SSH-pushed
-to PR #813 for review; this final record changes no implementation or examples.
-
-
-### Approved #815 stack adaptation
-
-The implementation is split after the #813 validation record above. The #815
-acquisition step uses distinct `RhimeMergedData.load` and `.from_options`
-factories; supplied-data reuse is explicit in recipes, and failed reloads raise
-without fresh acquisition (#806). The current artifact codec remains unchanged
-in the configuration step. Its later dataset-only snapshot work is separate.
-
-The configuration migration also validates scalar and per-site minimum-error
-values before acquisition, copies arbitrary Mapping inputs, avoids traversing
-output options while computing preparation identity, and verifies custom-basis
-resolution without a built-in basis selector masking the test. Validation
-records for #813 apply only to their named commits; the #815 stack receives its
-own focused and cluster verification.
+| Revision or round | Recorded validation | Scope and limits |
+| --- | --- | --- |
+| Original preparation-config implementation | Locked Python 3.12/3.13 job `19270831`; docs-full job `19270662` passed. | Predates the direct-field redesign. |
+| `436379ca`, synchronized with `devel` at `e49632fd` | Relevant Python 3.12/3.13 suites in `19278392`; docs-full in `19278394`, both exit zero. Eight rendered pages and local links inspected; focused tests, Ruff, OpenSpec, whitespace and executable examples passed. | Predates later ownership, decoding and constructor amendments. |
+| Configuration finite-choice follow-ups | Initially 36 configuration and 60 selected consumer tests; then 56 configuration and 67 selected consumer/basis tests passed on Python 3.13, with Ruff, OpenSpec and whitespace checks. | Recorded local selections cover mode validation, active basis choices and minimum-error methods; they overlap and have no separate revision recorded here. |
+| `f0f47030` | Locked Python 3.12/3.13 suites in `19280326`; docs-full in `19280272` passed. Nine rendered pages inspected; Ruff, OpenSpec and whitespace passed. | A local PyMC 5.26.1 staged-result mismatch reproduced on both revisions. The passing cluster retry used sequential environments and one pytest worker after an earlier memory/dependency failure; repository tox configuration was unchanged. |
+| `2b80e490` | Python 3.12/3.13 suites and docs-full in `19280761`, exit zero. Eight rendered pages and 1,316 local anchors checked; generated references matched. | Selected-forwarding round; earlier focused groups of 69, 55, 69 and 10 tests overlapped. Rendered inspection covered HTML structure/text, not browser screenshots. |
+| `7c58af3b` | Relevant Python 3.12/3.13 suites and docs-full in `19281228`, exit zero. Eight pages and 940 local links/anchors checked. | Decoder/compatibility separation before the final constructor amendment. |
+| `81405294` | Relevant Python 3.12/3.13 suites and docs-full in `19281458`, exit zero. Focused amendment checks covered 173 consumer and 35 compatibility/shim tests; Ruff, OpenSpec and whitespace passed. Eight pages and 936 local links/anchors checked; generated references matched. | One-constructor amendment, pushed to #813 before splitting into the #815 stack. Rendered inspection covered HTML structure/text, not browser screenshots. |
