@@ -490,7 +490,7 @@ protocol, generic pipeline, or package-wide validation framework is required.
 ## Public naming follow-up for #764/#776
 
 The separately delivered public API uses `run(..., model="standard")` and the
-`rhime` CLI while retaining established Python imports and
+`rhime` CLI while retaining established runner and shared handoff imports and
 `openghg-inversions` commands through the 0.9 compatibility cycle. Concrete
 runners are named by model; shared handoffs and preparation use shared names.
 Selection delegates directly to procedural recipes and preserves CO2-family

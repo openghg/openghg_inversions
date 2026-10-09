@@ -69,8 +69,8 @@ Existing CO2 staged commands retain their current support boundaries.
 
 ``openghg-inversions`` and its ``run-rhime``, ``run-rhime-multisector`` and
 ``run-rhime-nested`` subcommands remain supported through the 0.9 compatibility
-cycle. Both executables expose the same command set. Existing public Python
-imports remain aliases to their implementations: ``run_rhime`` is
+cycle. Both executables expose the same command set. The existing runner imports and
+shared handoff/assembly names listed here remain aliases to their implementations: ``run_rhime`` is
 ``run_standard``, ``run_rhime_multisector`` is ``run_multisector``, and
 ``run_rhime_nested`` is ``run_nested``. No argument conversion or warning is
 added to these aliases. Shared ``MergedData`` and ``PreparedInputs`` retain the
