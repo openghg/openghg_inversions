@@ -88,7 +88,8 @@ def test_dataset_saved_basis_uses_runtime_flux_and_source_order(output_format, t
     loaded = make_basis_functions(
         site_data=sites, flux_data=runtime, split_by_sectors=True,
         species="ch4", domain="TEST", start_date="2020-01-01", emissions_name=["a"],
-        nbasis=2, fp_basis_case="region_constrained_ch4", basis_directory=str(tmp_path))
+        nbasis=2, fp_basis_case="region_constrained_ch4", basis_directory=str(tmp_path),
+        basis_algorithm="unused_invalid_algorithm")
     xr.testing.assert_equal(loaded.flat_basis(), generated.flat_basis())
     xr.testing.assert_equal(loaded.flux, flux_from_data(runtime, split_by_sectors=True))
     assert list(loaded.flux.source.values) == ["b", "a"]
@@ -144,3 +145,87 @@ def test_dataset_region_constrained_requires_classes():
             site_data=sites, flux_data=sources, species="ch4", domain="TEST",
             start_date="2020-01-01", emissions_name=["a"], nbasis=2,
             basis_algorithm="region_constrained")
+
+
+@pytest.mark.parametrize("entry_point", ["make", "make_fixed", "fixed"])
+def test_unknown_algorithm_does_not_execute_borrowed_dask_graph(entry_point):
+    from dask import delayed
+    from openghg_inversions.basis import fixed_outer_regions_basis_from_data
+
+    @delayed
+    def must_remain_lazy():
+        raise AssertionError("Invalid algorithms must not compute weights")
+
+    sites, sources = _inputs()
+    sources["a"] = sources["a"].assign(
+        flux=sources["a"].flux.copy(data=da.from_delayed(
+            must_remain_lazy(), shape=(4, 4, 2), dtype=float)))
+    with pytest.raises(ValueError, match="Basis algorithm not recognised"):
+        if entry_point == "fixed":
+            fixed_outer_regions_basis_from_data(
+                sites, sources, "2020-01-01", "invalid", "TEST", ["a"])
+        else:
+            make_basis_functions(
+                site_data=sites, flux_data=sources, species="ch4", domain="TEST",
+                start_date="2020-01-01", emissions_name=["a"], nbasis=1,
+                basis_algorithm="invalid", fix_outer_regions=entry_point == "make_fixed")
+
+
+@pytest.mark.parametrize("fixed_outer", [False, True])
+def test_generated_kernel_key_error_is_not_relabelled(monkeypatch, tmp_path, fixed_outer):
+    import openghg_inversions.basis._functions as functions
+
+    sites, sources = _inputs()
+    outer = xr.DataArray([[0, 0, 2, 2], [0, 1, 1, 2], [0, 1, 1, 2], [0, 0, 2, 2]],
+                         dims=("lat", "lon"), coords={"lat": sources["a"].lat, "lon": sources["a"].lon},
+                         name="region", attrs={"inner_region_label": 1})
+    outer_path = tmp_path / "outer.nc"
+    outer.to_dataset().to_netcdf(outer_path)
+    expected_error = KeyError("missing kernel input")
+
+    def fail_kernel(*args, **kwargs):
+        raise expected_error
+
+    monkeypatch.setattr(functions, "quadtree_basis_from_weights", fail_kernel)
+    with pytest.raises(KeyError) as error:
+        make_basis_functions(
+            site_data=sites, flux_data=sources, species="ch4", domain="TEST",
+            start_date="2020-01-01", emissions_name=["a"], nbasis=1,
+            basis_algorithm="quadtree", fix_outer_regions=fixed_outer, outer_regions_path=outer_path)
+    assert error.value is expected_error
+
+
+@pytest.mark.parametrize("empty_inner", [False, True])
+def test_fixed_outer_executes_shared_weight_graph_once(empty_inner, tmp_path):
+    from dask import delayed
+    from openghg_inversions.basis import fixed_outer_regions_basis_from_data
+
+    sites, sources = _inputs()
+    outer = xr.DataArray([[0, 0, 2, 2], [0, 1, 1, 2], [0, 1, 1, 2], [0, 0, 2, 2]],
+                         dims=("lat", "lon"), coords={"lat": sources["a"].lat, "lon": sources["a"].lon},
+                         name="region", attrs={"inner_region_label": 1})
+    executions = []
+
+    @delayed
+    def shared_payload():
+        executions.append(True)
+        return np.ones((4, 4, 2))
+
+    flux = sources["a"].flux.copy(data=da.from_delayed(
+        shared_payload(), shape=(4, 4, 2), dtype=float))
+    sources = {"a": flux.to_dataset()}
+    footprint = flux * 2
+    if empty_inner:
+        footprint = footprint.where(outer != 1, 0.)
+    sites = {"A": footprint.rename("fp").to_dataset()}
+    outer_path = tmp_path / "outer.nc"
+    outer.to_dataset().to_netcdf(outer_path)
+    actual = fixed_outer_regions_basis_from_data(
+        sites, sources, "2020-01-01", "region_constrained", "TEST", ["a"], nbasis=1,
+        region_classes=xr.ones_like(outer), outer_regions_path=outer_path, allow_empty_inner_region=True)
+    expected = outer + 1
+    if not empty_inner:
+        expected = expected.where(outer != 1, 4)
+    xr.testing.assert_equal(actual.squeeze("time", drop=True), expected.rename("basis"))
+    assert len(executions) == 1
+    assert isinstance(sources["a"].flux.data, da.Array)

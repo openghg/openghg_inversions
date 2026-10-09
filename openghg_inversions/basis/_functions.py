@@ -356,12 +356,22 @@ def basis_weights_from_data(
     Select only the first requested emissions source, or the first mapping
     entry when omitted. All site footprint times contribute to the mean. This
     named eager algorithm boundary leaves the borrowed datasets unchanged.
+    ``abs_flux=True`` takes the absolute flux before temporal averaging.
     ``mask`` optionally drops cells outside the fitting region.
     """
     source = emissions_name[0] if emissions_name is not None else next(iter(flux_data))
     flux = flux_data[source]["flux"]
     footprints = [dataset["fp"] for dataset in site_data.values()]
     return _mean_fp_times_mean_flux(flux, footprints, abs_flux=abs_flux, mask=mask).as_numpy()
+
+
+def _validate_basis_algorithm(basis_algorithm: str) -> None:
+    """Reject unsupported generated algorithms before fitting inputs are materialized."""
+    if basis_algorithm not in ("quadtree", "weighted", "region_constrained"):
+        raise ValueError(
+            "Basis algorithm not recognised. Please use 'quadtree', 'weighted', "
+            "'region_constrained', or input a basis function file"
+        )
 
 
 def basis_from_weights(
@@ -376,6 +386,7 @@ def basis_from_weights(
     **region_kwargs: Any,
 ) -> xr.DataArray:
     """Fit a generated basis with the existing weight-array algorithms."""
+    _validate_basis_algorithm(basis_algorithm)
     if basis_algorithm == "quadtree":
         return quadtree_basis_from_weights(weights, start_date, domain, nbasis=nbasis)
     if basis_algorithm == "weighted":
@@ -383,13 +394,11 @@ def basis_from_weights(
             weights, start_date, domain, nbasis=nbasis,
             country_directory=country_directory, landsea_indices=landsea_indices,
         )
-    if basis_algorithm == "region_constrained":
-        if region_kwargs.get("region_classes") is None:
-            raise ValueError("region_classes must be supplied for the region_constrained basis algorithm.")
-        return region_constrained_basis_from_weights(
-            weights, start_date, domain, nbasis=nbasis, **region_kwargs,
-        )
-    raise KeyError(basis_algorithm)
+    if region_kwargs.get("region_classes") is None:
+        raise ValueError("region_classes must be supplied for the region_constrained basis algorithm.")
+    return region_constrained_basis_from_weights(
+        weights, start_date, domain, nbasis=nbasis, **region_kwargs,
+    )
 
 
 def load_intem_outer_regions(
@@ -1414,6 +1423,7 @@ def fixed_outer_regions_basis_from_data(
         ``allow_empty_inner_region`` is true and finite inner weights are all
         zero, its label is kept unsplit.
     """
+    _validate_basis_algorithm(basis_algorithm)
     if outer_regions_path is not None:
         selected_outer_regions_path = Path(outer_regions_path)
         if not selected_outer_regions_path.is_absolute() and country_directory is not None:
@@ -1447,11 +1457,11 @@ def fixed_outer_regions_basis_from_data(
 
     mask = intem_regions == inner_index
 
+    weights = basis_weights_from_data(
+        site_data, flux_data, emissions_name, abs_flux=abs_flux, mask=mask,
+    )
     if allow_empty_inner_region:
-        inner_weights = basis_weights_from_data(
-            site_data, flux_data, emissions_name, abs_flux=abs_flux, mask=mask,
-        )
-        finite_inner_weights = inner_weights.to_numpy()
+        finite_inner_weights = weights.to_numpy()
         finite_inner_weights = finite_inner_weights[np.isfinite(finite_inner_weights)]
         if finite_inner_weights.size and not bool((finite_inner_weights != 0.0).any()):
             logger.warning(
@@ -1491,9 +1501,6 @@ def fixed_outer_regions_basis_from_data(
                 "contrast_s_diag": contrast_s_diag,
             }
         )
-    weights = basis_weights_from_data(
-        site_data, flux_data, emissions_name, abs_flux=abs_flux, mask=mask,
-    )
     inner_region = basis_from_weights(
         weights, start_date, domain, basis_algorithm, nbasis, **algorithm_kwargs,
     )

@@ -18,6 +18,7 @@ from .basis_functions import (
 )
 from ._functions import (
     basis_from_weights,
+    _validate_basis_algorithm,
     basis_weights_from_data,
     fixed_outer_regions_basis_from_data,
     basis,
@@ -117,7 +118,8 @@ def make_basis_functions(
             coefficient. If omitted, ``tau=1`` is uncalibrated.
         contrast_sigma_design: Optional scalar design standard deviation.
         contrast_s_diag: Optional diagonal design covariance entries.
-        allow_empty_inner_region: Forwarded to :func:`fixed_outer_regions_basis`
+        allow_empty_inner_region: Forwarded to
+            :func:`openghg_inversions.basis.fixed_outer_regions_basis_from_data`
             when ``fix_outer_regions`` is true. Intended only for nested
             outer-domain preparation, where the marked inner region is
             expected to have no residual response.
@@ -129,6 +131,8 @@ def make_basis_functions(
         ValueError: If neither a saved basis case nor an algorithm is supplied,
             or if an unsupported output format or basis algorithm is requested.
     """
+    if fp_basis_case is None and basis_algorithm is not None:
+        _validate_basis_algorithm(basis_algorithm)
     saving_generated_basis = output_path is not None and basis_algorithm is not None and fp_basis_case is None
     if saving_generated_basis and basis_output_format not in _VALID_BASIS_OUTPUT_FORMATS:
         expected = "', '".join(_VALID_BASIS_OUTPUT_FORMATS)
@@ -157,35 +161,29 @@ def make_basis_functions(
 
     elif fix_outer_regions is True:
         print("Using fixed outer regions for basis functions.")
-        try:
-            basis_data_array = fixed_outer_regions_basis_from_data(
-                site_data,
-                flux_data,
-                start_date,
-                basis_algorithm,
-                domain,
-                emissions_name,
-                nbasis,
-                country_directory,
-                outer_regions_path=outer_regions_path,
-                region_classes=region_classes,
-                region_allocation=region_allocation,
-                min_regions_per_class=min_regions_per_class,
-                split_acceptance=split_acceptance,
-                contrast_contribution=contrast_contribution,
-                contrast_cell_weight=contrast_cell_weight,
-                min_contrast_delta_eig=min_contrast_delta_eig,
-                min_contrast_lambda=min_contrast_lambda,
-                contrast_tau=contrast_tau,
-                contrast_sigma_design=contrast_sigma_design,
-                contrast_s_diag=contrast_s_diag,
-                allow_empty_inner_region=allow_empty_inner_region,
-            )
-        except KeyError as e:
-            raise ValueError(
-                "Basis algorithm not recognised. Please use 'quadtree', 'weighted', "
-                "'region_constrained', or input a basis function file"
-            ) from e
+        basis_data_array = fixed_outer_regions_basis_from_data(
+            site_data,
+            flux_data,
+            start_date,
+            basis_algorithm,
+            domain,
+            emissions_name,
+            nbasis,
+            country_directory,
+            outer_regions_path=outer_regions_path,
+            region_classes=region_classes,
+            region_allocation=region_allocation,
+            min_regions_per_class=min_regions_per_class,
+            split_acceptance=split_acceptance,
+            contrast_contribution=contrast_contribution,
+            contrast_cell_weight=contrast_cell_weight,
+            min_contrast_delta_eig=min_contrast_delta_eig,
+            min_contrast_lambda=min_contrast_lambda,
+            contrast_tau=contrast_tau,
+            contrast_sigma_design=contrast_sigma_design,
+            contrast_s_diag=contrast_s_diag,
+            allow_empty_inner_region=allow_empty_inner_region,
+        )
         print(f"Using InTEM regions with {basis_algorithm} to derive basis functions for inner region.")
         print("Using generated in-memory basis artifact.")
         basis_functions_object = basis_functions_from_flat_basis(
@@ -214,15 +212,9 @@ def make_basis_functions(
                 }
             )
         weights = basis_weights_from_data(site_data, flux_data, emissions_name)
-        try:
-            basis_data_array = basis_from_weights(
-                weights, start_date, domain, basis_algorithm, nbasis, **algorithm_kwargs,
-            )
-        except KeyError as e:
-            raise ValueError(
-                "Basis algorithm not recognised. Please use 'quadtree', 'weighted', "
-                "'region_constrained', or input a basis function file"
-            ) from e
+        basis_data_array = basis_from_weights(
+            weights, start_date, domain, basis_algorithm, nbasis, **algorithm_kwargs,
+        )
         print("Using generated in-memory basis artifact.")
         basis_functions_object = basis_functions_from_flat_basis(
             flux_data=flux_data,
