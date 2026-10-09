@@ -119,7 +119,7 @@ its existing prepared inputs.
 Name concrete runners ``run_standard``, ``run_multisector`` and ``run_nested``.
 Use shared names such as ``MergedData``, ``PreparedInputs`` and
 ``assemble_inputs`` for shared handoffs and preparation. Keep ``standard`` for
-standard-specific science. Existing public imports and the
+standard-specific science. Established runner and shared handoff imports and the
 ``openghg-inversions`` executable remain supported through the 0.9 compatibility
 cycle; see :doc:`/usage/cli`. Do not add redundant ``rhime`` qualifiers or move
 whole modules solely to make names uniform.

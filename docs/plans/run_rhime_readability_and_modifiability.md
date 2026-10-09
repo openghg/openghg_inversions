@@ -5,7 +5,7 @@
 The public selector is `run(..., model="standard")`, with concrete
 `run_standard`, `run_multisector` and `run_nested` recipes. The `rhime` executable
 shares the existing command set and adds `run --model`; CO2-family Python model
-choices preserve their prepared-input-only contracts. Existing Python imports
+choices preserve their prepared-input-only contracts. Established runner and shared handoff imports
 and `openghg-inversions` commands remain compatible through 0.9. Shared
 `MergedData`, `PreparedInputs` and preparation names describe shared work, not
 standard-only policy. This selective naming delivery does not perform #776's
@@ -86,7 +86,7 @@ Use `run(..., model="standard")` as the default public API and keep
 `run_standard` as the readable reference
 implementation of the complete RHIME workflow.
 
-Opening the implementation of `run_rhime` should reveal, in execution order:
+Opening the implementation of `run_standard` should reveal, in execution order:
 
 ```text
 resolve Python/config options
