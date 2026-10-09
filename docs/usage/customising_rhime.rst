@@ -114,7 +114,8 @@ support remaining scientific consumers until 0.9.
 
 Acquisition stays in memory. For a reusable file, prepare the data with the
 named stages below and call ``RhimePreparedInputs.save``; the staged
-``prepare`` command writes this same durable contract. Selected provenance
+``prepare`` command writes this same durable contract. See :doc:`rhime` for
+prepared-input persistence and reuse. Selected provenance
 includes each input's available store, UUID and dataversion, plus the
 acquisition OpenGHG version and commit. Unavailable identities remain
 ``unknown``. When several footprint inlets contribute, identifier tuples
@@ -128,7 +129,14 @@ The software fields are ``openghg_version`` and ``openghg_commit``.
 Both classes are available from ``openghg_inversions.inversion_data``.
 They describe selected inputs; scientific compatibility remains the
 responsibility of ``validate_for_preparation``. Empty or all-unknown provenance
-is false in boolean tests; that does not establish data validity.
+is false in boolean tests; that does not establish data validity. Missing
+input identities default to unknown without replacing supplied identities.
+
+Selected ``MergedDataProvenance`` remains on the in-memory merged handoff. It
+is not included in saved ``RhimePreparedInputs`` or the staged preparation
+manifest. Retain it separately when an audit requires selected input identities;
+persistence of acquisition provenance is deferred to
+`issue #829 <https://github.com/openghg/openghg_inversions/issues/829>`_.
 
 For the existing tuple-returning retrieval API, use
 ``openghg_inversions.inversion_data.retrieve_inversion_data``. The former

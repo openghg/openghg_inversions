@@ -6,8 +6,9 @@ that a project can make deeper scientific changes while continuing to reuse
 the supported acquisition, preparation, model, sampling, and output stages.
 Use :func:`run_custom_rhime` from Python or :func:`main` from the command line.
 The standard single-sector stages are preserved, model inputs materialize only
-at the explicit PyMC boundary, and a run may acquire or reload data, sample a
-model, and write its configured outputs.
+at the explicit PyMC boundary. This copied runner always acquires fresh data,
+samples a model, and writes its configured outputs. To reuse persisted prepared
+inputs, use :func:`openghg_inversions.rhime.run_rhime_from_prepared_inputs`.
 """
 
 from __future__ import annotations
@@ -60,7 +61,7 @@ def run_custom_rhime(
             unsupported, or likelihood roles or metadata are invalid.
 
     Notes:
-        This workflow may retrieve or reload data, materializes related model
+        This workflow always acquires fresh data, materializes related model
         arrays together at the named PyMC boundary without mutating canonical
         prepared inputs, runs sampling, and writes outputs requested by the
         resolved RHIME options.

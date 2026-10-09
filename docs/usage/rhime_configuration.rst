@@ -147,8 +147,8 @@ handoff before acquisition, bypassing store access. Before preparation, the merg
 owner checks known species, domain, date bounds and source layout against the
 request. Conflicts, including changed acquisition windows, raise without
 relabeling or selecting observations. Recorded selectors remain authoritative;
-unknown historical facts stay unknown. Fresh saving remains opt-in.
-See :doc:`customising_rhime` for loading and saving examples.
+unknown historical facts stay unknown. See :doc:`customising_rhime` for
+in-memory acquisition and :doc:`rhime` for saving and loading prepared inputs.
 
 The requested configuration contains no acquired/prepared handoff or
 ``RhimeRunSpec``.

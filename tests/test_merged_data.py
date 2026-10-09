@@ -334,10 +334,65 @@ def test_default_provenance_is_false_and_selected_identities_are_true():
     assert MergedDataProvenance(observations={"TAC": InputProvenance(uuid="selected")})
 
 
-def test_partial_known_provenance_is_rejected_at_construction():
+@pytest.mark.parametrize("version", ["unknown", "known"])
+@pytest.mark.parametrize("boundary", [None, InputProvenance(uuid="selected-bc")])
+def test_partial_provenance_defaults_missing_inputs_and_preserves_supplied_identities(version, boundary):
     original = merged_data()
-    with pytest.raises(ValueError, match="Provenance must identify each retained input"):
-        replace(original, provenance=MergedDataProvenance(openghg_version="known"))
+    observation = InputProvenance(uuid="selected-observation")
+    flux = InputProvenance(store="archive")
+    supplied = MergedDataProvenance(
+        openghg_version=version,
+        observations={"TAC": observation},
+        flux={"a/b": flux},
+        boundary=boundary,
+    )
+    with Callback(pretask=lambda *args: pytest.fail("provenance defaulting computed borrowed arrays")):
+        merged = replace(original, provenance=supplied)
+        selected = merged.with_site_data({"TAC": original.site_data["TAC"]})
+        legacy = selected.to_legacy_fp_all()
+    assert merged.provenance.openghg_version == version
+    assert merged.provenance.observations == {"TAC": observation, "GOSAT": InputProvenance()}
+    assert merged.provenance.footprints == {site: InputProvenance() for site in original.sites}
+    assert merged.provenance.flux == {"a/b": flux, "b": InputProvenance()}
+    assert merged.provenance.boundary == (boundary if boundary is not None else InputProvenance())
+    assert merged.provenance.observations["TAC"] is observation
+    assert merged.provenance.flux["a/b"] is flux
+    assert merged.site_data["TAC"] is original.site_data["TAC"]
+    assert selected.provenance.observations == {"TAC": observation}
+    assert legacy[".flux"]["a/b"].metadata["store"] == "archive"
+    assert supplied.footprints == {}
+    assert supplied.observations == {"TAC": observation}
+
+
+@pytest.mark.parametrize("supplied", [
+    MergedDataProvenance(),
+    MergedDataProvenance(openghg_version="known"),
+    MergedDataProvenance(observations={"TAC": InputProvenance()}),
+])
+def test_missing_provenance_defaults_consistently_without_inferring_dataset_identities(supplied):
+    original = merged_data()
+    original.flux_data["a/b"] = original.flux_data["a/b"].assign_attrs(uuid="unconfirmed")
+    original.boundary_data = original.boundary_data.assign_attrs(uuid="unconfirmed-bc")
+    merged = replace(original, provenance=supplied)
+    assert merged.provenance.observations == {site: InputProvenance() for site in original.sites}
+    assert merged.provenance.footprints == {site: InputProvenance() for site in original.sites}
+    assert merged.provenance.flux == {source: InputProvenance() for source in original.flux_data}
+    assert merged.provenance.boundary == InputProvenance()
+    assert merged.provenance.openghg_version == supplied.openghg_version
+    assert bool(merged.provenance) == bool(supplied)
+
+
+@pytest.mark.parametrize("kind", ["observations", "footprints", "flux", "boundary"])
+@pytest.mark.parametrize("identity", [InputProvenance(), InputProvenance(uuid="selected")])
+def test_provenance_rejects_unexpected_inputs_even_when_identities_are_unknown(kind, identity):
+    original = merged_data()
+    if kind == "boundary":
+        original.boundary_data = None
+        supplied = MergedDataProvenance(boundary=identity)
+    else:
+        supplied = MergedDataProvenance(**{kind: {"unexpected": identity}})
+    with pytest.raises(ValueError, match="inputs absent from the merged data"):
+        replace(original, provenance=supplied)
 
 
 @pytest.mark.parametrize("uuid,known", [

@@ -636,11 +636,15 @@ def run_rhime_multisector(
 ) -> RhimeResult:
     """Run a shared-basis multi-sector RHIME inversion.
 
-    The visible process is resolve → retrieve/reload → filter → basis →
-    sensitivities → assemble → materialize → build → sample → result →
+    The visible process is resolve → acquire or accept supplied data → filter →
+    basis → sensitivities → assemble → materialize → build → sample → result →
     requested outputs.
     This module keeps source layout validation and sector-aware outputs beside
     that process instead of hiding them behind standard/multisector branching.
+
+    Without supplied merged data, this runner acquires fresh data. Persisted
+    prepared inputs can be reused with
+    :func:`openghg_inversions.rhime.run_rhime_from_prepared_inputs`.
 
     Args:
         config_file: Optional INI configuration file. Values in ``kwargs``
@@ -649,8 +653,8 @@ def run_rhime_multisector(
             It is used without resolving again and cannot
             be combined with ``config_file`` or raw run parameters in ``kwargs``.
         merged_data: Optional externally supplied source-resolved merged
-            scientific data. Passing it bypasses OpenGHG acquisition and
-            merged-cache I/O, then resumes at filtering after validating
+            scientific data. Passing this in-memory handoff bypasses OpenGHG
+            acquisition and resumes at filtering after validating
             recorded species, domain, time window, and sector layout.
         likelihood_builder: Optional Python-only callable invoked with a
             completed forward-model mean and explicit error-model inputs in

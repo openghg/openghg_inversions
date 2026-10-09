@@ -8,7 +8,7 @@ scientific filtering, basis construction and sensitivity preparation.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 
 import pandas as pd
 import xarray as xr
@@ -63,8 +63,9 @@ class RhimeMergedData:
             sources for sector-resolved preparation.
         provenance: A :class:`~openghg_inversions.inversion_data.MergedDataProvenance`
             record of OpenGHG software identity and selected input store, UUID
-            and data-version identities. Unrecorded identities remain unknown;
-            these descriptions do not establish scientific compatibility.
+            and data-version identities. Missing input records default to
+            unknown identities; unexpected input labels are rejected. These
+            descriptions do not establish scientific compatibility.
         acquisition: Known retrieval choices, checked by
             :meth:`validate_for_preparation` when a caller supplies this record
             to a runner. Missing facts remain unknown.
@@ -88,21 +89,22 @@ class RhimeMergedData:
             raise TypeError("RhimeMergedData accepts xarray datasets, not OpenGHG wrappers.")
         if any(not isinstance(source, str) for source in self.flux_data):
             raise TypeError("Flux source labels must be strings.")
-        if not self.provenance:
-            self.provenance = MergedDataProvenance(
-                observations={site: InputProvenance() for site in self.site_data},
-                footprints={site: InputProvenance() for site in self.site_data},
-                flux={source: selected_provenance(data) for source, data in self.flux_data.items()},
-                boundary=selected_provenance(self.boundary_data) if self.boundary_data is not None else None,
-            )
-
         if (
-            set(self.provenance.observations) != set(self.site_data)
-            or set(self.provenance.footprints) != set(self.site_data)
-            or set(self.provenance.flux) != set(self.flux_data)
-            or (self.provenance.boundary is None) != (self.boundary_data is None)
+            set(self.provenance.observations) - set(self.site_data)
+            or set(self.provenance.footprints) - set(self.site_data)
+            or set(self.provenance.flux) - set(self.flux_data)
+            or (self.provenance.boundary is not None and self.boundary_data is None)
         ):
-            raise ValueError("Provenance must identify each retained input.")
+            raise ValueError("Provenance identifies inputs absent from the merged data.")
+        self.provenance = replace(
+            self.provenance,
+            observations={site: self.provenance.observations.get(site, InputProvenance()) for site in self.site_data},
+            footprints={site: self.provenance.footprints.get(site, InputProvenance()) for site in self.site_data},
+            flux={source: self.provenance.flux.get(source, InputProvenance()) for source in self.flux_data},
+            boundary=(
+                self.provenance.boundary if self.provenance.boundary is not None else InputProvenance()
+            ) if self.boundary_data is not None else None,
+        )
 
     @property
     def sites(self) -> tuple[str, ...]:
