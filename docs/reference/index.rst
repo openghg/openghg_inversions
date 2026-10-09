@@ -93,6 +93,8 @@ imports identify the same classes.
    openghg_inversions.inversion_data.SiteOptions
    openghg_inversions.inversion_data.retrieve_inversion_data
    openghg_inversions.inversion_data.RhimeMergedData
+   openghg_inversions.inversion_data.InputProvenance
+   openghg_inversions.inversion_data.MergedDataProvenance
    openghg_inversions.inversion_data.RhimePreparedInputs
    openghg_inversions.inversion_data.prepare_rhime_inputs
    openghg_inversions.inversion_data.prepare_rhime_inputs_from_xarray

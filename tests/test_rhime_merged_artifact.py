@@ -1,6 +1,6 @@
 """Acquisition artifacts preserve selectors and datasets without wrapper codecs."""
 
-from dataclasses import fields
+from dataclasses import FrozenInstanceError, fields, replace
 from types import SimpleNamespace
 import json
 
@@ -11,8 +11,8 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from openghg_inversions.inversion_data import RhimeMergedData, SiteOptions
-from openghg_inversions.inversion_data._merged_artifact import selected_provenance
+from openghg_inversions.inversion_data import InputProvenance, MergedDataProvenance, RhimeMergedData, SiteOptions
+from openghg_inversions.inversion_data._provenance import selected_provenance
 
 
 def merged_data():
@@ -58,10 +58,26 @@ def merged_data():
 @pytest.mark.parametrize("suffix", ["zarr", "zarr.zip", "nc"])
 def test_round_trip_all_selectors_scientific_attrs_and_lazy_arrays(tmp_path, suffix):
     original = merged_data()
-    original.provenance["inputs"]["flux:a/b"] = {"store": "archive", "uuid": "abc", "dataversion": "v3"}
-    original.provenance["openghg"] = {"version": "0.10", "commit": "abc123"}
+    original.provenance = replace(
+        original.provenance, openghg_version="0.10", openghg_commit="abc123",
+        flux={**original.provenance.flux, "a/b": InputProvenance("archive", "abc", "v3")},
+    )
     path = f"acquired.{suffix}"
     original.save(tmp_path, merged_data_name=path)
+    if suffix == "zarr":
+        attrs = json.loads((tmp_path / path / ".zattrs").read_text())
+        manifest = json.loads(attrs["manifest"])
+        unknown = {"store": "unknown", "uuid": "unknown", "dataversion": "unknown"}
+        assert manifest["version"] == 1
+        assert manifest["provenance"] == {
+            "openghg": {"version": "0.10", "commit": "abc123"},
+            "inputs": {
+                "observations:TAC": unknown, "observations:GOSAT": unknown,
+                "footprints:TAC": unknown, "footprints:GOSAT": unknown,
+                "flux:a/b": {"store": "archive", "uuid": "abc", "dataversion": "v3"},
+                "flux:b": unknown, "boundary": unknown,
+            },
+        }
     calls = []
     with Callback(pretask=lambda *args: calls.append(args)):
         restored = RhimeMergedData.load(tmp_path, merged_data_name=path)
@@ -103,12 +119,77 @@ def test_selected_input_provenance_discards_arbitrary_metadata():
     wrapped = SimpleNamespace(
         metadata={"UUID": "u1", "dataversion": "v7", "secret": object()}, data=xr.Dataset()
     )
-    assert selected_provenance(wrapped, "archive") == {"uuid": "u1", "dataversion": "v7", "store": "archive"}
-    assert selected_provenance(xr.Dataset()) == {
-        "uuid": "unknown",
-        "dataversion": "unknown",
-        "store": "unknown",
+    assert selected_provenance(wrapped, "archive") == InputProvenance("archive", "u1", "v7")
+    assert selected_provenance(xr.Dataset()) == InputProvenance()
+
+
+
+def test_selected_input_provenance_does_not_interpret_dataset_metadata_variables():
+    dataset = xr.Dataset({"metadata": 1}, attrs={"uuid": "selected", "dataversion": "v2"})
+    assert selected_provenance(dataset) == InputProvenance(uuid="selected", dataversion="v2")
+
+
+@pytest.mark.parametrize("kwargs", [{"uuid": object()}, {"dataversion": True}, {"store": ["archive"]}])
+def test_input_provenance_rejects_unsupported_public_values(kwargs):
+    with pytest.raises(ValueError, match="identifiers"):
+        InputProvenance(**kwargs)
+
+
+def test_provenance_owns_input_mappings_and_rejects_non_string_software_identity():
+    inputs = {"TAC": InputProvenance(uuid="selected")}
+    provenance = MergedDataProvenance(observations=inputs)
+    inputs["TAC"] = InputProvenance(uuid="changed")
+    assert provenance.observations["TAC"].uuid == "selected"
+    with pytest.raises(ValueError, match="version and commit"):
+        MergedDataProvenance(openghg_version=False)
+
+
+def test_legacy_projection_retains_selected_flux_and_boundary_identities():
+    original = merged_data()
+    original.provenance = replace(
+        original.provenance,
+        flux={"a/b": InputProvenance("archive", "flux-one", "v3"), "b": InputProvenance()},
+        boundary=InputProvenance("boundary-store", "boundary-one", "v2"),
+    )
+    legacy = original.to_legacy_fp_all()
+    assert legacy[".flux"]["a/b"].metadata == {
+        "data_type": "flux", "store": "archive", "uuid": "flux-one", "dataversion": "v3",
     }
+    restored = RhimeMergedData.from_legacy_fp_all(legacy, original.site_options)
+    assert restored.provenance.flux == original.provenance.flux
+    assert restored.provenance.boundary == original.provenance.boundary
+    assert restored.provenance.openghg_version == "unknown"
+
+
+
+def test_legacy_import_selects_recorded_provenance_with_retained_input_inventory():
+    original = merged_data()
+    legacy = original.to_legacy_fp_all()
+    legacy[".provenance"] = {
+        "openghg": {"version": "recorded-version", "commit": "recorded-commit"},
+        "inputs": {
+            label: {"store": "archive", "uuid": label, "dataversion": "v3"}
+            for label in (
+                "observations:TAC", "observations:GOSAT", "footprints:TAC", "footprints:GOSAT",
+                "flux:a/b", "flux:b", "boundary",
+            )
+        },
+    }
+    legacy[".flux"].pop("b")
+    legacy.pop(".bc")
+    selectors = original.site_options.retain_sites(("TAC",), context="Legacy import")
+    calls = []
+    with Callback(pretask=lambda *args: calls.append(args)):
+        restored = RhimeMergedData.from_legacy_fp_all(legacy, selectors)
+    assert not calls
+    assert restored.site_data["TAC"] is original.site_data["TAC"]
+    assert restored.provenance == MergedDataProvenance(
+        openghg_version="recorded-version", openghg_commit="recorded-commit",
+        observations={"TAC": InputProvenance("archive", "observations:TAC", "v3")},
+        footprints={"TAC": InputProvenance("archive", "footprints:TAC", "v3")},
+        flux={"a/b": InputProvenance("archive", "flux:a/b", "v3")},
+    )
+    assert len(legacy[".provenance"]["inputs"]) == 7
 
 
 def test_invalid_modern_inputs_do_not_reacquire(tmp_path, monkeypatch):
@@ -126,7 +207,9 @@ def test_invalid_modern_inputs_do_not_reacquire(tmp_path, monkeypatch):
         RhimeMergedData.load(tmp_path, merged_data_name="existing.nc")
 
 
-@pytest.mark.parametrize("change", ["version", "selector", "inventory", "legacy", "selector_scalar"])
+@pytest.mark.parametrize("change", [
+    "version", "selector", "inventory", "legacy", "selector_scalar", "empty_provenance", "missing_inputs",
+])
 def test_reject_malformed_schema(tmp_path, change):
     merged_data().save(tmp_path, merged_data_name="data.zarr")
     path = tmp_path / "data.zarr" / ".zattrs"
@@ -141,6 +224,10 @@ def test_reject_malformed_schema(tmp_path, change):
         manifest["site_options"]["averaging_period"] = "12"
     elif change == "inventory":
         manifest["sources"].append("absent")
+    elif change == "empty_provenance":
+        manifest["provenance"] = {}
+    elif change == "missing_inputs":
+        manifest["provenance"]["inputs"] = {}
     else:
         del attrs["manifest"]
     if change != "legacy":
@@ -160,6 +247,9 @@ def test_legacy_import_is_explicit_and_migrates(tmp_path):
     original = merged_data()
     # Old format uses source names as paths and requires slash-free labels.
     original.flux_data["a"] = original.flux_data.pop("a/b")
+    original.provenance = replace(
+        original.provenance, flux={"a": original.provenance.flux["a/b"], "b": original.provenance.flux["b"]},
+    )
     legacy = original.to_legacy_fp_all()
     _save_merged_data(legacy, tmp_path, merged_data_name="old.zarr")
     with pytest.raises((KeyError, ValueError)):
@@ -180,7 +270,7 @@ def test_legacy_import_is_explicit_and_migrates(tmp_path):
     try:
         assert restored.site_options == selectors
         assert restored.acquisition["legacy_import"]
-        assert restored.provenance["openghg"]["version"] == "unknown"
+        assert restored.provenance.openghg_version == "unknown"
         xr.testing.assert_identical(restored.site_data["GOSAT"], original.site_data["GOSAT"])
     finally:
         restored.close()
@@ -245,11 +335,13 @@ def test_fresh_save_load_scientific_preparation_equivalence(tmp_path, monkeypatc
         coords=coords,
     ).chunk(time=1)
     options = SiteOptions.from_inputs(sites=["TAC"], averaging_period="1h")
-    initial = RhimeMergedData(site_data={"TAC": site}, flux_data={}, site_options=options)
+    initial = RhimeMergedData(
+        site_data={"TAC": site}, flux_data={}, site_options=options, acquisition={"stage": "acquired"},
+    )
     monkeypatch.setattr(
         acquisition,
         "_retrieve_inversion_data_from_options",
-        lambda **kw: (initial.to_legacy_fp_all(), ["TAC"]),
+        lambda **kw: initial,
     )
     fresh = RhimeMergedData.from_options(
         site_options=options,
@@ -293,11 +385,12 @@ def test_fresh_save_load_scientific_preparation_equivalence(tmp_path, monkeypatc
 
 def test_available_openghg_revision_is_recorded(monkeypatch):
     import openghg
-    from openghg_inversions.inversion_data._merged_artifact import software_provenance
 
     monkeypatch.setattr(openghg, "__version__", "test-version")
     monkeypatch.setattr(openghg, "__revisionid__", "test-commit")
-    assert software_provenance() == {"version": "test-version", "commit": "test-commit"}
+    provenance = MergedDataProvenance.from_retrieval(observations={}, footprints={}, flux={})
+    assert provenance.openghg_version == "test-version"
+    assert provenance.openghg_commit == "test-commit"
 
 
 def test_fresh_acquisition_records_each_input_identity_and_saves_only_on_request(monkeypatch):
@@ -341,17 +434,13 @@ def test_fresh_acquisition_records_each_input_identity_and_saves_only_on_request
         output_name="provenance",
         flux_sources=["inventory"],
     )
-    for label, kind in (
-        ("observations:TAC", "observations"),
-        ("footprints:TAC", "footprints"),
-        ("flux:inventory", "flux"),
-        ("boundary", "boundary"),
+    for identity, kind in (
+        (acquired.provenance.observations["TAC"], "observations"),
+        (acquired.provenance.footprints["TAC"], "footprints"),
+        (acquired.provenance.flux["inventory"], "flux"),
+        (acquired.provenance.boundary, "boundary"),
     ):
-        assert acquired.provenance["inputs"][label] == {
-            "uuid": kind + "-uuid",
-            "dataversion": "v2",
-            "store": kind + "-store",
-        }
+        assert identity == InputProvenance(kind + "-store", kind + "-uuid", "v2")
 
 
 @pytest.mark.parametrize("suffix", ["zarr", "zarr.zip", "nc"])
@@ -404,14 +493,14 @@ def test_multiple_footprint_inlets_retain_each_available_identity(monkeypatch, t
         obs, domain="EUROPE", start_date="2020-01-01", end_date="2020-01-02", averaging_period="1h"
     )
     identifiers = selected_provenance(merged)
-    assert identifiers == {
-        "uuid": ["10m", "100m"],
-        "dataversion": ["v1", "v1"],
-        "store": ["archive", "archive"],
-    }
+    assert identifiers == InputProvenance(
+        uuid=("10m", "100m"), dataversion=("v1", "v1"), store=("archive", "archive"),
+    )
     assert footprints["10m"].metadata["uuid"] == "10m"
     original = merged_data()
-    original.provenance["inputs"]["footprints:TAC"] = identifiers
+    original.provenance = replace(
+        original.provenance, footprints={**original.provenance.footprints, "TAC": identifiers},
+    )
     original.save(tmp_path, merged_data_name="multiple.zarr")
     restored = RhimeMergedData.load(tmp_path, merged_data_name="multiple.zarr")
     try:
@@ -503,8 +592,8 @@ def test_catalog_latest_version_requires_retrieval_context(selected_version):
     wrapped = SimpleNamespace(metadata={"latest_version": "v7", "versions": ["v2", "v7"]})
     if selected_version is not None:
         wrapped._version = selected_version
-    assert selected_provenance(wrapped)["dataversion"] == (selected_version or "unknown")
-    assert selected_provenance(wrapped, requested_version="latest")["dataversion"] == (
+    assert selected_provenance(wrapped).dataversion == (selected_version or "unknown")
+    assert selected_provenance(wrapped, requested_version="latest").dataversion == (
         selected_version or "v7"
     )
 
@@ -548,7 +637,7 @@ def test_native_openghg_public_retrieval_preserves_selected_version(monkeypatch,
     if kind == "older":
         result = SearchResults(metadata={"native-uuid": dict(metadata)}).retrieve_all(version="v2")
         expected = "v2"
-        assert selected_provenance(result, requested_version="latest")["dataversion"] == "v2"
+        assert selected_provenance(result, requested_version="latest").dataversion == "v2"
     elif kind == "flux":
         monkeypatch.setattr(getters, "adjust_flux_start_date", lambda *args: "2020-01-01")
         result = getters.get_flux_data(
@@ -582,9 +671,9 @@ def test_native_openghg_public_retrieval_preserves_selected_version(monkeypatch,
         expected = ["v2", "v7"] if kind.endswith("multiple") else "v7"
     assert loaded_versions == (expected if kind.endswith("multiple") else [expected])
     provenance = selected_provenance(result)
-    assert provenance["dataversion"] == expected
+    assert provenance.dataversion == (tuple(expected) if isinstance(expected, list) else expected)
     if kind == "footprints-multiple":
-        assert list(zip(provenance["uuid"], provenance["dataversion"], strict=True)) == [
+        assert list(zip(provenance.uuid, provenance.dataversion, strict=True)) == [
             ("native-10", "v2"), ("native-100", "v7")
         ]
     assert "dataversion" not in metadata
@@ -609,7 +698,10 @@ def test_owned_site_selection_aligns_and_isolates_metadata_without_computing():
     from copy import deepcopy
 
     original = merged_data()
-    original.provenance["inputs"]["observations:GOSAT"]["uuid"] = ["one", "two"]
+    original.provenance = replace(
+        original.provenance,
+        observations={**original.provenance.observations, "GOSAT": InputProvenance(uuid=("one", "two"))},
+    )
     provenance = deepcopy(original.provenance)
     acquisition = dict(original.acquisition)
     retained = original.site_data["GOSAT"].isel(time=slice(1, None))
@@ -622,12 +714,17 @@ def test_owned_site_selection_aligns_and_isolates_metadata_without_computing():
     assert selected.site_data["GOSAT"] is retained
     assert selected.flux_data["a/b"] is original.flux_data["a/b"]
     assert selected.boundary_data is original.boundary_data
-    assert set(selected.provenance["inputs"]) == {
-        "observations:GOSAT", "footprints:GOSAT", "flux:a/b", "flux:b", "boundary",
-    }
+    assert tuple(selected.provenance.observations) == ("GOSAT",)
+    assert tuple(selected.provenance.footprints) == ("GOSAT",)
+    assert selected.provenance.flux == original.provenance.flux
+    assert selected.provenance.boundary == original.provenance.boundary
+    assert selected.provenance.flux is not original.provenance.flux
     assert selected.acquisition == {**acquisition, "stage": "filtered"}
-    selected.provenance["inputs"]["observations:GOSAT"]["uuid"].append("new")
-    selected.provenance["openghg"]["version"] = "new"
+    with pytest.raises(FrozenInstanceError):
+        selected.provenance.observations["GOSAT"].uuid = ("new",)
+    selected.provenance = replace(
+        selected.provenance, openghg_version="new", observations={"GOSAT": InputProvenance(uuid="new")},
+    )
     selected.acquisition["domain"] = "different"
     assert original.provenance == provenance
     assert original.acquisition == acquisition

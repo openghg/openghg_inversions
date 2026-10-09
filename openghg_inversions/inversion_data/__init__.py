@@ -1,4 +1,5 @@
 from .acquisition import RhimeMergedData
+from ._provenance import InputProvenance, MergedDataProvenance
 from ._site_options import SiteOptions
 from .get_data import data_processing_surface_notracer, retrieve_inversion_data
 from .preparation import (
@@ -11,6 +12,8 @@ from .xarray_adapter import prepare_rhime_inputs_from_xarray
 __all__ = [
     "_save_merged_data",
     "RhimeMergedData",
+    "InputProvenance",
+    "MergedDataProvenance",
     "SiteOptions",
     "retrieve_inversion_data",
     "RhimePreparedInputs",

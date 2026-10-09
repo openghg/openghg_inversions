@@ -5880,14 +5880,13 @@ def test_prepare_rhime_inputs_uses_basis_sensitivity_without_legacy_side_channel
 
     def fake_data_processing_surface_notracer(
         **kwargs: object,
-    ) -> tuple[dict, list[str], list[str], list[str], list[str], list[str]]:
-        return (
-            {"TAC": site_data, ".species": "CH4"},
-            ["TAC"],
-            ["185m"],
-            ["185m"],
-            ["instrument-1"],
-            ["1H"],
+    ) -> RhimeMergedData:
+        return RhimeMergedData(
+            site_data={'TAC': site_data},
+            flux_data={},
+            site_options=cast(SiteOptions, kwargs["site_options"]).retain_sites(['TAC'], context="test retrieval"),
+            split_by_sectors=False,
+            acquisition={"stage": "acquired"},
         )
 
     def fake_make_basis_functions(**kwargs: object) -> _SpyBasisFunctions:
@@ -5940,14 +5939,13 @@ def test_prepare_rhime_inputs_matches_direct_sensitivity_inv_inputs(
 
     def fake_data_processing_surface_notracer(
         **kwargs: object,
-    ) -> tuple[dict, list[str], list[str], list[str], list[str], list[str]]:
-        return (
-            {"TAC": site_data, ".species": "CH4"},
-            ["TAC"],
-            ["185m"],
-            ["185m"],
-            ["instrument-1"],
-            ["1H"],
+    ) -> RhimeMergedData:
+        return RhimeMergedData(
+            site_data={'TAC': site_data},
+            flux_data={},
+            site_options=cast(SiteOptions, kwargs["site_options"]).retain_sites(['TAC'], context="test retrieval"),
+            split_by_sectors=False,
+            acquisition={"stage": "acquired"},
         )
 
     def fake_make_basis_functions(**kwargs: object) -> BasisFunctions:
@@ -6063,19 +6061,14 @@ def test_retrieve_or_reload_merged_data_retrieval_keeps_requested_metadata_autho
 
     def fake_data_processing(
         **kwargs: object,
-    ) -> tuple[dict, list[str], list[str], list[str], list[str], list[str]]:
-        """Return the first and third requested sites using the legacy tuple."""
-        return (
-            {
-                "TAC": _site_dataset([2.0]),
-                "RGL": _site_dataset([4.0]),
-                ".species": "CH4",
-            },
-            ["TAC", "RGL"],
-            ["100m", "300m"],
-            ["110m", "310m"],
-            ["inst-tac", "inst-rgl"],
-            ["1H", "3H"],
+    ) -> RhimeMergedData:
+        """Return the first and third requested sites in the acquisition record."""
+        return RhimeMergedData(
+            site_data={'TAC': _site_dataset([2.0]), 'RGL': _site_dataset([4.0])},
+            flux_data={},
+            site_options=cast(SiteOptions, kwargs["site_options"]).retain_sites(['TAC', 'RGL'], context="test retrieval"),
+            split_by_sectors=False,
+            acquisition={"stage": "acquired"},
         )
 
     monkeypatch.setattr(
@@ -6167,20 +6160,19 @@ def test_retrieve_or_reload_merged_data_reload_rejects_sector_layout_mismatch(
             ), species="ch4", start_date="2019-01-01", output_name="reload_sector_layout", split_by_sectors=requested_split_by_sectors, merged_data_dir=str(tmp_path))
 
 
-def test_retrieve_or_reload_merged_data_ignores_redundant_retrieval_metadata(
+def test_retrieve_or_reload_merged_data_retains_record_selectors(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Unused legacy metadata cannot replace requested site pairings."""
+    """Fresh acquisition forwards the selector record owned by retrieval."""
     monkeypatch.setattr(
         acquisition_module,
         "_retrieve_inversion_data_from_options",
-        lambda **kwargs: (
-            {"TAC": _site_dataset([2.0]), ".species": "CH4"},
-            ["TAC"],
-            [],
-            ["wrong-height", "extra-height"],
-            [],
-            [],
+        lambda **kwargs: RhimeMergedData(
+            site_data={'TAC': _site_dataset([2.0])},
+            flux_data={},
+            site_options=cast(SiteOptions, kwargs["site_options"]).retain_sites(['TAC'], context="test retrieval"),
+            split_by_sectors=False,
+            acquisition={"stage": "acquired"},
         ),
     )
 
@@ -6284,17 +6276,16 @@ def test_prepare_rhime_inputs_normalises_averaging_period_to_site_count(
 
     def fake_data_processing_surface_notracer(
         **kwargs: object,
-    ) -> tuple[dict, list[str], list[str], list[str], list[str], list[str | None]]:
+    ) -> RhimeMergedData:
         nonlocal captured_averaging_period
         options = cast(SiteOptions, kwargs["site_options"])
         captured_averaging_period = list(options.averaging_period)
-        return (
-            {**site_data, ".species": "CH4"},
-            ["TAC", "MHD"],
-            ["185m", "10m"],
-            ["185m", "10m"],
-            ["instrument-1", "instrument-2"],
-            captured_averaging_period,
+        return RhimeMergedData(
+            site_data={site: site_data[site] for site in ['TAC', 'MHD']},
+            flux_data={},
+            site_options=cast(SiteOptions, kwargs["site_options"]).retain_sites(['TAC', 'MHD'], context="test retrieval"),
+            split_by_sectors=False,
+            acquisition={"stage": "acquired"},
         )
 
     def fake_make_basis_functions(**kwargs: object) -> _DynamicSpyBasisFunctions:
@@ -6404,14 +6395,13 @@ def test_prepare_rhime_inputs_treats_min_error_none_as_default(
 
     def fake_data_processing_surface_notracer(
         **kwargs: object,
-    ) -> tuple[dict, list[str], list[str], list[str], list[str], list[str]]:
-        return (
-            {"TAC": site_data, ".species": "CH4"},
-            ["TAC"],
-            ["185m"],
-            ["185m"],
-            ["instrument-1"],
-            ["1H"],
+    ) -> RhimeMergedData:
+        return RhimeMergedData(
+            site_data={'TAC': site_data},
+            flux_data={},
+            site_options=cast(SiteOptions, kwargs["site_options"]).retain_sites(['TAC'], context="test retrieval"),
+            split_by_sectors=False,
+            acquisition={"stage": "acquired"},
         )
 
     def fake_make_basis_functions(**kwargs: object) -> _DynamicSpyBasisFunctions:
@@ -6478,7 +6468,7 @@ def test_prepare_rhime_inputs_rejects_min_error_options_before_retrieval(
 ) -> None:
     """Direct preparation validates minimum-error options before data access."""
 
-    def fail_data_processing(**kwargs: object) -> None:
+    def fail_data_processing(**kwargs: object) -> RhimeMergedData:
         """Fail if invalid options reach the retrieval boundary."""
         raise AssertionError("Data retrieval should not run for invalid min-error options.")
 
@@ -6516,14 +6506,13 @@ def test_prepare_rhime_inputs_filters_sites_before_basis_generation(
 
     def fake_data_processing_surface_notracer(
         **kwargs: object,
-    ) -> tuple[dict, list[str], list[str], list[str], list[str], list[str]]:
-        return (
-            {**site_data, ".species": "CH4"},
-            ["TAC"],
-            ["185m"],
-            ["185m"],
-            ["instrument-1"],
-            ["1H"],
+    ) -> RhimeMergedData:
+        return RhimeMergedData(
+            site_data={site: site_data[site] for site in ['TAC']},
+            flux_data={},
+            site_options=cast(SiteOptions, kwargs["site_options"]).retain_sites(['TAC'], context="test retrieval"),
+            split_by_sectors=False,
+            acquisition={"stage": "acquired"},
         )
 
     def fake_filtering(fp_data: dict, filters: object) -> dict:
@@ -6657,14 +6646,13 @@ def test_prepare_rhime_inputs_applies_daily_median_before_sensitivity(
 
     def fake_data_processing_surface_notracer(
         **kwargs: object,
-    ) -> tuple[dict, list[str], list[str], list[str], list[str], list[str]]:
-        return (
-            {"TAC": site_dataset, ".species": "CH4"},
-            ["TAC"],
-            ["185m"],
-            ["185m"],
-            ["instrument-1"],
-            ["1H"],
+    ) -> RhimeMergedData:
+        return RhimeMergedData(
+            site_data={'TAC': site_dataset},
+            flux_data={},
+            site_options=cast(SiteOptions, kwargs["site_options"]).retain_sites(['TAC'], context="test retrieval"),
+            split_by_sectors=False,
+            acquisition={"stage": "acquired"},
         )
 
     def fake_make_basis_functions(**kwargs: object) -> BasisFunctions:
@@ -6734,22 +6722,13 @@ def test_prepare_rhime_inputs_filters_multisector_sites_before_basis_generation(
 
     def fake_data_processing_surface_notracer(
         **kwargs: object,
-    ) -> tuple[dict, list[str], list[str], list[str], list[str], list[str]]:
-        return (
-            {
-                **site_data,
-                ".flux": {
-                    source: xr.Dataset({"flux": ("time", [1.0, 2.0, 3.0])}, coords={"time": site_dataset.time})
-                    for source in flux_sources
-                },
-                ".species": "CH4",
-                ".split_by_sectors": True,
-            },
-            ["TAC"],
-            ["185m"],
-            ["185m"],
-            ["instrument-1"],
-            ["1H"],
+    ) -> RhimeMergedData:
+        return RhimeMergedData(
+            site_data={site: site_data[site] for site in ['TAC']},
+            flux_data={source: xr.Dataset({'flux': ('time', [1.0, 2.0, 3.0])}, coords={'time': site_dataset.time}) for source in flux_sources},
+            site_options=cast(SiteOptions, kwargs["site_options"]).retain_sites(['TAC'], context="test retrieval"),
+            split_by_sectors=True,
+            acquisition={"stage": "acquired"},
         )
 
     def fake_filtering(fp_data: dict, filters: object) -> dict:
@@ -6818,14 +6797,13 @@ def test_prepare_rhime_inputs_filters_loaded_basis_before_sensitivity(
 
     def fake_data_processing_surface_notracer(
         **kwargs: object,
-    ) -> tuple[dict, list[str], list[str], list[str], list[str], list[str]]:
-        return (
-            {**site_data, ".species": "CH4"},
-            ["TAC"],
-            ["185m"],
-            ["185m"],
-            ["instrument-1"],
-            ["1H"],
+    ) -> RhimeMergedData:
+        return RhimeMergedData(
+            site_data={site: site_data[site] for site in ['TAC']},
+            flux_data={},
+            site_options=cast(SiteOptions, kwargs["site_options"]).retain_sites(['TAC'], context="test retrieval"),
+            split_by_sectors=False,
+            acquisition={"stage": "acquired"},
         )
 
     def fake_make_basis_functions(**kwargs: object) -> _DynamicSpyBasisFunctions:
@@ -6888,14 +6866,13 @@ def test_prepare_rhime_inputs_aligns_averaging_period_after_empty_site_drop(
 
     def fake_data_processing_surface_notracer(
         **kwargs: object,
-    ) -> tuple[dict, list[str], list[str], list[str], list[str], list[str]]:
-        return (
-            {**site_data, ".species": "CH4"},
-            ["TAC", "MHD"],
-            ["185m", "10m"],
-            ["185m", "10m"],
-            ["instrument-1", "instrument-2"],
-            ["1H", "2H"],
+    ) -> RhimeMergedData:
+        return RhimeMergedData(
+            site_data={site: site_data[site] for site in ['TAC', 'MHD']},
+            flux_data={},
+            site_options=cast(SiteOptions, kwargs["site_options"]).retain_sites(['TAC', 'MHD'], context="test retrieval"),
+            split_by_sectors=False,
+            acquisition={"stage": "acquired"},
         )
 
     def fake_make_basis_functions(**kwargs: object) -> BasisFunctions:
@@ -6943,14 +6920,13 @@ def test_prepare_rhime_inputs_rejects_all_sites_dropped_before_basis_generation(
 
     def fake_data_processing_surface_notracer(
         **kwargs: object,
-    ) -> tuple[dict, list[str], list[str], list[str], list[str], list[str]]:
-        return (
-            {**site_data, ".species": "CH4"},
-            ["TAC", "MHD"],
-            ["185m", "10m"],
-            ["185m", "10m"],
-            ["instrument-1", "instrument-2"],
-            ["1H", "2H"],
+    ) -> RhimeMergedData:
+        return RhimeMergedData(
+            site_data={site: site_data[site] for site in ['TAC', 'MHD']},
+            flux_data={},
+            site_options=cast(SiteOptions, kwargs["site_options"]).retain_sites(['TAC', 'MHD'], context="test retrieval"),
+            split_by_sectors=False,
+            acquisition={"stage": "acquired"},
         )
 
     def fake_make_basis_functions(**kwargs: object) -> BasisFunctions:
@@ -9228,7 +9204,13 @@ def test_acquisition_and_reload_keep_acquired_flux_lazy(monkeypatch, reload, tmp
     flux = xr.Dataset({"flux": ("time", da.from_array([0., 0., 2.]))})
     fp_all = {"TAC": _site_dataset([2.0]), ".flux": {"inventory": flux}}
     options = _site_options(["TAC"], averaging_period="1h")
-    monkeypatch.setattr(acquisition_module, "_retrieve_inversion_data_from_options", lambda **kw: (fp_all, ["TAC"]))
+    monkeypatch.setattr(
+        acquisition_module, "_retrieve_inversion_data_from_options",
+        lambda **kw: RhimeMergedData(
+            site_data={"TAC": fp_all["TAC"]}, flux_data={"inventory": flux},
+            site_options=options, acquisition={"stage": "acquired"},
+        ),
+    )
     if reload:
         cached = RhimeMergedData.from_legacy_fp_all(fp_all, options, acquisition={"stage": "acquired"})
         cached.save(tmp_path, merged_data_name="acquired.zarr")
@@ -9252,7 +9234,7 @@ def test_retrieve_or_reload_merged_data_reload_failure_is_explicit(
     def load(*args: Any, **kwargs: Any) -> dict:
         raise ValueError("missing merged artifact")
 
-    def retrieve(**kwargs: Any) -> tuple:
+    def retrieve(**kwargs: Any) -> RhimeMergedData:
         pytest.fail("Explicit reload must not retrieve fresh data")
 
     monkeypatch.setattr(acquisition_module.RhimeMergedData, "load", load)

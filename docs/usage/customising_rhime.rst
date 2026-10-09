@@ -102,6 +102,8 @@ acquisition or an existing merged artifact::
 Use your configured object stores and flux source names. Fresh acquisition may
 drop unavailable sites; the returned ``merged.site_options`` retains every
 selector in the resulting site order. Saving is disabled by default.
+Fresh retrieval constructs this dataset handoff directly; the older
+tuple-returning API derives its ``fp_all`` mapping from the handoff.
 
 ``RhimeMergedData`` stores per-site xarray datasets in ``site_data``,
 source-labelled flux datasets in ``flux_data``, optional boundary conditions
@@ -134,6 +136,16 @@ values are explicitly ``unknown``. When several footprint inlets contribute,
 identifier lists retain the contributing input order. Arbitrary OpenGHG wrapper
 metadata is not saved, and loading does not reconstruct OpenGHG wrappers.
 
+In Python, ``merged.provenance`` is a ``MergedDataProvenance`` value with
+``observations``, ``footprints`` and ``flux`` mappings and optional ``boundary``
+identity. Each ``InputProvenance`` exposes ``store``, ``uuid`` and
+``dataversion``; for example, ``merged.provenance.footprints["TAC"].uuid``.
+The software fields are ``openghg_version`` and ``openghg_commit``.
+Both classes are available from ``openghg_inversions.inversion_data``.
+They describe selected inputs; scientific compatibility remains the
+responsibility of ``validate_for_preparation``. The file codec converts these
+values to the existing versioned manifest representation.
+
 ``.nc``, ``.zarr`` and ``.zarr.zip`` select NetCDF, directory Zarr and zipped
 Zarr. A name without a suffix uses ``output_format`` (default ``zarr.zip``).
 Loading opens that exact artifact lazily: missing or corrupt files, unsupported
@@ -150,6 +162,10 @@ For the existing tuple-returning retrieval API, use
 ``openghg_inversions.inversion_data.retrieve_inversion_data``. The former
 ``data_processing_surface_notracer`` name forwards the same arguments and
 return value and emits ``DeprecationWarning``.
+The tuple's flux and boundary wrappers are reconstructed from the modern
+datasets and selected source identities. Their metadata no longer includes
+arbitrary OpenGHG catalogue fields; scientific dataset attributes remain
+available on the datasets.
 
 Change the likelihood with a Python function
 --------------------------------------------

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import fields
+from dataclasses import asdict, fields
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -13,6 +13,7 @@ import zarr
 
 from openghg_inversions.array_ops import to_dense
 
+from ._provenance import InputProvenance, MergedDataProvenance
 from ._site_options import SiteOptions
 from .serialise import OutputFormat, _make_merged_data_name, _split_suffix
 
@@ -23,50 +24,54 @@ SCHEMA = "openghg-inversions-rhime-acquisition"
 SCHEMA_VERSION = 1
 
 
-def selected_provenance(value: Any, store: Any = None, *, requested_version: str | None = None) -> dict:
-    """Keep input identifiers; resolve latest only for a known retrieval request.
-
-    OpenGHG typed wrappers can lose the generic object's selected ``_version``.
-    Retrieval owners may supply ``requested_version="latest"`` for that public
-    retrieval path only when it guarantees a single UUID. Combined observation
-    retrievals do not establish this. Catalog ``latest_version`` alone does not
-    identify arbitrary supplied data, which may come from an older version.
-    """
-    metadata = getattr(value, "metadata", {})
-    attrs = (
-        value.attrs if isinstance(value, xr.Dataset) else getattr(getattr(value, "data", None), "attrs", {})
-    )
-    selected = {}
-    for name, aliases in {
-        "store": ("store", "object_store"),
-        "uuid": ("uuid", "UUID"),
-        "dataversion": ("dataversion", "data_version"),
-    }.items():
-        result = next(
-            (source[key] for source in (metadata, attrs) for key in aliases if source.get(key) is not None),
-            None,
-        )
-        if name == "store" and result is None:
-            result = store
-        if result is None and name in {"uuid", "dataversion"}:
-            result = getattr(value, "_uuid" if name == "uuid" else "_version", None)
-        if name == "dataversion" and result is None and requested_version is not None:
-            result = metadata.get("latest_version") if requested_version == "latest" else requested_version
-        if isinstance(result, list | tuple) and all(isinstance(item, str | int) for item in result):
-            selected[name] = list(result)
-        else:
-            selected[name] = result if isinstance(result, str | int) else "unknown"
-    return selected
-
-
-def software_provenance() -> dict[str, str]:
-    """Record installed OpenGHG identity without probing git or the network."""
-    import openghg
-
-    return {
-        "version": str(getattr(openghg, "__version__", None) or "unknown"),
-        "commit": str(getattr(openghg, "__revisionid__", None) or "unknown"),
+def _encode_provenance(provenance: MergedDataProvenance) -> dict:
+    """Encode selected identities using the version-one file schema."""
+    inputs = {
+        f"{kind}:{label}": asdict(identity)
+        for kind in ("observations", "footprints", "flux")
+        for label, identity in getattr(provenance, kind).items()
     }
+    if provenance.boundary is not None:
+        inputs["boundary"] = asdict(provenance.boundary)
+    return {
+        "openghg": {"version": provenance.openghg_version, "commit": provenance.openghg_commit},
+        "inputs": inputs,
+    }
+
+
+def _decode_provenance(value: Any, *, expected_inputs: set[str] | None = None) -> MergedDataProvenance:
+    """Validate version-one metadata without filling missing persisted facts."""
+    if not isinstance(value, dict) or set(value) != {"openghg", "inputs"}:
+        raise ValueError("Artifact provenance requires OpenGHG and input identities.")
+    software = value["openghg"]
+    if not isinstance(software, dict) or set(software) != {"version", "commit"}:
+        raise ValueError("OpenGHG provenance requires version and commit strings (or 'unknown').")
+    if not isinstance(value["inputs"], dict):
+        raise ValueError("Artifact input provenance must be a mapping.")
+    if expected_inputs is not None and set(value["inputs"]) != expected_inputs:
+        raise ValueError("Artifact provenance must identify each retained input.")
+    groups: dict[str, dict[str, InputProvenance]] = {"observations": {}, "footprints": {}, "flux": {}}
+    boundary = None
+    for label, identity in value["inputs"].items():
+        if not isinstance(identity, dict) or set(identity) != {"store", "uuid", "dataversion"}:
+            raise ValueError("Input provenance requires store, uuid and dataversion identifiers.")
+        selected = InputProvenance(**{
+            name: tuple(item) if isinstance(item, list) else item for name, item in identity.items()
+        })
+        if label == "boundary":
+            boundary = selected
+        elif isinstance(label, str):
+            kind, separator, name = label.partition(":")
+            if kind not in groups or not separator:
+                raise ValueError("Artifact provenance contains an unsupported input label.")
+            groups[kind][name] = selected
+        else:
+            raise ValueError("Artifact provenance input labels must be strings.")
+    return MergedDataProvenance(
+        openghg_version=software["version"], openghg_commit=software["commit"],
+        observations=groups["observations"], footprints=groups["footprints"],
+        flux=groups["flux"], boundary=boundary,
+    )
 
 
 def artifact_path(
@@ -150,7 +155,7 @@ def save_artifact(merged: RhimeMergedData, path: Path, output_format: OutputForm
         "sources": list(merged.flux_data),
         "boundary": merged.boundary_data is not None,
         "split_by_sectors": merged.split_by_sectors,
-        "provenance": merged.provenance,
+        "provenance": _encode_provenance(merged.provenance),
         "acquisition": merged.acquisition,
     }
     nodes = {"/": xr.Dataset(attrs={"manifest": json.dumps(manifest, default=_json_default)})}
@@ -236,6 +241,11 @@ def load_artifact(cls: type[RhimeMergedData], path: Path, output_format: OutputF
             raise ValueError("Artifact dataset inventory does not match its manifest.")
         if manifest["acquisition"].get("stage") != "acquired":
             raise ValueError("Modern artifact acquisition facts disagree with its stage.")
+        expected_inputs = {
+            f"{kind}:{site}" for kind in ("observations", "footprints") for site in options.sites
+        } | {f"flux:{source}" for source in sources}
+        if manifest["boundary"]:
+            expected_inputs.add("boundary")
         result = cls(
             site_data={
                 site: _decode_dataset(tree[f"site_{i}"].to_dataset()) for i, site in enumerate(options.sites)
@@ -246,7 +256,7 @@ def load_artifact(cls: type[RhimeMergedData], path: Path, output_format: OutputF
             boundary_data=_decode_dataset(tree["boundary"].to_dataset()) if manifest["boundary"] else None,
             site_options=options,
             split_by_sectors=manifest["split_by_sectors"],
-            provenance=manifest["provenance"],
+            provenance=_decode_provenance(manifest["provenance"], expected_inputs=expected_inputs),
             acquisition=manifest["acquisition"],
         )
         result._artifact = tree

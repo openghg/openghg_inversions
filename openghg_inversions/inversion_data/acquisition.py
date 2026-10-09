@@ -8,8 +8,7 @@ scientific filtering, basis construction and sensitivity preparation.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from copy import deepcopy
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any
 import warnings
@@ -19,6 +18,9 @@ import xarray as xr
 
 from openghg_inversions.flux_sanitization import FluxNonFiniteCheck
 from openghg_inversions.inversion_data import _site_options
+from openghg_inversions.inversion_data._provenance import (
+    InputProvenance, MergedDataProvenance, selected_provenance,
+)
 from openghg_inversions.inversion_data.get_data import (
     _retrieve_inversion_data_from_options,
 )
@@ -29,16 +31,34 @@ from openghg_inversions.inversion_data.serialise import OutputFormat, load_merge
 class RhimeMergedData:
     """Borrowed merged datasets, selectors and selected retrieval provenance.
 
-    ``site_data`` contains merged observations and transport for each retained
-    site; ``flux_data`` maps source labels to datasets. Construction never
-    computes or copies numerical arrays. ``save`` writes the acquisition
-    boundary, before configured filters, basis functions or sensitivities.
-    ``boundary_data`` holds optional boundary conditions. ``split_by_sectors``
-    identifies the source layout; ``provenance`` contains selected input and
-    OpenGHG identifiers; ``acquisition`` records retrieval facts and processing
-    stage. Records may carry acquired or subsequently filtered data, but saving
-    requires an explicit ``acquisition["stage"] == "acquired"`` declaration.
-    Modern loading restores selectors and never accesses OpenGHG stores.
+    Construction never computes or copies numerical arrays. Records may carry
+    acquired or subsequently filtered data, but :meth:`save` requires an
+    explicit ``acquisition["stage"] == "acquired"`` declaration, before
+    configured filters, basis functions or sensitivities. :meth:`load` restores
+    selectors without accessing OpenGHG stores. A loaded record owns its open
+    files; call :meth:`close` only after consuming all arrays borrowed from it.
+
+    Attributes:
+        site_data: Merged observations and transport datasets keyed by retained
+            site name. Keys must match ``site_options.sites``. Datasets and
+            their potentially lazy arrays are borrowed.
+        flux_data: Flux datasets keyed by OpenGHG source label. Dataset
+            containers and numerical arrays are borrowed.
+        site_options: Complete retained acquisition selectors, including site
+            order and aligned averaging periods, inlets and other selectors.
+        boundary_data: Borrowed boundary-condition dataset, or ``None`` when
+            boundary conditions were not acquired.
+        split_by_sectors: Whether the acquired flux layout retains individual
+            sources for sector-resolved preparation.
+        provenance: A :class:`~openghg_inversions.inversion_data.MergedDataProvenance`
+            record of OpenGHG software identity and selected input store, UUID
+            and data-version identities. Unrecorded identities remain unknown;
+            these descriptions do not establish scientific compatibility.
+        acquisition: Retrieval facts and processing stage. Known species,
+            domain and time bounds are checked by
+            :meth:`validate_for_preparation`; missing historical facts remain
+            unknown. ``stage`` distinguishes acquired, filtered and unknown
+            data, and an empty mapping makes no acquisition claims.
     """
 
     site_data: dict[str, xr.Dataset]
@@ -46,7 +66,7 @@ class RhimeMergedData:
     site_options: _site_options.SiteOptions
     boundary_data: xr.Dataset | None = None
     split_by_sectors: bool = False
-    provenance: dict = field(default_factory=dict)
+    provenance: MergedDataProvenance = field(default_factory=MergedDataProvenance)
     acquisition: dict = field(default_factory=dict)
     _artifact: xr.DataTree | None = field(default=None, init=False, repr=False)
     _zip_store: Any = field(default=None, init=False, repr=False)
@@ -61,36 +81,20 @@ class RhimeMergedData:
             raise TypeError("RhimeMergedData accepts xarray datasets, not OpenGHG wrappers.")
         if any(not isinstance(source, str) for source in self.flux_data):
             raise TypeError("Flux source labels must be strings.")
-        from ._merged_artifact import selected_provenance
-
-        inputs = {
-            **{f"observations:{site}": selected_provenance(None) for site in self.site_data},
-            **{f"footprints:{site}": selected_provenance(None) for site in self.site_data},
-            **{f"flux:{source}": selected_provenance(data) for source, data in self.flux_data.items()},
-            **(
-                {"boundary": selected_provenance(self.boundary_data)}
-                if self.boundary_data is not None
-                else {}
-            ),
-        }
-        if not self.provenance:
-            self.provenance = {"openghg": {"version": "unknown", "commit": "unknown"}, "inputs": inputs}
-        if set(self.provenance) != {"openghg", "inputs"}:
-            raise ValueError("Provenance contains unsupported metadata.")
-        software = self.provenance["openghg"]
-        if set(software) != {"version", "commit"} or any(
-            not isinstance(value, str) for value in software.values()
+        if self.provenance == MergedDataProvenance():
+            self.provenance = MergedDataProvenance(
+                observations={site: InputProvenance() for site in self.site_data},
+                footprints={site: InputProvenance() for site in self.site_data},
+                flux={source: selected_provenance(data) for source, data in self.flux_data.items()},
+                boundary=selected_provenance(self.boundary_data) if self.boundary_data is not None else None,
+            )
+        if (
+            set(self.provenance.observations) != set(self.site_data)
+            or set(self.provenance.footprints) != set(self.site_data)
+            or set(self.provenance.flux) != set(self.flux_data)
+            or (self.provenance.boundary is None) != (self.boundary_data is None)
         ):
-            raise ValueError("OpenGHG provenance requires version and commit strings (or 'unknown').")
-        if set(self.provenance["inputs"]) != set(inputs):
             raise ValueError("Provenance must identify each retained input.")
-        for identity in self.provenance["inputs"].values():
-            if set(identity) != {"store", "uuid", "dataversion"} or any(
-                not isinstance(value, str | int)
-                and not (isinstance(value, list) and all(isinstance(item, str | int) for item in value))
-                for value in identity.values()
-            ):
-                raise ValueError("Input provenance supports only store, uuid and dataversion.")
         allowed_facts = {
             "stage",
             "species",
@@ -199,20 +203,13 @@ class RhimeMergedData:
         if self.acquisition.get("stage") == "filtered" and stage == "acquired":
             raise ValueError("Filtered merged data cannot be relabelled as acquired.")
         site_options = self.site_options.retain_sites(tuple(site_data), context=context)
-        provenance = deepcopy(self.provenance)
-        provenance["inputs"] = {
-            key: value
-            for key, value in provenance["inputs"].items()
-            if not key.startswith(("observations:", "footprints:"))
-            or key.split(":", 1)[1] in site_data
-        }
         return RhimeMergedData(
             site_data=dict(site_data),
             flux_data=dict(self.flux_data),
             boundary_data=self.boundary_data,
             site_options=site_options,
             split_by_sectors=self.split_by_sectors,
-            provenance=provenance,
+            provenance=self.provenance.retain_sites(site_data),
             acquisition={**self.acquisition, "stage": stage},
         )
 
@@ -221,7 +218,7 @@ class RhimeMergedData:
         cls, fp_all: dict, site_options: _site_options.SiteOptions, *, acquisition: dict | None = None
     ) -> RhimeMergedData:
         """Adapt the remaining legacy scientific producers (#821; remove in 0.9)."""
-        from ._merged_artifact import selected_provenance
+        from ._merged_artifact import _decode_provenance
 
         stored_stage = fp_all.get(".artifact_stage")
         acquisition = dict(acquisition or {})
@@ -231,28 +228,20 @@ class RhimeMergedData:
         acquisition["stage"] = requested_stage
         fluxes = fp_all.get(".flux", {})
         boundary = fp_all.get(".bc")
-        provenance = fp_all.get(
-            ".provenance",
-            {
-                "openghg": {"version": "unknown", "commit": "unknown"},
-                "inputs": {
-                    **{f"flux:{source}": selected_provenance(value) for source, value in fluxes.items()},
-                    **({"boundary": selected_provenance(boundary)} if boundary is not None else {}),
-                    **{f"observations:{site}": selected_provenance(None) for site in site_options.sites},
-                    **{f"footprints:{site}": selected_provenance(None) for site in site_options.sites},
-                },
-            },
-        )
-        retained_inputs = {
-            f"{kind}:{site}" for kind in ("observations", "footprints") for site in site_options.sites
-        }
-        retained_inputs.update(f"flux:{source}" for source in fluxes)
-        if boundary is not None:
-            retained_inputs.add("boundary")
-        provenance = {
-            **provenance,
-            "inputs": {key: value for key, value in provenance["inputs"].items() if key in retained_inputs},
-        }
+        if ".provenance" in fp_all:
+            provenance = _decode_provenance(fp_all[".provenance"]).retain_sites(site_options.sites)
+            provenance = replace(
+                provenance,
+                flux={source: identity for source, identity in provenance.flux.items() if source in fluxes},
+                boundary=provenance.boundary if boundary is not None else None,
+            )
+        else:
+            provenance = MergedDataProvenance(
+                observations={site: InputProvenance() for site in site_options.sites},
+                footprints={site: InputProvenance() for site in site_options.sites},
+                flux={source: selected_provenance(value) for source, value in fluxes.items()},
+                boundary=selected_provenance(boundary) if boundary is not None else None,
+            )
         return cls(
             site_data={site: fp_all[site] for site in site_options.sites},
             flux_data={
@@ -272,17 +261,24 @@ class RhimeMergedData:
         Only this explicit adapter reconstructs OpenGHG wrappers. Flux and boundary
         dataset containers are shallow copies; site datasets remain borrowed.
         Consumers must copy site containers before assigning variables or attrs.
-        Numerical arrays remain shared.
+        Numerical arrays remain shared. Wrapper metadata carries selected source
+        identities, not arbitrary OpenGHG catalogue fields.
         """
         from openghg.dataobjects import BoundaryConditionsData, FluxData
 
         result = dict(self.site_data)
         result[".flux"] = {
-            source: FluxData(data=data.copy(deep=False), metadata={"data_type": "flux"})
+            source: FluxData(
+                data=data.copy(deep=False),
+                metadata={"data_type": "flux", **asdict(self.provenance.flux[source])},
+            )
             for source, data in self.flux_data.items()
         }
         if self.boundary_data is not None:
-            result[".bc"] = BoundaryConditionsData(data=self.boundary_data.copy(deep=False), metadata={})
+            result[".bc"] = BoundaryConditionsData(
+                data=self.boundary_data.copy(deep=False),
+                metadata=asdict(self.provenance.boundary),
+            )
         result[".split_by_sectors"] = self.split_by_sectors
         if self.acquisition.get("stage") in {"acquired", "filtered"}:
             result[".artifact_stage"] = self.acquisition["stage"]
@@ -399,8 +395,7 @@ class RhimeMergedData:
         """
         if save_merged_data and merged_data_dir is None:
             raise ValueError("Saving merged data requires merged_data_dir.")
-        # Requested options remain authoritative; legacy metadata is redundant.
-        fp_all, retained_sites, *_ = _retrieve_inversion_data_from_options(
+        result = _retrieve_inversion_data_from_options(
             species=species,
             site_options=site_options,
             domain=domain,
@@ -419,32 +414,7 @@ class RhimeMergedData:
             emissions_domain=emissions_domain,
             split_by_sectors=split_by_sectors,
             averagingerror=averaging_error,
-            save_merged_data=False,
-            merged_data_name=merged_data_name,
-            merged_data_dir=merged_data_dir,
-            output_name=output_name,
             flux_non_finite_check=flux_non_finite_check,
-        )
-        site_options = site_options.retain_sites(retained_sites, context="Data gathering")
-        fp_all = _select_fp_all_sites(fp_all, site_options.sites)
-        result = cls.from_legacy_fp_all(
-            fp_all,
-            site_options,
-            acquisition={
-                "stage": "acquired",
-                "species": species,
-                "domain": domain,
-                "start_date": start_date,
-                "end_date": end_date,
-                "emissions_domain": emissions_domain,
-                "fp_model": fp_model,
-                "fp_species": fp_species,
-                "calibration_scale": calibration_scale,
-                "use_bc": use_bc,
-                "bc_input": bc_input,
-                "averaging_error": averaging_error,
-                "flux_non_finite_check": flux_non_finite_check,
-            },
         )
         if save_merged_data and merged_data_dir is not None:
             result.save(
