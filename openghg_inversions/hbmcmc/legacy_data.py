@@ -817,8 +817,8 @@ def retrieve_inversion_data(
         bc_store=bc_store,
         obs_store=obs_store,
         footprint_store=footprint_store,
-        emissions_store=emissions_store,
-        emissions_domain=emissions_domain,
+        flux_store=emissions_store,
+        flux_domain=emissions_domain,
         split_by_sectors=split_by_sectors,
         flux_non_finite_check=flux_non_finite_check,
     )

@@ -431,6 +431,8 @@ def _extract_flux_dataarray(flux_entry: object, flux_key: str) -> xr.DataArray:
 
 def make_basis_functions_from_fp_all(*, fp_all: dict, **kwargs: Any) -> BasisFunctions:
     """Adapt legacy merged dictionaries to dataset basis construction."""
+    if "emissions_name" in kwargs and "flux_sources" not in kwargs:
+        kwargs["flux_sources"] = kwargs.pop("emissions_name")
     return make_basis_functions(
         site_data={key: value for key, value in fp_all.items() if not key.startswith(".")},
         flux_data={key: _extract_flux_dataarray(value, flux_key=key).to_dataset(name="flux")

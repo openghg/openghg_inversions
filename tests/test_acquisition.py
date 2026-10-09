@@ -157,3 +157,78 @@ def test_retrieval_builds_modern_record_without_legacy_adapters(monkeypatch):
     assert merged.provenance.boundary.uuid == "boundary-id"
     assert merged.acquisition.species == "ch4"
     assert merged.acquisition.start_date == "2020-01-01"
+
+
+@pytest.mark.parametrize(("selectors", "store", "source_domain"), [
+    ({}, "user", "FINE"),
+    ({"flux_store": "selected", "flux_domain": "COARSE"}, "selected", "COARSE"),
+    ({"emissions_store": "selected", "emissions_domain": "COARSE"}, "selected", "COARSE"),
+])
+def test_flux_selectors_retrieve_source_domain_and_preserve_footprint_domain(
+    monkeypatch, selectors, store, source_domain
+):
+    """A source domain selects flux metadata while the footprint grid stays native."""
+    from contextlib import nullcontext
+    import numpy as np
+    import pandas as pd
+
+    time = pd.date_range("2020-01-01", periods=1)
+    observations = xr.Dataset(
+        {"mf": ("time", [1.0], {"units": "1e-9"}), "mf_error": ("time", [0.2]),
+         "mf_repeatability": ("time", [0.2])},
+        coords={"time": time}, attrs={"scale": "WMO"},
+    )
+    flux = xr.Dataset(
+        {"flux": (("lat", "lon", "time"), np.arange(4.0).reshape(2, 2, 1))},
+        coords={"lat": [0., 1.], "lon": [0., 1.], "time": time},
+    )
+    footprint = xr.Dataset(
+        {"fp": (("lat", "lon", "time"), np.ones((3, 3, 1)))},
+        coords={"lat": [0., .5, 1.], "lon": [0., .5, 1.], "time": time},
+    )
+
+    def wrap(data):
+        return SimpleNamespace(data=data, metadata={})
+
+    def retrieve_flux(**kwargs):
+        assert kwargs["store"] == store
+        assert kwargs["domain"] == source_domain
+        return {"inventory": wrap(flux)}
+
+    def retrieve_footprint(**kwargs):
+        assert kwargs["domain"] == "FINE"
+        return wrap(footprint)
+
+    monkeypatch.setattr(get_data, "get_flux_data", retrieve_flux)
+    monkeypatch.setattr(get_data, "get_obs_data", lambda **kwargs: wrap(observations))
+    monkeypatch.setattr(get_data, "get_footprint_data", retrieve_footprint)
+    monkeypatch.setattr(get_data, "merged_scenario_data", lambda *args, **kwargs: observations)
+    warning = pytest.warns(DeprecationWarning, match=r"removed in 0\.9") if "emissions_store" in selectors else nullcontext()
+    with warning:
+        acquired = RhimeMergedData.from_options(
+            species="ch4", site_options=SiteOptions.from_inputs(sites=["TAC"], averaging_period="1h"),
+            domain="FINE", start_date="2020-01-01", end_date="2020-01-02",
+            flux_sources=["inventory"], use_bc=False, **selectors,
+        )
+    assert acquired.acquisition.domain == "FINE"
+    assert acquired.acquisition.flux_domain == selectors.get("flux_domain", selectors.get("emissions_domain"))
+    if source_domain == "COARSE":
+        assert acquired.flux_data["inventory"].sizes["lat"] == 3
+        assert acquired.flux_data["inventory"].flux.sel(lat=1, lon=1).item() == 3.
+        assert acquired.flux_data["inventory"].flux.sel(lat=.5, lon=.5).item() == 0.
+    else:
+        xr.testing.assert_identical(acquired.flux_data["inventory"], flux)
+    assert flux.sizes["lat"] == 2
+
+
+@pytest.mark.parametrize(("old", "new"), [
+    ("emissions_store", "flux_store"), ("emissions_domain", "flux_domain"),
+])
+@pytest.mark.parametrize("value", [None, "same"])
+def test_direct_acquisition_rejects_duplicate_flux_spellings(old, new, value):
+    with pytest.raises(ValueError, match="cannot be supplied together"):
+        RhimeMergedData.from_options(
+            species="ch4", site_options=SiteOptions.from_inputs(sites=["TAC"], averaging_period="1h"),
+            domain="EUROPE", start_date="2020-01-01", end_date="2020-01-02",
+            flux_sources=["inventory"], **{old: value, new: value},
+        )
