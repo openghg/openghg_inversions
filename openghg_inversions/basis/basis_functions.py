@@ -578,37 +578,36 @@ def basis_functions_from_fp_all_flat_basis(
     basis_flat: xr.DataArray | Mapping[str, xr.DataArray],
     metadata: Mapping[str, Any] | None = None,
 ) -> FluxWeightedBasis:
-    """Compatibility adapter that constructs a basis object from flat basis data.
+    """Adapt legacy merged dictionaries to retained flat-basis construction.
 
-    This is also the public handoff for project-owned flat-basis algorithms in
-    copied RHIME runners. A single two-dimensional array defines a shared
-    spatial basis. A source-keyed mapping defines source-specific bases and is
-    restricted and ordered to match runtime flux sources when ``fp_all`` is
-    sector resolved. In both cases the retained flux is reconstructed from the
-    current ``fp_all`` input rather than from the flat-basis producer.
-
-    Args:
-        fp_all: Legacy merged-data dictionary containing a ``".flux"`` side
-            channel and optional ``".split_by_sectors"`` flag.
-        basis_flat: Two-dimensional shared flat basis array, or source-keyed
-            two-dimensional flat basis arrays, produced by a compatible basis
-            algorithm or legacy loading path.
-        metadata: Optional namespaced metadata to carry on the basis object.
-
-    Returns:
-        A retained ``BasisFunctions`` object with flux reconstructed from
-        ``fp_all``.
-
-    Raises:
-        TypeError: If a runtime flux entry or basis input has an unsupported
-            type.
-        ValueError: If runtime flux is missing or inconsistent, a
-            source-specific basis omits a runtime source, or basis labels and
-            dimensions violate the retained-basis contract.
-        xarray.AlignmentError: If basis and current-run flux grids are not
-            physically compatible.
+    New callers should pass runtime datasets to
+    :func:`basis_functions_from_flat_basis` instead.
     """
-    flux = flux_from_fp_all(fp_all)
+    return basis_functions_from_flat_basis(
+        flux_data={key: _extract_flux_dataarray(value, flux_key=key).to_dataset(name="flux")
+                   for key, value in fp_all[".flux"].items()},
+        split_by_sectors=_is_multi_source_workflow(fp_all),
+        basis_flat=basis_flat,
+        metadata=metadata,
+    )
+
+
+def basis_functions_from_flat_basis(
+    *,
+    flux_data: Mapping[str, xr.Dataset],
+    split_by_sectors: bool = False,
+    basis_flat: xr.DataArray | Mapping[str, xr.DataArray],
+    metadata: Mapping[str, Any] | None = None,
+) -> FluxWeightedBasis:
+    """Attach borrowed runtime flux to shared or source-specific flat labels.
+
+    ``flux_data`` maps source labels to datasets containing ``flux``. With
+    ``split_by_sectors=True``, all sources are retained in mapping order and
+    source-specific labels are selected in that same order. Otherwise runtime
+    fluxes are combined using the ModelScenario convention. Spatial alignment
+    and flat-label validation belong to the retained basis constructors.
+    """
+    flux = flux_from_data(flux_data, split_by_sectors=split_by_sectors)
     if isinstance(basis_flat, Mapping):
         selected_basis = dict(basis_flat)
         if "source" in flux.dims:
@@ -656,18 +655,31 @@ def flux_from_fp_all(fp_all: dict) -> xr.DataArray:
     if ".flux" not in fp_all or not fp_all[".flux"]:
         raise ValueError("Cannot construct BasisFunctions object: fp_all['.flux'] is missing or empty.")
 
-    flux_entries = fp_all[".flux"]
-    flux_arrays = {key: _extract_flux_dataarray(value, flux_key=key) for key, value in flux_entries.items()}
+    return flux_from_data(
+        {key: _extract_flux_dataarray(value, flux_key=key).to_dataset(name="flux")
+         for key, value in fp_all[".flux"].items()},
+        split_by_sectors=_is_multi_source_workflow(fp_all),
+    )
 
-    if _is_multi_source_workflow(fp_all):
+
+def flux_from_data(
+    flux_data: Mapping[str, xr.Dataset], *, split_by_sectors: bool = False
+) -> xr.DataArray:
+    """Combine or stack all borrowed runtime source fluxes in mapping order.
+
+    Dask-backed payloads remain lazy. Sector-resolved fluxes must share native
+    time coordinates; non-sectoral fluxes use the ModelScenario combination.
+    Non-finite flux values follow the retained-basis zero-fill policy.
+    """
+    if not flux_data:
+        raise ValueError("Cannot construct BasisFunctions object: runtime flux is missing or empty.")
+    flux_arrays = {key: value["flux"] for key, value in flux_data.items()}
+    if split_by_sectors:
         flux = _stack_flux_sources_with_alignment(flux_arrays)
     else:
         flux = _combine_flux_sources_like_modelscenario(flux_arrays)
-
     return sanitize_flux_nonfinite(
-        flux,
-        context="retained basis flux from fp_all",
-        trust_attrs=len(flux_arrays) == 1,
+        flux, context="retained basis runtime flux", trust_attrs=len(flux_arrays) == 1,
     )
 
 

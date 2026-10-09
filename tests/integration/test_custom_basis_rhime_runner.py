@@ -301,12 +301,9 @@ def test_generated_project_basis_uses_guarded_connected_inertial_composition(
     from openghg_inversions.inversion_data import RhimeMergedData, SiteOptions
     merged = RhimeMergedData(site_data={"TAC": xr.Dataset()}, flux_data={},
         site_options=SiteOptions.from_inputs(sites=["TAC"], averaging_period="1h"))
-    adapters = []
-    def adapt():
-        value = RhimeMergedData.to_legacy_fp_all(merged)
-        adapters.append(value)
-        return value
-    monkeypatch.setattr(merged, "to_legacy_fp_all", adapt)
+    def reject_legacy_adapter():
+        raise AssertionError("Modern custom basis must use datasets directly")
+    monkeypatch.setattr(merged, "to_legacy_fp_all", reject_legacy_adapter)
     data_args = {
         "species": "ch4",
         "domain": "EUROPE",
@@ -317,13 +314,15 @@ def test_generated_project_basis_uses_guarded_connected_inertial_composition(
     }
 
     def basis_weights(
-        actual_fp_all: Any,
+        site_data: Any,
+        flux_data: Any,
         emissions_name: list[str],
         *,
         abs_flux: bool,
     ) -> xr.DataArray:
         """Return deterministic weights at the public custom-basis boundary."""
-        assert actual_fp_all is adapters[0]
+        assert site_data is merged.site_data
+        assert flux_data is merged.flux_data
         assert emissions_name == ["inventory"]
         assert abs_flux is True
         return weights
@@ -383,10 +382,10 @@ def test_generated_project_basis_uses_guarded_connected_inertial_composition(
             "openghg_inversions:project_basis_connectivity": 1,
             "openghg_inversions:project_basis_max_child_pca_eccentricity": 7.5,
             "openghg_inversions:project_basis_class_policy": "land_ocean",
-            "openghg_inversions:project_basis_weights": ("basis_weights_from_fp_all_abs_flux_normalized"),
+            "openghg_inversions:project_basis_weights": ("basis_weights_from_data_abs_flux_normalized"),
         }
-        assert kwargs["fp_all"] is adapters[0]
-        assert len(adapters) == 1
+        assert kwargs["flux_data"] is merged.flux_data
+        assert kwargs["split_by_sectors"] is merged.split_by_sectors
         assert kwargs["basis_flat"].name == "basis"
         assert kwargs["basis_flat"].dtype == np.dtype(np.int16)
         xr.testing.assert_equal(kwargs["basis_flat"], generated_labels.astype(np.int16).rename("basis"))
@@ -394,10 +393,10 @@ def test_generated_project_basis_uses_guarded_connected_inertial_composition(
         assert kwargs["metadata"] == expected_metadata
         return expected_basis
 
-    monkeypatch.setattr(custom_basis_runner, "basis_weights_from_fp_all", basis_weights)
+    monkeypatch.setattr(custom_basis_runner, "basis_weights_from_data", basis_weights)
     monkeypatch.setattr(custom_basis_runner, "load_country_region_classes", load_classes)
     monkeypatch.setattr(custom_basis_runner, "region_constrained_basis", build_labels)
-    monkeypatch.setattr(custom_basis_runner, "basis_functions_from_fp_all_flat_basis", retain_basis)
+    monkeypatch.setattr(custom_basis_runner, "basis_functions_from_flat_basis", retain_basis)
 
     actual = custom_basis_runner.build_project_basis(
         merged,

@@ -5,7 +5,7 @@ import logging
 import os
 import warnings
 from collections import namedtuple
-from collections.abc import Hashable
+from collections.abc import Hashable, Mapping, Sequence
 from functools import partial
 from numbers import Integral
 from pathlib import Path
@@ -341,6 +341,55 @@ def basis_weights_from_fp_all(
     """
     flux, footprints = _flux_fp_from_fp_all(fp_all, emissions_name)
     return _mean_fp_times_mean_flux(flux, footprints, abs_flux=abs_flux, mask=mask).as_numpy()
+
+
+def basis_weights_from_data(
+    site_data: Mapping[str, xr.Dataset],
+    flux_data: Mapping[str, xr.Dataset],
+    emissions_name: Sequence[str] | None = None,
+    *,
+    abs_flux: bool = False,
+    mask: xr.DataArray | None = None,
+) -> xr.DataArray:
+    """Materialize mean-footprint times mean-flux weights for basis fitting.
+
+    Select only the first requested emissions source, or the first mapping
+    entry when omitted. All site footprint times contribute to the mean. This
+    named eager algorithm boundary leaves the borrowed datasets unchanged.
+    ``mask`` optionally drops cells outside the fitting region.
+    """
+    source = emissions_name[0] if emissions_name is not None else next(iter(flux_data))
+    flux = flux_data[source]["flux"]
+    footprints = [dataset["fp"] for dataset in site_data.values()]
+    return _mean_fp_times_mean_flux(flux, footprints, abs_flux=abs_flux, mask=mask).as_numpy()
+
+
+def basis_from_weights(
+    weights: xr.DataArray,
+    start_date: str,
+    domain: str,
+    basis_algorithm: str,
+    nbasis: int,
+    *,
+    country_directory: str | None = None,
+    landsea_indices: np.ndarray | None = None,
+    **region_kwargs: Any,
+) -> xr.DataArray:
+    """Fit a generated basis with the existing weight-array algorithms."""
+    if basis_algorithm == "quadtree":
+        return quadtree_basis_from_weights(weights, start_date, domain, nbasis=nbasis)
+    if basis_algorithm == "weighted":
+        return bucket_basis_from_weights(
+            weights, start_date, domain, nbasis=nbasis,
+            country_directory=country_directory, landsea_indices=landsea_indices,
+        )
+    if basis_algorithm == "region_constrained":
+        if region_kwargs.get("region_classes") is None:
+            raise ValueError("region_classes must be supplied for the region_constrained basis algorithm.")
+        return region_constrained_basis_from_weights(
+            weights, start_date, domain, nbasis=nbasis, **region_kwargs,
+        )
+    raise KeyError(basis_algorithm)
 
 
 def load_intem_outer_regions(
@@ -1260,6 +1309,52 @@ def fixed_outer_regions_basis(
     contrast_s_diag: xr.DataArray | None = None,
     allow_empty_inner_region: bool = False,
 ) -> xr.DataArray:
+    """Adapt legacy merged dictionaries to dataset fixed-outer basis fitting.
+
+    See :func:`fixed_outer_regions_basis_from_data` for numerical options.
+    """
+    from .basis_functions import _extract_flux_dataarray
+
+    return fixed_outer_regions_basis_from_data(
+        {key: value for key, value in fp_all.items() if not key.startswith(".")},
+        {key: _extract_flux_dataarray(value, flux_key=key).to_dataset(name="flux")
+         for key, value in fp_all[".flux"].items()},
+        start_date, basis_algorithm, domain, emissions_name, nbasis, country_directory, abs_flux,
+        outer_regions_path=outer_regions_path, region_classes=region_classes,
+        region_allocation=region_allocation, min_regions_per_class=min_regions_per_class,
+        split_acceptance=split_acceptance, contrast_contribution=contrast_contribution,
+        contrast_cell_weight=contrast_cell_weight, min_contrast_delta_eig=min_contrast_delta_eig,
+        min_contrast_lambda=min_contrast_lambda, contrast_tau=contrast_tau,
+        contrast_sigma_design=contrast_sigma_design, contrast_s_diag=contrast_s_diag,
+        allow_empty_inner_region=allow_empty_inner_region,
+    )
+
+
+def fixed_outer_regions_basis_from_data(
+    site_data: Mapping[str, xr.Dataset],
+    flux_data: Mapping[str, xr.Dataset],
+    start_date: str,
+    basis_algorithm: str,
+    domain: str,
+    emissions_name: Sequence[str] | None = None,
+    nbasis: int = 100,
+    country_directory: str | None = None,
+    abs_flux: bool = False,
+    *,
+    outer_regions_path: str | Path | None = None,
+    region_classes: xr.DataArray | None = None,
+    region_allocation: AllocationMode = "weight",
+    min_regions_per_class: int = 1,
+    split_acceptance: Literal["none", "contrast_score"] = "none",
+    contrast_contribution: xr.DataArray | None = None,
+    contrast_cell_weight: xr.DataArray | None = None,
+    min_contrast_delta_eig: float | None = None,
+    min_contrast_lambda: float | None = None,
+    contrast_tau: float | None = None,
+    contrast_sigma_design: float | None = None,
+    contrast_s_diag: xr.DataArray | None = None,
+    allow_empty_inner_region: bool = False,
+) -> xr.DataArray:
     """Use fixed InTEM outer regions and fit inner regions with an algorithm.
 
     The InTEM outer-region file defines known outer labels. Its optional
@@ -1274,15 +1369,15 @@ def fixed_outer_regions_basis(
     weights normally.
 
     Args:
-        fp_all: Legacy merged-data dictionary produced by the data preparation
-            path.
+        site_data: Borrowed site datasets containing footprints.
+        flux_data: Borrowed flux datasets keyed by runtime source label.
         start_date: Start date of the inversion period.
         basis_algorithm: Algorithm used to fit the inner region. Supported
             values are ``"quadtree"``, ``"weighted"``, and
             ``"region_constrained"``.
         domain: Domain across which to calculate basis functions.
         emissions_name: Optional list of OpenGHG flux source names used to
-            select emissions from ``fp_all``.
+            select the first source for weighting.
         nbasis: Desired number of inner-region basis labels.
         country_directory: Optional directory containing land/sea files and the
             InTEM outer-region file. When omitted, default package files are
@@ -1335,7 +1430,8 @@ def fixed_outer_regions_basis(
         )
 
     # Validate the physical grid before adopting the authoritative flux coordinates.
-    flux, _ = _flux_fp_from_fp_all(fp_all, emissions_name)
+    source = emissions_name[0] if emissions_name is not None else next(iter(flux_data))
+    flux = flux_data[source]["flux"]
     flux_grid = flux.isel(
         {dimension: 0 for dimension in flux.dims if dimension not in intem_regions.dims},
         drop=True,
@@ -1352,7 +1448,9 @@ def fixed_outer_regions_basis(
     mask = intem_regions == inner_index
 
     if allow_empty_inner_region:
-        inner_weights = basis_weights_from_fp_all(fp_all, emissions_name, abs_flux=abs_flux, mask=mask)
+        inner_weights = basis_weights_from_data(
+            site_data, flux_data, emissions_name, abs_flux=abs_flux, mask=mask,
+        )
         finite_inner_weights = inner_weights.to_numpy()
         finite_inner_weights = finite_inner_weights[np.isfinite(finite_inner_weights)]
         if finite_inner_weights.size and not bool((finite_inner_weights != 0.0).any()):
@@ -1361,13 +1459,12 @@ def fixed_outer_regions_basis(
                 "response; keeping it as a single fixed region instead of subdividing it further "
                 "(allow_empty_inner_region=True)."
             )
-            basis = intem_regions.rename("basis")
+            basis = intem_regions.copy().rename("basis")
             basis += 1  # intem_region_definitions.nc regions start at 0, not 1
             basis = basis.expand_dims({"time": [pd.to_datetime(start_date)]})
             return basis
 
-    basis_function = basis_functions[basis_algorithm].algorithm
-    algorithm_kwargs = {"country_directory": country_directory, "abs_flux": abs_flux, "mask": mask}
+    algorithm_kwargs: dict[str, Any] = {"country_directory": country_directory}
     if basis_algorithm == "weighted":
         landsea_classes = load_country_region_classes(domain, country_directory=country_directory)
         landsea_classes = normalize_spatial_grid(
@@ -1394,16 +1491,14 @@ def fixed_outer_regions_basis(
                 "contrast_s_diag": contrast_s_diag,
             }
         )
-    inner_region = basis_function(
-        fp_all,
-        start_date,
-        domain,
-        emissions_name,
-        nbasis,
-        **algorithm_kwargs,
+    weights = basis_weights_from_data(
+        site_data, flux_data, emissions_name, abs_flux=abs_flux, mask=mask,
+    )
+    inner_region = basis_from_weights(
+        weights, start_date, domain, basis_algorithm, nbasis, **algorithm_kwargs,
     )
 
-    basis = intem_regions.rename("basis")
+    basis = intem_regions.copy().rename("basis")
 
     fixed_outer_values = intem_regions.where(~mask).to_numpy()
     finite_outer_values = fixed_outer_values[np.isfinite(fixed_outer_values)]

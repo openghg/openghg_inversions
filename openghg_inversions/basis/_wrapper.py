@@ -1,9 +1,9 @@
 """Wrappers for creating basis functions and applying them to sensitivities."""
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from time import time
-from typing import Any, Literal, cast
+from typing import Any, Literal
 
 import xarray as xr
 
@@ -11,21 +11,31 @@ from .basis_functions import (
     BASIS_ARTIFACT_PATH_ATTR,
     BASIS_ARTIFACT_SOURCE_ATTR,
     BasisFunctions,
-    basis_functions_from_fp_all_flat_basis,
-    flux_from_fp_all,
+    basis_functions_from_flat_basis,
+    flux_from_data,
+    _extract_flux_dataarray,
+    _is_multi_source_workflow,
 )
-from ._functions import basis_functions, fixed_outer_regions_basis, basis, openghginv_path
+from ._functions import (
+    basis_from_weights,
+    basis_weights_from_data,
+    fixed_outer_regions_basis_from_data,
+    basis,
+    openghginv_path,
+)
 
 _VALID_BASIS_OUTPUT_FORMATS = ("legacy", "datatree")
 
 
 def make_basis_functions(
     *,
-    fp_all: dict,
+    site_data: Mapping[str, xr.Dataset],
+    flux_data: Mapping[str, xr.Dataset],
+    split_by_sectors: bool = False,
     species: str,
     domain: str,
     start_date: str,
-    emissions_name: list[str] | None,
+    emissions_name: Sequence[str] | None,
     nbasis: int,
     basis_algorithm: str | None = None,
     fix_outer_regions: bool = False,
@@ -55,14 +65,16 @@ def make_basis_functions(
     legacy fixedbasis ``fp_data`` side channels.
 
     Args:
-        fp_all: Legacy merged-data dictionary containing flux and footprint data.
+        site_data: Borrowed site datasets containing footprints.
+        flux_data: Borrowed datasets keyed by runtime flux source label.
+        split_by_sectors: Retain all flux sources separately in mapping order.
         species: Atmospheric trace gas species used when saving generated basis
             artifacts.
         domain: Inversion domain used for generated basis metadata and basis
             artifact lookup.
         start_date: Start date of the inversion period.
         emissions_name: Optional list of OpenGHG flux source names used to
-            select emissions from ``fp_all``.
+            select the first source for weighting. All runtime sources are retained.
         nbasis: Desired number of generated basis regions.
         basis_algorithm: Algorithm used when generating a basis field on the
             fly. Supported values are ``"quadtree"``, ``"weighted"``, and
@@ -116,7 +128,6 @@ def make_basis_functions(
     Raises:
         ValueError: If neither a saved basis case nor an algorithm is supplied,
             or if an unsupported output format or basis algorithm is requested.
-        TypeError: If a generated algorithm returns an unsupported basis object.
     """
     saving_generated_basis = output_path is not None and basis_algorithm is not None and fp_basis_case is None
     if saving_generated_basis and basis_output_format not in _VALID_BASIS_OUTPUT_FORMATS:
@@ -125,7 +136,7 @@ def make_basis_functions(
             f"Unknown basis_output_format '{basis_output_format}'. Expected one of: '{expected}'."
         )
 
-    basis_data_array: xr.DataArray | Mapping[str, xr.DataArray] | None = None
+    basis_data_array: xr.DataArray | None = None
     basis_start = time()
 
     if fp_basis_case is not None:
@@ -134,7 +145,8 @@ def make_basis_functions(
                 f"Basis algorithm {basis_algorithm} and basis case {fp_basis_case} supplied; using {fp_basis_case}."
             )
         basis_functions_object = load_basis_functions(
-            fp_all=fp_all,
+            flux_data=flux_data,
+            split_by_sectors=split_by_sectors,
             domain=domain,
             basis_case=fp_basis_case,
             basis_directory=basis_directory,
@@ -146,8 +158,9 @@ def make_basis_functions(
     elif fix_outer_regions is True:
         print("Using fixed outer regions for basis functions.")
         try:
-            basis_data_array = fixed_outer_regions_basis(
-                fp_all,
+            basis_data_array = fixed_outer_regions_basis_from_data(
+                site_data,
+                flux_data,
                 start_date,
                 basis_algorithm,
                 domain,
@@ -175,21 +188,14 @@ def make_basis_functions(
             ) from e
         print(f"Using InTEM regions with {basis_algorithm} to derive basis functions for inner region.")
         print("Using generated in-memory basis artifact.")
-        basis_functions_object = basis_functions_from_fp_all_flat_basis(
-            fp_all=fp_all,
+        basis_functions_object = basis_functions_from_flat_basis(
+            flux_data=flux_data,
+            split_by_sectors=split_by_sectors,
             basis_flat=basis_data_array,
             metadata={BASIS_ARTIFACT_SOURCE_ATTR: "generated"},
         )
 
     else:
-        try:
-            basis_function = basis_functions[basis_algorithm]
-        except KeyError as e:
-            raise ValueError(
-                "Basis algorithm not recognised. Please use 'quadtree', 'weighted', "
-                "'region_constrained', or input a basis function file"
-            ) from e
-        print(f"Using {basis_function.description} to derive basis functions.")
         algorithm_kwargs: dict[str, Any] = {"country_directory": country_directory}
         if basis_algorithm == "region_constrained":
             algorithm_kwargs.update(
@@ -207,23 +213,20 @@ def make_basis_functions(
                     "contrast_s_diag": contrast_s_diag,
                 }
             )
-        basis_candidate = basis_function.algorithm(
-            fp_all,
-            start_date,
-            domain,
-            emissions_name,
-            nbasis,
-            **algorithm_kwargs,
-        )
-        if not isinstance(basis_candidate, (xr.DataArray, Mapping)):
-            raise TypeError(
-                f"Basis algorithm {basis_algorithm!r} returned unsupported basis data "
-                f"{type(basis_candidate)!r}."
+        weights = basis_weights_from_data(site_data, flux_data, emissions_name)
+        try:
+            basis_data_array = basis_from_weights(
+                weights, start_date, domain, basis_algorithm, nbasis, **algorithm_kwargs,
             )
-        basis_data_array = cast(xr.DataArray | Mapping[str, xr.DataArray], basis_candidate)
+        except KeyError as e:
+            raise ValueError(
+                "Basis algorithm not recognised. Please use 'quadtree', 'weighted', "
+                "'region_constrained', or input a basis function file"
+            ) from e
         print("Using generated in-memory basis artifact.")
-        basis_functions_object = basis_functions_from_fp_all_flat_basis(
-            fp_all=fp_all,
+        basis_functions_object = basis_functions_from_flat_basis(
+            flux_data=flux_data,
+            split_by_sectors=split_by_sectors,
             basis_flat=basis_data_array,
             metadata={BASIS_ARTIFACT_SOURCE_ATTR: "generated"},
         )
@@ -265,7 +268,8 @@ def make_basis_functions(
 
 def load_basis_functions(
     *,
-    fp_all: dict,
+    flux_data: Mapping[str, xr.Dataset],
+    split_by_sectors: bool = False,
     domain: str,
     basis_case: str,
     basis_directory: str | Path | None = None,
@@ -276,11 +280,12 @@ def load_basis_functions(
     ``openghg_inversions.flux_weighted_basis`` schema and are loaded through
     ``BasisFunctions.load``. Otherwise the existing legacy flat artifact loader
     is used and a retained basis object is built from runtime flux in
-    ``fp_all``.
+    ``flux_data``.
 
     Args:
-        fp_all: Legacy merged-data dictionary used to build runtime flux when
-            adapting legacy flat artifacts or replacing serialized DataTree flux.
+        flux_data: Borrowed runtime flux datasets used for flat artifacts and
+            to replace serialized DataTree flux.
+        split_by_sectors: Retain all runtime sources separately in mapping order.
         domain: Inversion domain used in the artifact path convention.
         basis_case: Basis case prefix used in the artifact path convention.
         basis_directory: Optional root directory containing per-domain basis
@@ -307,7 +312,7 @@ def load_basis_functions(
             )
         basis_functions = BasisFunctions.load(datatree_files[0])
         print(f"Loaded DataTree basis artifact: {datatree_files[0]}")
-        current_flux = flux_from_fp_all(fp_all)
+        current_flux = flux_from_data(flux_data, split_by_sectors=split_by_sectors)
         if "source" in current_flux.dims:
             basis_functions = basis_functions.select_sources(
                 [str(source) for source in current_flux.source.values]
@@ -326,13 +331,35 @@ def load_basis_functions(
         basis_directory=str(basis_directory) if isinstance(basis_directory, Path) else basis_directory,
     ).basis
     print(f"Loaded legacy flat basis artifact for basis_case={basis_case!r}, domain={domain!r}.")
-    return basis_functions_from_fp_all_flat_basis(
-        fp_all=fp_all,
+    return basis_functions_from_flat_basis(
+        flux_data=flux_data,
+        split_by_sectors=split_by_sectors,
         basis_flat=basis_data_array,
         metadata={
             BASIS_ARTIFACT_SOURCE_ATTR: "legacy_flat",
             BASIS_ARTIFACT_PATH_ATTR: _basis_artifact_path_metadata(files),
         },
+    )
+
+
+def make_basis_functions_from_fp_all(*, fp_all: dict, **kwargs: Any) -> BasisFunctions:
+    """Adapt legacy merged dictionaries to dataset basis construction."""
+    return make_basis_functions(
+        site_data={key: value for key, value in fp_all.items() if not key.startswith(".")},
+        flux_data={key: _extract_flux_dataarray(value, flux_key=key).to_dataset(name="flux")
+                   for key, value in fp_all[".flux"].items()},
+        split_by_sectors=_is_multi_source_workflow(fp_all),
+        **kwargs,
+    )
+
+
+def load_basis_functions_from_fp_all(*, fp_all: dict, **kwargs: Any) -> BasisFunctions:
+    """Adapt legacy merged dictionaries to dataset basis artifact loading."""
+    return load_basis_functions(
+        flux_data={key: _extract_flux_dataarray(value, flux_key=key).to_dataset(name="flux")
+                   for key, value in fp_all[".flux"].items()},
+        split_by_sectors=_is_multi_source_workflow(fp_all),
+        **kwargs,
     )
 
 
