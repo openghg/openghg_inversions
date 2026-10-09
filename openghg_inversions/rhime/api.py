@@ -17,8 +17,8 @@ def run(*, model: str = "standard", **kwargs: Any) -> Any:
             selection does not add acquisition or checkpoint routes.
 
     Returns:
-        The selected recipe's existing result: a result record for standard,
-        multisector or nested, or the CO2-family inference DataTree.
+        The selected recipe's existing result. Standard, multisector and nested
+        return result records; CO2-family recipes return an inference DataTree.
 
     Raises:
         ValueError: If the model name is unsupported.
