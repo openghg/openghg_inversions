@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from openghg_inversions.basis import make_basis_functions
+
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from pathlib import Path
@@ -11,7 +13,7 @@ import pymc as pm
 import pytensor.tensor as pt
 import xarray as xr
 
-from openghg_inversions._timing import log_timing, timer_seconds, timer_start
+from openghg_inversions._timing import log_timing, timed, timer_seconds, timer_start
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs
 from openghg_inversions.models.components import (
@@ -69,9 +71,9 @@ from .ini import read_rhime_ini
 from .params import RhimeConfig
 from .preparation import (
     assemble_rhime_inputs,
-    build_rhime_basis,
-    build_rhime_sensitivities,
-    filter_rhime_observations,
+    build_sensitivities,
+    filter_observations,
+    prepare_observation_errors,
 )
 from .sampling import RhimeSampler, sample_rhime_model
 
@@ -636,8 +638,8 @@ def run_rhime_multisector(
 ) -> RhimeResult:
     """Run a shared-basis multi-sector RHIME inversion.
 
-    The visible process is resolve → acquire or accept supplied data → filter →
-    basis → sensitivities → assemble → materialize → build → sample → result →
+    The visible process is resolve → acquire or accept supplied data → observation
+    errors → filter → basis → sensitivities → assemble → materialize → build → sample → result →
     requested outputs.
     This module keeps source layout validation and sector-aware outputs beside
     that process instead of hiding them behind standard/multisector branching.
@@ -654,7 +656,7 @@ def run_rhime_multisector(
             be combined with ``config_file`` or raw run parameters in ``kwargs``.
         merged_data: Optional externally supplied source-resolved merged
             scientific data. Passing this in-memory handoff bypasses OpenGHG
-            acquisition and resumes at filtering after validating
+            acquisition and resumes at observation-error preparation after validating
             recorded species, domain, time window, and sector layout.
         likelihood_builder: Optional Python-only callable invoked with a
             completed forward-model mean and explicit error-model inputs in
@@ -719,7 +721,7 @@ def run_rhime_multisector(
                 "end_date",  "flux_sources", "split_by_sectors",
                 "bc_store", "obs_store", "footprint_store", "emissions_store",
                 "emissions_domain", "fp_model", "fp_species", "calibration_scale",
-                "use_bc", "bc_input", "averaging_error",
+                "use_bc", "bc_input",
                 "flux_non_finite_check",
             ),
         )
@@ -730,17 +732,23 @@ def run_rhime_multisector(
         split_by_sectors=config.split_by_sectors,
     )
     # 2. Keep the scientific preparation order visible in this recipe.
-    filtered = filter_rhime_observations(merged, filters=config.filters)
-    basis_functions = build_rhime_basis(
-        filtered,
-        **config.select(
-            "species", "domain", "start_date", "flux_sources",
-            "output_name", "basis_algorithm", "nbasis", "fp_basis_case",
-            "basis_directory", "country_directory", "outer_regions_path",
-            "fix_basis_outer_regions", "basis_output_path",
-        ),
-    )
-    site_data = build_rhime_sensitivities(
+    merged = prepare_observation_errors(merged, averaging_error=config.averaging_error)
+    filtered = filter_observations(merged, filters=config.filters)
+    with timed("rhime.prepare_inputs.basis_build", basis_algorithm=config.basis_algorithm):
+        basis_functions = make_basis_functions(
+            site_data=filtered.site_data,
+            flux_data=filtered.flux_data,
+            split_by_sectors=filtered.split_by_sectors,
+            **config.select(
+                "species", "domain", "start_date", "basis_algorithm", "nbasis",
+                "fp_basis_case", "basis_directory", "country_directory", "outer_regions_path",
+            ),
+            emissions_name=config.flux_sources,
+            fix_outer_regions=config.fix_basis_outer_regions,
+            outputname=config.output_name,
+            output_path=config.basis_output_path,
+        )
+    site_data = build_sensitivities(
         filtered,
         basis_functions,
         **config.select(

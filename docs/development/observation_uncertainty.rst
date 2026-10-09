@@ -35,9 +35,11 @@ does not establish that measurement uncertainty was measured to be zero.
 Existing uncertainty construction
 ---------------------------------
 
-:func:`openghg_inversions.inversion_data.acquisition.add_obs_error` constructs the
-error from each merged site's data. With averaging errors enabled, its behavior
-is:
+:func:`openghg_inversions.inversion_data.observation_errors.prepare_observation_errors`
+constructs missing errors from each acquired site before temporal filtering or
+aggregation. Supplied custom ``mf_error`` remains unchanged. Preparation owns
+``averaging_error``; acquisition retains the ``averaging_period`` resampling
+selector. With averaging errors enabled, the derivation is:
 
 .. list-table::
    :header-rows: 1

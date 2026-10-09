@@ -22,7 +22,9 @@ from openghg_inversions.flux_sanitization import FluxNonFiniteMetadata, NonFinit
 from openghg_inversions.inversion_data._site_options import expand_site_boolean_option, expand_site_option
 from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
 from openghg_inversions.inversion_data._site_options import convert_to_list
-from openghg_inversions.inversion_data.acquisition import (add_obs_error, interpolate_flux_to_footprint_grid)
+from openghg_inversions.inversion_data.acquisition import interpolate_flux_to_footprint_grid
+from openghg_inversions.inversion_data.observation_errors import prepare_observation_errors
+from openghg_inversions.inversion_data import RhimeMergedData, SiteOptions
 from openghg_inversions.hbmcmc.legacy_data import (
     data_processing_surface_notracer,
     _save_merged_data,
@@ -293,7 +295,7 @@ def test_mixed_platforms_keep_surface_calibration_scale_per_site(
         scenario_platforms.append(platform)
         scale = "surface-scale" if platform == "surface" else "satellite-scale"
         mf = xr.DataArray([1.0], dims="time", attrs={"units": "1e-9"})
-        return xr.Dataset({"mf": mf}, attrs={"scale": scale})
+        return xr.Dataset({"mf": mf, "mf_error": xr.ones_like(mf)}, attrs={"scale": scale})
 
     monkeypatch.setattr(get_data_module, "get_flux_data", lambda **kwargs: {})
     monkeypatch.setattr(get_data_module, "get_obs_data", fake_get_obs_data)
@@ -305,7 +307,6 @@ def test_mixed_platforms_keep_surface_calibration_scale_per_site(
 
     monkeypatch.setattr(get_data_module, "get_footprint_data", fake_get_footprint_data)
     monkeypatch.setattr(get_data_module, "merged_scenario_data", fake_merged_scenario_data)
-    monkeypatch.setattr(get_data_module, "add_obs_error", lambda *args, **kwargs: None)
 
     result = data_processing_surface_notracer(
         species="ch4",
@@ -1148,8 +1149,12 @@ def test_add_obs_error_exceptions_warnings(rept_vals, perc_missing, caplog):
     ds["mf"] = xr.DataArray([1] * n, dims="time")
     fp_all = {"TAC": ds}
 
+    merged = RhimeMergedData(
+        site_data=fp_all, flux_data={},
+        site_options=SiteOptions.from_inputs(sites=["TAC"], averaging_period="1h"),
+    )
     with pytest.raises(ValueError):
-        add_obs_error(sites=["TAC"], site_data=fp_all, add_averaging_error=True)
+        prepare_observation_errors(merged, averaging_error=True)
 
     # check for WARNING when `mf_error` contains zeros
     # plus INFO suggesting fix
@@ -1160,7 +1165,11 @@ def test_add_obs_error_exceptions_warnings(rept_vals, perc_missing, caplog):
 
     fp_all["TAC"] = ds.chunk(time=n // 3)
 
-    add_obs_error(sites=["TAC"], site_data=fp_all, add_averaging_error=False)
+    merged = RhimeMergedData(
+        site_data=fp_all, flux_data={},
+        site_options=SiteOptions.from_inputs(sites=["TAC"], averaging_period="1h"),
+    )
+    prepare_observation_errors(merged, averaging_error=False)
 
     output = caplog.text
     assert f"{perc_missing} percent" in output
@@ -1168,7 +1177,7 @@ def test_add_obs_error_exceptions_warnings(rept_vals, perc_missing, caplog):
 
 
 def test_add_obs_error_without_repeatability(caplog):
-    """Check for logger info if repeatability isn't present and add_averaging_error is True."""
+    """Missing repeatability falls back to variability during preparation."""
     ds = xr.Dataset()
     ds["mf"] = xr.DataArray([1] * 10, dims="time")
     ds["mf_variability"] = xr.DataArray([0] * 10, dims="time")
@@ -1178,7 +1187,11 @@ def test_add_obs_error_without_repeatability(caplog):
     # plus INFO suggesting fix
     caplog.set_level(logging.INFO)
 
-    add_obs_error(sites=["TAC"], site_data=fp_all, add_averaging_error=True)
+    merged = RhimeMergedData(
+        site_data=fp_all, flux_data={},
+        site_options=SiteOptions.from_inputs(sites=["TAC"], averaging_period="1h"),
+    )
+    prepare_observation_errors(merged, averaging_error=True)
 
     output = caplog.text
     assert "`mf_repeatability` not present; using `mf_variability` for `mf_error` at site TAC" in output

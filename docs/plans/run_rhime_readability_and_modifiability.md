@@ -181,9 +181,10 @@ in this plan. Its visible order is:
 read_rhime_ini -> options + winning overrides + recipe extraction
   -> RhimeConfig.from_params -> RhimeConfig
   -> RhimeMergedData.from_options with explicit resolved acquisition values
-  -> filter_rhime_observations
-  -> build_rhime_basis
-  -> build_rhime_sensitivities
+  -> prepare_observation_errors
+  -> filter_observations
+  -> make_basis_functions
+  -> build_sensitivities
   -> assemble_rhime_inputs
   -> RhimeRunSpec from retained prepared sites and resolved model/output choices
   -> materialize_pymc_inputs
@@ -191,6 +192,13 @@ read_rhime_ini -> options + winning overrides + recipe extraction
   -> sample_rhime_model
   -> make_standard_rhime_result
 ```
+
+Preparation functions own scientific work or a meaningful handoff/compatibility
+contract. Uniform stage names, timing and keyword translation alone do not
+justify wrappers. Observation errors are derived before filtering/aggregation;
+nested recipes establish errors on both domains before filtering/time alignment.
+Preserve supplied errors, retained metadata and borrowed data. Shared preparation
+and indexing utilities are not standard-model-specific policy.
 
 `RhimeConfig` directly owns acquisition/preparation choices and composes public
 `SiteOptions`, existing model/output specifications and the existing sampler.

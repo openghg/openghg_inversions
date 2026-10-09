@@ -30,8 +30,8 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
         multisector=False,
     )
     sampler = config.sampler
-    merged = object()
-    filtered = object()
+    merged = SimpleNamespace(site_data={}, flux_data={}, split_by_sectors=False)
+    filtered = merged
     basis = object()
     site_data = object()
     prepared = SimpleNamespace(
@@ -73,10 +73,10 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
         calls.append("filter")
         return filtered
 
-    def build_basis(actual: Any, **kwargs: Any) -> Any:
-        assert actual is filtered
+    def build_basis(**kwargs: Any) -> Any:
+        assert kwargs["site_data"] is filtered.site_data
         assert kwargs["domain"] == config.domain
-        assert kwargs["flux_sources"] == config.flux_sources
+        assert kwargs["emissions_name"] == config.flux_sources
         calls.append("basis")
         return basis
 
@@ -134,9 +134,9 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
 
     monkeypatch.setattr(rhime_runner.RhimeConfig, "from_params", classmethod(resolve))
     monkeypatch.setattr(rhime_runner.RhimeMergedData, "from_options", retrieve)
-    monkeypatch.setattr(rhime_runner, "filter_rhime_observations", filter_observations)
-    monkeypatch.setattr(rhime_runner, "build_rhime_basis", build_basis)
-    monkeypatch.setattr(rhime_runner, "build_rhime_sensitivities", build_sensitivities)
+    monkeypatch.setattr(rhime_runner, "filter_observations", filter_observations)
+    monkeypatch.setattr(rhime_runner, "make_basis_functions", build_basis)
+    monkeypatch.setattr(rhime_runner, "build_sensitivities", build_sensitivities)
     monkeypatch.setattr(rhime_runner, "assemble_rhime_inputs", assemble)
     monkeypatch.setattr(
         rhime_runner,

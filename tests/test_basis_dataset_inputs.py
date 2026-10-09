@@ -1,6 +1,5 @@
 """Dataset basis orchestration preserves scientific weights and retained flux."""
 
-from types import SimpleNamespace
 
 import dask.array as da
 import numpy as np
@@ -118,24 +117,6 @@ def test_dataset_fixed_outer_matches_label_composition(empty_inner, tmp_path):
     xr.testing.assert_equal(actual.flat_basis(), expected.rename("basis"))
     assert isinstance(actual.flux.data, da.Array)
 
-
-def test_rhime_basis_passes_borrowed_datasets_without_legacy_adapter(monkeypatch):
-    from openghg_inversions.rhime import preparation
-    sites, sources = _inputs()
-    merged = SimpleNamespace(site_data=sites, flux_data=sources, split_by_sectors=True)
-    expected = object()
-
-    def build(**kwargs):
-        assert kwargs["site_data"] is sites
-        assert kwargs["flux_data"] is sources
-        assert kwargs["split_by_sectors"] is True
-        assert kwargs["emissions_name"] == ["b", "a"]
-        return expected
-
-    monkeypatch.setattr(preparation, "make_basis_functions", build)
-    assert preparation.build_rhime_basis(
-        merged, species="ch4", domain="TEST", start_date="2020-01-01",
-        flux_sources=["b", "a"], output_name="test") is expected
 
 
 def test_dataset_region_constrained_requires_classes():

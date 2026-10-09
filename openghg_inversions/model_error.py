@@ -32,7 +32,7 @@ class MinimumError:
         cls,
         observations: xr.Dataset,
         fp_data: Mapping[str, xr.Dataset],
-        value: str | Mapping[str, float] | int | float = 0.0,
+        value: str | Mapping[str, float] | int | float | None = 0.0,
         *,
         by_site: bool = True,
     ) -> "MinimumError":
@@ -43,6 +43,7 @@ class MinimumError:
                 ``site`` coordinate for per-site values.
             fp_data: Per-site scientific datasets used by calculated methods.
             value: Scalar, per-site mapping, ``"residual"``, or ``"percentile"``.
+                ``None`` uses a zero scalar floor.
             by_site: Whether residual values are calculated separately by site.
 
         Returns:
@@ -61,6 +62,9 @@ class MinimumError:
         sites: tuple[str, ...] = ()
         method: str
         varies_by_site = False
+
+        if value is None:
+            value = 0.0
 
         if isinstance(value, numbers.Real) and not isinstance(value, bool):
             source = np.asarray(float(value))

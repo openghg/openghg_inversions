@@ -332,7 +332,7 @@ def test_filtering_preserves_typed_filter_request():
         fp_all={"TAC": data, "MHD": data}, site_options=config.site_options
     )
 
-    filtered = rhime.filter_rhime_observations(merged, filters=config.filters)
+    filtered = rhime.filter_observations(merged, filters=config.filters)
 
     assert to_legacy_fp_all(filtered)["TAC"].sizes["time"] == 1
     assert to_legacy_fp_all(filtered)["TAC"].mf.item() == 2.0
@@ -372,7 +372,7 @@ def test_multisector_preparation_selects_sources_from_typed_request():
     )
     basis = SimpleNamespace(sensitivity=lambda values: sensitivity)
 
-    site_data = rhime.build_rhime_sensitivities(
+    site_data = rhime.build_sensitivities(
         merged, basis, domain=config.domain, flux_sources=config.flux_sources,
         use_bc=config.use_bc, bc_basis_case=config.bc_basis_case,
         bc_basis_directory=config.bc_basis_directory, multisector=True,

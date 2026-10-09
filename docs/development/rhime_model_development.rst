@@ -38,6 +38,20 @@ The following principles are requirements for production RHIME development:
 * Scientists should be able to copy a runner or component and modify it
   locally.
 
+Preparation helpers must own a scientific operation, policy, meaningful handoff
+contract or necessary compatibility boundary. A uniform stage name, timing or
+argument renaming alone does not justify a second forwarding signature. Call
+basis construction directly and keep shared indexing utilities reusable.
+Shared preparation must not be named as if it belonged only to the standard
+model; model-specific policy stays visible beside its procedural recipe.
+
+Observation errors are preparation policy. Derive them before temporal
+filtering or aggregation, preserving supplied errors and borrowed datasets.
+Nested recipes prepare errors on both domains before filtering/time alignment.
+Historical retrieval uses that same operation before returning or saving its
+compatibility result. Acquisition replay remains separate from prepared-input
+persistence.
+
 The review test is:
 
   A scientist familiar with release-0.6 ``fixedbasisMCMC`` should be able to

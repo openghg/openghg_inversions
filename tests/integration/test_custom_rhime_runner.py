@@ -66,10 +66,10 @@ def test_custom_runner_uses_supported_stages_for_acquisition(
     sampler = config.sampler
 
     merged = RhimeMergedData(
-        site_data={site: xr.Dataset() for site in config.site_options.sites},
+        site_data={site: xr.Dataset({"mf_error": ("time", [1.0]), "mf_repeatability": ("time", [0.0]), "mf_variability": ("time", [0.0])}) for site in config.site_options.sites},
         flux_data={}, site_options=config.site_options,
     )
-    filtered = object()
+    filtered = merged
     basis = object()
     site_data = object()
     prepared = SimpleNamespace(
@@ -107,8 +107,8 @@ def test_custom_runner_uses_supported_stages_for_acquisition(
         calls.append("filter")
         return filtered
 
-    def build_basis(actual: Any, **kwargs: Any) -> Any:
-        assert actual is filtered
+    def build_basis(**kwargs: Any) -> Any:
+        assert kwargs["site_data"] is filtered.site_data
         assert kwargs["domain"] == config.domain
         assert kwargs["nbasis"] == config.nbasis
         calls.append("basis")
@@ -178,9 +178,9 @@ def test_custom_runner_uses_supported_stages_for_acquisition(
     monkeypatch.setattr(custom_runner, "read_rhime_ini", parse_config)
     monkeypatch.setattr(custom_runner.RhimeConfig, "from_params", classmethod(resolve))
     monkeypatch.setattr(custom_runner.RhimeMergedData, "from_options", retrieve)
-    monkeypatch.setattr(custom_runner, "filter_rhime_observations", filter_observations)
-    monkeypatch.setattr(custom_runner, "build_rhime_basis", build_basis)
-    monkeypatch.setattr(custom_runner, "build_rhime_sensitivities", build_sensitivities)
+    monkeypatch.setattr(custom_runner, "filter_observations", filter_observations)
+    monkeypatch.setattr(custom_runner, "make_basis_functions", build_basis)
+    monkeypatch.setattr(custom_runner, "build_sensitivities", build_sensitivities)
     monkeypatch.setattr(custom_runner, "assemble_rhime_inputs", assemble)
     monkeypatch.setattr(
         custom_runner,

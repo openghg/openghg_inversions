@@ -1,6 +1,7 @@
 # Tasks
 
-This is the current checklist for the configuration slice, PR #824 in the
+This checklist records the configuration slice, PR #824, and subsequent preparation
+contract corrections in the
 [#815 stack](https://github.com/openghg/openghg_inversions/issues/815).
 It replaces the accumulated #813 implementation amendments. Checked items
 record the implemented contracts in this slice; historical validation below
@@ -47,10 +48,9 @@ applies only to the named revisions and does not certify the current stack.
 - [x] 3.1 Consume the public, complete `SiteOptions` record and resolved-selector
   retrieval body supplied by the acquisition slice. Preserve scalar/aligned
   input equivalence, retained-label selection and no repeated expansion.
-- [x] 3.2 Use distinct `RhimeMergedData.from_options` and `.load` factories in
-  ordinary, nested, staged and example recipes. Reuse supplied handoffs without
-  I/O; propagate explicit reload failures without reacquisition. Preserve the
-  existing layout/selector checks, codec and opt-in saving at this slice.
+- [x] 3.2 Acquire in memory with `RhimeMergedData.from_options` or reuse
+  compatible supplied handoffs. #826 supersedes the earlier modern cache
+  loading/saving requirement; historical codecs remain isolated under HBMCMC.
 - [x] 3.3 Forward named scientific inputs directly or through shallow
   `RhimeConfig.select(*names)`. Preserve borrowed selected values and errors for
   unknown attributes; remove named stages' positional `data_args` adapters.
@@ -79,27 +79,24 @@ applies only to the named revisions and does not certify the current stack.
 
 ## Separate slices and deferred work
 
-The acquisition rename, deprecated six-tuple retrieval wrapper and selector
-owner are supplied by #823. Canonical preparation-helper locality is delivered
-by #825. Dataset-only versioned artifacts, provenance and the acquisition-to-
-preparation compatibility follow-up for #718 belong to #826; this configuration
-slice does not implement or validate that later artifact contract.
+The #823–#832 stack supplies in-memory acquisition, retained selectors and
+provenance, dataset-based basis construction, and isolated legacy adapters.
+#826 removed `prepare_rhime_inputs`, its dispatcher, modern cache options and
+the filtered merged-data checkpoint. Acquisition replay remains deferred to #829.
 
-The deprecated `prepare_rhime_inputs` adapter remains at this slice. Its removal
-and the private acquisition dispatcher's removal remain separately reviewable
-under #821; they do not depend on #719's HBMCMC retirement or imply that all
-compatibility must remain until 0.9. Historical import aliases already removed
-by this stack are distinct from these remaining scientific adapters.
+The preparation follow-up removes forwarding wrappers and derives observation
+errors before filtering/aggregation, including both nested domains. It retains
+custom errors, zero-error fallback, borrowed data and supported minimum-error
+normalization. Modern flux terminology/deprecation and public API/CLI naming
+are separate reviewable changes; #817 owns coordinated materialization and
+#818 retains filter retry policy.
 
-Configuration export, resolved-settings logging and an INI writer remain with
-[#814](https://github.com/openghg/openghg_inversions/issues/814). INI template
-redesign and scientific-default policy are not changed here. Filtered staged
-checkpoint retirement, route-wide retained-site policy and replacement
-manifest/handoff contracts remain with
-[#802](https://github.com/openghg/openghg_inversions/pull/802) and #808. This
-checklist does not claim those contracts or #719/#820/#821 are complete.
+Configuration export/logging and an INI writer remain #814. Full route-wide
+retained-site parity and replacement handoff contracts remain #802/#808; this
+preparation change does not claim completion of those contracts or new family
+checkpoint support. HBMCMC retirement remains #719.
 
-## Current stack validation
+## Earlier configuration/stack validation
 
 At configuration revision `293624fd`, strict OpenSpec and whitespace checks
 pass and `docs-full` passed in Slurm `19291950_0`. This revision changes planning

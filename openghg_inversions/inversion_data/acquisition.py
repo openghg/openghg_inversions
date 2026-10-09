@@ -13,7 +13,6 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Any
 
-import numpy as np
 import pandas as pd
 import xarray as xr
 from openghg.dataobjects import FluxData
@@ -52,7 +51,6 @@ class AcquisitionFacts:
     calibration_scale: str | None = None
     use_bc: bool | None = None
     bc_input: str | None = None
-    averaging_error: bool | None = None
     flux_non_finite_check: FluxNonFiniteCheck | None = None
 
 
@@ -229,16 +227,14 @@ class RhimeMergedData:
         calibration_scale: str | None = None,
         use_bc: bool = True,
         bc_input: str | None = None,
-        averaging_error: bool = True,
         flux_non_finite_check: FluxNonFiniteCheck = "lazy",
     ) -> RhimeMergedData:
         """Acquire fresh merged data using complete aligned selectors.
 
         Reads OpenGHG stores and retains all selector fields together when sites
         are unavailable. Returned datasets may be lazy and remain borrowed by
-        later preparation. ``flux_sources`` names OpenGHG sources; ``averaging_error``
-        controls inclusion of observation variability. Store, selector and
-        merge errors propagate.
+        later preparation. ``flux_sources`` names OpenGHG sources. Store,
+        selector and merge errors propagate.
         """
         merged_sites: dict[str, xr.Dataset] = {}
         observation_provenance = {}
@@ -412,9 +408,6 @@ class RhimeMergedData:
             msg = f"Not all sites using the same calibration scale: {len(check_scales)} scales found."
             logger.warning(msg)
 
-        # create `mf_error`
-        add_obs_error(retained.sites, merged_sites, add_averaging_error=averaging_error)
-
         return cls(
             site_data=merged_sites,
             flux_data={source: value.data for source, value in retained_flux_dict.items()},
@@ -438,7 +431,6 @@ class RhimeMergedData:
                 calibration_scale=calibration_scale,
                 use_bc=use_bc,
                 bc_input=bc_input,
-                averaging_error=averaging_error,
                 flux_non_finite_check=flux_non_finite_check,
             ),
         )
@@ -464,102 +456,3 @@ def interpolate_flux_to_footprint_grid(
             metadata=dict(flux_data.metadata),
         )
     return interpolated
-
-
-def add_obs_error(sites: Sequence[str], site_data: dict, add_averaging_error: bool = True) -> None:
-    """Create `mf_error` variable.
-
-    The `mf_error` variable contains either `mf_repeatability`, `mf_variability`
-    or the square root of the sum of the squares of both, if `add_averaging_error` is True.
-
-    This function modifies `site_data` in place, adding `mf_error` and making sure that both
-    `mf_repeatability` and `mf_variability` are present.
-
-    Note: OpenGHG resampling pools supplied variability with the spread between input means,
-    weighted by observation counts when available. Supplied variability may itself serve as
-    instrument uncertainty. If neither variability nor counts is present, resampling instead
-    calculates variability from the input concentrations, giving zero for a window with one
-    finite observation. Pooling a single input instead retains its supplied variability, subject
-    to numerical precision. When counts are present but variability is absent, the weighted
-    resampling path does not create variability.
-
-    See :doc:`/development/observation_uncertainty` for missing-value behavior and policies.
-
-    Args:
-        sites: list of site names to process
-        site_data: dictionary of `ModelScenario` objects, keyed by site names
-        add_averaging_error: if True, combine repeatability and variability to make `mf_error`
-            variable. Otherwise, `mf_error` will equal `mf_repeatability` if it is present, otherwise
-            it will equal `mf_variability`.
-
-    Returns:
-        None, modifies `site_data` in place.
-    """
-    # TODO: do we want to fill missing values in repeatability or variability?
-    for site in sites:
-        ds = site_data[site]
-        mf_long_name = ds.mf.attrs.get("long_name", "")
-        mf_units = ds.mf.attrs.get("units", None)
-
-        variability_missing = False
-        if "mf_variability" not in ds:
-            ds["mf_variability"] = xr.zeros_like(ds.mf)
-            variability_missing = True
-        ds["mf_variability"].attrs["long_name"] = mf_long_name + "_variability"
-        ds["mf_variability"].attrs["units"] = mf_units
-
-        if "mf_repeatability" not in ds:
-            if variability_missing:
-                raise ValueError(f"Obs data for site {site} is missing both repeatability and variability.")
-
-            ds["mf_repeatability"] = xr.zeros_like(ds.mf_variability)
-
-            ds["mf_error"] = ds["mf_variability"]
-
-            if add_averaging_error:
-                logger.info(
-                    "`mf_repeatability` not present; using `mf_variability` for `mf_error` at site %s", site
-                )
-
-        elif add_averaging_error:
-            # Fill with zeros so that if one of repeatability and variability is not NaN, then mf_error will not be NaN.
-            ds["mf_error"] = np.sqrt(
-                ds["mf_repeatability"].fillna(0) ** 2 + ds["mf_variability"].fillna(0) ** 2
-            )
-        else:
-            ds["mf_error"] = ds["mf_repeatability"]
-
-        ds["mf_repeatability"].attrs["long_name"] = mf_long_name + "_repeatability"
-        ds["mf_repeatability"].attrs["units"] = mf_units
-        ds["mf_error"].attrs["long_name"] = mf_long_name + "_error"
-        ds["mf_error"].attrs["units"] = mf_units
-
-        # warnings/info for debugging
-        err0 = (ds["mf_error"] == 0) | (
-            ds["mf_error"].isnull()
-        )  # might have NaN if add_averaging_error is False
-
-        if err0.any():
-            percent0 = 100 * err0.mean()
-            logger.warning(
-                (
-                    "`mf_error` is zero/nan for %.2f percent of times at site %s;"
-                    "filling with max(median(mf_error), std(mf))."
-                ),
-                percent0,
-                site,
-            )
-
-            mf_err_da = ds["mf_error"].as_numpy()  # load into memory to avoid Dask issues
-            fill_value = np.nanmax(
-                [
-                    mf_err_da.where(mf_err_da != 0).dropna(dim="time").median(),
-                    ds["mf"].std(dim="time"),
-                ]
-            )
-            ds["mf_error"] = mf_err_da.where(mf_err_da != 0, fill_value)
-            info_msg = (
-                "If `averaging_period` matches the frequency of the obs data, then `mf_variability` "
-                "will be zero. Try setting `averaging_period = None`."
-            )
-            logger.info(info_msg)

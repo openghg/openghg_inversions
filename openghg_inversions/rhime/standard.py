@@ -7,6 +7,8 @@ scientist can read or copy this module without reconstructing a pipeline.
 
 from __future__ import annotations
 
+from openghg_inversions.basis import make_basis_functions
+
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -14,7 +16,7 @@ from typing import Any
 import pymc as pm
 import xarray as xr
 
-from openghg_inversions._timing import log_timing, timer_seconds, timer_start
+from openghg_inversions._timing import log_timing, timed, timer_seconds, timer_start
 from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs
 from openghg_inversions.models.components import (
     add_linear_component,
@@ -52,9 +54,9 @@ from .ini import read_rhime_ini
 from .params import RhimeConfig
 from .preparation import (
     assemble_rhime_inputs,
-    build_rhime_basis,
-    build_rhime_sensitivities,
-    filter_rhime_observations,
+    build_sensitivities,
+    filter_observations,
+    prepare_observation_errors,
 )
 from .sampling import RhimeSampler, sample_rhime_model
 from .specs import (
@@ -463,8 +465,8 @@ def run_rhime(
 ) -> RhimeResult:
     """Run a standard single-sector RHIME inversion.
 
-    The visible process is resolve → acquire or accept supplied data → filter →
-    basis → sensitivities → assemble → materialize → build → sample → result →
+    The visible process is resolve → acquire or accept supplied data → observation
+    errors → filter → basis → sensitivities → assemble → materialize → build → sample → result →
     requested outputs.
 
     Without supplied merged data, this runner acquires fresh data. Persisted
@@ -479,7 +481,8 @@ def run_rhime(
             be combined with ``config_file`` or raw run parameters in ``kwargs``.
         merged_data: Optional externally supplied merged scientific data.
             Passing this borrowed in-memory handoff bypasses OpenGHG acquisition
-            and resumes at the visible filtering stage.
+            and resumes at observation-error preparation. This may derive error arrays
+            and compute zero-error fallback diagnostics.
             The acquisition owner checks recorded species, domain, time window,
             and sector layout without mutating it.
         likelihood_builder: Optional Python-only callable invoked with a
@@ -552,7 +555,7 @@ def run_rhime(
                 "end_date",  "flux_sources", "split_by_sectors",
                 "bc_store", "obs_store", "footprint_store", "emissions_store",
                 "emissions_domain", "fp_model", "fp_species", "calibration_scale",
-                "use_bc", "bc_input", "averaging_error",
+                "use_bc", "bc_input",
                 "flux_non_finite_check",
             ),
         )
@@ -563,17 +566,23 @@ def run_rhime(
         split_by_sectors=config.split_by_sectors,
     )
     # 2. Keep the scientific preparation order visible in this recipe.
-    filtered = filter_rhime_observations(merged, filters=config.filters)
-    basis_functions = build_rhime_basis(
-        filtered,
-        **config.select(
-            "species", "domain", "start_date", "flux_sources",
-            "output_name", "basis_algorithm", "nbasis", "fp_basis_case",
-            "basis_directory", "country_directory", "outer_regions_path",
-            "fix_basis_outer_regions", "basis_output_path",
-        ),
-    )
-    site_data = build_rhime_sensitivities(
+    merged = prepare_observation_errors(merged, averaging_error=config.averaging_error)
+    filtered = filter_observations(merged, filters=config.filters)
+    with timed("rhime.prepare_inputs.basis_build", basis_algorithm=config.basis_algorithm):
+        basis_functions = make_basis_functions(
+            site_data=filtered.site_data,
+            flux_data=filtered.flux_data,
+            split_by_sectors=filtered.split_by_sectors,
+            **config.select(
+                "species", "domain", "start_date", "basis_algorithm", "nbasis",
+                "fp_basis_case", "basis_directory", "country_directory", "outer_regions_path",
+            ),
+            emissions_name=config.flux_sources,
+            fix_outer_regions=config.fix_basis_outer_regions,
+            outputname=config.output_name,
+            output_path=config.basis_output_path,
+        )
+    site_data = build_sensitivities(
         filtered,
         basis_functions,
         **config.select(
