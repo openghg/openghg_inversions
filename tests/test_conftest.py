@@ -78,9 +78,22 @@ def test_footprints_in_test_store():
     assert results
 
 
-def test_bc_in_test_store():
-    results = search(species="ch4", data_type="boundary_conditions")
+@pytest.mark.parametrize("domain, year", [("europe", 2019), ("southamerica", 2016)])
+def test_bc_in_test_store(domain, year):
+    """Single-time BC fixtures retain January coverage after ingestion."""
+    results = search(
+        species="ch4", data_type="boundary_conditions", domain=domain, store="inversions_tests"
+    )
     assert results
+    boundary_conditions = results.retrieve_all()
+    expected_coverage = {
+        "start_date": f"{year}-01-01 00:00:00+00:00",
+        "end_date": f"{year}-01-31 23:59:59+00:00",
+        "time_period": "1 month",
+    }
+    for key, value in expected_coverage.items():
+        assert boundary_conditions.metadata[key] == value
+        assert boundary_conditions.data.attrs[key] == value
 
 
 def test_flux_in_test_store():
