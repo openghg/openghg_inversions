@@ -5791,8 +5791,8 @@ def test_canonical_preparation_uses_basis_sensitivity_without_legacy_side_channe
         return _minimal_prepared_inv_inputs()
 
     monkeypatch.setattr(
-        get_data_module,
-        "_retrieve_inversion_data_from_options",
+        RhimeMergedData,
+        "from_options",
         fake_data_processing_surface_notracer,
     )
     monkeypatch.setattr(rhime_preparation, "make_basis_functions", fake_make_basis_functions)
@@ -5837,8 +5837,8 @@ def test_canonical_preparation_matches_direct_sensitivity_inv_inputs(
         return basis_functions
 
     monkeypatch.setattr(
-        get_data_module,
-        "_retrieve_inversion_data_from_options",
+        RhimeMergedData,
+        "from_options",
         fake_data_processing_surface_notracer,
     )
     monkeypatch.setattr(rhime_preparation, "make_basis_functions", fake_make_basis_functions)
@@ -5896,23 +5896,15 @@ def test_acquisition_keeps_requested_metadata_authoritative(
 ) -> None:
     """A middle retrieval failure retains every option from the requested record."""
 
-    def fake_data_processing(
-        **kwargs: object,
-    ) -> RhimeMergedData:
-        """Return the first and third requested sites in the acquisition record."""
-        return RhimeMergedData(
-            site_data={'TAC': _site_dataset([2.0]), 'RGL': _site_dataset([4.0])},
-            flux_data={},
-            site_options=cast(SiteOptions, kwargs["site_options"]).retain_sites(['TAC', 'RGL'], context="test retrieval"),
-            split_by_sectors=False,
-            acquisition=AcquisitionFacts(),
-        )
-
+    monkeypatch.setattr(get_data_module, "get_flux_data", lambda **kw: {})
     monkeypatch.setattr(
-        get_data_module,
-        "_retrieve_inversion_data_from_options",
-        fake_data_processing,
+        get_data_module, "get_obs_data",
+        lambda **kw: None if kw["site"] == "MHD" else SimpleNamespace(
+            data=_site_dataset([2.0]).assign_attrs(scale="WMO"), metadata={}
+        ),
     )
+    monkeypatch.setattr(get_data_module, "get_footprint_data", lambda **kw: object())
+    monkeypatch.setattr(get_data_module, "merged_scenario_data", lambda obs, *a, **kw: obs.data)
 
     merged = acquisition_module.RhimeMergedData.from_options(
         site_options=_site_options(
@@ -5952,17 +5944,15 @@ def test_acquisition_retains_record_selectors(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Fresh acquisition forwards the selector record owned by retrieval."""
+    monkeypatch.setattr(get_data_module, "get_flux_data", lambda **kw: {})
     monkeypatch.setattr(
-        get_data_module,
-        "_retrieve_inversion_data_from_options",
-        lambda **kwargs: RhimeMergedData(
-            site_data={'TAC': _site_dataset([2.0])},
-            flux_data={},
-            site_options=cast(SiteOptions, kwargs["site_options"]).retain_sites(['TAC'], context="test retrieval"),
-            split_by_sectors=False,
-            acquisition=AcquisitionFacts(),
+        get_data_module, "get_obs_data",
+        lambda **kw: SimpleNamespace(
+            data=_site_dataset([2.0]).assign_attrs(scale="WMO"), metadata={}
         ),
     )
+    monkeypatch.setattr(get_data_module, "get_footprint_data", lambda **kw: object())
+    monkeypatch.setattr(get_data_module, "merged_scenario_data", lambda obs, *a, **kw: obs.data)
 
     merged = acquisition_module.RhimeMergedData.from_options(
         site_options=_site_options(
@@ -6078,8 +6068,8 @@ def test_canonical_preparation_normalises_averaging_period_to_site_count(
         return _minimal_prepared_inv_inputs(("TAC", "MHD"))
 
     monkeypatch.setattr(
-        get_data_module,
-        "_retrieve_inversion_data_from_options",
+        RhimeMergedData,
+        "from_options",
         fake_data_processing_surface_notracer,
     )
     monkeypatch.setattr(rhime_preparation, "make_basis_functions", fake_make_basis_functions)
@@ -6195,8 +6185,8 @@ def test_canonical_preparation_treats_min_error_none_as_default(
         return _minimal_prepared_inv_inputs()
 
     monkeypatch.setattr(
-        get_data_module,
-        "_retrieve_inversion_data_from_options",
+        RhimeMergedData,
+        "from_options",
         fake_data_processing_surface_notracer,
     )
     monkeypatch.setattr(rhime_preparation, "make_basis_functions", fake_make_basis_functions)
@@ -6254,8 +6244,8 @@ def test_canonical_preparation_rejects_min_error_options_before_retrieval(
         raise AssertionError("Data retrieval should not run for invalid min-error options.")
 
     monkeypatch.setattr(
-        get_data_module,
-        "_retrieve_inversion_data_from_options",
+        RhimeMergedData,
+        "from_options",
         fail_data_processing,
     )
 
@@ -6330,8 +6320,8 @@ def test_canonical_preparation_filters_sites_before_basis_generation(
         return _minimal_prepared_inv_inputs()
 
     monkeypatch.setattr(
-        get_data_module,
-        "_retrieve_inversion_data_from_options",
+        RhimeMergedData,
+        "from_options",
         fake_data_processing_surface_notracer,
     )
     monkeypatch.setattr(rhime_preparation, "filtering", fake_filtering)
@@ -6455,8 +6445,8 @@ def test_canonical_preparation_applies_daily_median_before_sensitivity(
         return _minimal_prepared_inv_inputs()
 
     monkeypatch.setattr(
-        get_data_module,
-        "_retrieve_inversion_data_from_options",
+        RhimeMergedData,
+        "from_options",
         fake_data_processing_surface_notracer,
     )
     monkeypatch.setattr(rhime_preparation, "make_basis_functions", fake_make_basis_functions)
@@ -6537,8 +6527,8 @@ def test_canonical_preparation_filters_multisector_sites_before_basis_generation
         return inv_inputs
 
     monkeypatch.setattr(
-        get_data_module,
-        "_retrieve_inversion_data_from_options",
+        RhimeMergedData,
+        "from_options",
         fake_data_processing_surface_notracer,
     )
     monkeypatch.setattr(rhime_preparation, "filtering", fake_filtering)
@@ -6610,8 +6600,8 @@ def test_canonical_preparation_filters_loaded_basis_before_sensitivity(
         return _minimal_prepared_inv_inputs()
 
     monkeypatch.setattr(
-        get_data_module,
-        "_retrieve_inversion_data_from_options",
+        RhimeMergedData,
+        "from_options",
         fake_data_processing_surface_notracer,
     )
     monkeypatch.setattr(rhime_preparation, "make_basis_functions", fake_make_basis_functions)
@@ -6669,8 +6659,8 @@ def test_canonical_preparation_aligns_averaging_period_after_empty_site_drop(
         return _minimal_prepared_inv_inputs()
 
     monkeypatch.setattr(
-        get_data_module,
-        "_retrieve_inversion_data_from_options",
+        RhimeMergedData,
+        "from_options",
         fake_data_processing_surface_notracer,
     )
     monkeypatch.setattr(rhime_preparation, "make_basis_functions", fake_make_basis_functions)
@@ -6714,8 +6704,8 @@ def test_canonical_preparation_rejects_all_sites_dropped_before_basis_generation
         raise AssertionError("Basis generation should not run when all sites are dropped.")
 
     monkeypatch.setattr(
-        get_data_module,
-        "_retrieve_inversion_data_from_options",
+        RhimeMergedData,
+        "from_options",
         fake_data_processing_surface_notracer,
     )
     monkeypatch.setattr(rhime_preparation, "make_basis_functions", fake_make_basis_functions)
@@ -8982,16 +8972,19 @@ def test_acquisition_keeps_acquired_flux_lazy(monkeypatch):
     flux = xr.Dataset({"flux": ("time", da.from_array([0., 0., 2.]))})
     options = _site_options(["TAC"], averaging_period="1h")
     monkeypatch.setattr(
-        get_data_module, "_retrieve_inversion_data_from_options",
-        lambda **kw: RhimeMergedData(
-            site_data={"TAC": _site_dataset([2.0])}, flux_data={"inventory": flux},
-            site_options=options,
-        ),
+        get_data_module, "get_flux_data",
+        lambda **kw: {"inventory": SimpleNamespace(data=flux, metadata={})},
     )
+    monkeypatch.setattr(
+        get_data_module, "get_obs_data",
+        lambda **kw: SimpleNamespace(data=_site_dataset([2.0]).assign_attrs(scale="WMO"), metadata={}),
+    )
+    monkeypatch.setattr(get_data_module, "get_footprint_data", lambda **kw: object())
+    monkeypatch.setattr(get_data_module, "merged_scenario_data", lambda obs, *a, **kw: obs.data)
     with Callback(pretask=lambda *args: pytest.fail("factory computed borrowed flux")):
         merged = RhimeMergedData.from_options(
             site_options=options, species="ch4", domain="EUROPE", start_date="2019-01-01",
-            end_date="2019-02-01",  flux_sources=["inventory"],
+            end_date="2019-02-01", flux_sources=["inventory"], use_bc=False,
         )
     assert merged.flux_data["inventory"] is flux
     np.testing.assert_array_equal(merged.flux_data["inventory"].flux.compute(), [0., 0., 2.])

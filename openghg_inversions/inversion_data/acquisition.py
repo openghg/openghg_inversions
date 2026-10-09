@@ -26,7 +26,7 @@ from openghg_inversions.inversion_data._provenance import (
     InputProvenance, MergedDataProvenance, selected_provenance,
 )
 from openghg_inversions.inversion_data._site_options import (
-    SiteOptions, is_column_observation, is_column_platform, is_satellite_platform,
+    is_column_observation, is_column_platform, is_satellite_platform,
 )
 from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
 from openghg_inversions.inversion_data.getters import get_flux_data, get_footprint_data, get_obs_data
@@ -240,30 +240,209 @@ class RhimeMergedData:
         controls inclusion of observation variability. Store, selector and
         merge errors propagate.
         """
-        return _retrieve_inversion_data_from_options(
+        merged_sites: dict[str, xr.Dataset] = {}
+        observation_provenance = {}
+        footprint_provenance = {}
+        boundary_provenance = None
+
+        # Get flux data
+        if flux_sources is None:
+            raise ValueError("`flux_sources` must be specified")
+
+        flux_dict = get_flux_data(
+            sources=flux_sources,
             species=species,
-            site_options=site_options,
-            domain=domain,
+            domain=emissions_domain or domain,
             start_date=start_date,
             end_date=end_date,
-            fp_model=fp_model,
-            fp_species=fp_species,
-            emissions_name=flux_sources,
-            calibration_scale=calibration_scale,
-            use_bc=use_bc,
-            bc_input=bc_input,
-            bc_store=bc_store,
-            obs_store=obs_store,
-            footprint_store=footprint_store,
-            emissions_store=emissions_store,
-            emissions_domain=emissions_domain,
-            split_by_sectors=split_by_sectors,
-            averagingerror=averaging_error,
+            store=emissions_store,
             flux_non_finite_check=flux_non_finite_check,
         )
+        retained_flux_dict = flux_dict
+        flux_provenance = {source: selected_provenance(value, emissions_store) for source, value in flux_dict.items()}
 
+        # Get BC data
+        if use_bc is True:
+            try:
+                bc_data = get_bc(
+                    species=species,
+                    domain=domain,
+                    bc_input=bc_input,
+                    start_date=start_date,
+                    end_date=end_date,
+                    store=bc_store,
+                )
+            except SearchError as e:
+                raise SearchError("Could not find matching boundary conditions.") from e
+            else:
+                # This public getter rejects multiple UUIDs and selects latest.
+                boundary_provenance = selected_provenance(
+                    bc_data, bc_store, requested_version="latest"
+                )
+        else:
+            bc_data = None
 
-logger = logging.getLogger(__name__)
+        # get obs and footprints, and make scenarios for each site
+        check_scales = set()
+        site_indices_to_keep = []
+        output_units: str | None = None
+
+        keep_variables = [
+            f"{species}",
+            f"{species}_variability",
+            f"{species}_repeatability",
+            f"{species}_number_of_observations",
+            "inlet",  # needed if multiple inlets combined
+            "inlet_height",  # sometimes needed if inlet='multiple' (may be outdated soon)
+        ]
+        warnings.warn(f"Dropping all variables besides {keep_variables}", stacklevel=2)
+        for i, site in enumerate(site_options.sites):
+            # Get observations data
+            site_platform = site_options.platform[i]
+            if isinstance(site_platform, str) and site_platform.lower() == "flask":
+                avg_period = None
+            else:
+                avg_period = site_options.averaging_period[i]
+
+            site_data = get_obs_data(
+                site=site,
+                species=species,
+                inlet=site_options.inlet[i],
+                start_date=start_date,
+                domain=domain,
+                platform=site_platform,
+                end_date=end_date,
+                data_level=site_options.obs_data_level[i],
+                average=avg_period,
+                instrument=site_options.instrument[i],
+                calibration_scale=calibration_scale,
+                max_level=site_options.max_level[i],
+                stores=obs_store,
+                keep_variables=keep_variables,
+            )
+
+            if site_data is None:
+                print(f"No obs. found, continuing model run without {site}.\n")
+                continue
+
+            # Get footprints data
+            footprint_data = get_footprint_data(
+                site=site,
+                domain=domain,
+                platform=site_platform,
+                fp_height=site_options.fp_height[i],
+                start_date=start_date,
+                end_date=end_date,
+                model=fp_model,
+                met_model=site_options.met_model[i],
+                fp_species=fp_species,
+                averaging_period=site_options.averaging_period[i],
+                time_resolved=site_options.time_resolved[i],
+                obs_data=site_data,
+                stores=footprint_store,
+            )
+            if footprint_data is None:
+                print(
+                    f"\nNo footprint data found for {site} with inlet/height {site_options.fp_height[i]}, model {fp_model}, and domain {domain}.",
+                    f"Check these values.\nContinuing model run without {site}.\n",
+                )
+                continue  # skip this site
+
+            scenario_platform = (
+                "site-column"
+                if is_column_observation(site_options.inlet[i], site_platform) and not is_column_platform(site_platform)
+                else site_platform
+            )
+            scenario_flux_dict = (
+                interpolate_flux_to_footprint_grid(flux_dict, footprint_data)
+                if emissions_domain is not None and emissions_domain.lower() != domain.lower()
+                else flux_dict
+            )
+            if scenario_flux_dict is not flux_dict:
+                retained_flux_dict = scenario_flux_dict
+
+            try:
+                scenario_combined = merged_scenario_data(
+                    site_data,
+                    footprint_data,
+                    scenario_flux_dict,
+                    bc_data,
+                    platform=scenario_platform,
+                    max_level=site_options.max_level[i],
+                    split_by_sectors=split_by_sectors,
+                    output_units=output_units,
+                )
+            except (TypeError, ValueError) as exc:
+                if output_units is None:
+                    raise
+                raise ValueError(
+                    f"Could not merge site {site!r} using target observation units {output_units!r}."
+                ) from exc
+            if output_units is None:
+                scenario_units = scenario_combined["mf"].attrs.get("units")
+                if not isinstance(scenario_units, str) or not scenario_units:
+                    raise ValueError(f"No observation units detected for the first retained site {site!r}.")
+                mole_fraction_unit_scale(
+                    scenario_units,
+                    context=f"site {site!r} variable 'mf'",
+                )
+                output_units = scenario_units
+            merged_sites[site] = scenario_combined
+            # Observation retrieval can combine UUIDs and discard their selected versions;
+            # never infer those versions from the remaining catalog metadata.
+            observation_provenance[site] = selected_provenance(site_data, obs_store)
+            footprint_provenance[site] = selected_provenance(
+                footprint_data, footprint_store, requested_version="latest"
+            )
+
+            if not is_satellite_platform(site_platform):
+                check_scales.add(scenario_combined.scale)
+
+            site_indices_to_keep.append(i)
+        if len(site_indices_to_keep) == 0:
+            raise SearchError("No site data found. Exiting process.")
+
+        retained = site_options.select_indices(site_indices_to_keep)
+        for site, selector in zip(retained.sites, retained.time_resolved, strict=True):
+            merged_sites[site].attrs["openghg_inversions_time_resolved"] = str(selector).lower()
+
+        # if "satellite" not in footprint_data.metadata:
+        # check for consistency of calibration scales
+        if len(check_scales) > 1:
+            msg = f"Not all sites using the same calibration scale: {len(check_scales)} scales found."
+            logger.warning(msg)
+
+        # create `mf_error`
+        add_obs_error(retained.sites, merged_sites, add_averaging_error=averaging_error)
+
+        return cls(
+            site_data=merged_sites,
+            flux_data={source: value.data for source, value in retained_flux_dict.items()},
+            boundary_data=bc_data.data if bc_data is not None else None,
+            site_options=retained,
+            split_by_sectors=split_by_sectors,
+            provenance=MergedDataProvenance.from_retrieval(
+                observations=observation_provenance,
+                footprints=footprint_provenance,
+                flux=flux_provenance,
+                boundary=boundary_provenance,
+            ),
+            acquisition=AcquisitionFacts(
+                species=species,
+                domain=domain,
+                start_date=start_date,
+                end_date=end_date,
+                emissions_domain=emissions_domain,
+                fp_model=fp_model,
+                fp_species=fp_species,
+                calibration_scale=calibration_scale,
+                use_bc=use_bc,
+                bc_input=bc_input,
+                averaging_error=averaging_error,
+                flux_non_finite_check=flux_non_finite_check,
+            ),
+        )
+
 
 def interpolate_flux_to_footprint_grid(
     flux_dict: dict[str, FluxData],
@@ -384,230 +563,3 @@ def add_obs_error(sites: Sequence[str], site_data: dict, add_averaging_error: bo
                 "will be zero. Try setting `averaging_period = None`."
             )
             logger.info(info_msg)
-
-
-def _retrieve_inversion_data_from_options(
-    *,
-    site_options: SiteOptions,
-    species: str,
-    domain: str,
-    start_date: str,
-    end_date: str,
-    calibration_scale: str | None = None,
-    fp_model: str | None = None,
-    fp_species: str | None = None,
-    emissions_name: Sequence[str] | None = None,
-    use_bc: bool = True,
-    bc_input: str | None = None,
-    bc_store: str | None = None,
-    obs_store: str | list[str] | None = None,
-    footprint_store: str | list[str] | None = None,
-    emissions_store: str | None = None,
-    emissions_domain: str | None = None,
-    split_by_sectors: bool = False,
-    averagingerror: bool = True,
-    flux_non_finite_check: FluxNonFiniteCheck = "lazy",
-) -> RhimeMergedData:
-    """Acquire the modern dataset record from already resolved site selectors."""
-    merged_sites: dict[str, xr.Dataset] = {}
-    observation_provenance = {}
-    footprint_provenance = {}
-    boundary_provenance = None
-
-    # Get flux data
-    if emissions_name is None:
-        raise ValueError("`emissions_name` must be specified")
-
-    flux_dict = get_flux_data(
-        sources=emissions_name,
-        species=species,
-        domain=emissions_domain or domain,
-        start_date=start_date,
-        end_date=end_date,
-        store=emissions_store,
-        flux_non_finite_check=flux_non_finite_check,
-    )
-    retained_flux_dict = flux_dict
-    flux_provenance = {source: selected_provenance(value, emissions_store) for source, value in flux_dict.items()}
-
-    # Get BC data
-    if use_bc is True:
-        try:
-            bc_data = get_bc(
-                species=species,
-                domain=domain,
-                bc_input=bc_input,
-                start_date=start_date,
-                end_date=end_date,
-                store=bc_store,
-            )
-        except SearchError as e:
-            raise SearchError("Could not find matching boundary conditions.") from e
-        else:
-            # This public getter rejects multiple UUIDs and selects latest.
-            boundary_provenance = selected_provenance(
-                bc_data, bc_store, requested_version="latest"
-            )
-    else:
-        bc_data = None
-
-    # get obs and footprints, and make scenarios for each site
-    check_scales = set()
-    site_indices_to_keep = []
-    output_units: str | None = None
-
-    keep_variables = [
-        f"{species}",
-        f"{species}_variability",
-        f"{species}_repeatability",
-        f"{species}_number_of_observations",
-        "inlet",  # needed if multiple inlets combined
-        "inlet_height",  # sometimes needed if inlet='multiple' (may be outdated soon)
-    ]
-    warnings.warn(f"Dropping all variables besides {keep_variables}", stacklevel=2)
-    for i, site in enumerate(site_options.sites):
-        # Get observations data
-        site_platform = site_options.platform[i]
-        if isinstance(site_platform, str) and site_platform.lower() == "flask":
-            avg_period = None
-        else:
-            avg_period = site_options.averaging_period[i]
-
-        site_data = get_obs_data(
-            site=site,
-            species=species,
-            inlet=site_options.inlet[i],
-            start_date=start_date,
-            domain=domain,
-            platform=site_platform,
-            end_date=end_date,
-            data_level=site_options.obs_data_level[i],
-            average=avg_period,
-            instrument=site_options.instrument[i],
-            calibration_scale=calibration_scale,
-            max_level=site_options.max_level[i],
-            stores=obs_store,
-            keep_variables=keep_variables,
-        )
-
-        if site_data is None:
-            print(f"No obs. found, continuing model run without {site}.\n")
-            continue
-
-        # Get footprints data
-        footprint_data = get_footprint_data(
-            site=site,
-            domain=domain,
-            platform=site_platform,
-            fp_height=site_options.fp_height[i],
-            start_date=start_date,
-            end_date=end_date,
-            model=fp_model,
-            met_model=site_options.met_model[i],
-            fp_species=fp_species,
-            averaging_period=site_options.averaging_period[i],
-            time_resolved=site_options.time_resolved[i],
-            obs_data=site_data,
-            stores=footprint_store,
-        )
-        if footprint_data is None:
-            print(
-                f"\nNo footprint data found for {site} with inlet/height {site_options.fp_height[i]}, model {fp_model}, and domain {domain}.",
-                f"Check these values.\nContinuing model run without {site}.\n",
-            )
-            continue  # skip this site
-
-        scenario_platform = (
-            "site-column"
-            if is_column_observation(site_options.inlet[i], site_platform) and not is_column_platform(site_platform)
-            else site_platform
-        )
-        scenario_flux_dict = (
-            interpolate_flux_to_footprint_grid(flux_dict, footprint_data)
-            if emissions_domain is not None and emissions_domain.lower() != domain.lower()
-            else flux_dict
-        )
-        if scenario_flux_dict is not flux_dict:
-            retained_flux_dict = scenario_flux_dict
-
-        try:
-            scenario_combined = merged_scenario_data(
-                site_data,
-                footprint_data,
-                scenario_flux_dict,
-                bc_data,
-                platform=scenario_platform,
-                max_level=site_options.max_level[i],
-                split_by_sectors=split_by_sectors,
-                output_units=output_units,
-            )
-        except (TypeError, ValueError) as exc:
-            if output_units is None:
-                raise
-            raise ValueError(
-                f"Could not merge site {site!r} using target observation units {output_units!r}."
-            ) from exc
-        if output_units is None:
-            scenario_units = scenario_combined["mf"].attrs.get("units")
-            if not isinstance(scenario_units, str) or not scenario_units:
-                raise ValueError(f"No observation units detected for the first retained site {site!r}.")
-            mole_fraction_unit_scale(
-                scenario_units,
-                context=f"site {site!r} variable 'mf'",
-            )
-            output_units = scenario_units
-        merged_sites[site] = scenario_combined
-        # Observation retrieval can combine UUIDs and discard their selected versions;
-        # never infer those versions from the remaining catalog metadata.
-        observation_provenance[site] = selected_provenance(site_data, obs_store)
-        footprint_provenance[site] = selected_provenance(
-            footprint_data, footprint_store, requested_version="latest"
-        )
-
-        if not is_satellite_platform(site_platform):
-            check_scales.add(scenario_combined.scale)
-
-        site_indices_to_keep.append(i)
-    if len(site_indices_to_keep) == 0:
-        raise SearchError("No site data found. Exiting process.")
-
-    retained = site_options.select_indices(site_indices_to_keep)
-    for site, selector in zip(retained.sites, retained.time_resolved, strict=True):
-        merged_sites[site].attrs["openghg_inversions_time_resolved"] = str(selector).lower()
-
-    # if "satellite" not in footprint_data.metadata:
-    # check for consistency of calibration scales
-    if len(check_scales) > 1:
-        msg = f"Not all sites using the same calibration scale: {len(check_scales)} scales found."
-        logger.warning(msg)
-
-    # create `mf_error`
-    add_obs_error(retained.sites, merged_sites, add_averaging_error=averagingerror)
-
-    return RhimeMergedData(
-        site_data=merged_sites,
-        flux_data={source: value.data for source, value in retained_flux_dict.items()},
-        boundary_data=bc_data.data if bc_data is not None else None,
-        site_options=retained,
-        split_by_sectors=split_by_sectors,
-        provenance=MergedDataProvenance.from_retrieval(
-            observations=observation_provenance,
-            footprints=footprint_provenance,
-            flux=flux_provenance,
-            boundary=boundary_provenance,
-        ),
-        acquisition=AcquisitionFacts(
-            species=species,
-            domain=domain,
-            start_date=start_date,
-            end_date=end_date,
-            emissions_domain=emissions_domain,
-            fp_model=fp_model,
-            fp_species=fp_species,
-            calibration_scale=calibration_scale,
-            use_bc=use_bc,
-            bc_input=bc_input,
-            averaging_error=averagingerror,
-            flux_non_finite_check=flux_non_finite_check,
-        ),
-    )
