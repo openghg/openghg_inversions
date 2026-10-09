@@ -54,14 +54,14 @@ jupyter = [
   "nbformat",
 ]
 dev = [
-  "h5py<3.15",
+  "h5py<3.17",
   "pytest",
   "pytest-xdist",
-  "ruff==0.16.0",
+  "ruff==0.16.10",
   "pyright",
   "mypy",
   "pandas-stubs==2.3.3.*",
-  "scipy-stubs==1.15.3.*",
+  "scipy-stubs>=1.15.3,<1.18.2",
   "towncrier>=24.8",
 ]
 
@@ -70,9 +70,9 @@ dev = [
 # worktrees. Broader developer tools remain available explicitly through
 # ``uv_dev`` and the Slurm tox runner.
 local = [
-  "h5py<3.15",
+  "h5py<3.17",
   "pytest",
-  "ruff==0.16.0",
+  "ruff==0.16.10",
 ]
 test = [
   "pytest",
