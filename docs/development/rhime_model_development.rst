@@ -319,6 +319,9 @@ The named preparation functions no longer accept positional ``data_args`` maps.
 The deprecated ``prepare_rhime_inputs`` acquisition-and-preparation wrapper
 normalizes its applicable inputs and delegates to these same scientific stages;
 it must not retain a second implementation of assembly or provenance policy.
+The stages and their scientific helpers live together in ``rhime.preparation``.
+They do not call back into the deprecated ``inversion_data.preparation`` module;
+compatibility delegation runs only towards the canonical stages.
 
 Apply raw overrides before resolution. Use ``dataclasses.replace`` only when the
 replacement fields are already mutually consistent; it does not recompute
