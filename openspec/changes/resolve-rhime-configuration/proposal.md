@@ -31,15 +31,20 @@ meant to simplify.
   observations. Retain the old public acquisition name as a deprecated wrapper
   with the same signature and return. Preserve `params_from_config` as the
   dictionary-returning INI compatibility adapter.
-- Following the approved #815 split, use distinct `RhimeMergedData.from_options`
-  and `.load` factories. Recipes reuse supplied data directly; explicit cache
-  failures raise without fresh acquisition (#806).
+- Acquire in-memory data with `RhimeMergedData.from_options` or reuse compatible
+  supplied data. Modern merged-data cache loading/saving and `prepare_rhime_inputs`
+  were removed in #826; acquisition replay is deferred to #829. Historical
+  six-tuple retrieval and codecs remain isolated under `hbmcmc.legacy_data`.
 - Add shallow `RhimeConfig.select(*names)` for explicitly selected keyword
   forwarding. Keep scientific components directly callable and remove their
   former positional `data_args` adapters.
-- Deprecate the acquisition-and-preparation `prepare_rhime_inputs` convenience
-  API while retaining its signature and return through the canonical named
-  stages, including their footprint provenance.
+- Prepare observation errors before filtering or aggregation, including both
+  nested domains. Preserve supplied errors, borrowed datasets and footprint
+  metadata. `averaging_error` is preparation policy; `averaging_period` remains
+  an acquisition/resampling selector.
+- Call basis construction directly and combine sensitivity/filter forwarding
+  wrappers with their implementations. Keep shared indexing utilities and
+  normalize minimum-error shorthand at its assembly boundary.
 - Preserve other public scientific input/return contracts and ownership through small
   adapters. Remove requirements to reconstruct original spellings or sparse
   defaults solely to preserve historical staged hashes.
