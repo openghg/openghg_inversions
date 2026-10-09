@@ -9,7 +9,7 @@ classes, remain connected, and satisfy a project eccentricity threshold.
 The verification-games workflow weights that strategy with summed absolute
 cached ``fp_x_flux``. At this earlier runner stage projected sensitivities do
 not exist, so the example deliberately substitutes the public
-``basis_weights_from_fp_all`` field while preserving the guarded strategy and
+``basis_weights_from_data`` field while preserving the guarded strategy and
 class composition.
 
 Use :func:`run_custom_rhime` from Python or :func:`main` from the command line.
@@ -32,8 +32,8 @@ import xarray as xr
 
 from openghg_inversions.basis import (
     BasisFunctions,
-    basis_functions_from_fp_all_flat_basis,
-    basis_weights_from_fp_all,
+    basis_functions_from_flat_basis,
+    basis_weights_from_data,
     load_country_region_classes,
 )
 from openghg_inversions.basis.algorithms import (
@@ -128,9 +128,9 @@ def _guarded_basis(
             maximum, or geometry, allocation, or guarded splitting is invalid.
     """
     # 1. Turn the filtered footprints and flux into one spatial importance map.
-    fp_all = merged.to_legacy_fp_all()
-    weights = basis_weights_from_fp_all(
-        fp_all,
+    weights = basis_weights_from_data(
+        merged.site_data,
+        merged.flux_data,
         flux_sources,
         abs_flux=True,
     )
@@ -182,12 +182,13 @@ def _guarded_basis(
         "openghg_inversions:project_basis_connectivity": 1,
         "openghg_inversions:project_basis_max_child_pca_eccentricity": float(max_child_pca_eccentricity),
         "openghg_inversions:project_basis_class_policy": "land_ocean",
-        "openghg_inversions:project_basis_weights": "basis_weights_from_fp_all_abs_flux_normalized",
+        "openghg_inversions:project_basis_weights": "basis_weights_from_data_abs_flux_normalized",
     }
     basis_flat.attrs.update(provenance)
     # 5. Attach the current flux so standard RHIME sensitivity code can use it.
-    return basis_functions_from_fp_all_flat_basis(
-        fp_all=fp_all,
+    return basis_functions_from_flat_basis(
+        flux_data=merged.flux_data,
+        split_by_sectors=merged.split_by_sectors,
         basis_flat=basis_flat,
         metadata=provenance,
     )

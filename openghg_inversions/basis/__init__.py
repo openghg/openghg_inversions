@@ -9,7 +9,7 @@ from retained scalings to the native grid, not an automatic retained
 restriction. ``FluxWeightedBasis``, exported here as ``BasisFunctions``, pairs
 that geometry with flux for sensitivity projection and reconstruction; it does
 not own native covariance transforms. Project-owned workflows can compose the
-basis algorithms and use ``basis_functions_from_fp_all_flat_basis`` to attach
+basis algorithms and use ``basis_functions_from_flat_basis`` to attach
 current-run flux without importing private preparation functions.
 
 Native covariance actions live in :mod:`openghg_inversions.native_covariance`
@@ -22,10 +22,12 @@ the centred reduced likelihood or unresolved covariance.
 
 from ._functions import (
     basis_weights_from_fp_all,
+    basis_weights_from_data,
     bucket_basis_from_weights,
     bucket_basis_function,
     bucketbasisfunction,
     fixed_outer_regions_basis,
+    fixed_outer_regions_basis_from_data,
     load_country_region_classes,
     load_intem_outer_regions,
     paired_abs_response_weights,
@@ -40,7 +42,7 @@ from ._wrapper import (
     load_basis_functions,
     make_basis_functions,
 )
-from .basis_functions import BasisFunctions, basis_functions_from_fp_all_flat_basis
+from .basis_functions import BasisFunctions, basis_functions_from_fp_all_flat_basis, basis_functions_from_flat_basis
 from .affine_flux_map import AffineFluxMap
 from .affine_flux_map_io import (
     AffineFluxMapArtifact,
@@ -64,6 +66,8 @@ from .covariance_products import (
 __all__ = [
     "basis_functions_from_fp_all_flat_basis",
     "basis_weights_from_fp_all",
+    "basis_weights_from_data",
+    "basis_functions_from_flat_basis",
     "AffineFluxMap",
     "AffineFluxMapArtifact",
     "BasisFunctions",
@@ -71,6 +75,7 @@ __all__ = [
     "bucket_basis_function",
     "bucketbasisfunction",
     "fixed_outer_regions_basis",
+    "fixed_outer_regions_basis_from_data",
     "load_basis_functions",
     "load_affine_flux_map",
     "load_country_region_classes",
