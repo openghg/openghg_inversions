@@ -356,3 +356,14 @@ preserve scientific output checks. Run relevant broader coverage before handoff.
 The previous locked Python 3.12/3.13 and documentation passes validate the old
 implementation only. They do not establish conformance to this revised design.
 Track the remaining reconciliation in [tasks.md](tasks.md).
+
+### Modern flux terminology and compatibility
+
+`flux_store`/`flux_domain` and `inner_flux_store`/`inner_flux_domain` are canonical.
+Old `emissions_*` keywords warn until removal in 0.9; simultaneous old/new
+spellings are errors even for equal values. Exports use only canonical names.
+This boundary is independent of historical HBMCMC translation. The source flux
+dataset domain defaults to its corresponding footprint domain; it is not an
+alias for the nested inner domain. `make_basis_functions` retains its shipped
+`emissions_name` keyword with the same deprecation to `flux_sources`; unshipped
+helpers use the new name directly. No translating forwarding wrapper is added.
