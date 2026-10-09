@@ -15,6 +15,7 @@ from dataclasses import MISSING, dataclass, field, fields
 from pathlib import Path
 from typing import Any, ClassVar, cast, get_args
 
+from openghg_inversions._flux_options import normalise_flux_aliases
 from openghg_inversions.flux_sanitization import FluxNonFiniteCheck
 from openghg_inversions.inversion_data._site_options import SiteOptions
 from openghg_inversions.model_error import MinErrorConfig
@@ -54,7 +55,10 @@ class RhimeConfig:
 
     Use :meth:`from_params` for external options; deprecated spellings emit
     warnings. It owns ordinary configuration containers and borrows opaque
-    numerical values. Direct construction and dataclass replacement expect
+    numerical values. Modern ``emissions_store``/``emissions_domain`` spellings
+    are removed in 0.9; supplying either with its ``flux_*`` replacement is an
+    error, including equal values. Resolved fields use only ``flux_*`` names.
+    Direct construction and dataclass replacement expect
     already-resolved values and do not copy them.
     A frozen record does not make contained mappings or the sampler immutable.
     Acquisition and filtering leave the requested choices intact. The record
@@ -72,8 +76,8 @@ class RhimeConfig:
     bc_store: str = "user"
     obs_store: str = "user"
     footprint_store: str = "user"
-    emissions_store: str = "user"
-    emissions_domain: str | None = None
+    flux_store: str = "user"
+    flux_domain: str | None = None
     fp_model: str | None = None
     fp_species: str | None = None
     calibration_scale: str | None = None
@@ -376,12 +380,12 @@ def resolve_flux_sources(
 
 
 def normalise_rhime_params(params: Mapping[str, Any]) -> dict[str, Any]:
-    """Copy canonical options, coerce scalars and validate structured values.
+    """Resolve modern flux spellings, coerce scalars and validate values.
 
-    ``RhimeConfig.from_params`` translates deprecated spellings before this
-    canonical value-normalization step.
+    Historical HBMCMC aliases are translated before this step. Modern flux
+    aliases are resolved here, with warnings and strict old/new conflicts.
     """
-    normalized = dict(params)
+    normalized = normalise_flux_aliases(params)
     coerce_simple_param_types(normalized)
     validate_rhime_param_types(normalized)
     return normalized

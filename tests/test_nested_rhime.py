@@ -464,7 +464,8 @@ def test_cli_run_rhime_nested_passes_config(monkeypatch, tmp_path: Path) -> None
     assert seen == {"config_file": str(config_file), "kwargs": {}}
 
 
-def test_nested_preparation_uses_native_inner_domain_and_safe_basis_default(monkeypatch, capsys) -> None:
+@pytest.mark.parametrize("deprecated", [False, True])
+def test_nested_preparation_uses_native_inner_domain_and_safe_basis_default(monkeypatch, capsys, deprecated) -> None:
     basis = _basis([50.0], [-2.0], np.array([[1]]))
     prepared = _prepared(
         times=["2019-01-01T00:00"],
@@ -509,22 +510,23 @@ def test_nested_preparation_uses_native_inner_domain_and_safe_basis_default(monk
     monkeypatch.setattr(nested_module, "mask_outer_merged_for_inner_domain", lambda outer, inner: outer)
     monkeypatch.setattr(nested_module, "_prepare_one_domain", fake_prepare)
 
-    nested = nested_module.prepare_nested_rhime_inputs(
-        setup,
-        inner_domain="6km",
-        inner_footprint_store="inner-fp",
-        inner_emissions_store="inner-flux",
-        inner_emissions_domain="EUROPE",
-        inner_nbasis=40,
-    )
+    from contextlib import nullcontext
+
+    selectors = ({"inner_emissions_store": "inner-flux", "inner_emissions_domain": "EUROPE"}
+                 if deprecated else {"inner_flux_store": "inner-flux", "inner_flux_domain": "EUROPE"})
+    warning = pytest.warns(DeprecationWarning, match=r"removed in 0\.9") if deprecated else nullcontext()
+    with warning:
+        nested = nested_module.prepare_nested_rhime_inputs(
+            setup, inner_domain="6km", inner_footprint_store="inner-fp", inner_nbasis=40, **selectors
+        )
 
     assert capsys.readouterr().out.count("TIMING rhime.prepare_inputs.merged_data ") == 2
     assert len(retrieval_args) == 2
     inner_args = retrieval_args[1]
     assert inner_args["domain"] == "EUROPE-6km"
     assert inner_args["footprint_store"] == "inner-fp"
-    assert inner_args["emissions_store"] == "inner-flux"
-    assert inner_args["emissions_domain"] == "EUROPE"
+    assert inner_args["flux_store"] == "inner-flux"
+    assert inner_args["flux_domain"] == "EUROPE"
     assert inner_args["use_bc"] is False
     assert preparation_configs[1].basis_algorithm == "quadtree"
     assert preparation_configs[1].model.domain == preparation_configs[1].domain == "EUROPE-6km"
@@ -896,3 +898,14 @@ def test_nested_latest_paris_output_writes_index_as_unlimited_dimension(
     with xr.open_dataset(result.output_metadata["paris_concentration_path"]) as saved:
         assert saved.encoding["unlimited_dims"] == {"index"}
         assert saved.time.dims == ("index",)
+
+
+@pytest.mark.parametrize(("old", "new"), [
+    ("inner_emissions_store", "inner_flux_store"),
+    ("inner_emissions_domain", "inner_flux_domain"),
+])
+@pytest.mark.parametrize("value", [None, "same"])
+def test_nested_runner_rejects_duplicate_flux_spellings(old, new, value):
+    """Both nested spellings are rejected before configuration or retrieval."""
+    with pytest.raises(ValueError, match="cannot be supplied together"):
+        nested_module.run_rhime_nested(inner_domain="6km", **{old: value, new: value})

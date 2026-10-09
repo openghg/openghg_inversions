@@ -304,8 +304,8 @@ def run_custom_rhime(
         **config.select(
             "site_options", "species", "domain", "start_date",
             "end_date",  "flux_sources", "split_by_sectors",
-            "bc_store", "obs_store", "footprint_store", "emissions_store",
-            "emissions_domain", "fp_model", "fp_species", "calibration_scale",
+            "bc_store", "obs_store", "footprint_store", "flux_store",
+            "flux_domain", "fp_model", "fp_species", "calibration_scale",
             "use_bc", "bc_input",
             "flux_non_finite_check",
         ),

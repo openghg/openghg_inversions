@@ -492,3 +492,44 @@ def test_minimum_error_owns_any_mapping_without_requiring_dropped_sites():
     config = rhime_params.RhimeConfig.from_params(_request(min_error=values), multisector=False)
     values["TAC"] = 99.0
     assert config.min_error == {"TAC": 0.5}
+
+
+@pytest.mark.parametrize(("old", "new", "value"), [
+    ("emissions_store", "flux_store", "selected-store"),
+    ("emissions_domain", "flux_domain", "COARSE"),
+])
+def test_modern_flux_deprecation_exports_canonical_configuration(old, new, value):
+    """Accepted deprecated options resolve to canonical fields without raw keys."""
+    from dataclasses import asdict
+
+    request = _request(**{old: value})
+    with pytest.warns(DeprecationWarning, match=r"removed in 0\.9"):
+        config = rhime_params.RhimeConfig.from_params(request, multisector=False)
+    assert getattr(config, new) == value
+    assert old not in asdict(config)
+    assert old not in config.supported_option_names()
+    assert new in config.supported_option_names()
+    assert request[old] == value
+
+
+@pytest.mark.parametrize(("old", "new"), [
+    ("emissions_store", "flux_store"),
+    ("emissions_domain", "flux_domain"),
+])
+@pytest.mark.parametrize("value", [None, "same"])
+def test_modern_flux_deprecation_rejects_explicit_equal_conflicts(old, new, value):
+    """Explicit duplicates are ambiguous even if both have the same value."""
+    with pytest.raises(ValueError, match="cannot be supplied together"):
+        rhime_params.RhimeConfig.from_params(_request(**{old: value, new: value}), multisector=False)
+
+
+def test_canonical_flux_defaults_and_explicit_source_domain():
+    default = rhime_params.RhimeConfig.from_params(_request(), multisector=False)
+    assert default.flux_store == "user"
+    assert default.flux_domain is None
+    selected = rhime_params.RhimeConfig.from_params(
+        _request(flux_store="coarse-store", flux_domain="COARSE"), multisector=False
+    )
+    assert selected.flux_store == "coarse-store"
+    assert selected.flux_domain == "COARSE"
+    assert selected.domain == "EUROPE"

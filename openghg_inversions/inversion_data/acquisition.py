@@ -11,7 +11,7 @@ import logging
 import warnings
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from typing import Any
+from typing import Any, cast
 
 import pandas as pd
 import xarray as xr
@@ -19,6 +19,7 @@ from openghg.dataobjects import FluxData
 from openghg.retrieve import get_bc
 from openghg.types import SearchError
 
+from openghg_inversions._flux_options import UNSET, _Unset, resolve_deprecated_keyword
 from openghg_inversions.flux_sanitization import FluxNonFiniteCheck
 from openghg_inversions.inversion_data import _site_options
 from openghg_inversions.inversion_data._provenance import (
@@ -45,7 +46,7 @@ class AcquisitionFacts:
     domain: str | None = None
     start_date: str | None = None
     end_date: str | None = None
-    emissions_domain: str | None = None
+    flux_domain: str | None = None
     fp_model: str | None = None
     fp_species: str | None = None
     calibration_scale: str | None = None
@@ -220,8 +221,10 @@ class RhimeMergedData:
         bc_store: str = "user",
         obs_store: str = "user",
         footprint_store: str = "user",
-        emissions_store: str = "user",
-        emissions_domain: str | None = None,
+        flux_store: str | None | _Unset = UNSET,
+        flux_domain: str | None | _Unset = UNSET,
+        emissions_store: str | None | _Unset = UNSET,
+        emissions_domain: str | None | _Unset = UNSET,
         fp_model: str | None = None,
         fp_species: str | None = None,
         calibration_scale: str | None = None,
@@ -234,8 +237,19 @@ class RhimeMergedData:
         Reads OpenGHG stores and retains all selector fields together when sites
         are unavailable. Returned datasets may be lazy and remain borrowed by
         later preparation. ``flux_sources`` names OpenGHG sources. Store,
-        selector and merge errors propagate.
+        selector and merge errors propagate. ``flux_store`` defaults to ``"user"``;
+        ``flux_domain`` selects the source flux dataset domain, defaulting to
+        the footprint ``domain``. It does not imply a nested inner domain.
+        Deprecated ``emissions_store``/``emissions_domain`` are removed in 0.9.
+        Supplying an old and new spelling together raises ``ValueError``, even
+        when their values are equal or ``None``.
         """
+        flux_store = cast(str | None, resolve_deprecated_keyword(
+            "emissions_store", "flux_store", emissions_store, flux_store, default="user"
+        ))
+        flux_domain = cast(str | None, resolve_deprecated_keyword(
+            "emissions_domain", "flux_domain", emissions_domain, flux_domain
+        ))
         merged_sites: dict[str, xr.Dataset] = {}
         observation_provenance = {}
         footprint_provenance = {}
@@ -248,14 +262,14 @@ class RhimeMergedData:
         flux_dict = get_flux_data(
             sources=flux_sources,
             species=species,
-            domain=emissions_domain or domain,
+            domain=flux_domain or domain,
             start_date=start_date,
             end_date=end_date,
-            store=emissions_store,
+            store=flux_store,
             flux_non_finite_check=flux_non_finite_check,
         )
         retained_flux_dict = flux_dict
-        flux_provenance = {source: selected_provenance(value, emissions_store) for source, value in flux_dict.items()}
+        flux_provenance = {source: selected_provenance(value, flux_store) for source, value in flux_dict.items()}
 
         # Get BC data
         if use_bc is True:
@@ -351,7 +365,7 @@ class RhimeMergedData:
             )
             scenario_flux_dict = (
                 interpolate_flux_to_footprint_grid(flux_dict, footprint_data)
-                if emissions_domain is not None and emissions_domain.lower() != domain.lower()
+                if flux_domain is not None and flux_domain.lower() != domain.lower()
                 else flux_dict
             )
             if scenario_flux_dict is not flux_dict:
@@ -425,7 +439,7 @@ class RhimeMergedData:
                 domain=domain,
                 start_date=start_date,
                 end_date=end_date,
-                emissions_domain=emissions_domain,
+                flux_domain=flux_domain,
                 fp_model=fp_model,
                 fp_species=fp_species,
                 calibration_scale=calibration_scale,

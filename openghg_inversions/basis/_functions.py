@@ -284,7 +284,7 @@ def paired_abs_response_weights(
 def basis_weights_from_data(
     site_data: Mapping[str, xr.Dataset],
     flux_data: Mapping[str, xr.Dataset],
-    emissions_name: Sequence[str] | None = None,
+    flux_sources: Sequence[str] | None = None,
     *,
     abs_flux: bool = False,
     mask: xr.DataArray | None = None,
@@ -297,7 +297,7 @@ def basis_weights_from_data(
     ``abs_flux=True`` takes the absolute flux before temporal averaging.
     ``mask`` optionally drops cells outside the fitting region.
     """
-    source = emissions_name[0] if emissions_name is not None else next(iter(flux_data))
+    source = flux_sources[0] if flux_sources is not None else next(iter(flux_data))
     flux = flux_data[source]["flux"]
     footprints = [dataset["fp"] for dataset in site_data.values()]
     return _mean_fp_times_mean_flux(flux, footprints, abs_flux=abs_flux, mask=mask).as_numpy()
@@ -1011,7 +1011,7 @@ def fixed_outer_regions_basis_from_data(
     start_date: str,
     basis_algorithm: str,
     domain: str,
-    emissions_name: Sequence[str] | None = None,
+    flux_sources: Sequence[str] | None = None,
     nbasis: int = 100,
     country_directory: str | None = None,
     abs_flux: bool = False,
@@ -1051,7 +1051,7 @@ def fixed_outer_regions_basis_from_data(
             values are ``"quadtree"``, ``"weighted"``, and
             ``"region_constrained"``.
         domain: Domain across which to calculate basis functions.
-        emissions_name: Optional list of OpenGHG flux source names used to
+        flux_sources: Optional list of OpenGHG flux source names used to
             select the first source for weighting.
         nbasis: Desired number of inner-region basis labels.
         country_directory: Optional directory containing land/sea files and the
@@ -1106,7 +1106,7 @@ def fixed_outer_regions_basis_from_data(
         )
 
     # Validate the physical grid before adopting the authoritative flux coordinates.
-    source = emissions_name[0] if emissions_name is not None else next(iter(flux_data))
+    source = flux_sources[0] if flux_sources is not None else next(iter(flux_data))
     flux = flux_data[source]["flux"]
     flux_grid = flux.isel(
         {dimension: 0 for dimension in flux.dims if dimension not in intem_regions.dims},
@@ -1124,7 +1124,7 @@ def fixed_outer_regions_basis_from_data(
     mask = intem_regions == inner_index
 
     weights = basis_weights_from_data(
-        site_data, flux_data, emissions_name, abs_flux=abs_flux, mask=mask,
+        site_data, flux_data, flux_sources, abs_flux=abs_flux, mask=mask,
     )
     if allow_empty_inner_region:
         finite_inner_weights = weights.to_numpy()
