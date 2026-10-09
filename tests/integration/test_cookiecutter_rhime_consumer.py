@@ -26,7 +26,7 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
                     averaging_period="1h", start_date="2019-01-01", end_date="2019-02-01",
                     output_name="example", output_format="inv_out", save_inversion_output=False,
                     mismatch_model=None, flux_sources=["inventory"],
-                    reload_merged_data=False, draws=3),
+                    draws=3),
         multisector=False,
     )
     sampler = config.sampler
