@@ -45,17 +45,15 @@ def _basis_functions(*, artifact_source: str = "project-generated") -> BasisFunc
     )
 
 
-@pytest.mark.parametrize("reload_merged_data", [False, True])
 def test_custom_basis_runner_replaces_only_basis_stage(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-    reload_merged_data: bool,
 ) -> None:
-    """Carry acquisition and reload through output with only a custom basis stage."""
+    """Carry in-memory acquisition through output with a custom basis stage."""
     config_file = tmp_path / "rhime.ini"
     config_file.write_text('[RHIME.OUTPUT]\noutput_format = "none"\n', encoding="utf-8")
     project_basis_path = tmp_path / "external-basis.nc"
-    overrides = {"reload_merged_data": reload_merged_data, "draws": 3}
+    overrides = {"draws": 3}
     parsed_params = {
         "from_config": True,
         "max_child_pca_eccentricity": 6.5,
@@ -65,7 +63,7 @@ def test_custom_basis_runner_replaces_only_basis_stage(
         params=dict(species="ch4", sites=["TAC", "MHD"], domain="EUROPE",
                     averaging_period="1h", start_date="2019-01-01", end_date="2019-02-01",
                     output_name="example", output_format="none", flux_sources=["inventory"],
-                    reload_merged_data=reload_merged_data, draws=3),
+                    draws=3),
         multisector=False,
     )
     sampler = config.sampler
@@ -103,15 +101,8 @@ def test_custom_basis_runner_replaces_only_basis_stage(
         return config
 
     def retrieve(**kwargs: Any) -> Any:
-        if not reload_merged_data:
-            assert kwargs["site_options"] is config.site_options
-        else:
-            assert "site_options" not in kwargs
-        assert "reload_merged_data" not in kwargs
-        if not reload_merged_data:
-            assert kwargs["split_by_sectors"] is False
-        else:
-            assert "split_by_sectors" not in kwargs
+        assert kwargs["site_options"] is config.site_options
+        assert kwargs["split_by_sectors"] is False
         assert "project_basis_path" not in kwargs
         calls.append("retrieve")
         return merged
@@ -204,7 +195,6 @@ def test_custom_basis_runner_replaces_only_basis_stage(
     monkeypatch.setattr(custom_basis_runner, "read_rhime_ini", parse_config)
     monkeypatch.setattr(custom_basis_runner.RhimeConfig, "from_params", classmethod(resolve))
     monkeypatch.setattr(custom_basis_runner.RhimeMergedData, "from_options", retrieve)
-    monkeypatch.setattr(custom_basis_runner.RhimeMergedData, "load", retrieve)
     monkeypatch.setattr(custom_basis_runner, "filter_rhime_observations", filter_observations)
     monkeypatch.setattr(custom_basis_runner, "build_project_basis", build_project_basis)
     monkeypatch.setattr(custom_basis_runner, "build_rhime_sensitivities", build_sensitivities)
@@ -420,7 +410,7 @@ def test_incompatible_project_basis_failure_remains_owned_by_sensitivity_stage(
         params=dict(species="ch4", sites=["TAC", "MHD"], domain="EUROPE",
                     averaging_period="1h", start_date="2019-01-01", end_date="2019-02-01",
                     output_name="example", output_format="none", flux_sources=["inventory"],
-                    reload_merged_data=False, draws=3),
+                    draws=3),
         multisector=False,
     )
     merged = RhimeMergedData(
