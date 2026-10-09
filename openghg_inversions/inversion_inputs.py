@@ -306,7 +306,9 @@ def make_inv_inputs(
 
     The returned dataset contains shared observations, sensitivities, error
     terms, and site alignment metadata. Model-component-specific arrays are
-    constructed by their owning components.
+    constructed by their owning components. Core payloads are materialized
+    together before invalid observations are discarded; the full pre-selection
+    core arrays must fit in memory. Other extension arrays may remain lazy.
 
     Args:
         fp_data: Per-site merged observations and sensitivity data.
