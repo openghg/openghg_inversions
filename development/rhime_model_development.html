@@ -393,6 +393,13 @@ that a scientist could inspect one imperative recipe and then follow plainly
 named scientific functions. New RHIME code should provide that reading
 experience without restoring the old monolithic function, mutable dictionaries,
 parallel-list state, or implicit <code class="docutils literal notranslate"><span class="pre">**kwargs</span></code> forwarding.</p>
+<p>Start by reading a recipe as a <strong>scientific pipeline with optional
+checkpoints</strong>: acquire, prepare, build, sample, reconstruct, and write products.
+The runner makes that sequence visible; saved-stage entry points resume the
+same scientific operations from a declared handoff. The
+<a class="reference internal" href="architecture_principles.html#rhime-pipeline-checkpoints"><span class="std std-ref">pipeline and checkpoint architecture</span></a>
+explains phase ownership, reuse and current implementation limits. A recipe
+need only implement the entry points and products it actually supports.</p>
 </section>
 <section id="core-principles">
 <h2>Core principles<a class="headerlink" href="#core-principles" title="Link to this heading">#</a></h2>

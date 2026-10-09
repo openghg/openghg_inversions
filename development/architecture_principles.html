@@ -391,6 +391,70 @@ shared components own their scientific or technical contracts.</p>
 existing route already satisfies them or that a common staged interface has
 been implemented. Existing public behaviour and artifact contracts remain
 subject to their explicit compatibility policy.</p>
+<section id="a-scientific-pipeline-with-optional-checkpoints">
+<span id="rhime-pipeline-checkpoints"></span><h2>A scientific pipeline with optional checkpoints<a class="headerlink" href="#a-scientific-pipeline-with-optional-checkpoints" title="Link to this heading">#</a></h2>
+<p>Read a RHIME recipe as a pipeline of ordinary scientific operations. Its
+runner shows their order; a checkpoint saves a handoff so a later invocation
+can continue from that point. The design to make visible is:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">Acquire</span> <span class="o">-----------------&gt;</span> <span class="n">acquired</span> <span class="n">checkpoint</span>
+   <span class="o">|</span>
+<span class="n">Prepare</span> <span class="o">-----------------&gt;</span> <span class="n">prepared</span> <span class="n">checkpoint</span>
+   <span class="o">|</span>
+<span class="n">Build</span> <span class="o">/</span> <span class="n">materialize</span>
+   <span class="o">|</span>
+<span class="n">Sample</span> <span class="o">------------------&gt;</span> <span class="n">sampled</span> <span class="n">checkpoint</span>
+   <span class="o">|</span>
+<span class="n">Reconstruct</span>
+   <span class="o">|</span>
+<span class="n">Write</span> <span class="n">products</span>
+</pre></div>
+</div>
+<p>The vertical path is the scientific execution. The horizontal branches are
+optional persistence boundaries. This diagram describes responsibilities,
+not a universal API: a recipe may start from prepared inputs or support only
+some of these checkpoints. Numerical operations inside a phase remain
+explicit where their scientific meaning requires it.</p>
+<p>Make the following properties clear in both code and recipe documentation:</p>
+<ul class="simple">
+<li><p><strong>One scientific path per recipe.</strong> Full, prepared-input and saved-stage
+routes call the same authoritative preparation, construction, sampling and
+reconstruction operations wherever they support equivalent work. A full
+in-memory run does not require manifests, artifact digests or checkpoint
+writers. Entry points handle loading, saving and invocation choices without
+independently deciding retained-site policy or scientific interpretation.</p></li>
+<li><p><strong>A checkpoint says what is complete.</strong> Acquired data precedes configured
+filtering, basis construction and sensitivity preparation. Prepared data
+retains the scientific inputs and facts needed to build a compatible model.
+Sampled data retains inference choices, output meaning and its association
+with the matching prepared inputs. Resumption uses that declared phase;
+it does not guess from similar arrays or repeat completed upstream work.</p></li>
+<li><p><strong>Choices belong to the phase that consumes them.</strong> Preparation-dependent
+facts constrain reuse. Compatible model and sampler choices can change
+after preparation; output choices can change after sampling. A CO2 reduction
+can already depend on native prior covariance, so the recipe must distinguish
+a preparation change from a later graph-only choice. A complete configuration
+equality check cannot express these distinctions.</p></li>
+<li><p><strong>Owners validate the handoff once.</strong> Loaders validate saved encoding and
+content; scientific consumers own compatibility with the next operation.
+Provenance describes the selected inputs and completed work. Keep these
+responsibilities distinct and trust locally constructed intermediates.
+Supported reconstruction uses samples and matched artifacts without
+rebuilding the graph; generating new predictions may need explicit replay.</p></li>
+</ul>
+<p>Keep the recipe procedural. These boundaries do not require a pipeline class,
+runtime registry, mutable workflow object or one class per stage. Different
+recipes can retain short, similar orchestration while their scientific
+operations differ. For example, nested preparation owns domain alignment and
+overlap masking; cached CO2 inference keeps its matched graph, sampler and
+cache-update order together. State unsupported checkpoint routes explicitly.</p>
+<p>Current file-backed commands and their restrictions are documented in
+<a class="reference internal" href="../usage/staged_workflow.html"><span class="doc">Staged RHIME workflows</span></a> and <a class="reference internal" href="../usage/co2_model_family.html"><span class="doc">CO₂ model family</span></a>.
+The reusable prepared/sample manifest interface in <a class="reference external" href="https://github.com/openghg/openghg_inversions/pull/802">PR 802</a> is a planned
+replacement, not the current common API. Existing routes still differ in
+retained-site policy and reuse checks. When bringing them into line with this
+design, demonstrate equivalent scientific inputs and products, not just shared
+helper calls. The sections below give the ownership and review criteria.</p>
+</section>
 <section id="responsibilities-follow-reasons-to-change">
 <h2>Responsibilities follow reasons to change<a class="headerlink" href="#responsibilities-follow-reasons-to-change" title="Link to this heading">#</a></h2>
 <p>Give each module a coherent scientific responsibility or technical contract.
@@ -681,6 +745,7 @@ numerical contracts.</p>
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#a-scientific-pipeline-with-optional-checkpoints">A scientific pipeline with optional checkpoints</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#responsibilities-follow-reasons-to-change">Responsibilities follow reasons to change</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#share-policy-across-equivalent-routes">Share policy across equivalent routes</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#six-responsibility-layers">Six responsibility layers</a></li>

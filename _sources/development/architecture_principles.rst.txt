@@ -12,6 +12,76 @@ existing route already satisfies them or that a common staged interface has
 been implemented. Existing public behaviour and artifact contracts remain
 subject to their explicit compatibility policy.
 
+.. _rhime-pipeline-checkpoints:
+
+A scientific pipeline with optional checkpoints
+-----------------------------------------------
+
+Read a RHIME recipe as a pipeline of ordinary scientific operations. Its
+runner shows their order; a checkpoint saves a handoff so a later invocation
+can continue from that point. The design to make visible is::
+
+   Acquire -----------------> acquired checkpoint
+      |
+   Prepare -----------------> prepared checkpoint
+      |
+   Build / materialize
+      |
+   Sample ------------------> sampled checkpoint
+      |
+   Reconstruct
+      |
+   Write products
+
+The vertical path is the scientific execution. The horizontal branches are
+optional persistence boundaries. This diagram describes responsibilities,
+not a universal API: a recipe may start from prepared inputs or support only
+some of these checkpoints. Numerical operations inside a phase remain
+explicit where their scientific meaning requires it.
+
+Make the following properties clear in both code and recipe documentation:
+
+* **One scientific path per recipe.** Full, prepared-input and saved-stage
+  routes call the same authoritative preparation, construction, sampling and
+  reconstruction operations wherever they support equivalent work. A full
+  in-memory run does not require manifests, artifact digests or checkpoint
+  writers. Entry points handle loading, saving and invocation choices without
+  independently deciding retained-site policy or scientific interpretation.
+* **A checkpoint says what is complete.** Acquired data precedes configured
+  filtering, basis construction and sensitivity preparation. Prepared data
+  retains the scientific inputs and facts needed to build a compatible model.
+  Sampled data retains inference choices, output meaning and its association
+  with the matching prepared inputs. Resumption uses that declared phase;
+  it does not guess from similar arrays or repeat completed upstream work.
+* **Choices belong to the phase that consumes them.** Preparation-dependent
+  facts constrain reuse. Compatible model and sampler choices can change
+  after preparation; output choices can change after sampling. A CO2 reduction
+  can already depend on native prior covariance, so the recipe must distinguish
+  a preparation change from a later graph-only choice. A complete configuration
+  equality check cannot express these distinctions.
+* **Owners validate the handoff once.** Loaders validate saved encoding and
+  content; scientific consumers own compatibility with the next operation.
+  Provenance describes the selected inputs and completed work. Keep these
+  responsibilities distinct and trust locally constructed intermediates.
+  Supported reconstruction uses samples and matched artifacts without
+  rebuilding the graph; generating new predictions may need explicit replay.
+
+Keep the recipe procedural. These boundaries do not require a pipeline class,
+runtime registry, mutable workflow object or one class per stage. Different
+recipes can retain short, similar orchestration while their scientific
+operations differ. For example, nested preparation owns domain alignment and
+overlap masking; cached CO2 inference keeps its matched graph, sampler and
+cache-update order together. State unsupported checkpoint routes explicitly.
+
+Current file-backed commands and their restrictions are documented in
+:doc:`../usage/staged_workflow` and :doc:`../usage/co2_model_family`.
+The reusable prepared/sample manifest interface in `PR 802
+<https://github.com/openghg/openghg_inversions/pull/802>`_ is a planned
+replacement, not the current common API. Existing routes still differ in
+retained-site policy and reuse checks. When bringing them into line with this
+design, demonstrate equivalent scientific inputs and products, not just shared
+helper calls. The sections below give the ownership and review criteria.
+
 Responsibilities follow reasons to change
 -----------------------------------------
 

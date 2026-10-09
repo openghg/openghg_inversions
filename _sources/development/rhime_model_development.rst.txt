@@ -15,6 +15,14 @@ named scientific functions. New RHIME code should provide that reading
 experience without restoring the old monolithic function, mutable dictionaries,
 parallel-list state, or implicit ``**kwargs`` forwarding.
 
+Start by reading a recipe as a **scientific pipeline with optional
+checkpoints**: acquire, prepare, build, sample, reconstruct, and write products.
+The runner makes that sequence visible; saved-stage entry points resume the
+same scientific operations from a declared handoff. The
+:ref:`pipeline and checkpoint architecture <rhime-pipeline-checkpoints>`
+explains phase ownership, reuse and current implementation limits. A recipe
+need only implement the entry points and products it actually supports.
+
 Core principles
 ---------------
 
@@ -429,7 +437,7 @@ active ``run_rhime`` plan in
 ``docs/plans/run_rhime_readability_and_modifiability.md``.
 
 File-backed staged workflows
----------------------------
+----------------------------
 
 ``rhime.stages`` is the public facade for file-backed execution. The concrete
 standard and multisector staged workflows remain together in
