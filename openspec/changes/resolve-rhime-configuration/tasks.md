@@ -70,10 +70,10 @@ applies only to the named revisions and does not certify the current stack.
   configuration material from the ordinary run guide.
 - [x] 4.2 Consolidate this checklist so superseded resolved-reader and
   compatibility-wrapper designs are no longer presented as current contracts.
-- [ ] 4.3 Record focused and relevant broader validation for the final #824
+- [x] 4.3 Record focused and relevant broader validation for the final #824
   revision, including changed-path lint, strict OpenSpec, whitespace and
   affected documentation checks. Identify any stack-tip results separately.
-- [ ] 4.4 Push the final #824 revision and update its review evidence with the
+- [x] 4.4 Push the final #824 revision and update its review evidence with the
   exact revision and validation scope. Historical #813 delivery is not current
   delivery evidence.
 
@@ -98,6 +98,25 @@ checkpoint retirement, route-wide retained-site policy and replacement
 manifest/handoff contracts remain with
 [#802](https://github.com/openghg/openghg_inversions/pull/802) and #808. This
 checklist does not claim those contracts or #719/#820/#821 are complete.
+
+## Current stack validation
+
+At configuration revision `293624fd`, strict OpenSpec and whitespace checks
+pass and `docs-full` passed in Slurm `19291950_0`. This revision changes planning
+and reference documentation only; the configuration Python validation remains
+attached to the owning earlier revisions recorded on PR #824 and issue #815.
+
+At stack-tip revision `783517be`, 75 artifact/runner and 30 nested/documentation
+tests passed locally on Python 3.13. Locked Python 3.12 artifact/runner tests,
+CI borrowed-reference typing, full Ruff lint and `docs-full` passed in
+`19291950_1`. Built API navigation, both new public method anchors and the
+nested rejection contract were checked. These stack-tip checks validate #826's
+UTC correction; they are not attributed to the earlier configuration slice.
+
+Both revisions were pushed through the stack. This checklist completion record
+changes no Python code, tests or Sphinx source. Issue #815 and the PR descriptions
+record current heads, immutable validation evidence and remaining upstream
+limitations; no fresh full compatibility matrix is claimed here.
 
 ## Historical validation ledger — not current acceptance
 
