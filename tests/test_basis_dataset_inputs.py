@@ -224,7 +224,15 @@ def test_shipped_basis_source_keyword_warns_and_preserves_science(sources):
     with pytest.warns(DeprecationWarning, match=r"removed in 0\.9"):
         deprecated = make_basis_functions(**options, emissions_name=sources)
     xr.testing.assert_equal(canonical.flat_basis(), deprecated.flat_basis())
-    xr.testing.assert_identical(canonical.flux, deprecated.flux)
+    # Independent preparations stamp their sanitation history separately.
+    canonical_history = canonical.flux.attrs["history"]
+    deprecated_history = deprecated.flux.attrs["history"]
+    assert canonical_history.split(" OpenGHG Inversions:", 1)[1] == deprecated_history.split(
+        " OpenGHG Inversions:", 1
+    )[1]
+    xr.testing.assert_identical(
+        canonical.flux.assign_attrs(history=deprecated_history), deprecated.flux
+    )
     assert list(canonical.flux.source.values) == ["a", "b"]
     assert isinstance(flux["a"].flux.data, da.Array)
 
