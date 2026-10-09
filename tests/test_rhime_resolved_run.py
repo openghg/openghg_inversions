@@ -119,7 +119,7 @@ def test_ini_runner_merges_before_one_resolution_and_alias_translation(monkeypat
 def test_supplied_data_reaches_filtering_without_acquisition(monkeypatch, multisector_mode):
     from openghg_inversions.inversion_data import RhimeMergedData
     config = _config(multisector_mode)
-    supplied = from_legacy_fp_all({"TAC": xr.Dataset(), ".split_by_sectors": multisector_mode}, config.site_options)
+    supplied = from_legacy_fp_all({"TAC": xr.Dataset({"mf_error": ("time", [1.0]), "mf_repeatability": ("time", [0.0]), "mf_variability": ("time", [0.0])}), ".split_by_sectors": multisector_mode}, config.site_options)
     recipe = multisector if multisector_mode else standard
     runner = recipe.run_rhime_multisector if multisector_mode else recipe.run_rhime
     def forbidden(*args, **kwargs):
@@ -130,7 +130,7 @@ def test_supplied_data_reaches_filtering_without_acquisition(monkeypatch, multis
         assert merged is supplied
         raise ReachedFiltering
     monkeypatch.setattr(RhimeMergedData, "from_options", forbidden)
-    monkeypatch.setattr(recipe, "filter_rhime_observations", filter_supplied)
+    monkeypatch.setattr(recipe, "filter_observations", filter_supplied)
     with pytest.raises(ReachedFiltering):
         runner(config=config, merged_data=supplied)
 
@@ -141,7 +141,7 @@ def test_supplied_layout_is_checked_before_filtering(monkeypatch, multisector_mo
     supplied = from_legacy_fp_all({"TAC": xr.Dataset(), ".split_by_sectors": not multisector_mode}, config.site_options)
     recipe = multisector if multisector_mode else standard
     runner = recipe.run_rhime_multisector if multisector_mode else recipe.run_rhime
-    monkeypatch.setattr(recipe, "filter_rhime_observations", lambda *a, **kw: pytest.fail("layout not checked"))
+    monkeypatch.setattr(recipe, "filter_observations", lambda *a, **kw: pytest.fail("layout not checked"))
     with pytest.raises(ValueError, match="incompatible.*layout"):
         runner(config=config, merged_data=supplied)
 
@@ -159,7 +159,7 @@ def test_acquired_data_binding_preserves_selectors_and_rejects_conflicts(
 
     options = SiteOptions.from_inputs(sites=["TAC"], averaging_period="4h", inlet="100m")
     data = xr.Dataset(
-        {"mf": ("time", da.from_array([1.0, 2.0], chunks=1))},
+        {"mf": ("time", da.from_array([1.0, 2.0], chunks=1)), "mf_error": ("time", [0.1, 0.1]), "mf_repeatability": ("time", [0.1, 0.1]), "mf_variability": ("time", [0.0, 0.0])},
         coords={"time": np.array(["2019-01-01", "2019-01-02"], dtype="datetime64[ns]")},
     )
     supplied = RhimeMergedData(
@@ -186,7 +186,7 @@ def test_acquired_data_binding_preserves_selectors_and_rejects_conflicts(
         assert merged.site_data["TAC"].mf.data is data.mf.data
         raise ReachedFiltering
 
-    monkeypatch.setattr(recipe, "filter_rhime_observations", filtering)
+    monkeypatch.setattr(recipe, "filter_observations", filtering)
     monkeypatch.setattr(RhimeMergedData, "from_options", lambda **kw: pytest.fail("Unexpected acquisition"))
     calls = []
     with Callback(pretask=lambda *args: calls.append(args)):

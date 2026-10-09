@@ -69,7 +69,7 @@ def test_custom_basis_runner_replaces_only_basis_stage(
     sampler = config.sampler
 
     merged = RhimeMergedData(
-        site_data={site: xr.Dataset() for site in config.site_options.sites},
+        site_data={site: xr.Dataset({"mf_error": ("time", [1.0]), "mf_repeatability": ("time", [0.0]), "mf_variability": ("time", [0.0])}) for site in config.site_options.sites},
         flux_data={}, site_options=config.site_options,
     )
     filtered = object()
@@ -195,9 +195,9 @@ def test_custom_basis_runner_replaces_only_basis_stage(
     monkeypatch.setattr(custom_basis_runner, "read_rhime_ini", parse_config)
     monkeypatch.setattr(custom_basis_runner.RhimeConfig, "from_params", classmethod(resolve))
     monkeypatch.setattr(custom_basis_runner.RhimeMergedData, "from_options", retrieve)
-    monkeypatch.setattr(custom_basis_runner, "filter_rhime_observations", filter_observations)
+    monkeypatch.setattr(custom_basis_runner, "filter_observations", filter_observations)
     monkeypatch.setattr(custom_basis_runner, "build_project_basis", build_project_basis)
-    monkeypatch.setattr(custom_basis_runner, "build_rhime_sensitivities", build_sensitivities)
+    monkeypatch.setattr(custom_basis_runner, "build_sensitivities", build_sensitivities)
     monkeypatch.setattr(custom_basis_runner, "assemble_rhime_inputs", assemble)
     monkeypatch.setattr(
         custom_basis_runner,
@@ -411,7 +411,7 @@ def test_incompatible_project_basis_failure_remains_owned_by_sensitivity_stage(
         multisector=False,
     )
     merged = RhimeMergedData(
-        site_data={site: xr.Dataset() for site in config.site_options.sites},
+        site_data={site: xr.Dataset({"mf_error": ("time", [1.0]), "mf_repeatability": ("time", [0.0]), "mf_variability": ("time", [0.0])}) for site in config.site_options.sites},
         flux_data={}, site_options=config.site_options,
     )
     filtered = object()
@@ -427,7 +427,7 @@ def test_incompatible_project_basis_failure_remains_owned_by_sensitivity_stage(
     )
     monkeypatch.setattr(
         custom_basis_runner,
-        "filter_rhime_observations",
+        "filter_observations",
         lambda actual, *, filters: filtered,
     )
     monkeypatch.setattr(
@@ -439,17 +439,17 @@ def test_incompatible_project_basis_failure_remains_owned_by_sensitivity_stage(
     def reject_incompatible_basis(actual: Any, actual_basis: Any, **kwargs: Any) -> Any:
         assert actual is filtered
         assert actual_basis is incompatible_basis
-        raise TypeError("build_rhime_sensitivities requires compatible BasisFunctions")
+        raise TypeError("build_sensitivities requires compatible BasisFunctions")
 
     monkeypatch.setattr(
         custom_basis_runner,
-        "build_rhime_sensitivities",
+        "build_sensitivities",
         reject_incompatible_basis,
     )
 
     with pytest.raises(
         TypeError,
-        match="build_rhime_sensitivities requires compatible BasisFunctions",
+        match="build_sensitivities requires compatible BasisFunctions",
     ):
         custom_basis_runner.run_custom_rhime(species="ch4")
 
@@ -470,9 +470,9 @@ def test_custom_basis_runner_resolves_before_loading_project_artifact(
         project_basis_path=str(artifact_path), basis_algorithm=algorithm, fp_basis_case=None,
         max_child_pca_eccentricity=7.0,
     )
-    merged = SimpleNamespace(fp_all={".flux": {"inventory": stored.flux}, ".split_by_sectors": False})
+    merged = SimpleNamespace(site_data={}, flux_data={"inventory": stored.flux.to_dataset(name="flux")}, split_by_sectors=False)
     monkeypatch.setattr(custom_basis_runner.RhimeMergedData, "from_options", lambda **kwargs: merged)
-    monkeypatch.setattr(custom_basis_runner, "filter_rhime_observations", lambda value, **kwargs: value)
+    monkeypatch.setattr(custom_basis_runner, "filter_observations", lambda value, **kwargs: value)
     monkeypatch.setattr(
         custom_basis_runner, "_guarded_basis", lambda *args, **kwargs: pytest.fail("unexpected fitting"),
     )
@@ -486,7 +486,7 @@ def test_custom_basis_runner_resolves_before_loading_project_artifact(
         assert basis.basis_artifact_source == "external-project"
         raise ReachedSensitivities
 
-    monkeypatch.setattr(custom_basis_runner, "build_rhime_sensitivities", check_loaded)
+    monkeypatch.setattr(custom_basis_runner, "build_sensitivities", check_loaded)
     if from_file:
         config_file = tmp_path / "project.ini"
         config_file.write_text("[PROJECT]\n" + "\n".join(f"{k} = {v!r}" for k, v in params.items()))

@@ -294,16 +294,17 @@ def test_make_inv_inputs_raises_if_required_var_would_be_dropped():
         make_inv_inputs(fp_data=fp_data, sites=["AAA", "BBB"], min_error=0.0)
 
 
-def test_make_inv_inputs_accepts_integer_min_error():
+@pytest.mark.parametrize("min_error, expected", [(40, 40.0), (None, 0.0)])
+def test_make_inv_inputs_accepts_integer_and_none_min_error(min_error, expected):
     """Integer min_error values should be treated as numeric scalar errors."""
     fp_data = {
         "AAA": _make_minimal_fp_site(mf_base=10.0, include_inlet_height=False),
         "BBB": _make_minimal_fp_site(mf_base=20.0, include_inlet_height=False),
     }
 
-    result = make_inv_inputs(fp_data=fp_data, sites=["AAA", "BBB"], min_error=40)
+    result = make_inv_inputs(fp_data=fp_data, sites=["AAA", "BBB"], min_error=min_error)
 
-    assert np.all(result.min_error.values == 40.0)
+    assert np.all(result.min_error.values == expected)
 
 
 def test_make_inv_inputs_maps_dict_min_error_by_site():

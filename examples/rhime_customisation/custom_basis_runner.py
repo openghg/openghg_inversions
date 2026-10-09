@@ -50,9 +50,10 @@ from openghg_inversions.rhime import (
     RhimeConfig,
     RhimeResult,
     assemble_rhime_inputs,
-    build_rhime_sensitivities,
+    build_sensitivities,
     build_standard_rhime_model_result,
-    filter_rhime_observations,
+    filter_observations,
+    prepare_observation_errors,
     make_standard_rhime_result,
     make_standard_rhime_outputs,
     materialize_pymc_inputs,
@@ -305,12 +306,13 @@ def run_custom_rhime(
             "end_date",  "flux_sources", "split_by_sectors",
             "bc_store", "obs_store", "footprint_store", "emissions_store",
             "emissions_domain", "fp_model", "fp_species", "calibration_scale",
-            "use_bc", "bc_input", "averaging_error",
+            "use_bc", "bc_input",
             "flux_non_finite_check",
         ),
     )
     # 2. Keep the scientific preparation order visible in this recipe.
-    filtered = filter_rhime_observations(merged, filters=config.filters)
+    merged = prepare_observation_errors(merged, averaging_error=config.averaging_error)
+    filtered = filter_observations(merged, filters=config.filters)
     # Replace only basis construction; subsequent scientific stages stay visible.
     basis_functions = build_project_basis(
         filtered,
@@ -318,7 +320,7 @@ def run_custom_rhime(
         project_basis_path=project_basis_path,
         max_child_pca_eccentricity=max_child_pca_eccentricity,
     )
-    site_data = build_rhime_sensitivities(
+    site_data = build_sensitivities(
         filtered,
         basis_functions,
         **config.select(
