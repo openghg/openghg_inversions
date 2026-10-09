@@ -867,8 +867,10 @@ def prepare_nested_rhime_inputs(
 
     Raises:
         ValueError: If the request is not single-source, the inner domain is
-            empty, the sites or observation times cannot be aligned, or the
-            automatic basis budget is not an integer of at least two.
+            empty, recorded acquisition species, domain, dates or sector layout
+            conflict with the request, the sites or observation times cannot be
+            aligned, or the automatic basis budget is not an integer of at least
+            two.
 
     Notes:
         Acquisition and basis construction may read or write configured

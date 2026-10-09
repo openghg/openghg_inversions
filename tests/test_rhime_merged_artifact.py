@@ -683,6 +683,25 @@ def test_preparation_binding_rejects_malformed_known_facts(fact):
         )
 
 
+@pytest.mark.parametrize("fact", ["start_date", "end_date"])
+@pytest.mark.parametrize("recorded,requested", [
+    ("2020-01-01", "2020-01-01T00:00:00Z"),
+    ("2020-01-01T00:00:00Z", "2020-01-01"),
+    ("2020-01-01", "2020-01-01T01:00:00+01:00"),
+])
+def test_preparation_binding_compares_utc_instants(fact, recorded, requested):
+    original = merged_data()
+    original.acquisition[fact] = recorded
+    request = dict(species="ch4", domain="EUROPE", start_date="2020-01-01",
+                   end_date="2020-02-01", split_by_sectors=True)
+    request[fact] = requested
+    original.validate_for_preparation(**request)
+    assert original.acquisition[fact] == recorded
+    request[fact] = "2020-01-01T00:00:00+01:00"
+    with pytest.raises(ValueError, match=fact):
+        original.validate_for_preparation(**request)
+
+
 def test_site_selection_cannot_relabel_filtered_data_as_acquired():
     original = merged_data()
     filtered = original.with_site_data(original.site_data, stage="filtered")

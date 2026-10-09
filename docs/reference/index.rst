@@ -99,6 +99,8 @@ imports identify the same classes.
    openghg_inversions.inversion_data.load_merged_data
    openghg_inversions.inversion_data.RhimeMergedData.from_options
    openghg_inversions.inversion_data.RhimeMergedData.load
+   openghg_inversions.inversion_data.RhimeMergedData.validate_for_preparation
+   openghg_inversions.inversion_data.RhimeMergedData.with_site_data
    openghg_inversions.inversion_data.RhimeMergedData.save
    openghg_inversions.rhime.filter_rhime_observations
    openghg_inversions.rhime.build_rhime_basis

@@ -139,7 +139,8 @@ class RhimeMergedData:
         """Bind known acquisition facts to a downstream scientific request.
 
         Species and domain comparisons ignore case; date spellings may differ
-        when they identify the same instant. Changing a known window requires
+        when they identify the same instant; timezone-naive dates mean UTC.
+        Changing a known window requires
         fresh acquisition: this operation neither slices nor relabels data.
         Missing, ``None`` and ``"unknown"`` historical facts remain unknown.
         Recorded selectors and unrelated model choices are not compared.
@@ -162,7 +163,7 @@ class RhimeMergedData:
             if not isinstance(recorded, str):
                 raise ValueError(f"Merged-data acquisition {name} must be a string or unknown.")
             if name in {"start_date", "end_date"}:
-                compatible = pd.Timestamp(recorded) == pd.Timestamp(value)
+                compatible = pd.to_datetime(recorded, utc=True) == pd.to_datetime(value, utc=True)
             else:
                 compatible = recorded.casefold() == value.casefold()
             if not compatible:

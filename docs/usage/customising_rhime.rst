@@ -64,7 +64,8 @@ Before preparation, ``RhimeMergedData.validate_for_preparation`` checks known
 species, domain and acquisition date bounds against the requested run. A
 conflict raises before filtering or basis construction. Changed windows,
 including narrower ones, are unsupported: acquire data for the new window
-instead. Equivalent date spellings are accepted. Reuse keeps the recorded
+instead. Dates are compared as UTC instants; timezone-naive dates mean UTC,
+so equivalent timezone spellings are accepted. Reuse keeps the recorded
 selectors even when the configuration requests different retrieval selectors;
 later priors and sampling choices do not determine acquisition compatibility.
 Missing historical facts remain unknown and are not filled from the new
