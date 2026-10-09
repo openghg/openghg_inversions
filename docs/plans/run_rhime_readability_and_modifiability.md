@@ -1,5 +1,18 @@
 # `run_rhime` Readability and Modifiability Plan
 
+## Public naming delivery alongside #764/#776
+
+The public selector is `run(..., model="standard")`, with concrete
+`run_standard`, `run_multisector` and `run_nested` recipes. The `rhime` executable
+shares the existing command set and adds `run --model`; CO2-family Python model
+choices preserve their prepared-input-only contracts. Existing Python imports
+and `openghg-inversions` commands remain compatible through 0.9. Shared
+`MergedData`, `PreparedInputs` and preparation names describe shared work, not
+standard-only policy. This selective naming delivery does not perform #776's
+recipe relocation or complete #802 route parity. Preserve procedural recipes
+and do not introduce a universal workflow engine.
+
+
 Status: approved delivery plan, P0 / highest project priority
 Date: 2026-08-15
 Owners: OpenGHG Inversions maintainers

@@ -2,7 +2,7 @@
 
 This is the preferred low-ceremony customization route. It keeps RHIME's
 complete acquisition-to-output pipeline and changes only the direct-Python
-likelihood callable passed to :func:`openghg_inversions.rhime.run_rhime`.
+likelihood callable passed to :func:`openghg_inversions.rhime.run`.
 Use :func:`run_with_likelihood` from Python or :func:`main` from the command
 line with a normal RHIME configuration. The workflow acquires data or accepts
 supplied in-memory inputs, materializes related model arrays together at the
@@ -19,7 +19,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from openghg_inversions.rhime import RhimeResult, run_rhime
+from openghg_inversions.rhime import RhimeResult, run
 
 from .likelihoods import likelihood_builder
 
@@ -52,7 +52,7 @@ def run_with_likelihood(
         prepared inputs, runs sampling, and writes configured outputs.
     """
     kwargs["mismatch_model"] = None
-    return run_rhime(
+    return run(
         config_file=config_file,
         likelihood_builder=likelihood_builder,
         **kwargs,

@@ -56,7 +56,7 @@ class AcquisitionFacts:
 
 
 @dataclass
-class RhimeMergedData:
+class MergedData:
     """Borrowed merged datasets, selectors and selected retrieval provenance.
 
     Construction never computes or copies numerical arrays. Records carry
@@ -470,3 +470,7 @@ def interpolate_flux_to_footprint_grid(
             metadata=dict(flux_data.metadata),
         )
     return interpolated
+
+
+# Established public import retained through the 0.9 compatibility cycle.
+RhimeMergedData = MergedData

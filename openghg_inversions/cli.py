@@ -35,6 +35,13 @@ def _command_kwargs(args: argparse.Namespace) -> dict[str, Any]:
     return kwargs
 
 
+def _run_command(args: argparse.Namespace) -> None:
+    """Run the selected configuration-driven recipe."""
+    from openghg_inversions.rhime import run
+
+    run(model=args.model, config_file=args.config, **_command_kwargs(args))
+
+
 def _run_rhime_command(args: argparse.Namespace) -> None:
     """Run the standard RHIME command with lazy imports for fast help output."""
     from openghg_inversions.rhime import run_rhime
@@ -181,14 +188,25 @@ def _run_rhime_nested_command(args: argparse.Namespace) -> None:
     run_rhime_nested(config_file=args.config, **_command_kwargs(args))
 
 
-def build_parser() -> argparse.ArgumentParser:
+def build_parser(*, prog: str = "openghg-inversions") -> argparse.ArgumentParser:
     """Build the OpenGHG inversions CLI argument parser.
+
+    Args:
+        prog: Executable name displayed in help.
 
     Returns:
         Configured argument parser.
     """
-    parser = argparse.ArgumentParser(prog="openghg-inversions", description="OpenGHG inversions CLI")
+    parser = argparse.ArgumentParser(prog=prog, description="RHIME atmospheric inversions")
     subparsers = parser.add_subparsers(dest="command", required=True)
+
+    selected_run = subparsers.add_parser("run", help="Run a selected RHIME model")
+    _add_run_args(selected_run)
+    selected_run.add_argument(
+        "--model", choices=("standard", "multisector", "nested"), default="standard",
+        help="Configuration-driven model recipe (default: standard)",
+    )
+    selected_run.set_defaults(func=_run_command)
 
     run_parser = subparsers.add_parser("run-rhime", help="Run a standard RHIME inversion")
     _add_run_args(run_parser)
@@ -274,15 +292,25 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: list[str] | None = None) -> None:
+def main(argv: list[str] | None = None, *, prog: str = "openghg-inversions") -> None:
     """Run the OpenGHG inversions CLI.
 
     Args:
         argv: Optional argument vector. Defaults to ``sys.argv`` when omitted.
+        prog: Executable name displayed in help.
     """
-    parser = build_parser()
+    parser = build_parser(prog=prog)
     args = parser.parse_args(argv)
     args.func(args)
+
+
+def rhime_main(argv: list[str] | None = None) -> None:
+    """Run the ``rhime`` CLI with the same commands as ``openghg-inversions``.
+
+    Args:
+        argv: Optional argument vector; reads ``sys.argv`` when omitted.
+    """
+    main(argv, prog="rhime")
 
 
 if __name__ == "__main__":

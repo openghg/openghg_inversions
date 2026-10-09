@@ -31,7 +31,7 @@ def test_short_and_full_examples_share_likelihood_and_supported_output(
         seen.update(kwargs)
         return expected
 
-    monkeypatch.setattr(short_runner, "run_rhime", run_rhime)
+    monkeypatch.setattr(short_runner, "run", run_rhime)
     result = short_runner.run_with_likelihood(
         config_file=config_file,
         output_format="none",
