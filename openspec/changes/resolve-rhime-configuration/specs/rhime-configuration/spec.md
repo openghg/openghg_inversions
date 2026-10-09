@@ -272,8 +272,8 @@ handoff SHALL retain its authoritative options and no-acquisition behavior.
 
 ### Requirement: Compatible public adapters and scientific choices
 
-Except for the former stage adapter and `resolve_rhime_config` removals and the
-revised INI reader contract specified below, supported
+Except for the former stage adapter, `resolve_rhime_config` and transitional
+old-location import removals, and the revised INI reader contract specified below, supported
 scientific Python and CLI entry points SHALL retain their signatures, shorthand,
 override behavior and return contracts through adapters to the same semantic
 resolution or shared applicable site translation. Direct preparation/retrieval
@@ -333,8 +333,10 @@ replacements. It SHALL retain its established signature, shorthand and prepared
 return, while delegating science to these same named stages. Equivalent inputs
 SHALL retain the same prepared metadata, including footprint provenance; the
 adapter SHALL NOT retain independent filtering or assembly policy.
-`convert_to_list` SHALL warn in favour of `SiteOptions.from_inputs` while retaining
-its calling and list-return contract through the shared selector expansion.
+Public selector construction SHALL use `SiteOptions.from_inputs`. The internal
+`inversion_data._site_options.convert_to_list` helper SHALL retain its calling
+and list-return contract through shared selector expansion without a warning;
+its old `get_data` import alias SHALL be removed.
 
 #### Scenario: Deprecated preparation delegates to canonical science
 

@@ -173,9 +173,10 @@ only when replacing or removing deprecated spellings, including old output-forma
 values; canonical spellings win when both are present. Canonical options need no
 deprecation warning. Remove the `resolve_rhime_config` wrapper and repeated
 translation calls in runners. Fixedbasis scientific behavior and the deprecated
-dictionary reader adapter remain in the compatibility module. The adapter stays
-reexported for existing callers. Do not import the executable HBMCMC runner into
-modern configuration code.
+dictionary reader adapter remain in the compatibility module. The adapter
+retains its intentional `rhime` package export; old-location translator aliases
+in `rhime.params` and `hbmcmc.run_hbmcmc` are removed. Do not import the executable
+HBMCMC runner into modern configuration code.
 
 Apply overrides before resolving defaults or site shorthand, including a changed
 site list or date bound. Expand scalar site selectors to the effective site
@@ -253,9 +254,11 @@ Raw overrides are applied after decoding and before `from_params`.
 `dataclasses.replace` is for already coherent resolved changes, not for
 recomputing dependent defaults or shared model/output choices. Direct retrieval
 and deprecated preparation adapters resolve only applicable inputs and share the
-scientific bodies with ordinary configured runs. Deprecate the standalone
-`convert_to_list` selector helper in favour of `SiteOptions.from_inputs`, retaining
-its calling and list-return contract through the shared scalar-expansion helper.
+scientific bodies with ordinary configured runs. Use `SiteOptions.from_inputs`
+for public selector construction. The internal
+`inversion_data._site_options.convert_to_list` helper retains its calling and
+list-return contract without a warning; its old `get_data` import alias is
+removed.
 The preparation adapter must
 preserve canonical footprint provenance instead of assembling a second result.
 
@@ -325,7 +328,7 @@ logging behavior is required to complete #804.
 ## Risks / Trade-offs
 
 - The former implementation/docs need reconciliation with this plan: verify
-  affected tasks before claiming completion or marking #813 ready.
+  affected tasks before claiming completion of the current stack revision.
 - Public acquisition names have imports, monkeypatch seams and tuple consumers:
   preserve the deprecated wrapper, share the body and update internal callers.
 - Model/output views repeat a few shared facts: resolve once and forward values;
@@ -337,14 +340,15 @@ logging behavior is required to complete #804.
 
 ## Migration Plan
 
-Update the existing proposal, design, behavioral spec and tasks on #813 first.
-Then use the apply workflow to remove the preparation class and its plumbing,
+Deliver the reconciled #813 implementation through the #815 stack, with
+configuration in #824. Remove the preparation class and its plumbing,
 remove the internal setup bundle, migrate ordinary/nested/staged/shim/example
 consumers, implement the decoding-only INI reader, promote/export `SiteOptions`,
 implement the neutral acquisition names and separate fresh acquisition and strict cache loading into
 `RhimeMergedData.from_options` and `.load`. Update documentation/exports. Reuse the existing equivalence, override,
 site/drop/reload, ownership, nested/shim and sampler coverage. Add focused checks
-for direct configuration access, resolved reader results, public site-options
+for direct configuration access, decoded reader results and subsequent
+construction, public site-options
 construction and deprecated-wrapper forwarding/warnings;
 preserve scientific output checks. Run relevant broader coverage before handoff.
 
