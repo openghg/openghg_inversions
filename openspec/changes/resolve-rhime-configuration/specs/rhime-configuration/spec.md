@@ -460,3 +460,34 @@ be added to prepared inputs or the preparation manifest by this change.
 - **WHEN** a modern caller requests a removed acquisition-cache option
 - **THEN** configuration rejects it and directs file reuse to prepared inputs
 - **AND** historical legacy codecs retain their separately documented behavior
+
+### Requirement: Modern flux selectors have their own deprecation boundary
+
+Modern configuration and acquisition SHALL use `flux_store`, `flux_domain`,
+`inner_flux_store` and `inner_flux_domain`. Their `emissions_*` predecessors
+SHALL remain accepted with `DeprecationWarning` until removal in 0.9. Supplying
+both spellings SHALL raise even if the values agree or are explicitly `None`.
+Canonical configuration exports SHALL contain only the new names. This modern
+compatibility boundary SHALL remain separate from historical HBMCMC translation.
+
+`flux_domain` SHALL select the source flux dataset domain, defaulting to the
+corresponding footprint domain; it does not inherently mean the nested inner
+domain. Existing `make_basis_functions(emissions_name=...)` calls SHALL receive
+the same deprecation treatment for canonical `flux_sources`. New dataset helper
+interfaces SHALL use canonical names directly without forwarding wrappers.
+
+#### Scenario: Deprecated flux selector supplied alone
+
+- **WHEN** a modern caller supplies an old selector without its new spelling
+- **THEN** it warns, selects the same dataset, and exports the canonical name
+
+#### Scenario: Ambiguous modern flux selector
+
+- **WHEN** a caller supplies both old and new selector spellings
+- **THEN** it raises before acquisition or basis execution, even for equal values
+
+#### Scenario: Source flux domain differs from footprint domain
+
+- **WHEN** a caller selects a different `flux_domain`
+- **THEN** the requested flux dataset uses that domain and footprint retrieval
+  retains its own domain and existing interpolation behavior
