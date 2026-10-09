@@ -75,7 +75,7 @@ Opening the implementation of `run_rhime` should reveal, in execution order:
 
 ```text
 resolve Python/config options
--> retrieve or reload merged data
+-> acquire fresh or accept supplied merged data
 -> filter observations and retain aligned site metadata
 -> load or fit basis functions
 -> construct labelled RHIME inversion inputs

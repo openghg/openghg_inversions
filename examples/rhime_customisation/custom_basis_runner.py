@@ -277,7 +277,7 @@ def run_custom_rhime(
             invalid.
 
     Notes:
-        This workflow may retrieve or reload data, may eagerly fit or load a
+        This workflow acquires data, may eagerly fit or load a
         basis, eagerly materializes PyMC model inputs, runs sampling, and writes
         outputs requested by the resolved RHIME options.
     """
