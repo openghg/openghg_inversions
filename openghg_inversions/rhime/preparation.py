@@ -16,9 +16,10 @@ compute when a selected filter cannot operate lazily.  Basis construction may
 read, fit, or write a basis artifact, and sensitivity construction may execute
 the basis and boundary-condition algorithms.  Labelled assembly validates the
 durable :class:`~openghg_inversions.inversion_data.RhimePreparedInputs`
-artifact but does not make its arrays eager. Backend-specific materialization
-is kept in :mod:`openghg_inversions.rhime.materialization` so this module reads
-as the scientific transformation from merged observations to labelled inputs.
+artifact and jointly materializes core payloads before dropping unusable
+observations. This assembly boundary preserves sparse payloads and leaves
+unselected extensions lazy. Backend-specific selection and densification
+remain in :mod:`openghg_inversions.rhime.materialization`.
 """
 
 from __future__ import annotations
@@ -232,7 +233,8 @@ def assemble_inputs(
     construction of the minimum-error floor and boundary-condition temporal
     parameterization. Those are inverse-model settings, not properties of the
     acquired data; moving them to their model components is a later semantic
-    change. This stage does not cross the PyMC materialization boundary.
+    change. Core payloads are jointly materialized before invalid observations
+    are dropped; backend selection and densification happen separately.
 
     Args:
         merged: Borrowed filtered data and authoritative retained site options.
@@ -254,8 +256,8 @@ def assemble_inputs(
 
     Returns:
         Validated, backend-neutral inputs with observation-aligned arrays,
-        retained basis functions and site metadata. Arrays may remain lazy;
-        model input materialization is a separate operation.
+        retained basis functions and site metadata. Core assembly payloads are
+        eager, possibly sparse; unselected extensions may remain lazy.
 
     Raises:
         ValueError: If assembled inputs fail their alignment or scientific
