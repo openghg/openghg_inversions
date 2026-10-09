@@ -8,11 +8,13 @@ scientific filtering, basis construction and sensitivity preparation.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 import warnings
 
+import pandas as pd
 import xarray as xr
 
 from openghg_inversions.flux_sanitization import FluxNonFiniteCheck
@@ -125,6 +127,94 @@ class RhimeMergedData:
         """Retained observation platforms aligned to sites."""
         return self.site_options.platform
 
+    def validate_for_preparation(
+        self,
+        *,
+        species: str,
+        domain: str,
+        start_date: str,
+        end_date: str,
+        split_by_sectors: bool,
+    ) -> None:
+        """Bind known acquisition facts to a downstream scientific request.
+
+        Species and domain comparisons ignore case; date spellings may differ
+        when they identify the same instant. Changing a known window requires
+        fresh acquisition: this operation neither slices nor relabels data.
+        Missing, ``None`` and ``"unknown"`` historical facts remain unknown.
+        Recorded selectors and unrelated model choices are not compared.
+        Validation reads metadata only and never computes borrowed arrays.
+
+        Raises:
+            ValueError: If a known fact or the source layout conflicts with the
+                requested preparation.
+        """
+        requested = {
+            "species": species,
+            "domain": domain,
+            "start_date": start_date,
+            "end_date": end_date,
+        }
+        for name, value in requested.items():
+            recorded = self.acquisition.get(name)
+            if recorded is None or recorded == "unknown":
+                continue
+            if not isinstance(recorded, str):
+                raise ValueError(f"Merged-data acquisition {name} must be a string or unknown.")
+            if name in {"start_date", "end_date"}:
+                compatible = pd.Timestamp(recorded) == pd.Timestamp(value)
+            else:
+                compatible = recorded.casefold() == value.casefold()
+            if not compatible:
+                raise ValueError(
+                    f"Merged data has incompatible {name}: acquired {recorded!r}, requested {value!r}. "
+                    "Acquire data for the requested species, domain and window."
+                )
+        if self.split_by_sectors != split_by_sectors:
+            raise ValueError("Merged data has an incompatible split_by_sectors layout.")
+
+    def with_site_data(
+        self,
+        site_data: Mapping[str, xr.Dataset],
+        *,
+        stage: str,
+        context: str = "Merged-data selection",
+    ) -> RhimeMergedData:
+        """Replace retained site datasets with their selectors and provenance.
+
+        Mapping order determines retained-site order. All sites must already
+        belong to this record. ``stage`` explicitly declares the resulting
+        processing stage (``"acquired"``, ``"filtered"`` or ``"unknown"``).
+        The result owns new mappings and descriptive metadata; datasets and
+        numerical arrays remain borrowed, including any backing open files.
+        Close the original loaded record only after using all borrowed data.
+
+        Raises:
+            ValueError: If retained sites or the stage are invalid, or a
+                filtered record is relabelled as acquired.
+        """
+        if stage not in {"acquired", "filtered", "unknown"}:
+            raise ValueError("stage must be unknown, acquired or filtered.")
+        if self.acquisition.get("stage") == "filtered" and stage == "acquired":
+            raise ValueError("Filtered merged data cannot be relabelled as acquired.")
+        site_options = self.site_options.retain_sites(tuple(site_data), context=context)
+        provenance = deepcopy(self.provenance)
+        provenance["inputs"] = {
+            key: value
+            for key, value in provenance["inputs"].items()
+            if not key.startswith(("observations:", "footprints:"))
+            or key.split(":", 1)[1] in site_data
+        }
+        return RhimeMergedData(
+            site_data=dict(site_data),
+            flux_data=dict(self.flux_data),
+            boundary_data=self.boundary_data,
+            site_options=site_options,
+            split_by_sectors=self.split_by_sectors,
+            provenance=provenance,
+            acquisition={**self.acquisition, "stage": stage},
+        )
+
     @classmethod
     def from_legacy_fp_all(
         cls, fp_all: dict, site_options: _site_options.SiteOptions, *, acquisition: dict | None = None
@@ -213,6 +303,8 @@ class RhimeMergedData:
         Missing, corrupt, legacy or unsupported artifacts raise without format
         fallback or reacquisition. Call ``close`` after consuming loaded arrays.
         Names without a suffix use ``output_format`` or ``zarr.zip``.
+        ``species`` and ``start_date`` only help locate the file; use
+        :meth:`validate_for_preparation` to check a scientific reuse request.
         """
         from ._merged_artifact import artifact_path, load_artifact
 
@@ -547,9 +639,17 @@ def _retrieve_or_reload_merged_data(
             output_name=output_name,
             merged_data_name=merged_data_name,
         )
-        if merged.split_by_sectors != split_by_sectors:
+        try:
+            merged.validate_for_preparation(
+                species=species,
+                domain=domain,
+                start_date=start_date,
+                end_date=end_date,
+                split_by_sectors=split_by_sectors,
+            )
+        except ValueError:
             merged.close()
-            raise ValueError("Loaded merged data has an incompatible split_by_sectors layout.")
+            raise
         return merged
     return RhimeMergedData.from_options(
         species=species,

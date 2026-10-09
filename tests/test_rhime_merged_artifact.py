@@ -588,3 +588,104 @@ def test_native_openghg_public_retrieval_preserves_selected_version(monkeypatch,
             ("native-10", "v2"), ("native-100", "v7")
         ]
     assert "dataversion" not in metadata
+
+
+def test_preparation_binding_preserves_unknown_historical_facts():
+    original = merged_data()
+    original.acquisition = {"stage": "unknown", "species": "unknown", "domain": None}
+    before = dict(original.acquisition)
+    calls = []
+    with Callback(pretask=lambda *args: calls.append(args)):
+        original.validate_for_preparation(
+            species="co2", domain="USA", start_date="2021-01-01",
+            end_date="2021-02-01", split_by_sectors=True,
+        )
+    assert original.acquisition == before
+    assert original.site_data["TAC"].sizes["time"] == 2
+    assert not calls
+
+
+def test_owned_site_selection_aligns_and_isolates_metadata_without_computing():
+    from copy import deepcopy
+
+    original = merged_data()
+    original.provenance["inputs"]["observations:GOSAT"]["uuid"] = ["one", "two"]
+    provenance = deepcopy(original.provenance)
+    acquisition = dict(original.acquisition)
+    retained = original.site_data["GOSAT"].isel(time=slice(1, None))
+    calls = []
+    with Callback(pretask=lambda *args: calls.append(args)):
+        selected = original.with_site_data({"GOSAT": retained}, stage="filtered")
+    assert not calls
+    assert selected.sites == ("GOSAT",)
+    assert selected.site_options == original.site_options.select_indices([1])
+    assert selected.site_data["GOSAT"] is retained
+    assert selected.flux_data["a/b"] is original.flux_data["a/b"]
+    assert selected.boundary_data is original.boundary_data
+    assert set(selected.provenance["inputs"]) == {
+        "observations:GOSAT", "footprints:GOSAT", "flux:a/b", "flux:b", "boundary",
+    }
+    assert selected.acquisition == {**acquisition, "stage": "filtered"}
+    selected.provenance["inputs"]["observations:GOSAT"]["uuid"].append("new")
+    selected.provenance["openghg"]["version"] = "new"
+    selected.acquisition["domain"] = "different"
+    assert original.provenance == provenance
+    assert original.acquisition == acquisition
+    assert original.sites == ("TAC", "GOSAT")
+    assert original.site_data["GOSAT"].sizes["time"] == 2
+
+
+@pytest.mark.parametrize("suffix", ["nc", "zarr"])
+def test_compatibility_preparation_binds_actual_reopened_acquisition(monkeypatch, tmp_path, suffix):
+    from openghg_inversions.inversion_data import prepare_rhime_inputs
+    from openghg_inversions.rhime import preparation
+
+    original = merged_data()
+    original.acquisition.update(start_date="2020-01-01", end_date="2020-02-01")
+    original.save(tmp_path, merged_data_name=f"reused.{suffix}")
+    reached = []
+
+    class ReachedFiltering(Exception):
+        pass
+
+    def filtering(merged, **kwargs):
+        reached.append(merged)
+        assert merged.site_options == original.site_options
+        assert merged.acquisition == original.acquisition
+        raise ReachedFiltering
+
+    monkeypatch.setattr(preparation, "filter_rhime_observations", filtering)
+    request = dict(
+        species="ch4", domain="EUROPE", sites=["TAC"], averaging_period="1h",
+        start_date="2020-01-01", end_date="2020-02-01", output_name="reuse",
+        flux_sources=["a/b", "b"], split_by_sectors=True,
+        reload_merged_data=True, merged_data_dir=tmp_path, merged_data_name=f"reused.{suffix}",
+    )
+    try:
+        with pytest.warns(DeprecationWarning), pytest.raises(ReachedFiltering):
+            prepare_rhime_inputs(**request)
+        with pytest.warns(DeprecationWarning), pytest.raises(ValueError, match="end_date"):
+            prepare_rhime_inputs(**{**request, "end_date": "2020-01-02"})
+        assert len(reached) == 1
+    finally:
+        for merged in reached:
+            merged.close()
+
+
+@pytest.mark.parametrize("fact", ["species", "domain", "start_date", "end_date"])
+def test_preparation_binding_rejects_malformed_known_facts(fact):
+    original = merged_data()
+    original.acquisition[fact] = True
+    with pytest.raises(ValueError, match=fact):
+        original.validate_for_preparation(
+            species="ch4", domain="EUROPE", start_date="2020-01-01",
+            end_date="2020-02-01", split_by_sectors=True,
+        )
+
+
+def test_site_selection_cannot_relabel_filtered_data_as_acquired():
+    original = merged_data()
+    filtered = original.with_site_data(original.site_data, stage="filtered")
+    with pytest.raises(ValueError, match="acquired"):
+        filtered.with_site_data(filtered.site_data, stage="acquired")
+    assert filtered.acquisition["stage"] == "filtered"

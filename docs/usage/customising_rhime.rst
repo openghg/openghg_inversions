@@ -44,8 +44,8 @@ Resume from cached or external scientific data
 
 ``run_rhime`` and ``run_rhime_multisector`` accept ``merged_data`` as a
 Python-only handoff.  It bypasses OpenGHG acquisition and merged-cache I/O,
-checks the single- or multi-sector layout, and then re-enters the visible
-recipe at filtering::
+checks the recorded scientific facts and single- or multi-sector layout, and
+then re-enters the visible recipe at filtering::
 
    result = run_rhime(
        config_file="config.ini",
@@ -59,6 +59,22 @@ external object.  A normal ``reload_merged_data`` request instead belongs to
 the same retrieval stage and reads the configured artifact from disk. Missing
 directories, missing or corrupt artifacts, and incompatible selector/layout
 metadata raise an error; an explicit reload never falls back to fresh retrieval.
+
+Before preparation, ``RhimeMergedData.validate_for_preparation`` checks known
+species, domain and acquisition date bounds against the requested run. A
+conflict raises before filtering or basis construction. Changed windows,
+including narrower ones, are unsupported: acquire data for the new window
+instead. Equivalent date spellings are accepted. Reuse keeps the recorded
+selectors even when the configuration requests different retrieval selectors;
+later priors and sampling choices do not determine acquisition compatibility.
+Missing historical facts remain unknown and are not filled from the new
+request. Validation neither selects observations nor executes lazy arrays.
+
+When a custom preparation step retains or replaces site datasets, use
+``merged.with_site_data(site_data, stage="filtered")``. The mapping order sets
+the retained site order; the owner selects matching ``SiteOptions`` and input
+provenance together. It returns new metadata while borrowing the numerical
+arrays. Keep the original loaded record open while using any derived handoff.
 
 Acquire, save or load a merged handoff
 -------------------------------------

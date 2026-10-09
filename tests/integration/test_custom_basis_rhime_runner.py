@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
+from openghg_inversions.inversion_data import RhimeMergedData
 from openghg_inversions.rhime.params import RhimeConfig
 
 from openghg_inversions.basis.basis_functions import BasisFunctions
@@ -69,7 +70,10 @@ def test_custom_basis_runner_replaces_only_basis_stage(
     )
     sampler = config.sampler
 
-    merged = SimpleNamespace(split_by_sectors=False)
+    merged = RhimeMergedData(
+        site_data={site: xr.Dataset() for site in config.site_options.sites},
+        flux_data={}, site_options=config.site_options,
+    )
     filtered = object()
     basis = _basis_functions()
     site_data = object()
@@ -420,7 +424,10 @@ def test_incompatible_project_basis_failure_remains_owned_by_sensitivity_stage(
                     reload_merged_data=False, draws=3),
         multisector=False,
     )
-    merged = SimpleNamespace(split_by_sectors=False)
+    merged = RhimeMergedData(
+        site_data={site: xr.Dataset() for site in config.site_options.sites},
+        flux_data={}, site_options=config.site_options,
+    )
     filtered = object()
     incompatible_basis = object()
 

@@ -9,6 +9,7 @@ from typing import Any
 import pytest
 import xarray as xr
 
+from openghg_inversions.inversion_data import RhimeMergedData
 from openghg_inversions.rhime.params import RhimeConfig
 
 from examples.rhime_customisation import likelihoods
@@ -66,7 +67,10 @@ def test_custom_runner_uses_supported_stages_for_acquisition_and_reload(
     )
     sampler = config.sampler
 
-    merged = SimpleNamespace(split_by_sectors=False)
+    merged = RhimeMergedData(
+        site_data={site: xr.Dataset() for site in config.site_options.sites},
+        flux_data={}, site_options=config.site_options,
+    )
     filtered = object()
     basis = object()
     site_data = object()

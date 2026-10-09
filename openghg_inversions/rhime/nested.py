@@ -542,17 +542,10 @@ def _mask_spatial_variables(dataset: xr.Dataset, mask: xr.DataArray) -> xr.Datas
 
 def _select_merged_sites(merged: RhimeMergedData, sites: Sequence[str]) -> RhimeMergedData:
     """Return a borrowed merged-data view restricted to a common site set."""
-    selected_sites = tuple(str(site) for site in sites)
-    return replace(
-        merged,
-        site_data={site: merged.site_data[site] for site in selected_sites},
-        site_options=merged.site_options.retain_sites(selected_sites, context="Nested-domain alignment"),
-        provenance={**merged.provenance, "inputs": {
-            key: value for key, value in merged.provenance["inputs"].items()
-            if not key.startswith(("observations:", "footprints:"))
-            or key.split(":", 1)[1] in selected_sites
-        }},
-        acquisition={**merged.acquisition, "stage": "filtered"},
+    return merged.with_site_data(
+        {str(site): merged.site_data[str(site)] for site in sites},
+        stage="filtered",
+        context="Nested-domain alignment",
     )
 
 
@@ -623,7 +616,7 @@ def align_inner_merged_to_outer_observations(
         native_positions = order[indexer]
         aligned = inner_dataset.isel(time=native_positions).assign_coords(time=outer_dataset["time"].variable)
         site_data[site] = aligned
-    return replace(inner, site_data=site_data, acquisition={**inner.acquisition, "stage": "filtered"})
+    return inner.with_site_data(site_data, stage="filtered", context="Nested-domain time alignment")
 
 
 def mask_outer_merged_for_inner_domain(
@@ -680,8 +673,8 @@ def mask_outer_merged_for_inner_domain(
         masked_flux_entries[source] = masked_dataset
 
     return replace(
-        outer, site_data=site_data, flux_data=masked_flux_entries,
-        acquisition={**outer.acquisition, "stage": "filtered"},
+        outer.with_site_data(site_data, stage="filtered", context="Nested-domain masking"),
+        flux_data=masked_flux_entries,
     )
 
 
@@ -931,9 +924,13 @@ def prepare_nested_rhime_inputs(
                     "merged_data_name",
                 ),
             )
-            if outer_merged.split_by_sectors != outer_config.split_by_sectors:
+            try:
+                outer_merged.validate_for_preparation(
+                    **outer_config.select("species", "domain", "start_date", "end_date", "split_by_sectors"),
+                )
+            except ValueError:
                 outer_merged.close()
-                raise ValueError("Loaded merged data has an incompatible split_by_sectors layout.")
+                raise
         else:
             outer_merged = RhimeMergedData.from_options(
                 **outer_config.select(
@@ -957,9 +954,13 @@ def prepare_nested_rhime_inputs(
                     "merged_data_name",
                 ),
             )
-            if inner_merged.split_by_sectors != inner_config.split_by_sectors:
+            try:
+                inner_merged.validate_for_preparation(
+                    **inner_config.select("species", "domain", "start_date", "end_date", "split_by_sectors"),
+                )
+            except ValueError:
                 inner_merged.close()
-                raise ValueError("Loaded merged data has an incompatible split_by_sectors layout.")
+                raise
         else:
             inner_merged = RhimeMergedData.from_options(
                 **inner_config.select(

@@ -650,7 +650,8 @@ def run_rhime_multisector(
             be combined with ``config_file`` or raw run parameters in ``kwargs``.
         merged_data: Optional externally supplied source-resolved merged
             scientific data. Passing it bypasses OpenGHG acquisition and
-            merged-cache I/O, then resumes at filtering after validation.
+            merged-cache I/O, then resumes at filtering after validating
+            recorded species, domain, time window, and sector layout.
         likelihood_builder: Optional Python-only callable invoked with a
             completed forward-model mean and explicit error-model inputs in
             the active PyMC model. It must return the canonical observed
@@ -703,8 +704,9 @@ def run_rhime_multisector(
     # 1. Resolve acquisition through the data owner.
     preparation_start = timer_start()
     if merged_data is not None:
-        if merged_data.split_by_sectors != config.split_by_sectors:
-            raise ValueError("Supplied merged data has an incompatible split_by_sectors layout.")
+        merged_data.validate_for_preparation(
+            **config.select("species", "domain", "start_date", "end_date", "split_by_sectors"),
+        )
         merged = merged_data
     elif config.reload_merged_data:
         merged = RhimeMergedData.load(
@@ -713,9 +715,13 @@ def run_rhime_multisector(
                 "merged_data_name",
             ),
         )
-        if merged.split_by_sectors != config.split_by_sectors:
+        try:
+            merged.validate_for_preparation(
+                **config.select("species", "domain", "start_date", "end_date", "split_by_sectors"),
+            )
+        except ValueError:
             merged.close()
-            raise ValueError("Loaded merged data has an incompatible split_by_sectors layout.")
+            raise
     else:
         merged = RhimeMergedData.from_options(
             **config.select(

@@ -161,3 +161,72 @@ def test_loaded_layout_rejection_closes_owned_record(monkeypatch, multisector_mo
     with pytest.raises(ValueError, match="incompatible.*layout"):
         runner(config=config)
     assert closed == [True]
+
+
+@pytest.mark.parametrize("multisector_mode", [False, True])
+@pytest.mark.parametrize("source", ["supplied", "nc", "zarr"])
+def test_acquired_data_binding_preserves_selectors_and_rejects_conflicts(
+    monkeypatch, tmp_path, multisector_mode, source
+):
+    """Both runner paths bind actual reopened or supplied data before filtering."""
+    import dask.array as da
+    from dask.callbacks import Callback
+    import numpy as np
+
+    from openghg_inversions.inversion_data import RhimeMergedData, SiteOptions
+
+    options = SiteOptions.from_inputs(sites=["TAC"], averaging_period="4h", inlet="100m")
+    data = xr.Dataset(
+        {"mf": ("time", da.from_array([1.0, 2.0], chunks=1))},
+        coords={"time": np.array(["2019-01-01", "2019-01-02"], dtype="datetime64[ns]")},
+    )
+    supplied = RhimeMergedData(
+        site_data={"TAC": data}, flux_data={}, site_options=options,
+        split_by_sectors=multisector_mode,
+        acquisition={"stage": "acquired", "species": "CH4", "domain": "europe",
+                     "start_date": "2019-01-01T00:00:00", "end_date": "2019-02-01"},
+    )
+    config_options = {"inlet": "10m", "nbasis": 3, "output_name": "different-model-choice"}
+    if source != "supplied":
+        supplied.save(tmp_path, merged_data_name=f"acquired.{source}")
+        config_options.update(reload_merged_data=True, merged_data_dir=tmp_path,
+                              merged_data_name=f"acquired.{source}")
+    recipe = multisector if multisector_mode else standard
+    runner = recipe.run_rhime_multisector if multisector_mode else recipe.run_rhime
+    reached = []
+
+    class ReachedFiltering(Exception):
+        pass
+
+    def filtering(merged, **kwargs):
+        reached.append(merged)
+        assert merged.site_options == options
+        assert merged.acquisition == supplied.acquisition
+        assert merged.provenance == supplied.provenance
+        assert isinstance(merged.site_data["TAC"].mf.data, da.Array)
+        if source == "supplied":
+            assert merged is supplied
+            assert merged.site_data["TAC"].mf.data is data.mf.data
+        raise ReachedFiltering
+
+    monkeypatch.setattr(recipe, "filter_rhime_observations", filtering)
+    monkeypatch.setattr(RhimeMergedData, "from_options", lambda **kw: pytest.fail("Unexpected acquisition"))
+    calls = []
+    try:
+        with Callback(pretask=lambda *args: calls.append(args)):
+            with pytest.raises(ReachedFiltering):
+                runner(config=_config(multisector_mode, **config_options),
+                       **({"merged_data": supplied} if source == "supplied" else {}))
+            for key, value in [("species", "co2"), ("domain", "USA"),
+                               ("start_date", "2019-01-02"), ("end_date", "2019-01-31")]:
+                with pytest.raises(ValueError, match=key):
+                    runner(config=_config(multisector_mode, **{**config_options, key: value}),
+                           **({"merged_data": supplied} if source == "supplied" else {}))
+        assert len(reached) == 1
+        assert not calls
+        assert supplied.acquisition["species"] == "CH4"
+        assert supplied.site_options == options
+    finally:
+        if source != "supplied":
+            for merged in reached:
+                merged.close()

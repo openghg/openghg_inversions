@@ -39,7 +39,6 @@ from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.boundary_sensitivity import scale_satellite_boundary_sensitivity_to_column_signal
 from openghg_inversions.filters import filtering
 from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs
-from openghg_inversions.inversion_data._site_options import SiteOptions
 from openghg_inversions.inversion_data.prepared_inputs import _make_site_metadata
 from openghg_inversions.inversion_inputs import make_inv_inputs
 from openghg_inversions.model_error import MinErrorConfig
@@ -402,32 +401,30 @@ def _warn_for_nan_inputs(inv_inputs: xr.Dataset, *, use_bc: bool) -> None:
 def _apply_filters_and_drop_empty_sites(
     *,
     fp_data: dict,
-    site_options: SiteOptions,
+    sites: Sequence[str],
     filters: Any,
-) -> tuple[dict, SiteOptions]:
-    """Apply filters and keep site-aligned metadata in sync."""
+) -> dict:
+    """Apply observation filters and remove empty site datasets."""
     if filters is not None:
         try:
             fp_data = filtering(fp_data, filters)
         except ValueError:
-            for site in site_options.sites:
+            for site in sites:
                 fp_data[site] = fp_data[site].compute()
             fp_data = filtering(fp_data, filters)
 
     dropped_sites = []
-    for site in site_options.sites:
+    for site in sites:
         if fp_data[site].sizes.get("time", 0) == 0:
             dropped_sites.append(site)
             del fp_data[site]
     if dropped_sites:
-        keep_indices = [index for index, site in enumerate(site_options.sites) if site not in dropped_sites]
-        if not keep_indices:
+        if not fp_data:
             raise ValueError(f"No sites remain after filtering. Dropped sites: {dropped_sites}.")
 
-        site_options = site_options.select_indices(keep_indices)
         print(f"\nDropping {dropped_sites} sites as no data passed the filtering.\n")
 
-    return fp_data, site_options
+    return fp_data
 
 
 def _validate_multisector_sensitivity_sources(
@@ -557,24 +554,13 @@ def _filter_merged_inversion_data(
         return merged
 
     fp_data = {site: merged.site_data[site].copy() for site in merged.sites}
-    fp_data, site_options = _apply_filters_and_drop_empty_sites(
+    fp_data = _apply_filters_and_drop_empty_sites(
         fp_data=fp_data,
-        site_options=merged.site_options,
+        sites=merged.sites,
         filters=filters,
     )
-    return RhimeMergedData(
-        site_data={site: fp_data[site] for site in site_options.sites},
-        flux_data=merged.flux_data,
-        boundary_data=merged.boundary_data,
-        site_options=site_options,
-        split_by_sectors=merged.split_by_sectors,
-        provenance={
-            **merged.provenance,
-            "inputs": {
-                key: value for key, value in merged.provenance["inputs"].items()
-                if not key.startswith(("observations:", "footprints:"))
-                or key.split(":", 1)[1] in site_options.sites
-            },
-        },
-        acquisition={**merged.acquisition, "stage": "filtered"},
+    return merged.with_site_data(
+        fp_data,
+        stage="filtered",
+        context="Observation filtering",
     )

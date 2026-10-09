@@ -6239,14 +6239,11 @@ def test_apply_filters_drops_complete_site_option_record() -> None:
         "RGL": _site_dataset([4.0]),
     }
 
-    filtered, retained = rhime_preparation._apply_filters_and_drop_empty_sites(
-        fp_data=fp_data,
-        site_options=site_options,
-        filters=None,
-    )
+    merged = RhimeMergedData.from_legacy_fp_all(fp_data, site_options)
+    filtered = rhime_preparation.filter_rhime_observations(merged, filters=None)
 
-    assert set(filtered) == {"TAC", "RGL"}
-    assert retained == site_options.select_indices([0, 2])
+    assert set(filtered.site_data) == {"TAC", "RGL"}
+    assert filtered.site_options == site_options.select_indices([0, 2])
 
 
 def test_filtering_preserves_shared_merged_data_when_dropping_sites() -> None:
@@ -6265,7 +6262,7 @@ def test_filtering_preserves_shared_merged_data_when_dropping_sites() -> None:
     filtered = rhime_preparation._filter_merged_inversion_data(merged=merged, filters=None)
 
     assert filtered.sites == ("MHD",)
-    assert filtered.flux_data is merged.flux_data
+    assert filtered.flux_data["inventory"] is merged.flux_data["inventory"]
     assert filtered.to_legacy_fp_all()[".split_by_sectors"] is False
 
 

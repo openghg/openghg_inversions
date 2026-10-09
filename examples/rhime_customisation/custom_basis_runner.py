@@ -305,9 +305,13 @@ def run_custom_rhime(
                 "merged_data_name",
             ),
         )
-        if merged.split_by_sectors != config.split_by_sectors:
+        try:
+            merged.validate_for_preparation(
+                **config.select("species", "domain", "start_date", "end_date", "split_by_sectors"),
+            )
+        except ValueError:
             merged.close()
-            raise ValueError("Loaded merged data has an incompatible split_by_sectors layout.")
+            raise
     else:
         merged = RhimeMergedData.from_options(
             **config.select(

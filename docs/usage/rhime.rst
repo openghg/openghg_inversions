@@ -277,7 +277,11 @@ does not accept caller-supplied selectors. Use ``RhimeMergedData.load_legacy``
 with the original selectors for old caches, as described in
 :doc:`legacy_and_migration`. Missing paths or unreadable/incompatible artifacts
 raise without fresh retrieval. Runners reuse a valid supplied handoff unchanged
-before choosing either factory, bypassing I/O. Fresh saving remains opt-in.
+before choosing either factory, bypassing I/O. Before preparation, the merged
+owner checks known species, domain, date bounds and source layout against the
+request. Conflicts, including changed acquisition windows, raise without
+relabeling or selecting observations. Recorded selectors remain authoritative;
+unknown historical facts stay unknown. Fresh saving remains opt-in.
 See :doc:`customising_rhime` for loading and saving examples.
 
 The requested configuration contains no acquired/prepared handoff or
@@ -298,6 +302,9 @@ values for an ordinary keyword call:
 
    from openghg_inversions.rhime import filter_rhime_observations
 
+   merged.validate_for_preparation(
+       **config.select("species", "domain", "start_date", "end_date", "split_by_sectors")
+   )
    filtered = filter_rhime_observations(merged, **config.select("filters"))
 
 ``config.select(*names)`` returns a fresh dictionary of the named attributes.
