@@ -46,7 +46,7 @@ paths with values available in your OpenGHG installation.
        end_date="2019-01-08",
        obs_store="user",
        footprint_store="user",
-       emissions_store="user",
+       flux_store="user",
        bc_store="user",
        flux_sources=["ff-inventory", "biosphere-inventory"],
        sector_sources={
@@ -100,7 +100,7 @@ high-time-resolution footprints.
        start_date="2022-03-31 04:00:00",
        end_date="2022-04-01 04:08:10",
        obs_store="/path/to/oco2_data_store",
-       emissions_store="/path/to/oco2_data_store",
+       flux_store="/path/to/oco2_data_store",
        bc_store="/path/to/oco2_data_store",
        footprint_store="/path/to/oco2_footprint_store",
        flux_sources=["anth", "resp", "gpp_atm"],

@@ -234,7 +234,7 @@ def prepare_inputs(**params):
     merged = RhimeMergedData.from_options(**config.select(
         "site_options", "species", "domain", "start_date", "end_date",
         "flux_sources", "split_by_sectors", "bc_store", "obs_store", "footprint_store",
-        "emissions_store", "emissions_domain", "fp_model", "fp_species", "calibration_scale",
+        "flux_store", "flux_domain", "fp_model", "fp_species", "calibration_scale",
         "use_bc", "bc_input", "flux_non_finite_check",
     ))
     merged = preparation.prepare_observation_errors(merged, averaging_error=config.averaging_error)
@@ -247,7 +247,7 @@ def prepare_inputs(**params):
             "species", "domain", "start_date", "basis_algorithm", "nbasis",
             "fp_basis_case", "basis_directory", "country_directory", "outer_regions_path",
         ),
-        emissions_name=config.flux_sources,
+        flux_sources=config.flux_sources,
         fix_outer_regions=config.fix_basis_outer_regions,
         outputname=config.output_name,
         output_path=config.basis_output_path,

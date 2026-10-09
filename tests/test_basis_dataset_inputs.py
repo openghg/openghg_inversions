@@ -67,7 +67,7 @@ def test_dataset_generated_basis_matches_array_kernel(algorithm, tmp_path):
                                                          region_classes=classes, **kwargs)
     actual = make_basis_functions(
         site_data=sites, flux_data=sources, split_by_sectors=True,
-        species="ch4", domain="TEST", start_date="2020-01-01", emissions_name=["b"],
+        species="ch4", domain="TEST", start_date="2020-01-01", flux_sources=["b"],
         nbasis=4, basis_algorithm=algorithm, country_directory=str(tmp_path), region_classes=classes)
     xr.testing.assert_equal(actual.flat_basis(), expected.squeeze("time", drop=True))
     assert list(actual.flux.source.values) == ["a", "b"]
@@ -80,13 +80,13 @@ def test_dataset_saved_basis_uses_runtime_flux_and_source_order(output_format, t
     classes = xr.ones_like(sources["a"].flux.isel(time=0, drop=True), dtype=int).compute()
     generated = make_basis_functions(
         site_data=sites, flux_data=sources, split_by_sectors=True,
-        species="ch4", domain="TEST", start_date="2020-01-01", emissions_name=["b"],
+        species="ch4", domain="TEST", start_date="2020-01-01", flux_sources=["b"],
         nbasis=2, basis_algorithm="region_constrained", region_classes=classes,
         output_path=str(tmp_path), basis_output_format=output_format)
     runtime = {"b": sources["b"] * 3, "a": sources["a"] * 5}
     loaded = make_basis_functions(
         site_data=sites, flux_data=runtime, split_by_sectors=True,
-        species="ch4", domain="TEST", start_date="2020-01-01", emissions_name=["a"],
+        species="ch4", domain="TEST", start_date="2020-01-01", flux_sources=["a"],
         nbasis=2, fp_basis_case="region_constrained_ch4", basis_directory=str(tmp_path),
         basis_algorithm="unused_invalid_algorithm")
     xr.testing.assert_equal(loaded.flat_basis(), generated.flat_basis())
@@ -108,7 +108,7 @@ def test_dataset_fixed_outer_matches_label_composition(empty_inner, tmp_path):
     outer.to_dataset().to_netcdf(outer_path)
     actual = make_basis_functions(
         site_data=sites, flux_data=sources, split_by_sectors=True,
-        species="ch4", domain="TEST", start_date="2020-01-01", emissions_name=["b"],
+        species="ch4", domain="TEST", start_date="2020-01-01", flux_sources=["b"],
         nbasis=1, basis_algorithm="region_constrained", region_classes=xr.ones_like(outer),
         fix_outer_regions=True, outer_regions_path=outer_path, allow_empty_inner_region=empty_inner)
     expected = outer + 1
@@ -124,7 +124,7 @@ def test_dataset_region_constrained_requires_classes():
     with pytest.raises(ValueError, match="region_classes must be supplied"):
         make_basis_functions(
             site_data=sites, flux_data=sources, species="ch4", domain="TEST",
-            start_date="2020-01-01", emissions_name=["a"], nbasis=2,
+            start_date="2020-01-01", flux_sources=["a"], nbasis=2,
             basis_algorithm="region_constrained")
 
 
@@ -148,7 +148,7 @@ def test_unknown_algorithm_does_not_execute_borrowed_dask_graph(entry_point):
         else:
             make_basis_functions(
                 site_data=sites, flux_data=sources, species="ch4", domain="TEST",
-                start_date="2020-01-01", emissions_name=["a"], nbasis=1,
+                start_date="2020-01-01", flux_sources=["a"], nbasis=1,
                 basis_algorithm="invalid", fix_outer_regions=entry_point == "make_fixed")
 
 
@@ -171,7 +171,7 @@ def test_generated_kernel_key_error_is_not_relabelled(monkeypatch, tmp_path, fix
     with pytest.raises(KeyError) as error:
         make_basis_functions(
             site_data=sites, flux_data=sources, species="ch4", domain="TEST",
-            start_date="2020-01-01", emissions_name=["a"], nbasis=1,
+            start_date="2020-01-01", flux_sources=["a"], nbasis=1,
             basis_algorithm="quadtree", fix_outer_regions=fixed_outer, outer_regions_path=outer_path)
     assert error.value is expected_error
 
@@ -210,3 +210,36 @@ def test_fixed_outer_executes_shared_weight_graph_once(empty_inner, tmp_path):
     xr.testing.assert_equal(actual.squeeze("time", drop=True), expected.rename("basis"))
     assert len(executions) == 1
     assert isinstance(sources["a"].flux.data, da.Array)
+
+
+@pytest.mark.parametrize("sources", [None, ["b", "a"]])
+def test_shipped_basis_source_keyword_warns_and_preserves_science(sources):
+    """Deprecated source selection produces identical labels and retained flux."""
+    sites, flux = _inputs()
+    classes = xr.ones_like(flux["a"].flux.isel(time=0, drop=True), dtype=int).compute()
+    options = dict(site_data=sites, flux_data=flux, split_by_sectors=True,
+                   species="ch4", domain="TEST", start_date="2020-01-01", nbasis=2,
+                   basis_algorithm="region_constrained", region_classes=classes)
+    canonical = make_basis_functions(**options, flux_sources=sources)
+    with pytest.warns(DeprecationWarning, match=r"removed in 0\.9"):
+        deprecated = make_basis_functions(**options, emissions_name=sources)
+    xr.testing.assert_equal(canonical.flat_basis(), deprecated.flat_basis())
+    # Independent preparations stamp their sanitation history separately.
+    canonical_history = canonical.flux.attrs["history"]
+    deprecated_history = deprecated.flux.attrs["history"]
+    assert canonical_history.split(" OpenGHG Inversions:", 1)[1] == deprecated_history.split(
+        " OpenGHG Inversions:", 1
+    )[1]
+    xr.testing.assert_identical(
+        canonical.flux.assign_attrs(history=deprecated_history), deprecated.flux
+    )
+    assert list(canonical.flux.source.values) == ["a", "b"]
+    assert isinstance(flux["a"].flux.data, da.Array)
+
+
+@pytest.mark.parametrize("sources", [None, ["b", "a"]])
+def test_basis_source_keyword_conflicts_fail_before_reading_inputs(sources):
+    with pytest.raises(ValueError, match="cannot be supplied together"):
+        make_basis_functions(site_data={}, flux_data={}, species="ch4", domain="TEST",
+                             start_date="2020-01-01", nbasis=2,
+                             flux_sources=sources, emissions_name=sources)

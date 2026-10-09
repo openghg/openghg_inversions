@@ -131,3 +131,11 @@ applied to #813 at those revisions only.
 | `2b80e490` | Python 3.12/3.13 suites and docs-full in `19280761`, exit zero. Eight rendered pages and 1,316 local anchors checked; generated references matched. | Selected-forwarding round; earlier focused groups of 69, 55, 69 and 10 tests overlapped. Rendered inspection covered HTML structure/text, not browser screenshots. |
 | `7c58af3b` | Relevant Python 3.12/3.13 suites and docs-full in `19281228`, exit zero. Eight pages and 940 local links/anchors checked. | Decoder/compatibility separation before the final constructor amendment. |
 | `81405294` | Relevant Python 3.12/3.13 suites and docs-full in `19281458`, exit zero. Focused amendment checks covered 173 consumer and 35 compatibility/shim tests; Ruff, OpenSpec and whitespace passed. Eight pages and 936 local links/anchors checked; generated references matched. | One-constructor amendment, pushed to #813 before splitting into the #815 stack. Rendered inspection covered HTML structure/text, not browser screenshots. |
+
+## Modern flux terminology follow-up
+
+- [x] Canonicalize flux store/domain and nested selectors independently of historical aliases.
+- [x] Warn on old-only keywords, reject simultaneous old/new spellings, and document removal in 0.9.
+- [x] Export canonical configuration names and preserve dataset-domain selection/interpolation.
+- [x] Deprecate the shipped basis `emissions_name` keyword at its actual implementation boundary.
+- [ ] Record final Slurm compatibility/documentation validation on the owning PR.

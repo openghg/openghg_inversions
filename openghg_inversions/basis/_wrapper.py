@@ -3,9 +3,11 @@
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from time import time
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 import xarray as xr
+
+from openghg_inversions._flux_options import UNSET, _Unset, resolve_deprecated_keyword
 
 from .basis_functions import (
     BASIS_ARTIFACT_PATH_ATTR,
@@ -34,7 +36,8 @@ def make_basis_functions(
     species: str,
     domain: str,
     start_date: str,
-    emissions_name: Sequence[str] | None,
+    flux_sources: Sequence[str] | None | _Unset = UNSET,
+    emissions_name: Sequence[str] | None | _Unset = UNSET,
     nbasis: int,
     basis_algorithm: str | None = None,
     fix_outer_regions: bool = False,
@@ -72,8 +75,11 @@ def make_basis_functions(
         domain: Inversion domain used for generated basis metadata and basis
             artifact lookup.
         start_date: Start date of the inversion period.
-        emissions_name: Optional list of OpenGHG flux source names used to
+        flux_sources: Optional list of OpenGHG flux source names used to
             select the first source for weighting. All runtime sources are retained.
+        emissions_name: Deprecated spelling of ``flux_sources``; removed in
+            0.9. Supplying both names raises ``ValueError``, even with equal
+            values. When neither is supplied, use the first flux mapping entry.
         nbasis: Desired number of generated basis regions.
         basis_algorithm: Algorithm used when generating a basis field on the
             fly. Supported values are ``"quadtree"``, ``"weighted"``, and
@@ -129,6 +135,9 @@ def make_basis_functions(
         ValueError: If neither a saved basis case nor an algorithm is supplied,
             or if an unsupported output format or basis algorithm is requested.
     """
+    flux_sources = cast(Sequence[str] | None, resolve_deprecated_keyword(
+        "emissions_name", "flux_sources", emissions_name, flux_sources
+    ))
     if fp_basis_case is None and basis_algorithm is not None:
         _validate_basis_algorithm(basis_algorithm)
     saving_generated_basis = output_path is not None and basis_algorithm is not None and fp_basis_case is None
@@ -165,7 +174,7 @@ def make_basis_functions(
             start_date,
             basis_algorithm,
             domain,
-            emissions_name,
+            flux_sources,
             nbasis,
             country_directory,
             outer_regions_path=outer_regions_path,
@@ -209,7 +218,7 @@ def make_basis_functions(
                     "contrast_s_diag": contrast_s_diag,
                 }
             )
-        weights = basis_weights_from_data(site_data, flux_data, emissions_name)
+        weights = basis_weights_from_data(site_data, flux_data, flux_sources)
         basis_data_array = basis_from_weights(
             weights, start_date, domain, basis_algorithm, nbasis, **algorithm_kwargs,
         )

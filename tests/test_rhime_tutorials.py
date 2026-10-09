@@ -56,7 +56,7 @@ def _test_store_overrides(
         "bc_store": tac_ch4_data_args["bc_store"],
         "obs_store": tac_ch4_data_args["obs_store"],
         "footprint_store": tac_ch4_data_args["footprint_store"],
-        "emissions_store": tac_ch4_data_args["emissions_store"],
+        "flux_store": tac_ch4_data_args["emissions_store"],
         "domain": tac_ch4_data_args["domain"],
         "fp_model": tac_ch4_data_args["fp_model"],
         "fp_height": tac_ch4_data_args["fp_height"],

@@ -238,7 +238,7 @@ following inventory describes fields on `RhimeConfig`, not another class:
 | --- | --- |
 | `site_options` | Public `SiteOptions` containing complete aligned site-selector tuples. |
 | Species/domain, date bounds, flux sources, layout, BC use and basis output name | Requested/resolved strings, tuples and booleans; forwarded consistently to existing model/output views. |
-| BC/observation/footprint/emissions stores, emissions domain, footprint model/species, calibration scale and BC input | Existing supported typed selectors. |
+| BC/observation/footprint/flux stores, flux domain, footprint model/species, calibration scale and BC input | Existing supported typed selectors. |
 | Footprint/BC basis cases and directories, country directory, outer-regions path, basis algorithm/count and fixed outer regions | Existing supported path/string/integer/boolean choices. |
 | Filters, averaging error, BC frequency, minimum error and normalized error options | Existing contracts; data-dependent materialization remains in preparation. |
 | Basis destination and non-finite flux check | Basis output policy and flux-check choices. Modern acquisition-cache settings are rejected. |
@@ -356,3 +356,14 @@ preserve scientific output checks. Run relevant broader coverage before handoff.
 The previous locked Python 3.12/3.13 and documentation passes validate the old
 implementation only. They do not establish conformance to this revised design.
 Track the remaining reconciliation in [tasks.md](tasks.md).
+
+### Modern flux terminology and compatibility
+
+`flux_store`/`flux_domain` and `inner_flux_store`/`inner_flux_domain` are canonical.
+Old `emissions_*` keywords warn until removal in 0.9; simultaneous old/new
+spellings are errors even for equal values. Exports use only canonical names.
+This boundary is independent of historical HBMCMC translation. The source flux
+dataset domain defaults to its corresponding footprint domain; it is not an
+alias for the nested inner domain. `make_basis_functions` retains its shipped
+`emissions_name` keyword with the same deprecation to `flux_sources`; unshipped
+helpers use the new name directly. No translating forwarding wrapper is added.

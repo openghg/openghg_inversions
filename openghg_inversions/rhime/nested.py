@@ -11,13 +11,14 @@ built, and combines only the two observation-aligned sensitivity matrices.
 from __future__ import annotations
 
 from openghg_inversions.basis import make_basis_functions
+from openghg_inversions._flux_options import UNSET, _Unset, normalise_flux_aliases, resolve_deprecated_keyword
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 import hashlib
 from numbers import Integral
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from dask import compute as dask_compute
 import numpy as np
@@ -704,7 +705,7 @@ def _prepare_one_domain(
                 "species", "domain", "start_date", "basis_algorithm", "nbasis",
                 "fp_basis_case", "basis_directory", "country_directory", "outer_regions_path",
             ),
-            emissions_name=config.flux_sources,
+            flux_sources=config.flux_sources,
             fix_outer_regions=config.fix_basis_outer_regions,
             outputname=config.output_name,
             output_path=config.basis_output_path,
@@ -807,8 +808,10 @@ def prepare_nested_rhime_inputs(
     *,
     inner_domain: str,
     inner_footprint_store: str | None = None,
-    inner_emissions_store: str | None = None,
-    inner_emissions_domain: str | None = None,
+    inner_flux_store: str | None | _Unset = UNSET,
+    inner_flux_domain: str | None | _Unset = UNSET,
+    inner_emissions_store: str | None | _Unset = UNSET,
+    inner_emissions_domain: str | None | _Unset = UNSET,
     inner_basis_algorithm: str | None = None,
     inner_nbasis: int | None = None,
     inner_fp_basis_case: str | None = None,
@@ -834,10 +837,14 @@ def prepare_nested_rhime_inputs(
             outer domain with a hyphen.
         inner_footprint_store: Inner footprint store; defaults to the outer
             request's store.
-        inner_emissions_store: Inner emissions store; defaults to the outer
+        inner_flux_store: Inner flux store; defaults to the outer
             request's store.
-        inner_emissions_domain: Optional inner flux-domain selector. ``None``
+        inner_flux_domain: Optional inner flux-domain selector. ``None``
             uses the inner domain rather than inheriting the outer selector.
+        inner_emissions_store: Deprecated spelling of ``inner_flux_store``;
+            removed in 0.9. Supplying both spellings is an error.
+        inner_emissions_domain: Deprecated spelling of ``inner_flux_domain``;
+            removed in 0.9. Supplying both spellings is an error.
         inner_basis_algorithm: Inner basis algorithm; defaults to ``quadtree``
             when no saved inner basis is selected.
         inner_nbasis: Explicit inner basis-region count. When omitted and
@@ -875,6 +882,12 @@ def prepare_nested_rhime_inputs(
         returned scientific arrays may remain Dask-backed, and PyMC model
         materialization is a separate boundary.
     """
+    inner_flux_store = cast(str | None, resolve_deprecated_keyword(
+        "inner_emissions_store", "inner_flux_store", inner_emissions_store, inner_flux_store
+    ))
+    inner_flux_domain = cast(str | None, resolve_deprecated_keyword(
+        "inner_emissions_domain", "inner_flux_domain", inner_emissions_domain, inner_flux_domain
+    ))
     if config.split_by_sectors or len(config.model.sectors) != 1:
         raise ValueError("Nested RHIME preparation currently requires a standard one-source request.")
 
@@ -888,8 +901,8 @@ def prepare_nested_rhime_inputs(
         model=replace(config.model, domain=inner_domain_name, use_bc=False),
         output=replace(config.output, output_name=f"{config.output_name}_inner"),
         footprint_store=inner_footprint_store or config.footprint_store,
-        emissions_store=inner_emissions_store or config.emissions_store,
-        emissions_domain=inner_emissions_domain,
+        flux_store=inner_flux_store or config.flux_store,
+        flux_domain=inner_flux_domain,
         use_bc=False,
         bc_input=None,
         output_name=f"{config.output_name}_inner",
@@ -915,8 +928,8 @@ def prepare_nested_rhime_inputs(
             **outer_config.select(
                 "site_options", "species", "domain", "start_date",
                 "end_date",  "flux_sources", "split_by_sectors",
-                "bc_store", "obs_store", "footprint_store", "emissions_store",
-                "emissions_domain", "fp_model", "fp_species", "calibration_scale",
+                "bc_store", "obs_store", "footprint_store", "flux_store",
+                "flux_domain", "fp_model", "fp_species", "calibration_scale",
                 "use_bc", "bc_input",
                 "flux_non_finite_check",
             ),
@@ -930,8 +943,8 @@ def prepare_nested_rhime_inputs(
             **inner_config.select(
                 "site_options", "species", "domain", "start_date",
                 "end_date",  "flux_sources", "split_by_sectors",
-                "bc_store", "obs_store", "footprint_store", "emissions_store",
-                "emissions_domain", "fp_model", "fp_species", "calibration_scale",
+                "bc_store", "obs_store", "footprint_store", "flux_store",
+                "flux_domain", "fp_model", "fp_species", "calibration_scale",
                 "use_bc", "bc_input",
                 "flux_non_finite_check",
             ),
@@ -1382,8 +1395,8 @@ _NESTED_PARAMETER_NAMES = frozenset(
     {
         "inner_domain",
         "inner_footprint_store",
-        "inner_emissions_store",
-        "inner_emissions_domain",
+        "inner_flux_store",
+        "inner_flux_domain",
         "inner_basis_algorithm",
         "inner_nbasis",
         "inner_fp_basis_case",
@@ -1419,6 +1432,7 @@ def run_rhime_nested(
         raise ValueError("Non-empty `likelihood_kwargs` require an active `likelihood_builder`.")
     params = read_rhime_ini(config_file) if config_file is not None else {}
     params.update(kwargs)
+    params = normalise_flux_aliases(params)
     nested_options = {name: params.pop(name) for name in tuple(params) if name in _NESTED_PARAMETER_NAMES}
     inner_domain = nested_options.pop("inner_domain", None)
     if inner_domain is None:

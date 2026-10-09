@@ -76,7 +76,7 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
     def build_basis(**kwargs: Any) -> Any:
         assert kwargs["site_data"] is filtered.site_data
         assert kwargs["domain"] == config.domain
-        assert kwargs["emissions_name"] == config.flux_sources
+        assert kwargs["flux_sources"] == config.flux_sources
         calls.append("basis")
         return basis
 
