@@ -13,8 +13,6 @@ from .basis_functions import (
     BasisFunctions,
     basis_functions_from_flat_basis,
     flux_from_data,
-    _extract_flux_dataarray,
-    _is_multi_source_workflow,
 )
 from ._functions import (
     basis_from_weights,
@@ -331,27 +329,6 @@ def load_basis_functions(
             BASIS_ARTIFACT_SOURCE_ATTR: "legacy_flat",
             BASIS_ARTIFACT_PATH_ATTR: _basis_artifact_path_metadata(files),
         },
-    )
-
-
-def make_basis_functions_from_fp_all(*, fp_all: dict, **kwargs: Any) -> BasisFunctions:
-    """Adapt legacy merged dictionaries to dataset basis construction."""
-    return make_basis_functions(
-        site_data={key: value for key, value in fp_all.items() if not key.startswith(".")},
-        flux_data={key: _extract_flux_dataarray(value, flux_key=key).to_dataset(name="flux")
-                   for key, value in fp_all[".flux"].items()},
-        split_by_sectors=_is_multi_source_workflow(fp_all),
-        **kwargs,
-    )
-
-
-def load_basis_functions_from_fp_all(*, fp_all: dict, **kwargs: Any) -> BasisFunctions:
-    """Adapt legacy merged dictionaries to dataset basis artifact loading."""
-    return load_basis_functions(
-        flux_data={key: _extract_flux_dataarray(value, flux_key=key).to_dataset(name="flux")
-                   for key, value in fp_all[".flux"].items()},
-        split_by_sectors=_is_multi_source_workflow(fp_all),
-        **kwargs,
     )
 
 

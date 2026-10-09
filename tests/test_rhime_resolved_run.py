@@ -4,6 +4,7 @@ import pytest
 import xarray as xr
 
 from openghg_inversions.rhime import RhimeConfig, multisector, standard
+from openghg_inversions.hbmcmc.legacy_data import from_legacy_fp_all
 
 
 def _config(multisector_mode, **overrides):
@@ -118,7 +119,7 @@ def test_ini_runner_merges_before_one_resolution_and_alias_translation(monkeypat
 def test_supplied_data_reaches_filtering_without_acquisition(monkeypatch, multisector_mode):
     from openghg_inversions.inversion_data import RhimeMergedData
     config = _config(multisector_mode)
-    supplied = RhimeMergedData.from_legacy_fp_all({"TAC": xr.Dataset(), ".split_by_sectors": multisector_mode}, config.site_options)
+    supplied = from_legacy_fp_all({"TAC": xr.Dataset(), ".split_by_sectors": multisector_mode}, config.site_options)
     recipe = multisector if multisector_mode else standard
     runner = recipe.run_rhime_multisector if multisector_mode else recipe.run_rhime
     def forbidden(*args, **kwargs):
@@ -136,9 +137,8 @@ def test_supplied_data_reaches_filtering_without_acquisition(monkeypatch, multis
 
 @pytest.mark.parametrize("multisector_mode", [False, True])
 def test_supplied_layout_is_checked_before_filtering(monkeypatch, multisector_mode):
-    from openghg_inversions.inversion_data import RhimeMergedData
     config = _config(multisector_mode)
-    supplied = RhimeMergedData.from_legacy_fp_all({"TAC": xr.Dataset(), ".split_by_sectors": not multisector_mode}, config.site_options)
+    supplied = from_legacy_fp_all({"TAC": xr.Dataset(), ".split_by_sectors": not multisector_mode}, config.site_options)
     recipe = multisector if multisector_mode else standard
     runner = recipe.run_rhime_multisector if multisector_mode else recipe.run_rhime
     monkeypatch.setattr(recipe, "filter_rhime_observations", lambda *a, **kw: pytest.fail("layout not checked"))

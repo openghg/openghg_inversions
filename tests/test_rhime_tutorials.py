@@ -66,7 +66,6 @@ def _test_store_overrides(
         "bc_input": "cams",
         "basis_output_path": str(tmp_path),
         "output_path": str(tmp_path),
-        "reload_merged_data": False,
     }
 
 

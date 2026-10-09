@@ -35,7 +35,7 @@ does not establish that measurement uncertainty was measured to be zero.
 Existing uncertainty construction
 ---------------------------------
 
-:func:`openghg_inversions.inversion_data.get_data.add_obs_error` constructs the
+:func:`openghg_inversions.inversion_data.acquisition.add_obs_error` constructs the
 error from each merged site's data. With averaging errors enabled, its behavior
 is:
 

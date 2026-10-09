@@ -10,3 +10,5 @@ See :doc:`../usage/legacy_and_migration`.
    :maxdepth: 4
 
    openghg_inversions.hbmcmc.compatibility
+   openghg_inversions.hbmcmc.legacy_data
+   openghg_inversions.hbmcmc.legacy_basis

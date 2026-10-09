@@ -572,26 +572,6 @@ class FluxWeightedBasis:
         raise TypeError(f"Unexpected type for operator.basis_flat: {type(basis_flat)!r}")
 
 
-def basis_functions_from_fp_all_flat_basis(
-    *,
-    fp_all: dict,
-    basis_flat: xr.DataArray | Mapping[str, xr.DataArray],
-    metadata: Mapping[str, Any] | None = None,
-) -> FluxWeightedBasis:
-    """Adapt legacy merged dictionaries to retained flat-basis construction.
-
-    New callers should pass runtime datasets to
-    :func:`basis_functions_from_flat_basis` instead.
-    """
-    return basis_functions_from_flat_basis(
-        flux_data={key: _extract_flux_dataarray(value, flux_key=key).to_dataset(name="flux")
-                   for key, value in fp_all[".flux"].items()},
-        split_by_sectors=_is_multi_source_workflow(fp_all),
-        basis_flat=basis_flat,
-        metadata=metadata,
-    )
-
-
 def basis_functions_from_flat_basis(
     *,
     flux_data: Mapping[str, xr.Dataset],
@@ -631,37 +611,6 @@ def basis_functions_from_flat_basis(
     )
 
 
-def flux_from_fp_all(fp_all: dict) -> xr.DataArray:
-    """Legacy adapter that builds representative flux from ``fp_all``.
-
-    This compatibility helper attaches current-run flux when loading a legacy
-    flat basis artifact as retained ``BasisFunctions``.
-
-    Args:
-        fp_all: Legacy merged-data dictionary containing ``fp_all[".flux"]`` and
-            optional ``fp_all[".split_by_sectors"]`` metadata.
-
-    Returns:
-        A combined flux array for non-sectoral workflows, or a source-stacked
-        flux array for sectoral workflows. Source-stacked output follows the
-        insertion order of ``fp_all[".flux"]``.
-
-    Raises:
-        ValueError: If ``fp_all[".flux"]`` is missing or empty, or a sectoral
-            source mapping mixes timed and timeless arrays or contains unequal,
-            missing, or duplicate native time coordinates.
-        TypeError: If a flux entry cannot be converted to a ``DataArray``.
-    """
-    if ".flux" not in fp_all or not fp_all[".flux"]:
-        raise ValueError("Cannot construct BasisFunctions object: fp_all['.flux'] is missing or empty.")
-
-    return flux_from_data(
-        {key: _extract_flux_dataarray(value, flux_key=key).to_dataset(name="flux")
-         for key, value in fp_all[".flux"].items()},
-        split_by_sectors=_is_multi_source_workflow(fp_all),
-    )
-
-
 def flux_from_data(
     flux_data: Mapping[str, xr.Dataset], *, split_by_sectors: bool = False
 ) -> xr.DataArray:
@@ -688,48 +637,11 @@ def _serialisable_basis_metadata(metadata: Mapping[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in metadata.items() if str(key).startswith(BASIS_METADATA_ATTR_PREFIX)}
 
 
-def _is_multi_source_workflow(fp_all: dict) -> bool:
-    """Interpret legacy ``fp_all`` metadata to determine multi-source mode."""
-    split_by_sectors = fp_all.get(".split_by_sectors")
-    if split_by_sectors is not None:
-        return bool(split_by_sectors)
-
-    flux_entries = fp_all.get(".flux")
-    return isinstance(flux_entries, dict) and len(flux_entries) > 1
-
-
-def _extract_flux_dataarray(flux_entry: object, flux_key: str) -> xr.DataArray:
-    """Extract flux from legacy ``fp_all[".flux"]`` entry containers.
-
-    Args:
-        flux_entry: Legacy flux entry, xarray ``Dataset``, or ``DataArray``.
-        flux_key: Source key used only for error reporting.
-
-    Returns:
-        The ``flux`` DataArray.
-
-    Raises:
-        TypeError: If the entry does not expose a flux DataArray.
-    """
-    flux_entry_data = getattr(flux_entry, "data", None)
-    if isinstance(flux_entry_data, xr.Dataset) and "flux" in flux_entry_data:
-        return flux_entry_data["flux"]
-    if isinstance(flux_entry, xr.Dataset) and "flux" in flux_entry:
-        return flux_entry["flux"]
-    if isinstance(flux_entry, xr.DataArray):
-        return flux_entry
-
-    raise TypeError(
-        "Could not extract a flux DataArray from fp_all['.flux']. "
-        f"Got type {type(flux_entry)!r} for flux entry {flux_key!r}."
-    )
-
-
 def _combine_flux_sources_like_modelscenario(flux_arrays: dict[str, xr.DataArray]) -> xr.DataArray:
-    """Legacy adapter that reproduces ``ModelScenario`` flux combination.
+    """Combine source fluxes using the ``ModelScenario`` convention.
 
     Args:
-        flux_arrays: Flux arrays keyed by legacy ``fp_all[".flux"]`` source name.
+        flux_arrays: Flux arrays keyed by source label.
 
     Returns:
         A single flux array with non-time grid dimensions aligned and multiple
