@@ -4,7 +4,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from openghg_inversions.inversion_data import prepare_rhime_inputs
 from openghg_inversions.rhime import run_rhime, run_rhime_multisector
 from openghg_inversions.rhime.params import RhimeConfig
 from openghg_inversions.hbmcmc.compatibility import params_from_config
@@ -65,19 +64,3 @@ def test_rhime_runner_rejects_tracer_before_acquisition(runner, supplied_merged_
     merged = SimpleNamespace(fp_all={}) if supplied_merged_data else None
     with pytest.raises(ValueError, match="use_tracer=True.*not supported"):
         runner(use_tracer=True, merged_data=merged)
-
-
-def test_direct_preparation_rejects_tracer_before_other_options():
-    with pytest.raises(ValueError, match="use_tracer=True.*not supported"):
-        prepare_rhime_inputs(
-            species="ch4",
-            sites=[],
-            domain="EUROPE",
-            averaging_period=None,
-            start_date="2019-01-01",
-            end_date="2019-01-02",
-            output_name="test",
-            flux_sources=[],
-            use_tracer=True,
-            min_error_options={"invalid": True},
-        )

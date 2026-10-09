@@ -1,12 +1,10 @@
 """Site shorthand is translated once before shared retrieval executes."""
 
 from dataclasses import fields
-from unittest.mock import Mock
 
 import pytest
-import xarray as xr
 
-from openghg_inversions.inversion_data import SiteOptions, _site_options, acquisition, get_data, preparation
+from openghg_inversions.inversion_data import SiteOptions, _site_options, acquisition, get_data
 
 
 def _site_inputs():
@@ -30,14 +28,12 @@ def _data_inputs():
         "domain": "EUROPE",
         "start_date": "2019-01-01",
         "end_date": "2019-01-02",
-        "output_name": "resolved",
         "flux_sources": ["total"],
         "use_bc": False,
     }
 
 
-@pytest.mark.parametrize("boundary", ["retrieval", "preparation"])
-def test_public_site_shorthand_expands_once_before_retrieval(monkeypatch, boundary):
+def test_public_site_shorthand_expands_once_before_retrieval(monkeypatch):
     original = SiteOptions.from_inputs
     resolved = []
 
@@ -53,11 +49,8 @@ def test_public_site_shorthand_expands_once_before_retrieval(monkeypatch, bounda
     monkeypatch.setattr(get_data, "get_flux_data", stop)
     kwargs = {**_site_inputs(), **_data_inputs()}
     with pytest.raises(RuntimeError, match="retrieval reached"):
-        if boundary == "retrieval":
-            kwargs["emissions_name"] = kwargs.pop("flux_sources")
-            get_data.retrieve_inversion_data(**kwargs)
-        else:
-            preparation.prepare_rhime_inputs(**kwargs)
+        kwargs["emissions_name"] = kwargs.pop("flux_sources")
+        get_data.retrieve_inversion_data(**kwargs)
     assert len(resolved) == 1
     assert resolved[0].sites == ("TAC", "MHD")
     assert resolved[0].averaging_period == ("1h", "1h")
@@ -80,16 +73,6 @@ def test_canonical_acquisition_and_retrieval_never_expand_selectors(monkeypatch)
         acquisition.RhimeMergedData.from_options(site_options=options, **_data_inputs())
 
 
-def test_canonical_reload_restores_complete_options(tmp_path):
-    options = SiteOptions.from_inputs(**_site_inputs())
-    cached = acquisition.RhimeMergedData.from_legacy_fp_all({"MHD": xr.Dataset()}, options.select_indices([1]), acquisition={"stage": "acquired"})
-    cached.save(tmp_path, merged_data_name="acquired.zarr")
-    merged = acquisition.RhimeMergedData.load(tmp_path, merged_data_name="acquired.zarr")
-    assert merged.site_options == options.select_indices([1])
-    assert options.sites == ("TAC", "MHD")
-    merged.close()
-
-
 def test_site_options_public_factory_resolved_constructor_and_selection():
 
     options = SiteOptions.from_inputs(**_site_inputs())
@@ -107,14 +90,6 @@ def test_site_options_public_factory_resolved_constructor_and_selection():
         SiteOptions(**{**values, "averaging_period": ("1h",)})
 
 
-def test_merged_data_save_uses_modern_serializer(monkeypatch, tmp_path):
-    from openghg_inversions.inversion_data import _merged_artifact
-
-    options = SiteOptions.from_inputs(**_site_inputs())
-    merged = acquisition.RhimeMergedData.from_legacy_fp_all(
-        {site: xr.Dataset() for site in options.sites}, options,
-    )
-    serialize = Mock()
-    monkeypatch.setattr(_merged_artifact, "save_artifact", serialize)
-    assert merged.save(tmp_path, merged_data_name="merged.nc") is None
-    serialize.assert_called_once_with(merged, tmp_path / "merged.nc", "netcdf")
+def test_site_options_preserve_unspecified_averaging_period():
+    options = SiteOptions.from_inputs(sites=["TAC", "MHD"], averaging_period=None)
+    assert options.averaging_period == (None, None)

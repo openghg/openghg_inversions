@@ -373,7 +373,7 @@ def _retrieve_inversion_data_from_options(
     flux_non_finite_check: FluxNonFiniteCheck = "lazy",
 ) -> RhimeMergedData:
     """Acquire the modern dataset record from already resolved site selectors."""
-    from .acquisition import RhimeMergedData
+    from .acquisition import AcquisitionFacts, RhimeMergedData
 
     merged_sites: dict[str, xr.Dataset] = {}
     observation_provenance = {}
@@ -562,21 +562,20 @@ def _retrieve_inversion_data_from_options(
             flux=flux_provenance,
             boundary=boundary_provenance,
         ),
-        acquisition={
-            "stage": "acquired",
-            "species": species,
-            "domain": domain,
-            "start_date": start_date,
-            "end_date": end_date,
-            "emissions_domain": emissions_domain,
-            "fp_model": fp_model,
-            "fp_species": fp_species,
-            "calibration_scale": calibration_scale,
-            "use_bc": use_bc,
-            "bc_input": bc_input,
-            "averaging_error": averagingerror,
-            "flux_non_finite_check": flux_non_finite_check,
-        },
+        acquisition=AcquisitionFacts(
+            species=species,
+            domain=domain,
+            start_date=start_date,
+            end_date=end_date,
+            emissions_domain=emissions_domain,
+            fp_model=fp_model,
+            fp_species=fp_species,
+            calibration_scale=calibration_scale,
+            use_bc=use_bc,
+            bc_input=bc_input,
+            averaging_error=averagingerror,
+            flux_non_finite_check=flux_non_finite_check,
+        ),
     )
 
 

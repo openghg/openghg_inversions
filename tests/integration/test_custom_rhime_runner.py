@@ -48,21 +48,19 @@ def test_short_and_full_examples_share_likelihood_and_supported_output(
     }
 
 
-@pytest.mark.parametrize("reload_merged_data", [False, True])
-def test_custom_runner_uses_supported_stages_for_acquisition_and_reload(
+def test_custom_runner_uses_supported_stages_for_acquisition(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-    reload_merged_data: bool,
 ) -> None:
-    """Carry ordinary acquisition and reload requests through every public stage."""
+    """Carry ordinary acquisition requests through every public stage."""
     config_file = tmp_path / "rhime.ini"
     config_file.write_text('[RHIME.OUTPUT]\noutput_format = "none"\n', encoding="utf-8")
-    overrides = {"reload_merged_data": reload_merged_data, "draws": 3}
+    overrides = {"draws": 3}
     config = RhimeConfig.from_params(
         params=dict(species="ch4", sites=["TAC", "MHD"], domain="EUROPE",
                     averaging_period="1h", start_date="2019-01-01", end_date="2019-02-01",
                     output_name="example", output_format="none", mismatch_model=None, flux_sources=["inventory"],
-                    reload_merged_data=reload_merged_data, draws=3),
+                    draws=3),
         multisector=False,
     )
     sampler = config.sampler
@@ -97,15 +95,8 @@ def test_custom_runner_uses_supported_stages_for_acquisition_and_reload(
         return config
 
     def retrieve(**kwargs: Any) -> Any:
-        if not reload_merged_data:
-            assert kwargs["site_options"] is config.site_options
-        else:
-            assert "site_options" not in kwargs
-        assert "reload_merged_data" not in kwargs
-        if not reload_merged_data:
-            assert kwargs["split_by_sectors"] is False
-        else:
-            assert "split_by_sectors" not in kwargs
+        assert kwargs["site_options"] is config.site_options
+        assert kwargs["split_by_sectors"] is False
         assert "project_basis_path" not in kwargs
         calls.append("retrieve")
         return merged
@@ -140,7 +131,6 @@ def test_custom_runner_uses_supported_stages_for_acquisition_and_reload(
         assert kwargs["start_date"] == config.start_date
         calls.append("assemble")
         return prepared
-
 
 
     def materialize(actual: Any, *, variable_names: tuple[str, ...]) -> xr.Dataset:
@@ -188,7 +178,6 @@ def test_custom_runner_uses_supported_stages_for_acquisition_and_reload(
     monkeypatch.setattr(custom_runner, "read_rhime_ini", parse_config)
     monkeypatch.setattr(custom_runner.RhimeConfig, "from_params", classmethod(resolve))
     monkeypatch.setattr(custom_runner.RhimeMergedData, "from_options", retrieve)
-    monkeypatch.setattr(custom_runner.RhimeMergedData, "load", retrieve)
     monkeypatch.setattr(custom_runner, "filter_rhime_observations", filter_observations)
     monkeypatch.setattr(custom_runner, "build_rhime_basis", build_basis)
     monkeypatch.setattr(custom_runner, "build_rhime_sensitivities", build_sensitivities)
@@ -258,7 +247,7 @@ def test_custom_runner_main_forwards_cli_config_and_overrides(
             "--chains",
             "1",
             "--kwargs",
-            '{"draws": 99, "species": "ch4", "reload_merged_data": true}',
+            '{"draws": 99, "species": "ch4"}',
         ]
     )
 
@@ -267,7 +256,6 @@ def test_custom_runner_main_forwards_cli_config_and_overrides(
         "config_file": config_file,
         "kwargs": {
             "species": "ch4",
-            "reload_merged_data": True,
             "start_date": "2019-01-01",
             "end_date": "2019-02-01",
             "output_path": output_path,
@@ -277,52 +265,3 @@ def test_custom_runner_main_forwards_cli_config_and_overrides(
             "chains": 1,
         },
     }
-
-
-@pytest.mark.parametrize("split_by_sectors", [False, True])
-def test_plain_custom_runner_reloads_actual_modern_artifact(monkeypatch, tmp_path, split_by_sectors):
-    """Use the actual loader signature and close owned incompatible snapshots."""
-    from openghg_inversions.inversion_data import RhimeMergedData, SiteOptions
-
-    selectors = SiteOptions.from_inputs(sites=["TAC"], averaging_period="2h")
-    acquired = RhimeMergedData(
-        site_data={"TAC": xr.Dataset({"mf": ("time", [1.0, 2.0])})},
-        flux_data={}, site_options=selectors, split_by_sectors=split_by_sectors,
-        acquisition={"stage": "acquired"},
-    )
-    acquired.save(tmp_path, merged_data_name="acquired.zarr")
-    closed = []
-    filtered = []
-    original_close = RhimeMergedData.close
-
-    def close(record):
-        closed.append(record)
-        original_close(record)
-
-    class ReachedFiltering(Exception):
-        pass
-
-    def filter_loaded(record, **kwargs):
-        filtered.append(record)
-        assert record.site_options == selectors
-        xr.testing.assert_equal(record.site_data["TAC"], acquired.site_data["TAC"])
-        raise ReachedFiltering
-
-    monkeypatch.setattr(RhimeMergedData, "close", close)
-    monkeypatch.setattr(RhimeMergedData, "from_options", lambda **kwargs: pytest.fail("Reload reacquired data"))
-    monkeypatch.setattr(custom_runner, "filter_rhime_observations", filter_loaded)
-    expected = ValueError if split_by_sectors else ReachedFiltering
-    with pytest.raises(expected):
-        custom_runner.run_custom_rhime(
-            species="ch4", sites=["TAC"], domain="EUROPE", averaging_period="1h",
-            start_date="2020-01-01", end_date="2020-01-02", output_name="reload",
-            flux_sources=["inventory"], use_bc=False, output_format="none",
-            reload_merged_data=True, merged_data_dir=str(tmp_path), merged_data_name="acquired.zarr",
-        )
-    if split_by_sectors:
-        assert len(closed) == 1
-        assert not filtered
-    else:
-        assert not closed
-        assert len(filtered) == 1
-        filtered[0].close()

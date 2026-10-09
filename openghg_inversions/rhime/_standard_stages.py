@@ -76,17 +76,12 @@ _STAGE_PATH_OPTIONS = frozenset(
         "bc_basis_directory",
         "country_directory",
         "country_file",
-        "merged_data_dir",
     }
 )
 _PREPARATION_IDENTITY_EXCLUDED_OPTIONS = frozenset(
     {
         "basis_output_path",
-        "merged_data_dir",
-        "merged_data_name",
         "output_name",
-        "reload_merged_data",
-        "save_merged_data",
     }
 )
 
@@ -187,7 +182,6 @@ def prepare_rhime_stage(
     multisector = model == "multisector"
     executed_setup = replace(
         setup,
-        save_merged_data=False,
         basis_output_path=str(destination / "basis") if setup.basis_output_path is not None else None,
     )
     with timed(
@@ -195,31 +189,16 @@ def prepare_rhime_stage(
         sites=len(executed_setup.site_options.sites),
         split_by_sectors=executed_setup.split_by_sectors,
     ):
-        if executed_setup.reload_merged_data:
-            merged = RhimeMergedData.load(
-                **executed_setup.select(
-                    "merged_data_dir", "species", "start_date", "output_name",
-                    "merged_data_name",
-                ),
-            )
-            try:
-                merged.validate_for_preparation(
-                    **executed_setup.select("species", "domain", "start_date", "end_date", "split_by_sectors"),
-                )
-            except ValueError:
-                merged.close()
-                raise
-        else:
-            merged = RhimeMergedData.from_options(
-                **executed_setup.select(
-                    "site_options", "species", "domain", "start_date",
-                    "end_date", "output_name", "flux_sources", "split_by_sectors",
-                    "bc_store", "obs_store", "footprint_store", "emissions_store",
-                    "emissions_domain", "fp_model", "fp_species", "calibration_scale",
-                    "use_bc", "bc_input", "averaging_error",
-                    "save_merged_data", "merged_data_dir", "merged_data_name", "flux_non_finite_check",
-                ),
-            )
+        merged = RhimeMergedData.from_options(
+            **executed_setup.select(
+                "site_options", "species", "domain", "start_date",
+                "end_date",  "flux_sources", "split_by_sectors",
+                "bc_store", "obs_store", "footprint_store", "emissions_store",
+                "emissions_domain", "fp_model", "fp_species", "calibration_scale",
+                "use_bc", "bc_input", "averaging_error",
+                "flux_non_finite_check",
+            ),
+        )
     filtered = filter_rhime_observations(merged, filters=executed_setup.filters)
     retained_sites = {str(site).upper() for site in filtered.sites}
     missing_sites = [site for site in executed_setup.site_options.sites if str(site).upper() not in retained_sites]
@@ -229,16 +208,6 @@ def prepare_rhime_stage(
             f"{missing_sites!r} for species {executed_setup.species!r} and period "
             f"{executed_setup.start_date} to {executed_setup.end_date}."
         )
-    merged_path = _output_path(destination, None, "merged-data/merged-data.nc")
-    merged_dir = merged_path.parent
-    # TODO(#802): remove this old-codec checkpoint when stage replay migrates.
-    # Never label this post-filter product as a modern acquisition.
-    from openghg_inversions.inversion_data.serialise import _save_merged_data
-
-    _save_merged_data(
-        {**filtered.to_legacy_fp_all(), ".artifact_stage": "filtered"},
-        merged_dir, merged_data_name="merged-data.nc",
-    )
     basis = build_rhime_basis(
         filtered,
         **executed_setup.select(
@@ -284,11 +253,9 @@ def prepare_rhime_stage(
         "requested_configuration": effective_configuration(setup, model=model),
         "effective_configuration": effective_configuration(executed_setup, model=model),
         "artifacts": {
-            "merged_data": _artifact_path(merged_path),
             "prepared_inputs": _artifact_path(prepared_path),
         },
         "artifact_identities": {
-            "merged_data": _file_identity(merged_path),
             "prepared_inputs": _file_identity(prepared_path),
         },
     }

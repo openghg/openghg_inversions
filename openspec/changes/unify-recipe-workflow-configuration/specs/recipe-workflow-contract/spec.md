@@ -55,12 +55,12 @@ routes, preserving validation of malformed or incompatible inputs.
 
 Standard and multisector SHALL each reuse their recipe's preparation across its
 supported routes.
-Valid retained subsets after acquisition, compatible merged-cache reload,
+Valid retained subsets after acquisition, supplied in-memory data,
 or filtering SHALL be accepted consistently with full preparation, with every
 per-site option aligned to retained labels. This replaces staged rejection of
 missing requested sites. An empty retained set SHALL fail before basis/inference.
 Requested configuration SHALL remain separately available for provenance;
-reconciliation SHALL NOT bypass malformed-input or cache-compatibility validation.
+reconciliation SHALL NOT bypass malformed-input or acquisition-compatibility validation.
 
 #### Scenario: Acquisition returns a valid subset
 
@@ -69,12 +69,12 @@ reconciliation SHALL NOT bypass malformed-input or cache-compatibility validatio
 - **THEN** full and staged preparation retain the same observations, labels,
   averaging periods, and other per-site options using requested-site alignment
 
-#### Scenario: Compatible merged cache lacks a requested site
+#### Scenario: Supplied merged data lacks a requested site
 
-- **WHEN** a valid compatible standard/multisector merged cache contains only a
-  subset of requested sites
-- **THEN** full and staged preparation retain that subset and align every per-site option
-- **AND** incompatible cache inputs retain their existing rejection/fallback policy
+- **WHEN** a supported Python route receives compatible in-memory merged data
+  containing a subset of requested sites
+- **THEN** preparation retains that subset and aligns every per-site option
+- **AND** incompatible acquisition facts retain their rejection policy
 
 #### Scenario: Filtering empties a site
 
@@ -100,29 +100,17 @@ reconciliation SHALL NOT bypass malformed-input or cache-compatibility validatio
 - **AND** model-specific per-site options retain their validation rules without
   requiring a new acquisition or filtering route
 
-### Requirement: Merged and prepared checkpoint boundaries
+### Requirement: In-memory acquisition and prepared checkpoints
 
-For standard/multisector, the existing optional merged-data cache SHALL contain
-acquisition output saved before scientific preparation begins, including before
-configured observation filtering. Full and staged routes SHALL reuse the existing
-cache save/load functions and naming, format, and validation/fallback rules.
-Acquisition SHALL honour `save_merged_data` and `reload_merged_data`; a valid
-reload SHALL bypass acquisition and enter the shared preparation operation.
-Fully prepared inputs SHALL remain the handoff after scientific preparation.
-Both checkpoints SHALL resume through canonical recipe operations without
-mutating borrowed handoffs or requiring new installed commands or numerical schemas.
+For standard/multisector, acquisition SHALL remain in memory. Durable reuse
+SHALL use the prepared-input artifact; removed merged-data cache options SHALL
+be rejected. Optional acquisition replay is deferred to #829.
 
-#### Scenario: Merged-data resume
+#### Scenario: Supplied merged data
 
-- **WHEN** a supported route resumes acquired, external, or reloaded pre-filter merged data
-- **THEN** it bypasses acquisition and invokes the same complete scientific
-  preparation operation, including filtering, basis, sensitivities, and assembly
-
-#### Scenario: Optional merged-data save
-
-- **WHEN** an existing merged-cache save option requests persistence during acquisition
-- **THEN** the saved merged data precedes scientific preparation and its configured filters
-- **AND** preparation continues through the same operation used without cache persistence
+- **WHEN** a supported Python route receives compatible in-memory merged data
+- **THEN** it bypasses acquisition and invokes the same scientific preparation
+  operations, including filtering, basis, sensitivities, and assembly
 
 #### Scenario: Fully prepared resume
 
@@ -133,27 +121,20 @@ mutating borrowed handoffs or requiring new installed commands or numerical sche
 
 Standard/multisector staged preparation SHALL stop producing the filtered merged
 snapshot. New preparation manifests SHALL omit its retired `merged_data` artifact
-and identity entries, including when optional merged caching is enabled. The
-sole merged-cache contract SHALL remain acquisition output before scientific
-preparation. No resume route for that retired checkpoint SHALL be provided;
-the removal SHALL NOT reinterpret historical filtered files as pre-filter caches.
+and identity entries. Acquisition stays in memory; optional acquisition replay
+is deferred to #829. No resume route for the retired checkpoint SHALL be
+provided; removal SHALL NOT reinterpret historical filtered files as pre-filter
+caches.
 Numerical prepared-input/posterior formats and product schemas SHALL remain
 compatible; staged metadata SHALL follow the explicit compatibility boundary
 and supported-version policy below.
 
-#### Scenario: Staged preparation without optional merged caching
+#### Scenario: Staged preparation
 
-- **WHEN** standard or multisector staged preparation runs without a requested merged cache
+- **WHEN** standard or multisector staged preparation runs
 - **THEN** it persists the prepared-input handoff and preparation manifest without
   the former filtered merged artifact or its manifest entries
 - **AND** later stages consume the prepared inputs without requiring a merged snapshot
-
-#### Scenario: Staged preparation with optional merged caching
-
-- **WHEN** standard or multisector staged preparation requests the existing merged-cache save option
-- **THEN** it saves acquisition output before scientific preparation through the existing cache mechanism
-- **AND** its preparation manifest still omits the retired `merged_data` entries
-  rather than repurposing them for a different checkpoint phase
 
 #### Scenario: Supported replay without a merged snapshot
 

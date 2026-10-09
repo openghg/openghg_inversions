@@ -544,7 +544,6 @@ def _select_merged_sites(merged: RhimeMergedData, sites: Sequence[str]) -> Rhime
     """Return a borrowed merged-data view restricted to a common site set."""
     return merged.with_site_data(
         {str(site): merged.site_data[str(site)] for site in sites},
-        stage="filtered",
         context="Nested-domain alignment",
     )
 
@@ -616,7 +615,7 @@ def align_inner_merged_to_outer_observations(
         native_positions = order[indexer]
         aligned = inner_dataset.isel(time=native_positions).assign_coords(time=outer_dataset["time"].variable)
         site_data[site] = aligned
-    return inner.with_site_data(site_data, stage="filtered", context="Nested-domain time alignment")
+    return inner.with_site_data(site_data, context="Nested-domain time alignment")
 
 
 def mask_outer_merged_for_inner_domain(
@@ -673,7 +672,7 @@ def mask_outer_merged_for_inner_domain(
         masked_flux_entries[source] = masked_dataset
 
     return replace(
-        outer.with_site_data(site_data, stage="filtered", context="Nested-domain masking"),
+        outer.with_site_data(site_data, context="Nested-domain masking"),
         flux_data=masked_flux_entries,
     )
 
@@ -809,10 +808,6 @@ def prepare_nested_rhime_inputs(
     inner_basis_directory: str | None = None,
     inner_country_directory: str | None = None,
     inner_basis_output_path: str | None = None,
-    inner_reload_merged_data: bool = False,
-    inner_save_merged_data: bool = False,
-    inner_merged_data_dir: str | None = None,
-    inner_merged_data_name: str | None = None,
     time_tolerance: str | pd.Timedelta | None = None,
 ) -> NestedRhimePreparedInputs:
     """Retrieve and prepare native outer and inner grids with no double count.
@@ -851,12 +846,6 @@ def prepare_nested_rhime_inputs(
             the outer request's directory.
         inner_basis_output_path: Optional destination for a generated inner
             basis. ``None`` disables saving the inner basis.
-        inner_reload_merged_data: Require an inner merged artifact instead of
-            fresh acquisition. Loading errors propagate without reacquisition.
-        inner_save_merged_data: Whether fresh inner acquisition saves merged
-            data. This does not inherit the outer saving choice.
-        inner_merged_data_dir: Directory for inner merged artifacts.
-        inner_merged_data_name: Optional inner merged-artifact filename.
         time_tolerance: Maximum difference for nearest-time inner footprint
             matching. ``None`` requires exact times; matching never reuses an
             inner footprint for multiple outer rows.
@@ -904,10 +893,6 @@ def prepare_nested_rhime_inputs(
         fp_basis_case=inner_fp_basis_case,
         basis_output_path=inner_basis_output_path,
         fix_basis_outer_regions=False,
-        reload_merged_data=inner_reload_merged_data,
-        save_merged_data=inner_save_merged_data,
-        merged_data_dir=inner_merged_data_dir,
-        merged_data_name=inner_merged_data_name,
         nbasis=inner_nbasis if inner_nbasis is not None else config.nbasis,
         basis_directory=inner_basis_directory if inner_basis_directory is not None else config.basis_directory,
         country_directory=inner_country_directory if inner_country_directory is not None else config.country_directory,
@@ -919,61 +904,31 @@ def prepare_nested_rhime_inputs(
         sites=len(outer_config.site_options.sites),
         split_by_sectors=outer_config.split_by_sectors,
     ):
-        if outer_config.reload_merged_data:
-            outer_merged = RhimeMergedData.load(
-                **outer_config.select(
-                    "merged_data_dir", "species", "start_date", "output_name",
-                    "merged_data_name",
-                ),
-            )
-            try:
-                outer_merged.validate_for_preparation(
-                    **outer_config.select("species", "domain", "start_date", "end_date", "split_by_sectors"),
-                )
-            except ValueError:
-                outer_merged.close()
-                raise
-        else:
-            outer_merged = RhimeMergedData.from_options(
-                **outer_config.select(
-                    "site_options", "species", "domain", "start_date",
-                    "end_date", "output_name", "flux_sources", "split_by_sectors",
-                    "bc_store", "obs_store", "footprint_store", "emissions_store",
-                    "emissions_domain", "fp_model", "fp_species", "calibration_scale",
-                    "use_bc", "bc_input", "averaging_error",
-                    "save_merged_data", "merged_data_dir", "merged_data_name", "flux_non_finite_check",
-                ),
-            )
+        outer_merged = RhimeMergedData.from_options(
+            **outer_config.select(
+                "site_options", "species", "domain", "start_date",
+                "end_date",  "flux_sources", "split_by_sectors",
+                "bc_store", "obs_store", "footprint_store", "emissions_store",
+                "emissions_domain", "fp_model", "fp_species", "calibration_scale",
+                "use_bc", "bc_input", "averaging_error",
+                "flux_non_finite_check",
+            ),
+        )
     with timed(
         "rhime.prepare_inputs.merged_data",
         sites=len(inner_config.site_options.sites),
         split_by_sectors=inner_config.split_by_sectors,
     ):
-        if inner_config.reload_merged_data:
-            inner_merged = RhimeMergedData.load(
-                **inner_config.select(
-                    "merged_data_dir", "species", "start_date", "output_name",
-                    "merged_data_name",
-                ),
-            )
-            try:
-                inner_merged.validate_for_preparation(
-                    **inner_config.select("species", "domain", "start_date", "end_date", "split_by_sectors"),
-                )
-            except ValueError:
-                inner_merged.close()
-                raise
-        else:
-            inner_merged = RhimeMergedData.from_options(
-                **inner_config.select(
-                    "site_options", "species", "domain", "start_date",
-                    "end_date", "output_name", "flux_sources", "split_by_sectors",
-                    "bc_store", "obs_store", "footprint_store", "emissions_store",
-                    "emissions_domain", "fp_model", "fp_species", "calibration_scale",
-                    "use_bc", "bc_input", "averaging_error",
-                    "save_merged_data", "merged_data_dir", "merged_data_name", "flux_non_finite_check",
-                ),
-            )
+        inner_merged = RhimeMergedData.from_options(
+            **inner_config.select(
+                "site_options", "species", "domain", "start_date",
+                "end_date",  "flux_sources", "split_by_sectors",
+                "bc_store", "obs_store", "footprint_store", "emissions_store",
+                "emissions_domain", "fp_model", "fp_species", "calibration_scale",
+                "use_bc", "bc_input", "averaging_error",
+                "flux_non_finite_check",
+            ),
+        )
     outer_merged, inner_merged = _retain_common_sites(outer_merged, inner_merged)
     outer_filtered = filter_rhime_observations(outer_merged, filters=outer_config.filters)
     outer_filtered, inner_merged = _retain_common_sites(outer_filtered, inner_merged)
@@ -1426,10 +1381,6 @@ _NESTED_PARAMETER_NAMES = frozenset(
         "inner_basis_directory",
         "inner_country_directory",
         "inner_basis_output_path",
-        "inner_reload_merged_data",
-        "inner_save_merged_data",
-        "inner_merged_data_dir",
-        "inner_merged_data_name",
         "inner_time_tolerance",
         "inner_x_prior",
     }

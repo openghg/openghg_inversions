@@ -1,4 +1,4 @@
-"""Acquisition factories retain selectors and make cache failures explicit."""
+"""Acquisition factories retain selectors and borrow lazy datasets."""
 
 import inspect
 import warnings
@@ -8,8 +8,8 @@ import pytest
 import xarray as xr
 from dask.callbacks import Callback
 
-from openghg_inversions.inversion_data import RhimeMergedData, SiteOptions
-from openghg_inversions.inversion_data import acquisition, get_data
+from openghg_inversions.inversion_data import AcquisitionFacts, RhimeMergedData, SiteOptions
+from openghg_inversions.inversion_data import get_data
 
 
 def test_legacy_retrieval_alias_preserves_signature_docs_and_forwarding(monkeypatch):
@@ -48,11 +48,10 @@ def test_fresh_factory_retains_selectors_and_borrows_lazy_datasets(monkeypatch):
             site_data={"RGL": dataset, "MHD": dataset},
             flux_data={},
             site_options=options.select_indices([2, 1]),
-            acquisition={"stage": "acquired"},
+            acquisition=AcquisitionFacts(),
         )
 
-    monkeypatch.setattr(acquisition, "_retrieve_inversion_data_from_options", retrieve)
-    monkeypatch.setattr(acquisition, "load_merged_data", lambda *a, **kw: pytest.fail("fresh must not load"))
+    monkeypatch.setattr(get_data, "_retrieve_inversion_data_from_options", retrieve)
     monkeypatch.setattr(RhimeMergedData, "from_legacy_fp_all", lambda *a, **kw: pytest.fail("fresh used fp_all"))
     monkeypatch.setattr(RhimeMergedData, "to_legacy_fp_all", lambda *a, **kw: pytest.fail("fresh used fp_all"))
     with Callback(pretask=lambda *args: pytest.fail("factory computed borrowed observations")):
@@ -62,39 +61,12 @@ def test_fresh_factory_retains_selectors_and_borrows_lazy_datasets(monkeypatch):
             domain="EUROPE",
             start_date="2020-01-01",
             end_date="2020-02-01",
-            output_name="test",
+
             flux_sources=["inventory"],
         )
     assert result.site_options == options.select_indices([2, 1])
     assert result.site_data["RGL"] is dataset
     assert options.sites == ("TAC", "MHD", "RGL")
-
-
-@pytest.mark.parametrize("artifact", ["absent.nc", "corrupt.nc"])
-def test_missing_or_corrupt_artifact_never_retrieves(tmp_path, monkeypatch, artifact):
-    if artifact == "corrupt.nc":
-        (tmp_path / artifact).write_text("not a netCDF file")
-    monkeypatch.setattr(
-        acquisition, "_retrieve_inversion_data_from_options", lambda **kw: pytest.fail("load retrieved")
-    )
-    with pytest.raises((ValueError, OSError)):
-        RhimeMergedData.load(tmp_path, merged_data_name=artifact)
-
-
-def test_current_codec_load_requires_explicit_selectors(merged_data_dir, merged_data_file_name, tmp_path):
-    options = SiteOptions.from_inputs(sites=["TAC", "MHD"], averaging_period=["1h", "2h"])
-    with pytest.warns(DeprecationWarning):
-        merged = RhimeMergedData.load_legacy(
-            merged_data_dir,
-            site_options=options,
-            merged_data_name=merged_data_file_name,
-            acquisition_stage="acquired",
-        )
-    assert merged.sites == ("TAC",)
-    merged.save(tmp_path, merged_data_name="roundtrip.nc")
-    reopened = RhimeMergedData.load(tmp_path, merged_data_name="roundtrip.nc")
-    assert reopened.site_options == merged.site_options
-    xr.testing.assert_equal(reopened.to_legacy_fp_all()["TAC"], merged.to_legacy_fp_all()["TAC"])
 
 
 @pytest.mark.parametrize("entrypoint", ["retrieve_inversion_data", "data_processing_surface_notracer"])
@@ -112,7 +84,7 @@ def test_public_retrieval_hides_private_provenance_transport(monkeypatch, entryp
         flux_data={},
         boundary_data=xr.Dataset(),
         site_options=options,
-        acquisition={"stage": "acquired"},
+        acquisition=AcquisitionFacts(),
     )
 
     def retrieve(**kwargs):
@@ -128,7 +100,7 @@ def test_public_retrieval_hides_private_provenance_transport(monkeypatch, entryp
     assert result[1:] == retained
     assert list(result[0]) == [".flux", ".split_by_sectors", ".bc", "TAC"]
     assert result[0]["TAC"] is site
-    assert acquired.acquisition == {"stage": "acquired"}
+    assert acquired.acquisition == AcquisitionFacts()
 
 
 def test_retrieval_builds_modern_record_without_legacy_adapters(monkeypatch):
@@ -165,7 +137,7 @@ def test_retrieval_builds_modern_record_without_legacy_adapters(monkeypatch):
             domain="EUROPE",
             start_date="2020-01-01",
             end_date="2020-02-01",
-            output_name="modern",
+
             flux_sources=["inventory"],
         )
     assert merged.site_options == options.select_indices([1])
@@ -176,5 +148,5 @@ def test_retrieval_builds_modern_record_without_legacy_adapters(monkeypatch):
     assert merged.provenance.footprints["MHD"].uuid == "footprint-id"
     assert merged.provenance.flux["inventory"].uuid == "flux-id"
     assert merged.provenance.boundary.uuid == "boundary-id"
-    assert merged.acquisition["species"] == "ch4"
-    assert merged.acquisition["start_date"] == "2020-01-01"
+    assert merged.acquisition.species == "ch4"
+    assert merged.acquisition.start_date == "2020-01-01"

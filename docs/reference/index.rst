@@ -82,10 +82,9 @@ Use these interfaces to prepare, save, reload, or adapt canonical inputs
 before a separate model run. The
 :doc:`RHIME terminology and prepared-input reference </usage/rhime>`
 documents the expected variables, dimensions, and coordinates. Acquisition
-and reload mechanics live in ``inversion_data.acquisition``; the prepared
+mechanics live in ``inversion_data.acquisition``; the prepared
 value and its unchanged version-1 schema live in
-``inversion_data.prepared_inputs``. Existing package and preparation-module
-imports identify the same classes.
+``inversion_data.prepared_inputs``. Import both values from ``openghg_inversions.inversion_data``.
 
 .. autosummary::
    :nosignatures:
@@ -93,17 +92,15 @@ imports identify the same classes.
    openghg_inversions.inversion_data.SiteOptions
    openghg_inversions.inversion_data.retrieve_inversion_data
    openghg_inversions.inversion_data.RhimeMergedData
+   openghg_inversions.inversion_data.AcquisitionFacts
    openghg_inversions.inversion_data.InputProvenance
    openghg_inversions.inversion_data.MergedDataProvenance
    openghg_inversions.inversion_data.RhimePreparedInputs
-   openghg_inversions.inversion_data.prepare_rhime_inputs
    openghg_inversions.inversion_data.prepare_rhime_inputs_from_xarray
    openghg_inversions.inversion_data.load_merged_data
    openghg_inversions.inversion_data.RhimeMergedData.from_options
-   openghg_inversions.inversion_data.RhimeMergedData.load
    openghg_inversions.inversion_data.RhimeMergedData.validate_for_preparation
    openghg_inversions.inversion_data.RhimeMergedData.with_site_data
-   openghg_inversions.inversion_data.RhimeMergedData.save
    openghg_inversions.rhime.filter_rhime_observations
    openghg_inversions.rhime.build_rhime_basis
    openghg_inversions.rhime.build_rhime_sensitivities

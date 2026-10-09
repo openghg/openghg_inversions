@@ -298,31 +298,16 @@ def run_custom_rhime(
     params.pop("fp_basis_case", None)
     config = RhimeConfig.from_params(params, multisector=False)
 
-    if config.reload_merged_data:
-        merged = RhimeMergedData.load(
-            **config.select(
-                "merged_data_dir", "species", "start_date", "output_name",
-                "merged_data_name",
-            ),
-        )
-        try:
-            merged.validate_for_preparation(
-                **config.select("species", "domain", "start_date", "end_date", "split_by_sectors"),
-            )
-        except ValueError:
-            merged.close()
-            raise
-    else:
-        merged = RhimeMergedData.from_options(
-            **config.select(
-                "site_options", "species", "domain", "start_date",
-                "end_date", "output_name", "flux_sources", "split_by_sectors",
-                "bc_store", "obs_store", "footprint_store", "emissions_store",
-                "emissions_domain", "fp_model", "fp_species", "calibration_scale",
-                "use_bc", "bc_input", "averaging_error",
-                "save_merged_data", "merged_data_dir", "merged_data_name", "flux_non_finite_check",
-            ),
-        )
+    merged = RhimeMergedData.from_options(
+        **config.select(
+            "site_options", "species", "domain", "start_date",
+            "end_date",  "flux_sources", "split_by_sectors",
+            "bc_store", "obs_store", "footprint_store", "emissions_store",
+            "emissions_domain", "fp_model", "fp_species", "calibration_scale",
+            "use_bc", "bc_input", "averaging_error",
+            "flux_non_finite_check",
+        ),
+    )
     # 2. Keep the scientific preparation order visible in this recipe.
     filtered = filter_rhime_observations(merged, filters=config.filters)
     # Replace only basis construction; subsequent scientific stages stay visible.

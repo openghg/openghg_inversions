@@ -139,25 +139,20 @@ The proposed naming distinguishes `Config` (resolved execution choices),
 values). Do not rename public scientific types for cosmetic uniformity or create
 generic input/result containers.
 
-### 4. Persist merged data before preparation and prepared inputs after it
+### 4. Keep acquisition in memory and persist prepared inputs
 
 | Starting values | Remaining work |
 | --- | --- |
-| Acquired, external, or reloaded merged data | Preparation, construction, sampling, products |
+| Acquired or supplied in-memory merged data | Preparation, construction, sampling, products |
 | Fully prepared inputs | Construction, sampling, products |
 | Prepared inputs and authenticated saved samples/output information | Products without construction or resampling |
 
-For standard/multisector, acquisition must honour `save_merged_data` and
-`reload_merged_data`. A requested save writes acquisition output before configured
-filtering, basis construction, and sensitivities; acquisition may already include
-averaging. A valid cache reload bypasses acquisition and enters the same scientific
-preparation operation. Full and staged execution must share the existing save/load
-functions, naming and format rules, and cache-validation/fallback policy. Stage
-artifact paths retain their directory-containment checks. Cache saves remain opt-in.
+For standard/multisector, acquisition remains in memory. Persist the completed
+prepared-input artifact for repeated sampling and postprocessing.
 
 **Breaking change for the next minor release:** Stop writing the staged filtered
 `merged-data/merged-data.nc` snapshot. Omit its `merged_data` path/digest entries
-from new preparation manifests, even when acquisition caching is enabled.
+from new preparation manifests. Optional acquisition replay is deferred to #829.
 Do not repurpose those entries or reinterpret old filtered files as pre-filter
 caches. Filtering creates an in-memory intermediate, not another checkpoint or
 public stage.

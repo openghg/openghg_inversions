@@ -708,29 +708,15 @@ def run_rhime_multisector(
             **config.select("species", "domain", "start_date", "end_date", "split_by_sectors"),
         )
         merged = merged_data
-    elif config.reload_merged_data:
-        merged = RhimeMergedData.load(
-            **config.select(
-                "merged_data_dir", "species", "start_date", "output_name",
-                "merged_data_name",
-            ),
-        )
-        try:
-            merged.validate_for_preparation(
-                **config.select("species", "domain", "start_date", "end_date", "split_by_sectors"),
-            )
-        except ValueError:
-            merged.close()
-            raise
     else:
         merged = RhimeMergedData.from_options(
             **config.select(
                 "site_options", "species", "domain", "start_date",
-                "end_date", "output_name", "flux_sources", "split_by_sectors",
+                "end_date",  "flux_sources", "split_by_sectors",
                 "bc_store", "obs_store", "footprint_store", "emissions_store",
                 "emissions_domain", "fp_model", "fp_species", "calibration_scale",
                 "use_bc", "bc_input", "averaging_error",
-                "save_merged_data", "merged_data_dir", "merged_data_name", "flux_non_finite_check",
+                "flux_non_finite_check",
             ),
         )
     log_timing(

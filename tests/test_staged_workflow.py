@@ -16,7 +16,6 @@ import xarray as xr
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.cli import build_parser
 from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs, SiteOptions
-from openghg_inversions.inversion_data import serialise
 from openghg_inversions.inference import diagnostics as inference_diagnostics
 from openghg_inversions.rhime.stages import (
     CONVERGENCE_CHECK_NAME,
@@ -91,12 +90,6 @@ def _prepared() -> RhimePreparedInputs:
         coords={"site": ["TAC"]},
     )
     return RhimePreparedInputs(inv_inputs=inputs, basis_functions=basis, site_metadata=metadata)
-
-
-def _fake_save_merged(_data: object, directory: str | Path, **_kwargs: object) -> None:
-    destination = Path(directory)
-    destination.mkdir(parents=True)
-    (destination / "merged-data.nc").write_bytes(b"synthetic merged data")
 
 
 def test_stage_parser_requires_explicit_config_source_and_model() -> None:
@@ -180,8 +173,6 @@ def test_configuration_identity_allows_sampling_and_output_changes() -> None:
             draws=100,
             output_path="/another-explicit-output",
             output_name="another-name",
-            save_merged_data=True,
-            merged_data_dir="/another/cache",
             basis_output_path="/another/basis-output",
         ),
         model="standard",
@@ -212,12 +203,10 @@ def test_prepare_is_independent_and_writes_inspectable_contract(
     monkeypatch.setattr(stages, "build_rhime_basis", lambda *args, **kwargs: prepared.basis_functions)
     monkeypatch.setattr(stages, "build_rhime_sensitivities", lambda *args, **kwargs: {})
     monkeypatch.setattr(stages, "assemble_rhime_inputs", lambda *args, **kwargs: prepared)
-    monkeypatch.setattr(serialise, "_save_merged_data", _fake_save_merged)
     monkeypatch.setattr(stages, "sample_rhime_model", lambda *args, **kwargs: pytest.fail("sampled"))
 
     setup = resolve_stage_setup(
         _params(
-            save_merged_data=True,
             basis_output_path="/outside/basis",
             inlet=[slice(3, 10)],
         ),
@@ -231,10 +220,10 @@ def test_prepare_is_independent_and_writes_inspectable_contract(
 
     prepared_path = Path(manifest["artifacts"]["prepared_inputs"])
     assert prepared_path.is_file()
-    assert Path(manifest["artifacts"]["merged_data"]).is_file()
+    assert set(manifest["artifacts"]) == {"prepared_inputs"}
+    assert set(manifest["artifact_identities"]) == {"prepared_inputs"}
+    assert not (tmp_path / "prepare" / "merged-data").exists()
     assert manifest["artifact_identities"]["prepared_inputs"].startswith("sha256:")
-    assert manifest["requested_configuration"]["preparation"]["save_merged_data"] is True
-    assert manifest["effective_configuration"]["preparation"]["save_merged_data"] is False
     assert manifest["effective_configuration"]["preparation"]["basis_output_path"] == str(
         tmp_path / "prepare" / "basis"
     )
@@ -261,7 +250,6 @@ def test_prepare_fails_when_a_requested_site_was_dropped(
     monkeypatch.setattr(stages, "build_rhime_basis", lambda *args, **kwargs: prepared.basis_functions)
     monkeypatch.setattr(stages, "build_rhime_sensitivities", lambda *args, **kwargs: {})
     monkeypatch.setattr(stages, "assemble_rhime_inputs", lambda *args, **kwargs: prepared)
-    monkeypatch.setattr(serialise, "_save_merged_data", _fake_save_merged)
 
     with pytest.raises(ValueError, match="could not produce required site.*MHD"):
         prepare_rhime_stage(
@@ -287,7 +275,6 @@ def test_prepare_accepts_canonicalised_site_labels(
     monkeypatch.setattr(stages, "build_rhime_basis", lambda *args, **kwargs: prepared.basis_functions)
     monkeypatch.setattr(stages, "build_rhime_sensitivities", lambda *args, **kwargs: {})
     monkeypatch.setattr(stages, "assemble_rhime_inputs", lambda *args, **kwargs: prepared)
-    monkeypatch.setattr(serialise, "_save_merged_data", _fake_save_merged)
 
     manifest = prepare_rhime_stage(
         setup=resolve_stage_setup(_params(sites=["tac"]), model="standard"),
@@ -405,7 +392,6 @@ def test_preparation_manifest_authenticates_supplied_prepared_inputs(
     monkeypatch.setattr(stages, "build_rhime_basis", lambda *args, **kwargs: prepared.basis_functions)
     monkeypatch.setattr(stages, "build_rhime_sensitivities", lambda *args, **kwargs: {})
     monkeypatch.setattr(stages, "assemble_rhime_inputs", lambda *args, **kwargs: prepared)
-    monkeypatch.setattr(serialise, "_save_merged_data", _fake_save_merged)
     setup = resolve_stage_setup(_params(), model="standard")
     preparation = prepare_rhime_stage(setup=setup, model="standard", output_dir=tmp_path / "prepare")
 
@@ -684,7 +670,6 @@ def test_synthetic_staged_tracer_bullet(
     monkeypatch.setattr(stages, "build_rhime_basis", lambda *args, **kwargs: prepared.basis_functions)
     monkeypatch.setattr(stages, "build_rhime_sensitivities", lambda *args, **kwargs: {})
     monkeypatch.setattr(stages, "assemble_rhime_inputs", lambda *args, **kwargs: prepared)
-    monkeypatch.setattr(serialise, "_save_merged_data", _fake_save_merged)
     setup = resolve_stage_setup(
         _params(sample_kwargs={"random_seed": 42}),
         model="standard",

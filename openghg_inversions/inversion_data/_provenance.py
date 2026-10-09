@@ -28,13 +28,13 @@ class InputProvenance:
     uuid: Identifier = "unknown"
     dataversion: Identifier = "unknown"
 
-    def __post_init__(self) -> None:
-        if any(
-            type(value) not in (str, int)
-            and not (isinstance(value, tuple) and all(type(item) in (str, int) for item in value))
+    def __bool__(self) -> bool:
+        """Whether at least one selected identifier is known."""
+        return any(
+            item != "unknown"
             for value in (self.store, self.uuid, self.dataversion)
-        ):
-            raise ValueError("Input provenance requires string or integer identifiers, or tuples of them.")
+            for item in (value if isinstance(value, tuple) else (value,))
+        )
 
 
 @dataclass(frozen=True)
@@ -61,16 +61,16 @@ class MergedDataProvenance:
     boundary: InputProvenance | None = None
 
     def __post_init__(self) -> None:
-        if not isinstance(self.openghg_version, str) or not isinstance(self.openghg_commit, str):
-            raise ValueError("OpenGHG provenance requires version and commit strings (or 'unknown').")
         for name in ("observations", "footprints", "flux"):
-            values = dict(getattr(self, name))
-            if any(not isinstance(label, str) or not isinstance(value, InputProvenance)
-                   for label, value in values.items()):
-                raise ValueError("Provenance mappings require labels and InputProvenance values.")
-            object.__setattr__(self, name, values)
-        if self.boundary is not None and not isinstance(self.boundary, InputProvenance):
-            raise ValueError("Boundary provenance must be an InputProvenance value.")
+            object.__setattr__(self, name, dict(getattr(self, name)))
+
+    def __bool__(self) -> bool:
+        """Whether software or selected input identities are known."""
+        return (
+            self.openghg_version != "unknown" or self.openghg_commit != "unknown"
+            or any(self.observations.values()) or any(self.footprints.values())
+            or any(self.flux.values()) or bool(self.boundary)
+        )
 
     @classmethod
     def from_retrieval(

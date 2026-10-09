@@ -10,8 +10,8 @@ stages accept explicit resolved choices.
 
 Merged data and xarray objects supplied to these stages are borrowed.  Stages
 return new handoffs when they need to attach variables or metadata and never
-mutate caller-owned datasets.  Retrieval may read OpenGHG stores or a merged
-data cache and may write a requested merged-data artifact.  Filtering may
+mutate caller-owned datasets. Acquisition reads OpenGHG stores and returns an
+in-memory handoff. Filtering may
 compute when a selected filter cannot operate lazily.  Basis construction may
 read, fit, or write a basis artifact, and sensitivity construction may execute
 the basis and boundary-condition algorithms.  Labelled assembly validates the
@@ -561,6 +561,5 @@ def _filter_merged_inversion_data(
     )
     return merged.with_site_data(
         fp_data,
-        stage="filtered",
         context="Observation filtering",
     )

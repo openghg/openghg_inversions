@@ -13,7 +13,7 @@ Inspecting the resolved request
 
 Standard and multisector runners resolve their effective options before
 acquisition. Use ``RhimeConfig.from_params`` to inspect the same choices without
-retrieving observations, loading a merged cache, building a model or sampling.
+retrieving observations, building a model or sampling.
 The returned ``RhimeConfig`` is the complete requested configuration:
 
 * Acquisition and preparation choices are direct fields, including
@@ -133,23 +133,17 @@ aligned values and checks their structural alignment. For example:
 
 Direct retrieval APIs retain their scalar shorthand without requiring model,
 output or sampler settings. The acquisition-and-preparation convenience function
-``prepare_rhime_inputs`` is deprecated. For a complete inversion, use
+``prepare_rhime_inputs`` has been removed. For a complete inversion, use
 ``run_rhime``; for custom preparation, call ``RhimeMergedData.from_options`` followed by
 ``filter_rhime_observations``, ``build_rhime_basis``,
-``build_rhime_sensitivities`` and ``assemble_rhime_inputs``. The deprecated
-function retains its arguments and result while delegating to those same
-scientific stages. ``retrieve_inversion_data`` performs
+``build_rhime_sensitivities`` and ``assemble_rhime_inputs``. ``retrieve_inversion_data`` performs
 fresh surface or column acquisition and returns its established six-tuple of
 merged data and retained metadata lists. The former
 ``data_processing_surface_notracer`` name is a deprecated wrapper with the same
 signature and return. ``RhimeMergedData.from_options`` performs fresh acquisition
-from resolved selectors. ``RhimeMergedData.load`` lazily loads a versioned
-acquisition artifact and restores its saved selectors and source layout; it
-does not accept caller-supplied selectors. Use ``RhimeMergedData.load_legacy``
-with the original selectors for old caches, as described in
-:doc:`legacy_and_migration`. Missing paths or unreadable/incompatible artifacts
-raise without fresh retrieval. Runners reuse a valid supplied handoff unchanged
-before choosing either factory, bypassing I/O. Before preparation, the merged
+from resolved selectors. Acquisition stays in memory; persist the completed
+``RhimePreparedInputs`` for reuse. Runners reuse a supplied ``merged_data``
+handoff before acquisition, bypassing store access. Before preparation, the merged
 owner checks known species, domain, date bounds and source layout against the
 request. Conflicts, including changed acquisition windows, raise without
 relabeling or selecting observations. Recorded selectors remain authoritative;
