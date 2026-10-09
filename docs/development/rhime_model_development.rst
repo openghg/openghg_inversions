@@ -30,8 +30,8 @@ The following principles are requirements for production RHIME development:
   workflows visible.
 * Dataclasses are reserved for concrete scientific concepts or durable
   boundaries.
-* Configuration is normalized once at the boundary. Values are forwarded
-  explicitly after that boundary.
+* Configuration is normalized once at the boundary. Forward named values
+  directly or with an explicit ``config.select("name", ...)`` selection.
 * Tiny registries are appropriate for homogeneous families such as filters.
 * Private numerical helpers are acceptable, but reading the main path must not
   require reconstructing a framework.
@@ -255,8 +255,98 @@ Configuration parsing should:
 
 * translate legacy spellings and normalize values once at the runner boundary;
 * reject unknown and unused options;
-* preserve model-specific sections when names repeat across channels; and
+* let each file frontend interpret its own sections and value syntax; and
 * pass resolved values explicitly to the functions that own them.
+
+Standard and multisector requests use ``rhime.params.RhimeConfig`` as the
+semantic boundary. ``read_rhime_ini`` only decodes an INI file into options;
+it has no recipe-mode or override arguments and does not construct configuration.
+Each runner combines winning overrides, extracts recipe-specific options and
+calls ``RhimeConfig.from_params`` once. This keeps shorthand editable until the
+final requested values are known. Preserve the existing first-occurrence rule
+for repeated INI keys without imposing it on other frontends.
+
+Historical fixedbasis conversion and deprecated RHIME spellings belong to the
+lightweight ``hbmcmc.compatibility`` module. ``RhimeConfig.from_params`` invokes
+the alias translator once before modern normalization and construction; runners
+do not repeat it. Translation emits ``DeprecationWarning`` only when it replaces
+or removes deprecated names or output values. Modern options remain quiet.
+The former ``resolve_rhime_config`` wrapper is removed;
+``params_from_config`` retains its historical dictionary/normalization contract
+as a deprecated adapter. Do not import the executable HBMCMC runner into modern
+configuration code. Existing default policy is unchanged by this ownership move.
+
+Keep accepted option names and defaults beside the preparation, model, output
+or sampling consumer that owns them. The configuration constructor composes
+those declared choices explicitly; do not infer options from runtime signatures
+or add a generic option registry. INI headings do not require matching classes.
+Complete runners accept an already resolved ``config`` and start scientific
+work without resolving it again. That input is exclusive with ``config_file``
+and raw configuration keywords. Compatibility entry points can therefore
+validate once before their own side effects and pass the same request onward.
+
+``RhimeConfig`` owns acquisition and preparation fields directly, alongside
+one public ``inversion_data.SiteOptions`` and the existing ``RhimeModelSpec``,
+``RhimeOutputSpec`` and ``inference.sampling.RhimeSampler``. The model
+specification describes scientific choices, the output specification describes
+final products, and the sampler holds settings and executes only when given a
+completed model. Do not add a separate preparation configuration or duplicate
+sampler settings class. Constructing configuration does not acquire scientific
+data, bind a model or execute inference.
+
+``SiteOptions.from_inputs`` and its small helpers establish complete aligned
+selectors independently of file syntax. Direct construction accepts resolved
+aligned values. Canonical acquisition consumes those values without another
+shorthand pass; retained-site selection selects every applicable selector
+together and returns a new record. Public preparation and fresh-retrieval
+adapters share applicable translation without requiring the full configured
+request. ``retrieve_inversion_data`` is fresh acquisition, while
+``RhimeMergedData.from_options`` performs fresh acquisition and
+``RhimeMergedData.load`` owns strict cache loading and compatibility checks.
+The recipe first reuses compatible supplied data, then explicitly selects the
+requested factory. Failed reloads never silently retrieve fresh data (#806). The deprecated
+``data_processing_surface_notracer`` wrapper preserves its six-tuple contract;
+internal calls use the neutral names.
+
+Keep the procedural runner's acquisition, preparation, model construction and
+sampling sequence visible. Pass needed resolved values directly or unpack an
+explicit ``config.select("name", ...)`` selection into the scientific function's
+named arguments. Selection creates a shallow dictionary with borrowed values;
+it does not inspect signatures, resolve options or define another schema.
+A private orchestration helper may accept the resolved configuration to coordinate
+several stages, while scientific components retain independently usable inputs.
+The named preparation functions no longer accept positional ``data_args`` maps.
+The deprecated ``prepare_rhime_inputs`` acquisition-and-preparation wrapper
+normalizes its applicable inputs and delegates to these same scientific stages;
+it must not retain a second implementation of assembly or provenance policy.
+
+Apply raw overrides before resolution. Use ``dataclasses.replace`` only when the
+replacement fields are already mutually consistent; it does not recompute
+site expansion, date-dependent defaults or repeated model/output facts.
+Shared species/domain, source, BC-use and artifact-naming facts come from one
+resolution boundary; their small explicit duplication in independently usable
+model/output specifications does not justify a shared context hierarchy or
+repeated consistency checks.
+
+The requested configuration has no run specification. After preparation,
+derive ``RhimeRunSpec`` from retained sites/periods, requested date bounds,
+prepared layout and resolved model/output choices. It describes execution;
+``RhimeResult`` describes completed execution with prepared inputs, posterior
+and products. Internal setup bundles and their requested-site run projections
+are removed. Independent prepared-input APIs remain supported. Resolve known
+configuration defaults at the request boundary; conversions that require
+retained labels or numerical arrays remain with their scientific owner.
+Frozen records do not imply recursive immutability of existing mappings or
+samplers; preserve borrowed scientific arrays and caller-owned containers.
+Configuration serialization and INI writing are deferred to
+`Issue 814 <https://github.com/openghg/openghg_inversions/issues/814>`_.
+
+Effective ``use_tracer=True`` remains unsupported and is rejected before data
+access. Omitted/false requests produce no tracer configuration field. Do not
+restore raw spellings or disabled fields to preserve old hashes; staged
+authentication and version compatibility belong to their existing owners.
+See :doc:`../usage/rhime_configuration` for configuration inspection and
+:doc:`../usage/staged_workflow` for the 0.7/0.8 artifact boundary.
 
 The legacy ``hbmcmc/config`` template tree has been removed. Keep new RHIME
 templates in

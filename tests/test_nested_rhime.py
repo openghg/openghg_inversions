@@ -36,7 +36,8 @@ from openghg_inversions.rhime.nested import (
 )
 from openghg_inversions.rhime.materialization import materialize_pymc_inputs
 from openghg_inversions.rhime.outputs import RhimeResult
-from openghg_inversions.rhime.params import RhimeRunnerSetup
+from openghg_inversions.hbmcmc.compatibility import translate_rhime_aliases
+from openghg_inversions.rhime.params import RhimeConfig
 from openghg_inversions.rhime import params as rhime_params
 from openghg_inversions.rhime.sampling import RhimeSampler
 from openghg_inversions.rhime.specs import (
@@ -459,7 +460,7 @@ def test_cli_run_rhime_nested_passes_config(monkeypatch, tmp_path: Path) -> None
     assert seen == {"config_file": str(config_file), "kwargs": {}}
 
 
-def test_nested_preparation_uses_native_inner_domain_and_safe_basis_default(monkeypatch) -> None:
+def test_nested_preparation_uses_native_inner_domain_and_safe_basis_default(monkeypatch, capsys) -> None:
     basis = _basis([50.0], [-2.0], np.array([[1]]))
     prepared = _prepared(
         times=["2019-01-01T00:00"],
@@ -467,10 +468,7 @@ def test_nested_preparation_uses_native_inner_domain_and_safe_basis_default(monk
         basis=basis,
     )
     merged = RhimeMergedData(fp_all={"TAC": xr.Dataset()}, site_options=_site_options())
-    setup = RhimeRunnerSetup(
-        run_spec=_run_spec(),
-        sampler=RhimeSampler(),
-        data_args={
+    setup = RhimeConfig.from_params(params={
             "species": "ch4",
             "sites": ["TAC"],
             "averaging_period": ["1h"],
@@ -482,23 +480,23 @@ def test_nested_preparation_uses_native_inner_domain_and_safe_basis_default(monk
             "use_bc": True,
             "basis_algorithm": "weighted",
             "nbasis": 100,
-        },
-    )
+            "output_format": "none",
+        }, multisector=False)
     retrieval_args: list[dict[str, object]] = []
-    preparation_args: list[dict[str, object]] = []
+    preparation_configs: list[rhime_params.RhimeConfig] = []
 
-    def fake_retrieve(data_args, *, multisector):
-        assert multisector is False
-        retrieval_args.append(dict(data_args))
+    def fake_retrieve(**kwargs):
+        assert kwargs["split_by_sectors"] is False
+        retrieval_args.append(kwargs)
         return merged
 
-    def fake_prepare(domain_merged, data_args):
+    def fake_prepare(domain_merged, *, config, allow_empty_inner_region=False):
         assert domain_merged.sites == ("TAC",)
-        preparation_args.append(dict(data_args))
+        preparation_configs.append(config)
         return prepared
 
-    monkeypatch.setattr(nested_module, "retrieve_or_reload_rhime_data", fake_retrieve)
-    monkeypatch.setattr(nested_module, "filter_rhime_observations", lambda value, args: value)
+    monkeypatch.setattr(nested_module.RhimeMergedData, "from_options", fake_retrieve)
+    monkeypatch.setattr(nested_module, "filter_rhime_observations", lambda value, **kwargs: value)
     monkeypatch.setattr(
         nested_module,
         "align_inner_merged_to_outer_observations",
@@ -516,6 +514,7 @@ def test_nested_preparation_uses_native_inner_domain_and_safe_basis_default(monk
         inner_nbasis=40,
     )
 
+    assert capsys.readouterr().out.count("TIMING rhime.prepare_inputs.merged_data ") == 2
     assert len(retrieval_args) == 2
     inner_args = retrieval_args[1]
     assert inner_args["domain"] == "EUROPE-6km"
@@ -523,13 +522,18 @@ def test_nested_preparation_uses_native_inner_domain_and_safe_basis_default(monk
     assert inner_args["emissions_store"] == "inner-flux"
     assert inner_args["emissions_domain"] == "EUROPE"
     assert inner_args["use_bc"] is False
-    assert inner_args["basis_algorithm"] == "quadtree"
-    assert inner_args["nbasis"] == 40
-    assert inner_args["fp_basis_case"] is None
-    assert inner_args["basis_output_path"] is None
-    assert preparation_args[0]["basis_algorithm"] == "weighted"
-    assert preparation_args[1]["basis_algorithm"] == "quadtree"
+    assert preparation_configs[1].basis_algorithm == "quadtree"
+    assert preparation_configs[1].model.domain == preparation_configs[1].domain == "EUROPE-6km"
+    assert preparation_configs[1].model.use_bc is preparation_configs[1].use_bc is False
+    assert preparation_configs[1].output.output_name == preparation_configs[1].output_name == "nested-test_inner"
+    assert preparation_configs[1].nbasis == 40
+    assert preparation_configs[1].fp_basis_case is None
+    assert preparation_configs[1].basis_output_path is None
+    assert preparation_configs[0].basis_algorithm == "weighted"
+    assert preparation_configs[1].basis_algorithm == "quadtree"
     assert nested.outer_overlap_mask_policy.startswith("outer_footprint_and_flux_zeroed")
+
+    assert setup.nbasis == 100
 
 
 def test_nested_automatic_basis_budget_uses_bounded_sensitivity_share() -> None:
@@ -575,10 +579,7 @@ def test_nested_preparation_routes_automatic_basis_budget(monkeypatch) -> None:
         sensitivity=np.array([[1.0]]),
         basis=basis,
     )
-    setup = RhimeRunnerSetup(
-        run_spec=_run_spec(),
-        sampler=RhimeSampler(),
-        data_args={
+    setup = RhimeConfig.from_params(params={
             "species": "ch4",
             "sites": ["TAC"],
             "averaging_period": ["1h"],
@@ -588,25 +589,25 @@ def test_nested_preparation_routes_automatic_basis_budget(monkeypatch) -> None:
             "output_name": "nested-test",
             "flux_sources": ["inventory"],
             "nbasis": 100,
-        },
-    )
-    preparation_args: list[dict[str, object]] = []
+            "output_format": "none",
+        }, multisector=False)
+    preparation_configs: list[rhime_params.RhimeConfig] = []
 
-    def fake_retrieve(data_args, *, multisector):
-        assert multisector is False
-        value = 9.0 if data_args["domain"] == "EUROPE-6km" else 1.0
+    def fake_retrieve(**kwargs):
+        assert kwargs["split_by_sectors"] is False
+        value = 9.0 if kwargs["domain"] == "EUROPE-6km" else 1.0
         dataset = xr.Dataset(
             {"fp_x_flux": (("time", "lat", "lon"), [[[value]]])},
             coords={"time": pd.date_range("2019-01-01", periods=1), "lat": [50.0], "lon": [-2.0]},
         )
         return RhimeMergedData(fp_all={"TAC": dataset}, site_options=_site_options())
 
-    def fake_prepare(domain_merged, data_args):
-        preparation_args.append(dict(data_args))
+    def fake_prepare(domain_merged, *, config, allow_empty_inner_region=False):
+        preparation_configs.append(config)
         return prepared
 
-    monkeypatch.setattr(nested_module, "retrieve_or_reload_rhime_data", fake_retrieve)
-    monkeypatch.setattr(nested_module, "filter_rhime_observations", lambda value, args: value)
+    monkeypatch.setattr(nested_module.RhimeMergedData, "from_options", fake_retrieve)
+    monkeypatch.setattr(nested_module, "filter_rhime_observations", lambda value, **kwargs: value)
     monkeypatch.setattr(
         nested_module,
         "align_inner_merged_to_outer_observations",
@@ -617,19 +618,21 @@ def test_nested_preparation_routes_automatic_basis_budget(monkeypatch) -> None:
 
     nested_module.prepare_nested_rhime_inputs(setup, inner_domain="6km")
 
-    assert preparation_args[0]["nbasis"] == 40
-    assert preparation_args[1]["nbasis"] == 60
+    assert preparation_configs[0].nbasis == 40
+    assert preparation_configs[1].nbasis == 60
+
+    assert setup.nbasis == 100
 
 
 def test_legacy_outer_region_definition_name_normalizes_to_modern_path() -> None:
     with pytest.warns(DeprecationWarning, match="outer_region_definition_file.*deprecated"):
-        normalized = rhime_params.normalise_rhime_params({"outer_region_definition_file": "/data/EUHROB.nc"})
+        normalized = translate_rhime_aliases({"outer_region_definition_file": "/data/EUHROB.nc"})
 
     assert normalized == {"outer_regions_path": "/data/EUHROB.nc"}
 
 
 def test_outer_regions_path_routes_through_modern_rhime_setup() -> None:
-    setup = nested_module.resolve_rhime_options(
+    setup = rhime_params.RhimeConfig.from_params(
         params={
             "species": "ch4",
             "sites": ["TAC"],
@@ -645,7 +648,7 @@ def test_outer_regions_path_routes_through_modern_rhime_setup() -> None:
         multisector=False,
     )
 
-    assert setup.data_args["outer_regions_path"] == "/data/EUHROB.nc"
+    assert setup.outer_regions_path == "/data/EUHROB.nc"
 
 
 def test_domain_variable_roles_strips_tag_and_keeps_shared_roles() -> None:

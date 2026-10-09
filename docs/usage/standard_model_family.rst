@@ -19,5 +19,6 @@ between these recipes.
    multisector_inversions
    concrete_rhime_model
    rhime
+   rhime_configuration
    cli
    customising_rhime

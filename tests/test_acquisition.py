@@ -41,12 +41,12 @@ def test_fresh_factory_retains_selectors_and_borrows_lazy_datasets(monkeypatch):
     dataset = xr.Dataset({"mf": ("time", da.from_array([1.0, 2.0]))})
 
     def retrieve(**kwargs):
-        assert kwargs["sites"] == ["TAC", "MHD", "RGL"]
+        assert kwargs["site_options"].sites == ("TAC", "MHD", "RGL")
         assert kwargs["save_merged_data"] is False
-        assert kwargs["time_resolved"] == [None, False, True]
+        assert kwargs["site_options"].time_resolved == (None, False, True)
         return {"MHD": dataset, "RGL": dataset}, ["RGL", "MHD"], [], [], [], []
 
-    monkeypatch.setattr(acquisition, "retrieve_inversion_data", retrieve)
+    monkeypatch.setattr(acquisition, "_retrieve_inversion_data_from_options", retrieve)
     monkeypatch.setattr(acquisition, "load_merged_data", lambda *a, **kw: pytest.fail("fresh must not load"))
     with Callback(pretask=lambda *args: pytest.fail("factory computed borrowed observations")):
         result = RhimeMergedData.from_options(
@@ -67,30 +67,12 @@ def test_fresh_factory_retains_selectors_and_borrows_lazy_datasets(monkeypatch):
 def test_missing_or_corrupt_artifact_never_retrieves(tmp_path, monkeypatch, artifact):
     if artifact == "corrupt.nc":
         (tmp_path / artifact).write_text("not a netCDF file")
-    monkeypatch.setattr(acquisition, "retrieve_inversion_data", lambda **kw: pytest.fail("load retrieved"))
+    monkeypatch.setattr(acquisition, "_retrieve_inversion_data_from_options", lambda **kw: pytest.fail("load retrieved"))
     options = SiteOptions.from_inputs(sites=["TAC"], averaging_period="1h")
     with pytest.raises((ValueError, OSError)):
         RhimeMergedData.load(tmp_path, site_options=options, merged_data_name=artifact)
 
 
-def test_supplied_handoff_bypasses_all_acquisition_and_saving(monkeypatch):
-    def fail(*args, **kwargs):
-        pytest.fail("supplied data must bypass acquisition and writes")
-
-    monkeypatch.setattr(RhimeMergedData, "load", fail)
-    monkeypatch.setattr(RhimeMergedData, "from_options", fail)
-    monkeypatch.setattr(RhimeMergedData, "save", fail)
-    supplied = RhimeMergedData(
-        {"TAC": xr.Dataset()}, SiteOptions.from_inputs(sites=["TAC"], averaging_period="1h")
-    )
-    assert (
-        acquisition.retrieve_or_reload_rhime_data(
-            {"reload_merged_data": True, "save_merged_data": True},
-            multisector=False,
-            merged_data=supplied,
-        )
-        is supplied
-    )
 
 
 def test_current_codec_load_requires_explicit_selectors(merged_data_dir, merged_data_file_name, tmp_path):

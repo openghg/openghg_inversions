@@ -13,7 +13,7 @@ from openghg_inversions._pymc_config import configure_pytensor
 configure_pytensor()
 
 from collections.abc import Mapping, Sequence
-from typing import Any, Literal, cast
+from typing import Any, ClassVar, Literal, cast
 
 import numpy as np
 import pymc as pm
@@ -123,6 +123,15 @@ class RhimeSampler:
         posterior_predictive_kwargs: Extra keyword arguments forwarded to
             ``pm.sample_posterior_predictive``.
     """
+
+    # The established configured frontend exposes this subset. Predictive
+    # selection remains available on the independent sampler constructor.
+    CONFIG_OPTION_NAMES: ClassVar[tuple[str, ...]] = (
+        "draws", "burn", "tune", "chains", "nuts_sampler", "progressbar",
+        "sample_kwargs", "posterior_predictive_kwargs",
+    )
+    INTEGER_OPTION_NAMES: ClassVar[tuple[str, ...]] = ("draws", "burn", "tune", "chains")
+    MAPPING_OPTION_NAMES: ClassVar[tuple[str, ...]] = ("sample_kwargs", "posterior_predictive_kwargs")
 
     __slots__ = (
         "draws",

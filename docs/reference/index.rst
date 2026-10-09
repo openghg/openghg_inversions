@@ -34,6 +34,26 @@ runner.
    openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs
    openghg_inversions.rhime.co2.run_rhime_co2_o2_cached_sigma_from_prepared_inputs
 
+Resolve a requested RHIME configuration
+--------------------------------------
+
+Inspect standard/multisector choices before data access. Decode an INI with
+``read_rhime_ini``, or start with Python options. Apply overrides and extract
+recipe-specific options, then construct canonical ``RhimeConfig.from_params``.
+Pass the result to the corresponding
+runner's ``config`` argument to reuse the resolved choices. The
+:doc:`configuration guide </usage/rhime_configuration>` explains requested site selectors,
+retained execution metadata and compatibility helpers.
+
+.. autosummary::
+   :nosignatures:
+
+   openghg_inversions.rhime.read_rhime_ini
+   openghg_inversions.rhime.RhimeConfig
+   openghg_inversions.rhime.RhimeConfig.from_params
+   openghg_inversions.rhime.RhimeConfig.select
+   openghg_inversions.inversion_data.SiteOptions
+
 Run specifications and results
 ------------------------------
 
@@ -60,7 +80,7 @@ Prepared inversion data
 
 Use these interfaces to prepare, save, reload, or adapt canonical inputs
 before a separate model run. The
-:doc:`RHIME configuration and prepared-input reference </usage/rhime>`
+:doc:`RHIME terminology and prepared-input reference </usage/rhime>`
 documents the expected variables, dimensions, and coordinates. Acquisition
 and reload mechanics live in ``inversion_data.acquisition``; the prepared
 value and its unchanged version-1 schema live in
@@ -77,7 +97,13 @@ imports identify the same classes.
    openghg_inversions.inversion_data.prepare_rhime_inputs
    openghg_inversions.inversion_data.prepare_rhime_inputs_from_xarray
    openghg_inversions.inversion_data.load_merged_data
-   openghg_inversions.inversion_data.acquisition.retrieve_or_reload_rhime_data
+   openghg_inversions.inversion_data.RhimeMergedData.from_options
+   openghg_inversions.inversion_data.RhimeMergedData.load
+   openghg_inversions.inversion_data.RhimeMergedData.save
+   openghg_inversions.rhime.filter_rhime_observations
+   openghg_inversions.rhime.build_rhime_basis
+   openghg_inversions.rhime.build_rhime_sensitivities
+   openghg_inversions.rhime.assemble_rhime_inputs
    openghg_inversions.rhime.NestedRhimePreparedInputs
    openghg_inversions.rhime.combine_nested_rhime_inputs
    openghg_inversions.rhime.co2.Co2PreparedInputs

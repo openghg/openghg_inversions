@@ -15,7 +15,8 @@ import xarray as xr
 
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.cli import build_parser
-from openghg_inversions.inversion_data import RhimePreparedInputs
+from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs, SiteOptions
+from openghg_inversions.inversion_data import acquisition
 from openghg_inversions.inference import diagnostics as inference_diagnostics
 from openghg_inversions.rhime.stages import (
     CONVERGENCE_CHECK_NAME,
@@ -200,17 +201,18 @@ def test_configuration_identity_serialises_slice_inlet_selectors() -> None:
 def test_prepare_is_independent_and_writes_inspectable_contract(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     from openghg_inversions.rhime import _standard_stages as stages
 
     prepared = _prepared()
-    sentinel = SimpleNamespace(sites=("TAC",), fp_all={})
-    monkeypatch.setattr(stages, "retrieve_or_reload_rhime_data", lambda *args, **kwargs: sentinel)
+    sentinel = RhimeMergedData({}, SiteOptions.from_inputs(sites=("TAC",), averaging_period="1h"))
+    monkeypatch.setattr(stages.RhimeMergedData, "from_options", lambda *args, **kwargs: sentinel)
     monkeypatch.setattr(stages, "filter_rhime_observations", lambda *args, **kwargs: sentinel)
     monkeypatch.setattr(stages, "build_rhime_basis", lambda *args, **kwargs: prepared.basis_functions)
     monkeypatch.setattr(stages, "build_rhime_sensitivities", lambda *args, **kwargs: {})
     monkeypatch.setattr(stages, "assemble_rhime_inputs", lambda *args, **kwargs: prepared)
-    monkeypatch.setattr(stages, "_save_merged_data", _fake_save_merged)
+    monkeypatch.setattr(acquisition, "_save_merged_data", _fake_save_merged)
     monkeypatch.setattr(stages, "sample_rhime_model", lambda *args, **kwargs: pytest.fail("sampled"))
 
     setup = resolve_stage_setup(
@@ -243,6 +245,8 @@ def test_prepare_is_independent_and_writes_inspectable_contract(
     ]
     xr.testing.assert_identical(RhimePreparedInputs.load(prepared_path).inv_inputs, prepared.inv_inputs)
 
+    assert capsys.readouterr().out.count("TIMING rhime.prepare_inputs.merged_data ") == 1
+
 
 def test_prepare_fails_when_a_requested_site_was_dropped(
     monkeypatch: pytest.MonkeyPatch,
@@ -251,13 +255,13 @@ def test_prepare_fails_when_a_requested_site_was_dropped(
     from openghg_inversions.rhime import _standard_stages as stages
 
     prepared = _prepared()
-    merged = SimpleNamespace(sites=("TAC",), fp_all={})
-    monkeypatch.setattr(stages, "retrieve_or_reload_rhime_data", lambda *args, **kwargs: merged)
+    merged = RhimeMergedData({}, SiteOptions.from_inputs(sites=("TAC",), averaging_period="1h"))
+    monkeypatch.setattr(stages.RhimeMergedData, "from_options", lambda *args, **kwargs: merged)
     monkeypatch.setattr(stages, "filter_rhime_observations", lambda *args, **kwargs: merged)
     monkeypatch.setattr(stages, "build_rhime_basis", lambda *args, **kwargs: prepared.basis_functions)
     monkeypatch.setattr(stages, "build_rhime_sensitivities", lambda *args, **kwargs: {})
     monkeypatch.setattr(stages, "assemble_rhime_inputs", lambda *args, **kwargs: prepared)
-    monkeypatch.setattr(stages, "_save_merged_data", _fake_save_merged)
+    monkeypatch.setattr(acquisition, "_save_merged_data", _fake_save_merged)
 
     with pytest.raises(ValueError, match="could not produce required site.*MHD"):
         prepare_rhime_stage(
@@ -277,13 +281,13 @@ def test_prepare_accepts_canonicalised_site_labels(
     from openghg_inversions.rhime import _standard_stages as stages
 
     prepared = _prepared()
-    merged = SimpleNamespace(sites=("TAC",), fp_all={})
-    monkeypatch.setattr(stages, "retrieve_or_reload_rhime_data", lambda *args, **kwargs: merged)
+    merged = RhimeMergedData({}, SiteOptions.from_inputs(sites=("TAC",), averaging_period="1h"))
+    monkeypatch.setattr(stages.RhimeMergedData, "from_options", lambda *args, **kwargs: merged)
     monkeypatch.setattr(stages, "filter_rhime_observations", lambda *args, **kwargs: merged)
     monkeypatch.setattr(stages, "build_rhime_basis", lambda *args, **kwargs: prepared.basis_functions)
     monkeypatch.setattr(stages, "build_rhime_sensitivities", lambda *args, **kwargs: {})
     monkeypatch.setattr(stages, "assemble_rhime_inputs", lambda *args, **kwargs: prepared)
-    monkeypatch.setattr(stages, "_save_merged_data", _fake_save_merged)
+    monkeypatch.setattr(acquisition, "_save_merged_data", _fake_save_merged)
 
     manifest = prepare_rhime_stage(
         setup=resolve_stage_setup(_params(sites=["tac"]), model="standard"),
@@ -395,13 +399,13 @@ def test_preparation_manifest_authenticates_supplied_prepared_inputs(
     from openghg_inversions.rhime import _standard_stages as stages
 
     prepared = _prepared()
-    merged = SimpleNamespace(sites=("TAC",), fp_all={})
-    monkeypatch.setattr(stages, "retrieve_or_reload_rhime_data", lambda *args, **kwargs: merged)
+    merged = RhimeMergedData({}, SiteOptions.from_inputs(sites=("TAC",), averaging_period="1h"))
+    monkeypatch.setattr(stages.RhimeMergedData, "from_options", lambda *args, **kwargs: merged)
     monkeypatch.setattr(stages, "filter_rhime_observations", lambda *args, **kwargs: merged)
     monkeypatch.setattr(stages, "build_rhime_basis", lambda *args, **kwargs: prepared.basis_functions)
     monkeypatch.setattr(stages, "build_rhime_sensitivities", lambda *args, **kwargs: {})
     monkeypatch.setattr(stages, "assemble_rhime_inputs", lambda *args, **kwargs: prepared)
-    monkeypatch.setattr(stages, "_save_merged_data", _fake_save_merged)
+    monkeypatch.setattr(acquisition, "_save_merged_data", _fake_save_merged)
     setup = resolve_stage_setup(_params(), model="standard")
     preparation = prepare_rhime_stage(setup=setup, model="standard", output_dir=tmp_path / "prepare")
 
@@ -674,13 +678,13 @@ def test_synthetic_staged_tracer_bullet(
     from openghg_inversions.rhime import _standard_stages as stages
 
     prepared = _prepared()
-    sentinel = SimpleNamespace(sites=("TAC",), fp_all={})
-    monkeypatch.setattr(stages, "retrieve_or_reload_rhime_data", lambda *args, **kwargs: sentinel)
+    sentinel = RhimeMergedData({}, SiteOptions.from_inputs(sites=("TAC",), averaging_period="1h"))
+    monkeypatch.setattr(stages.RhimeMergedData, "from_options", lambda *args, **kwargs: sentinel)
     monkeypatch.setattr(stages, "filter_rhime_observations", lambda *args, **kwargs: sentinel)
     monkeypatch.setattr(stages, "build_rhime_basis", lambda *args, **kwargs: prepared.basis_functions)
     monkeypatch.setattr(stages, "build_rhime_sensitivities", lambda *args, **kwargs: {})
     monkeypatch.setattr(stages, "assemble_rhime_inputs", lambda *args, **kwargs: prepared)
-    monkeypatch.setattr(stages, "_save_merged_data", _fake_save_merged)
+    monkeypatch.setattr(acquisition, "_save_merged_data", _fake_save_merged)
     setup = resolve_stage_setup(
         _params(sample_kwargs={"random_seed": 42}),
         model="standard",
@@ -720,7 +724,7 @@ def test_synthetic_staged_tracer_bullet(
         raise AssertionError("Postprocessing must use the persisted output binding.")
 
     monkeypatch.setattr(stages, "_build_prepared_model", forbid_rebuild)
-    monkeypatch.setattr(stages, "retrieve_or_reload_rhime_data", forbid_rebuild)
+    monkeypatch.setattr(stages.RhimeMergedData, "from_options", forbid_rebuild)
     result = postprocess_rhime_stage(
         setup=postprocess_setup,
         model="standard",
@@ -756,7 +760,7 @@ def test_synthetic_staged_tracer_bullet(
     assert postprocess_contract["effective_configuration"]["sampler"] == sample_contract[
         "effective_configuration"
     ]["sampler"]
-    assert postprocess_contract["effective_configuration"]["run_spec"]["output"]["output_path"] == str(
+    assert postprocess_contract["effective_configuration"]["output"]["output_path"] == str(
         tmp_path / "postprocess"
     )
 
@@ -851,7 +855,7 @@ def forbidden(*args, **kwargs):
     raise AssertionError('replay attempted acquisition, materialization, or model construction')
 stages._build_prepared_model = forbidden
 stages.materialize_pymc_inputs = forbidden
-stages.retrieve_or_reload_rhime_data = forbidden
+stages.RhimeMergedData.from_options = forbidden
 from openghg_inversions.rhime import stages as public_stages
 setup = public_stages.resolve_stage_setup(json.loads((root / 'params.json').read_text()), model='standard')
 result = public_stages.postprocess_rhime_stage(
@@ -936,3 +940,16 @@ def test_legacy_sample_manifest_retains_explicit_graph_compatibility(
     assert calls == [True]
     assert result.inv_out is not None
     assert result.idata["posterior"].sizes["chain"] == 2
+
+
+def test_configuration_identity_does_not_visit_opaque_output_options():
+    """Output iterables cannot affect or break the preparation identity."""
+    original = resolve_stage_setup(_params(), model="standard")
+    selections = (name for name in ["UNITED KINGDOM"])
+    with_opaque_output = resolve_stage_setup(
+        _params(paris_postprocessing_kwargs={"country_selections": selections}), model="standard",
+    )
+    assert configuration_identity(original, model="standard") == configuration_identity(
+        with_opaque_output, model="standard"
+    )
+    assert next(selections) == "UNITED KINGDOM"
