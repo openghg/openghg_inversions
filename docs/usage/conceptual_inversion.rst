@@ -137,7 +137,7 @@ Choose your next page
 * To select standard, multisector, CO₂-only, or linked CO₂/O₂ guidance, use
   :doc:`model_recipes`.
 * To run a standard one-component or multisector inversion, start with the
-  current :doc:`RHIME terminology and Python quickstart <rhime>` and use the
+  current :doc:`RHIME terminology and Python API <rhime>` and use the
   :doc:`command-line guide <cli>` when you prefer a configuration file.
 * To separate preparation, prior prediction, sampling, diagnosis, and
   postprocessing into inspectable artifacts, follow :doc:`staged_workflow`.
