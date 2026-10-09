@@ -62,8 +62,9 @@ installed command::
    openghg-inversions run-rhime \
        2019-01-01 2019-02-01 -c rhime.ini --output-path outputs
 
-The :doc:`RHIME guide <rhime>` describes the full configuration vocabulary,
-likelihoods, outputs, and Python result object. For source-resolved inversions,
+The :doc:`RHIME reference <rhime>` describes vocabulary, likelihoods, outputs,
+and the Python result object. See :doc:`rhime_configuration` to inspect resolved
+options or apply configuration overrides. For source-resolved inversions,
 use :doc:`standard_model_family`; for CO2-only and linked CO2/O2 models, use
 :doc:`co2_model_family`.
 

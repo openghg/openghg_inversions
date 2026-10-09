@@ -196,8 +196,8 @@ See :doc:`rhime` for preparation and recipe APIs and
 
 The named RHIME preparation stages accept ordinary keyword arguments. Replace
 former positional ``data_args`` mappings with named arguments or an explicit
-``**config.select("name", ...)`` selection. See :doc:`rhime` for selection
-ownership and the acquisition-to-preparation sequence. Use
+``**config.select("name", ...)`` selection. See :doc:`rhime_configuration` for
+selection ownership and the acquisition-to-preparation sequence. Use
 ``SiteOptions.from_inputs`` to normalize and align the complete selector record.
 Import ``SiteOptions`` from ``openghg_inversions.inversion_data``. Selector
 implementation types and the low-level ``convert_to_list`` helper live in

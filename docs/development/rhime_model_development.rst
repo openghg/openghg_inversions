@@ -348,7 +348,7 @@ Effective ``use_tracer=True`` remains unsupported and is rejected before data
 access. Omitted/false requests produce no tracer configuration field. Do not
 restore raw spellings or disabled fields to preserve old hashes; staged
 authentication and version compatibility belong to their existing owners.
-See :doc:`../usage/rhime` for configuration inspection and
+See :doc:`../usage/rhime_configuration` for configuration inspection and
 :doc:`../usage/staged_workflow` for the 0.7/0.8 artifact boundary.
 
 The legacy ``hbmcmc/config`` template tree has been removed. Keep new RHIME
