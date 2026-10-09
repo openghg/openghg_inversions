@@ -21,7 +21,8 @@ def prepare_observation_errors(
 
     Combine repeatability and variability in quadrature when ``averaging_error``
     is true. Otherwise use repeatability, falling back to variability if absent.
-    Missing components become zero; both absent is an error. The historical
+    Missing components become zero; both absent is an error when ``mf_error``
+    is absent. The historical
     zero-error replacement uses the larger of the nonzero error median and the
     concentration standard deviation over the complete acquired population.
     NaN errors keep the existing missing-value policy.
@@ -34,8 +35,9 @@ def prepare_observation_errors(
         averaging_error: Whether variability contributes to derived errors.
 
     Returns:
-        A merged handoff. Datasets needing derived errors use shallow owned
-        containers; existing-error datasets and all numerical inputs are borrowed.
+        A merged handoff. Datasets needing derived errors or missing diagnostic
+        components use shallow owned containers. All numerical inputs remain
+        borrowed; complete existing-error datasets are returned unchanged.
         Error diagnostics and zero replacement may compute derived arrays.
 
     Raises:
