@@ -353,7 +353,7 @@ def test_partial_provenance_defaults_missing_inputs_and_preserves_supplied_ident
     with Callback(pretask=lambda *args: pytest.fail("provenance defaulting computed borrowed arrays")):
         merged = replace(original, provenance=supplied)
         selected = merged.with_site_data({"TAC": original.site_data["TAC"]})
-        legacy = selected.to_legacy_fp_all()
+        legacy = to_legacy_fp_all(selected)
     assert merged.provenance.openghg_version == version
     assert merged.provenance.observations == {"TAC": observation, "GOSAT": InputProvenance()}
     assert merged.provenance.footprints == {site: InputProvenance() for site in original.sites}
