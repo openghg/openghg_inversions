@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import json
 import subprocess
 import sys
 from dataclasses import replace
@@ -4923,6 +4924,69 @@ def test_rhime_sampler_restores_registered_coords_after_predictive_steps(
 
     assert result is calls[0][0]
     assert calls == [(result, registry, ["posterior", "prior", "posterior_predictive"])]
+
+
+def test_rhime_sampler_diagnoses_free_variables_after_restoring_coords(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Automatic diagnostics use latent names and restored scientific labels."""
+    trace = make_trace(
+        posterior=xr.Dataset(
+            {"x": (("chain", "draw", "region"), np.ones((2, 4, 2)))},
+            coords={"chain": range(2), "draw": range(4), "region": range(2)},
+        ),
+        sample_stats=xr.Dataset(
+            {"diverging": (("chain", "draw"), np.zeros((2, 4), dtype=bool))}
+        ),
+    )
+    seen: dict[str, Any] = {}
+    convergence = {
+        "schema_version": 1,
+        "name": "sampler-convergence",
+        "status": "pass",
+        "producer": "openghg_inversions",
+        "measured_values": {"assessed_variables": ["x"], "chains": 2, "draws_per_chain": 4},
+        "thresholds": {},
+        "message": "healthy",
+        "artifact_paths": [],
+        "stage": "posterior",
+    }
+
+    def capture_diagnostics(trace: xr.DataTree, *, variable_names: list[str]):
+        seen["region"] = trace["posterior"].region.values.tolist()
+        seen["variable_names"] = variable_names
+        return xr.Dataset(), convergence
+
+    monkeypatch.setattr("openghg_inversions.inference.sampling.pm.sample", lambda **kwargs: trace)
+    monkeypatch.setattr(inference_sampling, "posterior_convergence_check", capture_diagnostics)
+    monkeypatch.setattr(inference_sampling, "log_timing", lambda *args, **kwargs: None)
+    with pm.Model(coords={"region": range(2)}) as model:
+        pm.Normal("x", dims="region")
+    models.attach_coord_registry(
+        model,
+        models.CoordRegistry(original_coords={"region": np.array(["north", "south"])}),
+    )
+
+    result = RhimeSampler(
+        draws=4,
+        chains=2,
+        tune=0,
+        sample_prior_predictive=False,
+        sample_posterior_predictive=False,
+    ).sample(model)
+
+    assert seen == {"region": ["north", "south"], "variable_names": ["x"]}
+    assert json.loads(result.attrs["sampler_convergence_variables"]) == ["x"]
+    assert json.loads(result.attrs["sampler_convergence"]) == convergence
+
+    from openghg_inversions.serialization import load_trace, save_trace
+
+    posterior_path = tmp_path / "posterior.nc"
+    save_trace(result, posterior_path)
+    restored = load_trace(posterior_path)
+    assert json.loads(restored.attrs["sampler_convergence"]) == convergence
+    assert json.loads(restored.attrs["sampler_convergence_variables"]) == ["x"]
 
 
 def test_params_from_config_maps_legacy_emissions_name(tmp_path: Path) -> None:
