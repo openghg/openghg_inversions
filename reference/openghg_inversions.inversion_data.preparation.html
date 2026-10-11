@@ -339,7 +339,10 @@
 </details></li>
 </ul>
 </details></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.html">openghg_inversions.hbmcmc</a></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.hbmcmc.html">openghg_inversions.hbmcmc</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.compatibility.html">openghg_inversions.hbmcmc.compatibility</a></li>
+</ul>
+</details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.inference.html">openghg_inversions.inference</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inference.cached_sigma.html">openghg_inversions.inference.cached_sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inference.diagnostics.html">openghg_inversions.inference.diagnostics</a></li>
@@ -411,6 +414,7 @@
 </details></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.builders.html">openghg_inversions.rhime.builders</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.cached_sigma.html">openghg_inversions.rhime.cached_sigma</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.ini.html">openghg_inversions.rhime.ini</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.materialization.html">openghg_inversions.rhime.materialization</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.multisector.html">openghg_inversions.rhime.multisector</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.nested.html">openghg_inversions.rhime.nested</a></li>
@@ -511,7 +515,7 @@
                   
   <section id="module-openghg_inversions.inversion_data.preparation">
 <span id="openghg-inversions-inversion-data-preparation"></span><h1>openghg_inversions.inversion_data.preparation<a class="headerlink" href="#module-openghg_inversions.inversion_data.preparation" title="Link to this heading">#</a></h1>
-<p>Scientific preparation and compatibility entry points for RHIME inversions.</p>
+<p>Deprecated acquisition-and-preparation entry point for RHIME inversions.</p>
 <p><code class="docutils literal notranslate"><span class="pre">prepare_rhime_inputs</span></code> returns backend-neutral observations, sensitivities,
 basis metadata, and site metadata; component-specific model arrays are
 intentionally absent.</p>
@@ -521,6 +525,8 @@ when it is constructed. When the retained basis-functions object
 provides <code class="docutils literal notranslate"><span class="pre">validated()</span></code>, preparation uses the returned copy after that method
 has rechecked its mutable flux, operator data, and source labels. Compatible
 objects without that hook are retained unchanged.</p>
+<p>Scientific implementation lives in <a class="reference internal" href="openghg_inversions.rhime.preparation.html#module-openghg_inversions.rhime.preparation" title="openghg_inversions.rhime.preparation"><code class="xref py py-mod docutils literal notranslate"><span class="pre">openghg_inversions.rhime.preparation</span></code></a>;
+this compatibility module delegates only to those canonical stages.</p>
 <p>The compatibility <code class="docutils literal notranslate"><span class="pre">prepare_rhime_inputs</span></code> runner delegates store/cache access
 to <a class="reference internal" href="openghg_inversions.inversion_data.acquisition.html#module-openghg_inversions.inversion_data.acquisition" title="openghg_inversions.inversion_data.acquisition"><code class="xref py py-mod docutils literal notranslate"><span class="pre">acquisition</span></code></a>. Scientific preparation may write basis artifacts, emit
 warnings and progress messages,
@@ -583,7 +589,10 @@ not construct a PyMC model.</p>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inversion_data.preparation.prepare_rhime_inputs" title="Link to this definition">#</a></dt>
-<dd><p>Prepare modern RHIME inputs without exposing legacy fixedbasis containers.</p>
+<dd><p>Deprecated acquisition-and-preparation compatibility entry point.</p>
+<p>Use <code class="docutils literal notranslate"><span class="pre">RhimeMergedData.from_options</span></code> or <code class="docutils literal notranslate"><span class="pre">RhimeMergedData.load</span></code> followed by the named scientific stages in
+<a class="reference internal" href="openghg_inversions.rhime.preparation.html#module-openghg_inversions.rhime.preparation" title="openghg_inversions.rhime.preparation"><code class="xref py py-mod docutils literal notranslate"><span class="pre">openghg_inversions.rhime.preparation</span></code></a>. This adapter preserves the
+established arguments and returns the same durable prepared-input contract.</p>
 <p>Observation filters are applied once to merged data before basis loading or
 generation. The same filtered site datasets and aligned metadata are then
 used for sensitivity construction.</p>
@@ -599,7 +608,7 @@ site-aligned.</p></li>
 <li><p><strong>start_date</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Inclusive inversion start date.</p></li>
 <li><p><strong>end_date</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Exclusive inversion end date.</p></li>
 <li><p><strong>output_name</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Base output name used for data and basis artifacts.</p></li>
-<li><p><strong>flux_sources</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.15)"><em>list</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>]</em>) – OpenGHG flux <code class="docutils literal notranslate"><span class="pre">source</span></code> values requested for the run.</p></li>
+<li><p><strong>flux_sources</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.15)"><em>Sequence</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>]</em>) – OpenGHG flux <code class="docutils literal notranslate"><span class="pre">source</span></code> values requested for the run.</p></li>
 <li><p><strong>split_by_sectors</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Whether to keep sector-resolved sensitivity inputs
 with a <code class="docutils literal notranslate"><span class="pre">source</span></code> provenance coordinate. Semantic sector names are
 applied later by the model specification.</p></li>
@@ -644,8 +653,12 @@ retained <code class="docutils literal notranslate"><span class="pre">BasisFunct
     invalid types, if minimum-error options are invalid, or if
     <code class="docutils literal notranslate"><span class="pre">use_tracer=True</span></code>.</p>
 </dd>
-<dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html#openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs" title="openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs"><em>RhimePreparedInputs</em></a></p>
+<dt class="field-even">Warns<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>DeprecationWarning</strong> – On every call; use acquisition and the named
+scientific stages directly.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html#openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs" title="openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs"><em>RhimePreparedInputs</em></a></p>
 </dd>
 </dl>
 </dd></dl>

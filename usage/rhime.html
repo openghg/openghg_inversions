@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>RHIME configuration and prepared-input reference &#8212; openghg_inversions  documentation</title>
+    <title>RHIME terminology and prepared-input reference &#8212; openghg_inversions  documentation</title>
   
   
   
@@ -52,7 +52,7 @@
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="Running RHIME from the command line" href="cli.html" />
+    <link rel="next" title="Advanced RHIME configuration" href="rhime_configuration.html" />
     <link rel="prev" title="Standard and multisector RHIME models" href="concrete_rhime_model.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
@@ -325,7 +325,8 @@
 <li class="toctree-l2"><a class="reference internal" href="rhime_multisector_tutorial.html">Multisector RHIME tutorial</a></li>
 <li class="toctree-l2"><a class="reference internal" href="multisector_inversions.html">Site and satellite multisector inversions</a></li>
 <li class="toctree-l2"><a class="reference internal" href="concrete_rhime_model.html">Standard and multisector RHIME models</a></li>
-<li class="toctree-l2 current active"><a class="current reference internal" href="#">RHIME configuration and prepared-input reference</a></li>
+<li class="toctree-l2 current active"><a class="current reference internal" href="#">RHIME terminology and prepared-input reference</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rhime_configuration.html">Advanced RHIME configuration</a></li>
 <li class="toctree-l2"><a class="reference internal" href="cli.html">Running RHIME from the command line</a></li>
 <li class="toctree-l2"><a class="reference internal" href="customising_rhime.html">Customising RHIME</a></li>
 </ul>
@@ -398,7 +399,7 @@
     
     <li class="breadcrumb-item"><a href="standard_model_family.html" class="nav-link">Standard RHIME model family</a></li>
     
-    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">RHIME configuration and prepared-input reference</span></li>
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">RHIME terminology and prepared-input reference</span></li>
   </ul>
 </nav>
 </div>
@@ -415,10 +416,11 @@
 <div id="searchbox"></div>
                 <article class="bd-article">
                   
-  <section id="rhime-configuration-and-prepared-input-reference">
-<span id="rhime-terminology-and-quickstart"></span><h1>RHIME configuration and prepared-input reference<a class="headerlink" href="#rhime-configuration-and-prepared-input-reference" title="Link to this heading">#</a></h1>
-<p>This page is reference material for RHIME vocabulary, configuration, and
-advanced prepared-input boundaries. For a first complete inversion, use the
+  <section id="rhime-terminology-and-prepared-input-reference">
+<span id="rhime-terminology-and-quickstart"></span><h1>RHIME terminology and prepared-input reference<a class="headerlink" href="#rhime-terminology-and-prepared-input-reference" title="Link to this heading">#</a></h1>
+<p>This page is reference material for RHIME vocabulary and advanced prepared-input
+boundaries. For configuration inspection and parsing, see
+<a class="reference internal" href="rhime_configuration.html"><span class="doc">Advanced RHIME configuration</span></a>. For a first complete inversion, use the
 <a class="reference internal" href="rhime_standard_tutorial.html"><span class="doc">standard tutorial</span></a> or
 <a class="reference internal" href="rhime_multisector_tutorial.html"><span class="doc">multisector tutorial</span></a> instead. New Python
 examples and configuration files should use the modern spec names below.</p>
@@ -498,6 +500,7 @@ scientific process from option resolution through output construction.</p>
     <span class="n">output_path</span><span class="o">=</span><span class="s2">"outputs"</span><span class="p">,</span>
     <span class="n">output_name</span><span class="o">=</span><span class="s2">"example"</span><span class="p">,</span>
     <span class="n">flux_sources</span><span class="o">=</span><span class="p">[</span><span class="s2">"total-ukghg-edgar7"</span><span class="p">],</span>
+    <span class="n">mismatch_model</span><span class="o">=</span><span class="s2">"pollution_event"</span><span class="p">,</span>
 <span class="p">)</span>
 
 <span class="n">multi_sector_result</span> <span class="o">=</span> <span class="n">run_rhime_multisector</span><span class="p">(</span>
@@ -510,6 +513,7 @@ scientific process from option resolution through output construction.</p>
     <span class="n">output_path</span><span class="o">=</span><span class="s2">"outputs"</span><span class="p">,</span>
     <span class="n">output_name</span><span class="o">=</span><span class="s2">"example_multisector"</span><span class="p">,</span>
     <span class="n">flux_sources</span><span class="o">=</span><span class="p">[</span><span class="s2">"ff-inventory"</span><span class="p">,</span> <span class="s2">"gpp-inventory"</span><span class="p">,</span> <span class="s2">"ter-inventory"</span><span class="p">,</span> <span class="s2">"ocean-inventory"</span><span class="p">],</span>
+    <span class="n">mismatch_model</span><span class="o">=</span><span class="s2">"pollution_event"</span><span class="p">,</span>
     <span class="n">sector_sources</span><span class="o">=</span><span class="p">{</span>
         <span class="s2">"FF"</span><span class="p">:</span> <span class="s2">"ff-inventory"</span><span class="p">,</span>
         <span class="s2">"GPP"</span><span class="p">:</span> <span class="s2">"gpp-inventory"</span><span class="p">,</span>
@@ -539,6 +543,17 @@ supports one distinct source and one independent state vector per sector.
 Rectangular legacy inputs may carry <code class="docutils literal notranslate"><span class="pre">source_region_count(source)</span></code> so padded
 layouts can be rejected; modern preparation does not create that compatibility
 metadata.</p>
+</section>
+<section id="inspecting-configuration">
+<h2>Inspecting configuration<a class="headerlink" href="#inspecting-configuration" title="Link to this heading">#</a></h2>
+<p>Pass options directly to <code class="docutils literal notranslate"><span class="pre">run_rhime</span></code> or <code class="docutils literal notranslate"><span class="pre">run_rhime_multisector</span></code> for an
+ordinary inversion. To inspect their resolved choices before retrieving data,
+use <code class="docutils literal notranslate"><span class="pre">RhimeConfig.from_params(options,</span> <span class="pre">multisector=False)</span></code> (or
+<code class="docutils literal notranslate"><span class="pre">multisector=True</span></code> for the multisector recipe), then pass the result as
+<code class="docutils literal notranslate"><span class="pre">config=</span></code> to the matching runner.</p>
+<p>See <a class="reference internal" href="rhime_configuration.html"><span class="doc">Advanced RHIME configuration</span></a> for complete inspection examples, INI decoding,
+override precedence, site-selector alignment, and forwarding resolved values
+in custom runners.</p>
 </section>
 <section id="satellite-multisector-inputs">
 <h2>Satellite multisector inputs<a class="headerlink" href="#satellite-multisector-inputs" title="Link to this heading">#</a></h2>
@@ -581,7 +596,7 @@ model, output, and sampler specifications:</p>
     <span class="n">run_rhime_from_prepared_inputs</span><span class="p">,</span>
 <span class="p">)</span>
 
-<span class="c1"># Produced by prepare_rhime_inputs or by another source adapter that</span>
+<span class="c1"># Produced by assemble_rhime_inputs or by another source adapter that</span>
 <span class="c1"># satisfies the same canonical contract.</span>
 <span class="n">prepared</span> <span class="o">=</span> <span class="n">prepare_inputs_elsewhere</span><span class="p">()</span>
 <span class="n">prepared</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="s2">"prepared-inputs.nc"</span><span class="p">)</span>
@@ -1260,7 +1275,8 @@ in one <code class="docutils literal notranslate"><span class="pre">Dataset</spa
 <p>Standard single-sector RHIME supports <code class="docutils literal notranslate"><span class="pre">inv_out</span></code>, <code class="docutils literal notranslate"><span class="pre">basic</span></code>, <code class="docutils literal notranslate"><span class="pre">paris</span></code>, and
 <code class="docutils literal notranslate"><span class="pre">legacy</span></code> output formats. <code class="docutils literal notranslate"><span class="pre">legacy</span></code> writes the old HBMCMC-compatible NetCDF
 product from the modern <code class="docutils literal notranslate"><span class="pre">InversionOutput</span></code>. The deprecated names <code class="docutils literal notranslate"><span class="pre">hbmcmc</span></code>
-and <code class="docutils literal notranslate"><span class="pre">hbmcmc_postprocessing</span></code> are accepted as aliases for <code class="docutils literal notranslate"><span class="pre">legacy</span></code>.</p>
+and <code class="docutils literal notranslate"><span class="pre">hbmcmc_postprocessing</span></code> are accepted with <code class="docutils literal notranslate"><span class="pre">DeprecationWarning</span></code> during
+configuration construction. Prefer <code class="docutils literal notranslate"><span class="pre">legacy</span></code> in new configurations.</p>
 <p>Single-sector <code class="docutils literal notranslate"><span class="pre">paris</span></code> keeps the legacy template by default. Pass
 <code class="docutils literal notranslate"><span class="pre">paris_postprocessing_kwargs={&quot;template_version&quot;:</span> <span class="pre">&quot;latest&quot;}</span></code> to write the
 PARIS concentration v04 and flux v03 templates.</p>
@@ -1314,11 +1330,11 @@ and interfaces without a current equivalent.</p>
       </div>
     </a>
     <a class="right-next"
-       href="cli.html"
+       href="rhime_configuration.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">Running RHIME from the command line</p>
+        <p class="prev-next-title">Advanced RHIME configuration</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -1344,6 +1360,7 @@ and interfaces without a current equivalent.</p>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#terminology">Terminology</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#configuring-pytensor-precision">Configuring PyTensor precision</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#python-api">Python API</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#inspecting-configuration">Inspecting configuration</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#satellite-multisector-inputs">Satellite multisector inputs</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#running-prepared-inputs">Running Prepared Inputs</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#aggregation-error-covariance">Aggregation-error covariance</a></li>

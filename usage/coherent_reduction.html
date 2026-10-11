@@ -325,7 +325,8 @@
 <li class="toctree-l2"><a class="reference internal" href="rhime_multisector_tutorial.html">Multisector RHIME tutorial</a></li>
 <li class="toctree-l2"><a class="reference internal" href="multisector_inversions.html">Site and satellite multisector inversions</a></li>
 <li class="toctree-l2"><a class="reference internal" href="concrete_rhime_model.html">Standard and multisector RHIME models</a></li>
-<li class="toctree-l2"><a class="reference internal" href="rhime.html">RHIME configuration and prepared-input reference</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rhime.html">RHIME terminology and prepared-input reference</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rhime_configuration.html">Advanced RHIME configuration</a></li>
 <li class="toctree-l2"><a class="reference internal" href="cli.html">Running RHIME from the command line</a></li>
 <li class="toctree-l2"><a class="reference internal" href="customising_rhime.html">Customising RHIME</a></li>
 </ul>
@@ -486,7 +487,7 @@ labels.</p>
 <p>The CO2-only model has a dedicated public handoff that keeps the linked
 reduction products together with canonical RHIME observations, basis data,
 and site metadata. Load the canonical inputs from a checkpoint produced by
-the <a class="reference internal" href="rhime.html"><span class="doc">RHIME configuration and prepared-input reference</span></a> workflow:</p>
+the <a class="reference internal" href="rhime.html"><span class="doc">RHIME terminology and prepared-input reference</span></a> workflow:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.inversion_data</span><span class="w"> </span><span class="kn">import</span> <span class="n">RhimePreparedInputs</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.co2</span><span class="w"> </span><span class="kn">import</span> <span class="n">prepare_co2_inputs</span>
 

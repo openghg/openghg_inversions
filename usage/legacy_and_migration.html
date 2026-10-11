@@ -324,7 +324,8 @@
 <li class="toctree-l2"><a class="reference internal" href="rhime_multisector_tutorial.html">Multisector RHIME tutorial</a></li>
 <li class="toctree-l2"><a class="reference internal" href="multisector_inversions.html">Site and satellite multisector inversions</a></li>
 <li class="toctree-l2"><a class="reference internal" href="concrete_rhime_model.html">Standard and multisector RHIME models</a></li>
-<li class="toctree-l2"><a class="reference internal" href="rhime.html">RHIME configuration and prepared-input reference</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rhime.html">RHIME terminology and prepared-input reference</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rhime_configuration.html">Advanced RHIME configuration</a></li>
 <li class="toctree-l2"><a class="reference internal" href="cli.html">Running RHIME from the command line</a></li>
 <li class="toctree-l2"><a class="reference internal" href="customising_rhime.html">Customising RHIME</a></li>
 </ul>
@@ -574,7 +575,12 @@ configured otherwise.</p>
 RHIME. It creates the HBMCMC-compatible NetCDF product from the modern
 <code class="docutils literal notranslate"><span class="pre">InversionOutput</span></code>; it does not invoke <code class="docutils literal notranslate"><span class="pre">fixedbasisMCMC</span></code> or <code class="docutils literal notranslate"><span class="pre">inferpymc</span></code>.
 The deprecated output names <code class="docutils literal notranslate"><span class="pre">hbmcmc</span></code> and <code class="docutils literal notranslate"><span class="pre">hbmcmc_postprocessing</span></code> remain
-aliases for <code class="docutils literal notranslate"><span class="pre">legacy</span></code>.</p>
+aliases for <code class="docutils literal notranslate"><span class="pre">legacy</span></code> with <code class="docutils literal notranslate"><span class="pre">DeprecationWarning</span></code>. <code class="docutils literal notranslate"><span class="pre">RhimeConfig.from_params</span></code>
+calls the translator in <code class="docutils literal notranslate"><span class="pre">hbmcmc.compatibility</span></code> before modern normalization,
+after file options and Python overrides have been combined. It warns when a
+deprecated spelling is replaced or removed; canonical inputs remain quiet.
+Prefer <code class="docutils literal notranslate"><span class="pre">legacy</span></code> in new configurations. The former <code class="docutils literal notranslate"><span class="pre">resolve_rhime_config</span></code>
+wrapper is removed; use the classmethod directly.</p>
 <p>The compatibility product uses variables such as <code class="docutils literal notranslate"><span class="pre">Yobs</span></code>, <code class="docutils literal notranslate"><span class="pre">Yerror</span></code>,
 <code class="docutils literal notranslate"><span class="pre">Ymodmean</span></code>, <code class="docutils literal notranslate"><span class="pre">Ymodmedian</span></code>, <code class="docutils literal notranslate"><span class="pre">Ymodmode</span></code>, <code class="docutils literal notranslate"><span class="pre">xtrace</span></code>, <code class="docutils literal notranslate"><span class="pre">sigtrace</span></code>,
 <code class="docutils literal notranslate"><span class="pre">fluxmode</span></code>, <code class="docutils literal notranslate"><span class="pre">scalingmean</span></code>, <code class="docutils literal notranslate"><span class="pre">scalingmode</span></code>, and country totals. When
@@ -602,8 +608,9 @@ the retained RHIME abstractions:</p>
 </thead>
 <tbody>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">prepare_fixedbasis_inversion_data</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">prepare_rhime_inputs</span></code></p></td>
-<td><p>Returns the inputs used by the standard RHIME recipe</p></td>
+<td><p>Named RHIME preparation stages</p></td>
+<td><p>Load data, then filter, build basis and sensitivities, and assemble inputs;
+<code class="docutils literal notranslate"><span class="pre">prepare_rhime_inputs</span></code> remains a deprecated convenience adapter</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">FixedBasisPreparedData</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code></p></td>
@@ -612,7 +619,7 @@ the retained RHIME abstractions:</p>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">basis_functions_wrapper</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">make_basis_functions</span></code></p></td>
 <td><p>Call <code class="docutils literal notranslate"><span class="pre">BasisFunctions.sensitivity</span></code> when applying the retained basis;
-full workflows should normally use <code class="docutils literal notranslate"><span class="pre">prepare_rhime_inputs</span></code></p></td>
+complete inversions should normally use <code class="docutils literal notranslate"><span class="pre">run_rhime</span></code></p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">add_inferpymc_likelihood_component</span></code></p></td>
 <td><p>RHIME likelihood selection</p></td>
@@ -622,12 +629,27 @@ custom Python model; there is no direct inferpymc-component replacement</p></td>
 </tbody>
 </table>
 </div>
-<p>See <a class="reference internal" href="rhime.html"><span class="doc">RHIME configuration and prepared-input reference</span></a> for preparation and recipe APIs and
+<p>See <a class="reference internal" href="rhime.html"><span class="doc">RHIME terminology and prepared-input reference</span></a> for preparation and recipe APIs and
 <a class="reference internal" href="customising_rhime.html"><span class="doc">Customising RHIME</span></a> for the custom-likelihood boundary.</p>
+<p>The named RHIME preparation stages accept ordinary keyword arguments. Replace
+former positional <code class="docutils literal notranslate"><span class="pre">data_args</span></code> mappings with named arguments or an explicit
+<code class="docutils literal notranslate"><span class="pre">**config.select(&quot;name&quot;,</span> <span class="pre">...)</span></code> selection. See <a class="reference internal" href="rhime_configuration.html"><span class="doc">Advanced RHIME configuration</span></a> for
+selection ownership and the acquisition-to-preparation sequence. Use
+<code class="docutils literal notranslate"><span class="pre">SiteOptions.from_inputs</span></code> to normalize and align the complete selector record.
+Import <code class="docutils literal notranslate"><span class="pre">SiteOptions</span></code> from <code class="docutils literal notranslate"><span class="pre">openghg_inversions.inversion_data</span></code>. Selector
+implementation types and the low-level <code class="docutils literal notranslate"><span class="pre">convert_to_list</span></code> helper live in
+<code class="docutils literal notranslate"><span class="pre">inversion_data._site_options</span></code>; their former <code class="docutils literal notranslate"><span class="pre">acquisition</span></code> and
+<code class="docutils literal notranslate"><span class="pre">get_data.convert_to_list</span></code> import aliases are removed.</p>
+<p>Import legacy option translators from <code class="docutils literal notranslate"><span class="pre">hbmcmc.compatibility</span></code> instead of
+<code class="docutils literal notranslate"><span class="pre">rhime.params</span></code> or <code class="docutils literal notranslate"><span class="pre">hbmcmc.run_hbmcmc</span></code>. Import <code class="docutils literal notranslate"><span class="pre">read_rhime_ini</span></code> from
+<code class="docutils literal notranslate"><span class="pre">rhime.ini</span></code> or the public <code class="docutils literal notranslate"><span class="pre">rhime</span></code> package instead of <code class="docutils literal notranslate"><span class="pre">rhime.params</span></code>.</p>
 </section>
 <section id="legacy-merged-data-metadata">
 <h2>Legacy merged-data metadata<a class="headerlink" href="#legacy-merged-data-metadata" title="Link to this heading">#</a></h2>
-<p>The merged-data mapping returned by <code class="docutils literal notranslate"><span class="pre">data_processing_surface_notracer</span></code> and
+<p>Fresh acquisition is named <code class="docutils literal notranslate"><span class="pre">retrieve_inversion_data</span></code> for both surface and
+column observations. <code class="docutils literal notranslate"><span class="pre">data_processing_surface_notracer</span></code> remains a deprecated
+wrapper preserving its existing signature, shorthand and six-tuple return.</p>
+<p>The merged-data mapping returned by <code class="docutils literal notranslate"><span class="pre">retrieve_inversion_data</span></code> and
 <code class="docutils literal notranslate"><span class="pre">load_merged_data</span></code> no longer includes the unused <code class="docutils literal notranslate"><span class="pre">.species</span></code>, <code class="docutils literal notranslate"><span class="pre">.units</span></code>,
 or <code class="docutils literal notranslate"><span class="pre">.scales</span></code> entries.  The species remains an explicit run option,
 observation units remain on each site’s <code class="docutils literal notranslate"><span class="pre">mf.attrs[&quot;units&quot;]</span></code>, and each

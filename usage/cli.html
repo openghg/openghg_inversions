@@ -52,7 +52,7 @@
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
     <link rel="next" title="Customising RHIME" href="customising_rhime.html" />
-    <link rel="prev" title="RHIME configuration and prepared-input reference" href="rhime.html" />
+    <link rel="prev" title="Advanced RHIME configuration" href="rhime_configuration.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="" />
@@ -324,7 +324,8 @@
 <li class="toctree-l2"><a class="reference internal" href="rhime_multisector_tutorial.html">Multisector RHIME tutorial</a></li>
 <li class="toctree-l2"><a class="reference internal" href="multisector_inversions.html">Site and satellite multisector inversions</a></li>
 <li class="toctree-l2"><a class="reference internal" href="concrete_rhime_model.html">Standard and multisector RHIME models</a></li>
-<li class="toctree-l2"><a class="reference internal" href="rhime.html">RHIME configuration and prepared-input reference</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rhime.html">RHIME terminology and prepared-input reference</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rhime_configuration.html">Advanced RHIME configuration</a></li>
 <li class="toctree-l2 current active"><a class="current reference internal" href="#">Running RHIME from the command line</a></li>
 <li class="toctree-l2"><a class="reference internal" href="customising_rhime.html">Customising RHIME</a></li>
 </ul>
@@ -451,7 +452,7 @@ with a JSON object passed to <code class="docutils literal notranslate"><span cl
 <code class="docutils literal notranslate"><span class="pre">openghg-inversions</span> <span class="pre">run-rhime-multisector</span> <span class="pre">--help</span></code> for the complete ordinary
 command syntax. See the <a class="reference internal" href="nested_domain_model_family.html"><span class="doc">nested-domain model family</span></a> for its support boundary and configuration
 guide. New configuration files should use the RHIME vocabulary documented in
-<a class="reference internal" href="rhime.html"><span class="doc">RHIME configuration and prepared-input reference</span></a>; the packaged starting point is
+<a class="reference internal" href="rhime.html"><span class="doc">RHIME terminology and prepared-input reference</span></a>; the packaged starting point is
 <code class="docutils literal notranslate"><span class="pre">openghg_inversions/config/templates/rhime_template.ini</span></code>. Complete,
 validated production-shape examples are used by
 <a class="reference internal" href="rhime_standard_tutorial.html"><span class="doc">Standard RHIME tutorial</span></a> and <a class="reference internal" href="rhime_multisector_tutorial.html"><span class="doc">Multisector RHIME tutorial</span></a>.</p>
@@ -545,7 +546,7 @@ pixi<span class="w"> </span>run<span class="w"> </span>--locked<span class="w"> 
 for supported older fixedbasis-style INI files. It does not turn such a file
 into a multisector configuration. For new batch jobs, start from the RHIME
 template, use <code class="docutils literal notranslate"><span class="pre">flux_sources</span></code> for standard runs, and configure the sector
-sources described in <a class="reference internal" href="rhime.html"><span class="doc">RHIME configuration and prepared-input reference</span></a> before selecting
+sources described in <a class="reference internal" href="rhime.html"><span class="doc">RHIME terminology and prepared-input reference</span></a> before selecting
 <code class="docutils literal notranslate"><span class="pre">run-rhime-multisector</span></code>.</p>
 </section>
 </section>
@@ -590,12 +591,12 @@ contract.</p>
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="rhime.html"
+       href="rhime_configuration.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">RHIME configuration and prepared-input reference</p>
+        <p class="prev-next-title">Advanced RHIME configuration</p>
       </div>
     </a>
     <a class="right-next"

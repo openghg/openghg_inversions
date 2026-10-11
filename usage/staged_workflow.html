@@ -324,7 +324,8 @@
 <li class="toctree-l2"><a class="reference internal" href="rhime_multisector_tutorial.html">Multisector RHIME tutorial</a></li>
 <li class="toctree-l2"><a class="reference internal" href="multisector_inversions.html">Site and satellite multisector inversions</a></li>
 <li class="toctree-l2"><a class="reference internal" href="concrete_rhime_model.html">Standard and multisector RHIME models</a></li>
-<li class="toctree-l2"><a class="reference internal" href="rhime.html">RHIME configuration and prepared-input reference</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rhime.html">RHIME terminology and prepared-input reference</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rhime_configuration.html">Advanced RHIME configuration</a></li>
 <li class="toctree-l2"><a class="reference internal" href="cli.html">Running RHIME from the command line</a></li>
 <li class="toctree-l2"><a class="reference internal" href="customising_rhime.html">Customising RHIME</a></li>
 </ul>
@@ -440,8 +441,9 @@ with the same keyword names accepted by <code class="docutils literal notranslat
 </ul>
 <p><code class="docutils literal notranslate"><span class="pre">--kwargs</span> <span class="pre">'{...}'</span></code> can explicitly override either source. The JSON form
 supports <code class="docutils literal notranslate"><span class="pre">openghg-run</span></code> cases that do not declare an INI <code class="docutils literal notranslate"><span class="pre">CONFIG_FILE</span></code>; it
-does not add new scientific keys. The existing <code class="docutils literal notranslate"><span class="pre">resolve_rhime_options</span></code> boundary still
-normalizes and validates every value.  The staged commands deliberately do not
+does not add new scientific keys. Both routes construct the same complete
+<code class="docutils literal notranslate"><span class="pre">RhimeConfig</span></code> through the RHIME resolver, applying overrides before defaults
+and site shorthand.  The staged commands deliberately do not
 read ambient <code class="docutils literal notranslate"><span class="pre">CONFIG_FILE</span></code>.  <code class="docutils literal notranslate"><span class="pre">OUTPUT_DIR</span></code> is the only automatic path
 default, and the effective <code class="docutils literal notranslate"><span class="pre">openghg-run</span></code> <code class="docutils literal notranslate"><span class="pre">STAGE</span></code> is the default check-stage
 label.
@@ -498,8 +500,18 @@ named if the existing acquisition layer could not produce it.</p>
 <p>Version 0.8 does not support staged artifacts produced by 0.7. Use 0.7 to
 consume those artifacts, or regenerate them with 0.8. Removing the unused
 <code class="docutils literal notranslate"><span class="pre">use_tracer=False</span></code> field from resolved preparation options changes the
-configuration hash even when scientific settings are unchanged.</p>
+configuration hash even when scientific settings are unchanged.
+Resolved configuration also expands site shorthand and applies defaults;
+staged identity uses those canonical choices rather than reconstructing raw
+input forms to preserve an older hash.</p>
 </div>
+<p>The staged effective-configuration mapping records preparation choices,
+<code class="docutils literal notranslate"><span class="pre">model_spec</span></code>, output policy and sampler settings. It contains no requested-site
+execution run specification: <code class="docutils literal notranslate"><span class="pre">RhimeRunSpec</span></code> is created from retained prepared
+metadata. This mapping is owned by staged manifests, not a serialization API
+for <code class="docutils literal notranslate"><span class="pre">RhimeConfig</span></code>. The resolved representation changes staged configuration
+identity; historical hash equality is not a compatibility guarantee. Existing
+prepared-content and manifest authentication checks still apply.</p>
 <p>The manifest also records a content SHA-256 for <code class="docutils literal notranslate"><span class="pre">prepared-inputs.nc</span></code>.
 <code class="docutils literal notranslate"><span class="pre">openghg-run</span></code>
 independently verifies the declared stage-output directory and records its own

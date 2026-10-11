@@ -339,7 +339,10 @@
 </details></li>
 </ul>
 </details></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.html">openghg_inversions.hbmcmc</a></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.hbmcmc.html">openghg_inversions.hbmcmc</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.compatibility.html">openghg_inversions.hbmcmc.compatibility</a></li>
+</ul>
+</details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.inference.html">openghg_inversions.inference</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inference.cached_sigma.html">openghg_inversions.inference.cached_sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inference.diagnostics.html">openghg_inversions.inference.diagnostics</a></li>
@@ -411,6 +414,7 @@
 </details></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.builders.html">openghg_inversions.rhime.builders</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.cached_sigma.html">openghg_inversions.rhime.cached_sigma</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.ini.html">openghg_inversions.rhime.ini</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.materialization.html">openghg_inversions.rhime.materialization</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.multisector.html">openghg_inversions.rhime.multisector</a></li>
 <li class="toctree-l3 current active"><a class="current reference internal" href="#">openghg_inversions.rhime.nested</a></li>
@@ -811,7 +815,7 @@ retained outer flux used by basis generation and post-run reconstruction.</p>
 <span class="sig-name descname"><span class="pre">prepare_nested_rhime_inputs</span></span><span class="sig-paren">(</span>
 
 <dl>
-<dd><em class="sig-param"><span class="n"><span class="pre">setup</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">config</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">inner_domain</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">inner_footprint_store</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
@@ -832,11 +836,71 @@ retained outer flux used by basis generation and post-run reconstruction.</p>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.nested.prepare_nested_rhime_inputs" title="Link to this definition">#</a></dt>
 <dd><p>Retrieve and prepare native outer and inner grids with no double count.</p>
+<p>Retain sites available on both grids, apply the requested filters to the
+outer observations, and align inner footprints to those retained rows.
+Mask outer footprints and prior flux over the inner extent before basis
+construction. The request is unchanged; returned inputs retain both
+native bases and their combined observation-aligned sensitivities.</p>
 <dl class="field-list simple">
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference internal" href="#openghg_inversions.rhime.nested.NestedRhimePreparedInputs" title="openghg_inversions.rhime.nested.NestedRhimePreparedInputs"><em>NestedRhimePreparedInputs</em></a></p>
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>config</strong> (<a class="reference internal" href="openghg_inversions.rhime.params.html#openghg_inversions.rhime.params.RhimeConfig" title="openghg_inversions.rhime.params.RhimeConfig"><em>RhimeConfig</em></a>) – Resolved outer-domain request with exactly one flux source
+and <code class="docutils literal notranslate"><span class="pre">split_by_sectors=False</span></code>. Inner acquisition inherits its
+site selectors, dates and ordinary settings unless overridden
+below. Only the outer domain supplies boundary conditions.</p></li>
+<li><p><strong>inner_domain</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Full nested domain name or suffix to append to the
+outer domain with a hyphen.</p></li>
+<li><p><strong>inner_footprint_store</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Inner footprint store; defaults to the outer
+request’s store.</p></li>
+<li><p><strong>inner_emissions_store</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Inner emissions store; defaults to the outer
+request’s store.</p></li>
+<li><p><strong>inner_emissions_domain</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Optional inner flux-domain selector. <code class="docutils literal notranslate"><span class="pre">None</span></code>
+uses the inner domain rather than inheriting the outer selector.</p></li>
+<li><p><strong>inner_basis_algorithm</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Inner basis algorithm; defaults to <code class="docutils literal notranslate"><span class="pre">quadtree</span></code>
+when no saved inner basis is selected.</p></li>
+<li><p><strong>inner_nbasis</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.15)"><em>int</em></a><em> | </em><em>None</em>) – Explicit inner basis-region count. When omitted and
+neither grid uses a saved basis, <code class="docutils literal notranslate"><span class="pre">config.nbasis</span></code> is a shared
+total budget split by the square-root sensitivity ratio, with an
+inner share bounded to 35–60 percent. Otherwise the inner count
+defaults to <code class="docutils literal notranslate"><span class="pre">config.nbasis</span></code>.</p></li>
+<li><p><strong>inner_fp_basis_case</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Saved inner basis case; takes precedence over
+an inner basis algorithm.</p></li>
+<li><p><strong>inner_basis_directory</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Saved inner basis directory; defaults to the
+outer request’s directory.</p></li>
+<li><p><strong>inner_country_directory</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Inner country-grid directory; defaults to
+the outer request’s directory.</p></li>
+<li><p><strong>inner_basis_output_path</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Optional destination for a generated inner
+basis. <code class="docutils literal notranslate"><span class="pre">None</span></code> disables saving the inner basis.</p></li>
+<li><p><strong>inner_reload_merged_data</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Require an inner merged artifact instead of
+fresh acquisition. Loading errors propagate without reacquisition.</p></li>
+<li><p><strong>inner_save_merged_data</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Whether fresh inner acquisition saves merged
+data. This does not inherit the outer saving choice.</p></li>
+<li><p><strong>inner_merged_data_dir</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Directory for inner merged artifacts.</p></li>
+<li><p><strong>inner_merged_data_name</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Optional inner merged-artifact filename.</p></li>
+<li><p><strong>time_tolerance</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>Timedelta</em><em> | </em><em>None</em>) – Maximum difference for nearest-time inner footprint
+matching. <code class="docutils literal notranslate"><span class="pre">None</span></code> requires exact times; matching never reuses an
+inner footprint for multiple outer rows.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Prepared outer and inner inputs with separate native-grid bases and
+combined sensitivities aligned to the retained outer observations.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If the request is not single-source, the inner domain is
+    empty, the sites or observation times cannot be aligned, or the
+    automatic basis budget is not an integer of at least two.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="#openghg_inversions.rhime.nested.NestedRhimePreparedInputs" title="openghg_inversions.rhime.nested.NestedRhimePreparedInputs"><em>NestedRhimePreparedInputs</em></a></p>
 </dd>
 </dl>
+<p class="rubric">Notes</p>
+<p>Acquisition and basis construction may read or write configured
+artifacts. Automatic budget allocation computes sensitivity sums;
+filtering and basis algorithms may also compute their inputs. The
+returned scientific arrays may remain Dask-backed, and PyMC model
+materialization is a separate boundary.</p>
 </dd></dl>
 
 <dl class="py function">

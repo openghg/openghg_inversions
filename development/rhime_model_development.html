@@ -415,8 +415,8 @@ remains an optional convenience.</p></li>
 workflows visible.</p></li>
 <li><p>Dataclasses are reserved for concrete scientific concepts or durable
 boundaries.</p></li>
-<li><p>Configuration is normalized once at the boundary. Values are forwarded
-explicitly after that boundary.</p></li>
+<li><p>Configuration is normalized once at the boundary. Forward named values
+directly or with an explicit <code class="docutils literal notranslate"><span class="pre">config.select(&quot;name&quot;,</span> <span class="pre">...)</span></code> selection.</p></li>
 <li><p>Tiny registries are appropriate for homogeneous families such as filters.</p></li>
 <li><p>Private numerical helpers are acceptable, but reading the main path must not
 require reconstructing a framework.</p></li>
@@ -616,9 +616,93 @@ every argument in its runtime function signature.</p>
 <ul class="simple">
 <li><p>translate legacy spellings and normalize values once at the runner boundary;</p></li>
 <li><p>reject unknown and unused options;</p></li>
-<li><p>preserve model-specific sections when names repeat across channels; and</p></li>
+<li><p>let each file frontend interpret its own sections and value syntax; and</p></li>
 <li><p>pass resolved values explicitly to the functions that own them.</p></li>
 </ul>
+<p>Standard and multisector requests use <code class="docutils literal notranslate"><span class="pre">rhime.params.RhimeConfig</span></code> as the
+semantic boundary. <code class="docutils literal notranslate"><span class="pre">read_rhime_ini</span></code> only decodes an INI file into options;
+it has no recipe-mode or override arguments and does not construct configuration.
+Each runner combines winning overrides, extracts recipe-specific options and
+calls <code class="docutils literal notranslate"><span class="pre">RhimeConfig.from_params</span></code> once. This keeps shorthand editable until the
+final requested values are known. Preserve the existing first-occurrence rule
+for repeated INI keys without imposing it on other frontends.</p>
+<p>Historical fixedbasis conversion and deprecated RHIME spellings belong to the
+lightweight <code class="docutils literal notranslate"><span class="pre">hbmcmc.compatibility</span></code> module. <code class="docutils literal notranslate"><span class="pre">RhimeConfig.from_params</span></code> invokes
+the alias translator once before modern normalization and construction; runners
+do not repeat it. Translation emits <code class="docutils literal notranslate"><span class="pre">DeprecationWarning</span></code> only when it replaces
+or removes deprecated names or output values. Modern options remain quiet.
+The former <code class="docutils literal notranslate"><span class="pre">resolve_rhime_config</span></code> wrapper is removed;
+<code class="docutils literal notranslate"><span class="pre">params_from_config</span></code> retains its historical dictionary/normalization contract
+as a deprecated adapter. Do not import the executable HBMCMC runner into modern
+configuration code. Existing default policy is unchanged by this ownership move.</p>
+<p>Keep accepted option names and defaults beside the preparation, model, output
+or sampling consumer that owns them. The configuration constructor composes
+those declared choices explicitly; do not infer options from runtime signatures
+or add a generic option registry. INI headings do not require matching classes.
+Complete runners accept an already resolved <code class="docutils literal notranslate"><span class="pre">config</span></code> and start scientific
+work without resolving it again. That input is exclusive with <code class="docutils literal notranslate"><span class="pre">config_file</span></code>
+and raw configuration keywords. Compatibility entry points can therefore
+validate once before their own side effects and pass the same request onward.</p>
+<p><code class="docutils literal notranslate"><span class="pre">RhimeConfig</span></code> owns acquisition and preparation fields directly, alongside
+one public <code class="docutils literal notranslate"><span class="pre">inversion_data.SiteOptions</span></code> and the existing <code class="docutils literal notranslate"><span class="pre">RhimeModelSpec</span></code>,
+<code class="docutils literal notranslate"><span class="pre">RhimeOutputSpec</span></code> and <code class="docutils literal notranslate"><span class="pre">inference.sampling.RhimeSampler</span></code>. The model
+specification describes scientific choices, the output specification describes
+final products, and the sampler holds settings and executes only when given a
+completed model. Do not add a separate preparation configuration or duplicate
+sampler settings class. Constructing configuration does not acquire scientific
+data, bind a model or execute inference.</p>
+<p><code class="docutils literal notranslate"><span class="pre">SiteOptions.from_inputs</span></code> and its small helpers establish complete aligned
+selectors independently of file syntax. Direct construction accepts resolved
+aligned values. Canonical acquisition consumes those values without another
+shorthand pass; retained-site selection selects every applicable selector
+together and returns a new record. Public preparation and fresh-retrieval
+adapters share applicable translation without requiring the full configured
+request. <code class="docutils literal notranslate"><span class="pre">retrieve_inversion_data</span></code> is fresh acquisition, while
+<code class="docutils literal notranslate"><span class="pre">RhimeMergedData.from_options</span></code> performs fresh acquisition and
+<code class="docutils literal notranslate"><span class="pre">RhimeMergedData.load</span></code> owns strict cache loading and compatibility checks.
+The recipe first reuses compatible supplied data, then explicitly selects the
+requested factory. Failed reloads never silently retrieve fresh data (#806). The deprecated
+<code class="docutils literal notranslate"><span class="pre">data_processing_surface_notracer</span></code> wrapper preserves its six-tuple contract;
+internal calls use the neutral names.</p>
+<p>Keep the procedural runner’s acquisition, preparation, model construction and
+sampling sequence visible. Pass needed resolved values directly or unpack an
+explicit <code class="docutils literal notranslate"><span class="pre">config.select(&quot;name&quot;,</span> <span class="pre">...)</span></code> selection into the scientific function’s
+named arguments. Selection creates a shallow dictionary with borrowed values;
+it does not inspect signatures, resolve options or define another schema.
+A private orchestration helper may accept the resolved configuration to coordinate
+several stages, while scientific components retain independently usable inputs.
+The named preparation functions no longer accept positional <code class="docutils literal notranslate"><span class="pre">data_args</span></code> maps.
+The deprecated <code class="docutils literal notranslate"><span class="pre">prepare_rhime_inputs</span></code> acquisition-and-preparation wrapper
+normalizes its applicable inputs and delegates to these same scientific stages;
+it must not retain a second implementation of assembly or provenance policy.
+The stages and their scientific helpers live together in <code class="docutils literal notranslate"><span class="pre">rhime.preparation</span></code>.
+They do not call back into the deprecated <code class="docutils literal notranslate"><span class="pre">inversion_data.preparation</span></code> module;
+compatibility delegation runs only towards the canonical stages.</p>
+<p>Apply raw overrides before resolution. Use <code class="docutils literal notranslate"><span class="pre">dataclasses.replace</span></code> only when the
+replacement fields are already mutually consistent; it does not recompute
+site expansion, date-dependent defaults or repeated model/output facts.
+Shared species/domain, source, BC-use and artifact-naming facts come from one
+resolution boundary; their small explicit duplication in independently usable
+model/output specifications does not justify a shared context hierarchy or
+repeated consistency checks.</p>
+<p>The requested configuration has no run specification. After preparation,
+derive <code class="docutils literal notranslate"><span class="pre">RhimeRunSpec</span></code> from retained sites/periods, requested date bounds,
+prepared layout and resolved model/output choices. It describes execution;
+<code class="docutils literal notranslate"><span class="pre">RhimeResult</span></code> describes completed execution with prepared inputs, posterior
+and products. Internal setup bundles and their requested-site run projections
+are removed. Independent prepared-input APIs remain supported. Resolve known
+configuration defaults at the request boundary; conversions that require
+retained labels or numerical arrays remain with their scientific owner.
+Frozen records do not imply recursive immutability of existing mappings or
+samplers; preserve borrowed scientific arrays and caller-owned containers.
+Configuration serialization and INI writing are deferred to
+<a class="reference external" href="https://github.com/openghg/openghg_inversions/issues/814">Issue 814</a>.</p>
+<p>Effective <code class="docutils literal notranslate"><span class="pre">use_tracer=True</span></code> remains unsupported and is rejected before data
+access. Omitted/false requests produce no tracer configuration field. Do not
+restore raw spellings or disabled fields to preserve old hashes; staged
+authentication and version compatibility belong to their existing owners.
+See <a class="reference internal" href="../usage/rhime_configuration.html"><span class="doc">Advanced RHIME configuration</span></a> for configuration inspection and
+<a class="reference internal" href="../usage/staged_workflow.html"><span class="doc">Staged RHIME workflows</span></a> for the 0.7/0.8 artifact boundary.</p>
 <p>The legacy <code class="docutils literal notranslate"><span class="pre">hbmcmc/config</span></code> template tree has been removed. Keep new RHIME
 templates in
 <code class="docutils literal notranslate"><span class="pre">openghg_inversions/rhime/config</span></code> so the configuration layout mirrors the

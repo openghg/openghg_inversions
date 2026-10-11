@@ -324,7 +324,8 @@
 <li class="toctree-l2"><a class="reference internal" href="rhime_multisector_tutorial.html">Multisector RHIME tutorial</a></li>
 <li class="toctree-l2"><a class="reference internal" href="multisector_inversions.html">Site and satellite multisector inversions</a></li>
 <li class="toctree-l2"><a class="reference internal" href="concrete_rhime_model.html">Standard and multisector RHIME models</a></li>
-<li class="toctree-l2"><a class="reference internal" href="rhime.html">RHIME configuration and prepared-input reference</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rhime.html">RHIME terminology and prepared-input reference</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rhime_configuration.html">Advanced RHIME configuration</a></li>
 <li class="toctree-l2"><a class="reference internal" href="cli.html">Running RHIME from the command line</a></li>
 <li class="toctree-l2"><a class="reference internal" href="customising_rhime.html">Customising RHIME</a></li>
 </ul>
@@ -775,11 +776,11 @@ flux and footprint grids must align on the configured domain. Do not strip
 labels or reorder NumPy arrays to silence this error.</p>
 </dd>
 <dt>Unsupported or misspelled option</dt><dd><p>RHIME rejects unknown configuration keys. Start from the packaged file and
-use the snake-case names in <a class="reference internal" href="rhime.html"><span class="doc">RHIME configuration and prepared-input reference</span></a>.</p>
+use the snake-case names in <a class="reference internal" href="rhime.html"><span class="doc">RHIME terminology and prepared-input reference</span></a>.</p>
 </dd>
 <dt>Missing output path or unexpected product</dt><dd><p><code class="docutils literal notranslate"><span class="pre">output_format</span> <span class="pre">=</span> <span class="pre">&quot;inv_out&quot;</span></code> with <code class="docutils literal notranslate"><span class="pre">save_inversion_output</span> <span class="pre">=</span> <span class="pre">True</span></code> needs
 <code class="docutils literal notranslate"><span class="pre">output_path</span></code>. Other derived products have additional input requirements;
-select them only after consulting the output guidance in <a class="reference internal" href="rhime.html"><span class="doc">RHIME configuration and prepared-input reference</span></a>.</p>
+select them only after consulting the output guidance in <a class="reference internal" href="rhime.html"><span class="doc">RHIME terminology and prepared-input reference</span></a>.</p>
 </dd>
 <dt>Poor convergence or divergences</dt><dd><p>Do not interpret the posterior. Check prior scales, model-data mismatch,
 influential observations and identifiability, then increase tuning/draws

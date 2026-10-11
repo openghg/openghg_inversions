@@ -339,7 +339,10 @@
 </details></li>
 </ul>
 </details></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.html">openghg_inversions.hbmcmc</a></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.hbmcmc.html">openghg_inversions.hbmcmc</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.compatibility.html">openghg_inversions.hbmcmc.compatibility</a></li>
+</ul>
+</details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.inference.html">openghg_inversions.inference</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inference.cached_sigma.html">openghg_inversions.inference.cached_sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inference.diagnostics.html">openghg_inversions.inference.diagnostics</a></li>
@@ -411,6 +414,7 @@
 </details></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.builders.html">openghg_inversions.rhime.builders</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.cached_sigma.html">openghg_inversions.rhime.cached_sigma</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.ini.html">openghg_inversions.rhime.ini</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.materialization.html">openghg_inversions.rhime.materialization</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.multisector.html">openghg_inversions.rhime.multisector</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.nested.html">openghg_inversions.rhime.nested</a></li>
@@ -566,10 +570,26 @@ ambient variable must never select the scientific configuration.</p>
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.stages.resolve_stage_setup">
 <span class="sig-name descname"><span class="pre">resolve_stage_setup</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">params</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">model</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.stages.resolve_stage_setup" title="Link to this definition">#</a></dt>
-<dd><p>Resolve stage parameters through the canonical RHIME boundary.</p>
+<dd><p>Resolve effective stage options through the selected recipe’s boundary.</p>
 <dl class="field-list simple">
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference internal" href="openghg_inversions.rhime.params.html#openghg_inversions.rhime.params.RhimeRunnerSetup" title="openghg_inversions.rhime.params.RhimeRunnerSetup">RhimeRunnerSetup</a> | <a class="reference internal" href="openghg_inversions.rhime.co2.stages.html#openghg_inversions.rhime.co2.stages.Co2StageSetup" title="openghg_inversions.rhime.co2.stages.Co2StageSetup">Co2StageSetup</a></p>
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>params</strong> (<em>Mapping</em><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><em>Any</em><em>]</em>) – File-derived or Python options after invocation overrides and
+staged path resolution.</p></li>
+<li><p><strong>model</strong> (<em>ModelKind</em>) – Recipe whose configuration and staged workflow will be used.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Complete <code class="docutils literal notranslate"><span class="pre">RhimeConfig</span></code> for standard or multisector execution, or
+the CO2 workflow’s setup. Resolution does not acquire scientific data
+or execute inference.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If the recipe is unsupported or its effective options are
+    invalid.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.RhimeConfig" title="openghg_inversions.rhime.RhimeConfig">RhimeConfig</a> | <a class="reference internal" href="openghg_inversions.rhime.co2.stages.html#openghg_inversions.rhime.co2.stages.Co2StageSetup" title="openghg_inversions.rhime.co2.stages.Co2StageSetup">Co2StageSetup</a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -577,8 +597,22 @@ ambient variable must never select the scientific configuration.</p>
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.stages.effective_configuration">
 <span class="sig-name descname"><span class="pre">effective_configuration</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">setup</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">model</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.stages.effective_configuration" title="Link to this definition">#</a></dt>
-<dd><p>Return the resolved scientific configuration used by every stage.</p>
+<dd><p>Project resolved choices into the selected workflow’s manifest vocabulary.</p>
 <dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>setup</strong> (<a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.RhimeConfig" title="openghg_inversions.rhime.RhimeConfig"><em>RhimeConfig</em></a><em> | </em><a class="reference internal" href="openghg_inversions.rhime.co2.stages.html#openghg_inversions.rhime.co2.stages.Co2StageSetup" title="openghg_inversions.rhime.co2.stages.Co2StageSetup"><em>Co2StageSetup</em></a>) – Resolved configuration for the selected recipe.</p></li>
+<li><p><strong>model</strong> (<em>ModelKind</em>) – Recipe that owns the manifest representation.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Manifest settings for provenance and replay. Standard and multisector
+mappings contain <code class="docutils literal notranslate"><span class="pre">model</span></code>, <code class="docutils literal notranslate"><span class="pre">preparation</span></code>, <code class="docutils literal notranslate"><span class="pre">model_spec</span></code>, <code class="docutils literal notranslate"><span class="pre">output</span></code>
+and <code class="docutils literal notranslate"><span class="pre">sampler</span></code>; preparation includes the complete requested site
+selectors. CO2 uses its own recipe, reconstruction and output fields.
+This is a staged artifact representation, not a general configuration
+serialization API or a retained execution run specification.</p>
+</dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>, Any]</p>
 </dd>

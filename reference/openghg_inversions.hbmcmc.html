@@ -51,7 +51,7 @@
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="openghg_inversions.inference" href="openghg_inversions.inference.html" />
+    <link rel="next" title="openghg_inversions.hbmcmc.compatibility" href="openghg_inversions.hbmcmc.compatibility.html" />
     <link rel="prev" title="openghg_inversions.experimental.ramsden2022.model" href="openghg_inversions.experimental.ramsden2022.model.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
@@ -339,7 +339,10 @@
 </details></li>
 </ul>
 </details></li>
-<li class="toctree-l2 current active"><a class="current reference internal" href="#">openghg_inversions.hbmcmc</a></li>
+<li class="toctree-l2 current active has-children"><a class="current reference internal" href="#">openghg_inversions.hbmcmc</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.compatibility.html">openghg_inversions.hbmcmc.compatibility</a></li>
+</ul>
+</details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.inference.html">openghg_inversions.inference</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inference.cached_sigma.html">openghg_inversions.inference.cached_sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inference.diagnostics.html">openghg_inversions.inference.diagnostics</a></li>
@@ -411,6 +414,7 @@
 </details></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.builders.html">openghg_inversions.rhime.builders</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.cached_sigma.html">openghg_inversions.rhime.cached_sigma</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.ini.html">openghg_inversions.rhime.ini</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.materialization.html">openghg_inversions.rhime.materialization</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.multisector.html">openghg_inversions.rhime.multisector</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.nested.html">openghg_inversions.rhime.nested</a></li>
@@ -509,8 +513,21 @@
   <section id="openghg-inversions-hbmcmc">
 <h1>openghg_inversions.hbmcmc<a class="headerlink" href="#openghg-inversions-hbmcmc" title="Link to this heading">#</a></h1>
 <p>The direct <code class="docutils literal notranslate"><span class="pre">fixedbasisMCMC</span></code> and <code class="docutils literal notranslate"><span class="pre">inferpymc</span></code> implementation was removed in
-0.8. Only <code class="docutils literal notranslate"><span class="pre">openghg_inversions.hbmcmc.run_hbmcmc</span></code> remains as a transitional
-old-INI-to-RHIME wrapper. See <a class="reference internal" href="../usage/legacy_and_migration.html"><span class="doc">Migrate from HBMCMC to RHIME</span></a>.</p>
+0.8. <code class="docutils literal notranslate"><span class="pre">openghg_inversions.hbmcmc.run_hbmcmc</span></code> remains as a transitional
+old-INI-to-RHIME wrapper, with option translation in <code class="docutils literal notranslate"><span class="pre">compatibility</span></code>.
+See <a class="reference internal" href="../usage/legacy_and_migration.html"><span class="doc">Migrate from HBMCMC to RHIME</span></a>.</p>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="openghg_inversions.hbmcmc.compatibility.html">openghg_inversions.hbmcmc.compatibility</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.compatibility.html#openghg_inversions.hbmcmc.compatibility.normalise_param_aliases"><code class="docutils literal notranslate"><span class="pre">normalise_param_aliases()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.compatibility.html#openghg_inversions.hbmcmc.compatibility.normalise_output_format_alias"><code class="docutils literal notranslate"><span class="pre">normalise_output_format_alias()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.compatibility.html#openghg_inversions.hbmcmc.compatibility.translate_rhime_aliases"><code class="docutils literal notranslate"><span class="pre">translate_rhime_aliases()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.compatibility.html#openghg_inversions.hbmcmc.compatibility.fixedbasis_params_to_rhime"><code class="docutils literal notranslate"><span class="pre">fixedbasis_params_to_rhime()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.compatibility.html#openghg_inversions.hbmcmc.compatibility.params_from_config"><code class="docutils literal notranslate"><span class="pre">params_from_config()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</div>
 </section>
 
 
@@ -533,11 +550,11 @@ old-INI-to-RHIME wrapper. See <a class="reference internal" href="../usage/legac
       </div>
     </a>
     <a class="right-next"
-       href="openghg_inversions.inference.html"
+       href="openghg_inversions.hbmcmc.compatibility.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">openghg_inversions.inference</p>
+        <p class="prev-next-title">openghg_inversions.hbmcmc.compatibility</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>

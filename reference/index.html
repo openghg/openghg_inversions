@@ -339,7 +339,10 @@
 </details></li>
 </ul>
 </details></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.html">openghg_inversions.hbmcmc</a></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.hbmcmc.html">openghg_inversions.hbmcmc</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.compatibility.html">openghg_inversions.hbmcmc.compatibility</a></li>
+</ul>
+</details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.inference.html">openghg_inversions.inference</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inference.cached_sigma.html">openghg_inversions.inference.cached_sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inference.diagnostics.html">openghg_inversions.inference.diagnostics</a></li>
@@ -411,6 +414,7 @@
 </details></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.builders.html">openghg_inversions.rhime.builders</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.cached_sigma.html">openghg_inversions.rhime.cached_sigma</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.ini.html">openghg_inversions.rhime.ini</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.materialization.html">openghg_inversions.rhime.materialization</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.multisector.html">openghg_inversions.rhime.multisector</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.nested.html">openghg_inversions.rhime.nested</a></li>
@@ -552,6 +556,36 @@ runner.</p>
 </table>
 </div>
 </section>
+<section id="resolve-a-requested-rhime-configuration">
+<h2>Resolve a requested RHIME configuration<a class="headerlink" href="#resolve-a-requested-rhime-configuration" title="Link to this heading">#</a></h2>
+<p>Inspect standard/multisector choices before data access. Decode an INI with
+<code class="docutils literal notranslate"><span class="pre">read_rhime_ini</span></code>, or start with Python options. Apply overrides and extract
+recipe-specific options, then construct canonical <code class="docutils literal notranslate"><span class="pre">RhimeConfig.from_params</span></code>.
+Pass the result to the corresponding
+runner’s <code class="docutils literal notranslate"><span class="pre">config</span></code> argument to reuse the resolved choices. The
+<a class="reference internal" href="../usage/rhime_configuration.html"><span class="doc">configuration guide</span></a> explains requested site selectors,
+retained execution metadata and compatibility helpers.</p>
+<div class="pst-scrollable-table-container"><table class="autosummary longtable table">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.read_rhime_ini" title="openghg_inversions.rhime.read_rhime_ini"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.read_rhime_ini</span></code></a></p></td>
+<td><p>Decode INI sections into option names and Python values.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.RhimeConfig" title="openghg_inversions.rhime.RhimeConfig"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.RhimeConfig</span></code></a></p></td>
+<td><p>Complete resolved requested configuration before scientific data access.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.RhimeConfig.from_params" title="openghg_inversions.rhime.RhimeConfig.from_params"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.RhimeConfig.from_params</span></code></a></p></td>
+<td><p>Resolve external options into the complete requested run.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.RhimeConfig.select" title="openghg_inversions.rhime.RhimeConfig.select"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.RhimeConfig.select</span></code></a></p></td>
+<td><p>Select named resolved attributes for an explicit scientific call.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.inversion_data.acquisition.html#openghg_inversions.inversion_data.SiteOptions" title="openghg_inversions.inversion_data.SiteOptions"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.inversion_data.SiteOptions</span></code></a></p></td>
+<td><p>Complete selectors sharing one site order.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
 <section id="run-specifications-and-results">
 <h2>Run specifications and results<a class="headerlink" href="#run-specifications-and-results" title="Link to this heading">#</a></h2>
 <p>These objects describe the model, sampling, and output settings accepted by
@@ -597,7 +631,7 @@ its implementation is owned by <code class="docutils literal notranslate"><span 
 <h2>Prepared inversion data<a class="headerlink" href="#prepared-inversion-data" title="Link to this heading">#</a></h2>
 <p>Use these interfaces to prepare, save, reload, or adapt canonical inputs
 before a separate model run. The
-<a class="reference internal" href="../usage/rhime.html"><span class="doc">RHIME configuration and prepared-input reference</span></a>
+<a class="reference internal" href="../usage/rhime.html"><span class="doc">RHIME terminology and prepared-input reference</span></a>
 documents the expected variables, dimensions, and coordinates. Acquisition
 and reload mechanics live in <code class="docutils literal notranslate"><span class="pre">inversion_data.acquisition</span></code>; the prepared
 value and its unchanged version-1 schema live in
@@ -605,6 +639,12 @@ value and its unchanged version-1 schema live in
 imports identify the same classes.</p>
 <div class="pst-scrollable-table-container"><table class="autosummary longtable table">
 <tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.inversion_data.acquisition.html#openghg_inversions.inversion_data.SiteOptions" title="openghg_inversions.inversion_data.SiteOptions"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.inversion_data.SiteOptions</span></code></a></p></td>
+<td><p>Complete selectors sharing one site order.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.inversion_data.html#openghg_inversions.inversion_data.retrieve_inversion_data" title="openghg_inversions.inversion_data.retrieve_inversion_data"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.inversion_data.retrieve_inversion_data</span></code></a></p></td>
+<td><p>Retrieve and prepare surface or column datasets from OpenGHG stores.</p></td>
+</tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.inversion_data.html#openghg_inversions.inversion_data.RhimeMergedData" title="openghg_inversions.inversion_data.RhimeMergedData"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.inversion_data.RhimeMergedData</span></code></a></p></td>
 <td><p>Merged RHIME data and complete site-aligned metadata between stages.</p></td>
 </tr>
@@ -612,7 +652,7 @@ imports identify the same classes.</p>
 <td><p>Modern RHIME preparation and durable serialization contract.</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.inversion_data.html#openghg_inversions.inversion_data.prepare_rhime_inputs" title="openghg_inversions.inversion_data.prepare_rhime_inputs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.inversion_data.prepare_rhime_inputs</span></code></a></p></td>
-<td><p>Prepare modern RHIME inputs without exposing legacy fixedbasis containers.</p></td>
+<td><p>Deprecated acquisition-and-preparation compatibility entry point.</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.inversion_data.html#openghg_inversions.inversion_data.prepare_rhime_inputs_from_xarray" title="openghg_inversions.inversion_data.prepare_rhime_inputs_from_xarray"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.inversion_data.prepare_rhime_inputs_from_xarray</span></code></a></p></td>
 <td><p>Create canonical RHIME inputs from source-neutral xarray site data.</p></td>
@@ -620,8 +660,26 @@ imports identify the same classes.</p>
 <tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.inversion_data.html#openghg_inversions.inversion_data.load_merged_data" title="openghg_inversions.inversion_data.load_merged_data"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.inversion_data.load_merged_data</span></code></a></p></td>
 <td><p>Load <cite>fp_all</cite> dictionary from a file in <cite>merged_data_dir</cite>.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.inversion_data.acquisition.html#openghg_inversions.inversion_data.acquisition.retrieve_or_reload_rhime_data" title="openghg_inversions.inversion_data.acquisition.retrieve_or_reload_rhime_data"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.inversion_data.acquisition.retrieve_or_reload_rhime_data</span></code></a></p></td>
-<td><p>Retrieve, reload, or accept externally supplied merged RHIME data.</p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.inversion_data.html#openghg_inversions.inversion_data.RhimeMergedData.from_options" title="openghg_inversions.inversion_data.RhimeMergedData.from_options"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.inversion_data.RhimeMergedData.from_options</span></code></a></p></td>
+<td><p>Acquire fresh merged data using complete aligned selectors.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.inversion_data.html#openghg_inversions.inversion_data.RhimeMergedData.load" title="openghg_inversions.inversion_data.RhimeMergedData.load"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.inversion_data.RhimeMergedData.load</span></code></a></p></td>
+<td><p>Read a current-format merged artifact with caller-supplied selectors.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.inversion_data.html#openghg_inversions.inversion_data.RhimeMergedData.save" title="openghg_inversions.inversion_data.RhimeMergedData.save"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.inversion_data.RhimeMergedData.save</span></code></a></p></td>
+<td><p>Write the merged scientific datasets in the established cache format.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.filter_rhime_observations" title="openghg_inversions.rhime.filter_rhime_observations"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.filter_rhime_observations</span></code></a></p></td>
+<td><p>Filter borrowed observations and remove empty sites with aligned metadata.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.build_rhime_basis" title="openghg_inversions.rhime.build_rhime_basis"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.build_rhime_basis</span></code></a></p></td>
+<td><p>Load or fit the retained RHIME basis for filtered observations.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.build_rhime_sensitivities" title="openghg_inversions.rhime.build_rhime_sensitivities"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.build_rhime_sensitivities</span></code></a></p></td>
+<td><p>Construct labelled flux and optional boundary-condition sensitivities.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.assemble_rhime_inputs" title="openghg_inversions.rhime.assemble_rhime_inputs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.assemble_rhime_inputs</span></code></a></p></td>
+<td><p>Construct and validate durable, backend-neutral RHIME model inputs.</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.NestedRhimePreparedInputs" title="openghg_inversions.rhime.NestedRhimePreparedInputs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.NestedRhimePreparedInputs</span></code></a></p></td>
 <td><p>Prepared outer, inner, and combined nested-domain inputs.</p></td>
@@ -1002,6 +1060,7 @@ module-level view.</p>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#run-an-inversion">Run an inversion</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#resolve-a-requested-rhime-configuration">Resolve a requested RHIME configuration</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#run-specifications-and-results">Run specifications and results</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#prepared-inversion-data">Prepared inversion data</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#basis-construction-and-state-geometry">Basis construction and state geometry</a></li>
