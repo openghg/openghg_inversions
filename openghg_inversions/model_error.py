@@ -3,10 +3,12 @@
 import numbers
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 import xarray as xr
+
+MinErrorConfig = Literal["percentile", "residual"] | dict[str, float] | None | int | float
 
 
 @dataclass(frozen=True, eq=False, slots=True)

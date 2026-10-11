@@ -18,7 +18,7 @@ from typing import Any, ClassVar, cast, get_args
 from openghg_inversions.basis._functions import basis_functions
 from openghg_inversions.flux_sanitization import FluxNonFiniteCheck
 from openghg_inversions.inversion_data._site_options import SiteOptions
-from openghg_inversions.inversion_data.preparation import MinErrorConfig
+from openghg_inversions.model_error import MinErrorConfig
 from openghg_inversions.inversion_data.prepared_inputs import RhimePreparedInputs
 from openghg_inversions.model_error import normalise_min_error, normalise_min_error_options
 from openghg_inversions.models._flux import safe_pymc_name
