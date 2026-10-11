@@ -49,7 +49,7 @@ from .builders import (
     validate_model_build_result,
 )
 from .materialization import materialize_pymc_inputs
-from .outputs import RhimeResult, _make_inversion_output
+from .outputs import RhimeResult, _make_inversion_output, validate_output_resources
 from .ini import read_rhime_ini
 from .params import RhimeConfig
 from .preparation import (
@@ -889,7 +889,8 @@ def prepare_nested_rhime_inputs(
         artifacts. Automatic budget allocation computes sensitivity sums;
         filtering and basis algorithms may also compute their inputs. The
         returned scientific arrays may remain Dask-backed, and PyMC model
-        materialization is a separate boundary.
+        materialization is a separate boundary. Reporting resources are not
+        required for preparation.
     """
     inner_flux_store = cast(str | None, resolve_deprecated_keyword(
         "inner_emissions_store", "inner_flux_store", inner_emissions_store, inner_flux_store
@@ -1274,6 +1275,7 @@ def _write_nested_paris_outputs(nested_result: NestedRhimeResult) -> None:
 
     result = nested_result.rhime_result
     output_spec = result.output_spec
+    validate_output_resources(output_spec)
     model_spec = result.model_spec
     run_spec = result.run_spec
     prepared = nested_result.prepared_inputs
@@ -1359,7 +1361,12 @@ def run_rhime_nested_from_prepared_inputs(
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
     likelihood_kwargs: Mapping[str, Any] | None = None,
 ) -> NestedRhimeResult:
-    """Build and sample nested RHIME from independently prepared native grids."""
+    """Build and sample nested RHIME from independently prepared native grids.
+
+    Validate reporting resources before materialization or sampling. Missing
+    selected country files raise ``FileNotFoundError``; PARIS output without a
+    country file raises ``ValueError``.
+    """
     if likelihood_builder is not None and not callable(likelihood_builder):
         raise TypeError(
             f"`likelihood_builder` must be callable or None; got {type(likelihood_builder).__name__}."
@@ -1377,6 +1384,7 @@ def run_rhime_nested_from_prepared_inputs(
     if run_spec.split_by_sectors or len(run_spec.model.sectors) != 1:
         raise ValueError("Nested RHIME currently requires a standard one-sector run specification.")
 
+    validate_output_resources(run_spec.output)
     prepared_inputs = prepared_inputs.validated()
     run_spec = with_prepared_rhime_sites(run_spec, prepared_inputs.combined)
     model_inputs = materialize_pymc_inputs(
@@ -1481,6 +1489,7 @@ def run_nested(
         raise ValueError("A nested RHIME run requires a built-in or custom likelihood.")
     if config.output.output_format not in ("none", "paris"):
         raise ValueError("`run_rhime_nested` currently requires output_format='none' or 'paris'.")
+    validate_output_resources(config.output)
     prepared = prepare_nested_rhime_inputs(
         config,
         inner_domain=str(inner_domain),

@@ -53,6 +53,7 @@ __all__ = [
     "build_sensitivities",
     "filter_observations",
     "with_prepared_rhime_sites",
+    "resolve_basis_inputs",
 ]
 
 
@@ -404,9 +405,8 @@ def resolve_basis_inputs(config: Any) -> dict[str, Any]:
     Configuration resolution itself stays data-free. This application boundary
     reads selected maps and partitions, checks retained paths, and consumes
     deprecated case/directory choices once. Numerical preparation receives only
-    the resulting exact artifact path and borrowed labelled arrays. It also
-    checks the exact reporting ``country_file`` independently of basis maps;
-    ``basic`` and ``paris`` outputs require that file.
+    the resulting exact artifact path and borrowed labelled arrays. Reporting
+    resources are validated separately by the output owner.
 
     Args:
         config: Resolved :class:`~openghg_inversions.rhime.params.RhimeConfig`.
@@ -420,8 +420,8 @@ def resolve_basis_inputs(config: Any) -> dict[str, Any]:
         here and loaded later by basis preparation. The request is not mutated.
 
     Raises:
-        ValueError: If modern and historical selections conflict, both saved
-            input forms are supplied, or required reporting inputs are absent.
+        ValueError: If modern and historical selections conflict or both saved
+            input forms are supplied.
         FileNotFoundError: If a selected artifact or resource is missing.
         KeyError: If a map or partition lacks its required variable.
 
@@ -432,10 +432,6 @@ def resolve_basis_inputs(config: Any) -> dict[str, Any]:
 
     if config.basis_path is not None and config.basis_partition_path is not None:
         raise ValueError("Supply either basis_path or basis_partition_path.")
-    if config.output.country_file is not None and not Path(config.output.country_file).is_file():
-        raise FileNotFoundError(config.output.country_file)
-    if config.output.output_format in ("basic", "paris") and config.output.country_file is None:
-        raise ValueError("country_file must be supplied for country reporting outputs.")
     selected: dict[str, Any] = {}
     landsea_path = config.landsea_path
     outer_path = config.outer_regions_path

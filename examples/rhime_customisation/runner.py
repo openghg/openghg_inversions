@@ -34,6 +34,7 @@ from openghg_inversions.rhime import (
     prepare_observation_errors,
     make_standard_rhime_result,
     make_standard_rhime_outputs,
+    validate_output_resources,
     materialize_pymc_inputs,
     read_rhime_ini,
     sample_rhime_model,
@@ -73,6 +74,7 @@ def run_custom_rhime(
     params.update(kwargs)
     params["mismatch_model"] = None
     config = RhimeConfig.from_params(params, multisector=False)
+    validate_output_resources(config.output)
 
     # Resolve selected support files before acquiring observations or flux.
     basis_inputs = resolve_basis_inputs(config)

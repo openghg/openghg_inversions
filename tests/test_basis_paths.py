@@ -70,7 +70,6 @@ def test_modern_default_and_explicit_legacy_output_have_equal_science(tmp_path):
     {"landsea_path": "absent/map.nc"},
     {"outer_regions_path": "absent/outer.nc"},
     {"domain": "NO-PACKAGED-RESOURCE", "basis_algorithm": "weighted"},
-    {"country_file": "absent/reporting.nc"},
 ])
 def test_missing_selected_resource_fails_before_acquisition(tmp_path, monkeypatch, options, route):
     from openghg_inversions.rhime import standard, nested, _standard_stages
@@ -100,10 +99,13 @@ def test_config_is_data_free_and_maps_are_resolved_at_application_boundary(tmp_p
         packaged_basis_support_path("landsea", "MISSING")
 
 
-def test_country_reporting_requires_caller_map():
-    config = RhimeConfig.from_params(_params(output_format="paris"), multisector=False)
-    with pytest.raises(ValueError, match="country_file must be supplied"):
-        resolve_basis_inputs(config)
+@pytest.mark.parametrize("output_format", ["basic", "paris"])
+@pytest.mark.parametrize("country_file", [None, "absent/reporting.nc"])
+def test_basis_preflight_does_not_require_reporting_resources(output_format, country_file):
+    config = RhimeConfig.from_params(
+        _params(output_format=output_format, country_file=country_file), multisector=False,
+    )
+    resolve_basis_inputs(config)
 
 
 def test_fixed_outer_missing_resolved_map_fails_before_numerical_work(monkeypatch):

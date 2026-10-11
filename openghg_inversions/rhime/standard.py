@@ -50,7 +50,12 @@ from .builders import (
 )
 
 from .materialization import materialize_pymc_inputs
-from .outputs import RhimeResult, annotate_likelihood_trace, make_standard_rhime_outputs
+from .outputs import (
+    RhimeResult,
+    annotate_likelihood_trace,
+    make_standard_rhime_outputs,
+    validate_output_resources,
+)
 from .ini import read_rhime_ini
 from .params import RhimeConfig
 from .preparation import (
@@ -548,6 +553,7 @@ def run_standard(
         raise ValueError("A standard RHIME run requires a built-in or custom likelihood.")
 
     # Read selected scientific resources before expensive data acquisition.
+    validate_output_resources(config.output)
     basis_inputs = resolve_basis_inputs(config)
 
 

@@ -36,7 +36,12 @@ from .multisector import (
     make_multisector_rhime_result,
     multisector_model_input_names,
 )
-from .outputs import RhimeResult, make_multisector_rhime_outputs, make_standard_rhime_outputs
+from .outputs import (
+    RhimeResult,
+    make_multisector_rhime_outputs,
+    make_standard_rhime_outputs,
+    validate_output_resources,
+)
 from .ini import read_rhime_ini
 from .params import RHIME_PREPARATION_OPTION_NAMES, RhimeConfig
 from .preparation import (
@@ -187,7 +192,8 @@ def prepare_rhime_stage(
 ) -> dict[str, Any]:
     """Prepare and persist independently inspectable RHIME inputs.
 
-    Selected basis/support and reporting files are resolved before acquisition.
+    Selected basis and support files are resolved before acquisition. Reporting
+    resources are checked only when outputs are requested at postprocessing.
     ``setup.basis_output_path`` remains an exact caller-selected destination;
     it is not relocated below ``output_dir``. The stage writes prepared inputs
     and their manifest below ``output_dir`` and returns the manifest mapping.
@@ -456,6 +462,7 @@ def postprocess_rhime_stage(
     manifests retain graph reconstruction to recover their missing roles.
     Output settings may change; the sampled scientific configuration may not.
     """
+    validate_output_resources(setup.output)
     destination = _stage_output_directory(output_dir)
     configured_output = setup.output
     _filename_component("output_name", configured_output.output_name)

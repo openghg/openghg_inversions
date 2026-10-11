@@ -67,7 +67,12 @@ from .nested import (
     run_rhime_nested,
     run_rhime_nested_from_prepared_inputs,
 )
-from .outputs import RhimeResult, make_multisector_rhime_outputs, make_standard_rhime_outputs
+from .outputs import (
+    RhimeResult,
+    make_multisector_rhime_outputs,
+    make_standard_rhime_outputs,
+    validate_output_resources,
+)
 from .prepared import run_rhime_from_prepared_inputs
 from .sampling import RhimeSampler, sample_rhime_model
 from .stages import (
@@ -154,6 +159,7 @@ __all__ = [
     "make_multisector_rhime_outputs",
     "make_standard_rhime_result",
     "make_standard_rhime_outputs",
+    "validate_output_resources",
     "materialize_pymc_inputs",
     "co2_model_input_names",
     "multisector_model_input_names",

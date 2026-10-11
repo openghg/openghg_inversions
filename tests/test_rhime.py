@@ -7062,6 +7062,7 @@ def test_make_standard_outputs_attach_products_to_result() -> None:
 def test_standard_postprocessing_failure_precedes_output_writes(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    europe_country_file: Path,
 ) -> None:
     """Construct a requested product successfully before persisting sidecars."""
     model_spec, _, run_spec = _minimal_output_specs(output_format="paris")
@@ -7079,7 +7080,9 @@ def test_standard_postprocessing_failure_precedes_output_writes(
         basis_functions=_fake_basis_functions(),
         site_metadata=_prepared_site_metadata(),
     )
-    result = _result_for_outputs(run_spec, _minimal_output_idata(), model_spec=model_spec)
+    result = _result_for_outputs(
+        run_spec, _minimal_output_idata(), model_spec=model_spec, country_file=str(europe_country_file),
+    )
 
     def fail_postprocessing(*args: Any, **kwargs: Any) -> None:
         raise ValueError("invalid PARIS options")
@@ -7190,6 +7193,7 @@ def test_make_multisector_outputs_attach_modern_inv_out(tmp_path: Path) -> None:
 
 def test_multisector_paris_options_are_checked_before_output_writes(
     tmp_path: Path,
+    europe_country_file: Path,
 ) -> None:
     """Reject unsupported product options before trace or product persistence."""
     sectors = (
@@ -7218,7 +7222,9 @@ def test_multisector_paris_options_are_checked_before_output_writes(
         basis_functions=_fake_basis_functions(),
         site_metadata=_prepared_site_metadata(),
     )
-    result = _result_for_outputs(run_spec, _minimal_output_idata(), model_spec=model_spec)
+    result = _result_for_outputs(
+        run_spec, _minimal_output_idata(), model_spec=model_spec, country_file=str(europe_country_file),
+    )
 
     with pytest.raises(ValueError, match="Unsupported multi-sector.*unexpected"):
         rhime_outputs.make_multisector_rhime_outputs(result=result, prepared=prepared)
@@ -8152,7 +8158,9 @@ def test_latest_paris_concentration_fills_missing_bc_with_nan(europe_country_fil
         assert np.isnan(conc_outputs[name].values).all()
 
 
-def test_standard_basic_output_uses_modern_postprocessing_without_legacy_adapter(monkeypatch) -> None:
+def test_standard_basic_output_uses_modern_postprocessing_without_legacy_adapter(
+    monkeypatch, europe_country_file: Path,
+) -> None:
     """RHIME basic postprocessing consumes modern output without legacy adapters."""
     model_spec, _, run_spec = _minimal_output_specs(output_format="basic")
     prepared = RhimePreparedInputs(
@@ -8173,19 +8181,21 @@ def test_standard_basic_output_uses_modern_postprocessing_without_legacy_adapter
         run_spec,
         _minimal_output_idata(),
         model_spec=model_spec,
-        country_file="countries.json",
+        country_file=str(europe_country_file),
     )
     rhime_outputs.make_standard_rhime_outputs(result=bundle, prepared=prepared)
 
     assert isinstance(bundle.inv_out, InversionOutput)
     assert captured["inv_out"] is bundle.inv_out
-    assert captured["country_file"] == "countries.json"
+    assert captured["country_file"] == str(europe_country_file)
     assert bundle.output_metadata["inversion_output_contract"] == "modern"
     assert bundle.output_metadata["postprocessing_input_contract"] == "modern_inversion_output"
     assert "basic" in bundle.outputs
 
 
-def test_run_hbmcmc_chain_selection_does_not_truncate_archived_trace(monkeypatch) -> None:
+def test_run_hbmcmc_chain_selection_does_not_truncate_archived_trace(
+    monkeypatch, europe_country_file: Path,
+) -> None:
     """Compatibility selection affects derived products, not the modern artifact."""
     model_spec, _, run_spec = _minimal_output_specs(output_format="basic")
     prepared = RhimePreparedInputs(
@@ -8204,7 +8214,9 @@ def test_run_hbmcmc_chain_selection_does_not_truncate_archived_trace(monkeypatch
             )
         else:
             groups[group_name] = group
-    bundle = _result_for_outputs(run_spec, make_trace(**groups), model_spec=model_spec)
+    bundle = _result_for_outputs(
+        run_spec, make_trace(**groups), model_spec=model_spec, country_file=str(europe_country_file),
+    )
     captured: dict[str, InversionOutput] = {}
 
     def fake_basic_output(inv_out: InversionOutput, country_file: str | None = None) -> xr.Dataset:
@@ -8224,7 +8236,9 @@ def test_run_hbmcmc_chain_selection_does_not_truncate_archived_trace(monkeypatch
     assert captured["inv_out"].trace.posterior.sizes["chain"] == 1
 
 
-def test_standard_paris_output_uses_modern_postprocessing_without_legacy_adapter(monkeypatch) -> None:
+def test_standard_paris_output_uses_modern_postprocessing_without_legacy_adapter(
+    monkeypatch, europe_country_file: Path,
+) -> None:
     """RHIME PARIS postprocessing consumes modern output without legacy adapters."""
     model_spec, _, run_spec = _minimal_output_specs(output_format="paris")
     site_metadata = _prepared_site_metadata().assign(
@@ -8261,13 +8275,13 @@ def test_standard_paris_output_uses_modern_postprocessing_without_legacy_adapter
         run_spec,
         _minimal_output_idata(),
         model_spec=model_spec,
-        country_file="countries.json",
+        country_file=str(europe_country_file),
     )
     rhime_outputs.make_standard_rhime_outputs(result=bundle, prepared=prepared)
 
     assert isinstance(bundle.inv_out, InversionOutput)
     assert captured["inv_out"] is bundle.inv_out
-    assert captured["country_file"] == "countries.json"
+    assert captured["country_file"] == str(europe_country_file)
     assert captured["domain"] == "EUROPE"
     assert captured["obs_avg_period"] == "1h"
     assert bundle.inv_out.model_metadata["footprint_provenance"]["TAC"] == {
@@ -8284,6 +8298,7 @@ def test_standard_paris_output_uses_modern_postprocessing_without_legacy_adapter
 def test_standard_latest_paris_output_writes_index_as_unlimited_dimension(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    europe_country_file: Path,
 ) -> None:
     """The latest concentration schema stores time on its index dimension."""
     model_spec, _, run_spec = _minimal_output_specs(output_format="paris")
@@ -8310,7 +8325,9 @@ def test_standard_latest_paris_output_writes_index_as_unlimited_dimension(
         lambda *args, **kwargs: (flux, concentration),
     )
 
-    bundle = _result_for_outputs(run_spec, _minimal_output_idata(), model_spec=model_spec)
+    bundle = _result_for_outputs(
+        run_spec, _minimal_output_idata(), model_spec=model_spec, country_file=str(europe_country_file),
+    )
     rhime_outputs.make_standard_rhime_outputs(result=bundle, prepared=prepared)
 
     with xr.open_dataset(bundle.output_metadata["paris_concentration_path"]) as saved_concentration:

@@ -122,6 +122,10 @@ JSON file as described above. Commands do not depend on the caller's
 working directory and reject pre-existing symlinks beneath a stage output
 directory.
 
+Preparation resolves selected basis and support resources. Country reporting
+resources are checked by ``postprocess`` before creating its output directory;
+``prepare`` and ``sample`` do not require them.
+
 ``prepare``
   Retrieves merged data, filters observations, constructs basis and
   sensitivities, assembles canonical inputs, and writes ``prepared-inputs.nc``

@@ -192,10 +192,12 @@ def test_configuration_identity_serialises_slice_inlet_selectors() -> None:
     assert configuration_identity(setup, model="standard").startswith("sha256:")
 
 
+@pytest.mark.parametrize("output_format", ["inv_out", "basic", "paris"])
 def test_prepare_is_independent_and_writes_inspectable_contract(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
+    output_format: str,
 ) -> None:
     from openghg_inversions.rhime import _standard_stages as stages
 
@@ -215,6 +217,7 @@ def test_prepare_is_independent_and_writes_inspectable_contract(
     setup = resolve_stage_setup(
         _params(
             basis_output_path="/outside/basis",
+            output_format=output_format,
             inlet=[slice(3, 10)],
         ),
         model="standard",

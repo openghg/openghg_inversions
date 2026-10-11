@@ -85,7 +85,10 @@ canonical load-or-generate operation with exact paths and labelled arrays:
 
    from openghg_inversions.basis import prepare_basis
    from openghg_inversions.rhime.preparation import resolve_basis_inputs
+   from openghg_inversions.rhime import validate_output_resources
 
+   # For a complete run that will produce outputs:
+   validate_output_resources(config.output)
    basis_inputs = resolve_basis_inputs(config)
    # Acquire merged data, prepare errors and filter observations here.
    basis = prepare_basis(
