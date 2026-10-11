@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from openghg_inversions.inversion_data import RhimeMergedData
+from openghg_inversions.inversion_data import RhimeMergedData, SiteOptions
 from openghg_inversions.rhime.params import RhimeConfig
 
 from openghg_inversions.basis.basis_functions import BasisFunctions
@@ -470,7 +470,15 @@ def test_custom_basis_runner_resolves_before_loading_project_artifact(
         project_basis_path=str(artifact_path), basis_algorithm=algorithm, fp_basis_case=None,
         max_child_pca_eccentricity=7.0,
     )
-    merged = SimpleNamespace(site_data={}, flux_data={"inventory": stored.flux.to_dataset(name="flux")}, split_by_sectors=False)
+    merged = RhimeMergedData(
+        site_data={"TAC": xr.Dataset({
+            "mf_error": ("time", [1.0]),
+            "mf_repeatability": ("time", [0.0]),
+            "mf_variability": ("time", [0.0]),
+        })},
+        flux_data={"inventory": stored.flux.to_dataset(name="flux")},
+        site_options=SiteOptions.from_inputs(sites=["TAC"], averaging_period="1h"),
+    )
     monkeypatch.setattr(custom_basis_runner.RhimeMergedData, "from_options", lambda **kwargs: merged)
     monkeypatch.setattr(custom_basis_runner, "filter_observations", lambda value, **kwargs: value)
     monkeypatch.setattr(

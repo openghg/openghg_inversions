@@ -8719,7 +8719,15 @@ output_format = "inv_out"
         normalise_calls.append(dict(params))
         return original_normalise(params)
 
-    merged = SimpleNamespace(site_data={}, flux_data={}, split_by_sectors=False)
+    merged = RhimeMergedData(
+        site_data={"TAC": xr.Dataset({
+            "mf_error": ("time", [1.0]),
+            "mf_repeatability": ("time", [0.0]),
+            "mf_variability": ("time", [0.0]),
+        })},
+        flux_data={},
+        site_options=SiteOptions.from_inputs(sites=["TAC"], averaging_period="1h"),
+    )
     filtered = merged
     basis = cast(Any, object())
     site_data = cast(Any, object())

@@ -10,6 +10,7 @@ from typing import Any
 import pytest
 import xarray as xr
 
+from openghg_inversions.inversion_data import RhimeMergedData
 from openghg_inversions.rhime.params import RhimeConfig
 
 from examples.rhime_cookiecutter.my_inversion import likelihoods
@@ -30,7 +31,18 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
         multisector=False,
     )
     sampler = config.sampler
-    merged = SimpleNamespace(site_data={}, flux_data={}, split_by_sectors=False)
+    merged = RhimeMergedData(
+        site_data={
+            site: xr.Dataset({
+                "mf_error": ("time", [1.0]),
+                "mf_repeatability": ("time", [0.0]),
+                "mf_variability": ("time", [0.0]),
+            })
+            for site in config.site_options.sites
+        },
+        flux_data={},
+        site_options=config.site_options,
+    )
     filtered = merged
     basis = object()
     site_data = object()
