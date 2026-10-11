@@ -291,9 +291,6 @@ def test_generated_project_basis_uses_guarded_connected_inertial_composition(
     from openghg_inversions.inversion_data import RhimeMergedData, SiteOptions
     merged = RhimeMergedData(site_data={"TAC": xr.Dataset()}, flux_data={},
         site_options=SiteOptions.from_inputs(sites=["TAC"], averaging_period="1h"))
-    def reject_legacy_adapter():
-        raise AssertionError("Modern custom basis must use datasets directly")
-    monkeypatch.setattr(merged, "to_legacy_fp_all", reject_legacy_adapter)
     data_args = {
         "species": "ch4",
         "domain": "EUROPE",

@@ -136,7 +136,8 @@ output or sampler settings. The acquisition-and-preparation convenience function
 ``prepare_rhime_inputs`` has been removed. For a complete inversion, use
 ``run_rhime``; for custom preparation, call ``RhimeMergedData.from_options`` followed by
 ``filter_rhime_observations``, ``build_rhime_basis``,
-``build_rhime_sensitivities`` and ``assemble_rhime_inputs``. ``retrieve_inversion_data`` performs
+``build_rhime_sensitivities`` and ``assemble_rhime_inputs``. The explicit legacy function
+``openghg_inversions.hbmcmc.legacy_data.retrieve_inversion_data`` performs
 fresh surface or column acquisition and returns its established six-tuple of
 merged data and retained metadata lists. The former
 ``data_processing_surface_notracer`` name is a deprecated wrapper with the same

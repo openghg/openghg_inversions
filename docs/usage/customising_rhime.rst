@@ -109,8 +109,9 @@ provenance. Its arrays remain borrowed and may be Dask-backed. It has no
 ``fp_all`` property. ``AcquisitionFacts`` records known species, domain and
 window bounds alongside other retrieval choices. For example,
 ``AcquisitionFacts(species="ch4", domain="EUROPE")`` makes no claim about dates.
-Temporary explicit ``from_legacy_fp_all`` and ``to_legacy_fp_all`` adapters
-support remaining scientific consumers until 0.9.
+Explicit ``from_legacy_fp_all`` and ``to_legacy_fp_all`` utility functions
+in ``openghg_inversions.hbmcmc.legacy_data`` support legacy callers until 0.9.
+They are separate from the modern data model.
 
 Acquisition stays in memory. For a reusable file, prepare the data with the
 named stages below and call ``RhimePreparedInputs.save``; the staged
@@ -139,7 +140,7 @@ persistence of acquisition provenance is deferred to
 `issue #829 <https://github.com/openghg/openghg_inversions/issues/829>`_.
 
 For the existing tuple-returning retrieval API, use
-``openghg_inversions.inversion_data.retrieve_inversion_data``. The former
+``openghg_inversions.hbmcmc.legacy_data.retrieve_inversion_data``. The former
 ``data_processing_surface_notracer`` name forwards the same arguments and
 return value and emits ``DeprecationWarning``.
 The tuple's flux and boundary wrappers are reconstructed from the modern

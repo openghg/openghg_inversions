@@ -11,6 +11,10 @@ import xarray as xr
 
 from openghg_inversions.inversion_data import AcquisitionFacts, InputProvenance, MergedDataProvenance, RhimeMergedData, SiteOptions
 from openghg_inversions.inversion_data._provenance import selected_provenance
+from openghg_inversions.hbmcmc.legacy_data import (
+    from_legacy_fp_all,
+    to_legacy_fp_all,
+)
 
 
 def merged_data():
@@ -57,8 +61,8 @@ def test_dataset_boundary_borrows_arrays_and_explicit_adapter_isolated():
     original = merged_data()
     calls = []
     with Callback(pretask=lambda *args: calls.append(args)):
-        legacy = original.to_legacy_fp_all()
-        restored = RhimeMergedData.from_legacy_fp_all(legacy, original.site_options)
+        legacy = to_legacy_fp_all(original)
+        restored = from_legacy_fp_all(legacy, original.site_options)
     assert not calls
     assert restored.site_data["TAC"] is original.site_data["TAC"]
     assert set(original.flux_data["a/b"].flux.data.dask) <= set(legacy[".flux"]["a/b"].data.flux.data.dask)
@@ -93,11 +97,11 @@ def test_legacy_projection_retains_selected_flux_and_boundary_identities():
         flux={"a/b": InputProvenance("archive", "flux-one", "v3"), "b": InputProvenance()},
         boundary=InputProvenance("boundary-store", "boundary-one", "v2"),
     )
-    legacy = original.to_legacy_fp_all()
+    legacy = to_legacy_fp_all(original)
     assert legacy[".flux"]["a/b"].metadata == {
         "data_type": "flux", "store": "archive", "uuid": "flux-one", "dataversion": "v3",
     }
-    restored = RhimeMergedData.from_legacy_fp_all(legacy, original.site_options)
+    restored = from_legacy_fp_all(legacy, original.site_options)
     assert restored.provenance.flux == original.provenance.flux
     assert restored.provenance.boundary == original.provenance.boundary
     assert restored.provenance.openghg_version == "unknown"
@@ -114,7 +118,7 @@ def test_available_openghg_revision_is_recorded(monkeypatch):
 
 
 def test_fresh_acquisition_records_each_input_identity(monkeypatch):
-    from openghg_inversions.inversion_data import get_data
+    from openghg_inversions.inversion_data import acquisition as get_data
 
     options = SiteOptions.from_inputs(sites=["TAC"], averaging_period="1h", platform="surface")
     time = np.array(["2020-01-01"], dtype="datetime64[ns]")
@@ -349,7 +353,7 @@ def test_partial_provenance_defaults_missing_inputs_and_preserves_supplied_ident
     with Callback(pretask=lambda *args: pytest.fail("provenance defaulting computed borrowed arrays")):
         merged = replace(original, provenance=supplied)
         selected = merged.with_site_data({"TAC": original.site_data["TAC"]})
-        legacy = selected.to_legacy_fp_all()
+        legacy = to_legacy_fp_all(selected)
     assert merged.provenance.openghg_version == version
     assert merged.provenance.observations == {"TAC": observation, "GOSAT": InputProvenance()}
     assert merged.provenance.footprints == {site: InputProvenance() for site in original.sites}

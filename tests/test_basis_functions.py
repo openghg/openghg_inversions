@@ -10,40 +10,25 @@ from sparse import SparseArray
 
 import openghg_inversions.basis as basis_package
 import openghg_inversions.basis._functions as basis_module
+import openghg_inversions.hbmcmc.legacy_basis as legacy_basis_module
 from openghg_inversions.basis.algorithms import ConnectedComponentSplitStrategy
-from openghg_inversions.basis._functions import (
-    basis,
+from openghg_inversions.basis._functions import (basis, _mean_fp_times_mean_flux)
+from openghg_inversions.hbmcmc.legacy_basis import (
     basis_functions,
     _flux_fp_from_fp_all,
-    _mean_fp_times_mean_flux,
-)
-from openghg_inversions.basis import (
     basis_weights_from_fp_all,
-    bucket_basis_from_weights,
     bucket_basis_function,
     fixed_outer_regions_basis,
-    load_country_region_classes,
-    load_intem_outer_regions,
-    paired_abs_response_weights,
-    quadtree_basis_from_weights,
     quadtree_basis_function,
-    region_constrained_basis_from_weights,
-    region_constrained_fixed_outer_basis_from_weights,
     region_constrained_basis_function,
-)
-from openghg_inversions.basis._wrapper import (
-    _save_basis,
-    _save_basis_datatree,
     load_basis_functions_from_fp_all as load_basis_functions,
     make_basis_functions_from_fp_all as make_basis_functions,
-)
-from openghg_inversions.basis.basis_functions import (
-    BASIS_ARTIFACT_PATH_ATTR,
-    BASIS_ARTIFACT_SOURCE_ATTR,
-    BasisFunctions,
     basis_functions_from_fp_all_flat_basis,
     flux_from_fp_all,
 )
+from openghg_inversions.basis import (bucket_basis_from_weights, load_country_region_classes, load_intem_outer_regions, paired_abs_response_weights, quadtree_basis_from_weights, region_constrained_basis_from_weights, region_constrained_fixed_outer_basis_from_weights)
+from openghg_inversions.basis._wrapper import (_save_basis, _save_basis_datatree)
+from openghg_inversions.basis.basis_functions import (BASIS_ARTIFACT_PATH_ATTR, BASIS_ARTIFACT_SOURCE_ATTR, BasisFunctions)
 from openghg_inversions.basis.operators import (
     BucketBasisOperator,
     MultiSourceBucketBasisOperator,
@@ -54,7 +39,7 @@ from openghg_inversions.flux_sanitization import (
     NONFINITE_POLICY_ZERO_FILL,
     sanitize_flux_nonfinite,
 )
-from openghg_inversions.inversion_data import data_processing_surface_notracer
+from openghg_inversions.hbmcmc.legacy_data import data_processing_surface_notracer
 
 from helpers import (
     convert_old_multisector_H_to_gathered,
@@ -999,16 +984,13 @@ def test_region_constrained_basis_from_weights_preserves_contrast_score_acceptan
 def test_legacy_basis_function_names_warn(monkeypatch, legacy_name, canonical_name):
     """Legacy compressed basis function names warn and delegate to canonical names."""
     sentinel = object()
-    monkeypatch.setattr(basis_module, canonical_name, lambda *args, **kwargs: sentinel)
+    monkeypatch.setattr(legacy_basis_module, canonical_name, lambda *args, **kwargs: sentinel)
 
     with pytest.warns(DeprecationWarning, match=f"{legacy_name}.*deprecated"):
-        result = getattr(basis_module, legacy_name)("arg", option=True)
+        result = getattr(legacy_basis_module, legacy_name)("arg", option=True)
 
     assert result is sentinel
-    with pytest.warns(DeprecationWarning, match=f"{legacy_name}.*deprecated"):
-        package_result = getattr(basis_package, legacy_name)("arg", option=True)
-
-    assert package_result is sentinel
+    assert not hasattr(basis_package, legacy_name)
 
 
 def test_region_constrained_compressed_name_is_not_exported():

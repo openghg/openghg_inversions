@@ -15,7 +15,6 @@ from dataclasses import MISSING, dataclass, field, fields
 from pathlib import Path
 from typing import Any, ClassVar, cast, get_args
 
-from openghg_inversions.basis._functions import basis_functions
 from openghg_inversions.flux_sanitization import FluxNonFiniteCheck
 from openghg_inversions.inversion_data._site_options import SiteOptions
 from openghg_inversions.model_error import MinErrorConfig
@@ -250,9 +249,10 @@ class RhimeConfig:
             aggregation_error_mode=aggregation_error_mode,
         )
         basis_algorithm = remaining.get("basis_algorithm", cls.basis_algorithm)
-        if remaining.get("fp_basis_case") is None and basis_algorithm not in basis_functions:
+        allowed_basis_algorithms = ("quadtree", "weighted", "region_constrained")
+        if remaining.get("fp_basis_case") is None and basis_algorithm not in allowed_basis_algorithms:
             raise ValueError(
-                f"`basis_algorithm` must be one of {tuple(basis_functions)!r} when no `fp_basis_case` "
+                f"`basis_algorithm` must be one of {allowed_basis_algorithms!r} when no `fp_basis_case` "
                 f"is supplied; got {basis_algorithm!r}."
             )
         min_error = normalise_min_error(remaining.pop("min_error", cls.min_error))

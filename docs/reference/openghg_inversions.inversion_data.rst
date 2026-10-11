@@ -11,9 +11,7 @@ openghg\_inversions.inversion\_data
    :maxdepth: 4
 
    openghg_inversions.inversion_data.acquisition
-   openghg_inversions.inversion_data.get_data
    openghg_inversions.inversion_data.getters
    openghg_inversions.inversion_data.prepared_inputs
    openghg_inversions.inversion_data.scenario
-   openghg_inversions.inversion_data.serialise
    openghg_inversions.inversion_data.xarray_adapter

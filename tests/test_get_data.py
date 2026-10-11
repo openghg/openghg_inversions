@@ -15,26 +15,23 @@ from openghg.dataobjects import FluxData
 from openghg.retrieve import get_obs_surface
 from openghg.types import SearchError
 
-import openghg_inversions.inversion_data.get_data as get_data_module
+import openghg_inversions.inversion_data.acquisition as get_data_module
 import openghg_inversions.inversion_data.getters as getters_module
 import openghg_inversions.inversion_data.scenario as scenario_module
 from openghg_inversions.flux_sanitization import FluxNonFiniteMetadata, NonFiniteFluxWarning
 from openghg_inversions.inversion_data._site_options import expand_site_boolean_option, expand_site_option
 from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
 from openghg_inversions.inversion_data._site_options import convert_to_list
-from openghg_inversions.inversion_data.get_data import (
-    add_obs_error,
+from openghg_inversions.inversion_data.acquisition import (add_obs_error, interpolate_flux_to_footprint_grid)
+from openghg_inversions.hbmcmc.legacy_data import (
     data_processing_surface_notracer,
-    interpolate_flux_to_footprint_grid,
-)
-from openghg_inversions.inversion_data.getters import get_flux_data
-from openghg_inversions.inversion_data.serialise import (
     _save_merged_data,
     datatree_to_fp_all,
     fp_all_from_dataset,
     load_merged_data,
     make_combined_scenario,
 )
+from openghg_inversions.inversion_data.getters import get_flux_data
 
 
 def test_interpolate_flux_to_footprint_grid_uses_nearest_without_mutation() -> None:
@@ -1152,7 +1149,7 @@ def test_add_obs_error_exceptions_warnings(rept_vals, perc_missing, caplog):
     fp_all = {"TAC": ds}
 
     with pytest.raises(ValueError):
-        add_obs_error(sites=["TAC"], fp_all=fp_all, add_averaging_error=True)
+        add_obs_error(sites=["TAC"], site_data=fp_all, add_averaging_error=True)
 
     # check for WARNING when `mf_error` contains zeros
     # plus INFO suggesting fix
@@ -1163,7 +1160,7 @@ def test_add_obs_error_exceptions_warnings(rept_vals, perc_missing, caplog):
 
     fp_all["TAC"] = ds.chunk(time=n // 3)
 
-    add_obs_error(sites=["TAC"], fp_all=fp_all, add_averaging_error=False)
+    add_obs_error(sites=["TAC"], site_data=fp_all, add_averaging_error=False)
 
     output = caplog.text
     assert f"{perc_missing} percent" in output
@@ -1181,7 +1178,7 @@ def test_add_obs_error_without_repeatability(caplog):
     # plus INFO suggesting fix
     caplog.set_level(logging.INFO)
 
-    add_obs_error(sites=["TAC"], fp_all=fp_all, add_averaging_error=True)
+    add_obs_error(sites=["TAC"], site_data=fp_all, add_averaging_error=True)
 
     output = caplog.text
     assert "`mf_repeatability` not present; using `mf_variability` for `mf_error` at site TAC" in output

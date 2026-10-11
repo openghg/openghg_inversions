@@ -665,7 +665,7 @@ non-null values in a custom country map remain distinct classes. Small float
 storage differences are accepted; incompatible coordinate values, units, or
 CRS definitions are rejected, and null outer cells remain label ``0``. This
 adapter is separate from the legacy
-``fixed_outer_regions_basis`` weighted route, whose historical output remains
+``fixed_outer_regions_basis_from_data`` weighted route, whose historical output remains
 unchanged, and it is not yet routed through RHIME configuration.
 
 This groundwork composes a transient class field and still passes one weight
