@@ -623,12 +623,12 @@ required sign-off, the 0.7.x line is the final release line with
 
 This priority is complete when:
 
-1. `run_rhime` remains the documented default and visibly narrates the whole
-   workflow.
+1. `run(..., model="standard")` is the documented default, and the concrete
+   `run_standard` recipe visibly narrates the whole workflow.
 2. A complete external-style runner copies only the short orchestration spine,
    imports supported APIs, and runs through normal retrieval and outputs.
 3. An ordinary likelihood variation is a custom Python callable plus one
-   `run_rhime(...)` call, without manual prepared-input/spec assembly.
+   `run(...)` call, without manual prepared-input/spec assembly.
 4. A cookiecutter-generated downstream package demonstrates the same seam
    using only public RHIME APIs.
 5. The default PyMC graph and its output contract have one obvious ownership
