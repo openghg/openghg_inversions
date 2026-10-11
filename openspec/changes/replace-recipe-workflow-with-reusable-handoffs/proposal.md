@@ -40,7 +40,7 @@ not a completed implementation or required artifact contract.
 
 ### New Capabilities
 
-- `recipe-execution`: Concrete scientific execution, grouped phase choices,
+- `recipe-execution`: Concrete scientific execution,
   explicit sampler defaults/array ownership, checks and route parity.
 - `prepared-recipe-handoff`: Saved preparation, production facts, compatible reuse
   and common file-reference/save-completion rules.
@@ -49,21 +49,39 @@ not a completed implementation or required artifact contract.
 
 ### Modified Capabilities
 
-There are no durable workflow capability specs on inspected `devel` `edeffaff`.
+- `rhime-configuration`: [Explicit deltas](specs/rhime-configuration/spec.md)
+  amend the [current configuration capability](../../specs/rhime-configuration/spec.md):
+  preparation fields move into one `PreparationConfig` group; complete and
+  phase-only resolution share owners without requiring unrelated sections.
+
 These capabilities replace [the archived superseded proposal](../archive/2026-10-11-unify-recipe-workflow-configuration/proposal.md).
 That change was archived without syncing its requirements; its historical
 contract is not a current capability or an implementation prerequisite.
-They also explicitly amend the landed [configuration change](../resolve-rhime-configuration/specs/rhime-configuration/spec.md):
-flat preparation fields become one owned group, and phase-only consumers no longer
-require complete configuration. Historical completed tasks remain baseline evidence,
-not evidence that this amendment is implemented.
 
-The three new capability documents live under this active change as proposed
-spec deltas. `openspec/specs/` is the home for current capability specs after
-implementation and reconciliation; `openspec/changes/archive/` retains completed
-or superseded change history. Moving a change to the archive and syncing its
-requirements are separate operations. This replacement remains active with its
-implementation tasks unchecked.
+The three new capabilities and configuration amendment live under this active
+change as proposed deltas. Main specs in `openspec/specs/` describe delivered
+behavior; `openspec/changes/archive/` retains completed or superseded history.
+This replacement remains active with all implementation tasks unchecked. Its
+deltas SHALL NOT be synced merely because planning is approved.
+
+## Reconciled lifecycle baseline
+
+The 11 October 2026 closeout uses merged `devel` `80b0ebf0`:
+
+| Current capability | Merged implementation | Reconciliation evidence |
+| --- | --- | --- |
+| `co2-output-reconstruction` | #715 and #734 | Affine value, codec and prepared binding; `test_affine_flux_map.py`, `test_affine_flux_map_io.py`, `test_co2_affine_output.py` |
+| `retained-state-reconstruction` | #732 | Directional basis operations and output consumers; `test_retained_reconstruction.py` and recorded profile decision |
+| `rhime-configuration` | #824/#825, reconciled through #826/#830 | Configuration and explicit preparation; `test_rhime_configuration.py`, `test_rhime_resolved_run.py`, `test_merged_data.py`, `test_basis_dataset_inputs.py` |
+
+Their completed changes are archived after syncing. Configuration's historical
+wrapper/cache requirements were reconciled with #826's landed removals before
+promotion. This is an inspection of implementation, existing tests and recorded
+merge evidence, not a new runtime test run. The original scientific reconstruction
+requirements are preserved. Pending #832–#841 changes are not promoted into the
+main specs. When rebasing that stack, carry its spec edits as active deltas or
+update the current capability with the corresponding landed implementation;
+do not recreate or append new requirements to an archived change.
 
 ## Impact
 
@@ -72,9 +90,10 @@ inventory, scientific order and saving semantics; [tasks.md](tasks.md) defines f
 implementation delivery phases and their acceptance gates. All implementation
 checkboxes remain unchecked. No runtime code, new file format or dependency ships.
 
-Reuse merged #773/#774 and #822–#825. Reconcile the pending #826/#830/#832 and
-#834–#837 work before implementing over it. #840 implements #838's explicit basis
-paths; #839's native flux/operator-loading work remains separate. #808 retains its
+Reuse merged #773/#774, #822–#826 and #830. Reconcile pending #832 and
+#834–#837 before implementing over them. #840 implements #838's explicit basis
+paths; #841 implements #839's native flux/operator-loading work and remains under
+review. #808 retains its
 bounded integrity/compatibility contract. Neither a new acquisition codec nor all
 CO2 design decisions block the first standard route.
 

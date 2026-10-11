@@ -8,6 +8,9 @@ choices, explicit numerical ownership, customization and established check behav
 Saved preparation and inference follow [prepared-recipe-handoff](../prepared-recipe-handoff/spec.md)
 and [sampled-recipe-handoff](../sampled-recipe-handoff/spec.md), respectively.
 
+Configuration ownership and phase resolution follow the
+[rhime-configuration amendments](../rhime-configuration/spec.md).
+
 These requirements describe pending implementation. Landed configuration and
 preparation foundations do not establish completion of the phase APIs or handoffs.
 
@@ -56,80 +59,6 @@ owners without implying additional nested or linked checkpoint support.
   or a family supports only prepared construction and its own inference
 - **THEN** its explicit scientific arguments, conflict rules and return contract
   remain available without requiring acquisition, MCMC staging or saved replay
-
-### Requirement: Grouped configuration with one owner per choice
-
-The public complete requested configuration SHALL group preparation, model,
-sampler and output choices. `RhimeConfig.preparation` SHALL hold one
-`RhimePreparationConfig` containing the moved acquisition/preparation fields and
-their defaults; the complete configuration SHALL NOT retain a second authoritative
-flat copy. The model, sampler and output groups SHALL reuse `RhimeModelSpec`,
-`RhimeSampler` and `RhimeOutputSpec`, respectively, rather than introduce duplicate
-settings types. Preparation SHALL resolve independently without constructing a
-model, sampler or output policy. Complete configured runs SHALL resolve their
-applicable groups once before scientific execution and SHALL keep requested
-choices distinct from retained scientific facts.
-
-The legacy INI frontend SHALL preserve its documented decoding and precedence.
-An adapter SHALL group its flat options into ordinary section mappings without
-requiring new INI syntax or a new file format. Grouping SHALL NOT perform
-scientific execution or force resolution of unrelated groups. Option names and
-defaults SHALL have concrete owners rather than independent duplicate schemas.
-
-#### Scenario: Inspect a grouped complete request
-- **WHEN** a caller resolves a complete supported request
-- **THEN** preparation choices are available through `config.preparation`, with
-  model, sampler and output choices available through their respective groups
-- **AND** each choice and default has one authoritative owner
-
-#### Scenario: Resolve preparation alone
-- **WHEN** a caller supplies valid preparation choices without model, sampler or
-  output choices
-- **THEN** preparation resolution succeeds without constructing those other groups
-  or requiring their inputs
-
-#### Scenario: Group a familiar INI file
-- **WHEN** a caller groups a supported existing INI request
-- **THEN** its decoded options and winning values retain their established meaning
-- **AND** the grouped representation is an ordinary mapping suitable for the same
-  group resolvers as a Python request
-
-### Requirement: Phase-only resolution and authoritative model facts
-
-Each phase SHALL select its applicable option groups before applying value
-validation or defaults. Known unrelated options in a shared configuration file
-SHALL NOT be forwarded to that phase or make its resolution depend on their
-values. Unsupported option names and explicitly supplied phase-inapplicable
-arguments SHALL fail at the applicable outer boundary before scientific artifact
-writes. Repeated claims about authoritative prepared facts SHALL be checked
-against the authenticated handoff rather than silently overwriting its facts.
-
-Saved-input sampling and prior readiness SHALL bind model choices to authenticated
-preparation facts, including species, domain, source/layout information and the
-recorded requested date anchor. Callers SHALL NOT have to repeat those facts to
-resolve a model-only request. Complete runs SHALL use the same model resolution
-rules with resolved requested preparation choices, then validate compatibility
-with the retained prepared inputs. Changed model or likelihood choices SHALL be
-accepted only when their required prepared inputs and structure are available;
-they SHALL NOT reinterpret baked preparation choices or reacquire inputs.
-
-#### Scenario: Sample with model and sampler choices only
-- **WHEN** a caller supplies an authenticated prepared handoff and valid model
-  and sampler groups without acquisition or product configuration
-- **THEN** sampling resolves those groups using authoritative saved facts and does
-  not require unrelated configuration
-
-#### Scenario: Unrelated shared-file value
-- **WHEN** a preparation command reads a shared file containing an invalid sampler
-  value alongside valid preparation choices
-- **THEN** preparation selects and validates its own group without resolving or
-  validating that inactive sampler value
-
-#### Scenario: Conflicting saved-input claim
-- **WHEN** a sampling request repeats a species, domain, source/layout or date
-  claim that conflicts with the authenticated preparation facts
-- **THEN** the request fails before model execution or scientific artifact writes
-- **AND** the handoff's facts remain unchanged
 
 ### Requirement: Existing sampler API and invocation isolation
 

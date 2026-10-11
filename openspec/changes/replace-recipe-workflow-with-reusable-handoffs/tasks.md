@@ -2,7 +2,7 @@
 
 These are future implementation tasks, all unchecked. This planning change
 changes no runtime behavior. Follow [design.md](design.md) and the three
-capability specs. The four delivery sections below define proposed bounded
+new capability specs and configuration amendment. The four delivery sections below define proposed bounded
 implementation-child scopes for OPE-207; they do not create Linear issues or
 represent one assignment spanning every family.
 
@@ -14,11 +14,11 @@ proceed independently. Cached CO2 adoption follows the ordinary CO2 handoff and
 result conventions. A passing mock-forwarding test alone clears none of these
 gates.
 
-The reviewed baseline is devel `edeffaff`: reuse the merged acquisition/inference
+The reviewed baseline is devel `80b0ebf0`: reuse the merged acquisition/inference
 ownership from #773/#774 and configuration/preparation work from #822–#825.
-Cleanup #826/#830/#832 and boundary work #834–#837 remain pending. #840 addresses
-#838's explicit basis paths; #839's runtime-flux/operator-loading work is not
-ready. Consume resulting APIs and record merged evidence rather than duplicating
+Cleanup #826/#830 is merged; #832 and boundary work #834–#837 remain pending.
+#840 addresses #838's explicit basis paths; #841 addresses #839's runtime-flux/
+operator-loading work and remains under review. Consume resulting APIs and record merged evidence rather than duplicating
 these owners or treating open PRs as landed. #808 retains the bounded manifest,
 hash and consumer-contract work. Acquisition persistence/replay belongs to
 deferred #829 and is not required for prepared/sample handoffs. OPE-164 records
@@ -29,7 +29,7 @@ adoption remains in OPE-165, retaining its completed numerical persistence.
 ## 1. Complete standard preparation-to-products route
 
 - [ ] 1.1 Group the existing resolved `RhimeConfig` preparation fields in one
-  `RhimePreparationConfig` at their current owner, moving fields/defaults rather than copying
+  `PreparationConfig` at their current owner, moving fields/defaults rather than copying
   them into a second schema. Keep model, sampler and output choices with their
   owners. Verify full and phase-only inputs resolve the same applicable choices
   without demanding unrelated sections, touching arrays or mutating caller values.
@@ -179,7 +179,7 @@ adoption remains in OPE-165, retaining its completed numerical persistence.
 
 ## 5. Integrated acceptance and completion
 
-- [ ] 5.1 Reconcile all four family deliveries against the three capability specs
+- [ ] 5.1 Reconcile all four family deliveries against the three new capability specs and configuration amendment
   and record merged PRs, commands/results and justified numerical tolerances. Run
   relevant broader scientific, configuration, CLI, staged/replay, builder and output
   coverage; run Ruff on changed Python paths and `git diff --check`. Submit required

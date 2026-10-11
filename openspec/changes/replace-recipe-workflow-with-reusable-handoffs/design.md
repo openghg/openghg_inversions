@@ -3,23 +3,27 @@
 ## Context
 
 See [proposal.md](proposal.md) for the replacement's motivation. The inspected
-landed base is `devel` at `edeffaff` (11 October 2026). PRs #773/#774 and #822–#825
+landed base is `devel` at `80b0ebf0` (11 October 2026). PRs #773/#774 and #822–#825
 provide acquisition, prepared-value, inference and concrete configuration owners.
 This plan consumes that groundwork; #798 remains unmerged prototype evidence.
 
-The remaining stack is not completion of this change. #826/#830/#832 remove the
-obsolete checkpoint/cache workflow and isolate legacy utilities; #834 changes
+Merged #826/#830 remove the obsolete checkpoint/cache workflow and provide dataset
+basis inputs. The remaining stack is not completion of this change. #832 isolates
+legacy utilities; #834 changes
 observation-error ordering; #835/#836 own terminology/public entry points; #837
-owns joint input materialization. PR #840 at `ac4b9345` implements #838's explicit
-basis paths and support maps. #839 separately owns native runtime-flux resolution
-and operator-only loading. Recheck their merged revisions before implementation.
+owns joint input materialization. PR #840 implements #838's explicit
+basis paths and support maps. PR #841 implements #839's native runtime-flux
+resolution and operator-only loading and remains under review. Recheck their
+merged revisions before implementation.
 Acquisition replay is deferred to #829 and does not block prepared/sample handoffs.
 
-The [configuration change](../resolve-rhime-configuration/specs/rhime-configuration/spec.md)
+The [current configuration capability](../../specs/rhime-configuration/spec.md)
 describes the landed flat preparation fields and complete requested configuration.
 This proposal deliberately replaces those two constraints with grouped ownership
-and independently resolved phases. Its completed task evidence does not establish
-implementation of this amendment. No new durable capability is synced here.
+and independently resolved phases through an explicit
+[configuration delta](specs/rhime-configuration/spec.md). Completed baseline
+tasks do not establish implementation of this amendment. Only reconciled delivered
+capabilities are synced; the four deltas in this change remain pending.
 
 Read the [execution](specs/recipe-execution/spec.md),
 [preparation](specs/prepared-recipe-handoff/spec.md) and
@@ -42,7 +46,7 @@ Graph-free replay forbids graph construction, not imports of modules using PyMC.
 ### 1. Group choices once, then resolve the selected phase
 
 Use one complete requested `RhimeConfig` for full configured execution. Move its
-existing preparation fields/defaults into `RhimePreparationConfig`; do not keep
+existing preparation fields/defaults into `PreparationConfig`; do not keep
 another authoritative flat copy or parallel default table. Keep `SiteOptions`,
 `RhimeModelSpec`, `RhimeSampler` and `RhimeOutputSpec` as their existing owners.
 One preparation record has a concrete purpose: it can be resolved and consumed
@@ -56,7 +60,7 @@ API names. Decoded sections are ordinary mappings, not resolved records:
 sections = group_legacy_options(read_rhime_ini("run.ini"))
 # {"preparation": {...}, "model": {...}, "sampler": {...}, "output": {...}}
 
-preparation = RhimePreparationConfig.from_params(sections["preparation"])
+preparation = PreparationConfig.from_params(sections["preparation"])
 config = RhimeConfig(
     preparation=preparation,
     model=resolve_model_options(sections["model"], facts=preparation.requested_facts),
@@ -216,7 +220,7 @@ full request can supply its preparation record; a preparation-only file can reso
 that record independently:
 
 ```python
-preparation = RhimePreparationConfig.from_params(sections["preparation"])
+preparation = PreparationConfig.from_params(sections["preparation"])
 prepared = standard_stages.prepare(preparation, output_dir="runs/prepared")
 a = standard_stages.sample(prepared, model=model_a, output_dir="runs/a")
 b = standard_stages.sample(prepared, model=model_b, output_dir="runs/b")

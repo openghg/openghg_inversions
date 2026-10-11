@@ -1,15 +1,10 @@
 # RHIME configuration
 
-> **Follow-on amendment (11 October 2026):** This artifact records the delivered
-> configuration baseline. The [reusable-handoff design](../../../replace-recipe-workflow-with-reusable-handoffs/design.md)
-> deliberately replaces its flat preparation-field requirement with one owned
-> `RhimePreparationConfig` group, and its complete-configuration requirement
-> for saved stages with independent phase resolution. Existing model/output/
-> sampler owners remain; no duplicate sampler settings class is introduced.
-> The replacement adds explicit live `sampler="default"` and inert replay
-> results. These are pending implementation requirements in that change;
-> completed tasks in this change do not certify their delivery. The remaining
-> baseline requirements and their validation evidence retain their scope.
+> Reconciled on 11 October 2026 against merged `devel` `80b0ebf0`:
+> #824/#825 supply configuration/preparation; #826 removes the obsolete
+> preparation wrapper and modern merged-cache route; #830 supplies dataset basis
+> inputs. The reusable-handoff change proposes subsequent configuration changes;
+> none of its grouped-phase or sampler/replay requirements are delivered here.
 
 ## Purpose
 
@@ -248,7 +243,7 @@ pre-preparation run description and a preparation dictionary.
 Acquisition and preparation SHALL retain responsibility for data-dependent site
 selection. Dropping or reordering sites SHALL select every applicable resolved
 site option together by label, without reparsing external shorthand or changing
-the request. Existing empty-set, retained-label and cache-compatibility rules
+the request. Existing empty-set, retained-label and supplied-data compatibility rules
 SHALL remain at their owning boundaries. A supplied valid compatible merged
 handoff SHALL retain its authoritative options and no-acquisition behavior.
 
@@ -259,9 +254,9 @@ handoff SHALL retain its authoritative options and no-acquisition behavior.
 - **THEN** all applicable selectors follow BSD and TAC in that order
 - **AND** the original requested configuration remains unchanged
 
-#### Scenario: Reload or filtering drops a middle site
+#### Scenario: Filtering drops a middle site
 
-- **WHEN** a compatible reload or filtering retains TAC and BSD from the
+- **WHEN** filtering retains TAC and BSD from the
   established TAC, MHD, BSD order
 - **THEN** every applicable selector retains the TAC, BSD pairing and order
 - **AND** selection preserves the existing ordering policy without resolving the
@@ -283,8 +278,9 @@ handoff SHALL retain its authoritative options and no-acquisition behavior.
 
 ### Requirement: Compatible public adapters and scientific choices
 
-Except for the former stage adapter, `resolve_rhime_config` and transitional
-old-location import removals, and the revised INI reader contract specified below, supported
+Except for the removed `prepare_rhime_inputs` convenience function, obsolete
+modern merged-cache options, former stage adapter, `resolve_rhime_config`,
+transitional old-location imports and revised INI reader contract specified below, supported
 scientific Python and CLI entry points SHALL retain their signatures, shorthand,
 override behavior and return contracts through adapters to the same semantic
 resolution or shared applicable site translation. Direct preparation/retrieval
@@ -338,22 +334,21 @@ removed, without a compatibility projection. Required basis identity and source
 arguments, sensitivity domain/source arguments, and assembly domain/start date
 SHALL be required keyword arguments rather than placeholder `None` defaults.
 
-The acquisition-and-preparation convenience function `prepare_rhime_inputs`
-SHALL be deprecated with a warning naming the loading and scientific preparation
-replacements. It SHALL retain its established signature, shorthand and prepared
-return, while delegating science to these same named stages. Equivalent inputs
-SHALL retain the same prepared metadata, including footprint provenance; the
-adapter SHALL NOT retain independent filtering or assembly policy.
+The obsolete acquisition-and-preparation convenience function
+`prepare_rhime_inputs` and its private retrieval/reload dispatcher SHALL be
+absent. Recipes SHALL acquire through the merged-data owner or consume supplied
+data, then call scientific preparation explicitly. Prepared-input persistence
+SHALL remain available independently of acquisition persistence.
 Public selector construction SHALL use `SiteOptions.from_inputs`. The internal
 `inversion_data._site_options.convert_to_list` helper SHALL retain its calling
 and list-return contract through shared selector expansion without a warning;
 its old `get_data` import alias SHALL be removed.
 
-#### Scenario: Deprecated preparation delegates to canonical science
+#### Scenario: Explicit preparation replaces the removed convenience function
 
-- **WHEN** a caller invokes `prepare_rhime_inputs` with valid inputs
-- **THEN** it emits a deprecation warning and returns prepared inputs through the
-  same filter, basis, sensitivity and assembly operations used by ordinary runners
+- **WHEN** a caller composes supported acquisition and named scientific preparation
+- **THEN** it obtains prepared inputs through the same filter, basis, sensitivity
+  and assembly operations used by ordinary runners
 - **AND** transport-model and meteorological-model provenance is retained when
   present in the source observations
 - **AND** it does not require full model, output or sampler configuration
@@ -451,16 +446,17 @@ be identified explicitly rather than silently assigned its old contract.
 - **AND** configuration adapters are not required to reconstruct different raw
   forms to preserve their historical staged identities
 
-### Requirement: Explicit supplied, cached and freshly acquired data paths
+### Requirement: Explicit supplied and freshly acquired data paths
 
-The approved #815 split uses distinct acquisition factories. Configured recipes
-SHALL first reuse compatible supplied merged data unchanged without cache,
-object-store or save I/O. Otherwise they SHALL call `RhimeMergedData.load` for
-an explicit reload request or `RhimeMergedData.from_options` for fresh
-acquisition. Canonical calls SHALL consume resolved selectors without further
-shorthand expansion. Both factories SHALL retain aligned site selections;
-loading SHALL check explicit time-resolution selectors and sector layout.
-The current codec requires caller-supplied selectors when loading.
+Configured recipes SHALL first reuse compatible supplied merged data unchanged
+without object-store or save I/O. Otherwise they SHALL call
+`RhimeMergedData.from_options` for fresh acquisition. Canonical calls SHALL
+consume resolved selectors without further shorthand expansion and retain aligned
+site selections. The modern merged-data value SHALL be an in-memory handoff
+without a save/load factory or cache dispatcher. Removed modern cache options
+SHALL fail clearly rather than be silently ignored. Legacy serialization SHALL
+remain an explicitly invoked utility, separate from this modern acquisition route;
+optional acquisition persistence/replay remains deferred to #829.
 
 #### Scenario: Supplied data bypasses I/O
 
@@ -468,15 +464,15 @@ The current codec requires caller-supplied selectors when loading.
 - **THEN** its scientific data and authoritative site options are reused
   unchanged, without cache or object-store I/O
 
-#### Scenario: Explicit cache failure raises
+#### Scenario: Removed cache options fail clearly
 
-- **WHEN** an explicit reload has no directory, its path is missing, or its
-  artifact is corrupt or incompatible
-- **THEN** loading SHALL raise the failure
-- **AND** it SHALL NOT fall back to fresh acquisition (#806)
+- **WHEN** a modern request includes `reload_merged_data`, `save_merged_data`,
+  `merged_data_dir` or `merged_data_name`
+- **THEN** resolution rejects the unsupported option before acquisition
+- **AND** it does not silently start fresh acquisition or create a cache
 
-#### Scenario: Fresh saving remains opt-in
+#### Scenario: Fresh acquisition remains in memory
 
-- **WHEN** fresh acquisition is selected without an explicit saving request
+- **WHEN** fresh acquisition is selected
 - **THEN** acquisition returns the handoff without writing a merged cache
-- **AND** successful reload or supplied-data reuse SHALL NOT trigger saving
+- **AND** supplied-data reuse SHALL NOT trigger saving

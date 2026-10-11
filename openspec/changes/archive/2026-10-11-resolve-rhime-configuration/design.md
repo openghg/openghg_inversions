@@ -1,15 +1,14 @@
 # Design
 
-> **Follow-on amendment (11 October 2026):** This artifact records the delivered
-> configuration baseline. The [reusable-handoff design](../replace-recipe-workflow-with-reusable-handoffs/design.md)
-> deliberately replaces its flat preparation-field requirement with one owned
-> `RhimePreparationConfig` group, and its complete-configuration requirement
-> for saved stages with independent phase resolution. Existing model/output/
-> sampler owners remain; no duplicate sampler settings class is introduced.
-> The replacement adds explicit live `sampler="default"` and inert replay
-> results. These are pending implementation requirements in that change;
-> completed tasks in this change do not certify their delivery. The remaining
-> baseline requirements and their validation evidence retain their scope.
+> **Closeout reconciliation (11 October 2026):** The historical narrative and
+> checked tasks below describe the delivered #824 configuration slice. The
+> capability spec has been reconciled with merged #825/#826/#830 at `80b0ebf0`,
+> including removal of the preparation convenience wrapper and modern merged-cache
+> route. #832–#841 remain pending; their amended contracts must be carried by
+> active changes when those PRs land, rather than editing this archived record.
+> The [reusable-handoff change](../../replace-recipe-workflow-with-reusable-handoffs/proposal.md)
+> owns proposed grouped configuration and new sampler/replay behavior; its tasks
+> remain unchecked. This archive does not certify those follow-on changes.
 
 ## Context
 
@@ -309,7 +308,7 @@ Do not add old-spelling fields, identity methods or hash migration bridges.
 
 [#808](https://github.com/openghg/openghg_inversions/issues/808) and
 [#802](https://github.com/openghg/openghg_inversions/pull/802) own staged encoding,
-manifest and identity contracts. The [staged guide](../../../docs/usage/staged_workflow.rst)
+manifest and identity contracts. The [staged guide](../../../../docs/usage/staged_workflow.rst)
 requires 0.7 artifacts to be consumed with 0.7; 0.8 does not promise compatibility.
 Any change affecting a currently supported staged contract must be identified
 explicitly and reconciled with that work, not silently assigned the old contract.
