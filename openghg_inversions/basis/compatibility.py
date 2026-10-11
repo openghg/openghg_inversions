@@ -59,45 +59,88 @@ def make_basis_functions(
 ) -> BasisFunctions:
     """Translate historical basis keywords once, then call modern preparation.
 
-    Directory/name output conventions are deprecated in 0.9; legacy flat
-    output remains explicitly available, with no automatic removal date.
+    Calling this adapter emits DeprecationWarning. Directory/name output
+    conventions are deprecated in 0.9; legacy flat output remains explicitly
+    available, with no automatic removal date. Prefer
+    :func:`~openghg_inversions.basis.prepare_basis` for the shared generation
+    arguments and scientific-map contracts.
+
+    ``fp_basis_case`` bypasses generation and discovers matching saved files
+    below ``basis_directory/domain`` (default: repository ``basis_functions``).
+    Otherwise ``basis_algorithm`` is required, and ``country_directory`` selects
+    historical support filenames before numerical work. ``outer_regions_path``
+    follows the historical relative-path convention. Inputs remain borrowed;
+    selected support maps are loaded eagerly.
+
+    ``emissions_name`` aliases ``flux_sources`` and cannot be supplied with it.
+    ``output_path`` is a historical root directory, with a domain subdirectory
+    and filename derived from ``species``, algorithm, month and ``outputname``.
+    It is used only for generated bases. ``basis_output_format="datatree"``
+    writes a retained operator/flux artifact; ``"legacy"`` writes its flat
+    partition. ``output_path=None`` disables saving. Returns the operator bound to runtime flux
+    with source and, where applicable, artifact-path metadata.
     """
     from ._wrapper import prepare_basis
     from .support import resolve_basis_support_maps
     import warnings
 
-    warnings.warn("make_basis_functions is deprecated; use prepare_basis with exact paths and resolved maps.",
-                  DeprecationWarning, stacklevel=2)
-    flux_sources = cast(Sequence[str] | None, resolve_deprecated_keyword(
-        "emissions_name", "flux_sources", emissions_name, flux_sources
-    ))
+    warnings.warn(
+        "make_basis_functions is deprecated; use prepare_basis with exact paths and resolved maps.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    flux_sources = cast(
+        Sequence[str] | None,
+        resolve_deprecated_keyword("emissions_name", "flux_sources", emissions_name, flux_sources),
+    )
     if basis_output_format not in _VALID_BASIS_OUTPUT_FORMATS:
         raise ValueError(f"Unknown basis_output_format {basis_output_format!r}.")
     if fp_basis_case is None and basis_algorithm is not None:
         _validate_basis_algorithm(basis_algorithm)
     if fp_basis_case is not None:
         result = load_basis_functions(
-            flux_data=flux_data, split_by_sectors=split_by_sectors,
-            domain=domain, basis_case=fp_basis_case, basis_directory=basis_directory,
+            flux_data=flux_data,
+            split_by_sectors=split_by_sectors,
+            domain=domain,
+            basis_case=fp_basis_case,
+            basis_directory=basis_directory,
         )
     else:
         maps = resolve_basis_support_maps(
-            domain=domain, basis_algorithm=basis_algorithm, fix_outer_regions=fix_outer_regions,
+            domain=domain,
+            basis_algorithm=basis_algorithm,
+            fix_outer_regions=fix_outer_regions,
             landsea_path=(Path(country_directory) / f"country-land-sea_{domain}.nc")
-                if country_directory is not None and basis_algorithm == "weighted" else None,
+            if country_directory is not None and basis_algorithm == "weighted"
+            else None,
             outer_regions_path=resolve_legacy_outer_path(
-                domain, outer_regions_path, country_directory if fix_outer_regions else None),
+                domain, outer_regions_path, country_directory if fix_outer_regions else None
+            ),
         )
         result = prepare_basis(
-            site_data=site_data, flux_data=flux_data, split_by_sectors=split_by_sectors,
-            domain=domain, start_date=start_date, flux_sources=flux_sources, nbasis=nbasis,
-            basis_algorithm=basis_algorithm, fix_outer_regions=fix_outer_regions,
-            **maps, region_classes=region_classes, region_allocation=region_allocation,
-            min_regions_per_class=min_regions_per_class, split_acceptance=split_acceptance,
-            contrast_contribution=contrast_contribution, contrast_cell_weight=contrast_cell_weight,
-            min_contrast_delta_eig=min_contrast_delta_eig, min_contrast_lambda=min_contrast_lambda,
-            contrast_tau=contrast_tau, contrast_sigma_design=contrast_sigma_design,
-            contrast_s_diag=contrast_s_diag, allow_empty_inner_region=allow_empty_inner_region,
+            site_data=site_data,
+            flux_data=flux_data,
+            split_by_sectors=split_by_sectors,
+            domain=domain,
+            start_date=start_date,
+            flux_sources=flux_sources,
+            nbasis=nbasis,
+            basis_algorithm=basis_algorithm,
+            fix_outer_regions=fix_outer_regions,
+            landsea_classes=maps["landsea_classes"],
+            outer_regions=maps["outer_regions"],
+            region_classes=region_classes,
+            region_allocation=region_allocation,
+            min_regions_per_class=min_regions_per_class,
+            split_acceptance=split_acceptance,
+            contrast_contribution=contrast_contribution,
+            contrast_cell_weight=contrast_cell_weight,
+            min_contrast_delta_eig=min_contrast_delta_eig,
+            min_contrast_lambda=min_contrast_lambda,
+            contrast_tau=contrast_tau,
+            contrast_sigma_design=contrast_sigma_design,
+            contrast_s_diag=contrast_s_diag,
+            allow_empty_inner_region=allow_empty_inner_region,
         )
     if output_path is not None and fp_basis_case is None:
         flat = result.flat_basis()
@@ -108,7 +151,9 @@ def make_basis_functions(
         if basis_output_format == "legacy":
             path = _save_basis(flat, basis_algorithm, output_path, domain, species, outputname)
         else:
-            path = _save_basis_datatree(result, flat, basis_algorithm, output_path, domain, species, outputname)
+            path = _save_basis_datatree(
+                result, flat, basis_algorithm, output_path, domain, species, outputname
+            )
         result = result.with_metadata({BASIS_ARTIFACT_PATH_ATTR: str(path)})
     return result
 
@@ -148,19 +193,29 @@ def load_basis_functions(
     from ._wrapper import prepare_basis
 
     selected = resolve_legacy_basis_inputs(
-        domain=domain, fp_basis_case=basis_case, basis_directory=basis_directory,
-        country_directory=None, outer_regions_path=None,
+        domain=domain,
+        fp_basis_case=basis_case,
+        basis_directory=basis_directory,
+        country_directory=None,
+        outer_regions_path=None,
     )
     result = prepare_basis(
-        site_data={}, flux_data=flux_data, split_by_sectors=split_by_sectors,
-        domain=domain, start_date="", nbasis=0, **selected,
+        site_data={},
+        flux_data=flux_data,
+        split_by_sectors=split_by_sectors,
+        domain=domain,
+        start_date="",
+        nbasis=0,
+        **selected,
     )
     if "basis_partition" in selected:
         files = _basis_artifact_files(domain=domain, basis_case=basis_case, basis_directory=basis_directory)
-        result = result.with_metadata({
-            BASIS_ARTIFACT_SOURCE_ATTR: "legacy_flat",
-            BASIS_ARTIFACT_PATH_ATTR: _basis_artifact_path_metadata(files),
-        })
+        result = result.with_metadata(
+            {
+                BASIS_ARTIFACT_SOURCE_ATTR: "legacy_flat",
+                BASIS_ARTIFACT_PATH_ATTR: _basis_artifact_path_metadata(files),
+            }
+        )
     return result
 
 
@@ -271,26 +326,53 @@ def _save_basis_datatree(
 
 
 def resolve_legacy_basis_inputs(
-    *, domain: str, fp_basis_case: str | None, basis_directory: str | Path | None,
-    country_directory: str | Path | None, outer_regions_path: str | Path | None,
+    *,
+    domain: str,
+    fp_basis_case: str | None,
+    basis_directory: str | Path | None,
+    country_directory: str | Path | None,
+    outer_regions_path: str | Path | None,
 ) -> dict[str, Any]:
-    """Consume historical request conventions once at the application boundary."""
+    """Translate historical discovery choices into exact preparation inputs.
+
+    ``fp_basis_case`` discovers files below ``basis_directory/domain``; None
+    selects no saved basis. A single retained artifact is preferred over flat
+    files; otherwise matching flat files are combined into a labelled partition.
+    An omitted directory uses the repository's ``basis_functions`` root.
+    ``country_directory`` supplies historical land/sea and outer-map filenames;
+    ``outer_regions_path`` can override the outer-map selection.
+
+    Returns selected ``basis_path`` or ``basis_partition`` and optional
+    ``landsea_path``/``outer_regions_path`` entries. Flat partitions are read
+    here; support maps and retained artifacts are read by the calling boundary.
+    Emits DeprecationWarning on every call. Missing artifacts raise
+    FileNotFoundError; multiple retained matches raise ValueError.
+    """
     import warnings
 
-    warnings.warn("Basis case/directory options are deprecated; select exact artifact and support-map paths.",
-                  DeprecationWarning, stacklevel=2)
+    warnings.warn(
+        "Basis case/directory options are deprecated; select exact artifact and support-map paths.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     selected: dict[str, Any] = {}
     if fp_basis_case is not None:
-        files = _basis_artifact_files(domain=domain, basis_case=fp_basis_case, basis_directory=basis_directory)
+        files = _basis_artifact_files(
+            domain=domain, basis_case=fp_basis_case, basis_directory=basis_directory
+        )
         retained = [file for file in files if _is_basis_datatree_artifact(file)]
         if retained:
             if len(retained) != 1:
-                raise ValueError("Historical basis case matched multiple retained artifacts: "
-                                 + ", ".join(str(path) for path in retained)
-                                 + ". Use a more specific basis_case or an exact basis_path.")
+                raise ValueError(
+                    "Historical basis case matched multiple retained artifacts: "
+                    + ", ".join(str(path) for path in retained)
+                    + ". Use a more specific basis_case or an exact basis_path."
+                )
             selected["basis_path"] = retained[0]
         else:
-            selected["basis_partition"] = basis(domain, fp_basis_case, str(basis_directory) if basis_directory else None).basis
+            selected["basis_partition"] = basis(
+                domain, fp_basis_case, str(basis_directory) if basis_directory else None
+            ).basis
     resolved_outer_path = resolve_legacy_outer_path(domain, outer_regions_path, country_directory)
     if resolved_outer_path is not None:
         selected["outer_regions_path"] = resolved_outer_path
@@ -342,14 +424,28 @@ def load_country_region_classes(domain: str, country_directory: str | Path | Non
 
     Every class value is preserved. A missing domain never selects another
     domain. Modern callers use an exact support path and resolved map arrays.
+    ``country_directory`` selects ``country-land-sea_<domain>.nc``; None selects
+    the exact domain's packaged map. Returns an eager ``country`` array with
+    file/variable attributes, without grid alignment. File and variable errors
+    propagate to the caller.
     """
-    path = (Path(country_directory) / f"country-land-sea_{domain}.nc"
-            if country_directory is not None else packaged_basis_support_path("landsea", domain))
+    path = (
+        Path(country_directory) / f"country-land-sea_{domain}.nc"
+        if country_directory is not None
+        else packaged_basis_support_path("landsea", domain)
+    )
     return load_basis_support_map(path, "country")
 
 
 def load_intem_outer_regions(domain: str, outer_regions_path: str | Path | None = None) -> xr.DataArray:
-    """Compatibility selector for a packaged or explicit fixed-outer map."""
+    """Eagerly read ``region`` from a historical fixed-outer map selection.
+
+    None selects the exact domain's packaged map. Explicit paths are used as
+    given; an absent relative path can resolve beside this module for historical
+    packaged filenames. Returns labelled geometry without grid alignment, and
+    preserves the ``inner_region_label`` attribute when present. File and
+    variable errors propagate. Modern callers use an exact support-file path.
+    """
     if outer_regions_path is None:
         path = packaged_basis_support_path("outer_regions", domain)
     else:
@@ -360,14 +456,19 @@ def load_intem_outer_regions(domain: str, outer_regions_path: str | Path | None 
 
 
 def load_landsea_indices(domain: str, country_directory: str | None = None):
-    """Compatibility reader; numerical kernels require pre-resolved masks."""
+    """Return the historical country map as an eager unlabelled NumPy array.
+
+    Selection follows :func:`load_country_region_classes`; every class value
+    and the file's axis order are preserved. The caller must align the array to
+    its weight grid before passing it to a numerical kernel.
+    """
     return load_country_region_classes(domain, country_directory).to_numpy()
 
 
-
-
 def resolve_legacy_outer_path(
-    domain: str, outer_regions_path: str | Path | None, country_directory: str | Path | None,
+    domain: str,
+    outer_regions_path: str | Path | None,
+    country_directory: str | Path | None,
 ) -> Path | None:
     """Resolve historical relative outer-map selections at the old boundary.
 
@@ -375,8 +476,11 @@ def resolve_legacy_outer_path(
     names remain supported here; canonical support loaders use exact paths.
     """
     if outer_regions_path is None:
-        return (Path(country_directory) / f"outer_region_definition_{domain}.nc"
-                if country_directory is not None else None)
+        return (
+            Path(country_directory) / f"outer_region_definition_{domain}.nc"
+            if country_directory is not None
+            else None
+        )
     path = Path(outer_regions_path)
     if not path.is_absolute():
         if country_directory is not None and (Path(country_directory) / path).exists():

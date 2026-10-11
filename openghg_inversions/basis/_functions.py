@@ -284,7 +284,19 @@ def basis_from_weights(
     landsea_indices: np.ndarray | None = None,
     **region_kwargs: Any,
 ) -> xr.DataArray:
-    """Fit a generated basis with the existing weight-array algorithms."""
+    """Dispatch resolved spatial weights to one eager basis-fitting algorithm.
+
+    ``basis_algorithm`` selects ``quadtree``, ``weighted`` or
+    ``region_constrained``. Weighted fitting requires ``landsea_classes`` or
+    a pre-aligned dense ``landsea_indices`` array; region-constrained fitting
+    requires ``region_classes`` in ``region_kwargs``. Other region keywords
+    follow :func:`region_constrained_basis_from_weights`.
+
+    Inputs are borrowed; the selected fitting boundary materializes weights.
+    Returns integer region labels on the spatial grid with a singleton time
+    coordinate from ``start_date`` and domain metadata. Invalid algorithms or
+    missing required maps raise ValueError; no resource discovery occurs here.
+    """
     _validate_basis_algorithm(basis_algorithm)
     if basis_algorithm == "quadtree":
         return quadtree_basis_from_weights(weights, start_date, domain, nbasis=nbasis)
@@ -422,17 +434,21 @@ def bucket_basis_from_weights(
 ) -> xr.DataArray:
     """Create a legacy weighted bucket basis field from precomputed 2D weights.
 
-    This is a weight-first version of :func:`bucket_basis_function`. It still
-    delegates to the existing land/sea-aware weighted algorithm for
-    compatibility.
+    Weights are normalized by their nonzero maximum before fitting. This eager
+    fitting boundary materializes a supplied class map; inputs are borrowed.
+    Resolve map files before calling. One of ``landsea_classes`` or
+    ``landsea_indices`` must be supplied, and labelled classes take precedence.
 
     Args:
         weights: Two-dimensional basis weight field.
         start_date: Start date of the inversion period.
         domain: Domain across which to calculate basis functions.
         nbasis: Desired number of basis regions.
-        landsea_classes: Borrowed labelled class map, aligned to the weights grid.
-        landsea_indices: Optional pre-aligned land/sea mask for ``weights``.
+        landsea_classes: Borrowed map on the weights grid. Coordinates are
+            normalized to that grid before fitting. Classes 0 and 1 are split
+            separately; other values remain label 0.
+        landsea_indices: Pre-aligned dense class array with the same shape and
+            axis order as ``weights``, used when no labelled map is supplied.
 
     Returns:
         Basis field with ``lat``/``lon`` dimensions, a singleton ``time``
@@ -748,11 +764,7 @@ def region_constrained_fixed_outer_basis_from_weights(
         TypeError: If ``nbasis`` is not a non-Boolean integral value.
         ValueError: If weights, dimensions, dimension names, outer-map values,
             inner classes, allocation, or split-strategy labels are invalid.
-        FileNotFoundError: If a required default or caller-selected map file is
-            missing.
-        KeyError: If a selected outer map lacks ``region`` or a selected class
-            map lacks ``country``.
-        xarray.AlignmentError: If the supplied or loaded fields are not on
+        xarray.AlignmentError: If the supplied fields are not on
             physically compatible spatial grids.
     """
     if isinstance(nbasis, (bool, np.bool_)) or not isinstance(nbasis, (Integral, np.integer)):

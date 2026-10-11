@@ -470,6 +470,11 @@ def run_standard(
     errors → filter → basis → sensitivities → assemble → materialize → build → sample → result →
     requested outputs.
 
+    Selected basis/support files and reporting country files are checked before
+    acquisition, including when merged data is supplied. Basis partitions and
+    support maps are loaded at that boundary. Saved bases are rebound to current
+    flux; ``basis_output_path`` is an exact retained-artifact destination.
+
     Without supplied merged data, this runner acquires fresh data. Persisted
     prepared inputs can be reused with
     :func:`openghg_inversions.rhime.run_rhime_from_prepared_inputs`.

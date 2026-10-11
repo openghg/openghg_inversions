@@ -404,7 +404,29 @@ def resolve_basis_inputs(config: Any) -> dict[str, Any]:
     Configuration resolution itself stays data-free. This application boundary
     reads selected maps and partitions, checks retained paths, and consumes
     deprecated case/directory choices once. Numerical preparation receives only
-    the resulting exact artifact path and borrowed labelled arrays.
+    the resulting exact artifact path and borrowed labelled arrays. It also
+    checks the exact reporting ``country_file`` independently of basis maps;
+    ``basic`` and ``paris`` outputs require that file.
+
+    Args:
+        config: Resolved :class:`~openghg_inversions.rhime.params.RhimeConfig`.
+            Explicit retained artifacts and partition files bypass algorithm
+            support defaults; explicitly selected support files are still read.
+
+    Returns:
+        Keyword arguments for :func:`openghg_inversions.basis.prepare_basis`:
+        an optional exact ``basis_path`` or eager ``basis_partition``, plus
+        eager support maps or None. Retained artifacts are checked for existence
+        here and loaded later by basis preparation. The request is not mutated.
+
+    Raises:
+        ValueError: If modern and historical selections conflict, both saved
+            input forms are supplied, or required reporting inputs are absent.
+        FileNotFoundError: If a selected artifact or resource is missing.
+        KeyError: If a map or partition lacks its required variable.
+
+    Warns:
+        DeprecationWarning: When historical case/directory options are consumed.
     """
     from openghg_inversions.basis.support import load_basis_partition, resolve_basis_support_maps
 

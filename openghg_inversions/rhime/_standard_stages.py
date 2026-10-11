@@ -185,7 +185,13 @@ def prepare_rhime_stage(
     model: ModelKind,
     output_dir: str | Path,
 ) -> dict[str, Any]:
-    """Prepare and persist independently inspectable RHIME inputs."""
+    """Prepare and persist independently inspectable RHIME inputs.
+
+    Selected basis/support and reporting files are resolved before acquisition.
+    ``setup.basis_output_path`` remains an exact caller-selected destination;
+    it is not relocated below ``output_dir``. The stage writes prepared inputs
+    and their manifest below ``output_dir`` and returns the manifest mapping.
+    """
     multisector = model == "multisector"
     basis_inputs = resolve_basis_inputs(setup)
     destination = _stage_output_directory(output_dir)

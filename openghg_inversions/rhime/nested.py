@@ -867,8 +867,8 @@ def prepare_nested_rhime_inputs(
             outer request's directory.
         inner_country_directory: Inner country-grid directory; defaults to
             the outer request's directory.
-        inner_basis_output_path: Optional destination for a generated inner
-            basis. ``None`` disables saving the inner basis.
+        inner_basis_output_path: Exact retained-artifact destination for the
+            inner basis, whether generated or loaded. ``None`` disables saving.
         time_tolerance: Maximum difference for nearest-time inner footprint
             matching. ``None`` requires exact times; matching never reuses an
             inner footprint for multiple outer rows.
@@ -993,8 +993,17 @@ def prepare_nested_rhime_inputs(
         outer_config = replace(outer_config, nbasis=outer_nbasis)
         inner_config = replace(inner_config, nbasis=allocated_inner_nbasis)
 
-    outer_prepared = _prepare_one_domain(masked_outer, config=outer_config, allow_empty_inner_region=True, basis_support_maps=support_maps[0])
-    inner_prepared = _prepare_one_domain(inner_filtered, config=inner_config, basis_support_maps=support_maps[1])
+    outer_prepared = _prepare_one_domain(
+        masked_outer,
+        config=outer_config,
+        allow_empty_inner_region=True,
+        basis_support_maps=support_maps[0],
+    )
+    inner_prepared = _prepare_one_domain(
+        inner_filtered,
+        config=inner_config,
+        basis_support_maps=support_maps[1],
+    )
     prepared = combine_nested_rhime_inputs(
         outer_prepared,
         inner_prepared,

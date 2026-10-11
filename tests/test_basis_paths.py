@@ -93,6 +93,20 @@ def test_country_reporting_requires_caller_map():
         resolve_basis_inputs(config)
 
 
+def test_fixed_outer_missing_resolved_map_fails_before_numerical_work(monkeypatch):
+    from openghg_inversions.basis import _wrapper
+
+    monkeypatch.setattr(
+        _wrapper, "fixed_outer_regions_basis_from_data",
+        lambda *args, **kwargs: pytest.fail("constructed basis before validating the outer map"),
+    )
+    with pytest.raises(ValueError, match="outer_regions must be resolved"):
+        prepare_basis(
+            site_data={}, flux_data={}, domain="TEST", start_date="2020-01-01",
+            nbasis=1, basis_algorithm="quadtree", fix_outer_regions=True,
+        )
+
+
 def test_conflicting_explicit_basis_inputs_fail_before_acquisition(monkeypatch):
     from openghg_inversions.rhime import standard
 

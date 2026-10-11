@@ -1,4 +1,4 @@
-"""Wrappers for creating basis functions and applying them to sensitivities."""
+"""Prepare retained basis operators from exact artifacts or resolved scientific inputs."""
 
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -21,6 +21,7 @@ from ._functions import (
     basis_weights_from_data,
     fixed_outer_regions_basis_from_data,
 )
+
 
 def prepare_basis(
     *,
@@ -58,7 +59,60 @@ def prepare_basis(
     callers resolve paths and packaged resources before acquisition. Loading
     reuses the saved operator with current runtime flux. Reconstruction uses
     ``BasisFunctions.load`` to restore the complete saved object instead.
-    Saving is an explicit serialization/execution boundary.
+    Generation fits an eager numerical kernel; saving is an explicit
+    serialization/execution boundary. Borrowed inputs are not modified.
+
+    Args:
+        site_data: Site datasets with footprints used to construct weights.
+            Unused when an artifact or partition is selected.
+        flux_data: Runtime flux datasets keyed by source label. Their current
+            flux replaces any flux stored in a loaded artifact.
+        split_by_sectors: Retain every runtime source separately in mapping
+            order when true; otherwise combine all runtime sources using the
+            ModelScenario sum/time-stacking convention.
+        domain: Domain label for generated-basis metadata.
+        start_date: Date attached to a generated partition's singleton time axis.
+        flux_sources: Optional source selection for generation weights; the
+            first selected source is used. None uses the first runtime source.
+        nbasis: Requested generated-region count; with fixed outer regions,
+            this counts inner regions only.
+        basis_algorithm: Generation algorithm: ``"quadtree"``, ``"weighted"``
+            or ``"region_constrained"``. Required only without a saved input.
+        fix_outer_regions: Fit only the inner region of ``outer_regions``.
+        basis_path: Exact retained .nc or .zarr artifact to load. Mutually
+            exclusive with ``basis_partition``; either bypasses generation.
+        basis_partition: Labelled partition, or source-keyed partitions, to
+            bind to runtime flux. Spatial coordinates must match the flux grid.
+        output_path: Exact retained-artifact destination. None disables saving;
+            saving also applies to loaded operators and supplied partitions.
+        landsea_classes: Resolved labelled map required for weighted fitting.
+            Values 0 and 1 are split separately; other cells retain label 0.
+        outer_regions: Resolved fixed-outer map on the flux grid, required when
+            generating with ``fix_outer_regions=True``. The ``inner_region_label``
+            attribute selects the inner label, falling back to the maximum label.
+        region_classes: Resolved class map required for region-constrained fitting.
+        region_allocation: Distribute the inner region budget by ``"weight"``
+            (default) or ``"area"`` for region-constrained fitting.
+        min_regions_per_class: Minimum automatic budget per non-empty class.
+        split_acceptance: ``"none"`` accepts ordinary geometric splits;
+            ``"contrast_score"`` applies the supplied contrast design criterion.
+        contrast_contribution: Design contributions for contrast scoring.
+        contrast_cell_weight: Optional prior-flux or split-mass field for scoring.
+        min_contrast_delta_eig: Optional minimum contrast information gain.
+        min_contrast_lambda: Optional minimum contrast ``lambda`` score.
+        contrast_tau: Contrast prior standard deviation; None uses uncalibrated 1.
+        contrast_sigma_design: Optional scalar design standard deviation.
+        contrast_s_diag: Optional diagonal design covariance entries.
+        allow_empty_inner_region: Keep a finite, all-zero inner region unsplit
+            during fixed-outer fitting; intended for nested outer domains.
+
+    Returns:
+        Retained operator bound to runtime flux with artifact-source metadata
+        and, when loaded or saved, the selected artifact path.
+
+    Raises:
+        ValueError: If saved input selections conflict, no input or algorithm is
+            supplied, or required maps or scientific fitting inputs are invalid.
     """
     if basis_path is not None and basis_partition is not None:
         raise ValueError("Supply either basis_path or basis_partition.")
@@ -75,17 +129,24 @@ def prepare_basis(
             basis_functions_object = basis_functions_object.select_sources(
                 [str(source) for source in current_flux.source.values]
             )
-        basis_functions_object = basis_functions_object.with_flux(current_flux).with_metadata({
-            BASIS_ARTIFACT_SOURCE_ATTR: "datatree", BASIS_ARTIFACT_PATH_ATTR: str(basis_path),
-        })
+        basis_functions_object = basis_functions_object.with_flux(current_flux).with_metadata(
+            {
+                BASIS_ARTIFACT_SOURCE_ATTR: "datatree",
+                BASIS_ARTIFACT_PATH_ATTR: str(basis_path),
+            }
+        )
     elif basis_partition is not None:
         basis_functions_object = basis_functions_from_flat_basis(
-            flux_data=flux_data, split_by_sectors=split_by_sectors,
-            basis_flat=basis_partition, metadata={BASIS_ARTIFACT_SOURCE_ATTR: "partition"},
+            flux_data=flux_data,
+            split_by_sectors=split_by_sectors,
+            basis_flat=basis_partition,
+            metadata={BASIS_ARTIFACT_SOURCE_ATTR: "partition"},
         )
     elif basis_algorithm is None:
         raise ValueError("One of basis_path or basis_algorithm must be specified.")
     elif fix_outer_regions is True:
+        if outer_regions is None:
+            raise ValueError("outer_regions must be resolved before fixed-outer basis construction.")
         print("Using fixed outer regions for basis functions.")
         basis_data_array = fixed_outer_regions_basis_from_data(
             site_data,
@@ -139,7 +200,12 @@ def prepare_basis(
             )
         weights = basis_weights_from_data(site_data, flux_data, flux_sources)
         basis_data_array = basis_from_weights(
-            weights, start_date, domain, basis_algorithm, nbasis, **algorithm_kwargs,
+            weights,
+            start_date,
+            domain,
+            basis_algorithm,
+            nbasis,
+            **algorithm_kwargs,
         )
         print("Using generated in-memory basis artifact.")
         basis_functions_object = basis_functions_from_flat_basis(
