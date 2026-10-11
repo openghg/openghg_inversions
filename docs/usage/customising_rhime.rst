@@ -92,7 +92,7 @@ merged handoff::
        species="ch4", domain="EUROPE",
        start_date="2020-01-01", end_date="2020-02-01",
        flux_sources=["inventory"],
-       obs_store="user", footprint_store="user", emissions_store="user",
+       obs_store="user", footprint_store="user", flux_store="user",
        bc_store="user",
    )
 
