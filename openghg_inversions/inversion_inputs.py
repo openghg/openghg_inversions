@@ -151,7 +151,7 @@ def make_sigma_freq(
 def add_min_error(
     ds: xr.Dataset,
     fp_data: dict[str, Any],
-    min_error: str | dict[str, float] | int | float = 0.0,
+    min_error: str | dict[str, float] | int | float | None = 0.0,
     min_error_per_site: bool = True,
 ) -> xr.Dataset:
     """Add a prepared, observation-aligned minimum error to a dataset."""
@@ -296,7 +296,7 @@ def make_inv_inputs(
     fp_data: dict[str, Any],
     sites: list[str] | None = None,
     bc_freq: Literal["monthly"] | str | None = None,
-    min_error: str | dict[str, float] | int | float = 0.0,
+    min_error: str | dict[str, float] | int | float | None = 0.0,
     min_error_per_site: bool = True,
     start_date: DatetimeLike | None = None,
     missing_data_vars: Literal["error", "drop"] = "drop",
@@ -314,7 +314,8 @@ def make_inv_inputs(
             every named site must exist in ``fp_data``.
         bc_freq: Optional frequency used to transform boundary-condition
             sensitivities.
-        min_error: Minimum-error value or calculation configuration.
+        min_error: Minimum-error scalar, site mapping, or calculation method.
+            ``None`` uses a zero scalar floor.
         min_error_per_site: Whether a calculated minimum error varies by site.
         start_date: Optional anchor for fixed-duration boundary-condition
             frequencies.

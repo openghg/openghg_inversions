@@ -99,9 +99,9 @@ value and its unchanged version-1 schema live in
    openghg_inversions.inversion_data.RhimeMergedData.from_options
    openghg_inversions.inversion_data.RhimeMergedData.validate_for_preparation
    openghg_inversions.inversion_data.RhimeMergedData.with_site_data
-   openghg_inversions.rhime.filter_rhime_observations
-   openghg_inversions.rhime.build_rhime_basis
-   openghg_inversions.rhime.build_rhime_sensitivities
+   openghg_inversions.rhime.filter_observations
+   openghg_inversions.rhime.prepare_observation_errors
+   openghg_inversions.rhime.build_sensitivities
    openghg_inversions.rhime.assemble_rhime_inputs
    openghg_inversions.rhime.NestedRhimePreparedInputs
    openghg_inversions.rhime.combine_nested_rhime_inputs

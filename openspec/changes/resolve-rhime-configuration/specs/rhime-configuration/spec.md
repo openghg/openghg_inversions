@@ -95,7 +95,7 @@ when composing several stages.
 Supported overrides SHALL be applied before semantic resolution and site-option
 expansion. Resolution SHALL use the effective requested site list and winning
 values, preserve established precedence and rejection rules, and reject malformed
-effective options before acquisition, reload or scientific preparation. A returned
+effective options before acquisition or scientific preparation. A returned
 configuration SHALL already contain the complete equivalent of external
 shorthand; no scientific phase SHALL be responsible for completing the request.
 Date-dependent configuration defaults SHALL use effective overridden dates.
@@ -118,7 +118,7 @@ Date-dependent configuration defaults SHALL use effective overridden dates.
 
 - **WHEN** effective options include an unknown, unsupported or malformed choice,
   including a sequence whose length does not match the effective site count
-- **THEN** resolution fails before retrieval, reload or scientific execution
+- **THEN** resolution fails before retrieval or scientific execution
 - **AND** the error identifies the offending option
 
 #### Scenario: Override changes a date-dependent default
@@ -237,7 +237,7 @@ pre-preparation run description and a preparation dictionary.
 Acquisition and preparation SHALL retain responsibility for data-dependent site
 selection. Dropping or reordering sites SHALL select every applicable resolved
 site option together by label, without reparsing external shorthand or changing
-the request. Existing empty-set, retained-label and cache-compatibility rules
+the request. Existing empty-set, retained-label and acquisition-compatibility rules
 SHALL remain at their owning boundaries. A supplied valid compatible merged
 handoff SHALL retain its authoritative options and no-acquisition behavior.
 
@@ -248,9 +248,9 @@ handoff SHALL retain its authoritative options and no-acquisition behavior.
 - **THEN** all applicable selectors follow BSD and TAC in that order
 - **AND** the original requested configuration remains unchanged
 
-#### Scenario: Reload or filtering drops a middle site
+#### Scenario: Supplied data or filtering drops a middle site
 
-- **WHEN** a compatible reload or filtering retains TAC and BSD from the
+- **WHEN** compatible supplied data or filtering retains TAC and BSD from the
   established TAC, MHD, BSD order
 - **THEN** every applicable selector retains the TAC, BSD pairing and order
 - **AND** selection preserves the existing ordering policy without resolving the
@@ -314,38 +314,37 @@ and custom-likelihood conflict precedence SHALL remain unchanged.
 - **WHEN** a configured run, direct public preparation call or mapping-based
   retrieval supplies effective `use_tracer=True` after supported overrides,
   including with supplied merged data
-- **THEN** it rejects the option before acquisition, reload or scientific execution
+- **THEN** it rejects the option before acquisition or scientific execution
 - **AND** omitted and false options remain accepted with equivalent resolved
   configuration containing no tracer field
 
-### Requirement: One implementation of named preparation stages
+### Requirement: Scientific preparation owns its operations
 
-`filter_rhime_observations`, `build_rhime_basis`, `build_rhime_sensitivities`
-and `assemble_rhime_inputs` SHALL accept their named scientific inputs and
-keyword options. Their former positional `data_args` mappings SHALL be
-removed, without a compatibility projection. Required basis identity and source
-arguments, sensitivity domain/source arguments, and assembly domain/start date
-SHALL be required keyword arguments rather than placeholder `None` defaults.
+Recipes SHALL derive observation errors before temporal filtering/aggregation,
+call `make_basis_functions` directly with resolved arguments, and use the actual
+sensitivity, filtering and assembly implementations. Forwarding wrappers SHALL
+NOT be retained solely for uniform stage names, timing or keyword translation.
+Shared indexing utilities SHALL remain independently reusable. Assembly SHALL
+preserve minimum-error `None`, integer and per-site mapping behavior.
 
-The acquisition-and-preparation convenience function `prepare_rhime_inputs`
-SHALL be deprecated with a warning naming the loading and scientific preparation
-replacements. It SHALL retain its established signature, shorthand and prepared
-return, while delegating science to these same named stages. Equivalent inputs
-SHALL retain the same prepared metadata, including footprint provenance; the
-adapter SHALL NOT retain independent filtering or assembly policy.
-Public selector construction SHALL use `SiteOptions.from_inputs`. The internal
-`inversion_data._site_options.convert_to_list` helper SHALL retain its calling
-and list-return contract through shared selector expansion without a warning;
-its old `get_data` import alias SHALL be removed.
+`prepare_rhime_inputs` and its exclusive acquisition dispatcher are removed.
+Modern acquisition SHALL NOT load or save merged-data caches. Historical
+six-tuple retrieval SHALL explicitly call the shared observation-error operation
+before returning or saving its established result.
 
-#### Scenario: Deprecated preparation delegates to canonical science
+#### Scenario: Error derivation precedes temporal reduction
 
-- **WHEN** a caller invokes `prepare_rhime_inputs` with valid inputs
-- **THEN** it emits a deprecation warning and returns prepared inputs through the
-  same filter, basis, sensitivity and assembly operations used by ordinary runners
-- **AND** transport-model and meteorological-model provenance is retained when
-  present in the source observations
-- **AND** it does not require full model, output or sampler configuration
+- **WHEN** component errors vary across observations to be aggregated
+- **THEN** preparation combines the components before temporal reduction
+- **AND** custom `mf_error`, zero-error fallback behavior, labels and metadata
+  are preserved without mutating borrowed datasets
+
+#### Scenario: Nested observation-error preparation
+
+- **WHEN** a nested recipe receives acquired or supplied inner and outer data
+- **THEN** both domains have observation errors prepared before filtering and
+  time alignment; only sites with both domains can enter nested preparation
+- **AND** `averaging_error` is preparation policy, not a binding acquisition fact
 
 #### Scenario: Direct scientific stages use named inputs
 
@@ -440,32 +439,24 @@ be identified explicitly rather than silently assigned its old contract.
 - **AND** configuration adapters are not required to reconstruct different raw
   forms to preserve their historical staged identities
 
-### Requirement: Explicit supplied, cached and freshly acquired data paths
+### Requirement: In-memory supplied and freshly acquired data paths
 
-The approved #815 split uses distinct acquisition factories. Configured recipes
-SHALL first reuse compatible supplied merged data unchanged without cache,
-object-store or save I/O. Otherwise they SHALL call `RhimeMergedData.load` for
-an explicit reload request or `RhimeMergedData.from_options` for fresh
-acquisition. Canonical calls SHALL consume resolved selectors without further
-shorthand expansion. Both factories SHALL retain aligned site selections;
-loading SHALL check explicit time-resolution selectors and sector layout.
-The current codec requires caller-supplied selectors when loading.
+Configured recipes SHALL reuse compatible supplied merged data without
+object-store I/O or call `RhimeMergedData.from_options` with resolved selectors.
+They SHALL preserve authoritative retained selections and validate known
+acquisition facts. Modern merged-data cache options SHALL be rejected.
+Acquisition replay remains deferred to #829; durable reuse uses prepared inputs.
+Selected merged-data provenance remains on the in-memory handoff and SHALL NOT
+be added to prepared inputs or the preparation manifest by this change.
 
-#### Scenario: Supplied data bypasses I/O
+#### Scenario: Supplied data bypasses acquisition
 
 - **WHEN** valid compatible merged data is supplied to the recipe
-- **THEN** its scientific data and authoritative site options are reused
-  unchanged, without cache or object-store I/O
+- **THEN** its data and authoritative site options are reused without acquisition
+- **AND** the same observation-error preparation policy applies
 
-#### Scenario: Explicit cache failure raises
+#### Scenario: Removed modern cache options
 
-- **WHEN** an explicit reload has no directory, its path is missing, or its
-  artifact is corrupt or incompatible
-- **THEN** loading SHALL raise the failure
-- **AND** it SHALL NOT fall back to fresh acquisition (#806)
-
-#### Scenario: Fresh saving remains opt-in
-
-- **WHEN** fresh acquisition is selected without an explicit saving request
-- **THEN** acquisition returns the handoff without writing a merged cache
-- **AND** successful reload or supplied-data reuse SHALL NOT trigger saving
+- **WHEN** a modern caller requests a removed acquisition-cache option
+- **THEN** configuration rejects it and directs file reuse to prepared inputs
+- **AND** historical legacy codecs retain their separately documented behavior

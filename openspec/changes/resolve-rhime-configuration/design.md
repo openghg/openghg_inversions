@@ -116,12 +116,11 @@ adopted names for this revision; other established names are retained.
 | `RhimeOutputSpec` (keep) | Final-product policy. | Formats, naming, destinations and saving. Independently usable by existing output/execution APIs. |
 | `RhimeSampler` (keep) | Existing sampling settings and execution method. | Construction stores settings; `.sample(model, ...)` performs inference. No bound model, posterior or data in the configuration. No duplicate sampler-options class. |
 | `retrieve_inversion_data` (rename public `data_processing_surface_notracer`) | Fresh acquisition and merge, covering surface and column data. | Existing shorthand arguments -> existing six-tuple of merged data and retained metadata lists. Includes existing observation-error construction and optional merged saving; no reload, basis construction or inference. |
-| `_retrieve_inversion_data_from_options` (rename private canonical body) | Fresh acquisition with resolved selectors. | Complete site-options record plus explicit non-site arguments -> same six-tuple. No second shorthand expansion. |
 | `data_processing_surface_notracer` (deprecated compatibility wrapper) | Preserve existing public calls/imports. | Same established signature, shorthand, six-tuple return and errors; issue `DeprecationWarning` naming `retrieve_inversion_data`, then delegate to the same body. No duplicate acquisition implementation. |
-| `RhimeMergedData.from_options` / `.load` (#815 split) | Distinct fresh-acquisition and strict-cache factories. | Resolved selectors and explicit acquisition or cache arguments -> `RhimeMergedData`. Fresh acquisition retains optional saving; loading requires caller selectors and validates layout/time-resolution with no fallback. Recipes reuse supplied compatible data before selecting a factory. |
-| `RhimeMergedData` (keep) | Acquired/reloaded numerical handoff. | Merged scientific datasets plus authoritative retained site options. Borrowed, potentially lazy arrays; no hidden materialization. |
-| `prepare_rhime_inputs` (deprecate; retain adapter) | Acquisition-and-preparation convenience entry point. | Preserves applicable arguments and `RhimePreparedInputs` return, warns with the explicit loading/preparation replacements, and delegates to the same named scientific stages. Resolves applicable shorthand without a complete model/output/sampler request. |
-| `filter_rhime_observations`, `build_rhime_basis`, `build_rhime_sensitivities`, `assemble_rhime_inputs` (keep) | Named scientific stages in the ordinary recipe. | Borrowed numerical handoffs and explicit resolved values -> filtered data, basis, sensitivities and assembled inputs. Named keyword options with required scientific identity/source inputs; remove the former positional `data_args` adapter. No phase-config class, reparsing or generic request context threaded through scientific components. |
+| `RhimeMergedData.from_options` | Fresh in-memory acquisition with resolved selectors. | Returns borrowed scientific datasets and aligned retained options; no observation-error preparation or modern cache I/O. |
+| `RhimeMergedData` (keep) | Acquired in-memory numerical handoff. | Borrowed, potentially lazy datasets, retained site options and selected provenance. Selected provenance is not persisted in prepared inputs or their manifest. |
+| `prepare_rhime_inputs` (removed in #826) | Obsolete acquisition-and-preparation adapter. | Use the visible scientific operations or prepared-input persistence; no replacement forwarding adapter. |
+| Preparation operations | Scientific work in ordinary recipes. | Derive observation errors, filter observations, call `make_basis_functions`, build sensitivities and assemble inputs using explicit resolved values. Keep meaningful contracts, not forwarding signatures. |
 | `RhimePreparedInputs` (keep) | Labelled prepared model-input handoff. | Numerical inputs, basis and retained metadata; independent of full requested configuration. |
 | `RhimeRunSpec` (keep) | Execution description. | Constructed after ordinary preparation from requested dates, retained sites/periods, prepared layout and resolved model/output choices. No acquisition options or sampler execution. |
 | `RhimeRunnerSetup` / `make_rhime_runner_setup` / `resolve_rhime_options` (remove) | Redundant internal setup bundle and its constructors. | Migrate ordinary, nested, staged, shim and example consumers to `RhimeConfig.from_params`; construct retained run descriptions only after preparation. Do not retain a renamed bundle or compatibility projection. |
@@ -142,20 +141,24 @@ label normalization and selector validation; direct construction accepts already
 resolved aligned values and checks structural invariants without another
 shorthand pass. Selection returns a complete new record.
 
-For the low-level acquisition rename, preserve the six-tuple explicitly. Do not
-quietly replace it with `RhimeMergedData`: that handoff belongs to the higher
-retrieval/reload boundary. The canonical body shares scientific work with both
-public names. Internal calls use the neutral name and must not emit deprecated
-wrapper warnings.
+Historical retrieval keeps its six-tuple and optional saving under
+`hbmcmc.legacy_data`. It calls modern acquisition, explicitly prepares observation
+errors with the shared operation, then converts and optionally saves the legacy
+result. Dependencies run from compatibility to modern science.
 
-The approved #815 split gives the handoff distinct `from_options` and `load`
-class methods. The recipe reuses compatible supplied data unchanged, otherwise
-selects strict cache loading or fresh acquisition explicitly. Preserve
-selector/layout checks, retained-option selection and numerical normalization
-at the owning boundaries. Missing directories, missing/corrupt artifacts and
-load `ValueError` propagate without fallback (#806). Fresh saving remains
-opt-in; neither supplied-data reuse nor loading saves. The current codec stays
-in place; dataset-only snapshots are a separate #815 stack change.
+Modern recipes reuse compatible supplied data or call `from_options`. Known
+acquisition facts and retained selectors are checked without materializing the
+borrowed arrays. Acquisition replay remains deferred to #829; file reuse uses
+prepared-input persistence. Neither `.load`/`.save` acquisition factories nor
+`prepare_rhime_inputs` remain part of the modern API.
+
+Observation errors must be derived before preparation-time temporal filtering/aggregation.
+Combining component errors after averaging changes the scientific result.
+Preserve custom `mf_error`, the existing zero-error fallback population, labels
+and metadata. Prepare both nested domains before filtering/time alignment.
+`averaging_error` belongs to preparation configuration, while `averaging_period`
+continues to select acquisition/resampling. Basis weighting/source order,
+saved-basis precedence and prepared/result contracts remain unchanged.
 
 ### 3. Resolve after overrides and before any scientific phase
 
@@ -202,10 +205,9 @@ combining these input modes is an error. The compatibility shim retains its
 preflight validation before file-copy side effects and passes that resolved
 request into the standard runner.
 
-`RhimeMergedData.save` delegates to the existing merged-data serializer at an
-explicit write boundary. Existing fresh-retrieval save flags remain optional
-and default to false; supplied data and successful reloads do not trigger them.
-This does not add configuration export or a new cache format.
+Modern acquisition performs no merged-data saving. Historical retrieval keeps
+its explicit opt-in saving behavior through the legacy adapter. This does not
+add configuration export or acquisition replay.
 
 The shared resolver's responsibilities are:
 
@@ -239,7 +241,7 @@ following inventory describes fields on `RhimeConfig`, not another class:
 | BC/observation/footprint/emissions stores, emissions domain, footprint model/species, calibration scale and BC input | Existing supported typed selectors. |
 | Footprint/BC basis cases and directories, country directory, outer-regions path, basis algorithm/count and fixed outer regions | Existing supported path/string/integer/boolean choices. |
 | Filters, averaging error, BC frequency, minimum error and normalized error options | Existing contracts; data-dependent materialization remains in preparation. |
-| Reload/save merged data, merged directory/name, basis destination and non-finite flux check | Existing preparation-artifact policy and flux-check choices. |
+| Basis destination and non-finite flux check | Basis output policy and flux-check choices. Modern acquisition-cache settings are rejected. |
 
 The runner forwards needed named values at each scientific call, directly or
 with `**config.select("name", ...)`. `select` returns a fresh shallow dictionary
@@ -252,23 +254,22 @@ schema or second request/preparation record is introduced.
 
 Raw overrides are applied after decoding and before `from_params`.
 `dataclasses.replace` is for already coherent resolved changes, not for
-recomputing dependent defaults or shared model/output choices. Direct retrieval
-and deprecated preparation adapters resolve only applicable inputs and share the
-scientific bodies with ordinary configured runs. Use `SiteOptions.from_inputs`
+recomputing dependent defaults or shared model/output choices. Historical retrieval resolves only applicable inputs and calls the same
+observation-error operation as ordinary configured runs. Use `SiteOptions.from_inputs`
 for public selector construction. The internal
 `inversion_data._site_options.convert_to_list` helper retains its calling and
 list-return contract without a warning; its old `get_data` import alias is
 removed.
-The preparation adapter must
-preserve canonical footprint provenance instead of assembling a second result.
+Preparation preserves canonical footprint provenance and supported minimum-error
+values (`None`, integers and per-site mappings) at the owning assembly boundary.
 
 ### 4. Requested options and retained data have different meanings
 
-Configuration describes what was requested. Acquisition, compatible reload and
+Configuration describes what was requested. Acquisition and
 filtering select every aligned selector together by retained label. They leave
 configuration unchanged, ignore unused redundant legacy metadata, and do not
 expand shorthand against a reduced site count. Supplied compatible merged data
-keeps its authoritative site record and performs no acquisition/reload.
+keeps its authoritative site record and performs no acquisition I/O.
 
 After preparation, compose `RhimeRunSpec` with `config.start_date`,
 `config.end_date`, `prepared.sites`, `prepared.averaging_period`, the prepared
@@ -344,9 +345,9 @@ Deliver the reconciled #813 implementation through the #815 stack, with
 configuration in #824. Remove the preparation class and its plumbing,
 remove the internal setup bundle, migrate ordinary/nested/staged/shim/example
 consumers, implement the decoding-only INI reader, promote/export `SiteOptions`,
-implement the neutral acquisition names and separate fresh acquisition and strict cache loading into
-`RhimeMergedData.from_options` and `.load`. Update documentation/exports. Reuse the existing equivalence, override,
-site/drop/reload, ownership, nested/shim and sampler coverage. Add focused checks
+keep modern acquisition in `RhimeMergedData.from_options` and historical codecs
+isolated. Update documentation/exports and remove obsolete cache requirements.
+Reuse equivalence, override, retained-site, ownership, nested/shim and sampler coverage. Add focused checks
 for direct configuration access, decoded reader results and subsequent
 construction, public site-options
 construction and deprecated-wrapper forwarding/warnings;

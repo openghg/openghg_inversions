@@ -45,7 +45,7 @@ Resume from external scientific data
 ``run_rhime`` and ``run_rhime_multisector`` accept ``merged_data`` as a
 Python-only handoff. It bypasses OpenGHG acquisition,
 checks the recorded scientific facts and single- or multi-sector layout, and
-then re-enters the visible recipe at filtering::
+then re-enters the visible recipe at observation-error preparation::
 
    result = run_rhime(
        config_file="config.ini",
@@ -415,7 +415,7 @@ Compose a custom basis stage
 ----------------------------
 
 The second complete runner replaces one call in the preparation spine:
-``build_project_basis`` replaces ``build_rhime_basis``. The project function
+``build_project_basis`` replaces ``openghg_inversions.basis.make_basis_functions``. The project function
 composes public basis primitives instead of selecting a built-in basis
 algorithm. It:
 
@@ -507,7 +507,7 @@ immediately before model construction; project-owned lazy extensions in
 
 The customisation is concentrated in ``_guarded_basis``. The runner's one
 deliberate substitution is marked by an inline comment where
-``build_project_basis`` replaces the standard ``build_rhime_basis`` call. The
+``build_project_basis`` replaces the standard ``openghg_inversions.basis.make_basis_functions`` call. The
 complete source remains below because the test suite executes the same file
 that the documentation displays.
 

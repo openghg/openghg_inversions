@@ -10,6 +10,8 @@ built, and combines only the two observation-aligned sensitivity matrices.
 
 from __future__ import annotations
 
+from openghg_inversions.basis import make_basis_functions
+
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 import hashlib
@@ -50,9 +52,9 @@ from .ini import read_rhime_ini
 from .params import RhimeConfig
 from .preparation import (
     assemble_rhime_inputs,
-    build_rhime_basis,
-    build_rhime_sensitivities,
-    filter_rhime_observations,
+    build_sensitivities,
+    filter_observations,
+    prepare_observation_errors,
     with_prepared_rhime_sites,
 )
 from .sampling import RhimeSampler, sample_rhime_model
@@ -693,17 +695,22 @@ def _prepare_one_domain(
     allow_empty_inner_region: bool = False,
 ) -> RhimePreparedInputs:
     """Run one domain's scientific stages from already-resolved choices."""
-    basis_functions = build_rhime_basis(
-        merged,
-        **config.select(
-            "species", "domain", "start_date", "flux_sources",
-            "output_name", "basis_algorithm", "nbasis", "fp_basis_case",
-            "basis_directory", "country_directory", "outer_regions_path",
-            "fix_basis_outer_regions", "basis_output_path",
-        ),
-        allow_empty_inner_region=allow_empty_inner_region,
-    )
-    site_data = build_rhime_sensitivities(
+    with timed("rhime.prepare_inputs.basis_build", basis_algorithm=config.basis_algorithm):
+        basis_functions = make_basis_functions(
+            site_data=merged.site_data,
+            flux_data=merged.flux_data,
+            split_by_sectors=merged.split_by_sectors,
+            **config.select(
+                "species", "domain", "start_date", "basis_algorithm", "nbasis",
+                "fp_basis_case", "basis_directory", "country_directory", "outer_regions_path",
+            ),
+            emissions_name=config.flux_sources,
+            fix_outer_regions=config.fix_basis_outer_regions,
+            outputname=config.output_name,
+            output_path=config.basis_output_path,
+            allow_empty_inner_region=allow_empty_inner_region,
+        )
+    site_data = build_sensitivities(
         merged,
         basis_functions,
         **config.select(
@@ -910,7 +917,7 @@ def prepare_nested_rhime_inputs(
                 "end_date",  "flux_sources", "split_by_sectors",
                 "bc_store", "obs_store", "footprint_store", "emissions_store",
                 "emissions_domain", "fp_model", "fp_species", "calibration_scale",
-                "use_bc", "bc_input", "averaging_error",
+                "use_bc", "bc_input",
                 "flux_non_finite_check",
             ),
         )
@@ -925,12 +932,14 @@ def prepare_nested_rhime_inputs(
                 "end_date",  "flux_sources", "split_by_sectors",
                 "bc_store", "obs_store", "footprint_store", "emissions_store",
                 "emissions_domain", "fp_model", "fp_species", "calibration_scale",
-                "use_bc", "bc_input", "averaging_error",
+                "use_bc", "bc_input",
                 "flux_non_finite_check",
             ),
         )
+    outer_merged = prepare_observation_errors(outer_merged, averaging_error=outer_config.averaging_error)
+    inner_merged = prepare_observation_errors(inner_merged, averaging_error=inner_config.averaging_error)
     outer_merged, inner_merged = _retain_common_sites(outer_merged, inner_merged)
-    outer_filtered = filter_rhime_observations(outer_merged, filters=outer_config.filters)
+    outer_filtered = filter_observations(outer_merged, filters=outer_config.filters)
     outer_filtered, inner_merged = _retain_common_sites(outer_filtered, inner_merged)
     inner_filtered = align_inner_merged_to_outer_observations(
         outer_filtered,

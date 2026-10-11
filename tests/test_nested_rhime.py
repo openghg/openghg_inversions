@@ -471,7 +471,7 @@ def test_nested_preparation_uses_native_inner_domain_and_safe_basis_default(monk
         sensitivity=np.array([[1.0]]),
         basis=basis,
     )
-    merged = from_legacy_fp_all(fp_all={"TAC": xr.Dataset()}, site_options=_site_options())
+    merged = from_legacy_fp_all(fp_all={"TAC": xr.Dataset({"mf_error": ("time", [1.0]), "mf_repeatability": ("time", [0.0]), "mf_variability": ("time", [0.0])})}, site_options=_site_options())
     setup = RhimeConfig.from_params(params={
             "species": "ch4",
             "sites": ["TAC"],
@@ -500,7 +500,7 @@ def test_nested_preparation_uses_native_inner_domain_and_safe_basis_default(monk
         return prepared
 
     monkeypatch.setattr(nested_module.RhimeMergedData, "from_options", fake_retrieve)
-    monkeypatch.setattr(nested_module, "filter_rhime_observations", lambda value, **kwargs: value)
+    monkeypatch.setattr(nested_module, "filter_observations", lambda value, **kwargs: value)
     monkeypatch.setattr(
         nested_module,
         "align_inner_merged_to_outer_observations",
@@ -601,7 +601,7 @@ def test_nested_preparation_routes_automatic_basis_budget(monkeypatch) -> None:
         assert kwargs["split_by_sectors"] is False
         value = 9.0 if kwargs["domain"] == "EUROPE-6km" else 1.0
         dataset = xr.Dataset(
-            {"fp_x_flux": (("time", "lat", "lon"), [[[value]]])},
+            {"fp_x_flux": (("time", "lat", "lon"), [[[value]]]), "mf_error": ("time", [0.1])},
             coords={"time": pd.date_range("2019-01-01", periods=1), "lat": [50.0], "lon": [-2.0]},
         )
         return from_legacy_fp_all(fp_all={"TAC": dataset}, site_options=_site_options())
@@ -611,7 +611,7 @@ def test_nested_preparation_routes_automatic_basis_budget(monkeypatch) -> None:
         return prepared
 
     monkeypatch.setattr(nested_module.RhimeMergedData, "from_options", fake_retrieve)
-    monkeypatch.setattr(nested_module, "filter_rhime_observations", lambda value, **kwargs: value)
+    monkeypatch.setattr(nested_module, "filter_observations", lambda value, **kwargs: value)
     monkeypatch.setattr(
         nested_module,
         "align_inner_merged_to_outer_observations",

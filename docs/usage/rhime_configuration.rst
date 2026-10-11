@@ -135,14 +135,18 @@ Direct retrieval APIs retain their scalar shorthand without requiring model,
 output or sampler settings. The acquisition-and-preparation convenience function
 ``prepare_rhime_inputs`` has been removed. For a complete inversion, use
 ``run_rhime``; for custom preparation, call ``RhimeMergedData.from_options`` followed by
-``filter_rhime_observations``, ``build_rhime_basis``,
-``build_rhime_sensitivities`` and ``assemble_rhime_inputs``. The explicit legacy function
+``prepare_observation_errors``, ``filter_observations``,
+``openghg_inversions.basis.make_basis_functions``,
+``build_sensitivities`` and ``assemble_rhime_inputs``. The explicit legacy function
 ``openghg_inversions.hbmcmc.legacy_data.retrieve_inversion_data`` performs
 fresh surface or column acquisition and returns its established six-tuple of
 merged data and retained metadata lists. The former
 ``data_processing_surface_notracer`` name is a deprecated wrapper with the same
 signature and return. ``RhimeMergedData.from_options`` performs fresh acquisition
-from resolved selectors. Acquisition stays in memory; persist the completed
+from resolved selectors. ``averaging_error`` is a preparation choice: missing ``mf_error`` is derived
+from acquired repeatability/variability before temporal filtering or aggregation.
+Existing custom errors remain authoritative. ``averaging_period`` still selects
+OpenGHG acquisition/resampling. Acquisition stays in memory; persist the completed
 ``RhimePreparedInputs`` for reuse. Runners reuse a supplied ``merged_data``
 handoff before acquisition, bypassing store access. Before preparation, the merged
 owner checks known species, domain, date bounds and source layout against the
@@ -169,12 +173,13 @@ values for an ordinary keyword call:
 
 .. code-block:: python
 
-   from openghg_inversions.rhime import filter_rhime_observations
+   from openghg_inversions.rhime import filter_observations, prepare_observation_errors
 
    merged.validate_for_preparation(
        **config.select("species", "domain", "start_date", "end_date", "split_by_sectors")
    )
-   filtered = filter_rhime_observations(merged, **config.select("filters"))
+   merged = prepare_observation_errors(merged, averaging_error=config.averaging_error)
+   filtered = filter_observations(merged, **config.select("filters"))
 
 ``config.select(*names)`` returns a fresh dictionary of the named attributes.
 Values are borrowed: mutable mappings and objects are shared with ``config``.

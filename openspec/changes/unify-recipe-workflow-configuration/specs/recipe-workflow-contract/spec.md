@@ -47,6 +47,27 @@ unrelated preparation, configuration, stages, or result formats to be supported.
 - **THEN** they reuse the same family product operations without resampling or
   constructing the producing graph for supported saved-output replay
 
+### Requirement: Shared observation-error policy precedes temporal reduction
+
+Equivalent supported routes SHALL derive `mf_error` before temporal filtering
+or aggregation, preserving supplied custom errors, the existing zero-error
+fallback, borrowed datasets and retained metadata. Nested preparation SHALL
+prepare both inner and outer domains before filtering/time alignment. Historical
+six-tuple retrieval SHALL call the same operation before returning or saving.
+`averaging_error` is preparation configuration; `averaging_period` remains an
+acquisition/resampling selector. Actual scientific operations SHALL be shared
+without forwarding wrappers added solely to name stages.
+
+#### Scenario: Varying component errors within an averaging interval
+
+- **WHEN** component errors vary among observations in the same interval
+- **THEN** routes combine observation-error components before aggregation
+- **AND** an explicitly supplied `mf_error` is retained without rederivation
+
+This contract does not claim completed full/staged retained-site parity or add
+nested/CO2 checkpoint routes. Those capabilities require their own implementation
+and behavioral validation.
+
 ### Requirement: Retained-site consistency in preparation
 
 Each recipe SHALL derive retained sites from the observations it keeps and align
@@ -85,7 +106,7 @@ reconciliation SHALL NOT bypass malformed-input or acquisition-compatibility val
 
 #### Scenario: Empty or malformed handoff
 
-- **WHEN** standard/multisector acquisition, compatible cache reload, or filtering
+- **WHEN** standard/multisector acquisition, supplied in-memory data, or filtering
   leaves no usable sites
 - **THEN** preparation fails before basis construction or inference
 - **AND** invalid labels/metadata and malformed or mismatched independently

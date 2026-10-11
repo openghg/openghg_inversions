@@ -13,6 +13,8 @@ inputs, use :func:`openghg_inversions.rhime.run_rhime_from_prepared_inputs`.
 
 from __future__ import annotations
 
+from openghg_inversions.basis import make_basis_functions
+
 import argparse
 from collections.abc import Sequence
 import json
@@ -25,10 +27,10 @@ from openghg_inversions.rhime import (
     RhimeConfig,
     RhimeResult,
     assemble_rhime_inputs,
-    build_rhime_basis,
-    build_rhime_sensitivities,
+    build_sensitivities,
     build_standard_rhime_model_result,
-    filter_rhime_observations,
+    filter_observations,
+    prepare_observation_errors,
     make_standard_rhime_result,
     make_standard_rhime_outputs,
     materialize_pymc_inputs,
@@ -77,22 +79,27 @@ def run_custom_rhime(
             "end_date",  "flux_sources", "split_by_sectors",
             "bc_store", "obs_store", "footprint_store", "emissions_store",
             "emissions_domain", "fp_model", "fp_species", "calibration_scale",
-            "use_bc", "bc_input", "averaging_error",
+            "use_bc", "bc_input",
             "flux_non_finite_check",
         ),
     )
     # 2. Keep the scientific preparation order visible in this recipe.
-    filtered = filter_rhime_observations(merged, filters=config.filters)
-    basis_functions = build_rhime_basis(
-        filtered,
+    merged = prepare_observation_errors(merged, averaging_error=config.averaging_error)
+    filtered = filter_observations(merged, filters=config.filters)
+    basis_functions = make_basis_functions(
+        site_data=filtered.site_data,
+        flux_data=filtered.flux_data,
+        split_by_sectors=filtered.split_by_sectors,
         **config.select(
-            "species", "domain", "start_date", "flux_sources",
-            "output_name", "basis_algorithm", "nbasis", "fp_basis_case",
-            "basis_directory", "country_directory", "outer_regions_path",
-            "fix_basis_outer_regions", "basis_output_path",
+            "species", "domain", "start_date", "basis_algorithm", "nbasis",
+            "fp_basis_case", "basis_directory", "country_directory", "outer_regions_path",
         ),
+        emissions_name=config.flux_sources,
+        fix_outer_regions=config.fix_basis_outer_regions,
+        outputname=config.output_name,
+        output_path=config.basis_output_path,
     )
-    site_data = build_rhime_sensitivities(
+    site_data = build_sensitivities(
         filtered,
         basis_functions,
         **config.select(

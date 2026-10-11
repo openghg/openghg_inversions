@@ -198,11 +198,11 @@ def test_prepare_is_independent_and_writes_inspectable_contract(
     from openghg_inversions.rhime import _standard_stages as stages
 
     prepared = _prepared()
-    sentinel = from_legacy_fp_all({"TAC": xr.Dataset()}, SiteOptions.from_inputs(sites=("TAC",), averaging_period="1h"))
+    sentinel = from_legacy_fp_all({"TAC": xr.Dataset({"mf_error": ("time", [1.0]), "mf_repeatability": ("time", [0.0]), "mf_variability": ("time", [0.0])})}, SiteOptions.from_inputs(sites=("TAC",), averaging_period="1h"))
     monkeypatch.setattr(stages.RhimeMergedData, "from_options", lambda *args, **kwargs: sentinel)
-    monkeypatch.setattr(stages, "filter_rhime_observations", lambda *args, **kwargs: sentinel)
-    monkeypatch.setattr(stages, "build_rhime_basis", lambda *args, **kwargs: prepared.basis_functions)
-    monkeypatch.setattr(stages, "build_rhime_sensitivities", lambda *args, **kwargs: {})
+    monkeypatch.setattr(stages, "filter_observations", lambda *args, **kwargs: sentinel)
+    monkeypatch.setattr(stages, "make_basis_functions", lambda *args, **kwargs: prepared.basis_functions)
+    monkeypatch.setattr(stages, "build_sensitivities", lambda *args, **kwargs: {})
     monkeypatch.setattr(stages, "assemble_rhime_inputs", lambda *args, **kwargs: prepared)
     monkeypatch.setattr(stages, "sample_rhime_model", lambda *args, **kwargs: pytest.fail("sampled"))
 
@@ -245,11 +245,11 @@ def test_prepare_fails_when_a_requested_site_was_dropped(
     from openghg_inversions.rhime import _standard_stages as stages
 
     prepared = _prepared()
-    merged = from_legacy_fp_all({"TAC": xr.Dataset()}, SiteOptions.from_inputs(sites=("TAC",), averaging_period="1h"))
+    merged = from_legacy_fp_all({"TAC": xr.Dataset({"mf_error": ("time", [1.0]), "mf_repeatability": ("time", [0.0]), "mf_variability": ("time", [0.0])})}, SiteOptions.from_inputs(sites=("TAC",), averaging_period="1h"))
     monkeypatch.setattr(stages.RhimeMergedData, "from_options", lambda *args, **kwargs: merged)
-    monkeypatch.setattr(stages, "filter_rhime_observations", lambda *args, **kwargs: merged)
-    monkeypatch.setattr(stages, "build_rhime_basis", lambda *args, **kwargs: prepared.basis_functions)
-    monkeypatch.setattr(stages, "build_rhime_sensitivities", lambda *args, **kwargs: {})
+    monkeypatch.setattr(stages, "filter_observations", lambda *args, **kwargs: merged)
+    monkeypatch.setattr(stages, "make_basis_functions", lambda *args, **kwargs: prepared.basis_functions)
+    monkeypatch.setattr(stages, "build_sensitivities", lambda *args, **kwargs: {})
     monkeypatch.setattr(stages, "assemble_rhime_inputs", lambda *args, **kwargs: prepared)
 
     with pytest.raises(ValueError, match="could not produce required site.*MHD"):
@@ -270,11 +270,11 @@ def test_prepare_accepts_canonicalised_site_labels(
     from openghg_inversions.rhime import _standard_stages as stages
 
     prepared = _prepared()
-    merged = from_legacy_fp_all({"TAC": xr.Dataset()}, SiteOptions.from_inputs(sites=("TAC",), averaging_period="1h"))
+    merged = from_legacy_fp_all({"TAC": xr.Dataset({"mf_error": ("time", [1.0]), "mf_repeatability": ("time", [0.0]), "mf_variability": ("time", [0.0])})}, SiteOptions.from_inputs(sites=("TAC",), averaging_period="1h"))
     monkeypatch.setattr(stages.RhimeMergedData, "from_options", lambda *args, **kwargs: merged)
-    monkeypatch.setattr(stages, "filter_rhime_observations", lambda *args, **kwargs: merged)
-    monkeypatch.setattr(stages, "build_rhime_basis", lambda *args, **kwargs: prepared.basis_functions)
-    monkeypatch.setattr(stages, "build_rhime_sensitivities", lambda *args, **kwargs: {})
+    monkeypatch.setattr(stages, "filter_observations", lambda *args, **kwargs: merged)
+    monkeypatch.setattr(stages, "make_basis_functions", lambda *args, **kwargs: prepared.basis_functions)
+    monkeypatch.setattr(stages, "build_sensitivities", lambda *args, **kwargs: {})
     monkeypatch.setattr(stages, "assemble_rhime_inputs", lambda *args, **kwargs: prepared)
 
     manifest = prepare_rhime_stage(
@@ -387,11 +387,11 @@ def test_preparation_manifest_authenticates_supplied_prepared_inputs(
     from openghg_inversions.rhime import _standard_stages as stages
 
     prepared = _prepared()
-    merged = from_legacy_fp_all({"TAC": xr.Dataset()}, SiteOptions.from_inputs(sites=("TAC",), averaging_period="1h"))
+    merged = from_legacy_fp_all({"TAC": xr.Dataset({"mf_error": ("time", [1.0]), "mf_repeatability": ("time", [0.0]), "mf_variability": ("time", [0.0])})}, SiteOptions.from_inputs(sites=("TAC",), averaging_period="1h"))
     monkeypatch.setattr(stages.RhimeMergedData, "from_options", lambda *args, **kwargs: merged)
-    monkeypatch.setattr(stages, "filter_rhime_observations", lambda *args, **kwargs: merged)
-    monkeypatch.setattr(stages, "build_rhime_basis", lambda *args, **kwargs: prepared.basis_functions)
-    monkeypatch.setattr(stages, "build_rhime_sensitivities", lambda *args, **kwargs: {})
+    monkeypatch.setattr(stages, "filter_observations", lambda *args, **kwargs: merged)
+    monkeypatch.setattr(stages, "make_basis_functions", lambda *args, **kwargs: prepared.basis_functions)
+    monkeypatch.setattr(stages, "build_sensitivities", lambda *args, **kwargs: {})
     monkeypatch.setattr(stages, "assemble_rhime_inputs", lambda *args, **kwargs: prepared)
     setup = resolve_stage_setup(_params(), model="standard")
     preparation = prepare_rhime_stage(setup=setup, model="standard", output_dir=tmp_path / "prepare")
@@ -665,11 +665,11 @@ def test_synthetic_staged_tracer_bullet(
     from openghg_inversions.rhime import _standard_stages as stages
 
     prepared = _prepared()
-    sentinel = from_legacy_fp_all({"TAC": xr.Dataset()}, SiteOptions.from_inputs(sites=("TAC",), averaging_period="1h"))
+    sentinel = from_legacy_fp_all({"TAC": xr.Dataset({"mf_error": ("time", [1.0]), "mf_repeatability": ("time", [0.0]), "mf_variability": ("time", [0.0])})}, SiteOptions.from_inputs(sites=("TAC",), averaging_period="1h"))
     monkeypatch.setattr(stages.RhimeMergedData, "from_options", lambda *args, **kwargs: sentinel)
-    monkeypatch.setattr(stages, "filter_rhime_observations", lambda *args, **kwargs: sentinel)
-    monkeypatch.setattr(stages, "build_rhime_basis", lambda *args, **kwargs: prepared.basis_functions)
-    monkeypatch.setattr(stages, "build_rhime_sensitivities", lambda *args, **kwargs: {})
+    monkeypatch.setattr(stages, "filter_observations", lambda *args, **kwargs: sentinel)
+    monkeypatch.setattr(stages, "make_basis_functions", lambda *args, **kwargs: prepared.basis_functions)
+    monkeypatch.setattr(stages, "build_sensitivities", lambda *args, **kwargs: {})
     monkeypatch.setattr(stages, "assemble_rhime_inputs", lambda *args, **kwargs: prepared)
     setup = resolve_stage_setup(
         _params(sample_kwargs={"random_seed": 42}),

@@ -5,6 +5,8 @@ Mainly for creating fake data.
 
 from __future__ import annotations
 
+from openghg_inversions.basis import make_basis_functions
+
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -233,15 +235,24 @@ def prepare_inputs(**params):
         "site_options", "species", "domain", "start_date", "end_date",
         "flux_sources", "split_by_sectors", "bc_store", "obs_store", "footprint_store",
         "emissions_store", "emissions_domain", "fp_model", "fp_species", "calibration_scale",
-        "use_bc", "bc_input", "averaging_error", "flux_non_finite_check",
+        "use_bc", "bc_input", "flux_non_finite_check",
     ))
-    filtered = preparation.filter_rhime_observations(merged, filters=config.filters)
-    basis = preparation.build_rhime_basis(filtered, **config.select(
-        "species", "domain", "start_date", "flux_sources", "output_name", "basis_algorithm",
-        "nbasis", "fp_basis_case", "basis_directory", "country_directory", "outer_regions_path",
-        "fix_basis_outer_regions", "basis_output_path",
-    ))
-    sites = preparation.build_rhime_sensitivities(filtered, basis, **config.select(
+    merged = preparation.prepare_observation_errors(merged, averaging_error=config.averaging_error)
+    filtered = preparation.filter_observations(merged, filters=config.filters)
+    basis = make_basis_functions(
+        site_data=filtered.site_data,
+        flux_data=filtered.flux_data,
+        split_by_sectors=filtered.split_by_sectors,
+        **config.select(
+            "species", "domain", "start_date", "basis_algorithm", "nbasis",
+            "fp_basis_case", "basis_directory", "country_directory", "outer_regions_path",
+        ),
+        emissions_name=config.flux_sources,
+        fix_outer_regions=config.fix_basis_outer_regions,
+        outputname=config.output_name,
+        output_path=config.basis_output_path,
+    )
+    sites = preparation.build_sensitivities(filtered, basis, **config.select(
         "domain", "flux_sources", "use_bc", "bc_basis_case", "bc_basis_directory",
     ), multisector=config.split_by_sectors)
     return preparation.assemble_rhime_inputs(filtered, basis, sites, **config.select(

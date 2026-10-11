@@ -37,9 +37,9 @@ from .params import (
 )
 from .preparation import (
     assemble_rhime_inputs,
-    build_rhime_basis,
-    build_rhime_sensitivities,
-    filter_rhime_observations,
+    build_sensitivities,
+    filter_observations,
+    prepare_observation_errors,
     with_prepared_rhime_sites,
 )
 from .multisector import (
@@ -123,11 +123,11 @@ __all__ = [
     "build_multisector_rhime_model_result",
     "build_nested_rhime_model",
     "build_nested_rhime_model_result",
-    "build_rhime_basis",
-    "build_rhime_sensitivities",
+    "build_sensitivities",
     "build_standard_rhime_model",
     "build_standard_rhime_model_result",
-    "filter_rhime_observations",
+    "filter_observations",
+    "prepare_observation_errors",
     "configuration_identity",
     "diagnose_rhime_stage",
     "effective_configuration",

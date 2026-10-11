@@ -29,6 +29,7 @@ from openghg_inversions.inversion_data._provenance import (
 from openghg_inversions.inversion_data._site_options import SiteOptions
 from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
 from openghg_inversions.inversion_data.acquisition import AcquisitionFacts, RhimeMergedData
+from openghg_inversions.inversion_data.observation_errors import prepare_observation_errors
 from openghg_inversions.utils import _flux_period_is_missing, datatree_ncdf_encoding
 
 OutputFormat = Literal["netcdf", "zarr", "zarr.zip"]  # for internal type hints
@@ -819,9 +820,10 @@ def retrieve_inversion_data(
         emissions_store=emissions_store,
         emissions_domain=emissions_domain,
         split_by_sectors=split_by_sectors,
-        averaging_error=averagingerror,
         flux_non_finite_check=flux_non_finite_check,
     )
+
+    merged = prepare_observation_errors(merged, averaging_error=averagingerror)
 
     # Keep the historical public tuple and its mapping layout at this adapter.
     legacy = to_legacy_fp_all(merged)

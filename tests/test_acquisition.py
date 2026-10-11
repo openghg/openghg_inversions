@@ -50,10 +50,6 @@ def test_fresh_factory_retains_selectors_and_borrows_lazy_datasets(monkeypatch):
         footprint_selectors.append((kwargs["site"], kwargs["time_resolved"]))
         return SimpleNamespace(data=dataset, metadata={})
 
-    def observation_error(sites, site_data, *, add_averaging_error):
-        assert tuple(sites) == ("MHD", "RGL")
-        assert add_averaging_error is False
-
     class CustomMergedData(RhimeMergedData):
         pass
 
@@ -64,7 +60,6 @@ def test_fresh_factory_retains_selectors_and_borrows_lazy_datasets(monkeypatch):
     )
     monkeypatch.setattr(get_data, "get_footprint_data", footprints)
     monkeypatch.setattr(get_data, "merged_scenario_data", lambda *a, **kw: dataset)
-    monkeypatch.setattr(get_data, "add_obs_error", observation_error)
     with Callback(pretask=lambda *args: pytest.fail("factory computed borrowed observations")):
         result = CustomMergedData.from_options(
             species="ch4",
@@ -75,7 +70,6 @@ def test_fresh_factory_retains_selectors_and_borrows_lazy_datasets(monkeypatch):
 
             flux_sources=["inventory"],
             use_bc=False,
-            averaging_error=False,
         )
     assert result.site_options == options.select_indices([1, 2])
     assert isinstance(result, CustomMergedData)
@@ -89,7 +83,8 @@ def test_public_retrieval_hides_private_provenance_transport(monkeypatch, entryp
     """Both public six-tuple APIs retain their established mapping keys."""
     from contextlib import nullcontext
 
-    site = xr.Dataset({"mf": ("time", [1.0])})
+    site = xr.Dataset({"mf": ("time", [1.0]), "mf_error": ("time", [0.1]),
+                       "mf_repeatability": ("time", [0.1]), "mf_variability": ("time", [0.0])})
     retained = (["TAC"], ["185m"], ["185m"], ["picarro"], ["1h"])
     options = SiteOptions.from_inputs(
         sites=["TAC"], averaging_period="1h", inlet="185m", fp_height="185m", instrument="picarro"
@@ -140,7 +135,6 @@ def test_retrieval_builds_modern_record_without_legacy_adapters(monkeypatch):
     )
     monkeypatch.setattr(get_data, "get_footprint_data", lambda **kw: wrap(site, "footprint-id"))
     monkeypatch.setattr(get_data, "merged_scenario_data", lambda *a, **kw: site)
-    monkeypatch.setattr(get_data, "add_obs_error", lambda *a, **kw: None)
     monkeypatch.setattr(legacy_data, "from_legacy_fp_all", lambda *a, **kw: pytest.fail("used fp_all"))
     monkeypatch.setattr(legacy_data, "to_legacy_fp_all", lambda *a, **kw: pytest.fail("used fp_all"))
     with Callback(pretask=lambda *a: pytest.fail("record construction computed borrowed data")):

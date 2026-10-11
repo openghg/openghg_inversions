@@ -10,6 +10,7 @@ from typing import Any
 import pytest
 import xarray as xr
 
+from openghg_inversions.inversion_data import RhimeMergedData
 from openghg_inversions.rhime.params import RhimeConfig
 
 from examples.rhime_cookiecutter.my_inversion import likelihoods
@@ -30,8 +31,19 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
         multisector=False,
     )
     sampler = config.sampler
-    merged = object()
-    filtered = object()
+    merged = RhimeMergedData(
+        site_data={
+            site: xr.Dataset({
+                "mf_error": ("time", [1.0]),
+                "mf_repeatability": ("time", [0.0]),
+                "mf_variability": ("time", [0.0]),
+            })
+            for site in config.site_options.sites
+        },
+        flux_data={},
+        site_options=config.site_options,
+    )
+    filtered = merged
     basis = object()
     site_data = object()
     prepared = SimpleNamespace(
@@ -73,10 +85,10 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
         calls.append("filter")
         return filtered
 
-    def build_basis(actual: Any, **kwargs: Any) -> Any:
-        assert actual is filtered
+    def build_basis(**kwargs: Any) -> Any:
+        assert kwargs["site_data"] is filtered.site_data
         assert kwargs["domain"] == config.domain
-        assert kwargs["flux_sources"] == config.flux_sources
+        assert kwargs["emissions_name"] == config.flux_sources
         calls.append("basis")
         return basis
 
@@ -134,9 +146,9 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
 
     monkeypatch.setattr(rhime_runner.RhimeConfig, "from_params", classmethod(resolve))
     monkeypatch.setattr(rhime_runner.RhimeMergedData, "from_options", retrieve)
-    monkeypatch.setattr(rhime_runner, "filter_rhime_observations", filter_observations)
-    monkeypatch.setattr(rhime_runner, "build_rhime_basis", build_basis)
-    monkeypatch.setattr(rhime_runner, "build_rhime_sensitivities", build_sensitivities)
+    monkeypatch.setattr(rhime_runner, "filter_observations", filter_observations)
+    monkeypatch.setattr(rhime_runner, "make_basis_functions", build_basis)
+    monkeypatch.setattr(rhime_runner, "build_sensitivities", build_sensitivities)
     monkeypatch.setattr(rhime_runner, "assemble_rhime_inputs", assemble)
     monkeypatch.setattr(
         rhime_runner,
