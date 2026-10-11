@@ -10,8 +10,8 @@ stages accept explicit resolved choices.
 
 Merged data and xarray objects supplied to these stages are borrowed.  Stages
 return new handoffs when they need to attach variables or metadata and never
-mutate caller-owned datasets.  Retrieval may read OpenGHG stores or a merged
-data cache and may write a requested merged-data artifact.  Filtering may
+mutate caller-owned datasets. Acquisition reads OpenGHG stores and returns an
+in-memory handoff. Filtering may
 compute when a selected filter cannot operate lazily.  Basis construction may
 read, fit, or write a basis artifact, and sensitivity construction may execute
 the basis and boundary-condition algorithms.  Labelled assembly validates the
@@ -39,8 +39,6 @@ from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.boundary_sensitivity import scale_satellite_boundary_sensitivity_to_column_signal
 from openghg_inversions.filters import filtering
 from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs
-from openghg_inversions.inversion_data._site_options import SiteOptions
-from openghg_inversions.inversion_data.acquisition import _select_fp_all_sites
 from openghg_inversions.inversion_data.prepared_inputs import _make_site_metadata
 from openghg_inversions.inversion_inputs import make_inv_inputs
 from openghg_inversions.model_error import MinErrorConfig
@@ -176,7 +174,7 @@ def build_rhime_basis(
             basis_directory=basis_directory,
             country_directory=country_directory,
             outer_regions_path=outer_regions_path,
-            fp_all=merged.fp_all,
+            fp_all=merged.to_legacy_fp_all(),
             species=species,
             domain=domain,
             start_date=start_date,
@@ -403,32 +401,30 @@ def _warn_for_nan_inputs(inv_inputs: xr.Dataset, *, use_bc: bool) -> None:
 def _apply_filters_and_drop_empty_sites(
     *,
     fp_data: dict,
-    site_options: SiteOptions,
+    sites: Sequence[str],
     filters: Any,
-) -> tuple[dict, SiteOptions]:
-    """Apply filters and keep site-aligned metadata in sync."""
+) -> dict:
+    """Apply observation filters and remove empty site datasets."""
     if filters is not None:
         try:
             fp_data = filtering(fp_data, filters)
         except ValueError:
-            for site in site_options.sites:
+            for site in sites:
                 fp_data[site] = fp_data[site].compute()
             fp_data = filtering(fp_data, filters)
 
     dropped_sites = []
-    for site in site_options.sites:
+    for site in sites:
         if fp_data[site].sizes.get("time", 0) == 0:
             dropped_sites.append(site)
             del fp_data[site]
     if dropped_sites:
-        keep_indices = [index for index, site in enumerate(site_options.sites) if site not in dropped_sites]
-        if not keep_indices:
+        if not fp_data:
             raise ValueError(f"No sites remain after filtering. Dropped sites: {dropped_sites}.")
 
-        site_options = site_options.select_indices(keep_indices)
         print(f"\nDropping {dropped_sites} sites as no data passed the filtering.\n")
 
-    return fp_data, site_options
+    return fp_data
 
 
 def _validate_multisector_sensitivity_sources(
@@ -476,7 +472,7 @@ def _rhime_site_data_from_basis_functions(
     bc_basis_directory: str | None,
 ) -> dict:
     """Apply retained basis functions to one prepared merged-data stage."""
-    fp_data = {site: merged.fp_all[site].copy() for site in merged.sites}
+    fp_data = {site: merged.site_data[site].copy() for site in merged.sites}
     fp_x_flux_name = "fp_x_flux_sectoral" if split_by_sectors else "fp_x_flux"
 
     for site in merged.sites:
@@ -554,14 +550,16 @@ def _filter_merged_inversion_data(
     Raises:
         ValueError: If every requested site is removed by filtering.
     """
-    if filters is None and all(merged.fp_all[site].sizes.get("time", 0) > 0 for site in merged.sites):
+    if filters is None and all(merged.site_data[site].sizes.get("time", 0) > 0 for site in merged.sites):
         return merged
 
-    fp_data = {site: merged.fp_all[site].copy() for site in merged.sites}
-    fp_data, site_options = _apply_filters_and_drop_empty_sites(
+    fp_data = {site: merged.site_data[site].copy() for site in merged.sites}
+    fp_data = _apply_filters_and_drop_empty_sites(
         fp_data=fp_data,
-        site_options=merged.site_options,
+        sites=merged.sites,
         filters=filters,
     )
-    fp_all = _select_fp_all_sites({**merged.fp_all, **fp_data}, site_options.sites)
-    return RhimeMergedData(fp_all=fp_all, site_options=site_options)
+    return merged.with_site_data(
+        fp_data,
+        context="Observation filtering",
+    )

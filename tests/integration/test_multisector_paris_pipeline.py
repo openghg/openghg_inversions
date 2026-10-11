@@ -166,7 +166,6 @@ def test_multisector_rhime_pipeline_writes_latest_paris_flux_schema(
             "burn": 0,
             "tune": 0,
             "chains": 1,
-            "reload_merged_data": False,
             "output_format": "paris",
             "save_inversion_output": False,
             "country_file": europe_country_file,
@@ -177,6 +176,7 @@ def test_multisector_rhime_pipeline_writes_latest_paris_flux_schema(
             },
             "x_prior": {"pdf": "normal", "mu": 1.0, "sigma": 1.0},
             "bc_prior": {"pdf": "normal", "mu": 1.0, "sigma": 1.0},
+            "mismatch_model": "pollution_event",
             "sigma_prior": {"pdf": "uniform", "lower": 0.1, "upper": 10.0},
             "sample_kwargs": {"random_seed": 405, "compute_convergence_checks": False},
         }

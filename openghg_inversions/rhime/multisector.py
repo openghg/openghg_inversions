@@ -62,7 +62,6 @@ from .builders import (
     callable_metadata,
     validate_model_build_result,
 )
-from openghg_inversions.inversion_data.acquisition import _validate_loaded_sector_layout
 
 from .materialization import materialize_pymc_inputs
 from .outputs import RhimeResult, annotate_likelihood_trace, make_multisector_rhime_outputs
@@ -637,11 +636,15 @@ def run_rhime_multisector(
 ) -> RhimeResult:
     """Run a shared-basis multi-sector RHIME inversion.
 
-    The visible process is resolve → retrieve/reload → filter → basis →
-    sensitivities → assemble → materialize → build → sample → result →
+    The visible process is resolve → acquire or accept supplied data → filter →
+    basis → sensitivities → assemble → materialize → build → sample → result →
     requested outputs.
     This module keeps source layout validation and sector-aware outputs beside
     that process instead of hiding them behind standard/multisector branching.
+
+    Without supplied merged data, this runner acquires fresh data. Persisted
+    prepared inputs can be reused with
+    :func:`openghg_inversions.rhime.run_rhime_from_prepared_inputs`.
 
     Args:
         config_file: Optional INI configuration file. Values in ``kwargs``
@@ -650,8 +653,9 @@ def run_rhime_multisector(
             It is used without resolving again and cannot
             be combined with ``config_file`` or raw run parameters in ``kwargs``.
         merged_data: Optional externally supplied source-resolved merged
-            scientific data. Passing it bypasses OpenGHG acquisition and
-            merged-cache I/O, then resumes at filtering after validation.
+            scientific data. Passing this in-memory handoff bypasses OpenGHG
+            acquisition and resumes at filtering after validating
+            recorded species, domain, time window, and sector layout.
         likelihood_builder: Optional Python-only callable invoked with a
             completed forward-model mean and explicit error-model inputs in
             the active PyMC model. It must return the canonical observed
@@ -704,24 +708,19 @@ def run_rhime_multisector(
     # 1. Resolve acquisition through the data owner.
     preparation_start = timer_start()
     if merged_data is not None:
-        _validate_loaded_sector_layout(merged_data.fp_all, split_by_sectors=config.split_by_sectors)
-        merged = merged_data
-    elif config.reload_merged_data:
-        merged = RhimeMergedData.load(
-            **config.select(
-                "merged_data_dir", "site_options", "species", "start_date", "output_name",
-                "merged_data_name", "split_by_sectors", "flux_non_finite_check",
-            ),
+        merged_data.validate_for_preparation(
+            **config.select("species", "domain", "start_date", "end_date", "split_by_sectors"),
         )
+        merged = merged_data
     else:
         merged = RhimeMergedData.from_options(
             **config.select(
                 "site_options", "species", "domain", "start_date",
-                "end_date", "output_name", "flux_sources", "split_by_sectors",
+                "end_date",  "flux_sources", "split_by_sectors",
                 "bc_store", "obs_store", "footprint_store", "emissions_store",
                 "emissions_domain", "fp_model", "fp_species", "calibration_scale",
                 "use_bc", "bc_input", "averaging_error",
-                "save_merged_data", "merged_data_dir", "merged_data_name", "flux_non_finite_check",
+                "flux_non_finite_check",
             ),
         )
     log_timing(

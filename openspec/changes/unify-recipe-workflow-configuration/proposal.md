@@ -20,9 +20,9 @@ Establish shared recipe execution before OPE-165 completes linked CO2/O2 staging
   and reporting around them.
 - Give standard and multisector separate concrete stage owners, sharing identical
   scientific operations and artifact mechanics where appropriate. Keep the
-  existing optional merged-data cache at the acquisition/preparation boundary
-  and the fully prepared handoff at the preparation/construction boundary.
-  Full and staged routes reuse the same merged-cache save/reload mechanism.
+  acquisition handoff in memory and the fully prepared artifact at the
+  preparation/construction boundary. Optional acquisition replay is deferred
+  to #829.
 - **BREAKING (next minor release)**: Remove the newer filtered merged-data
   checkpoint (`merged-data/merged-data.nc`) and its preparation-manifest entries.
   Filtered merged data remains an in-memory preparation intermediate, with no
@@ -30,7 +30,7 @@ Establish shared recipe execution before OPE-165 completes linked CO2/O2 staging
 - Require each recipe to derive retained sites and align applicable per-site
   metadata/options consistently across equivalent routes. Correct
   standard/multisector staging to accept the full runners' valid retained
-  subsets after acquisition, compatible merged-cache reload, or filtering. Align
+  subsets after acquisition, supplied in-memory data, or filtering. Align
   all per-site metadata; reject an empty retained set or malformed input. This is
   an explicit staged behavior change, requiring regression coverage and a release
   note in the implementation.

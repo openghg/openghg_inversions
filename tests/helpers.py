@@ -219,3 +219,31 @@ def convert_old_multisector_H_to_gathered(
         H = H.transpose(gathered_dim, ...)
 
     return H
+
+
+def prepare_inputs(**params):
+    """Compose canonical RHIME stages for scientific regression fixtures."""
+    from openghg_inversions.inversion_data import RhimeMergedData
+    from openghg_inversions.rhime.params import RhimeConfig
+    from openghg_inversions.rhime import preparation
+
+    config = RhimeConfig.from_params({"output_format": "none", **params},
+                                     multisector=params.get("split_by_sectors", False))
+    merged = RhimeMergedData.from_options(**config.select(
+        "site_options", "species", "domain", "start_date", "end_date",
+        "flux_sources", "split_by_sectors", "bc_store", "obs_store", "footprint_store",
+        "emissions_store", "emissions_domain", "fp_model", "fp_species", "calibration_scale",
+        "use_bc", "bc_input", "averaging_error", "flux_non_finite_check",
+    ))
+    filtered = preparation.filter_rhime_observations(merged, filters=config.filters)
+    basis = preparation.build_rhime_basis(filtered, **config.select(
+        "species", "domain", "start_date", "flux_sources", "output_name", "basis_algorithm",
+        "nbasis", "fp_basis_case", "basis_directory", "country_directory", "outer_regions_path",
+        "fix_basis_outer_regions", "basis_output_path",
+    ))
+    sites = preparation.build_rhime_sensitivities(filtered, basis, **config.select(
+        "domain", "flux_sources", "use_bc", "bc_basis_case", "bc_basis_directory",
+    ), multisector=config.split_by_sectors)
+    return preparation.assemble_rhime_inputs(filtered, basis, sites, **config.select(
+        "domain", "start_date", "bc_freq", "min_error", "min_error_options", "use_bc",
+    ))

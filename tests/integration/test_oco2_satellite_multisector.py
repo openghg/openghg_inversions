@@ -15,7 +15,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from openghg_inversions.inversion_data.preparation import RhimePreparedInputs, prepare_rhime_inputs
+from tests.helpers import prepare_inputs
+
+from openghg_inversions.inversion_data import RhimePreparedInputs
 from openghg_inversions.rhime import (
     RhimeSampler,
     RhimeConfig,
@@ -58,7 +60,7 @@ def real_oco2_prepared_inputs(tmp_path_factory: pytest.TempPathFactory) -> Rhime
         _COUNTRY_DIRECTORY,
     )
     basis_output_path = tmp_path_factory.mktemp("oco2_multisector_basis")
-    return prepare_rhime_inputs(
+    return prepare_inputs(
         species="co2",
         sites=["OCO2-EASTASIA"],
         domain="EASTASIA",

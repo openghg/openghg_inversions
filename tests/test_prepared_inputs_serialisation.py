@@ -22,9 +22,8 @@ from openghg_inversions.basis.basis_functions import (
 )
 from openghg_inversions.basis.operators import MultiSourceBucketBasisOperator
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
-from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs, prepare_rhime_inputs
+from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs
 from openghg_inversions.inversion_data import acquisition
-from openghg_inversions.inversion_data import preparation as legacy_preparation
 from openghg_inversions.inversion_data import prepared_inputs as prepared_contract
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.rhime import (
@@ -47,19 +46,18 @@ from openghg_inversions.serialization import (
     trace_from_datatree,
     trace_to_datatree,
 )
-from tests.helpers import make_trace
+from tests.helpers import make_trace, prepare_inputs
 
 
 def test_data_contracts_preserve_legacy_imports_and_prepared_schema() -> None:
     """Old entry points construct and reopen the same durable scientific value."""
     assert RhimePreparedInputs is prepared_contract.RhimePreparedInputs
-    assert legacy_preparation.RhimePreparedInputs is prepared_contract.RhimePreparedInputs
+    assert RhimePreparedInputs is prepared_contract.RhimePreparedInputs
     assert RhimeMergedData is acquisition.RhimeMergedData
-    assert legacy_preparation.RhimeMergedData is acquisition.RhimeMergedData
     prepared = _prepared_inputs()
     artifact = prepared.to_datatree()
-    assert artifact.attrs["schema"] == legacy_preparation.RHIME_PREPARED_INPUTS_SCHEMA
-    assert artifact.attrs["schema_version"] == legacy_preparation.RHIME_PREPARED_INPUTS_SCHEMA_VERSION == 1
+    assert artifact.attrs["schema"] == prepared_contract.RHIME_PREPARED_INPUTS_SCHEMA
+    assert artifact.attrs["schema_version"] == prepared_contract.RHIME_PREPARED_INPUTS_SCHEMA_VERSION == 1
 
     restored = prepared_contract.RhimePreparedInputs.from_datatree(artifact)
     xr.testing.assert_identical(restored.inv_inputs, prepared.inv_inputs)
@@ -484,7 +482,7 @@ def prepared_from_real_route(
             "bc_basis_directory": default_bc_basis_directory,
         }
     )
-    return prepare_rhime_inputs(**preparation_args)
+    return prepare_inputs(**preparation_args)
 
 
 def test_prepared_inputs_datatree_roundtrip_is_self_contained() -> None:

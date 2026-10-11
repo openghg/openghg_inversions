@@ -376,7 +376,6 @@ def test_run_hbmcmc_main_routes_to_run_rhime(monkeypatch: pytest.MonkeyPatch, tm
     assert config.output.output_format == "legacy"
     assert config.output.output_filename_convention == "legacy"
     assert isinstance(config.model.likelihood, PollutionEventSettings)
-    assert config.save_merged_data is False
     assert seen["run_rhime_kwargs"]["preserve_legacy_likelihood"] is True
     assert seen["run_rhime_kwargs"]["compatibility_output_chain"] == 0
 
