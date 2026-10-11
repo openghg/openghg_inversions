@@ -353,7 +353,6 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.acquisition.html">openghg_inversions.inversion_data.acquisition</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.get_data.html">openghg_inversions.inversion_data.get_data</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.getters.html">openghg_inversions.inversion_data.getters</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.preparation.html">openghg_inversions.inversion_data.preparation</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html">openghg_inversions.inversion_data.prepared_inputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.scenario.html">openghg_inversions.inversion_data.scenario</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.serialise.html">openghg_inversions.inversion_data.serialise</a></li>
@@ -718,11 +717,14 @@ Defaults to the live build result’s contract when supplied.</p></li>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.multisector.run_rhime_multisector" title="Link to this definition">#</a></dt>
 <dd><p>Run a shared-basis multi-sector RHIME inversion.</p>
-<p>The visible process is resolve → retrieve/reload → filter → basis →
-sensitivities → assemble → materialize → build → sample → result →
+<p>The visible process is resolve → acquire or accept supplied data → filter →
+basis → sensitivities → assemble → materialize → build → sample → result →
 requested outputs.
 This module keeps source layout validation and sector-aware outputs beside
 that process instead of hiding them behind standard/multisector branching.</p>
+<p>Without supplied merged data, this runner acquires fresh data. Persisted
+prepared inputs can be reused with
+<a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.run_rhime_from_prepared_inputs" title="openghg_inversions.rhime.run_rhime_from_prepared_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.run_rhime_from_prepared_inputs()</span></code></a>.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -732,8 +734,9 @@ override values read from this file.</p></li>
 It is used without resolving again and cannot
 be combined with <code class="docutils literal notranslate"><span class="pre">config_file</span></code> or raw run parameters in <code class="docutils literal notranslate"><span class="pre">kwargs</span></code>.</p></li>
 <li><p><strong>merged_data</strong> (<a class="reference internal" href="openghg_inversions.inversion_data.acquisition.html#openghg_inversions.inversion_data.acquisition.RhimeMergedData" title="openghg_inversions.inversion_data.acquisition.RhimeMergedData"><em>RhimeMergedData</em></a><em> | </em><em>None</em>) – Optional externally supplied source-resolved merged
-scientific data. Passing it bypasses OpenGHG acquisition and
-merged-cache I/O, then resumes at filtering after validation.</p></li>
+scientific data. Passing this in-memory handoff bypasses OpenGHG
+acquisition and resumes at filtering after validating
+recorded species, domain, time window, and sector layout.</p></li>
 <li><p><strong>likelihood_builder</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Callable" title="(in Python v3.15)"><em>Callable</em></a><em>[</em><em>[</em><em>...</em><em>]</em><em>, </em><em>TensorVariable</em><em>] </em><em>| </em><em>None</em>) – Optional Python-only callable invoked with a
 completed forward-model mean and explicit error-model inputs in
 the active PyMC model. It must return the canonical observed

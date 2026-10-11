@@ -525,12 +525,12 @@ a compact, direct identity for the prepared handoff.</p>
 working directory and reject pre-existing symlinks beneath a stage output
 directory.</p>
 <dl class="simple">
-<dt><code class="docutils literal notranslate"><span class="pre">prepare</span></code></dt><dd><p>Retrieves/reloads merged data, filters observations, constructs basis and
-sensitivities, assembles canonical inputs, and writes an inspectable
-<code class="docutils literal notranslate"><span class="pre">merged-data/merged-data.nc</span></code>, <code class="docutils literal notranslate"><span class="pre">prepared-inputs.nc</span></code> and
-<code class="docutils literal notranslate"><span class="pre">prepare-manifest.json</span></code>.  It never builds a
-PyMC graph or samples a posterior.  The NetCDF is a versioned
-<code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code> artifact and is independently inspectable/loadable.
+<dt><code class="docutils literal notranslate"><span class="pre">prepare</span></code></dt><dd><p>Retrieves merged data, filters observations, constructs basis and
+sensitivities, assembles canonical inputs, and writes <code class="docutils literal notranslate"><span class="pre">prepared-inputs.nc</span></code>
+and <code class="docutils literal notranslate"><span class="pre">prepare-manifest.json</span></code>. It never builds a PyMC graph or samples a
+posterior. The NetCDF is a versioned <code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code> artifact and is
+independently inspectable/loadable. Later stages consume this artifact;
+preparation does not write a filtered merged-data snapshot.
 For <code class="docutils literal notranslate"><span class="pre">co2</span></code>, preparation validates and copies the configured
 <code class="docutils literal notranslate"><span class="pre">Co2PreparedInputs</span></code> artifact and optional bound affine reconstruction,
 preserving their content identities; it does not acquire observation data.</p>

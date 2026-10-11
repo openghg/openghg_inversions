@@ -353,7 +353,6 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.acquisition.html">openghg_inversions.inversion_data.acquisition</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.get_data.html">openghg_inversions.inversion_data.get_data</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.getters.html">openghg_inversions.inversion_data.getters</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.preparation.html">openghg_inversions.inversion_data.preparation</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html">openghg_inversions.inversion_data.prepared_inputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.scenario.html">openghg_inversions.inversion_data.scenario</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.serialise.html">openghg_inversions.inversion_data.serialise</a></li>
@@ -827,10 +826,6 @@ retained outer flux used by basis generation and post-run reconstruction.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">inner_basis_directory</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">inner_country_directory</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">inner_basis_output_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">inner_reload_merged_data</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">inner_save_merged_data</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">inner_merged_data_dir</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">inner_merged_data_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">time_tolerance</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 </dl>
 
@@ -871,12 +866,6 @@ outer request’s directory.</p></li>
 the outer request’s directory.</p></li>
 <li><p><strong>inner_basis_output_path</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Optional destination for a generated inner
 basis. <code class="docutils literal notranslate"><span class="pre">None</span></code> disables saving the inner basis.</p></li>
-<li><p><strong>inner_reload_merged_data</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Require an inner merged artifact instead of
-fresh acquisition. Loading errors propagate without reacquisition.</p></li>
-<li><p><strong>inner_save_merged_data</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Whether fresh inner acquisition saves merged
-data. This does not inherit the outer saving choice.</p></li>
-<li><p><strong>inner_merged_data_dir</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Directory for inner merged artifacts.</p></li>
-<li><p><strong>inner_merged_data_name</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Optional inner merged-artifact filename.</p></li>
 <li><p><strong>time_tolerance</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>Timedelta</em><em> | </em><em>None</em>) – Maximum difference for nearest-time inner footprint
 matching. <code class="docutils literal notranslate"><span class="pre">None</span></code> requires exact times; matching never reuses an
 inner footprint for multiple outer rows.</p></li>
@@ -888,8 +877,10 @@ combined sensitivities aligned to the retained outer observations.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If the request is not single-source, the inner domain is
-    empty, the sites or observation times cannot be aligned, or the
-    automatic basis budget is not an integer of at least two.</p>
+    empty, recorded acquisition species, domain, dates or sector layout
+    conflict with the request, the sites or observation times cannot be
+    aligned, or the automatic basis budget is not an integer of at least
+    two.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><a class="reference internal" href="#openghg_inversions.rhime.nested.NestedRhimePreparedInputs" title="openghg_inversions.rhime.nested.NestedRhimePreparedInputs"><em>NestedRhimePreparedInputs</em></a></p>

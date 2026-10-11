@@ -353,7 +353,6 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.acquisition.html">openghg_inversions.inversion_data.acquisition</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.get_data.html">openghg_inversions.inversion_data.get_data</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.getters.html">openghg_inversions.inversion_data.getters</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.preparation.html">openghg_inversions.inversion_data.preparation</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html">openghg_inversions.inversion_data.prepared_inputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.scenario.html">openghg_inversions.inversion_data.scenario</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.serialise.html">openghg_inversions.inversion_data.serialise</a></li>
@@ -633,10 +632,9 @@ its implementation is owned by <code class="docutils literal notranslate"><span 
 before a separate model run. The
 <a class="reference internal" href="../usage/rhime.html"><span class="doc">RHIME terminology and prepared-input reference</span></a>
 documents the expected variables, dimensions, and coordinates. Acquisition
-and reload mechanics live in <code class="docutils literal notranslate"><span class="pre">inversion_data.acquisition</span></code>; the prepared
+mechanics live in <code class="docutils literal notranslate"><span class="pre">inversion_data.acquisition</span></code>; the prepared
 value and its unchanged version-1 schema live in
-<code class="docutils literal notranslate"><span class="pre">inversion_data.prepared_inputs</span></code>. Existing package and preparation-module
-imports identify the same classes.</p>
+<code class="docutils literal notranslate"><span class="pre">inversion_data.prepared_inputs</span></code>. Import both values from <code class="docutils literal notranslate"><span class="pre">openghg_inversions.inversion_data</span></code>.</p>
 <div class="pst-scrollable-table-container"><table class="autosummary longtable table">
 <tbody>
 <tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.inversion_data.acquisition.html#openghg_inversions.inversion_data.SiteOptions" title="openghg_inversions.inversion_data.SiteOptions"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.inversion_data.SiteOptions</span></code></a></p></td>
@@ -646,13 +644,19 @@ imports identify the same classes.</p>
 <td><p>Retrieve and prepare surface or column datasets from OpenGHG stores.</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.inversion_data.html#openghg_inversions.inversion_data.RhimeMergedData" title="openghg_inversions.inversion_data.RhimeMergedData"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.inversion_data.RhimeMergedData</span></code></a></p></td>
-<td><p>Merged RHIME data and complete site-aligned metadata between stages.</p></td>
+<td><p>Borrowed merged datasets, selectors and selected retrieval provenance.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.inversion_data.html#openghg_inversions.inversion_data.RhimePreparedInputs" title="openghg_inversions.inversion_data.RhimePreparedInputs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.inversion_data.RhimePreparedInputs</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.inversion_data.html#openghg_inversions.inversion_data.AcquisitionFacts" title="openghg_inversions.inversion_data.AcquisitionFacts"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.inversion_data.AcquisitionFacts</span></code></a></p></td>
+<td><p>Known retrieval choices; absent values make no compatibility claim.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.inversion_data.html#openghg_inversions.inversion_data.InputProvenance" title="openghg_inversions.inversion_data.InputProvenance"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.inversion_data.InputProvenance</span></code></a></p></td>
+<td><p>Selected store, UUID and data version for one input or combined inputs.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.inversion_data.html#openghg_inversions.inversion_data.MergedDataProvenance" title="openghg_inversions.inversion_data.MergedDataProvenance"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.inversion_data.MergedDataProvenance</span></code></a></p></td>
+<td><p>OpenGHG software identity and selected inputs of a merged-data record.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.inversion_data.html#openghg_inversions.inversion_data.RhimePreparedInputs" title="openghg_inversions.inversion_data.RhimePreparedInputs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.inversion_data.RhimePreparedInputs</span></code></a></p></td>
 <td><p>Modern RHIME preparation and durable serialization contract.</p></td>
-</tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.inversion_data.html#openghg_inversions.inversion_data.prepare_rhime_inputs" title="openghg_inversions.inversion_data.prepare_rhime_inputs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.inversion_data.prepare_rhime_inputs</span></code></a></p></td>
-<td><p>Deprecated acquisition-and-preparation compatibility entry point.</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.inversion_data.html#openghg_inversions.inversion_data.prepare_rhime_inputs_from_xarray" title="openghg_inversions.inversion_data.prepare_rhime_inputs_from_xarray"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.inversion_data.prepare_rhime_inputs_from_xarray</span></code></a></p></td>
 <td><p>Create canonical RHIME inputs from source-neutral xarray site data.</p></td>
@@ -663,11 +667,11 @@ imports identify the same classes.</p>
 <tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.inversion_data.html#openghg_inversions.inversion_data.RhimeMergedData.from_options" title="openghg_inversions.inversion_data.RhimeMergedData.from_options"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.inversion_data.RhimeMergedData.from_options</span></code></a></p></td>
 <td><p>Acquire fresh merged data using complete aligned selectors.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.inversion_data.html#openghg_inversions.inversion_data.RhimeMergedData.load" title="openghg_inversions.inversion_data.RhimeMergedData.load"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.inversion_data.RhimeMergedData.load</span></code></a></p></td>
-<td><p>Read a current-format merged artifact with caller-supplied selectors.</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.inversion_data.html#openghg_inversions.inversion_data.RhimeMergedData.validate_for_preparation" title="openghg_inversions.inversion_data.RhimeMergedData.validate_for_preparation"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.inversion_data.RhimeMergedData.validate_for_preparation</span></code></a></p></td>
+<td><p>Reject supplied data with known facts conflicting with preparation.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.inversion_data.html#openghg_inversions.inversion_data.RhimeMergedData.save" title="openghg_inversions.inversion_data.RhimeMergedData.save"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.inversion_data.RhimeMergedData.save</span></code></a></p></td>
-<td><p>Write the merged scientific datasets in the established cache format.</p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.inversion_data.html#openghg_inversions.inversion_data.RhimeMergedData.with_site_data" title="openghg_inversions.inversion_data.RhimeMergedData.with_site_data"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.inversion_data.RhimeMergedData.with_site_data</span></code></a></p></td>
+<td><p>Replace retained site datasets with their selectors and provenance.</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.filter_rhime_observations" title="openghg_inversions.rhime.filter_rhime_observations"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.rhime.filter_rhime_observations</span></code></a></p></td>
 <td><p>Filter borrowed observations and remove empty sites with aligned metadata.</p></td>
@@ -762,40 +766,43 @@ executed layout example and <a class="reference internal" href="../usage/affine_
 <tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.load_basis_functions" title="openghg_inversions.basis.load_basis_functions"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.basis.load_basis_functions</span></code></a></p></td>
 <td><p>Load a saved basis artifact as retained <code class="docutils literal notranslate"><span class="pre">BasisFunctions</span></code>.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.basis_functions_from_fp_all_flat_basis" title="openghg_inversions.basis.basis_functions_from_fp_all_flat_basis"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.basis.basis_functions_from_fp_all_flat_basis</span></code></a></p></td>
-<td><p>Compatibility adapter that constructs a basis object from flat basis data.</p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.basis_functions_from_flat_basis" title="openghg_inversions.basis.basis_functions_from_flat_basis"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.basis.basis_functions_from_flat_basis</span></code></a></p></td>
+<td><p>Attach borrowed runtime flux to shared or source-specific flat labels.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.bucket_basis_from_weights" title="openghg_inversions.basis.bucket_basis_from_weights"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.basis.bucket_basis_from_weights</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.basis_weights_from_data" title="openghg_inversions.basis.basis_weights_from_data"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.basis.basis_weights_from_data</span></code></a></p></td>
+<td><p>Materialize mean-footprint times mean-flux weights for basis fitting.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.bucket_basis_from_weights" title="openghg_inversions.basis.bucket_basis_from_weights"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.basis.bucket_basis_from_weights</span></code></a></p></td>
 <td><p>Create a legacy weighted bucket basis field from precomputed 2D weights.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.quadtree_basis_from_weights" title="openghg_inversions.basis.quadtree_basis_from_weights"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.basis.quadtree_basis_from_weights</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.quadtree_basis_from_weights" title="openghg_inversions.basis.quadtree_basis_from_weights"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.basis.quadtree_basis_from_weights</span></code></a></p></td>
 <td><p>Create a quadtree basis field from precomputed 2D weights.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.region_constrained_basis_from_weights" title="openghg_inversions.basis.region_constrained_basis_from_weights"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.basis.region_constrained_basis_from_weights</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.region_constrained_basis_from_weights" title="openghg_inversions.basis.region_constrained_basis_from_weights"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.basis.region_constrained_basis_from_weights</span></code></a></p></td>
 <td><p>Create constrained basis labels from weights and region classes.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.project_basis_prior_stdev" title="openghg_inversions.basis.project_basis_prior_stdev"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.basis.project_basis_prior_stdev</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.project_basis_prior_stdev" title="openghg_inversions.basis.project_basis_prior_stdev"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.basis.project_basis_prior_stdev</span></code></a></p></td>
 <td><p>Project independent grid-cell scale uncertainty onto basis states.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.calibrate_basis_prior_stdev" title="openghg_inversions.basis.calibrate_basis_prior_stdev"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.basis.calibrate_basis_prior_stdev</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.calibrate_basis_prior_stdev" title="openghg_inversions.basis.calibrate_basis_prior_stdev"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.basis.calibrate_basis_prior_stdev</span></code></a></p></td>
 <td><p>Calibrate grid-cell and basis-state prior widths to aggregate targets.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.basis.operators.html#openghg_inversions.basis.operators.BasisOperator" title="openghg_inversions.basis.operators.BasisOperator"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.basis.operators.BasisOperator</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.basis.operators.html#openghg_inversions.basis.operators.BasisOperator" title="openghg_inversions.basis.operators.BasisOperator"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.basis.operators.BasisOperator</span></code></a></p></td>
 <td><p>Abstract basis operator.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.basis.operators.html#openghg_inversions.basis.operators.BucketBasisOperator" title="openghg_inversions.basis.operators.BucketBasisOperator"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.basis.operators.BucketBasisOperator</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.basis.operators.html#openghg_inversions.basis.operators.BucketBasisOperator" title="openghg_inversions.basis.operators.BucketBasisOperator"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.basis.operators.BucketBasisOperator</span></code></a></p></td>
 <td><p>Map one integer-labelled grid basis onto a retained state.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.basis.operators.html#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator" title="openghg_inversions.basis.operators.MultiSourceBucketBasisOperator"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.basis.operators.MultiSourceBucketBasisOperator</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.basis.operators.html#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator" title="openghg_inversions.basis.operators.MultiSourceBucketBasisOperator"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.basis.operators.MultiSourceBucketBasisOperator</span></code></a></p></td>
 <td><p>Combine source-specific flat bases into one ragged retained state.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.basis.layout.html#openghg_inversions.basis.layout.BasisPartition" title="openghg_inversions.basis.layout.BasisPartition"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.basis.layout.BasisPartition</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.basis.layout.html#openghg_inversions.basis.layout.BasisPartition" title="openghg_inversions.basis.layout.BasisPartition"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.basis.layout.BasisPartition</span></code></a></p></td>
 <td><p>Partition-local basis labels and their semantic group name.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.basis.layout.html#openghg_inversions.basis.layout.BasisLayout" title="openghg_inversions.basis.layout.BasisLayout"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.basis.layout.BasisLayout</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.basis.layout.html#openghg_inversions.basis.layout.BasisLayout" title="openghg_inversions.basis.layout.BasisLayout"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.basis.layout.BasisLayout</span></code></a></p></td>
 <td><p>Combine disjoint basis partitions into one flat label map.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="openghg_inversions.basis.layout.html#openghg_inversions.basis.layout.BasisLayoutResult" title="openghg_inversions.basis.layout.BasisLayoutResult"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.basis.layout.BasisLayoutResult</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="openghg_inversions.basis.layout.html#openghg_inversions.basis.layout.BasisLayoutResult" title="openghg_inversions.basis.layout.BasisLayoutResult"><code class="xref py py-obj docutils literal notranslate"><span class="pre">openghg_inversions.basis.layout.BasisLayoutResult</span></code></a></p></td>
 <td><p>Combined flat basis labels plus raw-label keyed state metadata.</p></td>
 </tr>
 </tbody>

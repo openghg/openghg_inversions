@@ -655,13 +655,10 @@ data, bind a model or execute inference.</p>
 selectors independently of file syntax. Direct construction accepts resolved
 aligned values. Canonical acquisition consumes those values without another
 shorthand pass; retained-site selection selects every applicable selector
-together and returns a new record. Public preparation and fresh-retrieval
-adapters share applicable translation without requiring the full configured
-request. <code class="docutils literal notranslate"><span class="pre">retrieve_inversion_data</span></code> is fresh acquisition, while
-<code class="docutils literal notranslate"><span class="pre">RhimeMergedData.from_options</span></code> performs fresh acquisition and
-<code class="docutils literal notranslate"><span class="pre">RhimeMergedData.load</span></code> owns strict cache loading and compatibility checks.
-The recipe first reuses compatible supplied data, then explicitly selects the
-requested factory. Failed reloads never silently retrieve fresh data (#806). The deprecated
+together and returns a new record. <code class="docutils literal notranslate"><span class="pre">RhimeMergedData.from_options</span></code> performs
+fresh in-memory acquisition. The recipe first reuses compatible supplied data,
+then acquires fresh data when no handoff was supplied. Repeated sampling uses
+the durable prepared-input artifact. The deprecated
 <code class="docutils literal notranslate"><span class="pre">data_processing_surface_notracer</span></code> wrapper preserves its six-tuple contract;
 internal calls use the neutral names.</p>
 <p>Keep the procedural runner’s acquisition, preparation, model construction and
@@ -672,12 +669,9 @@ it does not inspect signatures, resolve options or define another schema.
 A private orchestration helper may accept the resolved configuration to coordinate
 several stages, while scientific components retain independently usable inputs.
 The named preparation functions no longer accept positional <code class="docutils literal notranslate"><span class="pre">data_args</span></code> maps.
-The deprecated <code class="docutils literal notranslate"><span class="pre">prepare_rhime_inputs</span></code> acquisition-and-preparation wrapper
-normalizes its applicable inputs and delegates to these same scientific stages;
-it must not retain a second implementation of assembly or provenance policy.
 The stages and their scientific helpers live together in <code class="docutils literal notranslate"><span class="pre">rhime.preparation</span></code>.
-They do not call back into the deprecated <code class="docutils literal notranslate"><span class="pre">inversion_data.preparation</span></code> module;
-compatibility delegation runs only towards the canonical stages.</p>
+The combined <code class="docutils literal notranslate"><span class="pre">prepare_rhime_inputs</span></code> adapter has been removed; compose the
+named stages directly when custom preparation is required.</p>
 <p>Apply raw overrides before resolution. Use <code class="docutils literal notranslate"><span class="pre">dataclasses.replace</span></code> only when the
 replacement fields are already mutually consistent; it does not recompute
 site expansion, date-dependent defaults or repeated model/output facts.

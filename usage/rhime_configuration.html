@@ -427,7 +427,7 @@ inversion, start with the <a class="reference internal" href="rhime_standard_tut
 <h2>Inspecting the resolved request<a class="headerlink" href="#inspecting-the-resolved-request" title="Link to this heading">#</a></h2>
 <p>Standard and multisector runners resolve their effective options before
 acquisition. Use <code class="docutils literal notranslate"><span class="pre">RhimeConfig.from_params</span></code> to inspect the same choices without
-retrieving observations, loading a merged cache, building a model or sampling.
+retrieving observations, building a model or sampling.
 The returned <code class="docutils literal notranslate"><span class="pre">RhimeConfig</span></code> is the complete requested configuration:</p>
 <ul class="simple">
 <li><p>Acquisition and preparation choices are direct fields, including
@@ -533,22 +533,22 @@ aligned values and checks their structural alignment. For example:</p>
 </div>
 <p>Direct retrieval APIs retain their scalar shorthand without requiring model,
 output or sampler settings. The acquisition-and-preparation convenience function
-<code class="docutils literal notranslate"><span class="pre">prepare_rhime_inputs</span></code> is deprecated. For a complete inversion, use
+<code class="docutils literal notranslate"><span class="pre">prepare_rhime_inputs</span></code> has been removed. For a complete inversion, use
 <code class="docutils literal notranslate"><span class="pre">run_rhime</span></code>; for custom preparation, call <code class="docutils literal notranslate"><span class="pre">RhimeMergedData.from_options</span></code> followed by
 <code class="docutils literal notranslate"><span class="pre">filter_rhime_observations</span></code>, <code class="docutils literal notranslate"><span class="pre">build_rhime_basis</span></code>,
-<code class="docutils literal notranslate"><span class="pre">build_rhime_sensitivities</span></code> and <code class="docutils literal notranslate"><span class="pre">assemble_rhime_inputs</span></code>. The deprecated
-function retains its arguments and result while delegating to those same
-scientific stages. <code class="docutils literal notranslate"><span class="pre">retrieve_inversion_data</span></code> performs
+<code class="docutils literal notranslate"><span class="pre">build_rhime_sensitivities</span></code> and <code class="docutils literal notranslate"><span class="pre">assemble_rhime_inputs</span></code>. <code class="docutils literal notranslate"><span class="pre">retrieve_inversion_data</span></code> performs
 fresh surface or column acquisition and returns its established six-tuple of
 merged data and retained metadata lists. The former
 <code class="docutils literal notranslate"><span class="pre">data_processing_surface_notracer</span></code> name is a deprecated wrapper with the same
 signature and return. <code class="docutils literal notranslate"><span class="pre">RhimeMergedData.from_options</span></code> performs fresh acquisition
-from resolved selectors. <code class="docutils literal notranslate"><span class="pre">RhimeMergedData.load</span></code> explicitly loads an existing
-cache, requires caller-supplied selectors, and validates its layout and explicit
-time-resolution choices. Missing paths or unreadable/incompatible artifacts
-raise without fresh retrieval. Runners reuse a valid supplied handoff unchanged
-before choosing either factory, bypassing I/O. Fresh saving remains opt-in.
-See <a class="reference internal" href="customising_rhime.html"><span class="doc">Customising RHIME</span></a> for current-codec loading and saving examples.</p>
+from resolved selectors. Acquisition stays in memory; persist the completed
+<code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code> for reuse. Runners reuse a supplied <code class="docutils literal notranslate"><span class="pre">merged_data</span></code>
+handoff before acquisition, bypassing store access. Before preparation, the merged
+owner checks known species, domain, date bounds and source layout against the
+request. Conflicts, including changed acquisition windows, raise without
+relabeling or selecting observations. Recorded selectors remain authoritative;
+unknown historical facts stay unknown. See <a class="reference internal" href="customising_rhime.html"><span class="doc">Customising RHIME</span></a> for
+in-memory acquisition and <a class="reference internal" href="rhime.html"><span class="doc">RHIME terminology and prepared-input reference</span></a> for saving and loading prepared inputs.</p>
 <p>The requested configuration contains no acquired/prepared handoff or
 <code class="docutils literal notranslate"><span class="pre">RhimeRunSpec</span></code>.
 Merged and prepared handoffs describe the sites retained by acquisition and
@@ -565,6 +565,9 @@ authoritative site options. The <a class="reference internal" href="rhime.html">
 values for an ordinary keyword call:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="n">filter_rhime_observations</span>
 
+<span class="n">merged</span><span class="o">.</span><span class="n">validate_for_preparation</span><span class="p">(</span>
+    <span class="o">**</span><span class="n">config</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="s2">"species"</span><span class="p">,</span> <span class="s2">"domain"</span><span class="p">,</span> <span class="s2">"start_date"</span><span class="p">,</span> <span class="s2">"end_date"</span><span class="p">,</span> <span class="s2">"split_by_sectors"</span><span class="p">)</span>
+<span class="p">)</span>
 <span class="n">filtered</span> <span class="o">=</span> <span class="n">filter_rhime_observations</span><span class="p">(</span><span class="n">merged</span><span class="p">,</span> <span class="o">**</span><span class="n">config</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="s2">"filters"</span><span class="p">))</span>
 </pre></div>
 </div>

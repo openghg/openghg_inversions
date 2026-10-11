@@ -353,7 +353,6 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.acquisition.html">openghg_inversions.inversion_data.acquisition</a></li>
 <li class="toctree-l3 current active"><a class="current reference internal" href="#">openghg_inversions.inversion_data.get_data</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.getters.html">openghg_inversions.inversion_data.getters</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.preparation.html">openghg_inversions.inversion_data.preparation</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html">openghg_inversions.inversion_data.prepared_inputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.scenario.html">openghg_inversions.inversion_data.scenario</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.serialise.html">openghg_inversions.inversion_data.serialise</a></li>
@@ -701,7 +700,11 @@ correctly for any sites, drop these from the rest of the inversion.</p></li>
 <p class="rubric">Notes</p>
 <p>This function reads OpenGHG stores, emits progress messages and
 warnings, and may save a merged-data artifact. The first retained
-scenario defines the unit target requested for later sites.</p>
+scenario defines the unit target requested for later sites. Acquisition
+constructs <code class="docutils literal notranslate"><span class="pre">RhimeMergedData</span></code> first; this compatibility API projects
+its datasets into historical wrappers rather than retaining arbitrary
+OpenGHG wrapper metadata. Selected input identities belong to the
+modern record’s provenance.</p>
 </dd></dl>
 
 <dl class="py function">
@@ -836,7 +839,11 @@ correctly for any sites, drop these from the rest of the inversion.</p></li>
 <p class="rubric">Notes</p>
 <p>This function reads OpenGHG stores, emits progress messages and
 warnings, and may save a merged-data artifact. The first retained
-scenario defines the unit target requested for later sites.</p>
+scenario defines the unit target requested for later sites. Acquisition
+constructs <code class="docutils literal notranslate"><span class="pre">RhimeMergedData</span></code> first; this compatibility API projects
+its datasets into historical wrappers rather than retaining arbitrary
+OpenGHG wrapper metadata. Selected input identities belong to the
+modern record’s provenance.</p>
 </dd></dl>
 
 </section>

@@ -610,7 +610,7 @@ the retained RHIME abstractions:</p>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">prepare_fixedbasis_inversion_data</span></code></p></td>
 <td><p>Named RHIME preparation stages</p></td>
 <td><p>Load data, then filter, build basis and sensitivities, and assemble inputs;
-<code class="docutils literal notranslate"><span class="pre">prepare_rhime_inputs</span></code> remains a deprecated convenience adapter</p></td>
+the former <code class="docutils literal notranslate"><span class="pre">prepare_rhime_inputs</span></code> adapter has been removed</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">FixedBasisPreparedData</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code></p></td>
@@ -658,6 +658,24 @@ netCDF and Zarr artifacts containing the old entries remain loadable; the loader
 discards those redundant copies. Pickle merged-data files can no longer be
 saved or loaded. To migrate one, use an older environment to reload it and
 save it as Zarr before upgrading.</p>
+</section>
+<section id="merged-data-acquisition-and-prepared-input-reuse">
+<h2>Merged-data acquisition and prepared-input reuse<a class="headerlink" href="#merged-data-acquisition-and-prepared-input-reuse" title="Link to this heading">#</a></h2>
+<p>Modern RHIME acquisition returns an in-memory <code class="docutils literal notranslate"><span class="pre">RhimeMergedData</span></code> handoff.
+The proposed acquisition-artifact <code class="docutils literal notranslate"><span class="pre">save</span></code>, <code class="docutils literal notranslate"><span class="pre">load</span></code> and <code class="docutils literal notranslate"><span class="pre">load_legacy</span></code> methods
+are removed, along with <code class="docutils literal notranslate"><span class="pre">close</span></code> and the processing-stage marker. The
+<code class="docutils literal notranslate"><span class="pre">prepare_rhime_inputs</span></code> convenience adapter is also removed. Use
+<code class="docutils literal notranslate"><span class="pre">RhimeMergedData.from_options</span></code> and the named scientific stages in
+<code class="docutils literal notranslate"><span class="pre">rhime.preparation</span></code>, or use a complete RHIME runner.</p>
+<p>Remove <code class="docutils literal notranslate"><span class="pre">reload_merged_data</span></code>, <code class="docutils literal notranslate"><span class="pre">save_merged_data</span></code>, <code class="docutils literal notranslate"><span class="pre">merged_data_dir</span></code> and
+<code class="docutils literal notranslate"><span class="pre">merged_data_name</span></code> from modern RHIME configurations, including their
+<code class="docutils literal notranslate"><span class="pre">inner_</span></code> counterparts in nested runs. These options raise as unknown
+arguments. For repeat runs, save and load <code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code> and use the
+prepared-input runner. The staged <code class="docutils literal notranslate"><span class="pre">prepare</span></code> command persists only those
+prepared inputs and their manifest; subsequent stages read that artifact.</p>
+<p>Historical tuple retrieval and its NetCDF/Zarr cache helpers remain available
+for existing workflows. They do not provide a modern acquisition replay
+contract. Do not relabel an old filtered cache as freshly acquired data.</p>
 </section>
 <section id="removed-interfaces">
 <h2>Removed interfaces<a class="headerlink" href="#removed-interfaces" title="Link to this heading">#</a></h2>
@@ -743,6 +761,7 @@ that scientific changes remain reviewable.</p>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#legacy-format-output">Legacy-format output</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#removed-python-helper-apis">Removed Python helper APIs</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#legacy-merged-data-metadata">Legacy merged-data metadata</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#merged-data-acquisition-and-prepared-input-reuse">Merged-data acquisition and prepared-input reuse</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#removed-interfaces">Removed interfaces</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#scientific-compatibility">Scientific compatibility</a></li>
 </ul>

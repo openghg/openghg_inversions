@@ -523,7 +523,8 @@ nested-domain outer masking (below) always zeroes the outer footprint response
 and prior flux there before the outer basis is built – there is nothing left
 for the outer algorithm to subdivide inside that label. <code class="docutils literal notranslate"><span class="pre">prepare_nested_rhime_inputs</span></code>
 handles this by passing <code class="docutils literal notranslate"><span class="pre">allow_empty_inner_region=True</span></code> to
-<code class="docutils literal notranslate"><span class="pre">fixed_outer_regions_basis</span></code> for the outer domain only: the marked label is
+<a class="reference internal" href="../reference/openghg_inversions.basis.html#openghg_inversions.basis.fixed_outer_regions_basis_from_data" title="openghg_inversions.basis.fixed_outer_regions_basis_from_data"><code class="xref py py-func docutils literal notranslate"><span class="pre">fixed_outer_regions_basis_from_data()</span></code></a>
+for the outer domain only: the marked label is
 kept as a single fixed region (like every other outer label) instead of
 raising. Outside nested preparation, an empty marked region still raises,
 since it normally signals a mismatched map or missing footprint/flux data.</p>

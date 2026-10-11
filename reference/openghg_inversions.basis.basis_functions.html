@@ -353,7 +353,6 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.acquisition.html">openghg_inversions.inversion_data.acquisition</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.get_data.html">openghg_inversions.inversion_data.get_data</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.getters.html">openghg_inversions.inversion_data.getters</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.preparation.html">openghg_inversions.inversion_data.preparation</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html">openghg_inversions.inversion_data.prepared_inputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.scenario.html">openghg_inversions.inversion_data.scenario</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.serialise.html">openghg_inversions.inversion_data.serialise</a></li>
@@ -959,41 +958,38 @@ unweighted basis interpolation.</p></li>
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.basis.basis_functions.basis_functions_from_fp_all_flat_basis">
 <span class="sig-name descname"><span class="pre">basis_functions_from_fp_all_flat_basis</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">fp_all</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">basis_flat</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">metadata</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.basis_functions.basis_functions_from_fp_all_flat_basis" title="Link to this definition">#</a></dt>
-<dd><p>Compatibility adapter that constructs a basis object from flat basis data.</p>
-<p>This is also the public handoff for project-owned flat-basis algorithms in
-copied RHIME runners. A single two-dimensional array defines a shared
-spatial basis. A source-keyed mapping defines source-specific bases and is
-restricted and ordered to match runtime flux sources when <code class="docutils literal notranslate"><span class="pre">fp_all</span></code> is
-sector resolved. In both cases the retained flux is reconstructed from the
-current <code class="docutils literal notranslate"><span class="pre">fp_all</span></code> input rather than from the flat-basis producer.</p>
+<dd><p>Adapt legacy merged dictionaries to retained flat-basis construction.</p>
+<p>New callers should pass runtime datasets to
+<a class="reference internal" href="#openghg_inversions.basis.basis_functions.basis_functions_from_flat_basis" title="openghg_inversions.basis.basis_functions.basis_functions_from_flat_basis"><code class="xref py py-func docutils literal notranslate"><span class="pre">basis_functions_from_flat_basis()</span></code></a> instead.</p>
 <dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>fp_all</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a>) – Legacy merged-data dictionary containing a <code class="docutils literal notranslate"><span class="pre">&quot;.flux&quot;</span></code> side
-channel and optional <code class="docutils literal notranslate"><span class="pre">&quot;.split_by_sectors&quot;</span></code> flag.</p></li>
-<li><p><strong>basis_flat</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a><em>]</em>) – Two-dimensional shared flat basis array, or source-keyed
-two-dimensional flat basis arrays, produced by a compatible basis
-algorithm or legacy loading path.</p></li>
-<li><p><strong>metadata</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Optional namespaced metadata to carry on the basis object.</p></li>
-</ul>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#openghg_inversions.basis.basis_functions.FluxWeightedBasis" title="openghg_inversions.basis.basis_functions.FluxWeightedBasis"><em>FluxWeightedBasis</em></a></p>
 </dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>A retained <code class="docutils literal notranslate"><span class="pre">BasisFunctions</span></code> object with flux reconstructed from
-<code class="docutils literal notranslate"><span class="pre">fp_all</span></code>.</p>
-</dd>
-<dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#TypeError" title="(in Python v3.15)"><strong>TypeError</strong></a> – If a runtime flux entry or basis input has an unsupported
-    type.</p></li>
-<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If runtime flux is missing or inconsistent, a
-    source-specific basis omits a runtime source, or basis labels and
-    dimensions violate the retained-basis contract.</p></li>
-<li><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.AlignmentError.html#xarray.AlignmentError" title="(in xarray v2026.9.0)"><strong>xarray.AlignmentError</strong></a> – If basis and current-run flux grids are not
-    physically compatible.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference internal" href="#openghg_inversions.basis.basis_functions.FluxWeightedBasis" title="openghg_inversions.basis.basis_functions.FluxWeightedBasis"><em>FluxWeightedBasis</em></a></p>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.basis.basis_functions.basis_functions_from_flat_basis">
+<span class="sig-name descname"><span class="pre">basis_functions_from_flat_basis</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">flux_data</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">split_by_sectors</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">basis_flat</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">metadata</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.basis_functions.basis_functions_from_flat_basis" title="Link to this definition">#</a></dt>
+<dd><p>Attach borrowed runtime flux to shared or source-specific flat labels.</p>
+<p><code class="docutils literal notranslate"><span class="pre">flux_data</span></code> maps source labels to datasets containing <code class="docutils literal notranslate"><span class="pre">flux</span></code>. With
+<code class="docutils literal notranslate"><span class="pre">split_by_sectors=True</span></code>, all sources are retained in mapping order and
+source-specific labels are selected in that same order. Otherwise runtime
+fluxes are combined using the ModelScenario convention. Spatial alignment
+and flat-label validation belong to the retained basis constructors.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#openghg_inversions.basis.basis_functions.FluxWeightedBasis" title="openghg_inversions.basis.basis_functions.FluxWeightedBasis"><em>FluxWeightedBasis</em></a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -1024,6 +1020,20 @@ insertion order of <code class="docutils literal notranslate"><span class="pre">
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.basis.basis_functions.flux_from_data">
+<span class="sig-name descname"><span class="pre">flux_from_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">flux_data</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">split_by_sectors</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.basis_functions.flux_from_data" title="Link to this definition">#</a></dt>
+<dd><p>Combine or stack all borrowed runtime source fluxes in mapping order.</p>
+<p>Dask-backed payloads remain lazy. Sector-resolved fluxes must share native
+time coordinates; non-sectoral fluxes use the ModelScenario combination.
+Non-finite flux values follow the retained-basis zero-fill policy.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -1107,7 +1117,9 @@ insertion order of <code class="docutils literal notranslate"><span class="pre">
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.basis_functions.basis_functions_from_fp_all_flat_basis"><code class="docutils literal notranslate"><span class="pre">basis_functions_from_fp_all_flat_basis()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.basis_functions.basis_functions_from_flat_basis"><code class="docutils literal notranslate"><span class="pre">basis_functions_from_flat_basis()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.basis_functions.flux_from_fp_all"><code class="docutils literal notranslate"><span class="pre">flux_from_fp_all()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.basis_functions.flux_from_data"><code class="docutils literal notranslate"><span class="pre">flux_from_data()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.basis_functions.BasisFunctions"><code class="docutils literal notranslate"><span class="pre">BasisFunctions</span></code></a></li>
 </ul>
   </nav></div>

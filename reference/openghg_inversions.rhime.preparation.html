@@ -353,7 +353,6 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.acquisition.html">openghg_inversions.inversion_data.acquisition</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.get_data.html">openghg_inversions.inversion_data.get_data</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.getters.html">openghg_inversions.inversion_data.getters</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.preparation.html">openghg_inversions.inversion_data.preparation</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html">openghg_inversions.inversion_data.prepared_inputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.scenario.html">openghg_inversions.inversion_data.scenario</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.serialise.html">openghg_inversions.inversion_data.serialise</a></li>
@@ -523,8 +522,8 @@ by <a class="reference internal" href="openghg_inversions.rhime.html#openghg_inv
 stages accept explicit resolved choices.</p>
 <p>Merged data and xarray objects supplied to these stages are borrowed.  Stages
 return new handoffs when they need to attach variables or metadata and never
-mutate caller-owned datasets.  Retrieval may read OpenGHG stores or a merged
-data cache and may write a requested merged-data artifact.  Filtering may
+mutate caller-owned datasets. Acquisition reads OpenGHG stores and returns an
+in-memory handoff. Filtering may
 compute when a selected filter cannot operate lazily.  Basis construction may
 read, fit, or write a basis artifact, and sensitivity construction may execute
 the basis and boundary-condition algorithms.  Labelled assembly validates the

@@ -178,7 +178,7 @@ the retained RHIME abstractions:
    * - ``prepare_fixedbasis_inversion_data``
      - Named RHIME preparation stages
      - Load data, then filter, build basis and sensitivities, and assemble inputs;
-       ``prepare_rhime_inputs`` remains a deprecated convenience adapter
+       the former ``prepare_rhime_inputs`` adapter has been removed
    * - ``FixedBasisPreparedData``
      - ``RhimePreparedInputs``
      - Backend-neutral prepared observations and sensitivities
@@ -224,6 +224,27 @@ netCDF and Zarr artifacts containing the old entries remain loadable; the loader
 discards those redundant copies. Pickle merged-data files can no longer be
 saved or loaded. To migrate one, use an older environment to reload it and
 save it as Zarr before upgrading.
+
+Merged-data acquisition and prepared-input reuse
+-----------------------------------------------
+
+Modern RHIME acquisition returns an in-memory ``RhimeMergedData`` handoff.
+The proposed acquisition-artifact ``save``, ``load`` and ``load_legacy`` methods
+are removed, along with ``close`` and the processing-stage marker. The
+``prepare_rhime_inputs`` convenience adapter is also removed. Use
+``RhimeMergedData.from_options`` and the named scientific stages in
+``rhime.preparation``, or use a complete RHIME runner.
+
+Remove ``reload_merged_data``, ``save_merged_data``, ``merged_data_dir`` and
+``merged_data_name`` from modern RHIME configurations, including their
+``inner_`` counterparts in nested runs. These options raise as unknown
+arguments. For repeat runs, save and load ``RhimePreparedInputs`` and use the
+prepared-input runner. The staged ``prepare`` command persists only those
+prepared inputs and their manifest; subsequent stages read that artifact.
+
+Historical tuple retrieval and its NetCDF/Zarr cache helpers remain available
+for existing workflows. They do not provide a modern acquisition replay
+contract. Do not relabel an old filtered cache as freshly acquired data.
 
 Removed interfaces
 ------------------
