@@ -30,6 +30,17 @@ adoption remains in OPE-165, retaining its completed numerical persistence.
 
 ## 1. Complete standard preparation-to-products route
 
+Implementation started in [#843](https://github.com/openghg/openghg_inversions/pull/843),
+stacked on #841 at `7f84645a`. Its first slice covers live sampler selection and
+sampler-free result/replay foundations from 1.2 and 1.8; it does not complete either
+task's acceptance across the new handoff APIs or the standard delivery gate.
+At implementation head `61d0036c`, 39 focused sampler/prepared tests, 67 replay/stage
+tests and 330 configured-run/compatibility tests passed. Broader family coverage
+had 252 passes and one direct prior-predictive Numba precision failure reproduced
+with the same selection on #841. Independent review, changed-path Ruff and diff
+checks passed. Keep the task checkboxes open pending their complete acceptance;
+the PR records the bounded implementation and validation details.
+
 - [ ] 1.1 Group the existing resolved `RhimeConfig` preparation fields in one
   `PreparationConfig` at their current owner, moving fields/defaults rather than copying
   them into a second schema. Keep model, sampler and output choices with their
