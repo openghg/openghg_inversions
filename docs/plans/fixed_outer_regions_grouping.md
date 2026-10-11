@@ -13,10 +13,13 @@ basis. They are explicit basis partitions. Each fixed outer class receives one
 basis region, while the inner class receives the requested generated regions
 from the selected constrained-basis split strategy.
 
-## Explicit input boundary (#838 / #454)
+## Explicit input boundary (#838 / #839 / #454)
 
-Modern `prepare_basis` receives resolved `outer_regions` and `landsea_classes`
-arrays. Application callers select exact files or packaged resources with
+Modern `prepare_basis` receives resolved `runtime_flux`, singular
+`weighting_flux`, `outer_regions` and `landsea_classes` arrays. The native prior
+is resolved once per compatible domain/grid context; fixed-outer design weights
+use the first requested source, while retained flux includes all sources.
+Application callers select exact files or packaged resources with
 `packaged_basis_support_path` and `load_basis_support_map` before acquisition.
 The lower-level weights-first fixed-outer helper likewise receives resolved
 `outer_regions` and `region_classes`. Missing domain resources fail rather than

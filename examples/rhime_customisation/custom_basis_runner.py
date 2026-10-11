@@ -3,7 +3,7 @@
 This copy-and-modify example keeps RHIME's supported acquisition, filtering,
 sensitivity, labelled-input, model, sampling, and output stages.  Only the
 emissions-basis stage is replaced by :func:`build_project_basis`.  The example
-either loads a self-contained retained ``BasisFunctions`` artifact or creates
+either reuses a saved basis operator with current runtime flux or creates
 a guarded region-constrained basis whose regions stay within land/ocean
 classes, remain connected, and satisfy a project eccentricity threshold.
 The verification-games workflow weights that strategy with summed absolute
@@ -14,8 +14,8 @@ class composition.
 
 Use :func:`run_custom_rhime` from Python or :func:`main` from the command line.
 Acquired xarray objects are treated as borrowed.  Generated-basis fitting is
-an explicit eager algorithm boundary, artifact loading materializes the saved
-artifact, and model arrays materialize later at the named PyMC boundary.
+an explicit eager algorithm boundary, operator reuse materializes only the saved
+operator, and model arrays materialize later at the named PyMC boundary.
 """
 
 from __future__ import annotations
@@ -47,6 +47,7 @@ from openghg_inversions.basis.algorithms import (
     region_constrained_basis,
 )
 from openghg_inversions.inversion_data import RhimeMergedData
+from openghg_inversions.native_flux import resolve_runtime_flux
 from openghg_inversions.rhime import (
     RhimeConfig,
     RhimeResult,
@@ -74,10 +75,11 @@ def _land_ocean_classes(region_classes: xr.DataArray) -> xr.DataArray:
 
 
 def _guarded_basis(
-    merged: RhimeMergedData,
     *,
+    site_data: dict[str, xr.Dataset],
+    runtime_flux: xr.DataArray,
+    weighting_flux: xr.DataArray,
     domain: str,
-    flux_sources: Sequence[str] | None = None,
     nbasis: int = 100,
     region_classes: xr.DataArray,
     max_child_pca_eccentricity: float,
@@ -87,12 +89,13 @@ def _guarded_basis(
     The public weight adapter intentionally materializes a derived 2-D weight
     field from borrowed footprint and flux inputs here. The project then owns
     normalization, class composition, guarded splitting, and conversion of the
-    flat labels to retained ``BasisFunctions`` without mutating ``merged``.
+    flat labels to retained ``BasisFunctions`` without mutating the supplied arrays.
 
     Args:
-        merged: Filtered, borrowed RHIME observations and flux data.
+        site_data: Filtered, borrowed site datasets containing footprints.
+        runtime_flux: Resolved native prior flux for every retained source.
+        weighting_flux: Native flux of the first requested source for weights.
         domain: Model domain recorded on the generated basis.
-        flux_sources: Resolved sources used for spatial weights.
         nbasis: Requested number of basis regions.
         region_classes: Resolved borrowed country/class map.
         max_child_pca_eccentricity: Project limit on each proposed child's
@@ -107,9 +110,8 @@ def _guarded_basis(
     """
     # 1. Turn the filtered footprints and flux into one spatial importance map.
     weights = basis_weights_from_data(
-        merged.site_data,
-        merged.flux_data,
-        flux_sources,
+        site_data,
+        weighting_flux,
         abs_flux=True,
     )
     finite_weights = weights.fillna(0.0).astype(np.float64)
@@ -162,18 +164,18 @@ def _guarded_basis(
     basis_flat.attrs.update(provenance)
     # 5. Attach the current flux so standard RHIME sensitivity code can use it.
     return basis_functions_from_flat_basis(
-        flux_data=merged.flux_data,
-        split_by_sectors=merged.split_by_sectors,
+        flux=runtime_flux,
         basis_flat=basis_flat,
         metadata=provenance,
     )
 
 
 def build_project_basis(
-    merged: RhimeMergedData,
     *,
+    site_data: dict[str, xr.Dataset],
+    runtime_flux: xr.DataArray,
+    weighting_flux: xr.DataArray,
     domain: str,
-    flux_sources: Sequence[str] | None = None,
     nbasis: int = 100,
     region_classes: xr.DataArray | None = None,
     project_basis_path: str | Path | None = None,
@@ -182,21 +184,22 @@ def build_project_basis(
     """Return the project-selected retained emissions basis.
 
     Args:
-        merged: Filtered, borrowed RHIME observations and flux data.
+        site_data: Filtered, borrowed site datasets containing footprints.
+        runtime_flux: Resolved native prior flux for every retained source.
+        weighting_flux: Native flux of the first requested source for weights.
         domain: Model domain recorded on the generated basis.
-        flux_sources: Resolved sources used for spatial weights.
         nbasis: Requested number of basis regions.
         region_classes: Resolved borrowed country/class map.
         project_basis_path: Optional ``.nc`` or ``.zarr`` artifact previously
             written by :meth:`BasisFunctions.save`.  The artifact is
-            self-contained, so its serialized operator, metadata, and flux are
-            retained rather than replaced with flux from ``merged``.
+            reused for its operator and metadata; current ``runtime_flux`` is
+            bound without reading the saved flux payload.
         max_child_pca_eccentricity: Project limit passed to the guarded split
             policy when generating a basis. Defaults to ``10`` and is ignored
             when ``project_basis_path`` is supplied.
 
     Returns:
-        Loaded or newly fitted retained basis functions.
+        Reused or newly fitted basis functions bound to current runtime flux.
 
     Raises:
         OSError: If the requested artifact cannot be opened.
@@ -206,18 +209,19 @@ def build_project_basis(
             invalid.
 
     Notes:
-        Loading eagerly materializes the artifact so no open file handle is
-        retained.  Without a path, project basis fitting is the named eager
-        basis-generation boundary.
+        Reuse eagerly materializes the operator subtree and closes the file;
+        current flux keeps its supported lazy representation. Without a path,
+        project basis fitting is the named eager basis-generation boundary.
     """
     if project_basis_path is not None:
-        return BasisFunctions.load(project_basis_path)
+        return BasisFunctions.reuse_operator(project_basis_path, flux=runtime_flux)
     if region_classes is None:
         raise ValueError("Generating a project basis requires resolved region_classes.")
     return _guarded_basis(
-        merged,
+        site_data=site_data,
+        runtime_flux=runtime_flux,
+        weighting_flux=weighting_flux,
         domain=domain,
-        flux_sources=flux_sources,
         nbasis=nbasis,
         region_classes=region_classes,
         max_child_pca_eccentricity=max_child_pca_eccentricity,
@@ -235,8 +239,8 @@ def run_custom_rhime(
 
     Args:
         config_file: Optional RHIME INI configuration file.
-        project_basis_path: Optional self-contained ``BasisFunctions`` artifact
-            to use instead of fitting the project guarded basis. When omitted,
+        project_basis_path: Optional ``BasisFunctions`` artifact whose operator
+            is reused with current runtime flux instead of fitting. When omitted,
             the decoded INI option of the same name is used.
         max_child_pca_eccentricity: Optional project split-policy threshold.
             When omitted, the merged config/keyword value is used, falling back
@@ -298,10 +302,17 @@ def run_custom_rhime(
     # 2. Keep the scientific preparation order visible in this recipe.
     merged = prepare_observation_errors(merged, averaging_error=config.averaging_error)
     filtered = filter_observations(merged, filters=config.filters)
+    runtime_flux = resolve_runtime_flux(
+        filtered.flux_data, split_by_sectors=filtered.split_by_sectors,
+    )
+    weighting_source = config.flux_sources[0] if config.flux_sources else next(iter(filtered.flux_data))
+    weighting_flux = filtered.flux_data[weighting_source]["flux"]
     # Replace only basis construction; subsequent scientific stages stay visible.
     basis_functions = build_project_basis(
-        filtered,
-        **config.select("domain", "flux_sources", "nbasis"),
+        site_data=filtered.site_data,
+        runtime_flux=runtime_flux,
+        weighting_flux=weighting_flux,
+        **config.select("domain", "nbasis"),
         region_classes=region_classes,
         project_basis_path=project_basis_path,
         max_child_pca_eccentricity=max_child_pca_eccentricity,

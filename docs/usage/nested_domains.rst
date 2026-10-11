@@ -20,7 +20,12 @@ overlap twice. The workflow:
 The two grids are not RHIME emissions sectors or grouped basis regions. A
 sector separates different flux sources on one spatial layout; a nested domain
 separates two transport grids for the same flux source and must retain two
-independent basis operators. See the :doc:`family support summary
+independent basis operators. Native runtime flux is resolved separately for
+each grid, after the outer scientific mask is applied. Each basis binds its
+current native prior; generation uses the first requested source for design
+weights. Reusing a saved operator does not replace either current prior with
+the artifact's saved flux. Observation-aligned response arrays remain separate
+inputs to sensitivity construction. See the :doc:`family support summary
 <nested_domain_model_family>` before using this guide.
 
 Model and state semantics

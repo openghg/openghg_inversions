@@ -8,6 +8,7 @@ import pandas as pd
 import pytest
 import xarray as xr
 
+from openghg_inversions.native_flux import resolve_runtime_flux
 from openghg_inversions.array_ops import to_dense
 from openghg_inversions.basis import BasisFunctions, prepare_basis
 from openghg_inversions.basis.compatibility import make_basis_functions
@@ -23,12 +24,12 @@ def test_exact_arbitrary_artifacts_reuse_operator_with_current_flux(tmp_path, su
     sites, sources = _inputs()
     partition = xr.ones_like(sources["a"].flux.isel(time=0, drop=True), dtype=int)
     path = tmp_path / f"unstructured-name{suffix}"
-    saved = prepare_basis(site_data=sites, flux_data=sources, domain="TEST", start_date="2020-01-01",
+    saved = prepare_basis(site_data=sites, runtime_flux=resolve_runtime_flux(sources), weighting_flux=sources["a"].flux, domain="TEST", start_date="2020-01-01",
                           nbasis=1, basis_partition=partition, output_path=path)
     assert path.exists()
     restored = BasisFunctions.load(path)
     current = {source: dataset.assign(flux=dataset.flux * -3) for source, dataset in sources.items()}
-    reused = prepare_basis(site_data=sites, flux_data=current, domain="TEST", start_date="2020-01-01",
+    reused = prepare_basis(site_data=sites, runtime_flux=resolve_runtime_flux(current), weighting_flux=current["a"].flux, domain="TEST", start_date="2020-01-01",
                            nbasis=1, basis_path=path)
     xr.testing.assert_equal(saved.flat_basis(), reused.flat_basis())
     xr.testing.assert_equal(reused.flux, saved.flux * -3)
@@ -117,7 +118,7 @@ def test_fixed_outer_missing_resolved_map_fails_before_numerical_work(monkeypatc
     )
     with pytest.raises(ValueError, match="outer_regions must be resolved"):
         prepare_basis(
-            site_data={}, flux_data={}, domain="TEST", start_date="2020-01-01",
+            site_data={}, runtime_flux=xr.DataArray(), weighting_flux=xr.DataArray(), domain="TEST", start_date="2020-01-01",
             nbasis=1, basis_algorithm="quadtree", fix_outer_regions=True,
         )
 
@@ -156,7 +157,7 @@ def test_legacy_relative_outer_map_resolves_at_compatibility_boundary(tmp_path, 
             nbasis=1, basis_algorithm="region_constrained", region_classes=classes,
             fix_outer_regions=True, country_directory=str(tmp_path), outer_regions_path="custom.nc",
         )
-    modern = prepare_basis(site_data=sites, flux_data=sources, domain="TEST", start_date="2020-01-01",
+    modern = prepare_basis(site_data=sites, runtime_flux=resolve_runtime_flux(sources), weighting_flux=sources["a"].flux, domain="TEST", start_date="2020-01-01",
                            nbasis=1, basis_algorithm="region_constrained", region_classes=classes,
                            fix_outer_regions=True, outer_regions=outer)
     xr.testing.assert_equal(legacy.flat_basis(), modern.flat_basis())

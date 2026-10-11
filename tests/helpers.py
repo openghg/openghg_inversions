@@ -240,14 +240,16 @@ def prepare_inputs(**params):
     ))
     merged = preparation.prepare_observation_errors(merged, averaging_error=config.averaging_error)
     filtered = preparation.filter_observations(merged, filters=config.filters)
+    from openghg_inversions.native_flux import resolve_runtime_flux
+
+    runtime_flux = resolve_runtime_flux(filtered.flux_data, split_by_sectors=filtered.split_by_sectors)
     basis = prepare_basis(
         site_data=filtered.site_data,
-        flux_data=filtered.flux_data,
-        split_by_sectors=filtered.split_by_sectors,
+        runtime_flux=runtime_flux,
+        weighting_flux=filtered.flux_data[config.flux_sources[0]]["flux"],
         **config.select(
             "domain", "start_date", "basis_algorithm", "nbasis",
         ),
-        flux_sources=config.flux_sources,
         fix_outer_regions=config.fix_basis_outer_regions,
         **basis_inputs,
         output_path=config.basis_output_path,

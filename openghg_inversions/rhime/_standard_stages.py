@@ -7,6 +7,7 @@ orchestrator or scheduler.
 
 from __future__ import annotations
 
+from openghg_inversions.native_flux import resolve_runtime_flux
 from openghg_inversions.basis import prepare_basis
 from openghg_inversions.rhime.preparation import resolve_basis_inputs
 
@@ -227,15 +228,15 @@ def prepare_rhime_stage(
             f"{missing_sites!r} for species {setup.species!r} and period "
             f"{setup.start_date} to {setup.end_date}."
         )
+    runtime_flux = resolve_runtime_flux(filtered.flux_data, split_by_sectors=filtered.split_by_sectors)
     with timed("rhime.prepare_inputs.basis_build", basis_algorithm=setup.basis_algorithm):
         basis = prepare_basis(
             site_data=filtered.site_data,
-            flux_data=filtered.flux_data,
-            split_by_sectors=filtered.split_by_sectors,
+            runtime_flux=runtime_flux,
+            weighting_flux=filtered.flux_data[setup.flux_sources[0]]["flux"],
             **setup.select(
                 "domain", "start_date", "basis_algorithm", "nbasis",
             ),
-            flux_sources=setup.flux_sources,
             fix_outer_regions=setup.fix_basis_outer_regions,
             **basis_inputs,
             output_path=setup.basis_output_path,

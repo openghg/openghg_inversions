@@ -17,7 +17,8 @@ W(x) = mean_o(fp_o(x)) * mean_t(flux_t(x))
 
 where `o` ranges over the footprints passed to the basis builder and `t` ranges
 over flux times. The modern implementation is `basis_weights_from_data(...)`,
-which receives explicit site and flux datasets before calling
+which receives explicit site datasets and a singular `weighting_flux` array
+from the first requested source (or first source mapping entry) before calling
 weight-first helpers such as `quadtree_basis_from_weights`,
 `bucket_basis_from_weights`, or `region_constrained_basis_from_weights`.
 
@@ -30,7 +31,10 @@ The #838 path/map boundary resolves exact artifacts and support maps outside
 numerical preparation; historical `basis_weights_from_fp_all` remains an
 explicit compatibility adapter. #452 can extend weights-first preparation here
 without reintroducing case/glob or country-directory discovery. #454's grouped
-country semantics remain a separate scientific decision.
+country semantics remain a separate scientific decision. #839 resolves the
+all-source native `runtime_flux` once beside preparation and passes it directly
+to retained basis construction; it does not change the first-source design
+weight or substitute observation-aligned `fp_x_flux` for native prior flux.
 
 ## Design Rules
 

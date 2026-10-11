@@ -380,8 +380,27 @@ deprecated in 0.9 without automatic removal. Staged preparation preserves exact
 caller destinations. Packaged basis support maps remain selectable; absent
 domain maps fail without fallback. Country reporting requires caller-selected
 files, separate from basis support resources. BC case/directory migration is
-inventoried but deferred; acquisition replay remains #829. Runtime native-flux
-ownership and operator-only loading are the next bounded slice (#839).
+inventoried but deferred; acquisition replay remains #829.
+
+### Native runtime-flux ownership (#839)
+
+After filtering (and domain-specific scientific masking for nested runs), each
+procedural recipe resolves `runtime_flux` once with
+`native_flux.resolve_runtime_flux`. It selects one `weighting_flux` from the
+first requested source, or first mapping entry. These are local scientific
+arrays, not configuration fields. `prepare_basis` receives both arrays and site
+datasets; constructors consume resolved native flux, not legacy dictionaries.
+Retained flux includes all runtime sources. Observation-aligned `fp_x_flux` and
+`fp_x_flux_sectoral` stay separate inputs to sensitivity construction.
+
+`BasisFunctions.reuse_operator(path, flux=runtime_flux)` validates the retained
+artifact and loads only its operator subtree, selecting source-specific
+operators in current source order before binding current flux. It does not read
+the discarded saved-flux payload. `BasisFunctions.load` restores a complete
+retained basis, including saved flux, for reconstruction without acquisition.
+Compatibility adapters resolve dictionaries once and call canonical operations.
+The existing alignment, signed-flux and first-source weighting policies remain
+unchanged. Single ownership makes no execution-saving claim.
 
 ### Modern flux terminology and compatibility
 

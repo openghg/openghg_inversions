@@ -145,7 +145,10 @@ executed layout example and :doc:`affine native-flux reconstruction
    openghg_inversions.basis.AffineFluxMapArtifact
    openghg_inversions.basis.save_affine_flux_map
    openghg_inversions.basis.load_affine_flux_map
+   openghg_inversions.native_flux.resolve_runtime_flux
    openghg_inversions.basis.prepare_basis
+   openghg_inversions.basis.BasisFunctions.reuse_operator
+   openghg_inversions.basis.BasisFunctions.load
    openghg_inversions.basis.packaged_basis_support_path
    openghg_inversions.basis.load_basis_support_map
    openghg_inversions.basis.load_basis_partition
