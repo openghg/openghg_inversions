@@ -34,8 +34,8 @@ from openghg_inversions.basis import (
 from openghg_inversions.basis._wrapper import (
     _save_basis,
     _save_basis_datatree,
-    load_basis_functions,
-    make_basis_functions,
+    load_basis_functions_from_fp_all as load_basis_functions,
+    make_basis_functions_from_fp_all as make_basis_functions,
 )
 from openghg_inversions.basis.basis_functions import (
     BASIS_ARTIFACT_PATH_ATTR,
@@ -337,7 +337,7 @@ def test_flux_from_fp_all_sanitizes_nonfinite_multisource():
     assert float(retained_flux.sel(source="b").isel(time=1, lat=1, lon=1)) == 0.0
     metadata = _flux_nonfinite_metadata(retained_flux)
     assert metadata.policy == NONFINITE_POLICY_ZERO_FILL
-    assert metadata.context == "retained basis flux from fp_all"
+    assert metadata.context == "retained basis runtime flux"
     assert metadata.source is None
 
 
@@ -357,7 +357,7 @@ def test_flux_from_fp_all_refreshes_source_stacked_metadata() -> None:
     metadata = _flux_nonfinite_metadata(retained_flux)
 
     assert metadata.policy == NONFINITE_POLICY_ZERO_FILL
-    assert metadata.context == "retained basis flux from fp_all"
+    assert metadata.context == "retained basis runtime flux"
     assert metadata.source is None
 
 
@@ -1290,32 +1290,15 @@ def test_fixed_outer_regions_uses_explicit_non_maximum_inner_label(monkeypatch, 
     outer_regions.to_netcdf(outer_path)
     seen: dict[str, xr.DataArray] = {}
 
-    def fake_quadtree_basis(
-        fp_all,
-        start_date,
-        domain,
-        emissions_name=None,
-        nbasis=100,
-        country_directory=None,
-        abs_flux=False,
-        mask=None,
-    ):
-        del fp_all, domain, emissions_name, nbasis, country_directory, abs_flux
-        assert mask is not None
-        seen["mask"] = mask
-        inner_mask = mask.where(mask, drop=True)
-        inner = xr.DataArray(
-            [[1, 1], [2, 2]],
-            dims=inner_mask.dims,
-            coords=inner_mask.coords,
-        )
+    def fake_quadtree_basis(weights, start_date, domain, nbasis=100):
+        del domain, nbasis
+        expected_weights = basis_weights_from_fp_all(fp_all, ["total"], mask=outer_regions["region"] == 1)
+        xr.testing.assert_equal(weights, expected_weights)
+        seen["weights"] = weights
+        inner = xr.DataArray([[1, 1], [2, 2]], dims=weights.dims, coords=weights.coords)
         return inner.expand_dims(time=[pd.Timestamp(start_date)], axis=-1)
 
-    monkeypatch.setitem(
-        basis_functions,
-        "quadtree",
-        basis_functions["quadtree"]._replace(algorithm=fake_quadtree_basis),
-    )
+    monkeypatch.setattr(basis_module, "quadtree_basis_from_weights", fake_quadtree_basis)
 
     result = fixed_outer_regions_basis(
         fp_all=fp_all,
@@ -1326,7 +1309,7 @@ def test_fixed_outer_regions_uses_explicit_non_maximum_inner_label(monkeypatch, 
         outer_regions_path=outer_path,
     )
 
-    xr.testing.assert_equal(seen["mask"], outer_regions["region"] == 1)
+    assert seen["weights"].shape == (2, 2)
     labels = result.squeeze("time", drop=True)
     inner_labels = set(np.unique(labels.values[outer_values == 1]))
     fixed_outer_labels = set(np.unique(labels.values[outer_values != 1]))
@@ -1406,29 +1389,15 @@ def test_fixed_outer_weighted_basis_crops_landsea_mask_to_inner_region(monkeypat
     ).to_netcdf(tmp_path / "country-land-sea_TEST.nc")
     seen: dict[str, np.ndarray] = {}
 
-    def fake_weighted_basis(
-        fp_all,
-        start_date,
-        domain,
-        emissions_name=None,
-        nbasis=100,
-        country_directory=None,
-        abs_flux=False,
-        mask=None,
-        landsea_indices=None,
-    ):
-        del fp_all, domain, emissions_name, nbasis, country_directory, abs_flux
-        assert mask is not None
+    def fake_weighted_basis(weights, start_date, domain, nbasis=100, country_directory=None,
+                            landsea_indices=None):
+        del domain, nbasis, country_directory
         assert landsea_indices is not None
         seen["landsea"] = landsea_indices
-        inner = xr.ones_like(mask.where(mask, drop=True), dtype=int)
+        inner = xr.ones_like(weights, dtype=int)
         return inner.expand_dims(time=[pd.Timestamp(start_date)], axis=-1)
 
-    monkeypatch.setitem(
-        basis_functions,
-        "weighted",
-        basis_functions["weighted"]._replace(algorithm=fake_weighted_basis),
-    )
+    monkeypatch.setattr(basis_module, "bucket_basis_from_weights", fake_weighted_basis)
 
     result = fixed_outer_regions_basis(
         fp_all=fp_all,
@@ -2837,35 +2806,16 @@ def test_make_basis_functions_records_saved_generated_basis_path(tmp_path):
     """Generated basis saves record the written artifact path on the retained object."""
     basis_flat = make_basis_flat_from_blocks([[1, 1], [2, 2]]).expand_dims(time=[np.datetime64("2019-01-01")])
     flux = xr.ones_like(basis_flat.isel(time=0, drop=True), dtype=float).rename("flux")
-    fp_all = {".flux": {"emissions": flux}, ".split_by_sectors": False}
+    flux = flux.expand_dims(time=[np.datetime64("2019-01-01")])
+    fp_all = {".flux": {"emissions": flux}, ".split_by_sectors": False,
+              "TEST": xr.ones_like(flux).rename("fp").to_dataset()}
 
-    class StaticBasisAlgorithm:
-        description = "static test basis"
-
-        @staticmethod
-        def algorithm(*args: object, **kwargs: object) -> xr.DataArray:
-            return basis_flat
-
-    old_algorithm = basis_module.basis_functions.get("static_path_test")
-    basis_module.basis_functions["static_path_test"] = StaticBasisAlgorithm
-    try:
-        basis_object = make_basis_functions(
-            fp_all=fp_all,
-            species="ch4",
-            domain="EUROPE",
-            start_date="2019-01-01",
-            emissions_name=["emissions"],
-            nbasis=2,
-            basis_algorithm="static_path_test",
-            outputname="path-check",
-            output_path=str(tmp_path),
-            basis_output_format="datatree",
-        )
-    finally:
-        if old_algorithm is None:
-            del basis_module.basis_functions["static_path_test"]
-        else:
-            basis_module.basis_functions["static_path_test"] = old_algorithm
+    basis_object = make_basis_functions(
+        fp_all=fp_all, species="ch4", domain="EUROPE", start_date="2019-01-01",
+        emissions_name=["emissions"], nbasis=2, basis_algorithm="region_constrained",
+        region_classes=basis_flat.isel(time=0, drop=True),
+        outputname="path-check", output_path=str(tmp_path), basis_output_format="datatree",
+    )
 
     assert basis_object.basis_artifact_source == "generated"
     assert basis_object.basis_artifact_path is not None

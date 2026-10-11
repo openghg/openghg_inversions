@@ -5748,6 +5748,7 @@ def test_canonical_preparation_uses_basis_sensitivity_without_legacy_side_channe
 ) -> None:
     """RHIME preparation derives sensitivity without legacy side channels."""
     site_data = _site_dataset([2.0])
+    expected_site_data = site_data
     sensitivity = xr.DataArray(
         [[8.0]],
         dims=("state", "time"),
@@ -5771,9 +5772,9 @@ def test_canonical_preparation_uses_basis_sensitivity_without_legacy_side_channe
 
     def fake_make_basis_functions(**kwargs: object) -> _SpyBasisFunctions:
         assert "return_basis_objects" not in kwargs
-        fp_all = kwargs["fp_all"]
-        assert isinstance(fp_all, dict)
-        xr.testing.assert_allclose(fp_all["TAC"], site_data)
+        site_data = kwargs["site_data"]
+        assert isinstance(site_data, dict)
+        xr.testing.assert_allclose(site_data["TAC"], expected_site_data)
         return basis_functions
 
     def fake_make_inv_inputs(fp_data: dict, sites: list[str], **kwargs: object) -> xr.Dataset:
@@ -6300,9 +6301,9 @@ def test_canonical_preparation_filters_sites_before_basis_generation(
 
     def fake_make_basis_functions(**kwargs: object) -> _DynamicSpyBasisFunctions:
         nonlocal captured_basis_times
-        fp_all = kwargs["fp_all"]
-        assert isinstance(fp_all, dict)
-        captured_basis_times = tuple(fp_all["TAC"].time.values)
+        site_data = kwargs["site_data"]
+        assert isinstance(site_data, dict)
+        captured_basis_times = tuple(site_data["TAC"].time.values)
         return basis_functions
 
     def fake_bc_sensitivity(fp_data: dict, **kwargs: object) -> dict:
@@ -6433,9 +6434,9 @@ def test_canonical_preparation_applies_daily_median_before_sensitivity(
 
     def fake_make_basis_functions(**kwargs: object) -> BasisFunctions:
         nonlocal basis_input
-        fp_all = kwargs["fp_all"]
-        assert isinstance(fp_all, dict)
-        basis_input = fp_all["TAC"]["fp_x_flux"].copy()
+        site_data = kwargs["site_data"]
+        assert isinstance(site_data, dict)
+        basis_input = site_data["TAC"]["fp_x_flux"].copy()
         basis = xr.DataArray(
             [[1, 1]],
             dims=("lat", "lon"),
@@ -6514,10 +6515,10 @@ def test_canonical_preparation_filters_multisector_sites_before_basis_generation
 
     def fake_make_basis_functions(**kwargs: object) -> _DynamicSectorSpyBasisFunctions:
         nonlocal captured_split_by_sectors
-        fp_all = kwargs["fp_all"]
-        assert isinstance(fp_all, dict)
-        captured_split_by_sectors = fp_all[".split_by_sectors"]
-        assert tuple(fp_all["TAC"].time.values) == retained_times
+        site_data = kwargs["site_data"]
+        assert isinstance(site_data, dict)
+        captured_split_by_sectors = kwargs["split_by_sectors"]
+        assert tuple(site_data["TAC"].time.values) == retained_times
         return basis_functions
 
     def fake_make_inv_inputs(fp_data: dict, sites: list[str], **kwargs: object) -> xr.Dataset:
@@ -6585,9 +6586,9 @@ def test_canonical_preparation_filters_loaded_basis_before_sensitivity(
     def fake_make_basis_functions(**kwargs: object) -> _DynamicSpyBasisFunctions:
         nonlocal captured_basis_times
         assert kwargs["fp_basis_case"] == "saved_case"
-        fp_all = kwargs["fp_all"]
-        assert isinstance(fp_all, dict)
-        captured_basis_times = tuple(fp_all["TAC"].time.values)
+        site_data = kwargs["site_data"]
+        assert isinstance(site_data, dict)
+        captured_basis_times = tuple(site_data["TAC"].time.values)
         return basis_functions
 
     def fake_filtering(fp_data: dict, filters: object) -> dict:
@@ -6653,9 +6654,9 @@ def test_canonical_preparation_aligns_averaging_period_after_empty_site_drop(
 
     def fake_make_basis_functions(**kwargs: object) -> BasisFunctions:
         nonlocal captured_basis_sites
-        fp_all = kwargs["fp_all"]
-        assert isinstance(fp_all, dict)
-        captured_basis_sites = [key for key in fp_all if not key.startswith(".")]
+        site_data = kwargs["site_data"]
+        assert isinstance(site_data, dict)
+        captured_basis_sites = list(site_data)
         return _fake_basis_functions()
 
     def fake_make_inv_inputs(fp_data: dict, sites: list[str], **kwargs: object) -> xr.Dataset:

@@ -144,7 +144,8 @@ executed layout example and :doc:`affine native-flux reconstruction
    openghg_inversions.basis.load_affine_flux_map
    openghg_inversions.basis.make_basis_functions
    openghg_inversions.basis.load_basis_functions
-   openghg_inversions.basis.basis_functions_from_fp_all_flat_basis
+   openghg_inversions.basis.basis_functions_from_flat_basis
+   openghg_inversions.basis.basis_weights_from_data
    openghg_inversions.basis.bucket_basis_from_weights
    openghg_inversions.basis.quadtree_basis_from_weights
    openghg_inversions.basis.region_constrained_basis_from_weights

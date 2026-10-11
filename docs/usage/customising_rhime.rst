@@ -419,7 +419,7 @@ composes public basis primitives instead of selecting a built-in basis
 algorithm. It:
 
 * derives and normalises a two-dimensional weight field with
-  ``basis_weights_from_fp_all``;
+  ``basis_weights_from_data(merged.site_data, merged.flux_data, flux_sources)``;
 * loads the public country grid and reduces positive country codes to ``land``
   and the remaining cells to ``ocean``;
 * creates physical north-south/east-west coordinates with
@@ -429,7 +429,13 @@ algorithm. It:
   exceed the configured PCA eccentricity guard;
 * generates class-safe labels with ``region_constrained_basis``; and
 * wraps the flat labels and current run flux in retained ``BasisFunctions``
-  with ``basis_functions_from_fp_all_flat_basis``.
+  with ``basis_functions_from_flat_basis``, passing ``merged.flux_data`` and
+  ``merged.split_by_sectors`` explicitly.
+
+The weight field uses the first requested source. The retained basis attaches
+all runtime flux sources, combining them for an ordinary inversion or stacking
+them in mapping order when ``split_by_sectors=True``. Neither handoff needs the
+legacy merged dictionary.
 
 The nested split strategy follows the latest selected-country guarded-basis
 variant in the ``verification-games`` project. That variant gives the UK,
@@ -445,7 +451,7 @@ The weighting is deliberately not identical to that later verification-games
 preparation step. Verification-games sums absolute cached ``fp_x_flux`` after
 those sensitivities exist. At this earlier visible-runner basis boundary they
 have not been constructed yet, so the example uses the public
-``basis_weights_from_fp_all`` field while preserving the guarded split strategy
+``basis_weights_from_data`` field while preserving the guarded split strategy
 and class composition.
 
 The flat labels and retained object record namespaced provenance for the class
