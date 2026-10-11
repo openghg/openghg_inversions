@@ -9,7 +9,7 @@ classes, remain connected, and satisfy a project eccentricity threshold.
 The verification-games workflow weights that strategy with summed absolute
 cached ``fp_x_flux``. At this earlier runner stage projected sensitivities do
 not exist, so the example deliberately substitutes the public
-``basis_weights_from_fp_all`` field while preserving the guarded strategy and
+``basis_weights_from_data`` field while preserving the guarded strategy and
 class composition.
 
 Use :func:`run_custom_rhime` from Python or :func:`main` from the command line.
@@ -32,8 +32,8 @@ import xarray as xr
 
 from openghg_inversions.basis import (
     BasisFunctions,
-    basis_functions_from_fp_all_flat_basis,
-    basis_weights_from_fp_all,
+    basis_functions_from_flat_basis,
+    basis_weights_from_data,
     load_country_region_classes,
 )
 from openghg_inversions.basis.algorithms import (
@@ -128,8 +128,9 @@ def _guarded_basis(
             maximum, or geometry, allocation, or guarded splitting is invalid.
     """
     # 1. Turn the filtered footprints and flux into one spatial importance map.
-    weights = basis_weights_from_fp_all(
-        merged.fp_all,
+    weights = basis_weights_from_data(
+        merged.site_data,
+        merged.flux_data,
         flux_sources,
         abs_flux=True,
     )
@@ -181,12 +182,13 @@ def _guarded_basis(
         "openghg_inversions:project_basis_connectivity": 1,
         "openghg_inversions:project_basis_max_child_pca_eccentricity": float(max_child_pca_eccentricity),
         "openghg_inversions:project_basis_class_policy": "land_ocean",
-        "openghg_inversions:project_basis_weights": "basis_weights_from_fp_all_abs_flux_normalized",
+        "openghg_inversions:project_basis_weights": "basis_weights_from_data_abs_flux_normalized",
     }
     basis_flat.attrs.update(provenance)
     # 5. Attach the current flux so standard RHIME sensitivity code can use it.
-    return basis_functions_from_fp_all_flat_basis(
-        fp_all=merged.fp_all,
+    return basis_functions_from_flat_basis(
+        flux_data=merged.flux_data,
+        split_by_sectors=merged.split_by_sectors,
         basis_flat=basis_flat,
         metadata=provenance,
     )
@@ -276,7 +278,7 @@ def run_custom_rhime(
             invalid.
 
     Notes:
-        This workflow may retrieve or reload data, may eagerly fit or load a
+        This workflow acquires data, may eagerly fit or load a
         basis, eagerly materializes PyMC model inputs, runs sampling, and writes
         outputs requested by the resolved RHIME options.
     """
@@ -297,24 +299,16 @@ def run_custom_rhime(
     params.pop("fp_basis_case", None)
     config = RhimeConfig.from_params(params, multisector=False)
 
-    if config.reload_merged_data:
-        merged = RhimeMergedData.load(
-            **config.select(
-                "merged_data_dir", "site_options", "species", "start_date", "output_name",
-                "merged_data_name", "split_by_sectors", "flux_non_finite_check",
-            ),
-        )
-    else:
-        merged = RhimeMergedData.from_options(
-            **config.select(
-                "site_options", "species", "domain", "start_date",
-                "end_date", "output_name", "flux_sources", "split_by_sectors",
-                "bc_store", "obs_store", "footprint_store", "emissions_store",
-                "emissions_domain", "fp_model", "fp_species", "calibration_scale",
-                "use_bc", "bc_input", "averaging_error",
-                "save_merged_data", "merged_data_dir", "merged_data_name", "flux_non_finite_check",
-            ),
-        )
+    merged = RhimeMergedData.from_options(
+        **config.select(
+            "site_options", "species", "domain", "start_date",
+            "end_date",  "flux_sources", "split_by_sectors",
+            "bc_store", "obs_store", "footprint_store", "emissions_store",
+            "emissions_domain", "fp_model", "fp_species", "calibration_scale",
+            "use_bc", "bc_input", "averaging_error",
+            "flux_non_finite_check",
+        ),
+    )
     # 2. Keep the scientific preparation order visible in this recipe.
     filtered = filter_rhime_observations(merged, filters=config.filters)
     # Replace only basis construction; subsequent scientific stages stay visible.

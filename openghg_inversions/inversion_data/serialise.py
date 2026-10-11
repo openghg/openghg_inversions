@@ -543,14 +543,16 @@ def fp_all_to_datatree(fp_all: dict, netcdf_safe_attrs: bool = False) -> xr.Data
         dt_dict["fluxes"] = flux_dict_to_datatree(fp_all[".flux"], netcdf_safe_attrs)
 
     for k, v in fp_all.items():
-        if k == ".flux" or k in _OBSOLETE_FP_ALL_METADATA:
+        if k in {".flux", ".provenance"} or k in _OBSOLETE_FP_ALL_METADATA:
             continue
         if isinstance(v, BoundaryConditionsData):
             dt_dict[k.removeprefix(".")] = openghg_data_to_dataset(v, netcdf_safe_attrs)
         elif not k.startswith(".") and isinstance(v, xr.Dataset):
             scenario_dict[k] = v
         else:
-            if netcdf_safe_attrs and k == ".split_by_sectors":
+            if k == ".artifact_stage":
+                dt_attrs["artifact_stage"] = v
+            elif netcdf_safe_attrs and k == ".split_by_sectors":
                 # NetCDF forbids leading dots in names and Boolean attributes.
                 dt_attrs["split_by_sectors"] = int(v)
             else:
@@ -569,6 +571,8 @@ def datatree_to_fp_all(dt: xr.DataTree) -> dict:
         raise ValueError("Can only convert DataTree to fp_all if 'scenarios' group is present.")
 
     fp_all: dict[str, Any] = {}
+    if "artifact_stage" in dt.attrs:
+        fp_all[".artifact_stage"] = dt.attrs["artifact_stage"]
 
     if "fluxes" in dt:
         fp_all[".flux"] = datatree_to_flux_dict(dt.fluxes)
@@ -583,7 +587,7 @@ def datatree_to_fp_all(dt: xr.DataTree) -> dict:
         {
             str(k): v
             for k, v in dt.attrs.items()
-            if str(k) not in _OBSOLETE_FP_ALL_METADATA
+            if str(k) not in _OBSOLETE_FP_ALL_METADATA and str(k) != "artifact_stage"
         }
     )
     if "split_by_sectors" in fp_all:

@@ -324,18 +324,18 @@ def test_filtering_preserves_typed_filter_request():
         {"mf": ("time", [1.0, 3.0])},
         coords={"time": [datetime(2019, 1, 1, 12), datetime(2019, 1, 1, 13)]},
     )
-    merged = RhimeMergedData(
+    merged = RhimeMergedData.from_legacy_fp_all(
         fp_all={"TAC": data, "MHD": data}, site_options=config.site_options
     )
 
     filtered = rhime.filter_rhime_observations(merged, filters=config.filters)
 
-    assert filtered.fp_all["TAC"].sizes["time"] == 1
-    assert filtered.fp_all["TAC"].mf.item() == 2.0
-    assert filtered.fp_all["MHD"].sizes["time"] == 2
+    assert filtered.to_legacy_fp_all()["TAC"].sizes["time"] == 1
+    assert filtered.to_legacy_fp_all()["TAC"].mf.item() == 2.0
+    assert filtered.to_legacy_fp_all()["MHD"].sizes["time"] == 2
     assert config.filters == before
     assert request["filters"] == before
-    assert merged.fp_all["TAC"].sizes["time"] == 2
+    assert merged.to_legacy_fp_all()["TAC"].sizes["time"] == 2
 
 
 def test_configuration_api_is_public():
@@ -362,7 +362,7 @@ def test_multisector_preparation_selects_sources_from_typed_request():
         dims=("source", "region", "time"),
         coords={"source": ["first", "second"], "region": [0], "time": [datetime(2019, 1, 1)]},
     )
-    merged = RhimeMergedData(
+    merged = RhimeMergedData.from_legacy_fp_all(
         {"TAC": sensitivity.sum("region").rename("fp_x_flux_sectoral").to_dataset()},
         config.site_options,
     )
@@ -475,7 +475,6 @@ def test_ini_reader_decodes_recipe_options_without_semantic_resolution(tmp_path,
 def test_invalid_minimum_error_fails_before_acquisition(monkeypatch, value, multisector_mode):
     def forbidden(*args, **kwargs):
         pytest.fail("invalid minimum error reached acquisition")
-    monkeypatch.setattr(RhimeMergedData, "load", forbidden)
     monkeypatch.setattr(RhimeMergedData, "from_options", forbidden)
     recipe = multisector if multisector_mode else standard
     runner = recipe.run_rhime_multisector if multisector_mode else recipe.run_rhime
