@@ -419,7 +419,8 @@ The direct <code class="docutils literal notranslate"><span class="pre">fixedbas
 0.8 after its remaining known active user agreed to migrate. The 0.7.x release
 line is the last line containing that implementation and the
 <code class="docutils literal notranslate"><span class="pre">--legacy-fixedbasis</span></code> option. The <code class="docutils literal notranslate"><span class="pre">openghg_inversions.hbmcmc</span></code> namespace
-remains to host the transitional <code class="docutils literal notranslate"><span class="pre">run_hbmcmc</span></code> compatibility wrapper.</p>
+hosts the transitional <code class="docutils literal notranslate"><span class="pre">run_hbmcmc</span></code> wrapper and explicit legacy data
+utilities until 0.9.</p>
 <p>This page is for users with fixedbasis-style Python calls, INI files, batch
 scripts, or HBMCMC outputs. For a new inversion, start with the
 <a class="reference internal" href="model_recipes.html"><span class="doc">model recipe chooser</span></a> and <a class="reference internal" href="rhime.html"><span class="doc">RHIME guide</span></a>.</p>
@@ -702,6 +703,20 @@ to canonical RHIME names should therefore be separated from intentional
 changes to priors, likelihood options, basis construction, or output format so
 that scientific changes remain reviewable.</p>
 </section>
+<section id="explicit-legacy-merged-data-utilities">
+<h2>Explicit legacy merged-data utilities<a class="headerlink" href="#explicit-legacy-merged-data-utilities" title="Link to this heading">#</a></h2>
+<p>Scripts that still create or reload <code class="docutils literal notranslate"><span class="pre">fp_all</span></code> mappings must import
+<code class="docutils literal notranslate"><span class="pre">retrieve_inversion_data</span></code>, <code class="docutils literal notranslate"><span class="pre">_save_merged_data</span></code> and <code class="docutils literal notranslate"><span class="pre">load_merged_data</span></code> from
+<code class="docutils literal notranslate"><span class="pre">openghg_inversions.hbmcmc.legacy_data</span></code>. The historical netCDF and Zarr
+codecs retain their existing behaviour. Dictionary-based basis adapters,
+including <code class="docutils literal notranslate"><span class="pre">basis_weights_from_fp_all</span></code> and <code class="docutils literal notranslate"><span class="pre">make_basis_functions_from_fp_all</span></code>,
+now live in <code class="docutils literal notranslate"><span class="pre">openghg_inversions.hbmcmc.legacy_basis</span></code>. The previous canonical
+module paths and exports have been removed.</p>
+<p>Modern acquisition uses <code class="docutils literal notranslate"><span class="pre">RhimeMergedData.from_options</span></code> or direct dataset
+construction. Modern basis functions accept explicit <code class="docutils literal notranslate"><span class="pre">site_data</span></code> and
+<code class="docutils literal notranslate"><span class="pre">flux_data</span></code> datasets. For reusable RHIME runs, save <code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code>;
+legacy merged-data files are a separate explicit utility workflow.</p>
+</section>
 </section>
 
 
@@ -764,6 +779,7 @@ that scientific changes remain reviewable.</p>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#merged-data-acquisition-and-prepared-input-reuse">Merged-data acquisition and prepared-input reuse</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#removed-interfaces">Removed interfaces</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#scientific-compatibility">Scientific compatibility</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#explicit-legacy-merged-data-utilities">Explicit legacy merged-data utilities</a></li>
 </ul>
   </nav></div>
 

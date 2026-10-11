@@ -507,14 +507,38 @@ passed to a runner without resolving again.</p>
 <p><code class="docutils literal notranslate"><span class="pre">RhimeConfig.from_params</span></code> is the single construction entry point; the former
 <code class="docutils literal notranslate"><span class="pre">resolve_rhime_config</span></code> wrapper has been removed. The constructor calls the
 translator in <code class="docutils literal notranslate"><span class="pre">hbmcmc.compatibility</span></code> and emits <code class="docutils literal notranslate"><span class="pre">DeprecationWarning</span></code> when a
-deprecated name or output-format value is replaced or removed. Canonical names
-take precedence over aliases; canonical inputs emit no deprecation warning. The deprecated
+deprecated name or output-format value is replaced or removed. For historical HBMCMC aliases, canonical names take precedence. Modern flux
+keyword deprecations follow the stricter rules below. Canonical inputs emit no
+deprecation warning. The deprecated
 <code class="docutils literal notranslate"><span class="pre">params_from_config</span></code> adapter retains its dictionary return, overrides and
 <code class="docutils literal notranslate"><span class="pre">normalise</span></code> control there; modern readers and runners do not depend on that
 adapter. Prefer modern names such as <code class="docutils literal notranslate"><span class="pre">x_prior</span></code>, <code class="docutils literal notranslate"><span class="pre">output_name</span></code> and
 <code class="docutils literal notranslate"><span class="pre">flux_sources</span></code> when migrating code or files.</p>
 <p>Existing option defaults remain unchanged by this separation. Scientific default
 policy and a redesign of the INI sections are separate decisions.</p>
+</section>
+<section id="flux-selectors-and-deprecations">
+<h2>Flux selectors and deprecations<a class="headerlink" href="#flux-selectors-and-deprecations" title="Link to this heading">#</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">flux_store</span></code> selects the OpenGHG flux store (default <code class="docutils literal notranslate"><span class="pre">&quot;user&quot;</span></code>).
+<code class="docutils literal notranslate"><span class="pre">flux_domain</span></code> selects the source flux dataset’s domain, defaulting to the
+footprint <code class="docutils literal notranslate"><span class="pre">domain</span></code> when omitted or <code class="docutils literal notranslate"><span class="pre">None</span></code>. It does not inherently select
+a nested inner domain. Nested preparation uses <code class="docutils literal notranslate"><span class="pre">inner_flux_store</span></code> (default:
+outer flux store) and <code class="docutils literal notranslate"><span class="pre">inner_flux_domain</span></code> (default: inner footprint domain,
+independent of the outer flux-domain selector).</p>
+<p>The modern spellings <code class="docutils literal notranslate"><span class="pre">emissions_store</span></code>, <code class="docutils literal notranslate"><span class="pre">emissions_domain</span></code>,
+<code class="docutils literal notranslate"><span class="pre">inner_emissions_store</span></code> and <code class="docutils literal notranslate"><span class="pre">inner_emissions_domain</span></code> remain accepted with
+<code class="docutils literal notranslate"><span class="pre">DeprecationWarning</span></code> until removal in <strong>0.9</strong>. Supply only one spelling of
+each selector: old and new names together raise <code class="docutils literal notranslate"><span class="pre">ValueError</span></code>, including
+equal values and explicit <code class="docutils literal notranslate"><span class="pre">None</span></code>. These modern deprecations are resolved
+separately from historical HBMCMC aliases. Resolved configuration fields and
+canonical option inventories contain only the new names.</p>
+<p><code class="docutils literal notranslate"><span class="pre">basis.make_basis_functions</span></code> now accepts <code class="docutils literal notranslate"><span class="pre">flux_sources</span></code> for source
+weighting. Its shipped <code class="docutils literal notranslate"><span class="pre">emissions_name</span></code> keyword follows the same warning,
+conflict and 0.9 removal policy. The first requested source still determines
+basis weights, all runtime sources remain available, and saved bases retain
+precedence over generation. Newly introduced dataset-native basis helpers use
+<code class="docutils literal notranslate"><span class="pre">flux_sources</span></code> directly. Historical HBMCMC basis and retrieval APIs retain
+their compatibility signatures.</p>
 </section>
 <section id="site-selectors-and-retained-observations">
 <h2>Site selectors and retained observations<a class="headerlink" href="#site-selectors-and-retained-observations" title="Link to this heading">#</a></h2>
@@ -535,13 +559,18 @@ aligned values and checks their structural alignment. For example:</p>
 output or sampler settings. The acquisition-and-preparation convenience function
 <code class="docutils literal notranslate"><span class="pre">prepare_rhime_inputs</span></code> has been removed. For a complete inversion, use
 <code class="docutils literal notranslate"><span class="pre">run_rhime</span></code>; for custom preparation, call <code class="docutils literal notranslate"><span class="pre">RhimeMergedData.from_options</span></code> followed by
-<code class="docutils literal notranslate"><span class="pre">filter_rhime_observations</span></code>, <code class="docutils literal notranslate"><span class="pre">build_rhime_basis</span></code>,
-<code class="docutils literal notranslate"><span class="pre">build_rhime_sensitivities</span></code> and <code class="docutils literal notranslate"><span class="pre">assemble_rhime_inputs</span></code>. <code class="docutils literal notranslate"><span class="pre">retrieve_inversion_data</span></code> performs
+<code class="docutils literal notranslate"><span class="pre">prepare_observation_errors</span></code>, <code class="docutils literal notranslate"><span class="pre">filter_observations</span></code>,
+<code class="docutils literal notranslate"><span class="pre">openghg_inversions.basis.make_basis_functions</span></code>,
+<code class="docutils literal notranslate"><span class="pre">build_sensitivities</span></code> and <code class="docutils literal notranslate"><span class="pre">assemble_rhime_inputs</span></code>. The explicit legacy function
+<code class="docutils literal notranslate"><span class="pre">openghg_inversions.hbmcmc.legacy_data.retrieve_inversion_data</span></code> performs
 fresh surface or column acquisition and returns its established six-tuple of
 merged data and retained metadata lists. The former
 <code class="docutils literal notranslate"><span class="pre">data_processing_surface_notracer</span></code> name is a deprecated wrapper with the same
 signature and return. <code class="docutils literal notranslate"><span class="pre">RhimeMergedData.from_options</span></code> performs fresh acquisition
-from resolved selectors. Acquisition stays in memory; persist the completed
+from resolved selectors. <code class="docutils literal notranslate"><span class="pre">averaging_error</span></code> is a preparation choice: missing <code class="docutils literal notranslate"><span class="pre">mf_error</span></code> is derived
+from acquired repeatability/variability before temporal filtering or aggregation.
+Existing custom errors remain authoritative. <code class="docutils literal notranslate"><span class="pre">averaging_period</span></code> still selects
+OpenGHG acquisition/resampling. Acquisition stays in memory; persist the completed
 <code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code> for reuse. Runners reuse a supplied <code class="docutils literal notranslate"><span class="pre">merged_data</span></code>
 handoff before acquisition, bypassing store access. Before preparation, the merged
 owner checks known species, domain, date bounds and source layout against the
@@ -563,12 +592,13 @@ authoritative site options. The <a class="reference internal" href="rhime.html">
 <h2>Forwarding resolved values in custom runners<a class="headerlink" href="#forwarding-resolved-values-in-custom-runners" title="Link to this heading">#</a></h2>
 <p>Given an acquired <code class="docutils literal notranslate"><span class="pre">merged</span></code> handoff, copied runners can select explicitly named
 values for an ordinary keyword call:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="n">filter_rhime_observations</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="n">filter_observations</span><span class="p">,</span> <span class="n">prepare_observation_errors</span>
 
 <span class="n">merged</span><span class="o">.</span><span class="n">validate_for_preparation</span><span class="p">(</span>
     <span class="o">**</span><span class="n">config</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="s2">"species"</span><span class="p">,</span> <span class="s2">"domain"</span><span class="p">,</span> <span class="s2">"start_date"</span><span class="p">,</span> <span class="s2">"end_date"</span><span class="p">,</span> <span class="s2">"split_by_sectors"</span><span class="p">)</span>
 <span class="p">)</span>
-<span class="n">filtered</span> <span class="o">=</span> <span class="n">filter_rhime_observations</span><span class="p">(</span><span class="n">merged</span><span class="p">,</span> <span class="o">**</span><span class="n">config</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="s2">"filters"</span><span class="p">))</span>
+<span class="n">merged</span> <span class="o">=</span> <span class="n">prepare_observation_errors</span><span class="p">(</span><span class="n">merged</span><span class="p">,</span> <span class="n">averaging_error</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">averaging_error</span><span class="p">)</span>
+<span class="n">filtered</span> <span class="o">=</span> <span class="n">filter_observations</span><span class="p">(</span><span class="n">merged</span><span class="p">,</span> <span class="o">**</span><span class="n">config</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="s2">"filters"</span><span class="p">))</span>
 </pre></div>
 </div>
 <p><code class="docutils literal notranslate"><span class="pre">config.select(*names)</span></code> returns a fresh dictionary of the named attributes.
@@ -650,6 +680,7 @@ staged paths retain their configuration-file-relative convention.</p>
     <ul class="pst-show_toc_level nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#inspecting-the-resolved-request">Inspecting the resolved request</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#ini-files-and-overrides">INI files and overrides</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#flux-selectors-and-deprecations">Flux selectors and deprecations</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#site-selectors-and-retained-observations">Site selectors and retained observations</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#forwarding-resolved-values-in-custom-runners">Forwarding resolved values in custom runners</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#changing-and-persisting-configuration">Changing and persisting configuration</a></li>

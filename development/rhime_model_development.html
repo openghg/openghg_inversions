@@ -423,6 +423,18 @@ require reconstructing a framework.</p></li>
 <li><p>Scientists should be able to copy a runner or component and modify it
 locally.</p></li>
 </ul>
+<p>Preparation helpers must own a scientific operation, policy, meaningful handoff
+contract or necessary compatibility boundary. A uniform stage name, timing or
+argument renaming alone does not justify a second forwarding signature. Call
+basis construction directly and keep shared indexing utilities reusable.
+Shared preparation must not be named as if it belonged only to the standard
+model; model-specific policy stays visible beside its procedural recipe.</p>
+<p>Observation errors are preparation policy. Derive them before temporal
+filtering or aggregation, preserving supplied errors and borrowed datasets.
+Nested recipes prepare errors on both domains before filtering/time alignment.
+Historical retrieval uses that same operation before returning or saving its
+compatibility result. Acquisition replay remains separate from prepared-input
+persistence.</p>
 <p>The review test is:</p>
 <blockquote>
 <div><p>A scientist familiar with release-0.6 <code class="docutils literal notranslate"><span class="pre">fixedbasisMCMC</span></code> should be able to
@@ -474,6 +486,21 @@ obviously parallel <code class="docutils literal notranslate"><span class="pre">
 </ul>
 <p>The current model-family expansion plan is recorded in
 <code class="docutils literal notranslate"><span class="pre">docs/plans/rhime_model_family_expansion.md</span></code>.</p>
+</section>
+<section id="public-names-and-model-selection">
+<h2>Public names and model selection<a class="headerlink" href="#public-names-and-model-selection" title="Link to this heading">#</a></h2>
+<p>Use <code class="docutils literal notranslate"><span class="pre">run(...,</span> <span class="pre">model=&quot;standard&quot;)</span></code> as the ordinary Python selector and
+<code class="docutils literal notranslate"><span class="pre">rhime</span> <span class="pre">run</span> <span class="pre">--model</span> <span class="pre">standard</span></code> at the command line. Selection calls concrete
+procedural recipes; it does not impose a common acquisition or checkpoint
+contract on unrelated model families. CO2-family Python selection starts from
+its existing prepared inputs.</p>
+<p>Name concrete runners <code class="docutils literal notranslate"><span class="pre">run_standard</span></code>, <code class="docutils literal notranslate"><span class="pre">run_multisector</span></code> and <code class="docutils literal notranslate"><span class="pre">run_nested</span></code>.
+Use shared names such as <code class="docutils literal notranslate"><span class="pre">MergedData</span></code>, <code class="docutils literal notranslate"><span class="pre">PreparedInputs</span></code> and
+<code class="docutils literal notranslate"><span class="pre">assemble_inputs</span></code> for shared handoffs and preparation. Keep <code class="docutils literal notranslate"><span class="pre">standard</span></code> for
+standard-specific science. Established runner and shared handoff imports and the
+<code class="docutils literal notranslate"><span class="pre">openghg-inversions</span></code> executable remain supported through the 0.9 compatibility
+cycle; see <a class="reference internal" href="../usage/cli.html"><span class="doc">Running RHIME from the command line</span></a>. Do not add redundant <code class="docutils literal notranslate"><span class="pre">rhime</span></code> qualifiers or move
+whole modules solely to make names uniform.</p>
 </section>
 <section id="components-and-composite-components">
 <h2>Components and composite components<a class="headerlink" href="#components-and-composite-components" title="Link to this heading">#</a></h2>
@@ -659,8 +686,9 @@ together and returns a new record. <code class="docutils literal notranslate"><s
 fresh in-memory acquisition. The recipe first reuses compatible supplied data,
 then acquires fresh data when no handoff was supplied. Repeated sampling uses
 the durable prepared-input artifact. The deprecated
-<code class="docutils literal notranslate"><span class="pre">data_processing_surface_notracer</span></code> wrapper preserves its six-tuple contract;
-internal calls use the neutral names.</p>
+<code class="docutils literal notranslate"><span class="pre">openghg_inversions.hbmcmc.legacy_data.data_processing_surface_notracer</span></code>
+wrapper preserves its six-tuple contract. Modern acquisition calls only the
+dataset owner.</p>
 <p>Keep the procedural runner’s acquisition, preparation, model construction and
 sampling sequence visible. Pass needed resolved values directly or unpack an
 explicit <code class="docutils literal notranslate"><span class="pre">config.select(&quot;name&quot;,</span> <span class="pre">...)</span></code> selection into the scientific function’s
@@ -939,6 +967,7 @@ owners can move together when complete workflows migrate to <code class="docutil
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#purpose">Purpose</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#core-principles">Core principles</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#model-recipes">Model recipes</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#public-names-and-model-selection">Public names and model selection</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#components-and-composite-components">Components and composite components</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#likelihood-covariance-and-sampler-conventions">Likelihood, covariance, and sampler conventions</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#configuration-ownership">Configuration ownership</a></li>

@@ -417,24 +417,24 @@
                   
   <section id="running-rhime-from-the-command-line">
 <h1>Running RHIME from the command line<a class="headerlink" href="#running-rhime-from-the-command-line" title="Link to this heading">#</a></h1>
-<p>The <code class="docutils literal notranslate"><span class="pre">openghg-inversions</span></code> command is the recommended entry point for running
+<p>The <code class="docutils literal notranslate"><span class="pre">rhime</span></code> command is the recommended entry point for running
 RHIME from a terminal or a batch scheduler. It is installed with
 <code class="docutils literal notranslate"><span class="pre">openghg_inversions</span></code>, so a run does not need to know where the package source
 code is located.</p>
 <section id="standard-multisector-and-nested-runs">
 <h2>Standard, multisector, and nested runs<a class="headerlink" href="#standard-multisector-and-nested-runs" title="Link to this heading">#</a></h2>
-<p>Use <code class="docutils literal notranslate"><span class="pre">run-rhime</span></code> for a standard inversion and
-<code class="docutils literal notranslate"><span class="pre">run-rhime-multisector</span></code> for a shared-basis multisector inversion.
-<code class="docutils literal notranslate"><span class="pre">run-rhime-nested</span></code> combines independent outer and inner spatial grids:</p>
-<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>openghg-inversions<span class="w"> </span>run-rhime<span class="w"> </span><span class="m">2019</span>-01-01<span class="w"> </span><span class="m">2019</span>-02-01<span class="w"> </span><span class="se">\</span>
+<p>Use <code class="docutils literal notranslate"><span class="pre">rhime</span> <span class="pre">run</span></code> for a standard inversion (the default). Select
+<code class="docutils literal notranslate"><span class="pre">--model</span> <span class="pre">multisector</span></code> for shared-basis multisector inversion or
+<code class="docutils literal notranslate"><span class="pre">--model</span> <span class="pre">nested</span></code> to combine independent outer and inner spatial grids:</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>rhime<span class="w"> </span>run<span class="w"> </span><span class="m">2019</span>-01-01<span class="w"> </span><span class="m">2019</span>-02-01<span class="w"> </span><span class="se">\</span>
 <span class="w">    </span>--config<span class="w"> </span>/path/to/rhime.ini<span class="w"> </span><span class="se">\</span>
 <span class="w">    </span>--output-path<span class="w"> </span>/path/to/outputs
 
-<span class="gp">$ </span>openghg-inversions<span class="w"> </span>run-rhime-multisector<span class="w"> </span><span class="m">2019</span>-01-01<span class="w"> </span><span class="m">2019</span>-02-01<span class="w"> </span><span class="se">\</span>
+<span class="gp">$ </span>rhime<span class="w"> </span>run<span class="w"> </span>--model<span class="w"> </span>multisector<span class="w"> </span><span class="m">2019</span>-01-01<span class="w"> </span><span class="m">2019</span>-02-01<span class="w"> </span><span class="se">\</span>
 <span class="w">    </span>--config<span class="w"> </span>/path/to/rhime_multisector.ini<span class="w"> </span><span class="se">\</span>
 <span class="w">    </span>--output-path<span class="w"> </span>/path/to/outputs
 
-<span class="gp">$ </span>openghg-inversions<span class="w"> </span>run-rhime-nested<span class="w"> </span><span class="m">2019</span>-01-01<span class="w"> </span><span class="m">2019</span>-02-01<span class="w"> </span><span class="se">\</span>
+<span class="gp">$ </span>rhime<span class="w"> </span>run<span class="w"> </span>--model<span class="w"> </span>nested<span class="w"> </span><span class="m">2019</span>-01-01<span class="w"> </span><span class="m">2019</span>-02-01<span class="w"> </span><span class="se">\</span>
 <span class="w">    </span>--config<span class="w"> </span>/path/to/rhime_nested.ini
 </pre></div>
 </div>
@@ -443,19 +443,47 @@ positional arguments; when supplied, they override <code class="docutils literal
 <code class="docutils literal notranslate"><span class="pre">end_date</span></code> in the INI file. Likewise, <code class="docutils literal notranslate"><span class="pre">--output-path</span></code> overrides the
 configured output directory. Other RHIME keyword arguments can be overridden
 with a JSON object passed to <code class="docutils literal notranslate"><span class="pre">--kwargs</span></code>:</p>
-<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>openghg-inversions<span class="w"> </span>run-rhime<span class="w"> </span>-c<span class="w"> </span>rhime.ini<span class="w"> </span><span class="se">\</span>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>rhime<span class="w"> </span>run<span class="w"> </span>-c<span class="w"> </span>rhime.ini<span class="w"> </span><span class="se">\</span>
 <span class="w">    </span>--kwargs<span class="w"> </span><span class="s1">'{"draws": 2000, "tune": 1000, "chains": 4}'</span>
 </pre></div>
 </div>
 <p>Keep the JSON in single quotes so the shell passes it as one argument. Run
-<code class="docutils literal notranslate"><span class="pre">openghg-inversions</span> <span class="pre">run-rhime</span> <span class="pre">--help</span></code> or
-<code class="docutils literal notranslate"><span class="pre">openghg-inversions</span> <span class="pre">run-rhime-multisector</span> <span class="pre">--help</span></code> for the complete ordinary
+<code class="docutils literal notranslate"><span class="pre">rhime</span> <span class="pre">run</span> <span class="pre">--help</span></code> or
+<code class="docutils literal notranslate"><span class="pre">rhime</span> <span class="pre">run</span> <span class="pre">--model</span> <span class="pre">multisector</span> <span class="pre">--help</span></code> for the complete ordinary
 command syntax. See the <a class="reference internal" href="nested_domain_model_family.html"><span class="doc">nested-domain model family</span></a> for its support boundary and configuration
 guide. New configuration files should use the RHIME vocabulary documented in
 <a class="reference internal" href="rhime.html"><span class="doc">RHIME terminology and prepared-input reference</span></a>; the packaged starting point is
 <code class="docutils literal notranslate"><span class="pre">openghg_inversions/config/templates/rhime_template.ini</span></code>. Complete,
 validated production-shape examples are used by
 <a class="reference internal" href="rhime_standard_tutorial.html"><span class="doc">Standard RHIME tutorial</span></a> and <a class="reference internal" href="rhime_multisector_tutorial.html"><span class="doc">Multisector RHIME tutorial</span></a>.</p>
+</section>
+<section id="python-model-selection-and-compatibility">
+<h2>Python model selection and compatibility<a class="headerlink" href="#python-model-selection-and-compatibility" title="Link to this heading">#</a></h2>
+<p>The public Python selector is <a class="reference internal" href="../reference/openghg_inversions.rhime.html#openghg_inversions.rhime.run" title="openghg_inversions.rhime.run"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.run()</span></code></a>:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="n">run</span>
+
+<span class="n">result</span> <span class="o">=</span> <span class="n">run</span><span class="p">(</span><span class="n">config_file</span><span class="o">=</span><span class="s2">"rhime.ini"</span><span class="p">)</span>  <span class="c1"># model="standard" by default</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">run</span><span class="p">(</span><span class="n">model</span><span class="o">=</span><span class="s2">"multisector"</span><span class="p">,</span> <span class="n">config_file</span><span class="o">=</span><span class="s2">"rhime_multisector.ini"</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>The <code class="docutils literal notranslate"><span class="pre">co2</span></code>, <code class="docutils literal notranslate"><span class="pre">co2_cached_sigma</span></code>, <code class="docutils literal notranslate"><span class="pre">co2_o2</span></code> and <code class="docutils literal notranslate"><span class="pre">co2_o2_cached_sigma</span></code> Python
+choices call their existing prepared-input recipes. They require the appropriate
+<code class="docutils literal notranslate"><span class="pre">prepared_inputs</span></code> object and preserve each recipe’s arguments and return type;
+selection does not provide a new acquisition or checkpoint route. These families
+are therefore not choices for the configuration-driven <code class="docutils literal notranslate"><span class="pre">rhime</span> <span class="pre">run</span></code> command.
+Existing CO2 staged commands retain their current support boundaries.</p>
+<p><code class="docutils literal notranslate"><span class="pre">openghg-inversions</span></code> and its <code class="docutils literal notranslate"><span class="pre">run-rhime</span></code>, <code class="docutils literal notranslate"><span class="pre">run-rhime-multisector</span></code> and
+<code class="docutils literal notranslate"><span class="pre">run-rhime-nested</span></code> subcommands remain supported through the 0.9 compatibility
+cycle. Both executables expose the same command set. The existing runner imports and
+shared handoff/assembly names listed here remain aliases to their implementations: <code class="docutils literal notranslate"><span class="pre">run_rhime</span></code> is
+<code class="docutils literal notranslate"><span class="pre">run_standard</span></code>, <code class="docutils literal notranslate"><span class="pre">run_rhime_multisector</span></code> is <code class="docutils literal notranslate"><span class="pre">run_multisector</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">run_rhime_nested</span></code> is <code class="docutils literal notranslate"><span class="pre">run_nested</span></code>. No argument conversion or warning is
+added to these aliases. Shared <code class="docutils literal notranslate"><span class="pre">MergedData</span></code> and <code class="docutils literal notranslate"><span class="pre">PreparedInputs</span></code> retain the
+<code class="docutils literal notranslate"><span class="pre">RhimeMergedData</span></code> and <code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code> aliases and unchanged serialized
+schemas. <code class="docutils literal notranslate"><span class="pre">assemble_inputs</span></code> and <code class="docutils literal notranslate"><span class="pre">with_prepared_sites</span></code> retain their former
+<code class="docutils literal notranslate"><span class="pre">assemble_rhime_inputs</span></code> and <code class="docutils literal notranslate"><span class="pre">with_prepared_rhime_sites</span></code> imports.</p>
+<p>Package naming, the recipe-module relocation proposed in #764/#776 and complete
+workflow parity remain separate changes.</p>
 </section>
 <section id="translating-the-older-batch-example">
 <h2>Translating the older batch example<a class="headerlink" href="#translating-the-older-batch-example" title="Link to this heading">#</a></h2>
@@ -489,7 +517,7 @@ module<span class="w"> </span>load<span class="w"> </span>git/2.45.1
 <span class="nv">INI_FILE</span><span class="o">=</span>/user/home/example/my_inversions/rhime.ini
 <span class="nv">OUTPUT_DIR</span><span class="o">=</span>/user/home/example/my_inversions/outputs
 
-pixi<span class="w"> </span>run<span class="w"> </span>--locked<span class="w"> </span>-e<span class="w"> </span>dev<span class="w"> </span>openghg-inversions<span class="w"> </span>run-rhime<span class="w"> </span><span class="se">\</span>
+pixi<span class="w"> </span>run<span class="w"> </span>--locked<span class="w"> </span>-e<span class="w"> </span>dev<span class="w"> </span>rhime<span class="w"> </span>run<span class="w"> </span><span class="se">\</span>
 <span class="w">    </span><span class="m">2019</span>-01-01<span class="w"> </span><span class="m">2019</span>-02-01<span class="w"> </span><span class="se">\</span>
 <span class="w">    </span>--config<span class="w"> </span><span class="s2">"</span><span class="nv">$INI_FILE</span><span class="s2">"</span><span class="w"> </span><span class="se">\</span>
 <span class="w">    </span>--output-path<span class="w"> </span><span class="s2">"</span><span class="nv">$OUTPUT_DIR</span><span class="s2">"</span>
@@ -508,7 +536,7 @@ before the first submission if compute nodes do not have network access:</p>
 <h3>Alternative environment blocks<a class="headerlink" href="#alternative-environment-blocks" title="Link to this heading">#</a></h3>
 <p>If the repository was installed with <code class="docutils literal notranslate"><span class="pre">uv</span></code>, replace the <code class="docutils literal notranslate"><span class="pre">pixi</span> <span class="pre">run</span> <span class="pre">...</span></code> line
 with the following command, still running it from <code class="docutils literal notranslate"><span class="pre">$REPOSITORY</span></code>:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>run<span class="w"> </span>--locked<span class="w"> </span>openghg-inversions<span class="w"> </span>run-rhime<span class="w"> </span><span class="se">\</span>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>run<span class="w"> </span>--locked<span class="w"> </span>rhime<span class="w"> </span>run<span class="w"> </span><span class="se">\</span>
 <span class="w">    </span><span class="m">2019</span>-01-01<span class="w"> </span><span class="m">2019</span>-02-01<span class="w"> </span><span class="se">\</span>
 <span class="w">    </span>--config<span class="w"> </span><span class="s2">"</span><span class="nv">$INI_FILE</span><span class="s2">"</span><span class="w"> </span><span class="se">\</span>
 <span class="w">    </span>--output-path<span class="w"> </span><span class="s2">"</span><span class="nv">$OUTPUT_DIR</span><span class="s2">"</span>
@@ -524,7 +552,7 @@ command with:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">eval</span><span class="w"> </span><span class="s2">"</span><span class="k">$(</span>conda<span class="w"> </span>shell.bash<span class="w"> </span>hook<span class="k">)</span><span class="s2">"</span>
 conda<span class="w"> </span>activate<span class="w"> </span>pymc_env
 
-openghg-inversions<span class="w"> </span>run-rhime<span class="w"> </span><span class="se">\</span>
+rhime<span class="w"> </span>run<span class="w"> </span><span class="se">\</span>
 <span class="w">    </span><span class="m">2019</span>-01-01<span class="w"> </span><span class="m">2019</span>-02-01<span class="w"> </span><span class="se">\</span>
 <span class="w">    </span>--config<span class="w"> </span><span class="s2">"</span><span class="nv">$INI_FILE</span><span class="s2">"</span><span class="w"> </span><span class="se">\</span>
 <span class="w">    </span>--output-path<span class="w"> </span><span class="s2">"</span><span class="nv">$OUTPUT_DIR</span><span class="s2">"</span>
@@ -536,7 +564,7 @@ openghg-inversions<span class="w"> </span>run-rhime<span class="w"> </span><span
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nv">INI_FILE</span><span class="o">=</span>/user/home/example/my_inversions/rhime_multisector.ini
 <span class="nv">OUTPUT_DIR</span><span class="o">=</span>/user/home/example/my_inversions/outputs
 
-pixi<span class="w"> </span>run<span class="w"> </span>--locked<span class="w"> </span>-e<span class="w"> </span>dev<span class="w"> </span>openghg-inversions<span class="w"> </span>run-rhime-multisector<span class="w"> </span><span class="se">\</span>
+pixi<span class="w"> </span>run<span class="w"> </span>--locked<span class="w"> </span>-e<span class="w"> </span>dev<span class="w"> </span>rhime<span class="w"> </span>run<span class="w"> </span>--model<span class="w"> </span>multisector<span class="w"> </span><span class="se">\</span>
 <span class="w">    </span><span class="m">2019</span>-01-01<span class="w"> </span><span class="m">2019</span>-02-01<span class="w"> </span><span class="se">\</span>
 <span class="w">    </span>--config<span class="w"> </span><span class="s2">"</span><span class="nv">$INI_FILE</span><span class="s2">"</span><span class="w"> </span><span class="se">\</span>
 <span class="w">    </span>--output-path<span class="w"> </span><span class="s2">"</span><span class="nv">$OUTPUT_DIR</span><span class="s2">"</span>
@@ -628,6 +656,7 @@ contract.</p>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#standard-multisector-and-nested-runs">Standard, multisector, and nested runs</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#python-model-selection-and-compatibility">Python model selection and compatibility</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#translating-the-older-batch-example">Translating the older batch example</a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#alternative-environment-blocks">Alternative environment blocks</a></li>
 </ul>

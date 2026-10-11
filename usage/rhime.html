@@ -483,14 +483,15 @@ whole graph or prepared-data cache to use float64.</p>
 <h2>Python API<a class="headerlink" href="#python-api" title="Link to this heading">#</a></h2>
 <p>For complete prerequisite-to-output walkthroughs, start with
 <a class="reference internal" href="rhime_standard_tutorial.html"><span class="doc">Standard RHIME tutorial</span></a> or <a class="reference internal" href="rhime_multisector_tutorial.html"><span class="doc">Multisector RHIME tutorial</span></a>.</p>
-<p>The stable package imports below are unchanged. Scientists who want to inspect
+<p>Use the public model selector below. Existing runner imports remain compatible
+as described in <a class="reference internal" href="cli.html"><span class="doc">Running RHIME from the command line</span></a>. Scientists who want to inspect
 or copy a complete implementation can read
 <code class="docutils literal notranslate"><span class="pre">openghg_inversions.rhime.standard</span></code> or
 <code class="docutils literal notranslate"><span class="pre">openghg_inversions.rhime.multisector</span></code> directly; each module shows its whole
 scientific process from option resolution through output construction.</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="n">run_rhime</span><span class="p">,</span> <span class="n">run_rhime_multisector</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="n">run</span>
 
-<span class="n">result</span> <span class="o">=</span> <span class="n">run_rhime</span><span class="p">(</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">run</span><span class="p">(</span>
     <span class="n">species</span><span class="o">=</span><span class="s2">"ch4"</span><span class="p">,</span>
     <span class="n">sites</span><span class="o">=</span><span class="p">[</span><span class="s2">"TAC"</span><span class="p">],</span>
     <span class="n">averaging_period</span><span class="o">=</span><span class="p">[</span><span class="s2">"1h"</span><span class="p">],</span>
@@ -503,7 +504,8 @@ scientific process from option resolution through output construction.</p>
     <span class="n">mismatch_model</span><span class="o">=</span><span class="s2">"pollution_event"</span><span class="p">,</span>
 <span class="p">)</span>
 
-<span class="n">multi_sector_result</span> <span class="o">=</span> <span class="n">run_rhime_multisector</span><span class="p">(</span>
+<span class="n">multi_sector_result</span> <span class="o">=</span> <span class="n">run</span><span class="p">(</span>
+    <span class="n">model</span><span class="o">=</span><span class="s2">"multisector"</span><span class="p">,</span>
     <span class="n">species</span><span class="o">=</span><span class="s2">"ch4"</span><span class="p">,</span>
     <span class="n">sites</span><span class="o">=</span><span class="p">[</span><span class="s2">"TAC"</span><span class="p">],</span>
     <span class="n">averaging_period</span><span class="o">=</span><span class="p">[</span><span class="s2">"1h"</span><span class="p">],</span>
@@ -1036,7 +1038,7 @@ non-null values in a custom country map remain distinct classes. Small float
 storage differences are accepted; incompatible coordinate values, units, or
 CRS definitions are rejected, and null outer cells remain label <code class="docutils literal notranslate"><span class="pre">0</span></code>. This
 adapter is separate from the legacy
-<code class="docutils literal notranslate"><span class="pre">fixed_outer_regions_basis</span></code> weighted route, whose historical output remains
+<code class="docutils literal notranslate"><span class="pre">fixed_outer_regions_basis_from_data</span></code> weighted route, whose historical output remains
 unchanged, and it is not yet routed through RHIME configuration.</p>
 <p>This groundwork composes a transient class field and still passes one weight
 field to the downstream algorithm. Separate source weights, sensitivities, and

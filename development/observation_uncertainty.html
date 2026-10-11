@@ -412,9 +412,11 @@ does not establish that measurement uncertainty was measured to be zero.</p>
 </section>
 <section id="existing-uncertainty-construction">
 <h2>Existing uncertainty construction<a class="headerlink" href="#existing-uncertainty-construction" title="Link to this heading">#</a></h2>
-<p><a class="reference internal" href="../reference/openghg_inversions.inversion_data.get_data.html#openghg_inversions.inversion_data.get_data.add_obs_error" title="openghg_inversions.inversion_data.get_data.add_obs_error"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.inversion_data.get_data.add_obs_error()</span></code></a> constructs the
-error from each merged site’s data. With averaging errors enabled, its behavior
-is:</p>
+<p><a class="reference internal" href="../reference/openghg_inversions.inversion_data.observation_errors.html#openghg_inversions.inversion_data.observation_errors.prepare_observation_errors" title="openghg_inversions.inversion_data.observation_errors.prepare_observation_errors"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.inversion_data.observation_errors.prepare_observation_errors()</span></code></a>
+constructs missing errors from each acquired site before temporal filtering or
+aggregation. Supplied custom <code class="docutils literal notranslate"><span class="pre">mf_error</span></code> remains unchanged. Preparation owns
+<code class="docutils literal notranslate"><span class="pre">averaging_error</span></code>; acquisition retains the <code class="docutils literal notranslate"><span class="pre">averaging_period</span></code> resampling
+selector. With averaging errors enabled, the derivation is:</p>
 <div class="pst-scrollable-table-container"><table class="table">
 <colgroup>
 <col style="width: 40.0%" />

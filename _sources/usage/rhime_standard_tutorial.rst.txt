@@ -1,7 +1,7 @@
 Standard RHIME tutorial
 =======================
 
-This tutorial runs the supported one-sector :func:`openghg_inversions.rhime.run_rhime`
+This tutorial runs the supported one-sector :func:`openghg_inversions.rhime.run_standard`
 recipe, inspects its labelled result, and reloads its durable inversion-output
 product.
 
@@ -78,7 +78,7 @@ From a source checkout, the supported CLI route is:
 
 .. code-block:: console
 
-   $ pixi run -e dev openghg-inversions run-rhime \
+   $ pixi run -e dev rhime run \
        --config openghg_inversions/rhime/config/standard_tutorial.ini \
        --output-path outputs
 
@@ -93,12 +93,12 @@ The equivalent supported Python entry point is:
    import os
    from pathlib import Path
 
-   from openghg_inversions.rhime import run_rhime
+   from openghg_inversions.rhime import run
 
    tutorial_output_path = Path(os.environ.get("OPENGHG_TUTORIAL_OUTPUT_PATH", "outputs"))
    resource = files("openghg_inversions.rhime").joinpath("config/standard_tutorial.ini")
    with as_file(resource) as config:
-       result = run_rhime(config_file=config, output_path=tutorial_output_path)
+       result = run(model="standard", config_file=config, output_path=tutorial_output_path)
 
    {
        "OpenGHG Inversions commit": os.environ.get(

@@ -341,6 +341,8 @@
 </details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.hbmcmc.html">openghg_inversions.hbmcmc</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.compatibility.html">openghg_inversions.hbmcmc.compatibility</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.legacy_data.html">openghg_inversions.hbmcmc.legacy_data</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.legacy_basis.html">openghg_inversions.hbmcmc.legacy_basis</a></li>
 </ul>
 </details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.inference.html">openghg_inversions.inference</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -351,11 +353,10 @@
 </details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.inversion_data.html">openghg_inversions.inversion_data</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.acquisition.html">openghg_inversions.inversion_data.acquisition</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.get_data.html">openghg_inversions.inversion_data.get_data</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.getters.html">openghg_inversions.inversion_data.getters</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.observation_errors.html">openghg_inversions.inversion_data.observation_errors</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html">openghg_inversions.inversion_data.prepared_inputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.scenario.html">openghg_inversions.inversion_data.scenario</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.serialise.html">openghg_inversions.inversion_data.serialise</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.xarray_adapter.html">openghg_inversions.inversion_data.xarray_adapter</a></li>
 </ul>
 </details></li>
@@ -411,6 +412,7 @@
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.stages.html">openghg_inversions.rhime.co2.stages</a></li>
 </ul>
 </details></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.api.html">openghg_inversions.rhime.api</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.builders.html">openghg_inversions.rhime.builders</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.cached_sigma.html">openghg_inversions.rhime.cached_sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.ini.html">openghg_inversions.rhime.ini</a></li>
@@ -529,55 +531,13 @@ product blocks. They are low-level inputs to
 <a class="reference internal" href="openghg_inversions.coherent_reduction.html#module-openghg_inversions.coherent_reduction" title="openghg_inversions.coherent_reduction"><code class="xref py py-mod docutils literal notranslate"><span class="pre">openghg_inversions.coherent_reduction</span></code></a> and do not themselves construct
 the centred reduced likelihood or unresolved covariance.</p>
 <dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.basis.basis_functions_from_fp_all_flat_basis">
-<span class="sig-name descname"><span class="pre">basis_functions_from_fp_all_flat_basis</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">fp_all</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">basis_flat</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">metadata</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.basis_functions_from_fp_all_flat_basis" title="Link to this definition">#</a></dt>
-<dd><p>Adapt legacy merged dictionaries to retained flat-basis construction.</p>
-<p>New callers should pass runtime datasets to
-<a class="reference internal" href="#openghg_inversions.basis.basis_functions_from_flat_basis" title="openghg_inversions.basis.basis_functions_from_flat_basis"><code class="xref py py-func docutils literal notranslate"><span class="pre">basis_functions_from_flat_basis()</span></code></a> instead.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference internal" href="openghg_inversions.basis.basis_functions.html#openghg_inversions.basis.basis_functions.FluxWeightedBasis" title="openghg_inversions.basis.basis_functions.FluxWeightedBasis"><em>FluxWeightedBasis</em></a></p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.basis.basis_weights_from_fp_all">
-<span class="sig-name descname"><span class="pre">basis_weights_from_fp_all</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fp_all</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">emissions_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">abs_flux</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mask</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.basis_weights_from_fp_all" title="Link to this definition">#</a></dt>
-<dd><p>Build the standard 2D basis weight field from a legacy <code class="docutils literal notranslate"><span class="pre">fp_all</span></code> mapping.</p>
-<p>The generated basis algorithms historically computed weights internally
-from mean footprints multiplied by mean flux. This helper exposes that
-adapter step so algorithms and experiments can use already computed weight
-fields directly.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>fp_all</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a>) – Legacy merged-data dictionary produced by the data preparation
-path.</p></li>
-<li><p><strong>emissions_name</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.15)"><em>list</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>] </em><em>| </em><em>None</em>) – Optional list of OpenGHG flux source names used to
-select emissions from <code class="docutils literal notranslate"><span class="pre">fp_all</span></code>.</p></li>
-<li><p><strong>abs_flux</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – If true, use absolute flux values before averaging.</p></li>
-<li><p><strong>mask</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a><em> | </em><em>None</em>) – Optional Boolean spatial mask. When supplied, weights outside the
-mask are dropped from the returned field.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Two-dimensional weight field with spatial coordinates preserved.</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a></p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.basis.basis_weights_from_data">
 <span class="sig-name descname"><span class="pre">basis_weights_from_data</span></span><span class="sig-paren">(</span>
 
 <dl>
 <dd><em class="sig-param"><span class="n"><span class="pre">site_data</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">flux_data</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">emissions_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">flux_sources</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">abs_flux</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">mask</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
@@ -771,7 +731,7 @@ name collides with a native or flux dimension is renamed to
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.bucket_basis_from_weights" title="Link to this definition">#</a></dt>
 <dd><p>Create a legacy weighted bucket basis field from precomputed 2D weights.</p>
-<p>This is a weight-first version of <a class="reference internal" href="#openghg_inversions.basis.bucket_basis_function" title="openghg_inversions.basis.bucket_basis_function"><code class="xref py py-func docutils literal notranslate"><span class="pre">bucket_basis_function()</span></code></a>. It still
+<p>This is a weight-first version of <code class="xref py py-func docutils literal notranslate"><span class="pre">bucket_basis_function()</span></code>. It still
 delegates to the existing land/sea-aware weighted algorithm for
 compatibility.</p>
 <dl class="field-list simple">
@@ -796,107 +756,6 @@ dimension, and integer region labels.</p>
 </dd></dl>
 
 <dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.basis.bucket_basis_function">
-<span class="sig-name descname"><span class="pre">bucket_basis_function</span></span><span class="sig-paren">(</span>
-
-<dl>
-<dd><em class="sig-param"><span class="n"><span class="pre">fp_all</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">start_date</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">domain</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">emissions_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">nbasis</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">100</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">country_directory</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">abs_flux</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">mask</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">landsea_indices</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-</dl>
-
-<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.bucket_basis_function" title="Link to this definition">#</a></dt>
-<dd><p>Create a basis field with the legacy weighted bucket algorithm.</p>
-<p>This algorithm recursively splits weighted rectangles so each scaling region
-contains approximately the same total weight. The implementation also uses
-land/sea masks from <code class="docutils literal notranslate"><span class="pre">country_directory</span></code> through the lower-level weighted
-algorithm.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>fp_all</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a>) – Legacy merged-data dictionary produced by the data preparation
-path.</p></li>
-<li><p><strong>start_date</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Start date of the inversion period.</p></li>
-<li><p><strong>domain</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Domain across which to calculate basis functions.</p></li>
-<li><p><strong>emissions_name</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.15)"><em>list</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>] </em><em>| </em><em>None</em>) – Optional list of OpenGHG flux source names used to
-select emissions from <code class="docutils literal notranslate"><span class="pre">fp_all</span></code>.</p></li>
-<li><p><strong>nbasis</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.15)"><em>int</em></a>) – Desired number of basis regions.</p></li>
-<li><p><strong>country_directory</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Optional directory containing land/sea files. When
-omitted, default package files are used.</p></li>
-<li><p><strong>abs_flux</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – If true, use absolute flux values when constructing weights.</p></li>
-<li><p><strong>mask</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a><em> | </em><em>None</em>) – Optional Boolean spatial mask for fitting basis functions over a
-sub-region.</p></li>
-<li><p><strong>landsea_indices</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a><em> | </em><em>None</em>) – Optional pre-aligned land/sea mask for the selected
-sub-region.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Basis field with <code class="docutils literal notranslate"><span class="pre">lat</span></code>/<code class="docutils literal notranslate"><span class="pre">lon</span></code> dimensions, a singleton <code class="docutils literal notranslate"><span class="pre">time</span></code>
-dimension, and integer region labels.</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a></p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.basis.bucketbasisfunction">
-<span class="sig-name descname"><span class="pre">bucketbasisfunction</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.bucketbasisfunction" title="Link to this definition">#</a></dt>
-<dd><p>Deprecated alias for <a class="reference internal" href="#openghg_inversions.basis.bucket_basis_function" title="openghg_inversions.basis.bucket_basis_function"><code class="xref py py-func docutils literal notranslate"><span class="pre">bucket_basis_function()</span></code></a>.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a></p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.basis.fixed_outer_regions_basis">
-<span class="sig-name descname"><span class="pre">fixed_outer_regions_basis</span></span><span class="sig-paren">(</span>
-
-<dl>
-<dd><em class="sig-param"><span class="n"><span class="pre">fp_all</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">start_date</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">basis_algorithm</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">domain</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">emissions_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">nbasis</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">100</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">country_directory</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">abs_flux</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">outer_regions_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">region_classes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">region_allocation</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'weight'</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">min_regions_per_class</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">split_acceptance</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'none'</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">contrast_contribution</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">contrast_cell_weight</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">min_contrast_delta_eig</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">min_contrast_lambda</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">contrast_tau</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">contrast_sigma_design</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">contrast_s_diag</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">allow_empty_inner_region</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
-</dl>
-
-<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.fixed_outer_regions_basis" title="Link to this definition">#</a></dt>
-<dd><p>Adapt legacy merged dictionaries to dataset fixed-outer basis fitting.</p>
-<p>See <a class="reference internal" href="#openghg_inversions.basis.fixed_outer_regions_basis_from_data" title="openghg_inversions.basis.fixed_outer_regions_basis_from_data"><code class="xref py py-func docutils literal notranslate"><span class="pre">fixed_outer_regions_basis_from_data()</span></code></a> for numerical options.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a></p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.basis.fixed_outer_regions_basis_from_data">
 <span class="sig-name descname"><span class="pre">fixed_outer_regions_basis_from_data</span></span><span class="sig-paren">(</span>
 
@@ -906,7 +765,7 @@ dimension, and integer region labels.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">start_date</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">basis_algorithm</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">domain</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">emissions_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">flux_sources</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">nbasis</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">100</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">country_directory</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">abs_flux</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
@@ -947,7 +806,7 @@ weights normally.</p>
 values are <code class="docutils literal notranslate"><span class="pre">&quot;quadtree&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;weighted&quot;</span></code>, and
 <code class="docutils literal notranslate"><span class="pre">&quot;region_constrained&quot;</span></code>.</p></li>
 <li><p><strong>domain</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Domain across which to calculate basis functions.</p></li>
-<li><p><strong>emissions_name</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.15)"><em>Sequence</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>] </em><em>| </em><em>None</em>) – Optional list of OpenGHG flux source names used to
+<li><p><strong>flux_sources</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.15)"><em>Sequence</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>] </em><em>| </em><em>None</em>) – Optional list of OpenGHG flux source names used to
 select the first source for weighting.</p></li>
 <li><p><strong>nbasis</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.15)"><em>int</em></a>) – Desired number of inner-region basis labels.</p></li>
 <li><p><strong>country_directory</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Optional directory containing land/sea files and the
@@ -1278,7 +1137,8 @@ this mutable DataArray.</p></li>
 <dd><em class="sig-param"><span class="n"><span class="pre">species</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">domain</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">start_date</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">emissions_name</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">flux_sources</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">_Unset.TOKEN</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">emissions_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">_Unset.TOKEN</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">nbasis</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">basis_algorithm</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">fix_outer_regions</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
@@ -1318,8 +1178,11 @@ artifacts.</p></li>
 <li><p><strong>domain</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Inversion domain used for generated basis metadata and basis
 artifact lookup.</p></li>
 <li><p><strong>start_date</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Start date of the inversion period.</p></li>
-<li><p><strong>emissions_name</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.15)"><em>Sequence</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>] </em><em>| </em><em>None</em>) – Optional list of OpenGHG flux source names used to
+<li><p><strong>flux_sources</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.15)"><em>Sequence</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>] </em><em>| </em><em>None</em><em> | </em><em>_Unset</em>) – Optional list of OpenGHG flux source names used to
 select the first source for weighting. All runtime sources are retained.</p></li>
+<li><p><strong>emissions_name</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.15)"><em>Sequence</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>] </em><em>| </em><em>None</em><em> | </em><em>_Unset</em>) – Deprecated spelling of <code class="docutils literal notranslate"><span class="pre">flux_sources</span></code>; removed in
+0.9. Supplying both names raises <code class="docutils literal notranslate"><span class="pre">ValueError</span></code>, even with equal
+values. When neither is supplied, use the first flux mapping entry.</p></li>
 <li><p><strong>nbasis</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.15)"><em>int</em></a>) – Desired number of generated basis regions.</p></li>
 <li><p><strong>basis_algorithm</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Algorithm used when generating a basis field on the
 fly. Supported values are <code class="docutils literal notranslate"><span class="pre">&quot;quadtree&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;weighted&quot;</span></code>, and
@@ -1544,67 +1407,6 @@ dimension, and integer region labels.</p>
 </dd></dl>
 
 <dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.basis.quadtree_basis_function">
-<span class="sig-name descname"><span class="pre">quadtree_basis_function</span></span><span class="sig-paren">(</span>
-
-<dl>
-<dd><em class="sig-param"><span class="n"><span class="pre">fp_all</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">start_date</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">domain</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">emissions_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">nbasis</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">100</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">country_directory</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">abs_flux</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">seed</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">mask</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-</dl>
-
-<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.quadtree_basis_function" title="Link to this definition">#</a></dt>
-<dd><p>Create a basis field with the quadtree algorithm.</p>
-<p>The domain is split with smaller grid cells for regions which contribute
-more to the a priori above-baseline mole fraction. This is based on the
-average footprint over the inversion period and the a priori emissions field.</p>
-<p>Dual annealing selects the split threshold to approach <code class="docutils literal notranslate"><span class="pre">nbasis</span></code> regions.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>fp_all</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a>) – Legacy merged-data dictionary produced by the data preparation
-path.</p></li>
-<li><p><strong>start_date</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Start date of the inversion period.</p></li>
-<li><p><strong>domain</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Domain across which to calculate basis functions.</p></li>
-<li><p><strong>emissions_name</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.15)"><em>list</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>] </em><em>| </em><em>None</em>) – Optional list of OpenGHG flux source names used to
-select emissions from <code class="docutils literal notranslate"><span class="pre">fp_all</span></code>.</p></li>
-<li><p><strong>nbasis</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.15)"><em>int</em></a>) – Desired number of basis regions.</p></li>
-<li><p><strong>country_directory</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Accepted for a consistent basis-algorithm interface;
-the quadtree algorithm does not use it.</p></li>
-<li><p><strong>abs_flux</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – If true, use absolute flux values when constructing weights.</p></li>
-<li><p><strong>seed</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.15)"><em>int</em></a><em> | </em><em>None</em>) – Optional seed passed to <code class="docutils literal notranslate"><span class="pre">scipy.optimize.dual_annealing</span></code>.</p></li>
-<li><p><strong>mask</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a><em> | </em><em>None</em>) – Optional Boolean spatial mask for fitting basis functions over a
-sub-region.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Basis field with <code class="docutils literal notranslate"><span class="pre">lat</span></code>/<code class="docutils literal notranslate"><span class="pre">lon</span></code> dimensions, a singleton <code class="docutils literal notranslate"><span class="pre">time</span></code>
-dimension, and integer region labels.</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a></p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.basis.quadtreebasisfunction">
-<span class="sig-name descname"><span class="pre">quadtreebasisfunction</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.quadtreebasisfunction" title="Link to this definition">#</a></dt>
-<dd><p>Deprecated alias for <a class="reference internal" href="#openghg_inversions.basis.quadtree_basis_function" title="openghg_inversions.basis.quadtree_basis_function"><code class="xref py py-func docutils literal notranslate"><span class="pre">quadtree_basis_function()</span></code></a>.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a></p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.basis.region_constrained_basis_from_weights">
 <span class="sig-name descname"><span class="pre">region_constrained_basis_from_weights</span></span><span class="sig-paren">(</span>
 
@@ -1765,100 +1567,6 @@ allocated across the inner classes. Null outer cells remain label
 <li><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.AlignmentError.html#xarray.AlignmentError" title="(in xarray v2026.9.0)"><strong>xarray.AlignmentError</strong></a> – If the supplied or loaded fields are not on
     physically compatible spatial grids.</p></li>
 </ul>
-</dd>
-<dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a></p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.basis.region_constrained_basis_function">
-<span class="sig-name descname"><span class="pre">region_constrained_basis_function</span></span><span class="sig-paren">(</span>
-
-<dl>
-<dd><em class="sig-param"><span class="n"><span class="pre">fp_all</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">start_date</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">domain</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">emissions_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">nbasis</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">100</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">country_directory</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">abs_flux</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">mask</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">region_classes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">allocation</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'weight'</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">min_regions_per_class</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">split_acceptance</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'none'</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">contrast_contribution</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">contrast_cell_weight</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">min_contrast_delta_eig</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">min_contrast_lambda</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">contrast_tau</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">contrast_sigma_design</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">contrast_s_diag</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-</dl>
-
-<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.region_constrained_basis_function" title="Link to this definition">#</a></dt>
-<dd><p>Create weighted basis regions constrained by caller-supplied classes.</p>
-<p>This adapter keeps file loading outside the constrained algorithm: callers
-provide <code class="docutils literal notranslate"><span class="pre">region_classes</span></code> directly, for example from a country file,
-land/sea file, or a user-defined region-class field. It links the pure
-<code class="docutils literal notranslate"><span class="pre">region_constrained_basis</span></code> helper to the current <code class="docutils literal notranslate"><span class="pre">fp_all</span></code>-based wrapper
-interface by constructing the usual footprint-times-flux weight field first.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>fp_all</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a>) – Legacy merged-data dictionary produced by the data preparation
-path.</p></li>
-<li><p><strong>start_date</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Start date of the inversion period.</p></li>
-<li><p><strong>domain</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Domain across which to calculate basis functions.</p></li>
-<li><p><strong>emissions_name</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.15)"><em>list</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>] </em><em>| </em><em>None</em>) – Optional list of OpenGHG flux source names used to
-select emissions from <code class="docutils literal notranslate"><span class="pre">fp_all</span></code>.</p></li>
-<li><p><strong>nbasis</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.15)"><em>int</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Hashable" title="(in Python v3.15)"><em>Hashable</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.15)"><em>int</em></a><em>]</em>) – Total number of basis regions, or class-local allocation
-accepted by <code class="docutils literal notranslate"><span class="pre">region_constrained_basis</span></code>.</p></li>
-<li><p><strong>country_directory</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Accepted for a consistent basis-algorithm interface;
-file loading for <code class="docutils literal notranslate"><span class="pre">region_classes</span></code> must happen before calling this
-adapter.</p></li>
-<li><p><strong>abs_flux</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – If true, use absolute flux values when constructing weights.</p></li>
-<li><p><strong>mask</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a><em> | </em><em>None</em>) – Optional Boolean spatial mask for fitting basis functions over a
-sub-region.</p></li>
-<li><p><strong>region_classes</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a><em> | </em><em>None</em>) – Two-dimensional class field on the same spatial grid as
-the generated weights. Positive basis labels are generated
-independently within each non-null class value.</p></li>
-<li><p><strong>allocation</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.15)"><em>Literal</em></a><em>[</em><em>'weight'</em><em>, </em><em>'area'</em><em>]</em>) – Automatic allocation mode used when <code class="docutils literal notranslate"><span class="pre">nbasis</span></code> is an
-integer. <code class="docutils literal notranslate"><span class="pre">&quot;weight&quot;</span></code> allocates regions by total class weight;
-<code class="docutils literal notranslate"><span class="pre">&quot;area&quot;</span></code> allocates by mapped cell count.</p></li>
-<li><p><strong>min_regions_per_class</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.15)"><em>int</em></a>) – Minimum automatic allocation for each non-empty
-mapped class.</p></li>
-<li><p><strong>split_acceptance</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.15)"><em>Literal</em></a><em>[</em><em>'none'</em><em>, </em><em>'contrast_score'</em><em>]</em>) – Optional split-acceptance criterion. The default
-<code class="docutils literal notranslate"><span class="pre">&quot;none&quot;</span></code> preserves existing behavior. <code class="docutils literal notranslate"><span class="pre">&quot;contrast_score&quot;</span></code> uses
-a mass-preserving observation-space contrast gate.</p></li>
-<li><p><strong>contrast_contribution</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a><em> | </em><em>None</em>) – Design contribution array for contrast scoring,
-with at least one design-observation dimension plus the two spatial
-dimensions. Observed mole-fraction values must not be used here.</p></li>
-<li><p><strong>contrast_cell_weight</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a><em> | </em><em>None</em>) – Optional prior flux or split-mass field used as
-<code class="docutils literal notranslate"><span class="pre">mu</span></code> in contrast scoring. When omitted, the unnormalised generated
-basis weight field is used as a split-mass proxy.</p></li>
-<li><p><strong>min_contrast_delta_eig</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em> | </em><em>None</em>) – Optional minimum <code class="docutils literal notranslate"><span class="pre">delta_eig</span></code> threshold. If
-both contrast thresholds are omitted, contrast diagnostics are
-computed but proposed splits are not rejected.</p></li>
-<li><p><strong>min_contrast_lambda</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em> | </em><em>None</em>) – Optional minimum <code class="docutils literal notranslate"><span class="pre">lambda</span></code> threshold.</p></li>
-<li><p><strong>contrast_tau</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em> | </em><em>None</em>) – Prior standard deviation of the split contrast
-coefficient <code class="docutils literal notranslate"><span class="pre">delta</span> <span class="pre">=</span> <span class="pre">alpha_A</span> <span class="pre">-</span> <span class="pre">alpha_B</span></code>. If omitted, <code class="docutils literal notranslate"><span class="pre">tau=1</span></code> is
-used and scores are uncalibrated.</p></li>
-<li><p><strong>contrast_sigma_design</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a><em> | </em><em>None</em>) – Optional scalar design standard deviation,
-equivalent to <code class="docutils literal notranslate"><span class="pre">S</span> <span class="pre">=</span> <span class="pre">contrast_sigma_design**2</span> <span class="pre">I</span></code>.</p></li>
-<li><p><strong>contrast_s_diag</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a><em> | </em><em>None</em>) – Optional diagonal design covariance entries in the
-same row space as <code class="docutils literal notranslate"><span class="pre">contrast_contribution</span></code>.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Basis field with <code class="docutils literal notranslate"><span class="pre">lat</span></code>/<code class="docutils literal notranslate"><span class="pre">lon</span></code> dimensions, a singleton <code class="docutils literal notranslate"><span class="pre">time</span></code>
-dimension, and globally unique integer labels that do not cross
-<code class="docutils literal notranslate"><span class="pre">region_classes</span></code> values.</p>
-</dd>
-<dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If <code class="docutils literal notranslate"><span class="pre">region_classes</span></code> is not supplied.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a></p>
@@ -2030,9 +1738,7 @@ active-state model sampling.</p></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.basis_functions.html#openghg_inversions.basis.basis_functions.FluxWeightedBasis.plot"><code class="docutils literal notranslate"><span class="pre">FluxWeightedBasis.plot()</span></code></a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.basis.basis_functions.html#openghg_inversions.basis.basis_functions.basis_functions_from_fp_all_flat_basis"><code class="docutils literal notranslate"><span class="pre">basis_functions_from_fp_all_flat_basis()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.basis.basis_functions.html#openghg_inversions.basis.basis_functions.basis_functions_from_flat_basis"><code class="docutils literal notranslate"><span class="pre">basis_functions_from_flat_basis()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.basis.basis_functions.html#openghg_inversions.basis.basis_functions.flux_from_fp_all"><code class="docutils literal notranslate"><span class="pre">flux_from_fp_all()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.basis.basis_functions.html#openghg_inversions.basis.basis_functions.flux_from_data"><code class="docutils literal notranslate"><span class="pre">flux_from_data()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.basis.basis_functions.html#openghg_inversions.basis.basis_functions.BasisFunctions"><code class="docutils literal notranslate"><span class="pre">BasisFunctions</span></code></a></li>
 </ul>
@@ -2162,8 +1868,6 @@ active-state model sampling.</p></li>
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.basis_functions_from_fp_all_flat_basis"><code class="docutils literal notranslate"><span class="pre">basis_functions_from_fp_all_flat_basis()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.basis_weights_from_fp_all"><code class="docutils literal notranslate"><span class="pre">basis_weights_from_fp_all()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.basis_weights_from_data"><code class="docutils literal notranslate"><span class="pre">basis_weights_from_data()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.basis_functions_from_flat_basis"><code class="docutils literal notranslate"><span class="pre">basis_functions_from_flat_basis()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.AffineFluxMap"><code class="docutils literal notranslate"><span class="pre">AffineFluxMap</span></code></a><ul class="nav section-nav flex-column">
@@ -2176,9 +1880,6 @@ active-state model sampling.</p></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.AffineFluxMapArtifact"><code class="docutils literal notranslate"><span class="pre">AffineFluxMapArtifact</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.BasisFunctions"><code class="docutils literal notranslate"><span class="pre">BasisFunctions</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.bucket_basis_from_weights"><code class="docutils literal notranslate"><span class="pre">bucket_basis_from_weights()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.bucket_basis_function"><code class="docutils literal notranslate"><span class="pre">bucket_basis_function()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.bucketbasisfunction"><code class="docutils literal notranslate"><span class="pre">bucketbasisfunction()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.fixed_outer_regions_basis"><code class="docutils literal notranslate"><span class="pre">fixed_outer_regions_basis()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.fixed_outer_regions_basis_from_data"><code class="docutils literal notranslate"><span class="pre">fixed_outer_regions_basis_from_data()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.load_basis_functions"><code class="docutils literal notranslate"><span class="pre">load_basis_functions()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.load_affine_flux_map"><code class="docutils literal notranslate"><span class="pre">load_affine_flux_map()</span></code></a></li>
@@ -2200,11 +1901,8 @@ active-state model sampling.</p></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.project_basis_prior_stdev"><code class="docutils literal notranslate"><span class="pre">project_basis_prior_stdev()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.project_native_covariance"><code class="docutils literal notranslate"><span class="pre">project_native_covariance()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.quadtree_basis_from_weights"><code class="docutils literal notranslate"><span class="pre">quadtree_basis_from_weights()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.quadtree_basis_function"><code class="docutils literal notranslate"><span class="pre">quadtree_basis_function()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.quadtreebasisfunction"><code class="docutils literal notranslate"><span class="pre">quadtreebasisfunction()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.region_constrained_basis_from_weights"><code class="docutils literal notranslate"><span class="pre">region_constrained_basis_from_weights()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.region_constrained_fixed_outer_basis_from_weights"><code class="docutils literal notranslate"><span class="pre">region_constrained_fixed_outer_basis_from_weights()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.region_constrained_basis_function"><code class="docutils literal notranslate"><span class="pre">region_constrained_basis_function()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.calibrate_basis_prior_stdev"><code class="docutils literal notranslate"><span class="pre">calibrate_basis_prior_stdev()</span></code></a></li>
 </ul>
   </nav></div>

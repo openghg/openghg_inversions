@@ -103,8 +103,9 @@ passed to a runner without resolving again.
 ``RhimeConfig.from_params`` is the single construction entry point; the former
 ``resolve_rhime_config`` wrapper has been removed. The constructor calls the
 translator in ``hbmcmc.compatibility`` and emits ``DeprecationWarning`` when a
-deprecated name or output-format value is replaced or removed. Canonical names
-take precedence over aliases; canonical inputs emit no deprecation warning. The deprecated
+deprecated name or output-format value is replaced or removed. For historical HBMCMC aliases, canonical names take precedence. Modern flux
+keyword deprecations follow the stricter rules below. Canonical inputs emit no
+deprecation warning. The deprecated
 ``params_from_config`` adapter retains its dictionary return, overrides and
 ``normalise`` control there; modern readers and runners do not depend on that
 adapter. Prefer modern names such as ``x_prior``, ``output_name`` and
@@ -112,6 +113,32 @@ adapter. Prefer modern names such as ``x_prior``, ``output_name`` and
 
 Existing option defaults remain unchanged by this separation. Scientific default
 policy and a redesign of the INI sections are separate decisions.
+
+Flux selectors and deprecations
+-------------------------------
+
+``flux_store`` selects the OpenGHG flux store (default ``"user"``).
+``flux_domain`` selects the source flux dataset's domain, defaulting to the
+footprint ``domain`` when omitted or ``None``. It does not inherently select
+a nested inner domain. Nested preparation uses ``inner_flux_store`` (default:
+outer flux store) and ``inner_flux_domain`` (default: inner footprint domain,
+independent of the outer flux-domain selector).
+
+The modern spellings ``emissions_store``, ``emissions_domain``,
+``inner_emissions_store`` and ``inner_emissions_domain`` remain accepted with
+``DeprecationWarning`` until removal in **0.9**. Supply only one spelling of
+each selector: old and new names together raise ``ValueError``, including
+equal values and explicit ``None``. These modern deprecations are resolved
+separately from historical HBMCMC aliases. Resolved configuration fields and
+canonical option inventories contain only the new names.
+
+``basis.make_basis_functions`` now accepts ``flux_sources`` for source
+weighting. Its shipped ``emissions_name`` keyword follows the same warning,
+conflict and 0.9 removal policy. The first requested source still determines
+basis weights, all runtime sources remain available, and saved bases retain
+precedence over generation. Newly introduced dataset-native basis helpers use
+``flux_sources`` directly. Historical HBMCMC basis and retrieval APIs retain
+their compatibility signatures.
 
 Site selectors and retained observations
 ----------------------------------------
@@ -135,13 +162,18 @@ Direct retrieval APIs retain their scalar shorthand without requiring model,
 output or sampler settings. The acquisition-and-preparation convenience function
 ``prepare_rhime_inputs`` has been removed. For a complete inversion, use
 ``run_rhime``; for custom preparation, call ``RhimeMergedData.from_options`` followed by
-``filter_rhime_observations``, ``build_rhime_basis``,
-``build_rhime_sensitivities`` and ``assemble_rhime_inputs``. ``retrieve_inversion_data`` performs
+``prepare_observation_errors``, ``filter_observations``,
+``openghg_inversions.basis.make_basis_functions``,
+``build_sensitivities`` and ``assemble_rhime_inputs``. The explicit legacy function
+``openghg_inversions.hbmcmc.legacy_data.retrieve_inversion_data`` performs
 fresh surface or column acquisition and returns its established six-tuple of
 merged data and retained metadata lists. The former
 ``data_processing_surface_notracer`` name is a deprecated wrapper with the same
 signature and return. ``RhimeMergedData.from_options`` performs fresh acquisition
-from resolved selectors. Acquisition stays in memory; persist the completed
+from resolved selectors. ``averaging_error`` is a preparation choice: missing ``mf_error`` is derived
+from acquired repeatability/variability before temporal filtering or aggregation.
+Existing custom errors remain authoritative. ``averaging_period`` still selects
+OpenGHG acquisition/resampling. Acquisition stays in memory; persist the completed
 ``RhimePreparedInputs`` for reuse. Runners reuse a supplied ``merged_data``
 handoff before acquisition, bypassing store access. Before preparation, the merged
 owner checks known species, domain, date bounds and source layout against the
@@ -168,12 +200,13 @@ values for an ordinary keyword call:
 
 .. code-block:: python
 
-   from openghg_inversions.rhime import filter_rhime_observations
+   from openghg_inversions.rhime import filter_observations, prepare_observation_errors
 
    merged.validate_for_preparation(
        **config.select("species", "domain", "start_date", "end_date", "split_by_sectors")
    )
-   filtered = filter_rhime_observations(merged, **config.select("filters"))
+   merged = prepare_observation_errors(merged, averaging_error=config.averaging_error)
+   filtered = filter_observations(merged, **config.select("filters"))
 
 ``config.select(*names)`` returns a fresh dictionary of the named attributes.
 Values are borrowed: mutable mappings and objects are shared with ``config``.

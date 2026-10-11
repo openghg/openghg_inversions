@@ -45,7 +45,7 @@ Resume from external scientific data
 ``run_rhime`` and ``run_rhime_multisector`` accept ``merged_data`` as a
 Python-only handoff. It bypasses OpenGHG acquisition,
 checks the recorded scientific facts and single- or multi-sector layout, and
-then re-enters the visible recipe at filtering::
+then re-enters the visible recipe at observation-error preparation::
 
    result = run_rhime(
        config_file="config.ini",
@@ -92,7 +92,7 @@ merged handoff::
        species="ch4", domain="EUROPE",
        start_date="2020-01-01", end_date="2020-02-01",
        flux_sources=["inventory"],
-       obs_store="user", footprint_store="user", emissions_store="user",
+       obs_store="user", footprint_store="user", flux_store="user",
        bc_store="user",
    )
 
@@ -109,8 +109,9 @@ provenance. Its arrays remain borrowed and may be Dask-backed. It has no
 ``fp_all`` property. ``AcquisitionFacts`` records known species, domain and
 window bounds alongside other retrieval choices. For example,
 ``AcquisitionFacts(species="ch4", domain="EUROPE")`` makes no claim about dates.
-Temporary explicit ``from_legacy_fp_all`` and ``to_legacy_fp_all`` adapters
-support remaining scientific consumers until 0.9.
+Explicit ``from_legacy_fp_all`` and ``to_legacy_fp_all`` utility functions
+in ``openghg_inversions.hbmcmc.legacy_data`` support legacy callers until 0.9.
+They are separate from the modern data model.
 
 Acquisition stays in memory. For a reusable file, prepare the data with the
 named stages below and call ``RhimePreparedInputs.save``; the staged
@@ -139,7 +140,7 @@ persistence of acquisition provenance is deferred to
 `issue #829 <https://github.com/openghg/openghg_inversions/issues/829>`_.
 
 For the existing tuple-returning retrieval API, use
-``openghg_inversions.inversion_data.retrieve_inversion_data``. The former
+``openghg_inversions.hbmcmc.legacy_data.retrieve_inversion_data``. The former
 ``data_processing_surface_notracer`` name forwards the same arguments and
 return value and emits ``DeprecationWarning``.
 The tuple's flux and boundary wrappers are reconstructed from the modern
@@ -414,7 +415,7 @@ Compose a custom basis stage
 ----------------------------
 
 The second complete runner replaces one call in the preparation spine:
-``build_project_basis`` replaces ``build_rhime_basis``. The project function
+``build_project_basis`` replaces ``openghg_inversions.basis.make_basis_functions``. The project function
 composes public basis primitives instead of selecting a built-in basis
 algorithm. It:
 
@@ -506,7 +507,7 @@ immediately before model construction; project-owned lazy extensions in
 
 The customisation is concentrated in ``_guarded_basis``. The runner's one
 deliberate substitution is marked by an inline comment where
-``build_project_basis`` replaces the standard ``build_rhime_basis`` call. The
+``build_project_basis`` replaces the standard ``openghg_inversions.basis.make_basis_functions`` call. The
 complete source remains below because the test suite executes the same file
 that the documentation displays.
 

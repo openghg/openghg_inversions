@@ -46,6 +46,20 @@ The following principles are requirements for production RHIME development:
 * Scientists should be able to copy a runner or component and modify it
   locally.
 
+Preparation helpers must own a scientific operation, policy, meaningful handoff
+contract or necessary compatibility boundary. A uniform stage name, timing or
+argument renaming alone does not justify a second forwarding signature. Call
+basis construction directly and keep shared indexing utilities reusable.
+Shared preparation must not be named as if it belonged only to the standard
+model; model-specific policy stays visible beside its procedural recipe.
+
+Observation errors are preparation policy. Derive them before temporal
+filtering or aggregation, preserving supplied errors and borrowed datasets.
+Nested recipes prepare errors on both domains before filtering/time alignment.
+Historical retrieval uses that same operation before returning or saving its
+compatibility result. Acquisition replay remains separate from prepared-input
+persistence.
+
 The review test is:
 
   A scientist familiar with release-0.6 ``fixedbasisMCMC`` should be able to
@@ -100,6 +114,23 @@ Each public recipe should provide:
 
 The current model-family expansion plan is recorded in
 ``docs/plans/rhime_model_family_expansion.md``.
+
+Public names and model selection
+--------------------------------
+
+Use ``run(..., model="standard")`` as the ordinary Python selector and
+``rhime run --model standard`` at the command line. Selection calls concrete
+procedural recipes; it does not impose a common acquisition or checkpoint
+contract on unrelated model families. CO2-family Python selection starts from
+its existing prepared inputs.
+
+Name concrete runners ``run_standard``, ``run_multisector`` and ``run_nested``.
+Use shared names such as ``MergedData``, ``PreparedInputs`` and
+``assemble_inputs`` for shared handoffs and preparation. Keep ``standard`` for
+standard-specific science. Established runner and shared handoff imports and the
+``openghg-inversions`` executable remain supported through the 0.9 compatibility
+cycle; see :doc:`/usage/cli`. Do not add redundant ``rhime`` qualifiers or move
+whole modules solely to make names uniform.
 
 Components and composite components
 -----------------------------------
@@ -310,8 +341,9 @@ together and returns a new record. ``RhimeMergedData.from_options`` performs
 fresh in-memory acquisition. The recipe first reuses compatible supplied data,
 then acquires fresh data when no handoff was supplied. Repeated sampling uses
 the durable prepared-input artifact. The deprecated
-``data_processing_surface_notracer`` wrapper preserves its six-tuple contract;
-internal calls use the neutral names.
+``openghg_inversions.hbmcmc.legacy_data.data_processing_surface_notracer``
+wrapper preserves its six-tuple contract. Modern acquisition calls only the
+dataset owner.
 
 Keep the procedural runner's acquisition, preparation, model construction and
 sampling sequence visible. Pass needed resolved values directly or unpack an

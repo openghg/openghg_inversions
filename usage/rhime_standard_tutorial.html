@@ -417,7 +417,7 @@
                   
   <section id="standard-rhime-tutorial">
 <h1>Standard RHIME tutorial<a class="headerlink" href="#standard-rhime-tutorial" title="Link to this heading">#</a></h1>
-<p>This tutorial runs the supported one-sector <a class="reference internal" href="../reference/openghg_inversions.rhime.html#openghg_inversions.rhime.run_rhime" title="openghg_inversions.rhime.run_rhime"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.run_rhime()</span></code></a>
+<p>This tutorial runs the supported one-sector <a class="reference internal" href="../reference/openghg_inversions.rhime.html#openghg_inversions.rhime.run_standard" title="openghg_inversions.rhime.run_standard"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.run_standard()</span></code></a>
 recipe, inspects its labelled result, and reloads its durable inversion-output
 product.</p>
 <p>The code and recorded outputs form one stateful session. You can
@@ -473,7 +473,7 @@ the test suite. It is runnable after populating the named companion store:</p>
 <span class="na">bc_store</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"inversions_tutorial_data"</span>
 <span class="na">obs_store</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"inversions_tutorial_data"</span>
 <span class="na">footprint_store</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"inversions_tutorial_data"</span>
-<span class="na">emissions_store</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"inversions_tutorial_data"</span>
+<span class="na">flux_store</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"inversions_tutorial_data"</span>
 
 <span class="k">[INPUT.PRIORS]</span>
 <span class="na">domain</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"EUROPE"</span>
@@ -533,7 +533,7 @@ sampling.</p>
 <section id="run-it">
 <h2>Run it<a class="headerlink" href="#run-it" title="Link to this heading">#</a></h2>
 <p>From a source checkout, the supported CLI route is:</p>
-<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>dev<span class="w"> </span>openghg-inversions<span class="w"> </span>run-rhime<span class="w"> </span><span class="se">\</span>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>dev<span class="w"> </span>rhime<span class="w"> </span>run<span class="w"> </span><span class="se">\</span>
 <span class="w">    </span>--config<span class="w"> </span>openghg_inversions/rhime/config/standard_tutorial.ini<span class="w"> </span><span class="se">\</span>
 <span class="w">    </span>--output-path<span class="w"> </span>outputs
 </pre></div>
@@ -547,12 +547,12 @@ an existing compatible uv environment.</p>
 <span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
 
-<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="n">run_rhime</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="n">run</span>
 
 <span class="n">tutorial_output_path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"OPENGHG_TUTORIAL_OUTPUT_PATH"</span><span class="p">,</span> <span class="s2">"outputs"</span><span class="p">))</span>
 <span class="n">resource</span> <span class="o">=</span> <span class="n">files</span><span class="p">(</span><span class="s2">"openghg_inversions.rhime"</span><span class="p">)</span><span class="o">.</span><span class="n">joinpath</span><span class="p">(</span><span class="s2">"config/standard_tutorial.ini"</span><span class="p">)</span>
 <span class="k">with</span> <span class="n">as_file</span><span class="p">(</span><span class="n">resource</span><span class="p">)</span> <span class="k">as</span> <span class="n">config</span><span class="p">:</span>
-    <span class="n">result</span> <span class="o">=</span> <span class="n">run_rhime</span><span class="p">(</span><span class="n">config_file</span><span class="o">=</span><span class="n">config</span><span class="p">,</span> <span class="n">output_path</span><span class="o">=</span><span class="n">tutorial_output_path</span><span class="p">)</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="n">run</span><span class="p">(</span><span class="n">model</span><span class="o">=</span><span class="s2">"standard"</span><span class="p">,</span> <span class="n">config_file</span><span class="o">=</span><span class="n">config</span><span class="p">,</span> <span class="n">output_path</span><span class="o">=</span><span class="n">tutorial_output_path</span><span class="p">)</span>
 
 <span class="p">{</span>
     <span class="s2">"OpenGHG Inversions commit"</span><span class="p">:</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span>

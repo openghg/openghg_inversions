@@ -52,7 +52,7 @@
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
     <link rel="next" title="openghg_inversions.inversion_data.scenario" href="openghg_inversions.inversion_data.scenario.html" />
-    <link rel="prev" title="openghg_inversions.inversion_data.getters" href="openghg_inversions.inversion_data.getters.html" />
+    <link rel="prev" title="openghg_inversions.inversion_data.observation_errors" href="openghg_inversions.inversion_data.observation_errors.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="" />
@@ -341,6 +341,8 @@
 </details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.hbmcmc.html">openghg_inversions.hbmcmc</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.compatibility.html">openghg_inversions.hbmcmc.compatibility</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.legacy_data.html">openghg_inversions.hbmcmc.legacy_data</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.legacy_basis.html">openghg_inversions.hbmcmc.legacy_basis</a></li>
 </ul>
 </details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.inference.html">openghg_inversions.inference</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -351,11 +353,10 @@
 </details></li>
 <li class="toctree-l2 current active has-children"><a class="reference internal" href="openghg_inversions.inversion_data.html">openghg_inversions.inversion_data</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.acquisition.html">openghg_inversions.inversion_data.acquisition</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.get_data.html">openghg_inversions.inversion_data.get_data</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.getters.html">openghg_inversions.inversion_data.getters</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.observation_errors.html">openghg_inversions.inversion_data.observation_errors</a></li>
 <li class="toctree-l3 current active"><a class="current reference internal" href="#">openghg_inversions.inversion_data.prepared_inputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.scenario.html">openghg_inversions.inversion_data.scenario</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.serialise.html">openghg_inversions.inversion_data.serialise</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.xarray_adapter.html">openghg_inversions.inversion_data.xarray_adapter</a></li>
 </ul>
 </details></li>
@@ -411,6 +412,7 @@
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.stages.html">openghg_inversions.rhime.co2.stages</a></li>
 </ul>
 </details></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.api.html">openghg_inversions.rhime.api</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.builders.html">openghg_inversions.rhime.builders</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.cached_sigma.html">openghg_inversions.rhime.cached_sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.ini.html">openghg_inversions.rhime.ini</a></li>
@@ -521,8 +523,8 @@ methods own serialization and materialization. Acquisition and scientific
 preparation construct these values without making them responsible for data
 retrieval or model construction.</p>
 <dl class="py class">
-<dt class="sig sig-object py" id="openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">RhimePreparedInputs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">inv_inputs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">basis_functions</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">site_metadata</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs" title="Link to this definition">#</a></dt>
+<dt class="sig sig-object py" id="openghg_inversions.inversion_data.prepared_inputs.PreparedInputs">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">PreparedInputs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">inv_inputs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">basis_functions</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">site_metadata</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inversion_data.prepared_inputs.PreparedInputs" title="Link to this definition">#</a></dt>
 <dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.15)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
 <p>Modern RHIME preparation and durable serialization contract.</p>
 <p>Site labels and site-aligned metadata are owned by <code class="docutils literal notranslate"><span class="pre">site_metadata</span></code>.
@@ -555,7 +557,7 @@ implying that model builders consume them.</p></li>
 </dd>
 </dl>
 <dl class="py method">
-<dt class="sig sig-object py" id="openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs.from_legacy_inputs">
+<dt class="sig sig-object py" id="openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.from_legacy_inputs">
 <span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">from_legacy_inputs</span></span><span class="sig-paren">(</span>
 
 <dl>
@@ -569,7 +571,7 @@ implying that model builders consume them.</p></li>
 <dd><em class="sig-param"><span class="n"><span class="pre">site_lons</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 </dl>
 
-<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs.from_legacy_inputs" title="Link to this definition">#</a></dt>
+<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.from_legacy_inputs" title="Link to this definition">#</a></dt>
 <dd><p>Adapt the former positional fields to the labeled-data contract.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -594,32 +596,32 @@ implying that model builders consume them.</p></li>
 </dd></dl>
 
 <dl class="py property">
-<dt class="sig sig-object py" id="openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs.sites">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">sites</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.15)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs.sites" title="Link to this definition">#</a></dt>
+<dt class="sig sig-object py" id="openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.sites">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">sites</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.15)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.sites" title="Link to this definition">#</a></dt>
 <dd><p>Return retained site labels in indicator-decoding order.</p>
 </dd></dl>
 
 <dl class="py property">
-<dt class="sig sig-object py" id="openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs.averaging_period">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">averaging_period</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.15)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.15)"><span class="pre">None</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs.averaging_period" title="Link to this definition">#</a></dt>
-<dd><p>Return averaging periods aligned to <a class="reference internal" href="#openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs.sites" title="openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs.sites"><code class="xref py py-attr docutils literal notranslate"><span class="pre">sites</span></code></a>.</p>
+<dt class="sig sig-object py" id="openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.averaging_period">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">averaging_period</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.15)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.15)"><span class="pre">None</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.averaging_period" title="Link to this definition">#</a></dt>
+<dd><p>Return averaging periods aligned to <a class="reference internal" href="#openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.sites" title="openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.sites"><code class="xref py py-attr docutils literal notranslate"><span class="pre">sites</span></code></a>.</p>
 </dd></dl>
 
 <dl class="py property">
-<dt class="sig sig-object py" id="openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs.basis_artifact_source">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">basis_artifact_source</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><span class="pre">str</span></a></span><a class="headerlink" href="#openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs.basis_artifact_source" title="Link to this definition">#</a></dt>
+<dt class="sig sig-object py" id="openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.basis_artifact_source">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">basis_artifact_source</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><span class="pre">str</span></a></span><a class="headerlink" href="#openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.basis_artifact_source" title="Link to this definition">#</a></dt>
 <dd><p>Return retained basis provenance, defaulting to <code class="docutils literal notranslate"><span class="pre">generated</span></code>.</p>
 </dd></dl>
 
 <dl class="py property">
-<dt class="sig sig-object py" id="openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs.basis_artifact_path">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">basis_artifact_path</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.15)"><span class="pre">None</span></a></span><a class="headerlink" href="#openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs.basis_artifact_path" title="Link to this definition">#</a></dt>
+<dt class="sig sig-object py" id="openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.basis_artifact_path">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">basis_artifact_path</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.15)"><span class="pre">None</span></a></span><a class="headerlink" href="#openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.basis_artifact_path" title="Link to this definition">#</a></dt>
 <dd><p>Return the provenance-only basis artifact path.</p>
 </dd></dl>
 
 <dl class="py method">
-<dt class="sig sig-object py" id="openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs.validated">
-<span class="sig-name descname"><span class="pre">validated</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs.validated" title="Link to this definition">#</a></dt>
+<dt class="sig sig-object py" id="openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.validated">
+<span class="sig-name descname"><span class="pre">validated</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.validated" title="Link to this definition">#</a></dt>
 <dd><p>Return a freshly canonicalized copy of these prepared inputs.</p>
 <p>This re-establishes the semantic invariants after possible in-place
 mutation of the contained xarray objects.</p>
@@ -634,8 +636,8 @@ mutation of the contained xarray objects.</p>
 </dd></dl>
 
 <dl class="py method">
-<dt class="sig sig-object py" id="openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs.to_datatree">
-<span class="sig-name descname"><span class="pre">to_datatree</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs.to_datatree" title="Link to this definition">#</a></dt>
+<dt class="sig sig-object py" id="openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.to_datatree">
+<span class="sig-name descname"><span class="pre">to_datatree</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.to_datatree" title="Link to this definition">#</a></dt>
 <dd><p>Convert prepared RHIME inputs to the versioned DataTree schema.</p>
 <p>The basis object is embedded in the artifact. <code class="docutils literal notranslate"><span class="pre">basis_artifact_path</span></code>
 is retained only as provenance and is never read while serializing or
@@ -656,8 +658,8 @@ reconstructing the prepared inputs.</p>
 </dd></dl>
 
 <dl class="py method">
-<dt class="sig sig-object py" id="openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs.from_datatree">
-<span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">from_datatree</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dt</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs.from_datatree" title="Link to this definition">#</a></dt>
+<dt class="sig sig-object py" id="openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.from_datatree">
+<span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">from_datatree</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dt</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.from_datatree" title="Link to this definition">#</a></dt>
 <dd><p>Construct prepared RHIME inputs from a version-1 DataTree.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -683,8 +685,8 @@ multisource basis ordering.</p>
 </dd></dl>
 
 <dl class="py method">
-<dt class="sig sig-object py" id="openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs.save">
-<span class="sig-name descname"><span class="pre">save</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">output_file</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_format</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs.save" title="Link to this definition">#</a></dt>
+<dt class="sig sig-object py" id="openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.save">
+<span class="sig-name descname"><span class="pre">save</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">output_file</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_format</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.save" title="Link to this definition">#</a></dt>
 <dd><p>Save prepared RHIME inputs to NetCDF or Zarr.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -704,8 +706,8 @@ replaces the corresponding suffix.</p></li>
 </dd></dl>
 
 <dl class="py method">
-<dt class="sig sig-object py" id="openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs.load">
-<span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">load</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">file_path</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs.load" title="Link to this definition">#</a></dt>
+<dt class="sig sig-object py" id="openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.load">
+<span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">load</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">file_path</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.load" title="Link to this definition">#</a></dt>
 <dd><p>Load prepared RHIME inputs from a NetCDF or Zarr artifact.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -730,6 +732,12 @@ replaces the corresponding suffix.</p></li>
 
 </dd></dl>
 
+<dl class="py attribute">
+<dt class="sig sig-object py" id="openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs">
+<span class="sig-name descname"><span class="pre">RhimePreparedInputs</span></span><a class="headerlink" href="#openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs" title="Link to this definition">#</a></dt>
+<dd><p>alias of <a class="reference internal" href="#openghg_inversions.inversion_data.prepared_inputs.PreparedInputs" title="openghg_inversions.inversion_data.prepared_inputs.PreparedInputs"><code class="xref py py-class docutils literal notranslate"><span class="pre">PreparedInputs</span></code></a></p>
+</dd></dl>
+
 </section>
 
 
@@ -743,12 +751,12 @@ replaces the corresponding suffix.</p></li>
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="openghg_inversions.inversion_data.getters.html"
+       href="openghg_inversions.inversion_data.observation_errors.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">openghg_inversions.inversion_data.getters</p>
+        <p class="prev-next-title">openghg_inversions.inversion_data.observation_errors</p>
       </div>
     </a>
     <a class="right-next"
@@ -779,19 +787,20 @@ replaces the corresponding suffix.</p></li>
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs"><code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code></a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs.from_legacy_inputs"><code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs.from_legacy_inputs()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs.sites"><code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs.sites</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs.averaging_period"><code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs.averaging_period</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs.basis_artifact_source"><code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs.basis_artifact_source</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs.basis_artifact_path"><code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs.basis_artifact_path</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs.validated"><code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs.validated()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs.to_datatree"><code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs.to_datatree()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs.from_datatree"><code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs.from_datatree()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs.save"><code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs.save()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs.load"><code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs.load()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.prepared_inputs.PreparedInputs"><code class="docutils literal notranslate"><span class="pre">PreparedInputs</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.from_legacy_inputs"><code class="docutils literal notranslate"><span class="pre">PreparedInputs.from_legacy_inputs()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.sites"><code class="docutils literal notranslate"><span class="pre">PreparedInputs.sites</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.averaging_period"><code class="docutils literal notranslate"><span class="pre">PreparedInputs.averaging_period</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.basis_artifact_source"><code class="docutils literal notranslate"><span class="pre">PreparedInputs.basis_artifact_source</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.basis_artifact_path"><code class="docutils literal notranslate"><span class="pre">PreparedInputs.basis_artifact_path</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.validated"><code class="docutils literal notranslate"><span class="pre">PreparedInputs.validated()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.to_datatree"><code class="docutils literal notranslate"><span class="pre">PreparedInputs.to_datatree()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.from_datatree"><code class="docutils literal notranslate"><span class="pre">PreparedInputs.from_datatree()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.save"><code class="docutils literal notranslate"><span class="pre">PreparedInputs.save()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.prepared_inputs.PreparedInputs.load"><code class="docutils literal notranslate"><span class="pre">PreparedInputs.load()</span></code></a></li>
 </ul>
 </li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.prepared_inputs.RhimePreparedInputs"><code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code></a></li>
 </ul>
   </nav></div>
 
