@@ -450,7 +450,7 @@ def make_standard_rhime_result(
     return result
 
 
-def run_rhime(
+def run_standard(
     *,
     config_file: str | Path | None = None,
     config: RhimeConfig | None = None,
@@ -672,3 +672,7 @@ def run_rhime(
         output_format=run_spec.output.output_format,
     )
     return result
+
+
+# Established public import retained through the 0.9 compatibility cycle.
+run_rhime = run_standard

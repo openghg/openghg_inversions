@@ -1409,7 +1409,7 @@ _NESTED_PARAMETER_NAMES = frozenset(
 )
 
 
-def run_rhime_nested(
+def run_nested(
     *,
     config_file: str | Path | None = None,
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
@@ -1463,3 +1463,7 @@ def run_rhime_nested(
         likelihood_builder=likelihood_builder,
         likelihood_kwargs=likelihood_kwargs,
     )
+
+
+# Established public import retained through the 0.9 compatibility cycle.
+run_rhime_nested = run_nested

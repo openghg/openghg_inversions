@@ -79,7 +79,8 @@ Python API
 For complete prerequisite-to-output walkthroughs, start with
 :doc:`rhime_standard_tutorial` or :doc:`rhime_multisector_tutorial`.
 
-The stable package imports below are unchanged. Scientists who want to inspect
+Use the public model selector below. Existing runner imports remain compatible
+as described in :doc:`cli`. Scientists who want to inspect
 or copy a complete implementation can read
 ``openghg_inversions.rhime.standard`` or
 ``openghg_inversions.rhime.multisector`` directly; each module shows its whole
@@ -87,9 +88,9 @@ scientific process from option resolution through output construction.
 
 .. code-block:: python
 
-   from openghg_inversions.rhime import run_rhime, run_rhime_multisector
+   from openghg_inversions.rhime import run
 
-   result = run_rhime(
+   result = run(
        species="ch4",
        sites=["TAC"],
        averaging_period=["1h"],
@@ -102,7 +103,8 @@ scientific process from option resolution through output construction.
        mismatch_model="pollution_event",
    )
 
-   multi_sector_result = run_rhime_multisector(
+   multi_sector_result = run(
+       model="multisector",
        species="ch4",
        sites=["TAC"],
        averaging_period=["1h"],

@@ -24,6 +24,10 @@ runner.
 .. autosummary::
    :nosignatures:
 
+   openghg_inversions.rhime.run
+   openghg_inversions.rhime.run_standard
+   openghg_inversions.rhime.run_multisector
+   openghg_inversions.rhime.run_nested
    openghg_inversions.rhime.run_rhime
    openghg_inversions.rhime.run_rhime_multisector
    openghg_inversions.rhime.run_rhime_nested
@@ -90,19 +94,19 @@ value and its unchanged version-1 schema live in
    :nosignatures:
 
    openghg_inversions.inversion_data.SiteOptions
-   openghg_inversions.inversion_data.RhimeMergedData
+   openghg_inversions.inversion_data.MergedData
    openghg_inversions.inversion_data.AcquisitionFacts
    openghg_inversions.inversion_data.InputProvenance
    openghg_inversions.inversion_data.MergedDataProvenance
-   openghg_inversions.inversion_data.RhimePreparedInputs
+   openghg_inversions.inversion_data.PreparedInputs
    openghg_inversions.inversion_data.prepare_rhime_inputs_from_xarray
-   openghg_inversions.inversion_data.RhimeMergedData.from_options
-   openghg_inversions.inversion_data.RhimeMergedData.validate_for_preparation
-   openghg_inversions.inversion_data.RhimeMergedData.with_site_data
+   openghg_inversions.inversion_data.MergedData.from_options
+   openghg_inversions.inversion_data.MergedData.validate_for_preparation
+   openghg_inversions.inversion_data.MergedData.with_site_data
    openghg_inversions.rhime.filter_observations
    openghg_inversions.rhime.prepare_observation_errors
    openghg_inversions.rhime.build_sensitivities
-   openghg_inversions.rhime.assemble_rhime_inputs
+   openghg_inversions.rhime.assemble_inputs
    openghg_inversions.rhime.NestedRhimePreparedInputs
    openghg_inversions.rhime.combine_nested_rhime_inputs
    openghg_inversions.rhime.co2.Co2PreparedInputs
