@@ -18,7 +18,7 @@ import pytest
 from openghg_inversions.inversion_data.preparation import RhimePreparedInputs, prepare_rhime_inputs
 from openghg_inversions.rhime import (
     RhimeSampler,
-    resolve_rhime_options,
+    RhimeConfig,
     run_rhime_from_prepared_inputs,
 )
 
@@ -150,7 +150,7 @@ def test_real_oco2_prepared_inputs_run_through_multisector_model(
     real_oco2_prepared_inputs: RhimePreparedInputs,
 ) -> None:
     """Sample the prepared satellite columns through the public RHIME model path."""
-    setup = resolve_rhime_options(
+    config = RhimeConfig.from_params(
         params={
             "species": "co2",
             "sites": ["OCO2-EASTASIA"],
@@ -169,7 +169,7 @@ def test_real_oco2_prepared_inputs_run_through_multisector_model(
     )
     result = run_rhime_from_prepared_inputs(
         prepared_inputs=real_oco2_prepared_inputs,
-        run_spec=setup.run_spec,
+        run_spec=config.retained_run_spec(real_oco2_prepared_inputs),
         sampler=RhimeSampler(draws=1, tune=0, chains=1, progressbar=False),
     )
 

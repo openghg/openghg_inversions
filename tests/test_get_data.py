@@ -21,9 +21,9 @@ import openghg_inversions.inversion_data.scenario as scenario_module
 from openghg_inversions.flux_sanitization import FluxNonFiniteMetadata, NonFiniteFluxWarning
 from openghg_inversions.inversion_data._site_options import expand_site_boolean_option, expand_site_option
 from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
+from openghg_inversions.inversion_data._site_options import convert_to_list
 from openghg_inversions.inversion_data.get_data import (
     add_obs_error,
-    convert_to_list,
     data_processing_surface_notracer,
     interpolate_flux_to_footprint_grid,
 )
@@ -370,6 +370,78 @@ def test_satellite_footprint_retrieval_forwards_temporal_mode(
     assert captured["time_resolved"] is time_resolved
     assert captured["satellite"] == "GOSAT"
     assert captured["obs_region"] == "BRAZIL"
+
+
+@pytest.mark.parametrize(
+    ("platform", "site", "getter"),
+    [
+        (None, "CBW", "get_obs_surface"),
+        ("site-column", "CBW", "get_obs_column"),
+        ("satellite", "GOSAT-BRAZIL", "get_obs_column"),
+    ],
+)
+def test_get_obs_data_reports_unexpected_attribute_error(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    platform: str | None,
+    site: str,
+    getter: str,
+) -> None:
+    """Retrieval bugs retain their traceback and do not silently change sites."""
+    error = AttributeError("missing uncertainty attribute")
+    retrieve = mock.Mock(side_effect=error)
+    monkeypatch.setattr(getters_module, getter, retrieve)
+
+    with pytest.raises(AttributeError) as caught:
+        getters_module.get_obs_data(
+            site=site,
+            species="ch4",
+            inlet="207m",
+            instrument="test-instrument",
+            start_date="2006-01-01",
+            end_date="2007-01-01",
+            platform=platform,
+            max_level=17,
+            stores=["broken-store", "later-store"],
+        )
+
+    assert caught.value is error
+    retrieve.assert_called_once()
+    record = caplog.records[-1]
+    assert record.exc_info[1] is error
+    for context in (site, "ch4", "207m", "test-instrument", "broken-store", "2006-01-01", "2007-01-01"):
+        assert context in record.getMessage()
+
+
+@pytest.mark.parametrize(
+    "missing",
+    [SearchError("No observations"), None, SimpleNamespace(data=xr.Dataset(coords={"time": []}))],
+    ids=["search-error", "none", "empty"],
+)
+@pytest.mark.parametrize("found", [True, False])
+def test_get_obs_data_continues_after_expected_missing_data(
+    monkeypatch: pytest.MonkeyPatch,
+    missing: object,
+    found: bool,
+) -> None:
+    """Expected misses try the next store, returning None only when all miss."""
+    expected = (
+        SimpleNamespace(data=xr.Dataset(coords={"time": [np.datetime64("2006-01-01")]})) if found else None
+    )
+    retrieve = mock.Mock(side_effect=[missing, expected])
+    monkeypatch.setattr(getters_module, "get_obs_surface", retrieve)
+
+    result = getters_module.get_obs_data(
+        site="CBW",
+        species="ch4",
+        inlet="207m",
+        start_date="2006-01-01",
+        end_date="2007-01-01",
+        stores=["missing-store", "later-store"],
+    )
+
+    assert result is expected
+    assert [call.kwargs["store"] for call in retrieve.call_args_list] == ["missing-store", "later-store"]
 
 
 def test_get_obs_data_routes_site_column_platform_to_column_retrieval(

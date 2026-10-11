@@ -18,7 +18,7 @@ from ._stage_checks import (
     diagnose_rhime_stage,
 )
 from .outputs import RhimeResult
-from .params import RhimeRunnerSetup
+from .params import RhimeConfig
 
 if TYPE_CHECKING:
     from .co2.stages import Co2StageSetup
@@ -48,8 +48,23 @@ def load_stage_params(
     )
 
 
-def resolve_stage_setup(params: Mapping[str, Any], *, model: ModelKind) -> RhimeRunnerSetup | Co2StageSetup:
-    """Resolve stage parameters through the canonical RHIME boundary."""
+def resolve_stage_setup(params: Mapping[str, Any], *, model: ModelKind) -> RhimeConfig | Co2StageSetup:
+    """Resolve effective stage options through the selected recipe's boundary.
+
+    Args:
+        params: File-derived or Python options after invocation overrides and
+            staged path resolution.
+        model: Recipe whose configuration and staged workflow will be used.
+
+    Returns:
+        Complete ``RhimeConfig`` for standard or multisector execution, or
+        the CO2 workflow's setup. Resolution does not acquire scientific data
+        or execute inference.
+
+    Raises:
+        ValueError: If the recipe is unsupported or its effective options are
+            invalid.
+    """
 
     if model == "co2":
         from .co2.stages import resolve_co2_stage_setup
@@ -57,22 +72,35 @@ def resolve_stage_setup(params: Mapping[str, Any], *, model: ModelKind) -> Rhime
         return resolve_co2_stage_setup(params=params)
     if model not in ("standard", "multisector"):
         raise ValueError(f"Unsupported staged model {model!r}.")
-    return _standard_stages.resolve_stage_setup(params=params, model=cast(_standard_stages.ModelKind, model))
+    return RhimeConfig.from_params(params, multisector=model == "multisector")
 
 
-def effective_configuration(setup: RhimeRunnerSetup | Co2StageSetup, *, model: ModelKind) -> dict[str, Any]:
-    """Return the resolved scientific configuration used by every stage."""
+def effective_configuration(setup: RhimeConfig | Co2StageSetup, *, model: ModelKind) -> dict[str, Any]:
+    """Project resolved choices into the selected workflow's manifest vocabulary.
+
+    Args:
+        setup: Resolved configuration for the selected recipe.
+        model: Recipe that owns the manifest representation.
+
+    Returns:
+        Manifest settings for provenance and replay. Standard and multisector
+        mappings contain ``model``, ``preparation``, ``model_spec``, ``output``
+        and ``sampler``; preparation includes the complete requested site
+        selectors. CO2 uses its own recipe, reconstruction and output fields.
+        This is a staged artifact representation, not a general configuration
+        serialization API or a retained execution run specification.
+    """
 
     if model == "co2":
         from .co2.stages import effective_co2_configuration
 
         return effective_co2_configuration(setup=cast("Co2StageSetup", setup))
     return _standard_stages.effective_configuration(
-        setup=cast(RhimeRunnerSetup, setup), model=cast(_standard_stages.ModelKind, model)
+        setup=cast(RhimeConfig, setup), model=cast(_standard_stages.ModelKind, model)
     )
 
 
-def configuration_identity(setup: RhimeRunnerSetup | Co2StageSetup, *, model: ModelKind) -> str:
+def configuration_identity(setup: RhimeConfig | Co2StageSetup, *, model: ModelKind) -> str:
     """Hash the resolved settings required for scientific replay.
 
     Standard and multisector identities cover preparation, period, model,
@@ -85,13 +113,13 @@ def configuration_identity(setup: RhimeRunnerSetup | Co2StageSetup, *, model: Mo
 
         return co2_configuration_identity(setup=cast("Co2StageSetup", setup))
     return _standard_stages.configuration_identity(
-        setup=cast(RhimeRunnerSetup, setup), model=cast(_standard_stages.ModelKind, model)
+        setup=cast(RhimeConfig, setup), model=cast(_standard_stages.ModelKind, model)
     )
 
 
 def prepare_rhime_stage(
     *,
-    setup: RhimeRunnerSetup | Co2StageSetup,
+    setup: RhimeConfig | Co2StageSetup,
     model: ModelKind,
     output_dir: str | Path,
 ) -> dict[str, Any]:
@@ -102,7 +130,7 @@ def prepare_rhime_stage(
 
         return prepare_co2_stage(setup=cast("Co2StageSetup", setup), output_dir=output_dir)
     return _standard_stages.prepare_rhime_stage(
-        setup=cast(RhimeRunnerSetup, setup),
+        setup=cast(RhimeConfig, setup),
         model=cast(_standard_stages.ModelKind, model),
         output_dir=output_dir,
     )
@@ -110,7 +138,7 @@ def prepare_rhime_stage(
 
 def prior_predictive_stage(
     *,
-    setup: RhimeRunnerSetup | Co2StageSetup,
+    setup: RhimeConfig | Co2StageSetup,
     model: ModelKind,
     prepared_inputs: str | Path,
     output_dir: str | Path,
@@ -134,7 +162,7 @@ def prior_predictive_stage(
             stage=stage,
         )
     return _standard_stages.prior_predictive_stage(
-        setup=cast(RhimeRunnerSetup, setup),
+        setup=cast(RhimeConfig, setup),
         model=cast(_standard_stages.ModelKind, model),
         prepared_inputs=prepared_inputs,
         output_dir=output_dir,
@@ -147,7 +175,7 @@ def prior_predictive_stage(
 
 def sample_rhime_stage(
     *,
-    setup: RhimeRunnerSetup | Co2StageSetup,
+    setup: RhimeConfig | Co2StageSetup,
     model: ModelKind,
     prepared_inputs: str | Path,
     output_dir: str | Path,
@@ -170,7 +198,7 @@ def sample_rhime_stage(
             preparation_manifest=preparation_manifest,
         )
     return _standard_stages.sample_rhime_stage(
-        setup=cast(RhimeRunnerSetup, setup),
+        setup=cast(RhimeConfig, setup),
         model=cast(_standard_stages.ModelKind, model),
         prepared_inputs=prepared_inputs,
         output_dir=output_dir,
@@ -180,7 +208,7 @@ def sample_rhime_stage(
 
 def postprocess_rhime_stage(
     *,
-    setup: RhimeRunnerSetup | Co2StageSetup,
+    setup: RhimeConfig | Co2StageSetup,
     model: ModelKind,
     prepared_inputs: str | Path,
     posterior: str | Path,
@@ -208,7 +236,7 @@ def postprocess_rhime_stage(
             sample_manifest=sample_manifest,
         )
     return _standard_stages.postprocess_rhime_stage(
-        setup=cast(RhimeRunnerSetup, setup),
+        setup=cast(RhimeConfig, setup),
         model=cast(_standard_stages.ModelKind, model),
         prepared_inputs=prepared_inputs,
         posterior=posterior,

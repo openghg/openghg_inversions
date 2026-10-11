@@ -197,7 +197,12 @@ def get_obs_data(
     stores: str | None | Iterable[str | None] = None,
     keep_variables: list | None = None,
 ) -> ObsData | None:
-    """Try to retrieve obs. data from listed stores."""
+    """Retrieve the first non-empty observation dataset from the listed stores.
+
+    Missing results (``SearchError``, ``None``, or datasets with an empty time
+    dimension) are skipped. Return ``None`` if all stores have missing results.
+    Retrieval ``AttributeError`` exceptions are logged with context and re-raised.
+    """
 
     if is_column_observation(inlet, platform) and max_level is None:
         raise AttributeError(
@@ -265,8 +270,18 @@ def get_obs_data(
             )
             continue  # skip this site
         except AttributeError:
-            print(f"\nNo data found for {site} between {start_date} and {end_date} in store {store}.")
-            continue  # skip this site
+            logger.exception(
+                "Observation retrieval failed for site=%s, species=%s, inlet=%s, "
+                "instrument=%s, store=%s between %s and %s.",
+                site,
+                species,
+                inlet,
+                instrument,
+                store,
+                start_date,
+                end_date,
+            )
+            raise
         else:
             if obs_data is None or obs_data.data.sizes["time"] == 0:
                 print(f"\nNo data found for {site} between {start_date} and {end_date} in store {store}.")

@@ -19,7 +19,9 @@ from pathlib import Path
 from time import perf_counter
 from typing import Any
 
+from openghg_inversions.inversion_data import RhimeMergedData
 from openghg_inversions.rhime import (
+    RhimeConfig,
     RhimeResult,
     assemble_rhime_inputs,
     build_rhime_basis,
@@ -29,12 +31,9 @@ from openghg_inversions.rhime import (
     make_standard_rhime_result,
     make_standard_rhime_outputs,
     materialize_pymc_inputs,
-    params_from_config,
-    resolve_rhime_options,
-    retrieve_or_reload_rhime_data,
+    read_rhime_ini,
     sample_rhime_model,
     standard_model_input_names,
-    with_prepared_rhime_sites,
 )
 
 from .likelihoods import likelihood_builder
@@ -66,25 +65,59 @@ def run_custom_rhime(
         prepared inputs, runs sampling, and writes outputs requested by the
         resolved RHIME options.
     """
-    params = (
-        params_from_config(config_file, extra_kwargs=kwargs, normalise=False)
-        if config_file is not None
-        else dict(kwargs)
-    )
+    params = read_rhime_ini(config_file) if config_file is not None else {}
+    params.update(kwargs)
     params["mismatch_model"] = None
-    setup = resolve_rhime_options(params=params, multisector=False)
+    config = RhimeConfig.from_params(params, multisector=False)
 
-    merged = retrieve_or_reload_rhime_data(setup.data_args, multisector=False)
-    filtered = filter_rhime_observations(merged, setup.data_args)
-    basis_functions = build_rhime_basis(filtered, setup.data_args)
+    if config.reload_merged_data:
+        merged = RhimeMergedData.load(
+            **config.select(
+                "merged_data_dir", "site_options", "species", "start_date", "output_name",
+                "merged_data_name", "split_by_sectors", "flux_non_finite_check",
+            ),
+        )
+    else:
+        merged = RhimeMergedData.from_options(
+            **config.select(
+                "site_options", "species", "domain", "start_date",
+                "end_date", "output_name", "flux_sources", "split_by_sectors",
+                "bc_store", "obs_store", "footprint_store", "emissions_store",
+                "emissions_domain", "fp_model", "fp_species", "calibration_scale",
+                "use_bc", "bc_input", "averaging_error",
+                "save_merged_data", "merged_data_dir", "merged_data_name", "flux_non_finite_check",
+            ),
+        )
+    # 2. Keep the scientific preparation order visible in this recipe.
+    filtered = filter_rhime_observations(merged, filters=config.filters)
+    basis_functions = build_rhime_basis(
+        filtered,
+        **config.select(
+            "species", "domain", "start_date", "flux_sources",
+            "output_name", "basis_algorithm", "nbasis", "fp_basis_case",
+            "basis_directory", "country_directory", "outer_regions_path",
+            "fix_basis_outer_regions", "basis_output_path",
+        ),
+    )
     site_data = build_rhime_sensitivities(
         filtered,
         basis_functions,
-        setup.data_args,
+        **config.select(
+            "domain", "flux_sources", "use_bc", "bc_basis_case",
+            "bc_basis_directory",
+        ),
         multisector=False,
     )
-    prepared = assemble_rhime_inputs(filtered, basis_functions, site_data, setup.data_args)
-    run_spec = with_prepared_rhime_sites(setup.run_spec, prepared)
+    prepared = assemble_rhime_inputs(
+        filtered,
+        basis_functions,
+        site_data,
+        **config.select(
+            "domain", "start_date", "bc_freq", "min_error",
+            "min_error_options", "use_bc",
+        ),
+    )
+    run_spec = config.retained_run_spec(prepared)
 
     model_inputs = materialize_pymc_inputs(
         prepared,
@@ -101,12 +134,12 @@ def run_custom_rhime(
         # This is the deliberate scientific replacement in the copied runner.
         likelihood_builder=likelihood_builder,
     )
-    idata = sample_rhime_model(model_build_result, setup.sampler)
+    idata = sample_rhime_model(model_build_result, config.sampler)
 
     result = make_standard_rhime_result(
         prepared=prepared,
         run_spec=run_spec,
-        sampler=setup.sampler,
+        sampler=config.sampler,
         model_build_result=model_build_result,
         idata=idata,
         build_and_sample_seconds=perf_counter() - build_and_sample_start,

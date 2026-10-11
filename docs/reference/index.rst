@@ -34,11 +34,32 @@ runner.
    openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs
    openghg_inversions.rhime.co2.run_rhime_co2_o2_cached_sigma_from_prepared_inputs
 
+Resolve a requested RHIME configuration
+--------------------------------------
+
+Inspect standard/multisector choices before data access. Decode an INI with
+``read_rhime_ini``, or start with Python options. Apply overrides and extract
+recipe-specific options, then construct canonical ``RhimeConfig.from_params``.
+Pass the result to the corresponding
+runner's ``config`` argument to reuse the resolved choices. The
+:doc:`configuration guide </usage/rhime_configuration>` explains requested site selectors,
+retained execution metadata and compatibility helpers.
+
+.. autosummary::
+   :nosignatures:
+
+   openghg_inversions.rhime.read_rhime_ini
+   openghg_inversions.rhime.RhimeConfig
+   openghg_inversions.rhime.RhimeConfig.from_params
+   openghg_inversions.rhime.RhimeConfig.select
+   openghg_inversions.inversion_data.SiteOptions
+
 Run specifications and results
 ------------------------------
 
 These objects describe the model, sampling, and output settings accepted by
-the RHIME runners.
+the RHIME runners. The sampler's former ``rhime`` imports remain compatible;
+its implementation is owned by ``inference``.
 
 .. autosummary::
    :nosignatures:
@@ -46,7 +67,7 @@ the RHIME runners.
    openghg_inversions.rhime.RhimeRunSpec
    openghg_inversions.rhime.RhimeModelSpec
    openghg_inversions.rhime.RhimeOutputSpec
-   openghg_inversions.rhime.RhimeSampler
+   openghg_inversions.inference.RhimeSampler
    openghg_inversions.rhime.RhimeResult
    openghg_inversions.rhime.NestedRhimeResult
    openghg_inversions.rhime.SectorSpec
@@ -59,17 +80,30 @@ Prepared inversion data
 
 Use these interfaces to prepare, save, reload, or adapt canonical inputs
 before a separate model run. The
-:doc:`RHIME configuration and prepared-input reference </usage/rhime>`
-documents the expected variables, dimensions, and coordinates.
+:doc:`RHIME terminology and prepared-input reference </usage/rhime>`
+documents the expected variables, dimensions, and coordinates. Acquisition
+and reload mechanics live in ``inversion_data.acquisition``; the prepared
+value and its unchanged version-1 schema live in
+``inversion_data.prepared_inputs``. Existing package and preparation-module
+imports identify the same classes.
 
 .. autosummary::
    :nosignatures:
 
+   openghg_inversions.inversion_data.SiteOptions
+   openghg_inversions.inversion_data.retrieve_inversion_data
    openghg_inversions.inversion_data.RhimeMergedData
    openghg_inversions.inversion_data.RhimePreparedInputs
    openghg_inversions.inversion_data.prepare_rhime_inputs
    openghg_inversions.inversion_data.prepare_rhime_inputs_from_xarray
    openghg_inversions.inversion_data.load_merged_data
+   openghg_inversions.inversion_data.RhimeMergedData.from_options
+   openghg_inversions.inversion_data.RhimeMergedData.load
+   openghg_inversions.inversion_data.RhimeMergedData.save
+   openghg_inversions.rhime.filter_rhime_observations
+   openghg_inversions.rhime.build_rhime_basis
+   openghg_inversions.rhime.build_rhime_sensitivities
+   openghg_inversions.rhime.assemble_rhime_inputs
    openghg_inversions.rhime.NestedRhimePreparedInputs
    openghg_inversions.rhime.combine_nested_rhime_inputs
    openghg_inversions.rhime.co2.Co2PreparedInputs
@@ -205,6 +239,22 @@ and samples; it does not write products. See
    openghg_inversions.serialization.open_datatree_loaded
    openghg_inversions.serialization.save_inferencedata
    openghg_inversions.serialization.load_inferencedata
+
+Inference diagnostics and scientific metrics
+--------------------------------------------
+
+Neutral convergence summaries consume posterior samples while preserving
+chain/draw structure. Scientific metrics compare observations with predictions
+at their stated sampling support. The established
+``postprocessing.diagnostics`` module remains an output compatibility adapter;
+calculating a score does not apply a scientific acceptance threshold.
+
+.. autosummary::
+   :nosignatures:
+
+   openghg_inversions.inference.diagnostics.posterior_summary
+   openghg_inversions.postprocessing.metrics.bayes_r2_by_site
+   openghg_inversions.postprocessing.metrics.bayes_r2_by_site_resample
 
 Legacy compatibility APIs
 -------------------------

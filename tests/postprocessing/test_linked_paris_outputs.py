@@ -272,12 +272,27 @@ def test_native_flux_rejects_uppercase_private_states_without_concentration_sign
 
 
 @pytest.mark.parametrize("native_multiindex", [False, True])
-def test_cached_joint_posterior_with_baseline_emits_paris(tmp_path, native_multiindex):
+def test_cached_joint_draws_with_baseline_emit_paris(tmp_path, native_multiindex, monkeypatch):
+    import pymc as pm
+
+    from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
     from openghg_inversions.rhime.co2 import run_rhime_co2_o2_cached_sigma_from_prepared_inputs
+    from openghg_inversions.rhime.co2 import co2_o2_cached_sigma_runner
     from openghg_inversions.rhime.sampling import RhimeSampler
     from openghg_inversions.serialization import load_trace, save_trace
     from test_rhime_co2_o2 import _independent_error
     from test_rhime_co2_o2_baselines import _native_multiindex_inputs, _prepared
+
+    def graph_draws(built, sampler):
+        # PARIS closure needs draws from the real graph; linked sampler
+        # integration is covered in test_co2_o2_fixed_ou.py.
+        with built.model:
+            trace = pm.sample_prior_predictive(draws=5, random_seed=185)
+        trace["posterior"] = trace["prior"].to_dataset().isel(draw=slice(0, 3))
+        return restore_inferencedata_coords(trace, get_coord_registry(built.model))
+
+    monkeypatch.setattr(co2_o2_cached_sigma_runner, "sample_rhime_model", graph_draws)
+    monkeypatch.setattr(co2_o2_cached_sigma_runner, "_sampler_for_cached_graph", lambda sampler, **_: sampler)
 
     if native_multiindex:
         inputs = _native_multiindex_inputs(extra_level=True, co2_dim="observation")
@@ -302,16 +317,6 @@ def test_cached_joint_posterior_with_baseline_emits_paris(tmp_path, native_multi
         offset_args={"o2": {"per_site": False}},
         sampler=RhimeSampler(
             nuts_sampler="pymc",
-            draws=3,
-            tune=3,
-            burn=0,
-            chains=1,
-            sample_kwargs={
-                "cores": 1,
-                "random_seed": 185,
-                "progressbar": False,
-                "compute_convergence_checks": False,
-            },
             sample_prior_predictive=5,
         ),
     )

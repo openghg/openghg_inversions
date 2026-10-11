@@ -22,7 +22,10 @@ from openghg_inversions.basis.basis_functions import (
 )
 from openghg_inversions.basis.operators import MultiSourceBucketBasisOperator
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
-from openghg_inversions.inversion_data import RhimePreparedInputs, prepare_rhime_inputs
+from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs, prepare_rhime_inputs
+from openghg_inversions.inversion_data import acquisition
+from openghg_inversions.inversion_data import preparation as legacy_preparation
+from openghg_inversions.inversion_data import prepared_inputs as prepared_contract
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.rhime import (
     PollutionEventSettings,
@@ -45,6 +48,22 @@ from openghg_inversions.serialization import (
     trace_to_datatree,
 )
 from tests.helpers import make_trace
+
+
+def test_data_contracts_preserve_legacy_imports_and_prepared_schema() -> None:
+    """Old entry points construct and reopen the same durable scientific value."""
+    assert RhimePreparedInputs is prepared_contract.RhimePreparedInputs
+    assert legacy_preparation.RhimePreparedInputs is prepared_contract.RhimePreparedInputs
+    assert RhimeMergedData is acquisition.RhimeMergedData
+    assert legacy_preparation.RhimeMergedData is acquisition.RhimeMergedData
+    prepared = _prepared_inputs()
+    artifact = prepared.to_datatree()
+    assert artifact.attrs["schema"] == legacy_preparation.RHIME_PREPARED_INPUTS_SCHEMA
+    assert artifact.attrs["schema_version"] == legacy_preparation.RHIME_PREPARED_INPUTS_SCHEMA_VERSION == 1
+
+    restored = prepared_contract.RhimePreparedInputs.from_datatree(artifact)
+    xr.testing.assert_identical(restored.inv_inputs, prepared.inv_inputs)
+    xr.testing.assert_identical(restored.site_metadata, prepared.site_metadata)
 
 
 def _basis_functions() -> BasisFunctions:
@@ -624,7 +643,7 @@ def test_real_prepared_inputs_save_load_and_run_without_repreparation(
         observed["output_prepared"] = kwargs["prepared"]
         kwargs["result"].outputs["loaded"] = True
 
-    monkeypatch.setattr(rhime_standard, "retrieve_or_reload_rhime_data", fail_preparation)
+    monkeypatch.setattr(rhime_standard.RhimeMergedData, "from_options", fail_preparation)
     monkeypatch.setattr(rhime_standard, "build_standard_rhime_model", fake_builder)
     monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
     monkeypatch.setattr(rhime_prepared, "make_standard_rhime_outputs", fake_outputs)
@@ -1122,7 +1141,7 @@ def test_loaded_prepared_inputs_run_through_existing_seam(
         observed["output_idata"] = kwargs["result"].idata
         kwargs["result"].outputs["loaded"] = True
 
-    monkeypatch.setattr(rhime_standard, "retrieve_or_reload_rhime_data", fail_preparation)
+    monkeypatch.setattr(rhime_standard.RhimeMergedData, "from_options", fail_preparation)
     monkeypatch.setattr(rhime_standard, "build_standard_rhime_model", fake_builder)
     monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
     monkeypatch.setattr(rhime_prepared, "make_standard_rhime_outputs", fake_outputs)

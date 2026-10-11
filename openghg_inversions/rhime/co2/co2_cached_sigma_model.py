@@ -43,7 +43,7 @@ from openghg_inversions.observation_error import (
     aggregation_error_as_low_rank,
     validate_observation_error_arrays,
 )
-from openghg_inversions.rhime.cached_sigma import PytensorMarginalQuadraticCache
+from openghg_inversions.inference.cached_sigma import PytensorMarginalQuadraticCache
 from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR
 from openghg_inversions.sigma import SigmaAlignment
 

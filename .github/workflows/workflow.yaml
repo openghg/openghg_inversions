@@ -45,7 +45,7 @@ jobs:
       - name: Prime ArviZ cache
         run: python -c "import arviz"
       - name: Run tests
-        run: pytest tests/ -n 2 --dist=worksteal
+        run: pytest tests/ -n 2 --dist=worksteal --durations=25
 
   locked-test:
     name: Run tests with uv.lock (Python ${{ matrix.python-version }})
@@ -67,7 +67,7 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install locked dependencies
-        run: uv sync --locked --python ${{ matrix.python-version }}
+        run: uv sync --locked --group test --python ${{ matrix.python-version }}
       - name: Verify lock tracks the latest OpenGHG release
         run: |
           locked=$(uv run --no-sync python -c 'from importlib.metadata import version; print(version("openghg"))')
@@ -85,7 +85,7 @@ jobs:
       - name: Prime ArviZ cache
         run: uv run --no-sync python -c "import arviz"
       - name: Run tests
-        run: uv run --no-sync pytest tests/
+        run: uv run --no-sync pytest tests/ -n 2 --dist=worksteal --durations=25
 
   lint:
     name: Run lint
