@@ -1,8 +1,10 @@
 """Exact basis inputs, support-resource preflight and compatibility boundaries."""
 
 from dataclasses import replace
+from pathlib import Path
 
 import dask.array as da
+import pandas as pd
 import pytest
 import xarray as xr
 
@@ -46,8 +48,19 @@ def test_modern_default_and_explicit_legacy_output_have_equal_science(tmp_path):
     xr.testing.assert_equal(modern.flat_basis(), legacy.flat_basis())
     xr.testing.assert_equal(modern.flux, legacy.flux)
     BasisFunctions.load(modern.basis_artifact_path)
+    assert Path(legacy.basis_artifact_path).name == "region_constrained_ch4_TEST_2020-01.nc"
+    historical = legacy.flat_basis().expand_dims(time=[pd.Timestamp("2019-12-01")])
+    historical_path = tmp_path / "historical.nc"
+    historical.to_netcdf(historical_path)
     with xr.open_dataset(legacy.basis_artifact_path) as dataset:
         xr.testing.assert_equal(dataset.basis.squeeze("time", drop=True), legacy.flat_basis())
+        assert dataset.time.dtype.kind == "M"
+        xr.testing.assert_equal(dataset.basis.sel(time=pd.Timestamp("2020-01-01"), drop=True), legacy.flat_basis())
+        with xr.open_dataarray(historical_path) as earlier:
+            combined = xr.concat([earlier, dataset.basis], dim="time")
+            assert combined.time.dtype.kind == "M"
+            xr.testing.assert_equal(combined.sel(time=pd.Timestamp("2019-12-01"), drop=True), legacy.flat_basis())
+            xr.testing.assert_equal(combined.sel(time=pd.Timestamp("2020-01-01"), drop=True), legacy.flat_basis())
 
 
 @pytest.mark.parametrize("route", ["standard", "staged", "nested"])

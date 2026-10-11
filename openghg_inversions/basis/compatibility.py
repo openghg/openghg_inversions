@@ -4,6 +4,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, Literal, cast
 
+import pandas as pd
 import xarray as xr
 
 from openghg_inversions._flux_options import UNSET, _Unset, resolve_deprecated_keyword
@@ -147,7 +148,7 @@ def make_basis_functions(
         if not isinstance(flat, xr.DataArray):
             raise TypeError("Historical output requires one flat partition.")
         assert basis_algorithm is not None
-        flat = flat.expand_dims(time=[start_date])
+        flat = flat.expand_dims(time=[pd.to_datetime(start_date)])
         if basis_output_format == "legacy":
             path = _save_basis(flat, basis_algorithm, output_path, domain, species, outputname)
         else:
