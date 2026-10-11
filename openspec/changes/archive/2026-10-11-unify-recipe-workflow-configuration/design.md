@@ -1,6 +1,6 @@
 # Design
 
-> **Superseded:** Read the [replacement design](../replace-recipe-workflow-with-reusable-handoffs/design.md).
+> **Superseded:** Read the [replacement design](../../replace-recipe-workflow-with-reusable-handoffs/design.md).
 > The historical design below is not the current implementation instruction.
 
 > Implementation design for OPE-207. Proposed names are not implemented APIs.
@@ -21,7 +21,7 @@ saved-output replay. Equivalent routes must call one implementation of each
 scientific operation they need. Staged functions also load, authenticate, and
 save checkpoints.
 
-Follow [RHIME development guidance](../../../docs/development/rhime_model_development.rst)
+Follow [RHIME development guidance](../../../../docs/development/rhime_model_development.rst)
 and the [architecture principles proposed in PR #793](https://github.com/openghg/openghg_inversions/blob/92be84ec2e697f2a7c2dbf8a6f0266b9965c0cb7/docs/development/architecture_principles.rst):
 keep scientific composition visible and choose responsibilities by the decisions
 that must change together.
@@ -190,7 +190,7 @@ CO2 acquisition or filtering route.
 
 Preserve other supported route differences with a stated reason and regression
 coverage. For example,
-[`run_rhime_from_prepared_inputs`](../../../openghg_inversions/rhime/prepared.py)
+[`run_rhime_from_prepared_inputs`](../../../../openghg_inversions/rhime/prepared.py)
 with the built-in model rejects `basic`, `paris`, and `legacy` products when
 aggregation-error mode is not `none`; this refactor does not expand those outputs.
 

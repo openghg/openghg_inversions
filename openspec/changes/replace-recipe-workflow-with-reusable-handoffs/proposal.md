@@ -50,11 +50,20 @@ not a completed implementation or required artifact contract.
 ### Modified Capabilities
 
 There are no durable workflow capability specs on inspected `devel` `edeffaff`.
-These capabilities replace [the superseded proposal](../unify-recipe-workflow-configuration/proposal.md).
+These capabilities replace [the archived superseded proposal](../archive/2026-10-11-unify-recipe-workflow-configuration/proposal.md).
+That change was archived without syncing its requirements; its historical
+contract is not a current capability or an implementation prerequisite.
 They also explicitly amend the landed [configuration change](../resolve-rhime-configuration/specs/rhime-configuration/spec.md):
 flat preparation fields become one owned group, and phase-only consumers no longer
 require complete configuration. Historical completed tasks remain baseline evidence,
 not evidence that this amendment is implemented.
+
+The three new capability documents live under this active change as proposed
+spec deltas. `openspec/specs/` is the home for current capability specs after
+implementation and reconciliation; `openspec/changes/archive/` retains completed
+or superseded change history. Moving a change to the archive and syncing its
+requirements are separate operations. This replacement remains active with its
+implementation tasks unchecked.
 
 ## Impact
 
