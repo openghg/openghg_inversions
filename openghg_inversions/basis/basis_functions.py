@@ -349,7 +349,7 @@ class FluxWeightedBasis:
                 match the basis operator.
         """
         metadata = _basis_artifact_metadata(dt)
-        operator = BasisOperator.decode_datatree(dt["basis"])
+        operator = BasisOperator.decode_datatree(cast(xr.DataTree, dt["basis"]))
         ds_flux = dt["flux"].to_dataset()
         if "flux" not in ds_flux:
             raise ValueError("Missing variable 'flux' in dt['flux'] dataset.")
@@ -453,7 +453,7 @@ class FluxWeightedBasis:
             if "flux" not in dt["flux"].to_dataset():
                 raise ValueError("Missing variable 'flux' in dt['flux'] dataset.")
             dt["basis"].load()
-            operator = BasisOperator.decode_datatree(dt["basis"])
+            operator = BasisOperator.decode_datatree(cast(xr.DataTree, dt["basis"]))
         if "source" in flux.dims:
             operator = _select_operator_sources(operator, _validated_flux_source_labels(flux))
         flux = force_align(
