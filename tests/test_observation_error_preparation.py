@@ -18,6 +18,68 @@ def _merged(dataset):
     )
 
 
+@pytest.mark.parametrize("error_kind", ["derived", "custom", "complete"])
+@pytest.mark.parametrize("lazy", [False, True])
+def test_error_preparation_preserves_selector_order_over_mapping_order(error_kind, lazy):
+    from openghg_inversions.inversion_inputs import make_inv_inputs
+
+    site_data = {}
+    for site, scale in (("MHD", 2.0), ("TAC", 1.0)):
+        dataset = xr.Dataset(
+            {
+                "mf": ("time", np.array([10.0, 20.0]) * scale),
+                "H": (("region", "time"), np.array([[1.0, 2.0]]) * scale),
+            },
+            coords={"time": pd.date_range("2020-01-01", periods=2, freq="h"), "region": [0]},
+        )
+        if error_kind in {"derived", "complete"}:
+            dataset["mf_repeatability"] = ("time", np.array([3.0, 3.0]) * scale)
+            dataset["mf_variability"] = ("time", np.array([4.0, 4.0]) * scale)
+        if error_kind in {"custom", "complete"}:
+            dataset["mf_error"] = ("time", np.array([7.0, 8.0]) * scale, {"source": "custom"})
+        site_data[site] = dataset.chunk(time=1) if lazy else dataset
+    originals = {site: dataset.copy(deep=True) for site, dataset in site_data.items()}
+    merged = RhimeMergedData(
+        site_data=site_data, flux_data={},
+        site_options=SiteOptions.from_inputs(sites=["TAC", "MHD"], averaging_period=["1h", "2h"]),
+    )
+
+    if error_kind == "derived":
+        prepared = prepare_observation_errors(merged)
+    else:
+        with Callback(pretask=lambda *args: pytest.fail("supplied errors were computed")):
+            prepared = prepare_observation_errors(merged)
+
+    assert prepared.sites == ("TAC", "MHD")
+    assert prepared.averaging_period == ("1h", "2h")
+    if error_kind == "complete":
+        assert prepared is merged
+    else:
+        assert tuple(prepared.site_data) == ("TAC", "MHD")
+    gathered = make_inv_inputs(prepared.site_data, sites=list(prepared.sites))
+    np.testing.assert_array_equal(gathered.site, ["TAC", "TAC", "MHD", "MHD"])
+    np.testing.assert_array_equal(gathered.site_names, ["TAC", "MHD"])
+    # The first selected site remains the reference for drop-first offsets.
+    np.testing.assert_array_equal(gathered.site_indicator, [0, 0, 1, 1])
+    np.testing.assert_array_equal(gathered.mf, [10.0, 20.0, 20.0, 40.0])
+    np.testing.assert_array_equal(gathered.H, [[1.0, 2.0, 2.0, 4.0]])
+    expected_error = [5.0, 5.0, 10.0, 10.0] if error_kind == "derived" else [7.0, 8.0, 14.0, 16.0]
+    np.testing.assert_allclose(gathered.mf_error, expected_error)
+    if error_kind == "custom":
+        assert gathered.mf_error.attrs == {"source": "custom"}
+        for name in ("mf_repeatability", "mf_variability"):
+            np.testing.assert_array_equal(gathered[name], np.zeros(4))
+    for site, dataset in site_data.items():
+        xr.testing.assert_identical(dataset, originals[site])
+        assert prepared.site_data[site].mf.data is dataset.mf.data
+        if error_kind != "derived":
+            assert prepared.site_data[site].mf_error.data is dataset.mf_error.data
+        if lazy:
+            assert isinstance(prepared.site_data[site].mf_error.data, da.Array)
+    assert tuple(merged.site_data) == ("MHD", "TAC")
+    assert merged.sites == ("TAC", "MHD")
+
+
 @pytest.mark.parametrize("lazy", [False, True])
 def test_quadrature_precedes_daily_median_and_preserves_borrowed_metadata(lazy):
     dataset = xr.Dataset(

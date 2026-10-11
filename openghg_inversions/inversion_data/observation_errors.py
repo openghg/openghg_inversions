@@ -45,7 +45,8 @@ def prepare_observation_errors(
     """
     # TODO: do we want to fill missing values in repeatability or variability?
     result = {}
-    for site, borrowed in merged.site_data.items():
+    for site in merged.sites:
+        borrowed = merged.site_data[site]
         if "mf_error" in borrowed:
             missing_components = [name for name in ("mf_repeatability", "mf_variability") if name not in borrowed]
             if missing_components:
