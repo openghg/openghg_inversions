@@ -131,7 +131,7 @@ def test_native_nonsectoral_resolution_matches_openghg_time_forward_fill():
     ).flux
     actual = resolve_runtime_flux(sources)
     xr.testing.assert_equal(actual, expected.fillna(0))
-    with pytest.raises(ValueError, match="unequal time indexes"):
+    with pytest.raises(ValueError, match="join.*exact"):
         resolve_runtime_flux(sources, split_by_sectors=True)
 
 
@@ -203,7 +203,11 @@ def test_operator_reuse_rejects_incompatible_current_grid_without_mutation(tmp_p
 @pytest.mark.parametrize(
     "mutate, message",
     [
-        (lambda value: value.isel(time=[0]), "unequal time indexes"),
+        (lambda value: value.isel(time=[0]), "join.*exact"),
+        (lambda value: value.isel(lon=0, drop=True), "do not exist"),
+        (lambda value: value.expand_dims(level=[0]), "permuted list"),
+        (lambda value: value.drop_vars("time"), "explicit one-dimensional time coordinate"),
+        (lambda value: value.assign_coords(time=[value.time.values[0]] * 2), "duplicate time coordinates"),
         (lambda value: value.isel(time=0, drop=True), "timed and timeless"),
         (lambda value: value.assign_coords(lat=[60.0, 61.0]), "Coordinate mismatch"),
     ],

@@ -86,11 +86,11 @@ def _combine_flux_sources_like_modelscenario(flux_arrays: dict[str, xr.DataArray
 def _require_matching_source_time_indexes(
     flux_arrays: Mapping[str, xr.DataArray],
 ) -> None:
-    """Reject source fluxes whose native time axes cannot be stacked safely.
+    """Validate source labels and explicit unique time coordinates.
 
-    Sources may all be timeless or may all use the same exact time index.
-    Mixed timed/timeless inputs and unequal indexes require an explicit
-    temporal resampling policy and are therefore rejected here.
+    Sources may all be timeless or may all carry explicit unique time indexes.
+    Mixed timed/timeless inputs require an explicit temporal resampling policy.
+    Exact index alignment is checked by xarray when sources are concatenated.
 
     Args:
         flux_arrays: Source-labelled flux arrays.
@@ -105,8 +105,6 @@ def _require_matching_source_time_indexes(
     source_labels = tuple(flux_arrays)
     if not all(isinstance(source, str) for source in source_labels):
         raise ValueError("Source-flux mapping labels must all be strings.")
-    if len(set(source_labels)) != len(source_labels):
-        raise ValueError("Source-flux mapping labels must be unique.")
 
     timed_sources = {source: "time" in flux.dims for source, flux in flux_arrays.items()}
     if len(set(timed_sources.values())) > 1:
@@ -117,7 +115,6 @@ def _require_matching_source_time_indexes(
     if not any(timed_sources.values()):
         return
 
-    reference_source = source_labels[0]
     for source in source_labels:
         flux = flux_arrays[source]
         if "time" not in flux.coords or flux["time"].dims != ("time",):
@@ -131,18 +128,6 @@ def _require_matching_source_time_indexes(
                 f"source {source!r} must be made unique first."
             )
 
-    reference_index = flux_arrays[reference_source].get_index("time")
-    unequal_sources = [
-        source
-        for source in source_labels[1:]
-        if not flux_arrays[source].get_index("time").equals(reference_index)
-    ]
-    if unequal_sources:
-        raise ValueError(
-            "Cannot stack source fluxes with unequal time indexes; explicitly "
-            "align or resample every source to a common time index first. "
-            f"Reference source {reference_source!r}; unequal sources {unequal_sources!r}."
-        )
 
 
 def _stack_flux_sources_with_alignment(
@@ -168,17 +153,10 @@ def _stack_flux_sources_with_alignment(
     _require_matching_source_time_indexes(flux_arrays)
     first_key = next(iter(flux_arrays))
     reference = flux_arrays[first_key]
-    reference_dims = set(reference.dims)
     dims_to_align = [dim for dim in reference.dims if dim != "time"]
 
     aligned_flux = {}
     for key, arr in flux_arrays.items():
-        if set(arr.dims) != reference_dims:
-            raise ValueError(
-                "Cannot stack source fluxes with different dimensions; "
-                f"reference source {first_key!r} has {reference.dims!r}, "
-                f"source {key!r} has {arr.dims!r}."
-            )
         aligned_flux[key] = force_align(
             arr.transpose(*reference.dims),
             reference=reference,
