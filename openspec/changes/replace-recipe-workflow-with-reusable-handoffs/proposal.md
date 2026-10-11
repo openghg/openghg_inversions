@@ -1,5 +1,14 @@
 # Proposal
 
+## Approval and delivery status
+
+Approved for implementation by the maintainer on 11 October 2026. Begin with a
+bounded implementation PR stacked on #841; subsequent deliveries follow the
+acceptance gates in [tasks.md](tasks.md). This records approval of the plan, not
+completion of its implementation or an additional OpenSpec lifecycle state.
+The change remains active, implementation tasks stay unchecked until their
+acceptance evidence exists, and its deltas are not yet current main specs.
+
 ## Why
 
 Full and saved recipe routes still couple scientific preparation to later model
@@ -18,6 +27,8 @@ not a completed implementation or required artifact contract.
   model, sampler and output owners. Move existing preparation fields/defaults
   rather than duplicating them. Group legacy INI options into ordinary mappings;
   resolve each saved phase independently and bind model choices to prepared facts.
+  Standard/multisector omitted model BC use inherits the preparation choice;
+  BC frequency remains a baked preparation fact.
 - Retain `RhimeSampler`. New live inference accepts an instance or `"default"`,
   with omission selecting a fresh recipe-appropriate default per invocation.
   Isolate mutable settings, preserve supported container values and reject coordinate
@@ -27,7 +38,9 @@ not a completed implementation or required artifact contract.
   graph-time priors/likelihoods through scientific checks rather than full-config
   equality. Preserve coherent CO2 reduction and affine association constraints.
 - Save bounded output meaning, actual inference provenance and the existing output
-  contract. Resolve relative dependencies and check digests; replay needs no original
+  contract. Initially use NetCDF numerical files and JSON manifests, preserving
+  direct numerical Zarr codecs outside these handoffs. Resolve relative dependencies
+  and check digests; replay needs no original
   configuration, model construction, runtime sampler or separate output-binding sidecar.
 - Deliver a complete standard proof before multisector, ordinary CO2 and cached CO2
   adoption. Each phase owns callers, examples, documentation and meaningful validation.

@@ -335,6 +335,53 @@ with the retained prepared inputs. Changed model or likelihood choices SHALL be
 accepted only when their required prepared inputs and structure are available;
 they SHALL NOT reinterpret baked preparation choices or reacquire inputs.
 
+For standard and multisector, preparation SHALL own the established `use_bc`
+default (`True`) and `bc_freq` default (`None`). A legacy flat `use_bc` choice SHALL
+route to preparation and the full run's model choice consistently. When resolving
+a model group, omitted `use_bc` SHALL inherit the resolved requested preparation
+choice for a full run or its recorded fact for saved sampling. Explicit model
+`use_bc=False` MAY omit BC terms even when preparation contains BC inputs.
+Explicit model `use_bc=True` SHALL require preparation to provide those inputs;
+it SHALL NOT trigger acquisition or silent fallback. Full requests SHALL reject
+model BC use with preparation BC disabled before acquisition.
+
+`bc_freq` SHALL remain a preparation-owned temporal policy. Sampling SHALL use
+the recorded policy when the key is omitted and SHALL accept a repeated equivalent
+claim; any conflicting claim SHALL fail before model construction, even when
+model BC terms are disabled. An explicit `None` claim SHALL be compared as the
+existing no-frequency policy, not treated as omission. Model binding SHALL NOT
+apply another default to replace saved temporal expansion. The same rules SHALL
+hold for full and independently resolved standard/multisector phases without
+changing CO2's family-specific defaults.
+
+#### Scenario: Resolve disabled BC consistently across phases
+- **WHEN** standard or multisector preparation resolves `use_bc=False` and the
+  model group omits `use_bc`
+- **THEN** both a complete request and independent sampling of that preparation
+  resolve model BC use to false
+- **AND** an empty model group does not apply a conflicting true default
+
+#### Scenario: Resolve default BC consistently across phases
+- **WHEN** standard or multisector preparation omits `use_bc` and the model group
+  also omits it
+- **THEN** preparation resolves the existing true default and both full and saved
+  model resolution inherit true
+- **AND** missing required BC arrays cause an error rather than disabling BC use
+
+#### Scenario: Change BC use without changing preparation
+- **WHEN** a preparation contains BC inputs and a later model explicitly selects
+  `use_bc=False`
+- **THEN** model construction omits BC terms without changing the saved preparation
+- **AND** explicit `use_bc=True` on a preparation with BC disabled fails before
+  inference or artifact writes
+
+#### Scenario: Bind the saved boundary temporal policy
+- **WHEN** preparation baked `bc_freq="3h"` into its numerical inputs
+- **THEN** a later model request omitting `bc_freq` uses that saved temporal policy
+  and a repeated `"3h"` claim is accepted
+- **AND** an explicit different frequency or `None` is rejected before model
+  construction, including when model `use_bc=False`
+
 #### Scenario: Sample with model and sampler choices only
 - **WHEN** a caller supplies an authenticated prepared handoff and valid model
   and sampler groups without acquisition or product configuration

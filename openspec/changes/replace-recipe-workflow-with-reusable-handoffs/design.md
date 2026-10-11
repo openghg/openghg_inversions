@@ -87,6 +87,26 @@ choices requiring absent BC/minimum-error arrays fail at scientific composition.
 If a caller repeats a preparation fact at sampling, reject a conflicting claim;
 inactive filters or basis-writing destinations do not become equality gates.
 
+For standard and multisector, use the following binding rules. Omission means
+absence of the key in the raw model mapping, not a prematurely filled model default.
+
+| Choice | Preparation owner | Full and saved model binding |
+| --- | --- | --- |
+| `use_bc` | `PreparationConfig.use_bc` retains the existing default `True` and controls acquiring/constructing BC inputs. | An omitted model choice inherits the resolved preparation choice. Explicit `False` may ignore available BC inputs; explicit `True` requires them. |
+| `bc_freq` | `PreparationConfig.bc_freq` retains the existing default `None` and controls the temporal expansion baked into the inputs. | Omission uses the saved/resolved preparation fact. A repeated equivalent value is a compatibility claim; a conflicting value fails, including when `use_bc=False`. No model default re-expands the data. |
+
+The legacy flat `use_bc` option resolves once at its preparation owner and also
+supplies the full run's model choice, preserving existing full-run behavior.
+An explicitly supplied model group may choose `False` while preparation has
+`True`; `True` with preparation `False` fails early for full configuration and
+before model construction for saved sampling. Save the resolved preparation
+BC choice and temporal policy as facts, and check the required arrays separately;
+a missing array must not silently change a requested `True` into `False`.
+`bc_freq=None` is a concrete existing temporal policy, not a marker for an omitted
+model key. No duplicate default table or generic routing registry is required.
+These rules cover standard/multisector; CO2 retains its family-specific defaults
+and coherent preparation compatibility rules.
+
 Full resolution can bind model defaults against resolved requested facts before
 acquisition. Saved sampling binds the model section against authenticated prepared
 facts, including the original date anchor, then aligns per-site options to retained
@@ -308,6 +328,14 @@ one preparation without copying it. Moving an intact dependency tree works; a
 sample directory alone need not be self-contained. Hash exact bytes: re-encoding
 creates a new artifact, while unchanged relocated content retains its identity.
 Digests check content association, not author identity or scientific equivalence.
+
+The initial prepared and sampled handoff contract uses NetCDF files for numerical
+payloads (including posterior and affine payloads) and JSON files for manifests.
+It does not accept directory Zarr stores as handoff dependencies. Reject an imported
+Zarr handoff before creating a destination, with guidance to explicitly save/export
+it through the existing NetCDF codec first. Direct numerical Zarr save/load and
+round-trip support remain available; this restriction belongs to the new handoff
+boundary, not those codecs. No directory hashing or implicit conversion is added.
 Sampling retains the preparation identity verified before inference and passes it
 to saving. Before completing the sample manifest, verify the current preparation
 and its required dependencies against that retained identity; fail if they have

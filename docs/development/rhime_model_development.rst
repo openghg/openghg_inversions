@@ -293,14 +293,21 @@ work without resolving it again. That input is exclusive with ``config_file``
 and raw configuration keywords. Compatibility entry points can therefore
 validate once before their own side effects and pass the same request onward.
 
-``RhimeConfig`` owns acquisition and preparation fields directly, alongside
-one public ``inversion_data.SiteOptions`` and the existing ``RhimeModelSpec``,
-``RhimeOutputSpec`` and ``inference.sampling.RhimeSampler``. The model
-specification describes scientific choices, the output specification describes
-final products, and the sampler holds settings and executes only when given a
-completed model. Do not add a separate preparation configuration or duplicate
-sampler settings class. Constructing configuration does not acquire scientific
-data, bind a model or execute inference.
+The current implementation keeps acquisition and preparation fields directly on
+``RhimeConfig``, alongside one public ``inversion_data.SiteOptions`` and the existing
+``RhimeModelSpec``, ``RhimeOutputSpec`` and ``inference.sampling.RhimeSampler``.
+The approved `reusable-handoff configuration specification
+<https://github.com/openghg/openghg_inversions/blob/codex/reusable-recipe-handoffs-spec/openspec/changes/replace-recipe-workflow-with-reusable-handoffs/specs/rhime-configuration/spec.md>`_
+plans to move those fields and defaults into ``RhimeConfig.preparation``, owned by
+one ``PreparationConfig``. Independently resolved preparation is its concrete
+consumer; this moves ownership rather than maintaining duplicate configuration.
+That successor is not implemented by the specification change itself.
+
+The model specification describes scientific choices, the output specification
+describes final products, and the existing sampler holds settings and executes
+only when given a completed model. Do not duplicate sampler settings in another
+class. Constructing configuration does not acquire scientific data, bind a model
+or execute inference.
 
 ``SiteOptions.from_inputs`` and its small helpers establish complete aligned
 selectors independently of file syntax. Direct construction accepts resolved

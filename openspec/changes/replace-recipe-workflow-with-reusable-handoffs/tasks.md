@@ -1,7 +1,9 @@
 # Tasks
 
-These are future implementation tasks, all unchecked. This planning change
-changes no runtime behavior. Follow [design.md](design.md) and the three
+The maintainer approved this plan for implementation on 11 October 2026. These
+are implementation tasks, all unchecked until their acceptance evidence exists.
+Start with a bounded implementation PR stacked on #841. This planning change
+itself changes no runtime behavior. Follow [design.md](design.md) and the three
 new capability specs and configuration amendment. The four delivery sections below define proposed bounded
 implementation-child scopes for OPE-207; they do not create Linear issues or
 represent one assignment spanning every family.
@@ -33,6 +35,9 @@ adoption remains in OPE-165, retaining its completed numerical persistence.
   them into a second schema. Keep model, sampler and output choices with their
   owners. Verify full and phase-only inputs resolve the same applicable choices
   without demanding unrelated sections, touching arrays or mutating caller values.
+  Cover omitted/explicit model `use_bc` against enabled/disabled preparation,
+  preserved legacy flat routing, and omitted/equivalent/conflicting `bc_freq`
+  claims against the baked temporal policy.
 - [ ] 1.2 Use live `sampler="default"` consistently in new and existing
   default-selecting entry points as a request for a fresh family-default
   sampler on each invocation, without importing a sampler from recorded metadata.
@@ -68,7 +73,9 @@ adoption remains in OPE-165, retaining its completed numerical persistence.
   and retained subsets with unequal site options, original requested dates,
   malformed inputs, parent-relative relocation, invalid references and digests,
   protected saved dependencies and interrupted saving without a completed
-  manifest. Keep the writer, loader and callers together.
+  manifest. Initially support NetCDF numerical dependencies and JSON manifests;
+  reject directory handoffs before writes while retaining direct Zarr codecs.
+  Keep the writer, loader and callers together.
 - [ ] 1.7 Implement standard `sample` from that manifest and current model/sampler
   choices. Record bounded actual inference provenance and embedded `OutputContract`.
   Verify two compatible priors/likelihoods reuse unchanged preparation, while

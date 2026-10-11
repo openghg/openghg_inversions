@@ -54,6 +54,21 @@ manifest SHALL NOT make unavailable or changed dependencies acceptable.
 Content digests SHALL bind the referenced file content; they SHALL NOT substitute
 for scientific compatibility checks or imply verification of an author's identity.
 
+The initial handoff contract SHALL use NetCDF numerical files and JSON manifests.
+Directory Zarr stores SHALL NOT be accepted as dependencies of prepared or sampled
+handoffs. Existing direct numerical codecs SHALL retain their NetCDF and Zarr
+support; callers MAY explicitly export to NetCDF before constructing a handoff.
+The handoff boundary SHALL NOT silently convert a directory or invent directory
+content-identity rules.
+
+#### Scenario: NetCDF handoff and direct Zarr persistence
+
+- **WHEN** a caller saves a prepared or sampled handoff
+- **THEN** its numerical dependencies are NetCDF files authenticated by exact file bytes
+- **AND** importing a directory Zarr store as a handoff dependency fails before
+  destination creation with guidance to explicitly export it through the NetCDF codec
+- **AND** direct numerical save/load and round-trip use of Zarr remains supported
+
 #### Scenario: Relocated dependency tree
 
 - **WHEN** a prepared handoff and sample handoffs referencing it move together with their relative dependency layout intact
