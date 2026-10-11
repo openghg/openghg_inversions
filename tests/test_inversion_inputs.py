@@ -461,3 +461,85 @@ def test_scalar_minimum_error_preserves_lazy_borrowed_observations():
         "minimum_error_sites": "",
     }
     np.testing.assert_allclose(result.values.compute(), 0.5)
+
+
+@pytest.mark.parametrize("lazy", [False, True])
+@pytest.mark.parametrize("sparse_payload", [False, True])
+def test_assembly_materializes_shared_payload_once(lazy, sparse_payload):
+    """Row selection shares one source execution without densifying sparse data."""
+    import dask
+    import sparse
+
+    from openghg_inversions.inversion_inputs import _drop_nan_and_compute
+
+    values = np.arange(20, dtype=float).reshape(5, 4)
+    values[0, 1] = np.nan
+    values[3, 2] = np.nan
+    calls = []
+
+    def read_source():
+        calls.append(1)
+        return sparse.COO.from_numpy(values) if sparse_payload else values.copy()
+
+    if lazy:
+        meta = sparse.COO.from_numpy(np.empty((0, 0))) if sparse_payload else np.empty((0, 0))
+        payload = da.from_delayed(dask.delayed(read_source)(), shape=values.shape, meta=meta)
+    else:
+        payload = sparse.COO.from_numpy(values) if sparse_payload else values.copy()
+
+    names = ["H", "H_bc", "mf", "mf_error", "mf_variability"]
+    ds = xr.Dataset(
+        {
+            "H": (("region", "nmeasure"), payload[0:1]),
+            "H_bc": (("bc_region", "nmeasure"), payload[1:2]),
+            **{name: ("nmeasure", payload[i]) for i, name in enumerate(names[2:], start=2)},
+            "diagnostic": ("nmeasure", da.arange(4, chunks=2)),
+        },
+        coords={
+            "nmeasure": [40, 30, 20, 10],
+            "region": ["r"],
+            "bc_region": ["north"],
+            "site": ("nmeasure", ["TAC", "MHD", "TAC", "MHD"]),
+            "release_height": ("nmeasure", da.arange(4, chunks=2)),
+        },
+        attrs={"domain": "EUROPE"},
+    )
+    ds.H.attrs["units"] = "mol/mol"
+    original = ds.copy(deep=False)
+    with dask.config.set(scheduler="synchronous"):
+        result = _drop_nan_and_compute(ds)
+
+    assert len(calls) == int(lazy)
+    assert result.nmeasure.values.tolist() == [40, 10]
+    assert result.site.values.tolist() == ["TAC", "MHD"]
+    assert result.attrs == ds.attrs
+    assert result.H.attrs == ds.H.attrs
+    assert result.region.values.tolist() == ["r"]
+    assert result.bc_region.values.tolist() == ["north"]
+    for i, name in enumerate(names):
+        assert not isinstance(result[name].data, da.Array)
+        assert isinstance(result[name].data, sparse.COO) == sparse_payload
+        actual = result[name].data.todense() if sparse_payload else result[name].data
+        expected = values[i, [0, 3]]
+        if name in ("H", "H_bc"):
+            expected = expected[None, :]
+        np.testing.assert_equal(actual, expected)
+        assert ds[name].data is original[name].data
+    assert isinstance(result.diagnostic.data, da.Array)
+    assert isinstance(result.release_height.data, da.Array)
+    assert ds.sizes["nmeasure"] == 4
+    assert isinstance(ds.H.data, da.Array) == lazy
+
+
+def test_assembly_custom_nan_selection_and_independent_eager_inputs():
+    """Custom selection preserves order and ignores absent optional core arrays."""
+    from openghg_inversions.inversion_inputs import _drop_nan_and_compute
+
+    ds = xr.Dataset(
+        {"mf": ("nmeasure", [1.0, 2.0, 3.0]), "quality": ("nmeasure", [0.0, np.nan, 1.0])},
+        coords={"nmeasure": [7, 2, 5]},
+    )
+    original = ds.copy(deep=True)
+    result = _drop_nan_and_compute(ds, drop_nan_from=("quality", "absent"))
+    xr.testing.assert_identical(result, original.isel(nmeasure=[0, 2]))
+    xr.testing.assert_identical(ds, original)

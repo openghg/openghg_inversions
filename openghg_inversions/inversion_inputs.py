@@ -11,6 +11,7 @@ import datetime as dt
 from collections.abc import Iterable
 from typing import Any, Literal, TypeAlias
 
+import dask
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -177,28 +178,26 @@ def add_site_indicator(ds: xr.Dataset, sort: bool = False) -> xr.Dataset:
 def _drop_nan_and_compute(
     ds: xr.Dataset, drop_nan_from: Iterable[str] = ("H", "H_bc", "mf", "mf_error")
 ) -> xr.Dataset:
-    """Drop NaNs in required inversion variables and materialize core variables.
+    """Materialize related core payloads together, then drop unusable rows.
 
-    This centralizes dataset cleanup for RHIME input construction. It:
-      - drops nmeasure rows with NaNs in required variables (H, H_bc, mf, mf_error)
-      - triggers computation for a selected set of variables so returned dataset
-        is ready for immediate consumption (avoids repeated dask computations)
+    The selected variables become eager before row selection so shared Dask
+    dependencies execute once. Their full pre-selection payloads must fit in
+    memory. Sparse payloads remain sparse; unrelated variables and auxiliary
+    coordinates retain their existing eager or lazy backing. The input dataset
+    is borrowed and is not modified.
 
     Args:
-        ds: Input xarray.Dataset produced by make_inv_inputs logic.
-        drop_nan_from: data variables to drop NaNs from; only data variables present in `ds`
-            will be used.
+        ds: Assembled observation-aligned inversion inputs.
+        drop_nan_from: Variables whose NaNs remove an ``nmeasure`` row.
+            Missing names are ignored. Present names are also materialized.
 
     Returns:
-        xarray.Dataset with NaNs dropped along `nmeasure` based on selected variables,
-            and with certain variables computed.
+        A new dataset with core payloads materialized and rows containing NaNs
+        in the selected variables removed, preserving retained labels/order.
     """
-    # Variables that must not contain NaNs along the nmeasure dim
-    drop_subset: list[str] = [v for v in drop_nan_from if v in ds]
-    if drop_subset:
-        ds = ds.dropna(dim="nmeasure", how="any", subset=drop_subset)
-
-    # Variables we want to ensure are materialized (compute() only these)
+    drop_subset = [v for v in drop_nan_from if v in ds]
+    # Materialize before dropna: its row mask otherwise executes shared sources
+    # separately from the payloads needed by the inversion.
     to_compute: list[str] = [
         "H",
         "H_bc",
@@ -211,10 +210,12 @@ def _drop_nan_and_compute(
         "bc_mod",
         "mf_mod",
     ]
-    to_compute = [v for v in to_compute if v in ds]
-    for var_name in to_compute:
-        computed = ds[var_name].compute()
-        ds[var_name] = (computed.dims, computed.data, computed.attrs)
+    to_compute = list(dict.fromkeys(v for v in [*to_compute, *drop_subset] if v in ds))
+    # Variables exclude auxiliary coordinates, which need not become eager.
+    computed = dask.compute(*(ds[v].variable for v in to_compute))
+    ds = ds.assign(dict(zip(to_compute, computed)))
+    if drop_subset:
+        ds = ds.dropna(dim="nmeasure", how="any", subset=drop_subset)
 
     return ds
 
@@ -305,7 +306,9 @@ def make_inv_inputs(
 
     The returned dataset contains shared observations, sensitivities, error
     terms, and site alignment metadata. Model-component-specific arrays are
-    constructed by their owning components.
+    constructed by their owning components. Core payloads are materialized
+    together before invalid observations are discarded; the full pre-selection
+    core arrays must fit in memory. Other extension arrays may remain lazy.
 
     Args:
         fp_data: Per-site merged observations and sensitivity data.
