@@ -85,6 +85,11 @@ do not recreate or append new requirements to an archived change.
 
 ## Impact
 
+Sampler selection has one deliberate public migration: omitted optional arguments
+still request defaults, but explicit `None` must become `"default"` or be omitted
+at live entry points. `None` consistently denotes absence on results; replay uses
+saved provenance. No `None`-means-default compatibility adapter is retained.
+
 Planning only: [design.md](design.md) gives the concrete API sketches, metadata
 inventory, scientific order and saving semantics; [tasks.md](tasks.md) defines four
 implementation delivery phases and their acceptance gates. All implementation

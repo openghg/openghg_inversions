@@ -25,9 +25,10 @@ The new sampling boundary SHALL accept the existing `RhimeSampler` or
 `"default"`, with omission equivalent to `"default"`. Each default selection
 SHALL create a fresh sampler for that invocation. A supplied sampler's options
 SHALL be snapshotted for the invocation without mutating caller-owned options or
-requiring a second sampler-options type. `None` SHALL be invalid at this new
-boundary. Existing direct scientific adapters whose established `None` behavior
-selects a default sampler SHALL retain that behavior at their own boundary.
+requiring a second sampler-options type. `None` SHALL mean absence of a live
+sampler and SHALL be invalid at sampling boundaries. Existing direct entry points
+SHALL migrate default selection from explicit `None` to `"default"` consistently
+with recipe-execution; no adapter SHALL reinterpret `None` as default selection.
 
 #### Scenario: Reuse preparation for a different compatible model
 - **WHEN** two sampling invocations use the same valid prepared handoff with
@@ -45,7 +46,7 @@ selects a default sampler SHALL retain that behavior at their own boundary.
 - **WHEN** sampling omits its sampler or selects `"default"` on separate invocations
 - **THEN** each invocation uses a fresh default sampler
 - **AND** supplying a `RhimeSampler` uses an isolated snapshot of its actual options
-- **AND** supplying `None` to this new boundary fails while established direct adapters retain their documented `None` behavior
+- **AND** supplying `None` fails with migration guidance in saved and existing direct sampling entry points
 
 #### Scenario: A model section contradicts prepared facts
 - **WHEN** a current model section claims species, domain or source/state facts inconsistent with its prepared handoff

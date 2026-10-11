@@ -33,14 +33,18 @@ adoption remains in OPE-165, retaining its completed numerical persistence.
   them into a second schema. Keep model, sampler and output choices with their
   owners. Verify full and phase-only inputs resolve the same applicable choices
   without demanding unrelated sections, touching arrays or mutating caller values.
-- [ ] 1.2 Add live `sampler="default"` as a request for a fresh family-default
+- [ ] 1.2 Use live `sampler="default"` consistently in new and existing
+  default-selecting entry points as a request for a fresh family-default
   sampler on each invocation, without importing a sampler from recorded metadata.
   Give custom `RhimeSampler` invocations owned copies of nested keyword values;
   verify list/tuple/array fidelity, isolated overrides and unchanged caller values.
   Reject `idata_kwargs.coords`/`dims` in resolved and direct sampling paths.
   Verify configured full runs preserve `config.sampler`, omitted/explicit default
-  calls select fresh defaults, invalid strings/`None` fail at new live boundaries,
-  and established direct `None` adapters retain their documented behavior.
+  calls select fresh defaults, and invalid strings/explicit `None` fail at all live
+  sampling boundaries. Remove `None`-means-default compatibility adapters and
+  provide migration errors; update annotations, docstrings, examples and caller
+  tests together. Keep `None` as absence on results and object-only arguments on
+  lower-level operations that already require a resolved sampler.
 - [ ] 1.3 Consolidate standard scientific calls at their existing owners in the
   visible order observation errors, filtering, basis, sensitivities and assembly.
   Consume #837's explicit assembly/execution boundaries and the named joint PyMC

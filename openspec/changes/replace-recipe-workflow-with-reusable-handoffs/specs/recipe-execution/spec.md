@@ -25,7 +25,8 @@ intermediate persistence. Preparation SHALL consistently derive retained labels
 from retained observations and align applicable per-site choices, accepting valid
 nonempty subsets without bypassing their owning input validation.
 Direct scientific customization, signatures and numerical returns SHALL retain
-their contracts; staged/setup APIs and owned CO2 configuration conventions SHALL
+their contracts except for the explicit sampler-default migration below;
+staged/setup APIs and owned CO2 configuration conventions SHALL
 follow the declared reset instead of requiring compatibility aliases.
 Families supporting partial workflows SHALL remain usable without implementing
 unrelated stages or adopting a common inference algorithm or result format.
@@ -57,12 +58,14 @@ owners without implying additional nested or linked checkpoint support.
 #### Scenario: Direct customization and partial recipes
 - **WHEN** a caller uses supported likelihood or complete-model customization,
   or a family supports only prepared construction and its own inference
-- **THEN** its explicit scientific arguments, conflict rules and return contract
+- **THEN** its explicit scientific arguments, conflict rules and return contract,
+  subject to the declared sampler-default migration,
   remain available without requiring acquisition, MCMC staging or saved replay
 
 ### Requirement: Existing sampler API and invocation isolation
 
-New public live sampling and runner APIs SHALL accept `RhimeSampler` or the literal
+Public live sampling and runner APIs offering default sampler selection,
+including existing prepared-input entry points, SHALL accept `RhimeSampler` or the literal
 `"default"` as their sampler argument. When no complete configured request supplies sampling choices, an omitted
 argument SHALL mean `"default"` and SHALL select a fresh family-appropriate runtime
 sampler for each inference invocation. A configured full run SHALL consume its
@@ -72,8 +75,12 @@ with a separate sampler override SHALL follow the existing conflicting-input
 rejection rule. A supplied sampler SHALL retain its selected behavior while mutable
 configuration containers used by an invocation remain isolated from the caller
 and later invocations, including nested keyword containers. These APIs SHALL
-reject `None`; an existing direct legacy `None` shorthand SHALL remain confined
-to an outer compatibility adapter. The contract SHALL NOT require a new sampler
+reject `None`; existing `None`-means-default behavior SHALL be removed rather than
+retained by compatibility adapters. Omitted optional arguments SHALL continue to
+select defaults, while explicit `None` SHALL produce a migration error directing
+callers to omit the argument or use `"default"`. Lower-level operations requiring
+an already resolved sampler MAY retain their object-only argument.
+The contract SHALL NOT require a new sampler
 options class.
 
 Resolving or overriding choices SHALL NOT mutate the caller's choices or affect
@@ -93,10 +100,18 @@ sampling rather than overriding the registered model.
 - **THEN** full execution uses those settings without requiring a repeated sampler
   argument or replacing them with defaults
 
-#### Scenario: Explicit null sampler at a new live boundary
-- **WHEN** a caller supplies `None` to a new public live sampling or runner API
+#### Scenario: Explicit null sampler at a live boundary
+- **WHEN** a caller supplies `None` to a public live sampling or runner API,
+  including an existing prepared-input entry point
 - **THEN** the boundary rejects it before inference rather than treating it as a
   request for a default sampler
+- **AND** the error directs the caller to omit the optional argument or pass `"default"`
+
+#### Scenario: Migrate an existing default-selecting call
+- **WHEN** an existing caller omits the optional sampler or replaces explicit
+  `None` with `"default"`
+- **THEN** execution selects the same supported default settings with a fresh
+  sampler, without requiring the caller to import `RhimeSampler`
 
 #### Scenario: Repeated sampling with an override
 - **WHEN** one invocation overrides sampler options containing nested lists,
@@ -120,6 +135,9 @@ inference invocation, rather than executable configuration requiring restoration
 of a sampler. Product replay and diagnosis SHALL operate without creating,
 defaulting or executing a sampler. Live execution SHALL retain access to a sampler
 only when its result contract explicitly supplies one.
+Here `None` SHALL mean absence of a live sampler, not absence of previously
+completed inference. `"default"` SHALL be an execution request only and SHALL NOT
+be retained as a result sampler or substituted for actual inference provenance.
 
 #### Scenario: Result without a live sampler
 - **WHEN** a caller constructs a result without a sampler, or loads saved samples

@@ -94,8 +94,9 @@ labels. The request and saved arrays are never mutated by this binding.
 
 ### 2. Live inference accepts an existing sampler or `"default"`
 
-Use the public spelling `sampler`, not a new `sampler_options` object. The new
-live sampling entry point accepts `RhimeSampler | Literal["default"]`, defaulting
+Use the public spelling `sampler`, not a new `sampler_options` object. Public
+live entry points offering default sampler selection, including existing
+prepared-input runners, accept `RhimeSampler | Literal["default"]`, defaulting
 to `"default"`. A caller need not import `RhimeSampler` to request ordinary defaults.
 Resolve that literal once at the concrete recipe's inference boundary into a fresh
 sampler with that recipe's supported defaults. A supplied sampler retains its
@@ -116,12 +117,29 @@ sample(prepared_manifest, model=model_b, sampler="default", output_dir="runs/b")
 
 `"default"` requests live behavior; it is not recorded as the settings actually
 used. Save the resolved invocation's provenance. Do not use truthiness or
-`sampler or RhimeSampler()` to resolve this choice. The new live boundary rejects
+`sampler or RhimeSampler()` to resolve this choice. Every live sampling boundary rejects
 `None` and unknown strings before sampling or artifact writes; `None` is not a
-request to skip inference. Established direct scientific APIs that already use
-`None` for default selection can retain that spelling in their outer adapters.
+request to skip inference. Remove existing `None`-means-default adapters in the
+same migration. Calls omitting the optional argument keep selecting defaults;
+calls explicitly passing `None` must omit it or pass `"default"` instead, with a
+clear migration error. Update signatures, docstrings, examples and tests together.
+Lower-level operations that require an already resolved sampler can retain their
+object-only argument rather than gain another default-selection boundary.
 For cached CO2, defaults and explicit samplers still enter its matched construction,
 step and prediction operation, never a generic sampler substitution.
+
+These meanings are consistent even though each interface accepts only its
+applicable subset:
+
+| Value | Meaning |
+| --- | --- |
+| A supplied `RhimeSampler` | Use or retain that configured sampler |
+| `"default"` | Request a fresh sampler; for standard execution, `RhimeSampler()` |
+| `None` | No live sampler object is present; valid on results, invalid when sampling is requested |
+
+There is no requirement for a three-way argument or a new "skip sampling" mode.
+Preparation and replay do not select a sampler. A replay result with `None` can
+still describe samples produced earlier through its saved provenance.
 
 Take an invocation-local copy of the existing sampler and its owned keyword
 containers. Preserve supported list/tuple/NumPy values and isolate overrides.
@@ -148,6 +166,10 @@ consume the descriptive metadata in either route. Result/replay construction nev
 resolves `"default"`, creates a sampler, or treats recorded provenance as executable
 configuration. Remove the existing `RhimeResult` sampler default factory and adapt
 the concrete result factories and output adapter together.
+The old factory only constructs an unbound object; it does not sample or build a
+model. Its problem is that omitting a result's sampler manufactures default
+settings that need not describe the saved inference. A factory on a requested
+configuration may still be appropriate because that object requests future work.
 
 ### 3. Keep scientific order visible; save only at explicit boundaries
 
