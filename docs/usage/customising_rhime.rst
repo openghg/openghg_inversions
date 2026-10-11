@@ -56,7 +56,55 @@ The supplied ``RhimeMergedData`` and its xarray or Dask arrays remain borrowed.
 Filtering returns a replacement handoff when it changes observations; basis
 construction and labelled assembly consume that result without mutating the
 external object.  A normal ``reload_merged_data`` request instead belongs to
-the same retrieval stage and may read a configured artifact from disk.
+the same retrieval stage and reads the configured artifact from disk. Missing
+directories, missing or corrupt artifacts, and incompatible selector/layout
+metadata raise an error; an explicit reload never falls back to fresh retrieval.
+
+Acquire or load a merged handoff explicitly
+-------------------------------------------
+
+``SiteOptions`` keeps all observation and footprint selectors aligned to one
+site order. Normalize scalar or per-site inputs once, then choose fresh
+acquisition or an existing merged artifact::
+
+   from openghg_inversions.inversion_data import RhimeMergedData, SiteOptions
+
+   selectors = SiteOptions.from_inputs(
+       sites=["TAC", "MHD"], averaging_period="4h", inlet=["185m", "10m"],
+   )
+   merged = RhimeMergedData.from_options(
+       site_options=selectors,
+       species="ch4", domain="EUROPE",
+       start_date="2020-01-01", end_date="2020-02-01",
+       output_name="example", flux_sources=["inventory"],
+       obs_store="user", footprint_store="user", emissions_store="user",
+       bc_store="user",
+   )
+
+Use your configured object stores and flux source names. Fresh acquisition may
+drop unavailable sites; the returned ``merged.site_options`` retains every
+selector in the resulting site order. Saving is disabled by default. An
+explicit save uses the established merged-data codec::
+
+   merged.save("merged-cache", merged_data_name="example.nc")
+   reopened = RhimeMergedData.load(
+       "merged-cache", merged_data_name="example.nc", site_options=selectors,
+   )
+
+The current cache stores scientific datasets, not the complete selector
+record, so ``load`` requires caller-supplied ``site_options``. It retains
+available sites in requested order and checks explicit ``time_resolved``
+selectors and the ``split_by_sectors`` layout. Failed loading raises without
+contacting stores. Reading and writing are explicit I/O boundaries and may
+materialize lazy arrays; ordinary handoff construction and access do not.
+These caches precede filtering. Supply the returned handoff as ``merged_data``
+to resume the standard runner at filtering.
+
+For the existing tuple-returning retrieval API, use
+``openghg_inversions.inversion_data.retrieve_inversion_data``. The former
+``data_processing_surface_notracer`` name forwards the same arguments and
+return value and now emits ``DeprecationWarning``. ``convert_to_list`` now lives in ``inversion_data._site_options``;
+its old ``inversion_data.get_data`` import path has been removed.
 
 Change the likelihood with a Python function
 --------------------------------------------

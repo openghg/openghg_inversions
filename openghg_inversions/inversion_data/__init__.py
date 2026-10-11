@@ -1,5 +1,6 @@
 from .acquisition import RhimeMergedData
-from .get_data import data_processing_surface_notracer
+from ._site_options import SiteOptions
+from .get_data import data_processing_surface_notracer, retrieve_inversion_data
 from .preparation import (
     prepare_rhime_inputs,
 )
@@ -10,6 +11,8 @@ from .xarray_adapter import prepare_rhime_inputs_from_xarray
 __all__ = [
     "_save_merged_data",
     "RhimeMergedData",
+    "SiteOptions",
+    "retrieve_inversion_data",
     "RhimePreparedInputs",
     "data_processing_surface_notracer",
     "load_merged_data",

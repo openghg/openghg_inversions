@@ -9,231 +9,16 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from numbers import Integral
+from pathlib import Path
 from typing import Any
 
 import xarray as xr
 
 from openghg_inversions._timing import timed
 from openghg_inversions.flux_sanitization import FluxNonFiniteCheck, sanitize_flux_nonfinite
-from openghg_inversions.inversion_data._site_options import (
-    expand_site_boolean_option,
-    expand_site_option,
-    is_column_observation,
-)
-from openghg_inversions.inversion_data.get_data import data_processing_surface_notracer
-from openghg_inversions.inversion_data.serialise import load_merged_data
-
-SiteStringOption = Sequence[str | None] | str | None
-SiteInletOption = Sequence[str | slice | None] | str | None
-SiteIntegerOption = Sequence[int | None] | int | None
-SiteBooleanOption = Sequence[bool | None] | bool | None
-
-
-def _normalise_site_strings(
-    value: Sequence[str | None] | str | None,
-    *,
-    length: int,
-    name: str,
-) -> list[str | None]:
-    """Normalize and validate one optional-string value per requested site."""
-    normalized = list(expand_site_option(value, nsites=length, name=name))
-    invalid = [item for item in normalized if item is not None and not isinstance(item, str)]
-    if invalid:
-        raise ValueError(f"`{name}` entries must be strings or None. Invalid value(s): {invalid!r}.")
-    return normalized
-
-
-def _normalise_site_integers(
-    value: Sequence[int | None] | int | None,
-    *,
-    length: int,
-    name: str,
-) -> list[int | None]:
-    """Normalize and validate one optional integer value per requested site."""
-    normalized = list(expand_site_option(value, nsites=length, name=name))
-
-    invalid = [
-        item
-        for item in normalized
-        if item is not None and (not isinstance(item, Integral) or isinstance(item, bool))
-    ]
-    if invalid:
-        raise ValueError(f"`{name}` entries must be integers or None. Invalid value(s): {invalid!r}.")
-    return [None if item is None else int(item) for item in normalized]
-
-
-def _normalise_site_inlets(
-    value: Sequence[str | slice | None] | str | None,
-    *,
-    length: int,
-) -> list[str | slice | None]:
-    """Normalize inlet selectors, including legacy per-site slice selectors."""
-    normalized = list(expand_site_option(value, nsites=length, name="inlet"))
-    invalid = [item for item in normalized if item is not None and not isinstance(item, str | slice)]
-    if invalid:
-        raise ValueError(f"`inlet` entries must be strings, slices, or None. Invalid value(s): {invalid!r}.")
-    return normalized
-
-
-def _normalise_site_booleans(
-    value: SiteBooleanOption,
-    *,
-    length: int,
-    name: str,
-) -> list[bool | None]:
-    """Normalize one optional boolean selector per requested site."""
-    return list(expand_site_boolean_option(value, nsites=length, name=name))
-
-
-@dataclass(frozen=True)
-class _SiteOptions:
-    """All runner inputs whose positions are aligned to ``sites``.
-
-    Every field has the same length and ordering. Selection always creates a
-    new complete record so no option can drift independently from its site.
-    """
-
-    sites: tuple[str, ...]
-    averaging_period: tuple[str | None, ...]
-    inlet: tuple[str | slice | None, ...]
-    fp_height: tuple[str | None, ...]
-    instrument: tuple[str | None, ...]
-    platform: tuple[str | None, ...]
-    obs_data_level: tuple[str | None, ...]
-    met_model: tuple[str | None, ...]
-    max_level: tuple[int | None, ...]
-    time_resolved: tuple[bool | None, ...]
-
-    def __post_init__(self) -> None:
-        """Freeze supplied sequences and enforce the common-length invariant."""
-        field_names = (
-            "sites",
-            "averaging_period",
-            "inlet",
-            "fp_height",
-            "instrument",
-            "platform",
-            "obs_data_level",
-            "met_model",
-            "max_level",
-            "time_resolved",
-        )
-        for name in field_names:
-            object.__setattr__(self, name, tuple(getattr(self, name)))
-
-        if not self.sites:
-            raise ValueError("At least one site must be specified for inversion data preparation.")
-        if len(set(self.sites)) != len(self.sites):
-            raise ValueError(f"Site names must be unique: {self.sites!r}.")
-
-        expected_length = len(self.sites)
-        misaligned = {
-            name: len(getattr(self, name))
-            for name in field_names[1:]
-            if len(getattr(self, name)) != expected_length
-        }
-        if misaligned:
-            raise ValueError(
-                "Every site-aligned option must have the same length as `sites`; "
-                f"expected {expected_length}, got {misaligned!r}."
-            )
-
-    @classmethod
-    def from_inputs(
-        cls,
-        *,
-        sites: Sequence[str],
-        averaging_period: Sequence[str | None] | str | None,
-        inlet: Sequence[str | slice | None] | str | None,
-        fp_height: Sequence[str | None] | str | None,
-        instrument: Sequence[str | None] | str | None,
-        platform: Sequence[str | None] | str | None,
-        obs_data_level: Sequence[str | None] | str | None,
-        met_model: Sequence[str | None] | str | None,
-        max_level: Sequence[int | None] | int | None,
-        time_resolved: SiteBooleanOption = None,
-    ) -> _SiteOptions:
-        """Normalize all site options and validate their common length.
-
-        Site names are uppercased. Scalar option values are broadcast, while
-        sequences must match the number of sites. Inlets also support legacy
-        ``slice`` selectors; maximum levels reject booleans.
-
-        Raises:
-            ValueError: If no sites are supplied, site names are duplicated,
-                an option has the wrong length, or an entry has an invalid
-                type.
-        """
-        normalized_sites = [site.upper() for site in sites]
-        if not normalized_sites:
-            raise ValueError("At least one site must be specified for inversion data preparation.")
-        if len(set(normalized_sites)) != len(normalized_sites):
-            raise ValueError(f"Site names must be unique: {normalized_sites!r}.")
-        nsites = len(normalized_sites)
-        return cls(
-            sites=tuple(normalized_sites),
-            averaging_period=tuple(
-                _normalise_site_strings(averaging_period, length=nsites, name="averaging_period")
-            ),
-            inlet=tuple(_normalise_site_inlets(inlet, length=nsites)),
-            fp_height=tuple(_normalise_site_strings(fp_height, length=nsites, name="fp_height")),
-            instrument=tuple(_normalise_site_strings(instrument, length=nsites, name="instrument")),
-            platform=tuple(_normalise_site_strings(platform, length=nsites, name="platform")),
-            obs_data_level=tuple(
-                _normalise_site_strings(obs_data_level, length=nsites, name="obs_data_level")
-            ),
-            met_model=tuple(_normalise_site_strings(met_model, length=nsites, name="met_model")),
-            max_level=tuple(_normalise_site_integers(max_level, length=nsites, name="max_level")),
-            time_resolved=tuple(_normalise_site_booleans(time_resolved, length=nsites, name="time_resolved")),
-        )
-
-    def select_indices(self, indices: Sequence[int]) -> _SiteOptions:
-        """Return a new complete option record restricted to ``indices``."""
-
-        def select(values: Sequence[Any]) -> tuple[Any, ...]:
-            return tuple(values[index] for index in indices)
-
-        return _SiteOptions(
-            sites=select(self.sites),
-            averaging_period=select(self.averaging_period),
-            inlet=select(self.inlet),
-            fp_height=select(self.fp_height),
-            instrument=select(self.instrument),
-            platform=select(self.platform),
-            obs_data_level=select(self.obs_data_level),
-            met_model=select(self.met_model),
-            max_level=select(self.max_level),
-            time_resolved=select(self.time_resolved),
-        )
-
-    @property
-    def is_column(self) -> bool:
-        """Whether any retained site uses a supported column-data selector."""
-        return any(
-            is_column_observation(inlet, platform)
-            for inlet, platform in zip(self.inlet, self.platform, strict=True)
-        )
-
-    def retain_sites(self, retained_sites: Sequence[str], *, context: str) -> _SiteOptions:
-        """Return options for retained sites in their supplied order.
-
-        Raises:
-            ValueError: If requested or retained names are duplicated, or a
-                retained name was not in the original request.
-        """
-        normalized_retained = [site.upper() for site in retained_sites]
-        index_by_site = {site: index for index, site in enumerate(self.sites)}
-        if len(index_by_site) != len(self.sites):
-            raise ValueError(f"{context} cannot align duplicate requested site names: {self.sites!r}.")
-
-        missing_sites = [site for site in normalized_retained if site not in index_by_site]
-        if missing_sites:
-            raise ValueError(f"{context} returned site(s) that were not requested: {missing_sites!r}.")
-        if len(set(normalized_retained)) != len(normalized_retained):
-            raise ValueError(f"{context} returned duplicate site names: {normalized_retained!r}.")
-
-        return self.select_indices([index_by_site[site] for site in normalized_retained])
+from openghg_inversions.inversion_data import _site_options
+from openghg_inversions.inversion_data.get_data import retrieve_inversion_data
+from openghg_inversions.inversion_data.serialise import OutputFormat, _save_merged_data, load_merged_data
 
 
 @dataclass
@@ -253,7 +38,7 @@ class RhimeMergedData:
     """
 
     fp_all: dict
-    site_options: _SiteOptions
+    site_options: _site_options.SiteOptions
 
     @property
     def sites(self) -> tuple[str, ...]:
@@ -270,12 +55,176 @@ class RhimeMergedData:
         """Retained observation platforms aligned to :attr:`sites`."""
         return self.site_options.platform
 
+    @classmethod
+    def load(
+        cls,
+        merged_data_dir: str | Path,
+        *,
+        site_options: _site_options.SiteOptions,
+        species: str | None = None,
+        start_date: str | None = None,
+        output_name: str | None = None,
+        merged_data_name: str | None = None,
+        output_format: OutputFormat | None = None,
+        split_by_sectors: bool = False,
+        flux_non_finite_check: FluxNonFiniteCheck = "lazy",
+    ) -> RhimeMergedData:
+        """Read a current-format merged artifact with caller-supplied selectors.
+
+        The codec does not store complete site options. ``site_options`` must
+        therefore describe the requested sites; loading retains their requested
+        order and drops absent sites. Explicit time-resolution selectors and
+        sector layout must match the artifact. Naming and format follow
+        :func:`load_merged_data`. Flux sanitation follows fresh acquisition.
+
+        This filesystem boundary may materialize arrays through the current
+        codec. Missing paths, invalid artifacts, incompatible selectors and
+        empty retained selections raise; loading never retrieves fresh data.
+        """
+        if merged_data_dir is None:
+            raise ValueError("Explicit merged-data reload requires `merged_data_dir`.")
+        fp_all = load_merged_data(
+            merged_data_dir,
+            species,
+            start_date,
+            output_name,
+            merged_data_name,
+            output_format=output_format,
+        )
+        _validate_loaded_time_resolved_selector(fp_all, site_options)
+        _validate_loaded_sector_layout(fp_all, split_by_sectors=split_by_sectors)
+        site_options = _drop_sites_missing_from_loaded_data(fp_all=fp_all, site_options=site_options)
+        fp_all = _select_fp_all_sites(fp_all, site_options.sites)
+        fp_all[".split_by_sectors"] = split_by_sectors
+        _sanitize_merged_flux(fp_all, flux_non_finite_check)
+        return cls(fp_all=fp_all, site_options=site_options)
+
+    @classmethod
+    def from_options(
+        cls,
+        *,
+        species: str,
+        site_options: _site_options.SiteOptions,
+        domain: str,
+        start_date: str,
+        end_date: str,
+        output_name: str,
+        flux_sources: list[str] | None,
+        split_by_sectors: bool = False,
+        bc_store: str = "user",
+        obs_store: str = "user",
+        footprint_store: str = "user",
+        emissions_store: str = "user",
+        emissions_domain: str | None = None,
+        fp_model: str | None = None,
+        fp_species: str | None = None,
+        calibration_scale: str | None = None,
+        use_bc: bool = True,
+        bc_input: str | None = None,
+        averaging_error: bool = True,
+        save_merged_data: bool = False,
+        merged_data_dir: str | None = None,
+        merged_data_name: str | None = None,
+        flux_non_finite_check: FluxNonFiniteCheck = "lazy",
+    ) -> RhimeMergedData:
+        """Acquire fresh merged data using complete aligned selectors.
+
+        Reads OpenGHG stores and retains all selector fields together when sites
+        are unavailable. Returned datasets may be lazy and remain borrowed by
+        later preparation. ``flux_sources`` names OpenGHG sources; ``averaging_error``
+        controls inclusion of observation variability. Optional saving uses the
+        current merged-data codec and is disabled by default. Retrieval never
+        attempts cache loading; use :meth:`load` for an explicit artifact request.
+        Store, selector, merge and optional serialization errors propagate.
+        """
+        # Requested options remain authoritative; legacy metadata is redundant.
+        fp_all, retained_sites, *_ = retrieve_inversion_data(
+            species=species,
+            sites=list(site_options.sites),
+            domain=domain,
+            averaging_period=list(site_options.averaging_period),
+            start_date=start_date,
+            end_date=end_date,
+            obs_data_level=list(site_options.obs_data_level),
+            platform=list(site_options.platform),
+            met_model=list(site_options.met_model),
+            fp_model=fp_model,
+            fp_height=list(site_options.fp_height),
+            fp_species=fp_species,
+            time_resolved=list(site_options.time_resolved),
+            emissions_name=flux_sources,
+            inlet=list(site_options.inlet),
+            instrument=list(site_options.instrument),
+            max_level=list(site_options.max_level),
+            calibration_scale=calibration_scale,
+            use_bc=use_bc,
+            bc_input=bc_input,
+            bc_store=bc_store,
+            obs_store=obs_store,
+            footprint_store=footprint_store,
+            emissions_store=emissions_store,
+            emissions_domain=emissions_domain,
+            split_by_sectors=split_by_sectors,
+            averagingerror=averaging_error,
+            save_merged_data=save_merged_data,
+            merged_data_name=merged_data_name,
+            merged_data_dir=merged_data_dir,
+            output_name=output_name,
+            flux_non_finite_check=flux_non_finite_check,
+        )
+        site_options = site_options.retain_sites(retained_sites, context="Data gathering")
+        fp_all = _select_fp_all_sites(fp_all, site_options.sites)
+        _sanitize_merged_flux(fp_all, flux_non_finite_check)
+        return cls(fp_all=fp_all, site_options=site_options)
+
+    def save(
+        self,
+        merged_data_dir: str | Path,
+        *,
+        species: str | None = None,
+        start_date: str | None = None,
+        output_name: str | None = None,
+        merged_data_name: str | None = None,
+        output_format: OutputFormat = "zarr.zip",
+    ) -> None:
+        """Write the merged scientific datasets in the established cache format.
+
+        This is an explicit filesystem and numerical execution boundary:
+        serialization computes lazy payloads and may rechunk them for Zarr.
+        It writes ``fp_all``; it does not introduce a serialized site-options
+        schema. Cache loading aligns selectors from the current request.
+
+        Args:
+            merged_data_dir: Destination directory, created if absent.
+            species: Gas name used in the default artifact filename.
+            start_date: Requested start date used in the default filename.
+            output_name: Run name used in the default filename.
+            merged_data_name: Explicit artifact name. When omitted, ``species``,
+                ``start_date`` and ``output_name`` must all be supplied.
+                An ``.nc``, ``.zarr`` or ``.zarr.zip`` suffix selects its format.
+            output_format: Format used when the name has no recognized suffix:
+                ``"netcdf"``, ``"zarr"`` or ``"zarr.zip"``.
+
+        Raises:
+            ValueError: If naming inputs are missing, the format is unsupported,
+                or the obsolete pickle suffix is used.
+        """
+        _save_merged_data(
+            self.fp_all,
+            merged_data_dir,
+            species=species,
+            start_date=start_date,
+            output_name=output_name,
+            merged_data_name=merged_data_name,
+            output_format=output_format,
+        )
+
 
 def _drop_sites_missing_from_loaded_data(
     *,
     fp_all: dict,
-    site_options: _SiteOptions,
-) -> _SiteOptions:
+    site_options: _site_options.SiteOptions,
+) -> _site_options.SiteOptions:
     """Align site-level options when loaded merged data lacks requested sites."""
     sites_merged = [site for site in fp_all if not site.startswith(".")]
     if all(site in sites_merged for site in site_options.sites):
@@ -295,7 +244,7 @@ def _drop_sites_missing_from_loaded_data(
 
 def _validate_loaded_time_resolved_selector(
     fp_all: Mapping[str, Any],
-    site_options: _SiteOptions,
+    site_options: _site_options.SiteOptions,
 ) -> None:
     """Reject cached sites whose explicit time-resolution selector differs."""
     mismatched_sites: list[str] = []
@@ -352,7 +301,7 @@ def _retrieve_or_reload_merged_data(
     species: str,
     sites: list[str],
     domain: str,
-    averaging_period: SiteStringOption,
+    averaging_period: _site_options.SiteStringOption,
     start_date: str,
     end_date: str,
     output_name: str,
@@ -363,17 +312,17 @@ def _retrieve_or_reload_merged_data(
     footprint_store: str = "user",
     emissions_store: str = "user",
     emissions_domain: str | None = None,
-    met_model: SiteStringOption = None,
+    met_model: _site_options.SiteStringOption = None,
     fp_model: str | None = None,
-    fp_height: SiteStringOption = None,
+    fp_height: _site_options.SiteStringOption = None,
     fp_species: str | None = None,
-    time_resolved: SiteBooleanOption = None,
-    inlet: SiteInletOption = None,
-    instrument: SiteStringOption = None,
-    max_level: SiteIntegerOption = None,
+    time_resolved: _site_options.SiteBooleanOption = None,
+    inlet: _site_options.SiteInletOption = None,
+    instrument: _site_options.SiteStringOption = None,
+    max_level: _site_options.SiteIntegerOption = None,
     calibration_scale: str | None = None,
-    obs_data_level: SiteStringOption = None,
-    platform: SiteStringOption = None,
+    obs_data_level: _site_options.SiteStringOption = None,
+    platform: _site_options.SiteStringOption = None,
     use_bc: bool = True,
     bc_input: str | None = None,
     averaging_error: bool = True,
@@ -389,7 +338,8 @@ def _retrieve_or_reload_merged_data(
     helper passes them to lower-level data loading through the legacy
     ``emissions_name`` argument. Retrieval may access OpenGHG object stores,
     print progress, and optionally save merged data. Reload reads a local
-    artifact. Both paths retain one complete :class:`_SiteOptions` record.
+    artifact. Both paths retain one complete :class:`_site_options.SiteOptions` record. Explicit
+    reload errors propagate without attempting fresh acquisition.
 
     Returns:
         Merged per-site data and aligned retained-site options.
@@ -398,7 +348,7 @@ def _retrieve_or_reload_merged_data(
         ValueError: If site options are invalid, no requested sites are loaded,
             or retrieval returns invalid retained-site names.
     """
-    site_options = _SiteOptions.from_inputs(
+    site_options = _site_options.SiteOptions.from_inputs(
         sites=sites,
         averaging_period=averaging_period,
         inlet=inlet,
@@ -410,79 +360,44 @@ def _retrieve_or_reload_merged_data(
         max_level=max_level,
         time_resolved=time_resolved,
     )
-    fp_all: dict | None = None
-    if reload_merged_data and merged_data_dir is not None:
-        try:
-            fp_all = load_merged_data(merged_data_dir, species, start_date, output_name, merged_data_name)
-        except ValueError as exc:
-            print(f"{exc}, re-running data merge.")
-    elif reload_merged_data:
-        print("Cannot reload merged data without a value for `merged_data_dir`; re-running data merge.")
-
-    if fp_all is not None:
-        _validate_loaded_time_resolved_selector(fp_all, site_options)
-        _validate_loaded_sector_layout(fp_all, split_by_sectors=split_by_sectors)
-        print("Successfully read in merged data.\n")
-        fp_all[".split_by_sectors"] = split_by_sectors
-        site_options = _drop_sites_missing_from_loaded_data(fp_all=fp_all, site_options=site_options)
-    else:
-        # Requested options remain authoritative; legacy metadata is redundant.
-        fp_all, retained_sites, *_ = data_processing_surface_notracer(
+    if reload_merged_data:
+        if merged_data_dir is None:
+            raise ValueError("Explicit merged-data reload requires `merged_data_dir`.")
+        return RhimeMergedData.load(
+            merged_data_dir,
+            site_options=site_options,
             species=species,
-            sites=list(site_options.sites),
-            domain=domain,
-            averaging_period=list(site_options.averaging_period),
             start_date=start_date,
-            end_date=end_date,
-            obs_data_level=list(site_options.obs_data_level),
-            platform=list(site_options.platform),
-            met_model=list(site_options.met_model),
-            fp_model=fp_model,
-            fp_height=list(site_options.fp_height),
-            fp_species=fp_species,
-            time_resolved=list(site_options.time_resolved),
-            emissions_name=flux_sources,
-            inlet=list(site_options.inlet),
-            instrument=list(site_options.instrument),
-            max_level=list(site_options.max_level),
-            calibration_scale=calibration_scale,
-            use_bc=use_bc,
-            bc_input=bc_input,
-            bc_store=bc_store,
-            obs_store=obs_store,
-            footprint_store=footprint_store,
-            emissions_store=emissions_store,
-            emissions_domain=emissions_domain,
-            split_by_sectors=split_by_sectors,
-            averagingerror=averaging_error,
-            save_merged_data=save_merged_data,
-            merged_data_name=merged_data_name,
-            merged_data_dir=merged_data_dir,
             output_name=output_name,
+            merged_data_name=merged_data_name,
+            split_by_sectors=split_by_sectors,
             flux_non_finite_check=flux_non_finite_check,
         )
-        site_options = site_options.retain_sites(retained_sites, context="Data gathering")
-
-    fp_all = _select_fp_all_sites(fp_all, site_options.sites)
-
-    flux_entries = fp_all.get(".flux")
-    if isinstance(flux_entries, Mapping):
-        for source, flux_data in flux_entries.items():
-            data = getattr(flux_data, "data", None)
-            if isinstance(data, xr.Dataset) and "flux" in data:
-                data["flux"] = sanitize_flux_nonfinite(
-                    data["flux"],
-                    context="merged inversion data preparation",
-                    source=str(source),
-                    check=flux_non_finite_check,
-                    warn=flux_non_finite_check == "count",
-                )
-
-    return RhimeMergedData(
-        fp_all=fp_all,
+    return RhimeMergedData.from_options(
+        species=species,
         site_options=site_options,
+        domain=domain,
+        start_date=start_date,
+        end_date=end_date,
+        output_name=output_name,
+        flux_sources=flux_sources,
+        split_by_sectors=split_by_sectors,
+        bc_store=bc_store,
+        obs_store=obs_store,
+        footprint_store=footprint_store,
+        emissions_store=emissions_store,
+        emissions_domain=emissions_domain,
+        fp_model=fp_model,
+        fp_species=fp_species,
+        calibration_scale=calibration_scale,
+        use_bc=use_bc,
+        bc_input=bc_input,
+        averaging_error=averaging_error,
+        save_merged_data=save_merged_data,
+        merged_data_dir=merged_data_dir,
+        merged_data_name=merged_data_name,
+        flux_non_finite_check=flux_non_finite_check,
     )
-
 
 
 def retrieve_or_reload_rhime_data(
@@ -555,3 +470,19 @@ def retrieve_or_reload_rhime_data(
             merged_data_name=data_args["merged_data_name"],
             flux_non_finite_check=data_args["flux_non_finite_check"],
         )
+
+
+def _sanitize_merged_flux(fp_all: dict, flux_non_finite_check: FluxNonFiniteCheck) -> None:
+    """Apply the established flux policy at acquisition and cache boundaries."""
+    flux_entries = fp_all.get(".flux")
+    if isinstance(flux_entries, Mapping):
+        for source, flux_data in flux_entries.items():
+            data = getattr(flux_data, "data", None)
+            if isinstance(data, xr.Dataset) and "flux" in data:
+                data["flux"] = sanitize_flux_nonfinite(
+                    data["flux"],
+                    context="merged inversion data preparation",
+                    source=str(source),
+                    check=flux_non_finite_check,
+                    warn=flux_non_finite_check == "count",
+                )

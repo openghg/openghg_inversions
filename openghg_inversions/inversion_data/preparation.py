@@ -37,18 +37,20 @@ from openghg_inversions.boundary_sensitivity import (
 )
 from openghg_inversions.filters import filtering
 from openghg_inversions.flux_sanitization import FluxNonFiniteCheck
-from openghg_inversions.inversion_data.acquisition import (
-    RhimeMergedData as RhimeMergedData,
+from openghg_inversions.inversion_data._site_options import (
     SiteBooleanOption as SiteBooleanOption,
     SiteInletOption as SiteInletOption,
     SiteIntegerOption as SiteIntegerOption,
     SiteStringOption as SiteStringOption,
-    _SiteOptions,
-    _drop_sites_missing_from_loaded_data as _drop_sites_missing_from_loaded_data,
     _normalise_site_booleans as _normalise_site_booleans,
     _normalise_site_inlets as _normalise_site_inlets,
     _normalise_site_integers as _normalise_site_integers,
     _normalise_site_strings as _normalise_site_strings,
+)
+from openghg_inversions.inversion_data import _site_options
+from openghg_inversions.inversion_data.acquisition import (
+    RhimeMergedData as RhimeMergedData,
+    _drop_sites_missing_from_loaded_data as _drop_sites_missing_from_loaded_data,
     _retrieve_or_reload_merged_data,
     _select_fp_all_sites as _select_fp_all_sites,
     _validate_loaded_sector_layout as _validate_loaded_sector_layout,
@@ -142,9 +144,9 @@ def _warn_for_nan_inputs(inv_inputs: xr.Dataset, *, use_bc: bool) -> None:
 def _apply_filters_and_drop_empty_sites(
     *,
     fp_data: dict,
-    site_options: _SiteOptions,
+    site_options: _site_options.SiteOptions,
     filters: Any,
-) -> tuple[dict, _SiteOptions]:
+) -> tuple[dict, _site_options.SiteOptions]:
     """Apply filters and keep site-aligned metadata in sync."""
     if filters is not None:
         try:
