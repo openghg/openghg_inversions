@@ -42,12 +42,32 @@ def _copy_sampler_options(value: Any) -> Any:
 def _validate_idata_options(kwargs: Mapping[str, Any] | None, *, label: str) -> None:
     """Keep model registration authoritative for inference coordinates."""
     idata_kwargs = (kwargs or {}).get("idata_kwargs", {})
+    if idata_kwargs is None:
+        return
     forbidden = {"coords", "dims"}.intersection(idata_kwargs)
     if forbidden:
         raise ValueError(
             f"sampler.{label}['idata_kwargs'] must not contain "
             f"{sorted(forbidden)!r}; register coordinates and dimensions on the model instead."
         )
+
+
+def _sampler_options_equal(left: Any, right: Any) -> bool:
+    """Compare owned option values without materializing borrowed arrays."""
+    if left is right:
+        return True
+    if isinstance(left, np.ndarray) or isinstance(right, np.ndarray):
+        return isinstance(left, np.ndarray) and isinstance(right, np.ndarray) and np.array_equal(left, right)
+    if isinstance(left, dict) and isinstance(right, dict):
+        return left.keys() == right.keys() and all(
+            _sampler_options_equal(left[key], right[key]) for key in left
+        )
+    if isinstance(left, (list, tuple)) and isinstance(right, (list, tuple)):
+        return type(left) is type(right) and len(left) == len(right) and all(
+            _sampler_options_equal(a, b) for a, b in zip(left, right)
+        )
+    equal = left == right
+    return isinstance(equal, (bool, np.bool_)) and bool(equal)
 
 
 def resolve_sampler(
@@ -273,7 +293,9 @@ class RhimeSampler:
         """Compare sampler settings."""
         if not isinstance(other, RhimeSampler):
             return NotImplemented
-        return all(getattr(self, name) == getattr(other, name) for name in self.__slots__)
+        return all(
+            _sampler_options_equal(getattr(self, name), getattr(other, name)) for name in self.__slots__
+        )
 
     def __repr__(self) -> str:
         """Return a concise representation for tests and debugging."""

@@ -58,6 +58,7 @@ def test_resolved_sampler_owns_options_and_borrows_runtime_objects() -> None:
     )
     resolved = resolve_sampler(sampler)
     assert resolved is not sampler
+    assert resolved == sampler
     assert resolved.draws == 17
     kwargs = cast(dict[str, Any], resolved.sample_kwargs)
     original = cast(dict[str, Any], sampler.sample_kwargs)
@@ -75,11 +76,53 @@ def test_resolved_sampler_owns_options_and_borrows_runtime_objects() -> None:
     np.testing.assert_array_equal(original["initvals"][0]["x"][0], [1.0])
     assert original["initvals"][0]["x"][1] == [2.0]
     assert sampler.posterior_predictive_kwargs == {"compile_kwargs": {"updates": []}}
+    assert resolved != sampler
     first = resolve_sampler("default")
     second = resolve_sampler("default")
     assert first is not second
     assert first == second == RhimeSampler()
     assert resolve_sampler(sampler, draws=99).draws == 17
+
+
+@pytest.mark.parametrize(
+    "different",
+    [
+        {"x": [np.array([3, 5])]},
+        {"x": [np.array([[3, 4]])]},
+        {"x": (np.array([3, 4]),)},
+        {"x": [np.array([3, 4]), 0]},
+        {"other": [np.array([3, 4])]},
+    ],
+)
+def test_sampler_equality_distinguishes_nested_array_options(different: dict[str, Any]) -> None:
+    """Array values, shapes and surrounding containers remain meaningful settings."""
+    sampler = RhimeSampler(sample_kwargs={"initvals": {"x": [np.array([3, 4])]}})
+    assert sampler == resolve_sampler(sampler)
+    assert sampler != RhimeSampler(sample_kwargs={"initvals": different})
+
+
+@pytest.mark.parametrize("resolve", [False, True])
+def test_predictive_idata_none_executes_with_pymc_defaults(
+    monkeypatch: pytest.MonkeyPatch, resolve: bool,
+) -> None:
+    """The PyMC-supported None value survives validation and real prediction."""
+    sampler = RhimeSampler(
+        sample_prior_predictive=False,
+        posterior_predictive_kwargs={"idata_kwargs": None, "random_seed": 12},
+    )
+    if resolve:
+        sampler = resolve_sampler(sampler)
+    trace = xr.DataTree.from_dict({
+        "posterior": xr.Dataset({"x": (("chain", "draw"), [[1.0, 2.0]])}),
+    })
+    monkeypatch.setattr(pm, "sample", lambda **kwargs: trace)
+    with pm.Model() as model:
+        x = pm.Normal("x")
+        pm.Normal("y", mu=x, observed=0.0)
+    result = sampler.sample(model)
+    assert result["posterior_predictive"]["y"].shape == (1, 2)
+    assert np.isfinite(result["posterior_predictive"]["y"]).all()
+    assert sampler.posterior_predictive_kwargs["idata_kwargs"] is None
 
 
 @pytest.mark.parametrize("key", ["coords", "dims"])

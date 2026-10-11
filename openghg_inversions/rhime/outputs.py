@@ -72,6 +72,8 @@ class RhimeResult:
         sampler: Live sampling configuration, when supplied. Defaults to ``None``.
             Results constructed from saved samples need no sampler. Descriptive sampler
             metadata belongs in ``output_metadata["sampler"]`` for replay.
+            A supplied live sampler inserts or overwrites that entry in the supplied
+            dictionary at construction; later sampler changes do not refresh it.
         model_build_result: Model, variable-role manifest, and builder metadata,
             when available.
         output_contract: Durable scientific roles and reconstruction mapping.
@@ -337,10 +339,8 @@ def _make_inversion_output(
     )
 
 
-def _sampler_metadata(sampler: RhimeSampler | None) -> dict[str, int | str] | None:
+def _sampler_metadata(sampler: RhimeSampler) -> dict[str, int | str]:
     """Return serialisable sampler metadata for compatibility output attrs."""
-    if sampler is None:
-        return None
     return {
         "draws": sampler.draws,
         "burn": sampler.burn,
