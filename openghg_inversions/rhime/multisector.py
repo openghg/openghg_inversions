@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from openghg_inversions.basis import make_basis_functions
+from openghg_inversions.basis import prepare_basis
+from openghg_inversions.rhime.preparation import resolve_basis_inputs
 
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
@@ -707,6 +708,10 @@ def run_multisector(
     if likelihood_builder is None and config.model.likelihood is None:
         raise ValueError("A multisector RHIME run requires a built-in or custom likelihood.")
 
+    # Read selected scientific resources before expensive data acquisition.
+    basis_inputs = resolve_basis_inputs(config)
+
+
     # 1. Resolve acquisition through the data owner.
     preparation_start = timer_start()
     if merged_data is not None:
@@ -735,17 +740,16 @@ def run_multisector(
     merged = prepare_observation_errors(merged, averaging_error=config.averaging_error)
     filtered = filter_observations(merged, filters=config.filters)
     with timed("rhime.prepare_inputs.basis_build", basis_algorithm=config.basis_algorithm):
-        basis_functions = make_basis_functions(
+        basis_functions = prepare_basis(
             site_data=filtered.site_data,
             flux_data=filtered.flux_data,
             split_by_sectors=filtered.split_by_sectors,
             **config.select(
-                "species", "domain", "start_date", "basis_algorithm", "nbasis",
-                "fp_basis_case", "basis_directory", "country_directory", "outer_regions_path",
+                "domain", "start_date", "basis_algorithm", "nbasis",
             ),
             flux_sources=config.flux_sources,
             fix_outer_regions=config.fix_basis_outer_regions,
-            outputname=config.output_name,
+            **basis_inputs,
             output_path=config.basis_output_path,
         )
     site_data = build_sensitivities(

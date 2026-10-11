@@ -114,8 +114,11 @@ a compact, direct identity for the prepared handoff.
 Commands and artifacts
 ----------------------
 
-All paths are explicit and outputs are written below ``--output-dir`` (or
-``openghg-run``'s ``OUTPUT_DIR``). Commands do not depend on the caller's
+Stage-owned artifacts are written below ``--output-dir`` (or
+``openghg-run``'s ``OUTPUT_DIR``). An explicitly configured
+``basis_output_path`` keeps its exact destination; preparation does not replace
+it with a stage directory. Relative configured paths resolve from the INI or
+JSON file as described above. Commands do not depend on the caller's
 working directory and reject pre-existing symlinks beneath a stage output
 directory.
 

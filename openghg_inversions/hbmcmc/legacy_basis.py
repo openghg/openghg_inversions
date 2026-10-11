@@ -21,7 +21,7 @@ from openghg_inversions.basis.algorithms import AllocationMode, NbasisAllocation
 from openghg_inversions.basis.basis_functions import (
     BasisFunctions, FluxWeightedBasis, basis_functions_from_flat_basis, flux_from_data,
 )
-from openghg_inversions.basis._wrapper import make_basis_functions, load_basis_functions
+from openghg_inversions.basis.compatibility import make_basis_functions, load_basis_functions, load_country_region_classes, load_intem_outer_regions, resolve_legacy_outer_path
 
 def _flux_fp_from_fp_all(
     fp_all: dict, emissions_name: list[str] | None = None
@@ -169,7 +169,8 @@ def bucket_basis_function(
         start_date,
         domain,
         nbasis=nbasis,
-        country_directory=country_directory,
+        landsea_classes=(load_country_region_classes(domain, country_directory)
+                         if landsea_indices is None else None),
         landsea_indices=landsea_indices,
     )
 
@@ -330,8 +331,11 @@ def fixed_outer_regions_basis(
         {key: value for key, value in fp_all.items() if not key.startswith(".")},
         {key: _extract_flux_dataarray(value, flux_key=key).to_dataset(name="flux")
          for key, value in fp_all[".flux"].items()},
-        start_date, basis_algorithm, domain, emissions_name, nbasis, country_directory, abs_flux,
-        outer_regions_path=outer_regions_path, region_classes=region_classes,
+        start_date, basis_algorithm, domain, emissions_name, nbasis, abs_flux,
+        outer_regions=load_intem_outer_regions(domain, resolve_legacy_outer_path(
+            domain, outer_regions_path, country_directory)),
+        landsea_classes=load_country_region_classes(domain, country_directory) if basis_algorithm == "weighted" else None,
+        region_classes=region_classes,
         region_allocation=region_allocation, min_regions_per_class=min_regions_per_class,
         split_acceptance=split_acceptance, contrast_contribution=contrast_contribution,
         contrast_cell_weight=contrast_cell_weight, min_contrast_delta_eig=min_contrast_delta_eig,

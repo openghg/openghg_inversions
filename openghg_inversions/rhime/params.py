@@ -58,6 +58,11 @@ class RhimeConfig:
     numerical values. Modern ``emissions_store``/``emissions_domain`` spellings
     are removed in 0.9; supplying either with its ``flux_*`` replacement is an
     error, including equal values. Resolved fields use only ``flux_*`` names.
+    Deprecated ``fp_basis_case``, ``basis_directory`` and ``country_directory``
+    remain outer request fields for the transition. ``resolve_basis_inputs``
+    consumes them once before acquisition; numerical code receives exact paths
+    and resolved arrays. Prefer ``basis_path``/``basis_partition_path``,
+    ``landsea_path`` and ``outer_regions_path``.
     Direct construction and dataclass replacement expect
     already-resolved values and do not copy them.
     A frozen record does not make contained mappings or the sampler immutable.
@@ -82,6 +87,9 @@ class RhimeConfig:
     fp_species: str | None = None
     calibration_scale: str | None = None
     use_bc: bool = True
+    basis_path: str | Path | None = None
+    basis_partition_path: str | Path | None = None
+    landsea_path: str | Path | None = None
     fp_basis_case: str | None = None
     basis_directory: str | Path | None = None
     bc_basis_case: str = "NESW"
@@ -254,7 +262,7 @@ class RhimeConfig:
         )
         basis_algorithm = remaining.get("basis_algorithm", cls.basis_algorithm)
         allowed_basis_algorithms = ("quadtree", "weighted", "region_constrained")
-        if remaining.get("fp_basis_case") is None and basis_algorithm not in allowed_basis_algorithms:
+        if remaining.get("basis_path") is None and remaining.get("basis_partition_path") is None and remaining.get("fp_basis_case") is None and basis_algorithm not in allowed_basis_algorithms:
             raise ValueError(
                 f"`basis_algorithm` must be one of {allowed_basis_algorithms!r} when no `fp_basis_case` "
                 f"is supplied; got {basis_algorithm!r}."

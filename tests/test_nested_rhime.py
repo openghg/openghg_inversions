@@ -495,7 +495,7 @@ def test_nested_preparation_uses_native_inner_domain_and_safe_basis_default(monk
         retrieval_args.append(kwargs)
         return merged
 
-    def fake_prepare(domain_merged, *, config, allow_empty_inner_region=False):
+    def fake_prepare(domain_merged, *, config, allow_empty_inner_region=False, basis_support_maps=None):
         assert domain_merged.sites == ("TAC",)
         preparation_configs.append(config)
         return prepared
@@ -608,7 +608,7 @@ def test_nested_preparation_routes_automatic_basis_budget(monkeypatch) -> None:
         )
         return from_legacy_fp_all(fp_all={"TAC": dataset}, site_options=_site_options())
 
-    def fake_prepare(domain_merged, *, config, allow_empty_inner_region=False):
+    def fake_prepare(domain_merged, *, config, allow_empty_inner_region=False, basis_support_maps=None):
         preparation_configs.append(config)
         return prepared
 

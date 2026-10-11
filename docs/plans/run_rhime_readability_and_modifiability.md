@@ -183,6 +183,26 @@ Old fixedbasis-style INI translation is a time-limited compatibility boundary,
 not the name or conceptual basis of new design. The wrapper always selects
 `run_rhime`; exact direct legacy execution is no longer supported.
 
+### Basis preparation completion (#838)
+
+Modern preparation uses exact input/output artifact paths and resolved labelled
+support maps. Resolve selected files before acquisition; fail for missing
+resources without substituting another domain. `basis.compatibility` alone owns
+deprecated names, case/glob discovery, historical filenames, flat-file adaptation
+and opt-in legacy writing; its adapters call modern operations. Modern scientific
+code must remain understandable without that module.
+
+For devel/0.8, retained modern basis output is the default, revising #360's
+temporary legacy-default policy. Legacy basis output remains explicit opt-in;
+its 0.9 deprecation is not an automatic removal instruction. Caller-specified
+staged `basis_output_path` remains an exact destination. Country reporting maps
+are normally caller-supplied; packaged basis support maps remain selectable.
+
+The analogous BC case/directory convention remains inventoried in
+`build_sensitivities` and `bc_basis_case` / `bc_basis_directory` options; migrating
+it must not absorb BC scientific changes into this slice. Runtime-flux ownership
+is the next bounded change (#839). Acquisition replay remains deferred to #829.
+
 ## Target code shape
 
 The complete runnable recipe is maintained in
@@ -195,10 +215,11 @@ in this plan. Its visible order is:
 ```text
 read_rhime_ini -> options + winning overrides + recipe extraction
   -> RhimeConfig.from_params -> RhimeConfig
+  -> resolve selected basis paths/support maps at the application boundary
   -> RhimeMergedData.from_options with explicit resolved acquisition values
   -> prepare_observation_errors
   -> filter_observations
-  -> make_basis_functions
+  -> prepare_basis with exact artifact paths and resolved scientific maps
   -> build_sensitivities
   -> assemble_rhime_inputs
   -> RhimeRunSpec from retained prepared sites and resolved model/output choices

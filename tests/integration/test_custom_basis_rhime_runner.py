@@ -53,6 +53,7 @@ def test_custom_basis_runner_replaces_only_basis_stage(
     config_file = tmp_path / "rhime.ini"
     config_file.write_text('[RHIME.OUTPUT]\noutput_format = "none"\n', encoding="utf-8")
     project_basis_path = tmp_path / "external-basis.nc"
+    project_basis_path.touch()
     overrides = {"draws": 3}
     parsed_params = {
         "from_config": True,
@@ -120,6 +121,7 @@ def test_custom_basis_runner_replaces_only_basis_stage(
         assert kwargs["nbasis"] == config.nbasis
         assert kwargs["project_basis_path"] == tmp_path / "external-basis.nc"
         assert kwargs["max_child_pca_eccentricity"] == 6.5
+        assert kwargs["region_classes"] is None
         calls.append("project-basis")
         return basis
 
@@ -251,6 +253,10 @@ def test_project_basis_artifact_bypasses_calculation(
         """Fail if the cached ingress route tries to calculate a basis."""
         raise AssertionError(f"unexpected basis calculation for {actual!r} with {kwargs!r}")
 
+    monkeypatch.setattr(
+        custom_basis_runner, "load_basis_support_map",
+        lambda *args, **kwargs: pytest.fail("artifact reuse must not load generation maps"),
+    )
     monkeypatch.setattr(custom_basis_runner, "_guarded_basis", fail_calculation)
 
     loaded = custom_basis_runner.build_project_basis(
@@ -297,7 +303,6 @@ def test_generated_project_basis_uses_guarded_connected_inertial_composition(
         "start_date": "2019-01-01",
         "flux_sources": ["inventory"],
         "nbasis": 8,
-        "country_directory": Path("/project/country-classes"),
     }
 
     def basis_weights(
@@ -313,12 +318,6 @@ def test_generated_project_basis_uses_guarded_connected_inertial_composition(
         assert emissions_name == ["inventory"]
         assert abs_flux is True
         return weights
-
-    def load_classes(domain: str, country_directory: str | Path | None) -> xr.DataArray:
-        """Return deterministic country codes at the public class-map boundary."""
-        assert domain == "EUROPE"
-        assert country_directory == Path("/project/country-classes")
-        return country_classes
 
     def build_labels(
         normalized_weights: xr.DataArray,
@@ -381,7 +380,6 @@ def test_generated_project_basis_uses_guarded_connected_inertial_composition(
         return expected_basis
 
     monkeypatch.setattr(custom_basis_runner, "basis_weights_from_data", basis_weights)
-    monkeypatch.setattr(custom_basis_runner, "load_country_region_classes", load_classes)
     monkeypatch.setattr(custom_basis_runner, "region_constrained_basis", build_labels)
     monkeypatch.setattr(custom_basis_runner, "basis_functions_from_flat_basis", retain_basis)
 
@@ -390,13 +388,17 @@ def test_generated_project_basis_uses_guarded_connected_inertial_composition(
         domain=data_args["domain"],
         flux_sources=data_args["flux_sources"],
         nbasis=data_args["nbasis"],
-        country_directory=data_args["country_directory"],
+        region_classes=country_classes,
         max_child_pca_eccentricity=7.5,
     )
 
     assert actual is expected_basis
     assert isinstance(actual, BasisFunctions)
     assert bool(weights.isnull().any())
+    xr.testing.assert_identical(
+        country_classes,
+        xr.DataArray([[0, 4], [9, 0]], dims=weights.dims, coords=weights.coords, name="country"),
+    )
 
 
 def test_incompatible_project_basis_failure_remains_owned_by_sensitivity_stage(
@@ -503,3 +505,21 @@ def test_custom_basis_runner_resolves_before_loading_project_artifact(
         request = params
     with pytest.raises(ReachedSensitivities):
         custom_basis_runner.run_custom_rhime(**request)
+
+
+def test_custom_basis_missing_selected_map_fails_before_acquisition(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """The project validates its selected support map before store access."""
+    missing_map = tmp_path / "missing-classes.nc"
+    monkeypatch.setattr(
+        custom_basis_runner.RhimeMergedData,
+        "from_options",
+        lambda **kwargs: pytest.fail("a missing selected map must fail before acquisition"),
+    )
+    with pytest.raises(FileNotFoundError):
+        custom_basis_runner.run_custom_rhime(
+            species="ch4", sites=["TAC"], domain="EUROPE", averaging_period="1h",
+            start_date="2019-01-01", end_date="2019-02-01", output_name="missing-map",
+            output_format="none", flux_sources=["inventory"], landsea_path=missing_map,
+        )

@@ -13,6 +13,21 @@ basis. They are explicit basis partitions. Each fixed outer class receives one
 basis region, while the inner class receives the requested generated regions
 from the selected constrained-basis split strategy.
 
+## Explicit input boundary (#838 / #454)
+
+Modern `prepare_basis` receives resolved `outer_regions` and `landsea_classes`
+arrays. Application callers select exact files or packaged resources with
+`packaged_basis_support_path` and `load_basis_support_map` before acquisition.
+The lower-level weights-first fixed-outer helper likewise receives resolved
+`outer_regions` and `region_classes`. Missing domain resources fail rather than
+substituting EUROPE. Case/glob selection and old directory arguments are confined
+to `basis.compatibility`.
+
+This completes the path/map isolation part of #454, without promising its broader
+grouped-country allocation or semantic state metadata. Those remain governed by
+the target layout below. The valid labelled flat partition is a scientific
+representation; only its historical discovery/schema policy is compatibility.
+
 ## Current Compatibility Behavior
 
 `fixed_outer_regions_basis` currently:
@@ -27,7 +42,7 @@ from the selected constrained-basis split strategy.
 This behavior should not be removed or silently changed. It is the compatibility
 surface for users who already understand the InTEM outer-region files.
 
-The current route also passes through `make_basis_functions` and then into a
+The compatibility route now calls canonical `prepare_basis` and then into a
 retained `BasisFunctions` object. Today that retained object preserves the flat
 map and basic artifact metadata, but it does not have a place to serialize
 semantic state metadata such as inner/outer group membership.

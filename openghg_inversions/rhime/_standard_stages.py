@@ -7,7 +7,8 @@ orchestrator or scheduler.
 
 from __future__ import annotations
 
-from openghg_inversions.basis import make_basis_functions
+from openghg_inversions.basis import prepare_basis
+from openghg_inversions.rhime.preparation import resolve_basis_inputs
 
 from dataclasses import asdict, fields, replace
 from hashlib import sha256
@@ -75,6 +76,11 @@ ModelKind = Literal["standard", "multisector"]
 _STAGE_PATH_OPTIONS = frozenset(
     {
         "basis_directory",
+        "basis_path",
+        "basis_partition_path",
+        "basis_output_path",
+        "landsea_path",
+        "outer_regions_path",
         "bc_basis_directory",
         "country_directory",
         "country_file",
@@ -180,19 +186,17 @@ def prepare_rhime_stage(
     output_dir: str | Path,
 ) -> dict[str, Any]:
     """Prepare and persist independently inspectable RHIME inputs."""
-    destination = _stage_output_directory(output_dir)
     multisector = model == "multisector"
-    executed_setup = replace(
-        setup,
-        basis_output_path=str(destination / "basis") if setup.basis_output_path is not None else None,
-    )
+    basis_inputs = resolve_basis_inputs(setup)
+    destination = _stage_output_directory(output_dir)
+
     with timed(
         "rhime.prepare_inputs.merged_data",
-        sites=len(executed_setup.site_options.sites),
-        split_by_sectors=executed_setup.split_by_sectors,
+        sites=len(setup.site_options.sites),
+        split_by_sectors=setup.split_by_sectors,
     ):
         merged = RhimeMergedData.from_options(
-            **executed_setup.select(
+            **setup.select(
                 "site_options", "species", "domain", "start_date",
                 "end_date",  "flux_sources", "split_by_sectors",
                 "bc_store", "obs_store", "footprint_store", "flux_store",
@@ -201,34 +205,33 @@ def prepare_rhime_stage(
                 "flux_non_finite_check",
             ),
         )
-    merged = prepare_observation_errors(merged, averaging_error=executed_setup.averaging_error)
-    filtered = filter_observations(merged, filters=executed_setup.filters)
+    merged = prepare_observation_errors(merged, averaging_error=setup.averaging_error)
+    filtered = filter_observations(merged, filters=setup.filters)
     retained_sites = {str(site).upper() for site in filtered.sites}
-    missing_sites = [site for site in executed_setup.site_options.sites if str(site).upper() not in retained_sites]
+    missing_sites = [site for site in setup.site_options.sites if str(site).upper() not in retained_sites]
     if missing_sites:
         raise ValueError(
             "RHIME preparation could not produce required site input(s) "
-            f"{missing_sites!r} for species {executed_setup.species!r} and period "
-            f"{executed_setup.start_date} to {executed_setup.end_date}."
+            f"{missing_sites!r} for species {setup.species!r} and period "
+            f"{setup.start_date} to {setup.end_date}."
         )
-    with timed("rhime.prepare_inputs.basis_build", basis_algorithm=executed_setup.basis_algorithm):
-        basis = make_basis_functions(
+    with timed("rhime.prepare_inputs.basis_build", basis_algorithm=setup.basis_algorithm):
+        basis = prepare_basis(
             site_data=filtered.site_data,
             flux_data=filtered.flux_data,
             split_by_sectors=filtered.split_by_sectors,
-            **executed_setup.select(
-                "species", "domain", "start_date", "basis_algorithm", "nbasis",
-                "fp_basis_case", "basis_directory", "country_directory", "outer_regions_path",
+            **setup.select(
+                "domain", "start_date", "basis_algorithm", "nbasis",
             ),
-            flux_sources=executed_setup.flux_sources,
-            fix_outer_regions=executed_setup.fix_basis_outer_regions,
-            outputname=executed_setup.output_name,
-            output_path=executed_setup.basis_output_path,
+            flux_sources=setup.flux_sources,
+            fix_outer_regions=setup.fix_basis_outer_regions,
+            **basis_inputs,
+            output_path=setup.basis_output_path,
         )
     site_data = build_sensitivities(
         filtered,
         basis,
-        **executed_setup.select(
+        **setup.select(
             "domain", "flux_sources", "use_bc", "bc_basis_case",
             "bc_basis_directory",
         ),
@@ -238,7 +241,7 @@ def prepare_rhime_stage(
         filtered,
         basis,
         site_data,
-        **executed_setup.select(
+        **setup.select(
             "domain", "start_date", "bc_freq", "min_error",
             "min_error_options", "use_bc",
         ),
@@ -257,9 +260,9 @@ def prepare_rhime_stage(
         "schema_version": 1,
         "producer": "openghg_inversions",
         "stage": "prepare",
-        "configuration_identity": configuration_identity(executed_setup, model=model),
+        "configuration_identity": configuration_identity(setup, model=model),
         "requested_configuration": effective_configuration(setup, model=model),
-        "effective_configuration": effective_configuration(executed_setup, model=model),
+        "effective_configuration": effective_configuration(setup, model=model),
         "artifacts": {
             "prepared_inputs": _artifact_path(prepared_path),
         },

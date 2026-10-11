@@ -84,7 +84,7 @@ RHIME arguments plus the inner-domain options:
        basis_algorithm="weighted",
        nbasis=100,
        fix_basis_outer_regions=True,
-       outer_regions_path="intem_region_definition_EUHROB.nc",
+       outer_regions_path="/data/maps/intem_region_definition_EUHROB.nc",
        # Quadtree is the safe default for a grid without a matching land/sea file.
        inner_basis_algorithm="quadtree",
        inner_nbasis=80,
@@ -101,10 +101,13 @@ RHIME arguments plus the inner-domain options:
 ``inner_domain`` may instead contain the complete OpenGHG domain name, such as
 ``"EUROPE-EUHROB"``. A suffix is prefixed with the outer domain exactly once.
 The outer boundary-condition contribution is retained; an independent inner
-boundary condition is not added. ``outer_regions_path`` is optional; use the
-bundled ``intem_region_definition_EUHROB.nc`` for the EUROPE 6 km nest, whose
-metadata marks label 6 as the inner rectangle. Bare filenames are resolved
-against the packaged basis assets. Migrated legacy configs may still use
+boundary condition is not added. ``outer_regions_path`` selects an exact support
+file. The bundled
+``intem_region_definition_EUHROB.nc`` for the EUROPE 6 km nest marks label 6
+as the inner rectangle. To select it explicitly from Python, use
+``packaged_basis_support_path("outer_regions", "EUHROB")`` from
+``openghg_inversions.basis``. Relative paths name caller files; they do not
+implicitly search packaged assets. Migrated legacy configs may still use
 ``outer_region_definition_file``; RHIME warns and normalizes it to
 ``outer_regions_path``.
 
@@ -140,24 +143,24 @@ Use saved basis files
 ---------------------
 
 Saved outer and inner bases remain separate because each belongs to its own
-native grid. Configure the outer file with ``fp_basis_case`` and
-``basis_directory``. Configure the inner file independently with
-``inner_fp_basis_case`` and ``inner_basis_directory``:
+native grid. Configure the exact outer and inner artifacts independently with
+``basis_path`` and ``inner_basis_path``:
 
 .. code-block:: python
 
    result = run_rhime_nested(
        config_file="nested_rhime.ini",
-       fp_basis_case="outer_basis",
-       basis_directory="/data/basis/outer",
-       inner_fp_basis_case="inner_6km_basis",
-       inner_basis_directory="/data/basis/inner",
+       basis_path="/data/basis/outer.nc",
+       inner_basis_path="/data/basis/inner-6km.zarr",
    )
 
 Do not create one basis artifact spanning both grids. When generating a basis
 instead, ``basis_output_path`` and ``inner_basis_output_path`` save the outer
-and inner artifacts independently. If no inner basis file or algorithm is
-specified, the inner grid uses the quadtree algorithm.
+and inner artifacts at their exact destinations independently.
+``landsea_path`` and ``inner_landsea_path`` select each grid's class map when
+weighted generation needs one; support-map selection fails for missing files
+or unsupported domains before acquisition. If no inner basis file or algorithm
+is specified, the inner grid uses the quadtree algorithm.
 
 The result exposes the ordinary RHIME objects and both native preparations:
 
