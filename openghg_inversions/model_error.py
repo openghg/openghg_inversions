@@ -128,6 +128,31 @@ class MinimumError:
         return cls(data, method, varies_by_site, sites)
 
 
+def normalise_min_error(value: Any) -> float | str | dict[str, float]:
+    """Validate and own minimum-error configuration without observation data.
+
+    Accept ``None`` as zero, a finite nonnegative numeric scalar, a mapping
+    of site labels to such scalars, or the methods ``residual``/``percentile``.
+    Reject booleans and other values with ``ValueError``. Mapping coverage is
+    checked later against retained sites; this boundary copies the mapping.
+    """
+    if value is None:
+        return 0.0
+    if isinstance(value, str):
+        if value not in ("residual", "percentile"):
+            raise ValueError(f"Named `min_error` methods must be 'residual' or 'percentile'; got {value!r}.")
+        return value
+
+    def scalar(item: Any) -> float:
+        if not isinstance(item, numbers.Real) or isinstance(item, bool) or not np.isfinite(item) or item < 0:
+            raise ValueError(f"`min_error` values must be finite nonnegative numbers, got {item!r}.")
+        return float(item)
+
+    if isinstance(value, Mapping):
+        return {site: scalar(item) for site, item in value.items()}
+    return scalar(value)
+
+
 def normalise_min_error_options(options: Mapping[str, Any] | None) -> dict[str, bool]:
     """Validate options supported by calculated minimum-error methods.
 

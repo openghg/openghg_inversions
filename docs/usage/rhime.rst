@@ -1,10 +1,11 @@
 .. _rhime-terminology-and-quickstart:
 
-RHIME configuration and prepared-input reference
-================================================
+RHIME terminology and prepared-input reference
+==============================================
 
-This page is reference material for RHIME vocabulary, configuration, and
-advanced prepared-input boundaries. For a first complete inversion, use the
+This page is reference material for RHIME vocabulary and advanced prepared-input
+boundaries. For configuration inspection and parsing, see
+:doc:`rhime_configuration`. For a first complete inversion, use the
 :doc:`standard tutorial <rhime_standard_tutorial>` or
 :doc:`multisector tutorial <rhime_multisector_tutorial>` instead. New Python
 examples and configuration files should use the modern spec names below.
@@ -98,6 +99,7 @@ scientific process from option resolution through output construction.
        output_path="outputs",
        output_name="example",
        flux_sources=["total-ukghg-edgar7"],
+       mismatch_model="pollution_event",
    )
 
    multi_sector_result = run_rhime_multisector(
@@ -110,6 +112,7 @@ scientific process from option resolution through output construction.
        output_path="outputs",
        output_name="example_multisector",
        flux_sources=["ff-inventory", "gpp-inventory", "ter-inventory", "ocean-inventory"],
+       mismatch_model="pollution_event",
        sector_sources={
            "FF": "ff-inventory",
            "GPP": "gpp-inventory",
@@ -139,6 +142,19 @@ supports one distinct source and one independent state vector per sector.
 Rectangular legacy inputs may carry ``source_region_count(source)`` so padded
 layouts can be rejected; modern preparation does not create that compatibility
 metadata.
+
+Inspecting configuration
+------------------------
+
+Pass options directly to ``run_rhime`` or ``run_rhime_multisector`` for an
+ordinary inversion. To inspect their resolved choices before retrieving data,
+use ``RhimeConfig.from_params(options, multisector=False)`` (or
+``multisector=True`` for the multisector recipe), then pass the result as
+``config=`` to the matching runner.
+
+See :doc:`rhime_configuration` for complete inspection examples, INI decoding,
+override precedence, site-selector alignment, and forwarding resolved values
+in custom runners.
 
 Satellite multisector inputs
 ----------------------------
@@ -187,7 +203,7 @@ model, output, and sampler specifications:
        run_rhime_from_prepared_inputs,
    )
 
-   # Produced by prepare_rhime_inputs or by another source adapter that
+   # Produced by assemble_rhime_inputs or by another source adapter that
    # satisfies the same canonical contract.
    prepared = prepare_inputs_elsewhere()
    prepared.save("prepared-inputs.nc")
@@ -921,7 +937,8 @@ Output Formats
 Standard single-sector RHIME supports ``inv_out``, ``basic``, ``paris``, and
 ``legacy`` output formats. ``legacy`` writes the old HBMCMC-compatible NetCDF
 product from the modern ``InversionOutput``. The deprecated names ``hbmcmc``
-and ``hbmcmc_postprocessing`` are accepted as aliases for ``legacy``.
+and ``hbmcmc_postprocessing`` are accepted with ``DeprecationWarning`` during
+configuration construction. Prefer ``legacy`` in new configurations.
 
 Single-sector ``paris`` keeps the legacy template by default. Pass
 ``paris_postprocessing_kwargs={"template_version": "latest"}`` to write the

@@ -6,7 +6,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from numbers import Integral
-from typing import Any, cast
+from typing import Any, ClassVar, cast
 
 
 def expand_site_option(
@@ -193,6 +193,8 @@ class SiteOptions:
     Raises:
         ValueError: If sites are empty or duplicated, or field lengths differ.
     """
+
+    REQUIRED_INPUT_NAMES: ClassVar[tuple[str, ...]] = ("sites", "averaging_period")
 
     sites: tuple[str, ...]
     averaging_period: tuple[str | None, ...]

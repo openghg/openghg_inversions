@@ -223,7 +223,7 @@ def fixedbasis_params_to_rhime(params: dict[str, Any]) -> dict[str, Any]:
 
     Returns:
         A fresh mapping with canonical names and historical output policy.
-        Values are validated and coerced later by ``resolve_rhime_options``.
+        Values are validated and coerced later by ``RhimeConfig.from_params``.
         Prior mappings changed for lognormal reparameterisation are copied;
         other values remain borrowed.
 
@@ -277,13 +277,13 @@ def params_from_config(
             malformed structured values.
 
     Emits ``DeprecationWarning``. Use ``read_rhime_ini`` for decoded values,
-    apply overrides, then call ``resolve_rhime_options``.
+    apply overrides, then call ``RhimeConfig.from_params``.
     """
     from openghg_inversions.rhime.ini import read_rhime_ini
 
     warnings.warn(
         "params_from_config is deprecated; use read_rhime_ini, apply overrides, "
-        "then resolve_rhime_options for canonical options.",
+        "then RhimeConfig.from_params for canonical options.",
         DeprecationWarning,
         stacklevel=2,
     )
@@ -298,4 +298,4 @@ def params_from_config(
 
     from openghg_inversions.rhime.params import normalise_rhime_params
 
-    return normalise_rhime_params(params)
+    return normalise_rhime_params(translate_rhime_aliases(params))

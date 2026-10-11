@@ -9,11 +9,12 @@ The first successful scenario supplies the unit target forwarded to later
 OpenGHG ``ModelScenario`` merges.
 """
 
+from __future__ import annotations
+
 import logging
 import warnings
 from collections.abc import Sequence
 from functools import wraps
-from numbers import Integral
 from typing import Any, Literal
 
 import numpy as np
@@ -23,9 +24,8 @@ from openghg.retrieve import get_bc
 from openghg.types import SearchError
 
 from openghg_inversions.flux_sanitization import FluxNonFiniteCheck
-from openghg_inversions.inversion_data import _site_options
 from openghg_inversions.inversion_data._site_options import (
-    expand_site_boolean_option,
+    SiteOptions,
     is_column_observation,
     is_column_platform,
     is_satellite_platform,
@@ -64,7 +64,7 @@ def interpolate_flux_to_footprint_grid(
     return interpolated
 
 
-def add_obs_error(sites: list[str], fp_all: dict, add_averaging_error: bool = True) -> None:
+def add_obs_error(sites: Sequence[str], fp_all: dict, add_averaging_error: bool = True) -> None:
     """Create `mf_error` variable.
 
     The `mf_error` variable contains either `mf_repeatability`, `mf_variability`
@@ -281,30 +281,72 @@ def retrieve_inversion_data(
         scenario defines the unit target requested for later sites.
     """
     site_values = [sites] if isinstance(sites, str) else sites
-    sites = [site.upper() for site in site_values]
+    site_options = SiteOptions.from_inputs(
+        sites=site_values,
+        averaging_period=averaging_period,
+        inlet=inlet,
+        fp_height=fp_height,
+        instrument=instrument,
+        platform=platform,
+        obs_data_level=obs_data_level,
+        met_model=met_model,
+        max_level=max_level,
+        time_resolved=time_resolved,
+    )
+    return _retrieve_inversion_data_from_options(
+        site_options=site_options,
+        species=species,
+        domain=domain,
+        start_date=start_date,
+        end_date=end_date,
+        calibration_scale=calibration_scale,
+        fp_model=fp_model,
+        fp_species=fp_species,
+        emissions_name=emissions_name,
+        use_bc=use_bc,
+        bc_input=bc_input,
+        bc_store=bc_store,
+        obs_store=obs_store,
+        footprint_store=footprint_store,
+        emissions_store=emissions_store,
+        emissions_domain=emissions_domain,
+        split_by_sectors=split_by_sectors,
+        averagingerror=averagingerror,
+        save_merged_data=save_merged_data,
+        merged_data_name=merged_data_name,
+        merged_data_dir=merged_data_dir,
+        output_name=output_name,
+        flux_non_finite_check=flux_non_finite_check,
+    )
 
-    # Convert 'None' args to list
-    nsites = len(sites)
-    inlet = _site_options.convert_to_list(inlet, nsites, "inlet")
-    instrument = _site_options.convert_to_list(instrument, nsites, "instrument")
-    fp_height = _site_options.convert_to_list(fp_height, nsites, "fp_height")
-    obs_data_level = _site_options.convert_to_list(obs_data_level, nsites, "obs_data_level")
-    met_model = _site_options.convert_to_list(met_model, nsites, "met_model")
-    averaging_period = _site_options.convert_to_list(averaging_period, nsites, "averaging_period")
-    platform = _site_options.convert_to_list(platform, nsites, "platform")
-    max_level = _site_options.convert_to_list(max_level, nsites, "max_level")
-    time_resolved = list(expand_site_boolean_option(time_resolved, nsites=nsites, name="time_resolved"))
-    invalid_max_levels = [
-        value
-        for value in max_level
-        if value is not None and (not isinstance(value, Integral) or isinstance(value, bool))
-    ]
-    if invalid_max_levels:
-        raise ValueError(
-            f"`max_level` entries must be integers or None. Invalid value(s): {invalid_max_levels!r}."
-        )
-    max_level = [None if value is None else int(value) for value in max_level]
 
+def _retrieve_inversion_data_from_options(
+    *,
+    site_options: SiteOptions,
+    species: str,
+    domain: str,
+    start_date: str,
+    end_date: str,
+    calibration_scale: str | None = None,
+    fp_model: str | None = None,
+    fp_species: str | None = None,
+    emissions_name: Sequence[str] | None = None,
+    use_bc: bool = True,
+    bc_input: str | None = None,
+    bc_store: str | None = None,
+    obs_store: str | list[str] | None = None,
+    footprint_store: str | list[str] | None = None,
+    emissions_store: str | None = None,
+    emissions_domain: str | None = None,
+    split_by_sectors: bool = False,
+    averagingerror: bool = True,
+    save_merged_data: bool = False,
+    merged_data_name: str | None = None,
+    merged_data_dir: str | None = None,
+    output_name: str | None = None,
+    flux_non_finite_check: FluxNonFiniteCheck = "lazy",
+) -> tuple[dict, list, list, list, list, list]:
+    """Retrieve using resolved site options without expanding external shorthand."""
     fp_all: dict[str, Any] = {}
 
     # Get flux data
@@ -355,27 +397,27 @@ def retrieve_inversion_data(
         "inlet_height",  # sometimes needed if inlet='multiple' (may be outdated soon)
     ]
     warnings.warn(f"Dropping all variables besides {keep_variables}", stacklevel=2)
-    for i, site in enumerate(sites):
+    for i, site in enumerate(site_options.sites):
         # Get observations data
-        site_platform = platform[i]
+        site_platform = site_options.platform[i]
         if isinstance(site_platform, str) and site_platform.lower() == "flask":
             avg_period = None
         else:
-            avg_period = averaging_period[i]
+            avg_period = site_options.averaging_period[i]
 
         site_data = get_obs_data(
             site=site,
             species=species,
-            inlet=inlet[i],
+            inlet=site_options.inlet[i],
             start_date=start_date,
             domain=domain,
             platform=site_platform,
             end_date=end_date,
-            data_level=obs_data_level[i],
+            data_level=site_options.obs_data_level[i],
             average=avg_period,
-            instrument=instrument[i],
+            instrument=site_options.instrument[i],
             calibration_scale=calibration_scale,
-            max_level=max_level[i],
+            max_level=site_options.max_level[i],
             stores=obs_store,
             keep_variables=keep_variables,
         )
@@ -389,27 +431,27 @@ def retrieve_inversion_data(
             site=site,
             domain=domain,
             platform=site_platform,
-            fp_height=fp_height[i],
+            fp_height=site_options.fp_height[i],
             start_date=start_date,
             end_date=end_date,
             model=fp_model,
-            met_model=met_model[i],
+            met_model=site_options.met_model[i],
             fp_species=fp_species,
-            averaging_period=averaging_period[i],
-            time_resolved=time_resolved[i],
+            averaging_period=site_options.averaging_period[i],
+            time_resolved=site_options.time_resolved[i],
             obs_data=site_data,
             stores=footprint_store,
         )
         if footprint_data is None:
             print(
-                f"\nNo footprint data found for {site} with inlet/height {fp_height[i]}, model {fp_model}, and domain {domain}.",
+                f"\nNo footprint data found for {site} with inlet/height {site_options.fp_height[i]}, model {fp_model}, and domain {domain}.",
                 f"Check these values.\nContinuing model run without {site}.\n",
             )
             continue  # skip this site
 
         scenario_platform = (
             "site-column"
-            if is_column_observation(inlet[i], site_platform) and not is_column_platform(site_platform)
+            if is_column_observation(site_options.inlet[i], site_platform) and not is_column_platform(site_platform)
             else site_platform
         )
         scenario_flux_dict = (
@@ -427,7 +469,7 @@ def retrieve_inversion_data(
                 scenario_flux_dict,
                 bc_data,
                 platform=scenario_platform,
-                max_level=max_level[i],
+                max_level=site_options.max_level[i],
                 split_by_sectors=split_by_sectors,
                 output_units=output_units,
             )
@@ -455,16 +497,8 @@ def retrieve_inversion_data(
     if len(site_indices_to_keep) == 0:
         raise SearchError("No site data found. Exiting process.")
 
-    # If data was not extracted correctly for any sites, drop these from the rest of the inversion
-    if len(site_indices_to_keep) < len(sites):
-        sites = [sites[s] for s in site_indices_to_keep]
-        inlet = [inlet[s] for s in site_indices_to_keep]
-        fp_height = [fp_height[s] for s in site_indices_to_keep]
-        instrument = [instrument[s] for s in site_indices_to_keep]
-        averaging_period = [averaging_period[s] for s in site_indices_to_keep]
-        time_resolved = [time_resolved[s] for s in site_indices_to_keep]
-
-    for site, selector in zip(sites, time_resolved, strict=True):
+    retained = site_options.select_indices(site_indices_to_keep)
+    for site, selector in zip(retained.sites, retained.time_resolved, strict=True):
         fp_all[site].attrs["openghg_inversions_time_resolved"] = str(selector).lower()
 
     # if "satellite" not in footprint_data.metadata:
@@ -474,7 +508,7 @@ def retrieve_inversion_data(
         logger.warning(msg)
 
     # create `mf_error`
-    add_obs_error(sites, fp_all, add_averaging_error=averagingerror)
+    add_obs_error(retained.sites, fp_all, add_averaging_error=averagingerror)
 
     if save_merged_data:
         if merged_data_dir is None:
@@ -490,7 +524,10 @@ def retrieve_inversion_data(
             )
             print(f"\nfp_all saved in {merged_data_dir}\n")
 
-    return fp_all, sites, inlet, fp_height, instrument, averaging_period
+    return (
+        fp_all, list(retained.sites), list(retained.inlet), list(retained.fp_height),
+        list(retained.instrument), list(retained.averaging_period),
+    )
 
 
 @wraps(retrieve_inversion_data)

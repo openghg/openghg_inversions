@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from collections.abc import Mapping
+from dataclasses import dataclass, field, fields
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, ClassVar, Literal, cast, get_args
 
 from openghg_inversions.inversion_inputs import DatetimeLike
 from openghg_inversions.models.priors import PriorArgs
+from openghg_inversions.models.additive_sigma import DEFAULT_ADDITIVE_SIGMA_PRIOR
 from openghg_inversions.models.state_activity import StateActivity
 from openghg_inversions.observation_error import AggregationErrorMode
 
@@ -33,6 +35,22 @@ DEFAULT_POLLUTION_EVENT_SIGMA_PRIOR: PriorArgs = {
     "upper": 0.1,
 }
 DEFAULT_OFFSET_PRIOR: PriorArgs = {"pdf": "normal", "mu": 0, "sigma": 1}
+
+
+def _copy_option_containers(value: Any) -> Any:
+    """Own ordinary option containers while borrowing opaque numerical values."""
+    if isinstance(value, dict):
+        return {key: _copy_option_containers(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_copy_option_containers(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_copy_option_containers(item) for item in value)
+    return value
+
+
+def normalise_optional_mapping(value: Mapping[str, Any] | None) -> dict[str, Any] | None:
+    """Own an optional mapping and its ordinary configuration containers."""
+    return None if value is None else _copy_option_containers(dict(value))
 
 
 @dataclass(frozen=True)
@@ -101,6 +119,81 @@ class FixedErrorSettings:
 
 LikelihoodSettings = PollutionEventSettings | AdditiveSigmaSettings | FixedErrorSettings
 
+# These records declare external likelihood choices, not runtime array inputs.
+LIKELIHOOD_OPTION_NAMES = frozenset(
+    setting.name for settings in get_args(LikelihoodSettings) for setting in fields(settings)
+)
+LIKELIHOOD_PRIOR_OPTION_NAMES = ("sigma_prior",)
+
+
+def make_likelihood_settings(
+    remaining: dict[str, Any],
+    *,
+    mismatch_model: MismatchModel | None,
+    start_date: str,
+) -> LikelihoodSettings | None:
+    """Consume the selected likelihood's external choices and resolve defaults.
+
+    The mapping is a resolver-owned working copy. Priors and power mappings
+    are copied without copying opaque numerical payloads. Date-dependent
+    alignment defaults use the winning requested start date.
+
+    Args:
+        remaining: Owned working options after alias and type normalization;
+            selected likelihood names are removed from this mapping.
+        mismatch_model: Selected built-in mismatch equation, or ``None`` for a
+            custom likelihood with no built-in options.
+        start_date: Effective request date used for an omitted period anchor.
+
+    Returns:
+        Complete settings for the selected likelihood, or ``None`` for custom
+        construction. No model, numerical input or inference is constructed.
+
+    Raises:
+        ValueError: If the selection is unknown or options belong to another
+            built-in likelihood or a custom likelihood.
+    """
+    if mismatch_model is None:
+        unused = sorted(LIKELIHOOD_OPTION_NAMES & remaining.keys())
+        if unused:
+            raise ValueError(
+                "Built-in likelihood option(s) cannot be used with `mismatch_model=None`: "
+                f"{unused!r}. Pass custom options through `likelihood_kwargs`."
+            )
+        return None
+    settings_type = {
+        "pollution_event": PollutionEventSettings,
+        "additive_sigma": AdditiveSigmaSettings,
+        "fixed_error": FixedErrorSettings,
+    }.get(mismatch_model) if isinstance(mismatch_model, str) else None
+    if settings_type is None:
+        raise ValueError(
+            "`mismatch_model` must be None, 'pollution_event', 'additive_sigma', or "
+            "'fixed_error'; "
+            f"got {mismatch_model!r}."
+        )
+    names = {setting.name for setting in fields(settings_type)}
+    invalid = (LIKELIHOOD_OPTION_NAMES - names) & remaining.keys()
+    if invalid:
+        raise ValueError(
+            f"`mismatch_model={mismatch_model!r}` does not accept option(s) {sorted(invalid)!r}."
+        )
+    options = {name: remaining.pop(name) for name in names if name in remaining}
+    if settings_type is FixedErrorSettings:
+        return FixedErrorSettings()
+    options["sigma_prior"] = normalise_optional_mapping(options.get("sigma_prior"))
+    if options["sigma_prior"] is None:
+        options["sigma_prior"] = dict(
+            DEFAULT_POLLUTION_EVENT_SIGMA_PRIOR
+            if settings_type is PollutionEventSettings
+            else DEFAULT_ADDITIVE_SIGMA_PRIOR
+        )
+    options.setdefault("sigma_freq_anchor", start_date)
+    if isinstance(options.get("power"), Mapping):
+        options["power"] = normalise_optional_mapping(options["power"])
+    return settings_type(**options)
+
+
 
 @dataclass(frozen=True)
 class SectorSpec:
@@ -153,6 +246,15 @@ class RhimeModelSpec:
 
     """
 
+    # External names include sector translation; internal state policies are
+    # available to independent builders rather than this configured frontend.
+    CONFIG_OPTION_NAMES: ClassVar[tuple[str, ...]] = (
+        "x_prior", "bc_prior", "offset_prior", "sector_priors", "sector_sources",
+        "offset_args", "add_offset", "mismatch_model", "aggregation_error_mode",
+    )
+    PRIOR_OPTION_NAMES: ClassVar[tuple[str, ...]] = ("x_prior", "bc_prior", "offset_prior")
+    MAPPING_OPTION_NAMES: ClassVar[tuple[str, ...]] = ("sector_sources", "offset_args")
+
     species: str
     domain: str
     sectors: tuple[SectorSpec, ...]
@@ -191,6 +293,39 @@ class RhimeOutputSpec:
             compatibility shim uses ``"legacy"`` for old SLURM/config
             workflows.
     """
+
+    MAPPING_OPTION_NAMES: ClassVar[tuple[str, ...]] = ("paris_postprocessing_kwargs",)
+
+    @classmethod
+    def option_names(cls) -> frozenset[str]:
+        """Return the configured output choices declared by this record."""
+        return frozenset(setting.name for setting in fields(cls))
+
+    @classmethod
+    def from_params(cls, params: Mapping[str, Any], *, multisector: bool) -> RhimeOutputSpec:
+        """Resolve output choices without writing products or mutating inputs.
+
+        The active format determines the omitted inversion-output save setting.
+        Remaining omitted values use the record's declared defaults. PARIS
+        option containers are owned; opaque numerical payloads remain borrowed.
+
+        Args:
+            params: Canonical output option names after aliases and overrides.
+                Format and filename-convention values are case-insensitive.
+            multisector: Whether to enforce the multisector output restrictions.
+
+        Returns:
+            Validated output choices ready for inspection before execution.
+
+        Raises:
+            ValueError: If format, path or recipe choices are inconsistent.
+        """
+        options = dict(params)
+        active_format = options.get("output_format", cls.output_format).lower()
+        options.setdefault("save_inversion_output", active_format == "inv_out")
+        if "paris_postprocessing_kwargs" in options:
+            options["paris_postprocessing_kwargs"] = normalise_optional_mapping(options["paris_postprocessing_kwargs"])
+        return make_output_spec(multisector=multisector, **options)
 
     output_format: OutputFormat = "inv_out"
     output_path: str | None = None
@@ -297,14 +432,14 @@ def validate_output_filename_convention(output_filename_convention: str) -> None
 
 def make_output_spec(
     *,
-    output_format: str,
-    output_path: str | None,
-    output_name: str,
-    save_trace: str | Path | bool,
-    save_inversion_output: str | Path | bool,
-    country_file: str | None,
-    paris_postprocessing_kwargs: dict[str, Any] | None,
-    output_filename_convention: str,
+    output_format: str = RhimeOutputSpec.output_format,
+    output_path: str | None = RhimeOutputSpec.output_path,
+    output_name: str = RhimeOutputSpec.output_name,
+    save_trace: str | Path | bool = RhimeOutputSpec.save_trace,
+    save_inversion_output: str | Path | bool = RhimeOutputSpec.save_inversion_output,
+    country_file: str | None = RhimeOutputSpec.country_file,
+    paris_postprocessing_kwargs: dict[str, Any] | None = RhimeOutputSpec.paris_postprocessing_kwargs,
+    output_filename_convention: str = RhimeOutputSpec.output_filename_convention,
     multisector: bool,
 ) -> RhimeOutputSpec:
     """Create validated output settings from normalized RHIME parameters.
