@@ -192,8 +192,10 @@ resources are checked by ``postprocess`` before creating its output directory;
   reason, staged postprocessing requires safe filename components and both the
   preparation and sample manifests.  The latter binds the posterior to its
   prepared-input digest and scientific configuration.  The sampler settings
-  restored into result metadata come from that sample manifest; sampler values
+  retained in result metadata come from that sample manifest; sampler values
   in the postprocessing configuration cannot relabel an existing posterior.
+  Replay returns ``result.sampler is None`` and forwards validated descriptive
+  sampler metadata to outputs without restoring a ``RhimeSampler`` object.
   Modern derived ``basic`` and PARIS products use every retained posterior
   chain. Derived trace quantities preserve their ``chain`` and ``draw``
   identity until an explicitly requested statistic or covariance combines the

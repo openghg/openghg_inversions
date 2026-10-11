@@ -20,7 +20,7 @@ from dataclasses import dataclass, replace
 import hashlib
 from numbers import Integral
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from dask import compute as dask_compute
 import numpy as np
@@ -60,6 +60,7 @@ from .preparation import (
     prepare_observation_errors,
     with_prepared_rhime_sites,
 )
+from openghg_inversions.inference.sampling import resolve_sampler
 from .sampling import RhimeSampler, sample_rhime_model
 from .specs import (
     DEFAULT_BC_PRIOR,
@@ -195,8 +196,8 @@ class NestedRhimeResult:
         return self.prepared_inputs.inner.basis_functions
 
     @property
-    def sampler(self) -> RhimeSampler:
-        """Return the sampler settings used by the run."""
+    def sampler(self) -> RhimeSampler | None:
+        """Return the live sampler, or ``None`` when only recorded results exist."""
         return self.rhime_result.sampler
 
     @property
@@ -1356,7 +1357,7 @@ def run_rhime_nested_from_prepared_inputs(
     *,
     prepared_inputs: NestedRhimePreparedInputs,
     run_spec: RhimeRunSpec,
-    sampler: RhimeSampler | None = None,
+    sampler: RhimeSampler | Literal["default"] = "default",
     inner_x_prior: Mapping[str, Any] | None = None,
     inner_state_activity: StateActivity | None = None,
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
@@ -1364,10 +1365,13 @@ def run_rhime_nested_from_prepared_inputs(
 ) -> NestedRhimeResult:
     """Build and sample nested RHIME from independently prepared native grids.
 
+    ``sampler="default"`` selects a fresh sampler; an explicit ``None`` or
+    unknown string raises ``TypeError`` before accessing prepared inputs.
     Validate reporting resources before materialization or sampling. Missing
     selected country files raise ``FileNotFoundError``; PARIS output without a
     country file raises ``ValueError``.
     """
+    active_sampler = resolve_sampler(sampler)
     if likelihood_builder is not None and not callable(likelihood_builder):
         raise TypeError(
             f"`likelihood_builder` must be callable or None; got {type(likelihood_builder).__name__}."
@@ -1392,7 +1396,6 @@ def run_rhime_nested_from_prepared_inputs(
         prepared_inputs.combined,
         variable_names=nested_model_input_names(prepared_inputs.combined, run_spec.model),
     )
-    active_sampler = RhimeSampler() if sampler is None else sampler
     build_and_sample_start = timer_start()
     build_result = build_nested_rhime_model_result(
         prepared=prepared_inputs,

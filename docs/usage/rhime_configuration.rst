@@ -28,6 +28,12 @@ The returned ``RhimeConfig`` is the complete requested configuration:
   It executes inference only when supplied a completed model. Its implementation
   lives in ``inference.sampling``; the established RHIME imports remain valid.
 
+Sampler options cannot override model-owned coordinates: ``coords`` and ``dims``
+inside ``sample_kwargs["idata_kwargs"]`` or
+``posterior_predictive_kwargs["idata_kwargs"]`` are rejected, even if empty. Register
+coordinates and dimensions when constructing the model instead. This rule also
+applies when constructing or directly invoking ``RhimeSampler``.
+
 For example, a scalar period broadcasts across the effective requested sites:
 
 .. code-block:: python

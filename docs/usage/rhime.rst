@@ -238,6 +238,22 @@ model, output, and sampler specifications:
        sampler=RhimeSampler(draws=1000, tune=1000, chains=4),
    )
 
+Omit ``sampler`` or pass ``sampler="default"`` to request a fresh default sampler
+without importing ``RhimeSampler``. Pass an instance to choose its settings;
+each invocation isolates its mutable option containers and NumPy option arrays.
+Models, steps, and borrowed xarray or Dask objects retain their identity.
+Explicit ``sampler=None``
+is rejected: migrate that spelling to ``"default"`` or omit the argument.
+The same selection rule applies to the nested, CO2 and CO2/O2 direct runners,
+which retain their recipe-specific defaults. Complete configured runs use
+``config.sampler`` instead of replacing its settings with defaults.
+
+Live results retain their invocation's sampler and a descriptive snapshot in
+``result.output_metadata["sampler"]``. A result constructed without a sampler,
+including a replay result, has ``result.sampler is None``. Replay passes the saved
+snapshot to outputs without constructing a sampler. ``None`` therefore denotes
+absence of a live object; it does not mean that no inference was performed.
+
 The prepared object is trusted canonical input: it must already contain the
 observation, error, sensitivity, and optional boundary-condition variables
 required by the selected model. A multisector run requires

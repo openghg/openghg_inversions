@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, Literal
 
 from dask import compute as dask_compute
 from dask.array import Array as DaskArray
@@ -15,6 +15,7 @@ from openghg_inversions.array_ops import to_dense
 from openghg_inversions.models import StateActivity
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.rhime.builders import RhimeModelBuildResult
+from openghg_inversions.inference.sampling import resolve_sampler
 from openghg_inversions.rhime.sampling import RhimeSampler, sample_rhime_model
 
 from .co2_o2_model import build_co2_o2_model, _validate_channel_baseline_options
@@ -258,7 +259,7 @@ def run_rhime_co2_o2_from_prepared_inputs(
     bc_state_activity: Mapping[str, StateActivity] | None = None,
     offset_prior: Mapping[str, PriorArgs] | None = None,
     offset_args: Mapping[str, Mapping[str, Any]] | None = None,
-    sampler: RhimeSampler | None = None,
+    sampler: RhimeSampler | Literal["default"] = "default",
     tau_hours: float | Mapping[str, float] | None = None,
     fixed_site_amplitudes: float | Mapping[str, float] | None = None,
     site_amplitude_prior: Mapping[str, Any] | None = None,
@@ -305,7 +306,7 @@ def run_rhime_co2_o2_from_prepared_inputs(
             in concentration units, scalar or mapping using the same keys.
         site_amplitude_prior: Prior for inferred species/site amplitudes,
             mutually exclusive with fixed amplitudes.
-        sampler: Optional RHIME sampler configuration. Fixed OU requires and
+        sampler: Sampler configuration or ``"default"``; explicit ``None`` is invalid. Fixed OU requires and
             defaults to PyMC; the fixed-error default uses NumPyro.
 
     Returns:
@@ -317,12 +318,18 @@ def run_rhime_co2_o2_from_prepared_inputs(
         JSON model metadata.
 
     Raises:
+        TypeError: If the sampler is neither a configuration nor ``"default"``.
         ValueError: If the fixed independent standard deviation is not a finite
             positive real numeric vector or fails the model's
             observation-label/unit contract. Label, state, covariance, and
             activity errors from model construction are also propagated.
     """
-    if tau_hours is not None and sampler is not None and sampler.nuts_sampler != "pymc":
+    sampler = resolve_sampler(
+        sampler,
+        nuts_sampler="pymc" if tau_hours is not None else "numpyro",
+        sample_kwargs={"target_accept": 0.95},
+    )
+    if tau_hours is not None and sampler.nuts_sampler != "pymc":
         raise ValueError("Linked fixed-OU requires nuts_sampler='pymc'.")
     prepared = prepared_inputs
     boundaries = dict(getattr(prepared, "boundary_sensitivity", {}))
@@ -390,7 +397,6 @@ def run_rhime_co2_o2_from_prepared_inputs(
         variable_roles=variable_roles,
         metadata=metadata,
     )
-    sampler = sampler or RhimeSampler(nuts_sampler="pymc" if tau_hours is not None else "numpyro", sample_kwargs={"target_accept": 0.95})
     trace = sample_rhime_model(built, sampler)
     trace = _annotate_co2_o2_trace(trace, built=built)
     if tau_hours is not None:

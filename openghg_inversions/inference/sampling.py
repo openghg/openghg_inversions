@@ -13,6 +13,7 @@ from openghg_inversions._pymc_config import configure_pytensor
 configure_pytensor()
 
 from collections.abc import Mapping, Sequence
+from copy import copy
 from typing import Any, ClassVar, Literal, cast
 
 import numpy as np
@@ -23,6 +24,63 @@ from openghg_inversions._timing import log_timing, timer_seconds, timer_start
 from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
 
 NutsSampler = Literal["pymc", "nutpie", "numpyro", "blackjax"]
+
+
+def _copy_sampler_options(value: Any) -> Any:
+    """Own keyword containers and NumPy options, borrowing opaque runtime objects."""
+    if isinstance(value, dict):
+        return {key: _copy_sampler_options(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_copy_sampler_options(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_copy_sampler_options(item) for item in value)
+    if isinstance(value, np.ndarray):
+        return value.copy()
+    return value
+
+
+def _validate_idata_options(kwargs: Mapping[str, Any] | None, *, label: str) -> None:
+    """Keep model registration authoritative for inference coordinates."""
+    idata_kwargs = (kwargs or {}).get("idata_kwargs", {})
+    forbidden = {"coords", "dims"}.intersection(idata_kwargs)
+    if forbidden:
+        raise ValueError(
+            f"sampler.{label}['idata_kwargs'] must not contain "
+            f"{sorted(forbidden)!r}; register coordinates and dimensions on the model instead."
+        )
+
+
+def resolve_sampler(
+    sampler: RhimeSampler | Literal["default"],
+    **default_options: Any,
+) -> RhimeSampler:
+    """Resolve a live request into an invocation-owned sampler.
+
+    Args:
+        sampler: Configured sampler or ``"default"`` for fresh recipe defaults.
+        **default_options: Recipe-specific defaults used only for ``"default"``.
+
+    Returns:
+        A fresh sampler with independent option containers. Models, steps, and
+        borrowed xarray or Dask values retain their identity.
+
+    Raises:
+        TypeError: If the request is neither a sampler nor ``"default"``.
+        ValueError: If inference coordinates override model registration.
+    """
+    if isinstance(sampler, str) and sampler == "default":
+        return RhimeSampler(**default_options)
+    if not isinstance(sampler, RhimeSampler):
+        raise TypeError(
+            "sampler must be a RhimeSampler or 'default'; None no longer selects defaults. "
+            "Omit the optional sampler argument or pass sampler='default'."
+        )
+    _validate_idata_options(sampler.sample_kwargs, label="sample_kwargs")
+    _validate_idata_options(sampler.posterior_predictive_kwargs, label="posterior_predictive_kwargs")
+    resolved = copy(sampler)
+    resolved.sample_kwargs = _copy_sampler_options(sampler.sample_kwargs)
+    resolved.posterior_predictive_kwargs = _copy_sampler_options(sampler.posterior_predictive_kwargs)
+    return resolved
 
 
 def _finite_values(data: xr.DataArray) -> np.ndarray:
@@ -117,11 +175,20 @@ class RhimeSampler:
         nuts_sampler: PyMC NUTS backend name.
         progressbar: Whether PyMC progress output should be shown.
         sample_kwargs: Extra keyword arguments forwarded to ``pm.sample``.
+            Nested containers and NumPy option arrays are copied; opaque
+            runtime objects and xarray/Dask values are borrowed.
+            ``idata_kwargs.coords`` and ``dims`` are invalid because model
+            registration owns coordinates and dimensions.
         sample_prior_predictive: Whether to append prior predictive draws.
         sample_posterior_predictive: Whether to append posterior predictive
             draws, or variable names to sample.
         posterior_predictive_kwargs: Extra keyword arguments forwarded to
-            ``pm.sample_posterior_predictive``.
+            ``pm.sample_posterior_predictive``, with the same ownership rules
+            as ``sample_kwargs``.
+
+    Raises:
+        ValueError: If the NUTS backend is unknown or inference coordinates
+            override model registration.
     """
 
     # The established configured frontend exposes this subset. Predictive
@@ -177,12 +244,12 @@ class RhimeSampler:
         self.chains = int(chains)
         self.nuts_sampler = self._normalise_nuts_sampler(nuts_sampler)
         self.progressbar = bool(progressbar)
-        self.sample_kwargs = None if sample_kwargs is None else dict(sample_kwargs)
+        _validate_idata_options(sample_kwargs, label="sample_kwargs")
+        _validate_idata_options(posterior_predictive_kwargs, label="posterior_predictive_kwargs")
+        self.sample_kwargs = _copy_sampler_options(sample_kwargs)
         self.sample_prior_predictive = sample_prior_predictive
         self.sample_posterior_predictive = self._normalise_posterior_predictive(sample_posterior_predictive)
-        self.posterior_predictive_kwargs = (
-            None if posterior_predictive_kwargs is None else dict(posterior_predictive_kwargs)
-        )
+        self.posterior_predictive_kwargs = _copy_sampler_options(posterior_predictive_kwargs)
 
     @staticmethod
     def _normalise_nuts_sampler(value: NutsSampler | str) -> NutsSampler:
@@ -229,7 +296,9 @@ class RhimeSampler:
                 explicit ``concentration`` role when a custom model has no
                 variable named ``y``.
         """
-        sample_kwargs = dict(self.sample_kwargs or {})
+        _validate_idata_options(self.sample_kwargs, label="sample_kwargs")
+        _validate_idata_options(self.posterior_predictive_kwargs, label="posterior_predictive_kwargs")
+        sample_kwargs = _copy_sampler_options(self.sample_kwargs or {})
         sample_kwargs.pop("return_inferencedata", None)
         idata_kwargs = dict(sample_kwargs.pop("idata_kwargs", {}))
         idata_kwargs.setdefault("log_likelihood", True)
@@ -321,7 +390,7 @@ class RhimeSampler:
                         f"{missing_names!r}. Use concrete model names or semantic keys from "
                         "`RhimeModelBuildResult.variable_roles`."
                     )
-            posterior_predictive_kwargs = dict(self.posterior_predictive_kwargs or {})
+            posterior_predictive_kwargs = _copy_sampler_options(self.posterior_predictive_kwargs or {})
             posterior_predictive_kwargs.setdefault("model", model)
             if posterior_var_names is not None:
                 posterior_predictive_kwargs.setdefault("var_names", posterior_var_names)

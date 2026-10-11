@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, Literal
 
 import pandas as pd
 
@@ -24,6 +24,7 @@ from .outputs import (
     validate_output_resources,
 )
 from .preparation import with_prepared_rhime_sites
+from openghg_inversions.inference.sampling import resolve_sampler
 from .sampling import RhimeSampler, sample_rhime_model
 from .specs import (
     RhimeRunSpec,
@@ -42,7 +43,7 @@ def run_rhime_from_prepared_inputs(
     *,
     prepared_inputs: RhimePreparedInputs,
     run_spec: RhimeRunSpec,
-    sampler: RhimeSampler | None = None,
+    sampler: RhimeSampler | Literal["default"] = "default",
     model_builder: RhimeModelBuilder | None = None,
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
     likelihood_kwargs: Mapping[str, Any] | None = None,
@@ -59,7 +60,8 @@ def run_rhime_from_prepared_inputs(
         prepared_inputs: Validated canonical inversion inputs and retained
             basis functions.
         run_spec: Resolved model, output, and run settings.
-        sampler: Optional sampler configuration; defaults to ``RhimeSampler``.
+        sampler: Sampler configuration or ``"default"`` for ``RhimeSampler()``.
+            Explicit ``None`` is invalid; omit the argument to select defaults.
         model_builder: Optional complete-model callable for advanced graphs.
         likelihood_builder: Optional ordinary likelihood callable used with
             the built-in graph.
@@ -71,9 +73,11 @@ def run_rhime_from_prepared_inputs(
     Raises:
         ValueError: If layouts, extension points, aggregation error, or output
             settings are inconsistent.
-        TypeError: If an extension point has an invalid callable contract.
+        TypeError: If an extension point has an invalid callable contract, or
+            the sampler is neither a configuration nor ``"default"``.
         FileNotFoundError: If a selected country file is missing or is a directory.
     """
+    active_sampler = resolve_sampler(sampler)
     if model_builder is not None and likelihood_builder is not None:
         raise ValueError("Pass either `model_builder` or `likelihood_builder`, not both.")
     if likelihood_kwargs and likelihood_builder is None:
@@ -156,7 +160,6 @@ def run_rhime_from_prepared_inputs(
             ),
         )
     )
-    active_sampler = RhimeSampler() if sampler is None else sampler
     build_and_sample_start = timer_start()
 
     if multisector:

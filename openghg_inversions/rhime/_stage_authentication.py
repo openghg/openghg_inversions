@@ -14,7 +14,6 @@ from collections.abc import Mapping
 from openghg_inversions.postprocessing.contracts import OutputContract
 
 from ._stage_artifacts import file_identity as _file_identity
-from .sampling import RhimeSampler
 
 
 def _load_stage_manifest(path: str | Path, *, stage: str) -> tuple[Path, dict[str, Any]]:
@@ -134,15 +133,33 @@ def _verify_sample_manifest(
     return manifest
 
 
-def _sampler_from_sample_manifest(manifest: Mapping[str, Any], *, path: str | Path) -> RhimeSampler:
-    """Restore the sampler configuration recorded by the sampling stage."""
+def _sampler_metadata_from_sample_manifest(
+    manifest: Mapping[str, Any], *, path: str | Path
+) -> dict[str, int | str]:
+    """Validate the descriptive output fields without reconstructing a sampler.
+
+    Other recorded settings remain provenance only. In particular, replay does
+    not validate predictive call arguments or require an installed sampler backend.
+    """
     effective = manifest.get("effective_configuration")
     sampler = effective.get("sampler") if isinstance(effective, Mapping) else None
     if not isinstance(sampler, Mapping):
         raise ValueError(f"Sample manifest {Path(path).resolve()} has no effective sampler configuration.")
-    try:
-        return RhimeSampler(**dict(sampler))
-    except (TypeError, ValueError) as exc:
+    metadata: dict[str, int | str] = {}
+    for name in ("draws", "burn", "tune", "chains"):
+        value = sampler.get(name)
+        minimum = 1 if name in ("draws", "chains") else 0
+        if type(value) is not int or value < minimum:
+            raise ValueError(
+                f"Sample manifest {Path(path).resolve()} has invalid sampler metadata: "
+                f"{name} must be an integer >= {minimum}."
+            )
+        metadata[name] = value
+    backend = sampler.get("nuts_sampler")
+    if not isinstance(backend, str) or not backend:
         raise ValueError(
-            f"Sample manifest {Path(path).resolve()} has an invalid effective sampler configuration: {exc}"
-        ) from exc
+            f"Sample manifest {Path(path).resolve()} has invalid sampler metadata: "
+            "nuts_sampler must be a nonempty string."
+        )
+    metadata["nuts_sampler"] = backend
+    return metadata

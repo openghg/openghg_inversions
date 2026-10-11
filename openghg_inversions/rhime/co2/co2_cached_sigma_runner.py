@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 import copy
 import json
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 import numpy as np
 import pymc as pm
@@ -27,6 +27,7 @@ from openghg_inversions.observation_error import (
 from openghg_inversions.rhime.builders import RhimeModelBuildResult
 from openghg_inversions.inference.cached_sigma import make_cached_sigma_compound_step
 from openghg_inversions.rhime.materialization import materialize_pymc_inputs
+from openghg_inversions.inference.sampling import resolve_sampler
 from openghg_inversions.rhime.sampling import RhimeSampler, sample_rhime_model
 
 from .co2_cached_sigma_model import (
@@ -502,7 +503,7 @@ def run_rhime_co2_cached_sigma(
     tau_hours: float | Mapping[str, float],
     site_amplitude_prior_scale: float,
     initial_site_amplitudes: float | Mapping[str, float] | None = None,
-    sampler: RhimeSampler | None = None,
+    sampler: RhimeSampler | Literal["default"] = "default",
     sigma_target_accept: float = 0.8,
     state_target_accept: float = 0.9,
     use_bc: bool = False,
@@ -535,7 +536,7 @@ def run_rhime_co2_cached_sigma(
         initial_site_amplitudes: Optional positive initial amplitude in the
             same units, supplied as one scalar or a mapping covering every
             observed site. Defaults to ``site_amplitude_prior_scale``.
-        sampler: Optional sampling configuration. This recipe requires PyMC,
+        sampler: Sampler configuration or ``"default"``; explicit ``None`` is invalid. This recipe requires PyMC,
             constructs its own step, and supports only ``random_seed`` in
             ``posterior_predictive_kwargs``.
         sigma_target_accept: NUTS target acceptance probability for the site-
@@ -558,11 +559,13 @@ def run_rhime_co2_cached_sigma(
         exactly that many prior draws.
 
     Raises:
+        TypeError: If the sampler is neither a configuration nor ``"default"``.
         ValueError: If prepared arrays, labels, numerical inputs, or model
             construction are invalid; if a site mapping is incomplete; or if
             the sampler is not PyMC, supplies ``step`` or generic
             ``target_accept``, or has unsupported predictive keywords.
     """
+    requested_sampler = resolve_sampler(sampler)
     cached_model = build_rhime_co2_cached_sigma(
         prepared_inputs=prepared_inputs,
         tau_hours=tau_hours,
@@ -574,7 +577,6 @@ def run_rhime_co2_cached_sigma(
         offset_prior=offset_prior,
         offset_args=offset_args,
     )
-    requested_sampler = RhimeSampler() if sampler is None else sampler
     built = co2_cached_sigma_build_result(cached_model, prepared_inputs)
     sampling_sampler = _sampler_for_cached_graph(
         requested_sampler,

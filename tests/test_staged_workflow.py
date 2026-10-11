@@ -890,12 +890,15 @@ stages.materialize_pymc_inputs = forbidden
 stages.RhimeMergedData.from_options = forbidden
 from openghg_inversions.rhime import stages as public_stages
 setup = public_stages.resolve_stage_setup(json.loads((root / 'params.json').read_text()), model='standard')
+from openghg_inversions.rhime.sampling import RhimeSampler
+RhimeSampler.__init__ = forbidden
 result = public_stages.postprocess_rhime_stage(
     setup=setup, model='standard', prepared_inputs=root / 'prepared.nc',
     posterior=root / 'posterior.nc', preparation_manifest=root / 'prepare-manifest.json',
     sample_manifest=root / 'sample-manifest.json', output_dir=root / 'replayed',
 )
 assert result.model is None and result.model_build_result is None
+assert result.sampler is None
 assert result.output_contract.variable_roles['flux_scale'] == 'x'
 """
     subprocess.run([sys.executable, "-c", script, str(tmp_path)], check=True, capture_output=True, text=True)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from openghg_inversions.native_flux import resolve_runtime_flux
+from openghg_inversions.inference.sampling import resolve_sampler
 from openghg_inversions.basis import prepare_basis
 from openghg_inversions.rhime.preparation import resolve_basis_inputs
 
@@ -578,7 +579,7 @@ def make_multisector_rhime_result(
     *,
     prepared: RhimePreparedInputs,
     run_spec: RhimeRunSpec,
-    sampler: RhimeSampler,
+    sampler: RhimeSampler | None,
     model_build_result: RhimeModelBuildResult | None = None,
     output_contract: OutputContract | None = None,
     idata: xr.DataTree,
@@ -592,7 +593,7 @@ def make_multisector_rhime_result(
     Args:
         prepared: Retained source-resolved inputs and basis functions.
         run_spec: Resolved model, output, and run settings.
-        sampler: Sampler configuration used for the trace.
+        sampler: Live sampler used for the trace, or ``None`` during saved replay.
         model_build_result: Concrete graph and roles, when retained in memory.
         output_contract: Durable output information for graph-free reconstruction.
             Defaults to the live build result's contract when supplied.
@@ -715,6 +716,7 @@ def run_multisector(
         if likelihood_builder is not None and params.get("mismatch_model") is not None:
             raise ValueError("A custom likelihood cannot be combined with a built-in mismatch model.")
         config = RhimeConfig.from_params(params, multisector=True)
+    sampler = resolve_sampler(config.sampler)
     log_timing("rhime.runner_setup", timer_seconds(setup_start), multisector=True)
     if likelihood_builder is None and config.model.likelihood is None:
         raise ValueError("A multisector RHIME run requires a built-in or custom likelihood.")
@@ -813,13 +815,13 @@ def run_multisector(
     # 4. Inference receives the completed graph and its variable roles.
     idata = sample_rhime_model(
         model_build_result,
-        config.sampler,
+        sampler,
     )
     # 5. Bind the samples to durable scientific output information.
     result = make_multisector_rhime_result(
         prepared=prepared,
         run_spec=run_spec,
-        sampler=config.sampler,
+        sampler=sampler,
         model_build_result=model_build_result,
         idata=idata,
         build_and_sample_seconds=timer_seconds(build_and_sample_start),

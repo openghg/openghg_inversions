@@ -404,7 +404,8 @@ def test_tiny_model_samples_through_rhime_sampler() -> None:
         sampler=sampler,
     )
 
-    assert result.sampler is sampler
+    assert result.sampler is not sampler
+    assert result.sampler == sampler
     posterior = result.idata["posterior"]
     log_likelihood = result.idata["log_likelihood"]
     assert posterior.sizes["chain"] == 1

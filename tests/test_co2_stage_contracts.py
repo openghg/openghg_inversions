@@ -2,6 +2,7 @@
 
 from copy import deepcopy
 import json
+from pathlib import Path
 
 import pytest
 import xarray as xr
@@ -148,6 +149,8 @@ def test_co2_replay_requires_version_one_and_stays_graph_free(tmp_path, monkeypa
             "posterior": file_identity(posterior),
         },
     }
+    sampled_settings = sample["effective_configuration"]["sampler"]
+    sampled_settings.update(draws=17, burn=2, tune=13, chains=3)
     if binding is not None:
         sample["schema_version"] = 2
         if binding != "absent":
@@ -162,6 +165,9 @@ def test_co2_replay_requires_version_one_and_stays_graph_free(tmp_path, monkeypa
     def forbidden(*args, **kwargs):
         raise AssertionError("CO2 version-1 replay must not build a model.")
 
+    from openghg_inversions.rhime.sampling import RhimeSampler
+
+    monkeypatch.setattr(RhimeSampler, "__init__", forbidden)
     monkeypatch.setattr(co2_stages, "build_rhime_co2", forbidden)
     monkeypatch.setattr(co2_stages, "build_rhime_co2_cached_sigma", forbidden)
     monkeypatch.setattr(_standard_stages, "_build_prepared_model", forbidden)
@@ -189,6 +195,13 @@ def test_co2_replay_requires_version_one_and_stays_graph_free(tmp_path, monkeypa
         output_dir=tmp_path / "replay",
     )
     assert result.model is None
+    assert result.sampler is None
+    assert result.output_metadata["sampler"] == {
+        "draws": 17, "burn": 2, "tune": 13, "chains": 3, "nuts_sampler": "pymc"
+    }
+    replay = json.loads(Path(result.output_metadata["postprocess_manifest_path"]).read_text())
+    assert replay["effective_configuration"]["sampler"] == sampled_settings
+    assert replay["sampling_configuration"] == sampled_settings
     assert (tmp_path / "replay" / "basic.nc").is_file()
 
 

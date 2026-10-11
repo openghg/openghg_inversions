@@ -69,8 +69,9 @@ class RhimeResult:
         basis_functions: Basis operator and flux retained for postprocessing.
         model: Concrete sampled PyMC model, when retained.
         inv_out: Modern inversion output, when postprocessing created one.
-        sampler: Sampling configuration used for the run. A new
-            :class:`RhimeSampler` is used by default.
+        sampler: Live sampling configuration, when supplied. Defaults to ``None``.
+            Results constructed from saved samples need no sampler. Descriptive sampler
+            metadata belongs in ``output_metadata["sampler"]`` for replay.
         model_build_result: Model, variable-role manifest, and builder metadata,
             when available.
         output_contract: Durable scientific roles and reconstruction mapping.
@@ -87,12 +88,14 @@ class RhimeResult:
     basis_functions: BasisFunctions | None = None
     model: pm.Model | None = None
     inv_out: InversionOutput | None = None
-    sampler: RhimeSampler = field(default_factory=RhimeSampler)
+    sampler: RhimeSampler | None = None
     model_build_result: RhimeModelBuildResult | None = None
     output_contract: OutputContract | None = None
 
     def __post_init__(self) -> None:
         """Retain output information independently of the optional live model."""
+        if self.sampler is not None:
+            self.output_metadata["sampler"] = _sampler_metadata(self.sampler)
         if self.output_contract is None and self.model_build_result is not None:
             self.output_contract = self.model_build_result.output_contract
 
@@ -324,7 +327,7 @@ def _make_inversion_output(
             "output_name": result.output_spec.output_name,
             "save_trace": result.output_spec.save_trace,
             "save_inversion_output": result.output_spec.save_inversion_output,
-            "sampler": _sampler_metadata(result.sampler),
+            "sampler": result.output_metadata.get("sampler"),
         },
         provenance={
             "contract": "modern_rhime_inversion_output",

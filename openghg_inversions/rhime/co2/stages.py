@@ -40,7 +40,7 @@ from openghg_inversions.rhime._stage_artifacts import (
 )
 from openghg_inversions.rhime._stage_authentication import (
     _load_stage_manifest,
-    _sampler_from_sample_manifest,
+    _sampler_metadata_from_sample_manifest,
     _verify_manifest_artifact,
 )
 from openghg_inversions.rhime._stage_checks import PREPARATION_CHECK_NAME, _check_result, _check_stage
@@ -454,15 +454,16 @@ def postprocess_co2_stage(
         "artifact_identities"
     ].get("affine_reconstruction"):
         raise ValueError("Posterior and preparation disagree on the affine reconstruction identity.")
-    sampler = _sampler_from_sample_manifest(sample, path=sample_manifest)
+    sampler_metadata = _sampler_metadata_from_sample_manifest(sample, path=sample_manifest)
     trace = load_trace(posterior)
     destination = Path(output_dir).resolve()
     result = make_co2_rhime_result(
         prepared=prepared,
         run_spec=_run_spec(setup, prepared, destination),
-        sampler=sampler,
+        sampler=None,
         idata=trace,
     )
+    result.output_metadata["sampler"] = sampler_metadata
     # Build all requested products before opening any output destination.
     make_co2_rhime_outputs(
         result=result, prepared=prepared, bound=bound, source_to_sector=setup.source_to_sector
@@ -483,7 +484,9 @@ def postprocess_co2_stage(
         **preparation["artifact_identities"],
         "posterior": _file_identity(Path(posterior)),
     }
-    manifest["sampling_configuration"] = sample["effective_configuration"]["sampler"]
+    recorded_sampler = dict(sample["effective_configuration"]["sampler"])
+    manifest["effective_configuration"]["sampler"] = recorded_sampler
+    manifest["sampling_configuration"] = recorded_sampler
     manifest["artifacts"] = artifacts
     manifest["artifact_identities"] = {
         name: _file_identity(Path(result.output_metadata[f"{name}_path"])) for name in artifacts
