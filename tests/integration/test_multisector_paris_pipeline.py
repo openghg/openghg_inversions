@@ -159,7 +159,7 @@ def test_multisector_rhime_pipeline_writes_latest_paris_flux_schema(
             "output_name": "multisector_paris_pipeline",
             "output_path": str(tmp_path),
             "basis_algorithm": "quadtree",
-            "basis_output_path": str(tmp_path),
+            "basis_output_path": str(tmp_path / "basis.nc"),
             "bc_basis_directory": default_bc_basis_directory,
             "nbasis": 4,
             "draws": 2,
