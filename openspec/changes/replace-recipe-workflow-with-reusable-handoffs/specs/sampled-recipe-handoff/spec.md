@@ -11,14 +11,23 @@ or another model execution.
 ### Requirement: Sampling consumes one prepared handoff and current inference choices
 
 Each supported concrete MCMC workflow SHALL accept one prepared-manifest path,
-current model choices, sampler options and an explicit sample destination, and
-return one absolute sample-manifest path. It SHALL authenticate the prepared
+the current model section, a sampler selection and an explicit sample destination,
+and return one absolute sample-manifest path. It SHALL authenticate the prepared
 handoff and validate the selected model's scientific prerequisites before
 materializing model inputs or sampling. It SHALL NOT require the preparation's
 original full configuration, a repeated prepared-data path or current output
 choices. Compatible new priors or likelihood choices SHALL define new inference
 without invalidating the prepared checkpoint. Preparation-dependent scientific
 constraints SHALL follow the prepared-recipe-handoff contract.
+Facts already owned by preparation SHALL be bound from that handoff; conflicting
+claims in the current model section SHALL fail rather than replace saved facts.
+The new sampling boundary SHALL accept the existing `RhimeSampler` or
+`"default"`, with omission equivalent to `"default"`. Each default selection
+SHALL create a fresh sampler for that invocation. A supplied sampler's options
+SHALL be snapshotted for the invocation without mutating caller-owned options or
+requiring a second sampler-options type. `None` SHALL be invalid at this new
+boundary. Existing direct scientific adapters whose established `None` behavior
+selects a default sampler SHALL retain that behavior at their own boundary.
 
 #### Scenario: Reuse preparation for a different compatible model
 - **WHEN** two sampling invocations use the same valid prepared handoff with
@@ -30,30 +39,56 @@ constraints SHALL follow the prepared-recipe-handoff contract.
 - **WHEN** selected model choices require unavailable arrays, incompatible labels,
   units or a different preparation-dependent scientific calculation
 - **THEN** sampling reports the incompatibility before model materialization or
-  sample publication, rather than reinterpreting or silently preparing the inputs
+  sample saving, rather than reinterpreting or silently preparing the inputs
+
+#### Scenario: Default and explicit sampler selections
+- **WHEN** sampling omits its sampler or selects `"default"` on separate invocations
+- **THEN** each invocation uses a fresh default sampler
+- **AND** supplying a `RhimeSampler` uses an isolated snapshot of its actual options
+- **AND** supplying `None` to this new boundary fails while established direct adapters retain their documented `None` behavior
+
+#### Scenario: A model section contradicts prepared facts
+- **WHEN** a current model section claims species, domain or source/state facts inconsistent with its prepared handoff
+- **THEN** sampling rejects the conflict before construction or sampling rather than replacing the preparation's meaning
 
 ### Requirement: The sample record contains bounded scientific replay information
 
 A sample handoff SHALL record its supported envelope version, recipe and MCMC
-inference kind; referenced numerical artifacts and their content identities;
+inference kind; the exact referenced preparation manifest and posterior with
+their relative file references and content identities;
 the actual model choices, sampler provenance and callable identity/arguments;
 and its family's scientific output meaning. Standard/multisector SHALL embed
 the existing `OutputContract` representation in the record. CO2 SHALL retain its
 authenticated trace roles and affine associations without requiring that generic
 contract representation.
-It SHALL preserve the original run window and retained sites, averaging periods
-and other family-specific facts needed to construct the result and its outputs.
+The bound preparation manifest and its numerical artifacts SHALL preserve the
+original run window, retained sites, averaging periods and other preparation facts
+needed to construct the result and its outputs, without requiring duplicate
+numerical labels or arrays in the sample record. The sample SHALL add only the
+family-specific output context and provenance needed from completed inference.
 Recorded inference choices SHALL describe the completed invocation, not later
-configuration defaults. Saved scientific output meaning SHALL be validated
-independently of whether products are requested during sampling.
+configuration defaults, using plain serializable metadata rather than a saved
+whole configuration or runtime dataclass layout. Saved scientific output meaning
+SHALL be validated independently of whether products are requested during sampling.
 The record SHALL NOT require a separate output-binding
-sidecar or persistence of live models, samplers or steps. Dependencies and
-publication SHALL follow the prepared-recipe-handoff path/publication rules.
+sidecar or persistence of live models, samplers or steps. Ordinary saves,
+manifest-last completion and dependencies SHALL follow the prepared-recipe-handoff
+destination and file-reference rules.
+Sampling SHALL retain the preparation identity authenticated before inference and
+bind its sample record to that identity. Before completing the sample manifest,
+saving SHALL verify the current preparation and its required dependencies against
+the retained identity rather than substituting a newly computed identity.
+
+#### Scenario: Preparation changes while inference is running
+- **WHEN** the preparation manifest or a required dependency changes after its initial verification and before sample saving completes
+- **THEN** saving rejects the changed dependency and leaves no completed sample manifest
+- **AND** it does not bind the posterior to the replacement preparation
 
 #### Scenario: Record an invocation with retained observations and overrides
 - **WHEN** sampling uses a retained subset and invocation-specific sampler choices
 - **THEN** the saved record preserves the original run window, actual retained
-  metadata, selected model choices and sampler settings used for that invocation
+  metadata through its bound preparation, and the selected model choices and
+  sampler settings used for that invocation
 - **AND** the returned manifest path identifies the completed record without
   adding a self-referential invocation path to its saved contents
 
@@ -104,6 +139,12 @@ the saved model/run facts and sampling provenance without requiring the original
 full configuration or separate prepared/posterior paths. It SHALL NOT construct
 a graph, materialize model inputs, repeat preparation or sample again.
 Replay SHALL NOT import or execute recorded construction or likelihood callables.
+It SHALL NOT reconstruct a runtime sampler, select fresh sampler defaults or
+validate saved provenance as a newly requested current model configuration.
+The replay result SHALL have `sampler=None` and carry actual saved sampler
+provenance as plain metadata consumed by the shared output owner. It SHALL use
+the authenticated preparation's retained flux rather than resolve current native
+flux or load historical flux from a separate basis artifact.
 Current output choices SHALL NOT replace recorded scientific or inference choices.
 Unsupported products or incompatible reporting inputs SHALL fail before product
 writes. Scientific result/product construction SHALL share its concrete owner
@@ -114,6 +155,7 @@ with the corresponding in-memory route.
   current output choices with a new destination or naming policy
 - **THEN** it returns the requested products using recorded inference provenance
   and the same saved scientific output meaning without model execution
+- **AND** its result has no runtime sampler and its output metadata describes the completed sampling invocation
 
 #### Scenario: Requested output is unsupported
 - **WHEN** current output choices request a format not supported by the saved

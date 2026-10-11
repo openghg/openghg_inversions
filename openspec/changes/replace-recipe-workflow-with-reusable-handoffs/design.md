@@ -2,337 +2,429 @@
 
 ## Context
 
-This supersedes the OPE-207 plan accepted in [PR #787](https://github.com/openghg/openghg_inversions/pull/787);
-see [proposal.md](proposal.md). The inspected base is `devel` at `9b8cac81`.
-The unmerged PR #798 is prototype evidence, not
-an accepted implementation or artifact contract. The existing change remains
-marked superseded rather than archived as completed.
+See [proposal.md](proposal.md) for the replacement's motivation. The inspected
+landed base is `devel` at `edeffaff` (11 October 2026). PRs #773/#774 and #822–#825
+provide acquisition, prepared-value, inference and concrete configuration owners.
+This plan consumes that groundwork; #798 remains unmerged prototype evidence.
 
-Read this document first, then the three short [execution](specs/recipe-execution/spec.md),
+The remaining stack is not completion of this change. #826/#830/#832 remove the
+obsolete checkpoint/cache workflow and isolate legacy utilities; #834 changes
+observation-error ordering; #835/#836 own terminology/public entry points; #837
+owns joint input materialization. PR #840 at `ac4b9345` implements #838's explicit
+basis paths and support maps. #839 separately owns native runtime-flux resolution
+and operator-only loading. Recheck their merged revisions before implementation.
+Acquisition replay is deferred to #829 and does not block prepared/sample handoffs.
+
+The [configuration change](../resolve-rhime-configuration/specs/rhime-configuration/spec.md)
+describes the landed flat preparation fields and complete requested configuration.
+This proposal deliberately replaces those two constraints with grouped ownership
+and independently resolved phases. Its completed task evidence does not establish
+implementation of this amendment. No new durable capability is synced here.
+
+Read the [execution](specs/recipe-execution/spec.md),
 [preparation](specs/prepared-recipe-handoff/spec.md) and
-[sample](specs/sampled-recipe-handoff/spec.md) contracts for acceptance details.
-The first review decision is the API and ownership below, not a helper hierarchy.
+[sample](specs/sampled-recipe-handoff/spec.md) contracts for normative acceptance.
 
 ## Goals / Non-Goals
 
-**Goals:** One readable scientific sequence per family; one path for each saved
-handoff; reuse prepared science across compatible model choices; reconstruct
-products from saved scientific meaning. Follow the repository's
+**Goals:** Readable scientific order, one path per saved handoff, compatible
+inference reuse, and products reconstructed from saved meaning. Follow the
 [RHIME development rules](../../../docs/development/rhime_model_development.rst)
 and [array ownership rules](../../../docs/plans/numerical_data_ownership_and_execution_boundaries.md).
 
-**Non-goals:** A workflow engine, stage inheritance, plugin registry, universal
-recipe class, new numerical codecs, new scientific models or MAP implementation.
-Import isolation is separate: graph-free replay forbids graph construction, not
-imports of modules that happen to import PyMC.
+**Non-goals:** A workflow engine, phase inheritance, publisher/storage framework,
+new numerical codecs, new inference algorithms or mandatory acquisition persistence.
+TOML support, nested/linked checkpoint implementation and MAP remain separate.
+Graph-free replay forbids graph construction, not imports of modules using PyMC.
 
 ## Decisions
 
-### 1. A saved handoff is a manifest path
+### 1. Group choices once, then resolve the selected phase
 
-Proposed public Python usage; `preparation`, `model_a`, `model_b` and
-`sampler_options` are already resolved choices. These names illustrate the new
-API, not functions currently installed:
+Use one complete requested `RhimeConfig` for full configured execution. Move its
+existing preparation fields/defaults into `RhimePreparationConfig`; do not keep
+another authoritative flat copy or parallel default table. Keep `SiteOptions`,
+`RhimeModelSpec`, `RhimeSampler` and `RhimeOutputSpec` as their existing owners.
+One preparation record has a concrete purpose: it can be resolved and consumed
+without constructing a model, sampler or output request. No replacement sampler
+settings class, `ModelChoices` class or generic phase registry is required.
+
+Illustrative pseudocode below describes the intended interfaces, not installed
+API names. Decoded sections are ordinary mappings, not resolved records:
 
 ```python
-from openghg_inversions.rhime import standard_stages
-from openghg_inversions.rhime.specs import RhimeOutputSpec
+sections = group_legacy_options(read_rhime_ini("run.ini"))
+# {"preparation": {...}, "model": {...}, "sampler": {...}, "output": {...}}
 
-prepared = standard_stages.prepare(preparation, output_dir="run/prepared")
-a = standard_stages.sample(
-    prepared, model=model_a, sampler_options=sampler_options, output_dir="run/a"
+preparation = RhimePreparationConfig.from_params(sections["preparation"])
+config = RhimeConfig(
+    preparation=preparation,
+    model=resolve_model_options(sections["model"], facts=preparation.requested_facts),
+    sampler=resolve_sampler_options(sections.get("sampler", {})),
+    output=RhimeOutputSpec.from_params(sections.get("output", {})),
 )
-b = standard_stages.sample(
-    prepared, model=model_b, sampler_options=sampler_options, output_dir="run/b"
+result = run_standard(config=config)
+```
+
+The legacy INI adapter preserves supported aliases, duplicate-name precedence
+and override precedence, then groups recognized options by their concrete owners.
+Select a phase's values before normalizing them: calling today's complete
+normalizer first would still reject irrelevant model/output settings. Unknown
+names remain errors; known unrelated groups in a shared file remain inactive.
+Explicit wrong-phase command overrides fail. A future section-preserving INI or
+TOML frontend can supply the same mappings, without being required by this work.
+
+Species, domain, requested dates and prepared source layout belong to preparation.
+Final-product naming belongs to output; saved-stage destinations are explicit
+arguments. Translate historically shared keys such as `use_bc` deliberately:
+preparation determines available BC inputs, while inference chooses whether to use
+them. Do not create independently writable copies of a preparation fact. Model
+choices requiring absent BC/minimum-error arrays fail at scientific composition.
+If a caller repeats a preparation fact at sampling, reject a conflicting claim;
+inactive filters or basis-writing destinations do not become equality gates.
+
+Full resolution can bind model defaults against resolved requested facts before
+acquisition. Saved sampling binds the model section against authenticated prepared
+facts, including the original date anchor, then aligns per-site options to retained
+labels. The request and saved arrays are never mutated by this binding.
+
+### 2. Live inference accepts an existing sampler or `"default"`
+
+Use the public spelling `sampler`, not a new `sampler_options` object. The new
+live sampling entry point accepts `RhimeSampler | Literal["default"]`, defaulting
+to `"default"`. A caller need not import `RhimeSampler` to request ordinary defaults.
+Resolve that literal once at the concrete recipe's inference boundary into a fresh
+sampler with that recipe's supported defaults. A supplied sampler retains its
+explicit settings, subject to the recipe's existing compatibility checks. A full
+configured run consumes `config.sampler`; it must not overwrite those choices
+because a separate sampler argument was omitted. Keep the existing rejection of
+a complete resolved configuration combined with additional raw overrides.
+
+```python
+def sample(prepared_manifest, *, model, sampler="default", output_dir):
+    # Authentication and scientific binding precede the inference shown below.
+    ...
+
+sample(prepared_manifest, model=model_a, output_dir="runs/a")
+sample(prepared_manifest, model=model_b, sampler="default", output_dir="runs/b")
+# Advanced callers can instead pass their configured RhimeSampler.
+```
+
+`"default"` requests live behavior; it is not recorded as the settings actually
+used. Save the resolved invocation's provenance. Do not use truthiness or
+`sampler or RhimeSampler()` to resolve this choice. The new live boundary rejects
+`None` and unknown strings before sampling or artifact writes; `None` is not a
+request to skip inference. Established direct scientific APIs that already use
+`None` for default selection can retain that spelling in their outer adapters.
+For cached CO2, defaults and explicit samplers still enter its matched construction,
+step and prediction operation, never a generic sampler substitution.
+
+Take an invocation-local copy of the existing sampler and its owned keyword
+containers. Preserve supported list/tuple/NumPy values and isolate overrides.
+Do not indiscriminately deep-copy models, steps or borrowed scientific arrays.
+Reject `idata_kwargs.coords` and `dims` at resolution and direct sampling;
+model registration remains authoritative. Configuration may hold the existing
+unbound sampler: strict separation into several settings/runtime classes is not
+needed to achieve these guarantees.
+
+A result is a record of what happened, not a request to execute defaults:
+
+```python
+# Proposed field in the existing result type; no default factory.
+sampler: RhimeSampler | None = None
+
+# Live result: snapshot from the invocation actually used.
+result.output_metadata["sampler"] = describe_sampler(invocation_sampler)
+# Replay result: sampler stays None; use validated recorded values.
+result.output_metadata["sampler"] = saved_sampler_metadata
+```
+
+Keep live sampler access available for existing direct callers. Shared outputs
+consume the descriptive metadata in either route. Result/replay construction never
+resolves `"default"`, creates a sampler, or treats recorded provenance as executable
+configuration. Remove the existing `RhimeResult` sampler default factory and adapt
+the concrete result factories and output adapter together.
+
+### 3. Keep scientific order visible; save only at explicit boundaries
+
+Both full and saved routes call the same scientific owners. Small repeated
+orchestration is preferable to a forwarding wrapper introduced only to give every
+family identical stage names. The following sketch consumes #834/#837/#838/#839;
+its helper names must be reconciled with those deliveries rather than implemented
+again here:
+
+```python
+merged = acquire(explicit_acquisition_options)
+with_errors = derive_observation_errors(merged, error_options)
+filtered = filter_observations(with_errors, filters)
+runtime_flux = resolve_runtime_flux(filtered, source_options)
+basis = prepare_basis(
+    selected_operator_path=basis_path,
+    runtime_flux=runtime_flux,
+    support_maps=support_maps,
 )
+site_data = build_sensitivities(filtered, basis, ...)
+prepared = assemble_inputs(filtered, basis, site_data, ...)
+# Only saved preparation adds this file boundary.
+prepared_manifest = save_preparation(prepared, requested_facts, destination)
+```
+
+Preparation aligns metadata to retained observations; inference aligns its own
+numeric per-site choices. Validate every supplied value, including dropped-site
+entries, before selecting retained labels. Empty retained sets fail. Preserve
+custom errors and derive missing errors before filtering/aggregation; nested
+preparation does this for both domains before alignment, without promising new
+nested checkpoint support.
+
+Resolution remains data-free. Numerical inputs are borrowed and potentially lazy;
+related arrays cross an explicit joint assembly, model-input, serialization or
+eager-kernel boundary when that operation needs them. Consume #837's gathered-input
+boundary rather than promising all prepared arrays remain lazy or moving all
+materialization into model construction. Custom builders receive the supported
+prepared representation and own any additional backend conversion they need.
+
+A full runner continues visibly from preparation through construction, inference,
+result reconstruction and products, without invoking file-handoff helpers. Saved
+sampling uses the same concrete scientific operations:
+
+```python
+def sample(prepared_manifest, *, model, sampler="default", output_dir):
+    record, paths, preparation_identity = verify_preparation(prepared_manifest)
+    prepared = load_prepared(paths)
+    resolved_model = resolve_model_options(model, facts=record.facts)
+    check_scientific_requirements(prepared, resolved_model, record.baked_policy)
+    invocation = resolve_invocation_sampler(sampler, recipe="standard")
+    built = build_standard_model(prepared, resolved_model)
+    posterior = sample_standard_model(built, invocation)
+    validate_output_meaning(prepared, posterior, built.output_contract)
+    return save_samples(
+        output_dir, prepared_manifest, posterior, built.output_contract,
+        preparation_identity=preparation_identity,
+        actual_inference=describe_invocation(resolved_model, invocation),
+    )
+```
+
+Validate declared model coordinates/output roles even when no products are requested.
+A custom model supporting only `none` is valid; it cannot claim unsupported replay
+products. Product-specific requirements are checked when products are requested.
+
+### 4. A saved handoff is one manifest path
+
+Preparation and sampling return absolute paths to completed manifests. Their callers
+do not repeat numerical paths or retain the original configuration. A configured
+full request can supply its preparation record; a preparation-only file can resolve
+that record independently:
+
+```python
+preparation = RhimePreparationConfig.from_params(sections["preparation"])
+prepared = standard_stages.prepare(preparation, output_dir="runs/prepared")
+a = standard_stages.sample(prepared, model=model_a, output_dir="runs/a")
+b = standard_stages.sample(prepared, model=model_b, output_dir="runs/b")
 result = standard_stages.postprocess(
-    a, output=RhimeOutputSpec(output_format="basic", output_path="run/products")
+    a, output=RhimeOutputSpec(output_format="basic", output_path="runs/products")
 )
 ```
 
-`prepared`, `a` and `b` are absolute `Path` values naming completed manifests.
-The manifest owns its data references. There is no `config, prepared_inputs,
-prepared_manifest` triple, handoff wrapper with a path property, or second output
-destination beside `output.output_path`. In-memory products remain available when
-no write is requested; requesting a write without a destination is an error.
+The `model` argument here contains decoded model choices; the sampling boundary
+resolves them against saved facts. Existing direct prepared-input scientific APIs
+continue to accept their established resolved specifications. Do not hide an
+ambiguous raw-or-resolved configuration union behind the staged argument.
 
-This activity diagram shows the whole scientific process. A full runner takes
-the same preparation/build/inference/products route in memory, omitting the
-manifest writes and reads. Each sampling invocation below includes construction.
+A small CLI selection table chooses the concrete family once. Sampling/replay infer
+family from a checked supported manifest; an explicitly selected family must agree.
+Keep existing staged command names where applicable, coordinating the full-run
+entry point with #836. One shared file or phase-only files are both supported.
+Prior prediction needs preparation, model and check choices; diagnosis remains
+independently callable with posterior, optional supported sample record and check
+options. Partial families need not implement unrelated operations.
 
-```mermaid
-flowchart TD
-    A[Acquired or reloaded merged data] --> P[Prepare retained scientific inputs]
-    P --> H[(Prepared manifest and numerical files)]
-    H --> S1[Build and sample model A]
-    H --> S2[Build and sample compatible model B]
-    S1 --> R1[(Sample A manifest and posterior)]
-    S2 --> R2[(Sample B manifest and posterior)]
-    R1 --> O[Construct requested products]
-    R2 --> O
-```
+### 5. Save numerical artifacts, then write the manifest last
 
-Prior prediction consumes `prepared, model` plus explicit predictive/check
-options and its report destination; it does not need future MCMC/output choices.
-Diagnosis remains independently callable with a posterior, optional supported
-sample manifest and convergence options. A small CLI selection table chooses the
-concrete family module once. Partial families need not implement every operation.
-
-The corresponding proposed CLI calls retain existing command names and remove
-the repeated numerical paths:
-
-```sh
-openghg-inversions prepare --model standard --config preparation.ini --output-dir run/prepared
-openghg-inversions sample --preparation-manifest run/prepared/prepare-manifest.json --config model-a.ini --output-dir run/a
-openghg-inversions postprocess --sample-manifest run/a/sample-manifest.json --config products.ini --output-dir run/products
-```
-
-The latter two derive family from the authenticated manifest; an optional explicit
-family must agree. `model-a.ini` supplies model/sampler choices and `products.ini`
-only product choices. One shared config file remains possible. CLI overrides are
-resolved once, including mapping `--output-dir` into the sole output policy.
-
-### 2. Choices belong to the phase that can act on them
-
-| Owner | Examples | What passes to the next phase |
-| --- | --- | --- |
-| Preparation | Acquisition, requested dates/sites, averaging, filters, inventory, basis, `bc_freq`, baked minimum-error values | Prepared arrays and facts about how they were produced |
-| Model and inference | Scaling/BC/offset priors, likelihood selection, inference strategy, sampler options | Posterior plus actual model/sampler provenance and scientific output meaning |
-| Products | Format, reporting mask, naming, destination and save choices | Scientific result and requested products |
-
-Resolution is explicit and has no I/O or lazy-array computation. The CLI may read
-one familiar configuration file and resolve the applicable phase sections; a
-staged command does not demand unrelated sections or include them in preparation
-identity. A full configured run resolves each applicable section once. Inputs
-that cannot apply to the selected phase fail there; irrelevant sections in a
-shared file are not presented as options to that phase.
-
-Reuse existing `RhimeModelSpec`, `RhimeOutputSpec`, prepared-input types and
-family configuration parsing where their meanings fit. Define bounded immutable
-preparation/sampler choices where needed; do not add a universal resolved-config
-container. Some old model fields repeat prepared facts (species, domain, source
-layout): derive a local builder view from the prepared facts, and reject a caller's
-conflicting claim rather than letting it overwrite them. A requested prior is a
-new choice; the original requested observation window is a recorded fact.
-
-Copy/freeze nested sampler keyword values at the choice boundary with faithful
-list/tuple and supported array-value round trips. Create one local runtime sampler
-per inference invocation. Reject `idata_kwargs` keys `coords` and `dims` during
-resolution and at the direct sampling boundary; registered model coordinates and
-declared variable dimensions remain authoritative.
-Keep potentially lazy scientific arrays borrowed, with explicit joint
-materialization in construction or serialization, never in configuration access.
-
-### 3. Concrete functions contain the science; stages contain file boundaries
-
-| Concrete owner | Work visible there |
-| --- | --- |
-| `rhime/preparation.py` and the family preparation module | Filter; derive retained labels; align options; construct basis and sensitivities; assemble inputs |
-| `rhime/standard.py`, `rhime/multisector.py`, CO2 model/runner modules | Select required arrays; materialize together; build the scientific graph; execute the appropriate inference |
-| `rhime/outputs.py`, family result functions and CO2 output modules | Construct results/products from live or authenticated saved output meaning |
-| `rhime/standard_stages.py`, `rhime/multisector_stages.py`, `rhime/co2/stages.py` | Read/authenticate; call the concrete science; write a complete handoff/report |
-| Existing artifact/authentication helpers | Versions, relative paths, digests and publication mechanics; no scientific dispatch |
-
-The standard/multisector stage modules are proposed replacements for the combined
-`_standard_stages.py`. This is an ownership map, not one new class per row.
-Keep a little repeated sequencing when it makes each family readable. Remove
-forwarding-only `construct_*`/`build_*` layers and CO2 configuration aliases.
-Use the same verb for the same operation across families; preserve differences
-that describe different mathematics, such as cached CO2 inference.
-
-The following is pseudocode for one concrete standard family, with conceptual
-helper names. Shared file readers return validated records; the family codec loads
-numerical data. Full runners call the scientific functions directly.
+`save_preparation` and `save_samples` are ordinary save functions around existing
+numerical codecs. They replace the earlier `publish_*` terminology; there is no
+publisher abstraction or remote publication. The final manifest marks completion.
 
 ```python
-def prepare(preparation, *, output_dir):
-    merged = retrieve_or_reload_rhime_data(preparation)
-    prepared = prepare_standard_inputs(merged, preparation)
-    # Filtering and retained-site alignment live inside this scientific operation.
-    return write_prepared_handoff(prepared, preparation, output_dir)
-
-def sample(prepared_manifest, *, model, sampler_options, output_dir):
-    record = authenticate_prepared_record(prepared_manifest)
-    prepared = load_standard_inputs(record)
-    validate_standard_compatibility(prepared, record.facts, model)
-    run_spec = standard_run_spec(record.facts, model, output=no_products)
-    started = timer_start()
-    built = build_standard_rhime_model_result(prepared=prepared, run_spec=run_spec)
-    sampler = sampler_options.create_sampler()
-    posterior = sample_rhime_model(built, sampler)
-    return write_sample_handoff(
-        prepared_manifest, posterior, output_dir=output_dir,
-        model_choices=model, output_contract=built.output_contract,
-        sampler_provenance=capture_sampler_provenance(sampler),
-        build_and_sample_seconds=timer_seconds(started)
+def save_samples(
+    directory, prepared_manifest, posterior, contract,
+    *, preparation_identity, actual_inference,
+):
+    directory = Path(directory).resolve()
+    check_destination_and_dependencies(directory, prepared_manifest)
+    directory.mkdir(parents=True, exist_ok=False)
+    save_trace(posterior, directory / "posterior.nc")
+    record = sample_record(
+        preparation=relative_reference(
+            prepared_manifest, directory, digest=preparation_identity,
+        ),
+        posterior=relative_reference_with_digest(directory / "posterior.nc", directory),
+        output_contract=contract.to_dict(),
+        actual_inference=actual_inference,
     )
+    verify_required_dependencies(record, directory)
+    encoded = encode_record(record)
+    write_exclusive(directory / ".sample-manifest.tmp", encoded)
+    os.replace(directory / ".sample-manifest.tmp", directory / "sample-manifest.json")
+    return directory / "sample-manifest.json"
+```
 
+Use a fresh operation destination; reject existing destinations and any write
+that would replace a dependency. Writer-owned files stay under that destination.
+References never authorize writes through dependencies. An interrupted save may
+leave incomplete files, but no completed manifest. A temporary file and rename
+prevent readers seeing partial final JSON; this is not rollback, resumable
+transactions, concurrent-writer coordination or a power-loss durability promise.
+
+References are relative to their declaring manifest, including `../prepared/...`.
+Authenticate every required transitive dependency; never consult CWD, `RUN_ROOT`,
+absolute saved paths, URIs or environment placeholders. Several samples reference
+one preparation without copying it. Moving an intact dependency tree works; a
+sample directory alone need not be self-contained. Hash exact bytes: re-encoding
+creates a new artifact, while unchanged relocated content retains its identity.
+Digests check content association, not author identity or scientific equivalence.
+Sampling retains the preparation identity verified before inference and passes it
+to saving. Before completing the sample manifest, verify the current preparation
+and its required dependencies against that retained identity; fail if they have
+changed. Never replace the retained identity with a new digest computed after
+inference. This preserves the association with the inputs actually selected for
+sampling without adding a transaction framework.
+
+### 6. Record only the facts and provenance that outputs need
+
+| Location | Authoritative contents |
+| --- | --- |
+| Prepared numerical artifact | Retained observations/site metadata, coordinates, units, basis/operator and retained flux; existing numerical codec |
+| Preparation manifest | Envelope/family, numerical references/digests, original requested dates, species/domain and missing production/baked-policy facts; requested choices as provenance |
+| Sample manifest | Envelope/family/MCMC kind, exact preparation-manifest reference/digest, posterior reference/digest, embedded `OutputContract`, actual inference/sampler provenance and bounded output context |
+| Current output policy | Supported products, reporting maps/options, names and destinations |
+
+Do not duplicate numerical coordinate arrays or conflicting preparation facts in
+every record. A sample refers to preparation transitively. Do not serialize the
+runtime dataclass layout of `RhimeConfig`, `RhimeModelSpec` or `RhimeSampler` as a
+replay schema. Declare the small metadata encoding explicitly; callable identity
+and supported arguments are descriptive, never imports or executable instructions.
+Encoding numerical provenance is an explicit serialization boundary, not a hidden
+computation performed by configuration access or a compatibility hash.
+
+The current output-consumer inventory establishes the standard slice's boundary:
+
+| Consumer | Saved information it needs |
+| --- | --- |
+| Run metadata and PARIS date presentation | Original requested start/end, not observation extrema |
+| Output view/PARIS | Retained sites, averaging, footprint/basis provenance from prepared data; species/domain from facts |
+| Reconstruction | Existing `OutputContract` roles and state mapping |
+| Legacy products/attributes | `use_bc`, actual prior descriptions, `sigma_per_site`, sampler burn/tune/chains and related existing descriptive fields |
+| Sector attribution | Recorded sector/source descriptions, retaining source order |
+| Sampler summary | Actual draws, burn, tune, chains and backend, plus supported invocation provenance |
+
+Verify this inventory against each supported product rather than reconstructing
+all current configuration classes to obtain defaults. Preserve available timing
+metadata. CO2 keeps its authenticated trace/affine representation instead of being
+forced into standard multiplicative output meaning.
+
+```python
 def postprocess(sample_manifest, *, output):
-    record = authenticate_sample_record(sample_manifest)
-    prepared, posterior = load_standard_replay_inputs(record)
-    validate_standard_output_associations(record, prepared, posterior, output)
-    result = make_standard_rhime_result(
-        prepared=prepared, idata=posterior,
-        run_spec=standard_run_spec(record.preparation_facts, record.model_choices, output),
-        sampler_provenance=record.sampler_provenance,
-        output_contract=record.output_contract,
-        build_and_sample_seconds=record.build_and_sample_seconds
+    sample, preparation, paths = verify_complete_dependency_tree(sample_manifest)
+    prepared = load_prepared(paths.prepared)
+    posterior = load_trace(paths.posterior)
+    contract = decode_output_contract(sample.output_contract)
+    validate_output_associations(prepared, posterior, contract)
+    validate_requested_products(output, prepared, contract)
+    preflight_product_destinations(output)
+    result = make_standard_result(
+        prepared=prepared, posterior=posterior, contract=contract,
+        requested_window=preparation.requested_window,
+        inference_metadata=sample.inference_metadata,
+        sampler=None, output=output,
     )
-    make_standard_rhime_outputs(result=result, prepared=prepared)
+    make_standard_outputs(result, prepared)
     return result
 ```
 
-Consolidate materialization into `build_*_rhime_model_result` with an optional
-already-materialized input for established direct callers; custom complete-model
-builders still receive borrowed, potentially lazy preparation. This replaces a
-wrapper that only materializes then forwards. `make_*_rhime_result` remains a
-different operation: it must work without a model for replay. Its replay input
-needs only sampler provenance, not a live sampler or callable reconstruction.
-Adapt result/output metadata construction to accept that explicit provenance;
-keep a live sampler available to existing direct callers, but never instantiate
-one merely to replay. `record.preparation_facts` above is loaded from the bound
-prepared manifest, not a second serialized copy. Persist actual model choices
-and execution metadata; assemble `RhimeRunSpec` locally from those facts.
+Supported versions, reference structure, exact associations and all required
+digests are checked before posterior loading or product destination creation.
+After loading, validate scientific labels, units and roles before writes. Matching
+digests do not replace these checks. Replay never validates a newly reconstructed
+model configuration, instantiates a sampler, imports recorded callables or recovers
+a graph. Shared result/product owners accept explicit saved provenance; remove
+the competing stage-owned `basic.nc` write and post-write artifact discovery.
+One output policy and one product-writing owner govern both live and saved routes.
+In-memory products remain available without a destination when no writing is requested.
 
-The local no-products output spec makes existing `RhimeRunSpec` useful for
-construction without requesting products at sampling time. Fix the current
-`validate_model_build_result` early return for `output_format="none"`: always
-validate registration and declared roles; validate a particular requested format
-when it is requested. A custom model supporting only `none` remains valid, but
-cannot claim unsupported replay products.
+### 7. Reuse stops at choices already encoded by preparation
 
-CO2's configured full route consumes the same resolved model/sampler/output policy
-as its stages. Move `_run_spec`/output setup out of the stage module to the existing
-configuration/output owners. Preserve raw runner trace returns. The cached runner
-keeps its matched graph, sigma-then-state step, cache updates, prediction and
-annotations together; sharing operations must not replace it with generic sampling.
+| Later choice | Reuse? |
+| --- | --- |
+| Standard/multisector graph-time scaling, BC or offset priors | Yes, when required arrays/layout exist |
+| Supported likelihood, available minimum-error input, sampler settings | Yes, after the selected component's scientific checks |
+| Observations, filters, averaging, native inventory, basis/sensitivities, `bc_freq` or baked error values | New preparation required |
+| CO2 independent BC/offset priors or supported mismatch settings | Yes, preserving the coherent reduced flux calculation |
+| Defining CO2 native prior/covariance, operator or projection | Newly coherent reduction and matching affine companion required |
+| Cached covariance/eigenbasis inputs | Matching or rebuilt runtime cache required |
+| Product naming, destination or compatible reporting map | Yes, using the saved inference |
 
-### 4. Records contain facts and references, not an executable configuration
+#838/#839 distinguish operator reuse for new preparation from full retained-object
+restoration for replay. Extend #840's operator/current-flux test through the actual
+saved workflow, without reimplementing its basis policy:
 
-| Record | Minimum contents | Deliberately absent |
-| --- | --- | --- |
-| Prepared | Version/family; numerical refs and digests; requested window and production choices; retained sites/averaging; units/state layout; baked policy; optional coherent CO2 companion | Future sampler, product policy, full-config equality gate |
-| Sampled | Version/family/inference kind; exact prepared-manifest reference and digest; posterior reference/digest; actual model/sampler provenance; bounded replay context; scientific output contract | Original config requirement, live model/steps, separate `output-binding.json` |
-
-Replay context is the small family-owned data needed by existing result functions,
-including original dates and retained metadata; never recover dates from min/max
-surviving observations. It references immutable preparation facts rather than
-copying conflicting versions of them. Record effective configuration for provenance
-only: it is not a general-purpose decoder or substitute for typed replay fields.
-Callable module/name and arguments are descriptive; replay never imports or
-executes them. A custom output that needs execution cannot claim saved replay.
-
-Embed the existing standard/multisector `OutputContract` representation, retaining
-its parser and association checks; do not create another output-role schema. CO2
-keeps its authenticated trace/affine meaning rather than pretending to be a
-multiplicative result. The family-specific payload is deliberately bounded.
-
-```mermaid
-sequenceDiagram
-    actor Caller
-    participant Stage as Concrete postprocess
-    participant Files as Artifact helpers
-    participant Science as Family outputs
-    Caller->>Stage: sample manifest + output choices
-    Stage->>Files: Read record and validate versions, refs and digests
-    Files-->>Stage: Authenticated record and file locations
-    Stage->>Science: Load family inputs and posterior
-    Science-->>Stage: Numerical replay inputs
-    Stage->>Science: Validate roles, labels, units and requested products
-    Stage->>Science: Construct result and products
-    Science-->>Caller: Result and requested outputs
+```python
+prepared_B = prepare(current_flux=B, selected_operator=saved_operator_A)
+assert prepared_B.retained_flux == B
+saved_B = save_preparation(prepared_B, requested_facts, destination)
+# Reload after disabling acquisition; same state gives the same flux based on B.
+assert reconstruct(load_preparation(saved_B), state) == reconstruct(prepared_B, state)
 ```
 
-A manifest uses ordinary relative references from its own directory, including
-`../prepared/prepare-manifest.json` from a sibling sample directory. All required
-dependencies, including transitive numerical files, are authenticated. Reject
-absolute, URI and environment-derived saved references; never consult CWD or
-`RUN_ROOT`. Moving the complete referenced tree preserves meaning. A sample
-directory alone is not promised to be portable; copying large data is explicit.
-The dependency tree is the referenced files, not a new allowed-root registry.
-
-Owned writes stay within the explicit operation destination, which must not
-overwrite a published handoff or dependency. Write all numerical files, validate
-them, then publish the complete manifest last; errors may leave incomplete files
-but no completed handoff. This does not require a transaction engine or concurrent
-writers to the same destination. Structural/version and digest checks precede
-posterior loading; scientific association checks follow loading and precede any
-product writes. A content digest authenticates an association, not the scientific
-validity of arbitrary data or the identity of an untrusted author.
-
-### 5. Reuse ends where preparation has encoded a scientific choice
-
-| Proposed change after preparation | Reuse? | Reason |
-| --- | --- | --- |
-| Standard/multisector scaling, BC or offset prior | Yes, if required arrays/layout exist | Graph-time priors do not rebuild sensitivities |
-| Supported likelihood or use of an available minimum-error floor | Yes, if required inputs exist | Check the concrete component's requirements; missing `H_bc`/`min_error` fails |
-| Observations, filters, averaging, inventory, basis, `bc_freq` or baked minimum-error values | No | Changes numerical preparation |
-| CO2 independent BC/offset prior or compatible mismatch choices | Yes | Leaves the coherent reduced flux calculation intact |
-| Native CO2 flux prior/covariance or its reduction operator/projection | No | Prior moments, effective sensitivity, affine intercept and unresolved covariance were derived together |
-| Model-specific covariance cache/eigenbasis inputs | Only with matching or rebuilt cache | A valid prepared checkpoint does not validate an unrelated derived cache |
-| Product names, destination or compatible reporting mask | Yes, from the sample | Does not change completed inference |
-
-In particular, substituting retained CO2 prior arrays does not produce a coherent
-new reduction. Preparation and any native-flux affine companion must agree.
-Per-site numeric options validate all supplied values (even dropped-site entries),
-require retained coverage, then select retained labels before strict components.
-Preparation aligns its own metadata; model options such as per-site mismatch
-amplitudes or `tau_hours` are checked at inference against those retained labels.
-Do not reintroduce a full-config hash to avoid these concrete compatibility checks.
-
-### 6. Extensions follow the same short route without new framework contracts
-
-| Future addition | Concrete implementation route | Scientific work still required |
-| --- | --- | --- |
-| Nested stages | Load its prepared inputs; call `build_nested_rhime_model_result`; use nested result/products; add only supported CLI operations | Record/authenticate native grids, projections and output meaning without flattening them into standard inputs |
-| Linked CO2/O2 stages | Reuse existing prepared save/load and ordinary/cached runners; expose their shared joint construction, inference and prediction for stages | Bind joint output meaning; preserve species/site groups, shared state, coupled error policy and one joint trace rather than copying station-only CO2 products |
-| MAP command | Load/authenticate preparation; build an appropriate ordinary graph; call optimizer; construct a MAP result | Decide point-estimate products and optimizer behavior; do not disguise it as chain/draw posterior or optimize a cached sampling-specific graph by assumption |
-
-For example, a future MAP command can visibly read as
-`load_prepared -> build_model -> optimize -> make_map_result`. It needs no
-`sample` implementation. If it later needs saved replay, define a MAP result
-contract separately; this change's saved inference is explicitly MCMC.
-
-## Risks / Trade-offs
-
-- Shared files can be deleted independently → fail clearly on missing/changed
-  dependencies; document how to move/copy the whole tree. No hidden file copying.
-- Replay records can drift into serialized application state → admit only fields
-  needed by concrete result construction; test replay with original config and
-  graph constructors unavailable.
-- Phase splitting can merely relocate complexity → require the visible sequences
-  above and delete superseded wrappers/aliases in the same implementation slice.
-- Scientific coupling limits reuse → use the compatibility table and independent
-  scientific references, especially for CO2 reductions and cached inference.
-- A broad review can repeat OPE-207 → agree API, records and reuse cases first;
-  require one working standard vertical slice before multiplying it across families.
+Cover first-source weighting separately from all-source retained flux, source order
+and signed flux. CO2's native prior moments, effective operator, affine intercept
+and unresolved covariance remain one coherent preparation; replacing one array
+with matching labels cannot establish compatibility.
 
 ## Migration Plan
 
-This is one planning PR with three bounded capabilities, not three sequential
-spec approvals. Mark the old change superseded; do not sync its requirements or
-archive it as implemented. PR #798 remains evidence; this PR does not merge or
-close it automatically.
+Four implementation children of OPE-207 are planned in [tasks.md](tasks.md): a
+complete standard proof, multisector adoption, ordinary CO2 adoption, and cached
+CO2 adoption. Review the standard working route before family expansion;
+multisector and ordinary CO2 can then proceed independently, with cached adoption
+following the ordinary handoff conventions. Each slice includes writer, reader,
+callers, CLI/examples, documentation and validation. Do not split out a speculative
+persistence framework as a prerequisite. Child issue identifiers are assigned when
+the issues are created; this document does not claim their creation.
 
-Implementation is sequenced in [tasks.md](tasks.md). Start with shared scientific
-operations/configuration and a standard end-to-end proof. Keep each handoff
-writer, reader and caller together in its implementation PR; port multisector and
-CO2 in subsequent reviewable slices after that proof. Avoid a fixed PR count that
-forces half-working APIs or a framework-first delivery.
+#808 keeps its bounded hash/compatibility contract and consumer fixes. #838/#839
+keep basis/path/flux ownership; #829 remains deferred. OPE-164 is completed initial
+CO2 staging evidence; new CO2 work is adoption of these replacement handoffs.
+OPE-165 retains linked CO2/O2 integration. Nested and MAP remain future examples:
+load the appropriate preparation, call that family's science, and save only when
+that result has its own explicit replay contract.
 
-Reset unused stage/setup Python APIs and scientific-stage envelopes/identities;
-give new envelopes unambiguous versions and reject older/down-labelled records.
-Retain numerical prepared/posterior codecs, product schemas, direct scientific
-customization and the optional pre-filter acquisition cache. Preserve diagnosis's
-separately declared historical sample schemas (1/2 on the inspected base); its report schema
-and support policy are not the scientific handoff contract. Existing readiness
-error/catch behavior is specified in the execution capability.
-Prototype schema 3 from PR #798 is not an additional mandatory compatibility target.
+For new CO2 preparation, save numerical inputs, obtain their exact identity,
+bind/save the affine companion, validate their association, then save the complete
+manifest last. Imported pairs retain their exact binding. Require authoritative
+original requested dates for the supported output path; missing required facts
+fail rather than being inferred from surviving observations. The configured full
+CO2 product entry point must be named and tested, while raw runners retain their
+numerical returns. Cached adoption tests its matched step order, accepted-cache
+updates, conditional predictions and target density against scientific references.
 
-Keep installed command names and configuration vocabulary where useful, but
-replace repeated staged data/config flags with one manifest argument and relevant
-phase options. Update CLI help, examples, cookiecutter and acceptance tests
-together; document the new call forms and next-minor staged reset. No aliases for
-unused Python conventions and no premature `openghg-run` reference. Rollback of
-an implementation release restores its code/API together; no automatic conversion
-of old/new scientific-stage artifacts is promised.
+Use 0.7.x to consume 0.7.x staged artifacts; 0.8.x does not promise compatibility.
+No historical hash emulation, migration layer or setup aliases are needed solely
+for retired staged contracts. Reject unsupported/down-labelled envelopes clearly.
+Preserve numerical codecs, scientific customization and product schemas; coordinate
+independent keyword/CLI transitions with their owners. Diagnosis's historical sample
+support is separate from scientific replay. Readiness retains its family-specific
+catch boundaries and fail/pass/unknown behavior. Announce breaking staged changes
+with implementation release notes, not with a planning-only completion claim.
+
+## Risks / Trade-offs
+
+- Grouped configuration can duplicate defaults: move preparation ownership rather
+  than keeping flat and nested settings in parallel; test full/phase equivalence.
+- Defaults can hide invocation state: resolve `"default"` freshly in the live
+  recipe and save actual settings; replay never reconstructs them.
+- Saved metadata can grow into executable configuration: admit fields by their
+  output consumer and test with configuration/model/sampler construction disabled.
+- Shared files can disappear: fail on missing/changed dependencies and explain
+  relocation; no implicit copy or fallback search.
+- A broad plan can repeat #798: require real standard scientific evidence and
+  a readability review before adoption by other families.

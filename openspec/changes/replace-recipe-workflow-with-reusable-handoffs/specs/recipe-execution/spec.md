@@ -8,6 +8,9 @@ choices, explicit numerical ownership, customization and established check behav
 Saved preparation and inference follow [prepared-recipe-handoff](../prepared-recipe-handoff/spec.md)
 and [sampled-recipe-handoff](../sampled-recipe-handoff/spec.md), respectively.
 
+These requirements describe pending implementation. Landed configuration and
+preparation foundations do not establish completion of the phase APIs or handoffs.
+
 ## ADDED Requirements
 
 ### Requirement: Canonical scientific execution across supported routes
@@ -17,12 +20,23 @@ family's scientific preparation, construction, inference and product operations.
 Full execution SHALL sequence those operations in memory without mandatory
 intermediate persistence. Preparation SHALL consistently derive retained labels
 from retained observations and align applicable per-site choices, accepting valid
-nonempty subsets without bypassing malformed-input or cache validation.
+nonempty subsets without bypassing their owning input validation.
 Direct scientific customization, signatures and numerical returns SHALL retain
 their contracts; staged/setup APIs and owned CO2 configuration conventions SHALL
 follow the declared reset instead of requiring compatibility aliases.
 Families supporting partial workflows SHALL remain usable without implementing
 unrelated stages or adopting a common inference algorithm or result format.
+
+Preparation SHALL derive missing observation errors before filtering or
+aggregation and preserve caller-supplied custom errors and borrowed inputs.
+Supported nested preparation SHALL establish the corresponding errors on both
+domains before filtering/time alignment. These rules SHALL reuse their scientific
+owners without implying additional nested or linked checkpoint support.
+
+#### Scenario: Observation errors precede filtering
+- **WHEN** supported preparation filters or aggregates observations
+- **THEN** required errors have been established before that transformation
+- **AND** supplied custom errors and caller-owned datasets remain unchanged
 
 #### Scenario: Full execution without intermediate saves
 - **WHEN** a full route runs with intermediate saves disabled
@@ -31,7 +45,7 @@ unrelated stages or adopting a common inference algorithm or result format.
 
 #### Scenario: Scientific parity and retained subsets
 - **WHEN** equivalent routes receive equivalent inputs and choices, including a
-  valid retained-site subset after acquisition, cache reload or filtering
+  valid retained-site subset after acquisition, supported supplied-data input or filtering
 - **THEN** their retained arrays, labels, aligned metadata, scientific terms and
   products agree within justified numerical tolerances
 - **AND** validation uses real science and an independent calculation or existing
@@ -43,16 +57,117 @@ unrelated stages or adopting a common inference algorithm or result format.
 - **THEN** its explicit scientific arguments, conflict rules and return contract
   remain available without requiring acquisition, MCMC staging or saved replay
 
-### Requirement: Phase-owned choices and isolated sampler configuration
+### Requirement: Grouped configuration with one owner per choice
 
-Preparation, model/inference and output choices SHALL have explicit phase owners.
+The public complete requested configuration SHALL group preparation, model,
+sampler and output choices. `RhimeConfig.preparation` SHALL hold one
+`RhimePreparationConfig` containing the moved acquisition/preparation fields and
+their defaults; the complete configuration SHALL NOT retain a second authoritative
+flat copy. The model, sampler and output groups SHALL reuse `RhimeModelSpec`,
+`RhimeSampler` and `RhimeOutputSpec`, respectively, rather than introduce duplicate
+settings types. Preparation SHALL resolve independently without constructing a
+model, sampler or output policy. Complete configured runs SHALL resolve their
+applicable groups once before scientific execution and SHALL keep requested
+choices distinct from retained scientific facts.
+
+The legacy INI frontend SHALL preserve its documented decoding and precedence.
+An adapter SHALL group its flat options into ordinary section mappings without
+requiring new INI syntax or a new file format. Grouping SHALL NOT perform
+scientific execution or force resolution of unrelated groups. Option names and
+defaults SHALL have concrete owners rather than independent duplicate schemas.
+
+#### Scenario: Inspect a grouped complete request
+- **WHEN** a caller resolves a complete supported request
+- **THEN** preparation choices are available through `config.preparation`, with
+  model, sampler and output choices available through their respective groups
+- **AND** each choice and default has one authoritative owner
+
+#### Scenario: Resolve preparation alone
+- **WHEN** a caller supplies valid preparation choices without model, sampler or
+  output choices
+- **THEN** preparation resolution succeeds without constructing those other groups
+  or requiring their inputs
+
+#### Scenario: Group a familiar INI file
+- **WHEN** a caller groups a supported existing INI request
+- **THEN** its decoded options and winning values retain their established meaning
+- **AND** the grouped representation is an ordinary mapping suitable for the same
+  group resolvers as a Python request
+
+### Requirement: Phase-only resolution and authoritative model facts
+
+Each phase SHALL select its applicable option groups before applying value
+validation or defaults. Known unrelated options in a shared configuration file
+SHALL NOT be forwarded to that phase or make its resolution depend on their
+values. Unsupported option names and explicitly supplied phase-inapplicable
+arguments SHALL fail at the applicable outer boundary before scientific artifact
+writes. Repeated claims about authoritative prepared facts SHALL be checked
+against the authenticated handoff rather than silently overwriting its facts.
+
+Saved-input sampling and prior readiness SHALL bind model choices to authenticated
+preparation facts, including species, domain, source/layout information and the
+recorded requested date anchor. Callers SHALL NOT have to repeat those facts to
+resolve a model-only request. Complete runs SHALL use the same model resolution
+rules with resolved requested preparation choices, then validate compatibility
+with the retained prepared inputs. Changed model or likelihood choices SHALL be
+accepted only when their required prepared inputs and structure are available;
+they SHALL NOT reinterpret baked preparation choices or reacquire inputs.
+
+#### Scenario: Sample with model and sampler choices only
+- **WHEN** a caller supplies an authenticated prepared handoff and valid model
+  and sampler groups without acquisition or product configuration
+- **THEN** sampling resolves those groups using authoritative saved facts and does
+  not require unrelated configuration
+
+#### Scenario: Unrelated shared-file value
+- **WHEN** a preparation command reads a shared file containing an invalid sampler
+  value alongside valid preparation choices
+- **THEN** preparation selects and validates its own group without resolving or
+  validating that inactive sampler value
+
+#### Scenario: Conflicting saved-input claim
+- **WHEN** a sampling request repeats a species, domain, source/layout or date
+  claim that conflicts with the authenticated preparation facts
+- **THEN** the request fails before model execution or scientific artifact writes
+- **AND** the handoff's facts remain unchanged
+
+### Requirement: Existing sampler API and invocation isolation
+
+New public live sampling and runner APIs SHALL accept `RhimeSampler` or the literal
+`"default"` as their sampler argument. When no complete configured request supplies sampling choices, an omitted
+argument SHALL mean `"default"` and SHALL select a fresh family-appropriate runtime
+sampler for each inference invocation. A configured full run SHALL consume its
+resolved `config.sampler`; omission of a separate sampler argument SHALL NOT replace
+those configured choices. Supplying a resolved complete configuration together
+with a separate sampler override SHALL follow the existing conflicting-input
+rejection rule. A supplied sampler SHALL retain its selected behavior while mutable
+configuration containers used by an invocation remain isolated from the caller
+and later invocations, including nested keyword containers. These APIs SHALL
+reject `None`; an existing direct legacy `None` shorthand SHALL remain confined
+to an outer compatibility adapter. The contract SHALL NOT require a new sampler
+options class.
+
 Resolving or overriding choices SHALL NOT mutate the caller's choices or affect
-later invocations, including through nested sampler keyword containers. Sampler
-configuration round trips SHALL preserve supported values and container types,
-including lists and tuples. Model coordinate and dimension registration SHALL
-remain authoritative: inference-data keyword configuration SHALL reject `coords`
-and `dims` rather than overriding the registered model. Unsupported or inapplicable
-phase choices SHALL fail at their owning boundary before scientific artifact writes.
+later invocations. Sampler configuration round trips SHALL preserve supported
+values and container types, including lists and tuples. Model coordinate and
+dimension registration SHALL remain authoritative: inference-data keyword
+configuration SHALL reject `coords` and `dims` during resolution and at direct
+sampling rather than overriding the registered model.
+
+#### Scenario: Fresh default sampler
+- **WHEN** separate live inference invocations omit the sampler or pass `"default"`
+- **THEN** each invocation selects its family's default behavior with a fresh
+  runtime sampler, without inheriting mutable state from another invocation
+
+#### Scenario: Preserve configured sampling choices
+- **WHEN** a complete resolved request supplies nondefault sampler settings
+- **THEN** full execution uses those settings without requiring a repeated sampler
+  argument or replacing them with defaults
+
+#### Scenario: Explicit null sampler at a new live boundary
+- **WHEN** a caller supplies `None` to a new public live sampling or runner API
+- **THEN** the boundary rejects it before inference rather than treating it as a
+  request for a default sampler
 
 #### Scenario: Repeated sampling with an override
 - **WHEN** one invocation overrides sampler options containing nested lists,
@@ -65,28 +180,52 @@ phase choices SHALL fail at their owning boundary before scientific artifact wri
 - **WHEN** inference-data keyword options contain `coords` or `dims`
 - **THEN** option resolution rejects the conflicting keyword before sampling or
   scientific artifact writes, including when its supplied value is empty
+- **AND** direct sampling enforces the same conflict rule
+
+### Requirement: Results and replay do not create samplers
+
+`RhimeResult.sampler` SHALL be optional and default to `None` without a sampler
+factory. Constructing or loading a scientific result SHALL NOT create a runtime
+sampler. Saved sampler provenance SHALL be plain metadata describing the actual
+inference invocation, rather than executable configuration requiring restoration
+of a sampler. Product replay and diagnosis SHALL operate without creating,
+defaulting or executing a sampler. Live execution SHALL retain access to a sampler
+only when its result contract explicitly supplies one.
+
+#### Scenario: Result without a live sampler
+- **WHEN** a caller constructs a result without a sampler, or loads saved samples
+  for product replay or diagnosis
+- **THEN** its sampler remains `None` and no runtime sampler is constructed
+- **AND** supported sampler provenance remains inspectable as metadata
 
 ### Requirement: Explicit numerical ownership and execution boundaries
 
 Routes SHALL treat caller-supplied numerical inputs as borrowed and potentially
 lazy. Choice resolution and access SHALL NOT mutate, copy, compute, persist,
-densify or rechunk those inputs implicitly. Related arrays SHALL retain shared
-lazy execution until an explicit model-input, serialization or eager-kernel
-boundary materializes them together. Built-in construction SHALL own its model
-materialization; a supplied complete-model builder SHALL receive potentially lazy
-inputs and own the materialization required by its implementation.
+densify or rechunk those inputs implicitly. Related arrays SHALL preserve shared
+execution graphs until an explicit assembly, model-input, serialization or
+eager-kernel boundary materializes the related arrays required there together.
+Preparation SHALL NOT be required to keep every array lazy across an explicit
+scientific execution boundary. Borrowed inputs SHALL remain unchanged.
+Built-in construction SHALL own its remaining model-specific materialization;
+a supplied complete-model builder SHALL receive inputs after the documented
+preparation boundaries, including any arrays that remain lazy, and own any further
+materialization required by its implementation. Custom builders SHALL NOT be
+forced through a built-in model's additional execution boundary.
 
 #### Scenario: Borrowed lazy preparation and construction
 - **WHEN** a route receives borrowed inputs with shared lazy arrays
-- **THEN** resolution and preparation preserve input values and lazy execution
-  until an applicable explicit materialization boundary
-- **AND** built-in construction materializes related model inputs together at its
-  declared boundary rather than through incidental configuration access
+- **THEN** resolution and preparation preserve borrowed input values and shared
+  execution until an applicable explicit materialization boundary
+- **AND** related arrays required by assembly, construction or an eager kernel
+  materialize together at the declared boundary rather than through incidental
+  configuration access
 
 #### Scenario: Custom complete-model builder
 - **WHEN** a caller supplies a supported complete-model builder
-- **THEN** the route forwards its resolved scientific arguments and potentially
-  lazy inputs without first imposing the built-in construction boundary
+- **THEN** the route forwards its resolved scientific arguments and prepared
+  inputs, including remaining lazy arrays, without imposing the built-in model's
+  additional construction boundary
 
 ### Requirement: One consumed output policy per invocation
 
@@ -98,6 +237,10 @@ and requested products consistently with that family; raw scientific runners
 SHALL retain their separate numerical return contracts. Equivalent live and saved
 product routes SHALL retain labelled dimensions, units, chain/draw axes and
 family-specific reconstruction meaning without broadening unsupported products.
+Construction SHALL validate its declared scientific variable roles and registered
+coordinates independently of product selection, including when output is disabled.
+Saved product execution SHALL validate its retained scientific output contract
+without rebuilding the producing graph.
 
 #### Scenario: Configured CO2 products
 - **WHEN** configured CO2 execution requests supported products and writing choices
@@ -110,6 +253,12 @@ family-specific reconstruction meaning without broadening unsupported products.
 - **THEN** their supported scientific products agree, including conditional or
   affine reconstruction where applicable
 - **AND** changing reporting or writing choices does not redefine inference
+
+#### Scenario: Invalid scientific roles with output disabled
+- **WHEN** construction declares an inconsistent scientific role or coordinate
+  contract while output products are disabled
+- **THEN** validation rejects the inconsistent contract before inference rather
+  than skipping validation because no products were requested
 
 ### Requirement: Explicit readiness and independent diagnosis behavior
 
@@ -124,6 +273,17 @@ gates SHALL retain nonzero behavior for fail without newly treating unknown as
 fail. Diagnosis SHALL require no original recipe configuration or producing graph
 and SHALL declare its historical sample-record support independently of the
 scientific-stage compatibility reset.
+
+Prior readiness SHALL consume prepared inputs, compatible model choices and its
+check choices without requiring MCMC or final-product configuration or creating
+a runtime sampler. The existing family-specific predictive execution and write
+behavior SHALL remain unchanged.
+
+#### Scenario: Prior readiness without inference configuration
+- **WHEN** a caller requests prior readiness using a prepared handoff and valid
+  model/check choices without sampler or final-product choices
+- **THEN** readiness runs its supported prior checks without constructing a
+  sampler or requiring unrelated configuration
 
 #### Scenario: Readiness execution and artifact failures
 - **WHEN** prediction returns invalid evidence or raises an execution error

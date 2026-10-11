@@ -1,5 +1,16 @@
 # Design
 
+> **Follow-on amendment (11 October 2026):** This artifact records the delivered
+> configuration baseline. The [reusable-handoff design](../replace-recipe-workflow-with-reusable-handoffs/design.md)
+> deliberately replaces its flat preparation-field requirement with one owned
+> `RhimePreparationConfig` group, and its complete-configuration requirement
+> for saved stages with independent phase resolution. Existing model/output/
+> sampler owners remain; no duplicate sampler settings class is introduced.
+> The replacement adds explicit live `sampler="default"` and inert replay
+> results. These are pending implementation requirements in that change;
+> completed tasks in this change do not certify their delivery. The remaining
+> baseline requirements and their validation evidence retain their scope.
+
 ## Context
 
 See [proposal.md](proposal.md) and the [behavioral contract](specs/rhime-configuration/spec.md).
