@@ -6,7 +6,8 @@ import pytest
 
 from openghg_inversions.inversion_data import prepare_rhime_inputs
 from openghg_inversions.rhime import run_rhime, run_rhime_multisector
-from openghg_inversions.rhime.params import normalise_rhime_params, params_from_config, resolve_rhime_options
+from openghg_inversions.rhime.params import normalise_rhime_params, resolve_rhime_options
+from openghg_inversions.hbmcmc.compatibility import params_from_config
 from openghg_inversions.rhime.preparation import retrieve_or_reload_rhime_data
 
 

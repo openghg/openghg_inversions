@@ -65,7 +65,8 @@ from .builders import (
 )
 from .materialization import materialize_pymc_inputs
 from .outputs import RhimeResult, annotate_likelihood_trace, make_multisector_rhime_outputs
-from .params import params_from_config, resolve_rhime_options
+from .params import resolve_rhime_options
+from openghg_inversions.hbmcmc.compatibility import params_from_config
 from .preparation import (
     assemble_rhime_inputs,
     build_rhime_basis,

@@ -46,7 +46,8 @@ from .builders import (
 )
 from .materialization import materialize_pymc_inputs
 from .outputs import RhimeResult, _make_inversion_output
-from .params import RhimeRunnerSetup, params_from_config, resolve_rhime_options
+from .params import RhimeRunnerSetup, resolve_rhime_options
+from openghg_inversions.hbmcmc.compatibility import params_from_config
 from .preparation import (
     assemble_rhime_inputs,
     build_rhime_basis,

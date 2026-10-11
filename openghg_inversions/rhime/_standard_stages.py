@@ -32,7 +32,8 @@ from .multisector import (
     multisector_model_input_names,
 )
 from .outputs import RhimeResult, make_multisector_rhime_outputs, make_standard_rhime_outputs
-from .params import RhimeRunnerSetup, params_from_config, resolve_rhime_options
+from .params import RhimeRunnerSetup, resolve_rhime_options
+from openghg_inversions.hbmcmc.compatibility import params_from_config
 from .preparation import (
     assemble_rhime_inputs,
     build_rhime_basis,

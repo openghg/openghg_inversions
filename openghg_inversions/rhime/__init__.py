@@ -27,7 +27,8 @@ from .builders import (
 )
 from .co2 import build_co2_model, co2_model_input_names, run_rhime_co2
 from .materialization import materialize_pymc_inputs
-from .params import params_from_config, resolve_flux_sources, resolve_rhime_options
+from .params import resolve_flux_sources, resolve_rhime_options
+from openghg_inversions.hbmcmc.compatibility import params_from_config
 from .preparation import (
     assemble_rhime_inputs,
     build_rhime_basis,

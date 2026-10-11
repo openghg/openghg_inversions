@@ -622,7 +622,7 @@ def test_nested_preparation_routes_automatic_basis_budget(monkeypatch) -> None:
 
 
 def test_legacy_outer_region_definition_name_normalizes_to_modern_path() -> None:
-    with pytest.warns(UserWarning, match="outer_region_definition_file.*deprecated"):
+    with pytest.warns(DeprecationWarning, match="outer_region_definition_file.*deprecated"):
         normalized = rhime_params.normalise_rhime_params({"outer_region_definition_file": "/data/EUHROB.nc"})
 
     assert normalized == {"outer_regions_path": "/data/EUHROB.nc"}

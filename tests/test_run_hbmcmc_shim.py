@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from openghg_inversions.hbmcmc.compatibility import fixedbasis_params_to_rhime
+
 import warnings
 from pathlib import Path
 from typing import Any
@@ -64,7 +66,7 @@ def test_fixedbasis_params_to_rhime_translates_legacy_names(tmp_path: Path) -> N
     _fixedbasis_config(config_file)
     params = run_hbmcmc.hbmcmc_extract_param(str(config_file), print_param=False)
 
-    translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
+    translated = fixedbasis_params_to_rhime(params)
 
     assert translated["output_path"] == "out"
     assert translated["output_name"] == "legacy_run"
@@ -90,7 +92,7 @@ def test_fixedbasis_default_does_not_opt_into_aggregation_error(tmp_path: Path) 
     _fixedbasis_config(config_file)
     params = run_hbmcmc.hbmcmc_extract_param(str(config_file), print_param=False)
 
-    translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
+    translated = fixedbasis_params_to_rhime(params)
     translated["mismatch_model"] = "pollution_event"
     setup = run_hbmcmc.resolve_rhime_options(params=translated, multisector=False)
 
@@ -107,7 +109,7 @@ def test_additive_sigma_selection_forces_no_aggregation_error(tmp_path: Path) ->
     params["sigprior"] = {"pdf": "halfnormal", "sigma": 5.0}
     params["sigma_freq"] = "monthly"
 
-    translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
+    translated = fixedbasis_params_to_rhime(params)
     options = run_hbmcmc._select_additive_sigma_model_options(params, translated)
 
     assert "likelihood" not in translated
@@ -126,7 +128,7 @@ def test_additive_sigma_fixed_periods_keep_inversion_start_anchor(tmp_path: Path
     params = run_hbmcmc.hbmcmc_extract_param(str(config_file), print_param=False)
     params.update(likelihood="additive_sigma", sigma_freq="8D")
 
-    translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
+    translated = fixedbasis_params_to_rhime(params)
     options = run_hbmcmc._select_additive_sigma_model_options(params, translated)
     site_index = xr.DataArray(
         [0, 0],
@@ -159,7 +161,7 @@ def test_additive_sigma_prior_takes_precedence_over_sigprior(tmp_path: Path) -> 
         "sigma": {"MHD": 5.0, "TAC": 2.0},
     }
 
-    translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
+    translated = fixedbasis_params_to_rhime(params)
     options = run_hbmcmc._select_additive_sigma_model_options(params, translated)
 
     assert "additive_sigma_prior" not in translated
@@ -181,7 +183,7 @@ def test_additive_sigma_selection_defaults_to_half_normal(tmp_path: Path) -> Non
     params["likelihood"] = "additive_sigma"
     del params["sigprior"]
 
-    translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
+    translated = fixedbasis_params_to_rhime(params)
     options = run_hbmcmc._select_additive_sigma_model_options(params, translated)
 
     assert options == {
@@ -198,7 +200,7 @@ def test_additive_sigma_prior_requires_additive_likelihood(tmp_path: Path) -> No
     params = run_hbmcmc.hbmcmc_extract_param(str(config_file), print_param=False)
     params["additive_sigma_prior"] = {"pdf": "halfnormal", "sigma": 5.0}
 
-    translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
+    translated = fixedbasis_params_to_rhime(params)
 
     with pytest.raises(ValueError, match="requires likelihood='additive_sigma'"):
         run_hbmcmc._select_additive_sigma_model_options(params, translated)
@@ -210,7 +212,7 @@ def test_additive_sigma_selection_rejects_aggregation_error(tmp_path: Path) -> N
     params = run_hbmcmc.hbmcmc_extract_param(str(config_file), print_param=False)
     params.update(likelihood="additive_sigma", aggregation_error_mode="dense")
 
-    translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
+    translated = fixedbasis_params_to_rhime(params)
 
     with pytest.raises(ValueError, match="does not support.*aggregation_error_mode"):
         run_hbmcmc._select_additive_sigma_model_options(params, translated)
@@ -225,8 +227,8 @@ def test_fixedbasis_params_to_rhime_translates_reparameterise_log_normal(tmp_pat
     params["xprior"] = {"pdf": "lognormal", "mean": 1.0, "stdev": 2.0}
     params["bcprior"] = {"pdf": "lognormal", "mean": 1.0, "stdev": 1.0}
 
-    with pytest.warns(FutureWarning, match="reparameterise_log_normal"):
-        translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
+    with pytest.warns(DeprecationWarning, match="reparameterise_log_normal"):
+        translated = fixedbasis_params_to_rhime(params)
 
     assert translated["x_prior"]["reparameterise"] is True
     assert translated["bc_prior"]["reparameterise"] is True
@@ -239,8 +241,8 @@ def test_fixedbasis_params_to_rhime_translates_calculate_min_error(tmp_path: Pat
     params = run_hbmcmc.hbmcmc_extract_param(str(config_file), print_param=False)
     params["calculate_min_error"] = "percentile"
 
-    with pytest.warns(FutureWarning, match="calculate_min_error"):
-        translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
+    with pytest.warns(DeprecationWarning, match="calculate_min_error"):
+        translated = fixedbasis_params_to_rhime(params)
 
     assert translated["min_error"] == "percentile"
     assert "calculate_min_error" not in translated
@@ -265,7 +267,7 @@ def test_fixedbasis_params_to_rhime_rejects_removed_mcmc_route(tmp_path: Path) -
     params["mcmc_type"] = "tdmcmc"
 
     with pytest.raises(ValueError, match="fixed_basis"):
-        run_hbmcmc.fixedbasis_params_to_rhime(params)
+        fixedbasis_params_to_rhime(params)
 
 
 def test_fixedbasis_params_to_rhime_preserves_paris_compatibility_flag(tmp_path: Path) -> None:
@@ -275,7 +277,7 @@ def test_fixedbasis_params_to_rhime_preserves_paris_compatibility_flag(tmp_path:
     params.pop("output_format")
     params["paris_postprocessing"] = True
 
-    translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
+    translated = fixedbasis_params_to_rhime(params)
 
     assert translated["output_format"] == "paris"
     assert "paris_postprocessing" not in translated
@@ -289,7 +291,7 @@ def test_fixedbasis_params_to_rhime_preserves_latest_paris_kwargs(tmp_path: Path
     params["paris_postprocessing"] = True
     params["paris_postprocessing_kwargs"] = {"template_version": "latest", "inversion_grid": False}
 
-    translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
+    translated = fixedbasis_params_to_rhime(params)
 
     assert translated["output_format"] == "paris"
     assert translated["paris_postprocessing_kwargs"] == {
@@ -305,7 +307,7 @@ def test_fixedbasis_params_to_rhime_forces_legacy_filename_convention(tmp_path: 
     params = run_hbmcmc.hbmcmc_extract_param(str(config_file), print_param=False)
     params["output_filename_convention"] = "rhime"
 
-    translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
+    translated = fixedbasis_params_to_rhime(params)
 
     assert translated["output_filename_convention"] == "legacy"
 
@@ -317,7 +319,7 @@ def test_fixedbasis_params_to_rhime_preserves_explicit_inversion_output_save(tmp
     params = run_hbmcmc.hbmcmc_extract_param(str(config_file), print_param=False)
     params["save_inversion_output"] = "explicit_inv_out.nc"
 
-    translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
+    translated = fixedbasis_params_to_rhime(params)
 
     assert translated["save_inversion_output"] == "explicit_inv_out.nc"
 
@@ -371,9 +373,7 @@ def test_run_hbmcmc_main_routes_to_run_rhime(monkeypatch: pytest.MonkeyPatch, tm
     assert seen["run_rhime_kwargs"]["compatibility_output_chain"] == 0
 
 
-def test_run_hbmcmc_all_chains_is_explicit_opt_in(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_run_hbmcmc_all_chains_is_explicit_opt_in(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """The compatibility CLI can use all chains without restoring the old executor."""
     config_file = tmp_path / "hbmcmc.ini"
     _fixedbasis_config(config_file)
@@ -594,4 +594,22 @@ def test_run_hbmcmc_main_checks_country_file_before_copying_or_running(
     monkeypatch.setattr(run_hbmcmc, "run_rhime", fail_run_rhime)
 
     with pytest.raises(FileNotFoundError, match="country_file"):
+        run_hbmcmc.main(["-c", str(config_file)])
+
+
+def test_unused_sigma_prior_is_validated_before_config_copy(monkeypatch, tmp_path):
+    config_file = tmp_path / "hbmcmc.ini"
+    _fixedbasis_config(config_file)
+    config_file.write_text(
+        config_file.read_text()
+        .replace("[MCMC.OPTIONS]", "[MCMC.OPTIONS]\nno_model_error = True")
+        .replace('sigprior = {"pdf": "uniform", "lower": 0.1, "upper": 10.0}', 'sigprior = "invalid-prior"')
+    )
+
+    def unexpected(*args, **kwargs):
+        pytest.fail("Invalid sigma prior reached config copying or acquisition")
+
+    monkeypatch.setattr(run_hbmcmc, "_copy_config_file", unexpected)
+    monkeypatch.setattr(run_hbmcmc, "run_rhime", unexpected)
+    with pytest.raises(ValueError, match="sigma_prior.*mapping/dict"):
         run_hbmcmc.main(["-c", str(config_file)])

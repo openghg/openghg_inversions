@@ -80,6 +80,28 @@ legacy tuple or sampler dictionary. Its principal attributes are ``idata``
 ``inv_out`` (the modern ``InversionOutput`` when constructed), and ``outputs``
 (requested derived products).
 
+Reading INI options in Python
+-----------------------------
+
+``openghg_inversions.rhime.ini.read_rhime_ini(path)`` returns decoded file
+options as a dictionary. It flattens sections, keeps the first occurrence of
+repeated names, and preserves legacy names and recipe-specific options. It
+performs no default resolution, alias translation, scalar coercion, or I/O
+other than reading the configuration. Apply overrides to that dictionary,
+then pass it to ``resolve_rhime_options(params=options, multisector=False)``
+for canonical validation and setup.
+
+``params_from_config`` remains available through its established imports and
+now lives in ``openghg_inversions.hbmcmc.compatibility``. This deprecated
+adapter still applies date/path overrides followed by ``extra_kwargs``;
+``normalise=False`` returns decoded options with overrides, while the default
+translates aliases, coerces scalar options, and validates structured values.
+The adapter emits ``DeprecationWarning``. Legacy aliases emit that warning
+only when translated or removed; canonical options alone do not warn.
+The compatibility translation module can be imported without loading runners
+or the model backend. Importing the INI reader still uses the RHIME package's
+normal initialization.
+
 Parameter mapping
 -----------------
 
