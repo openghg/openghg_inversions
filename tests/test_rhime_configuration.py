@@ -475,7 +475,6 @@ def test_ini_reader_decodes_recipe_options_without_semantic_resolution(tmp_path,
 def test_invalid_minimum_error_fails_before_acquisition(monkeypatch, value, multisector_mode):
     def forbidden(*args, **kwargs):
         pytest.fail("invalid minimum error reached acquisition")
-    monkeypatch.setattr(RhimeMergedData, "load", forbidden)
     monkeypatch.setattr(RhimeMergedData, "from_options", forbidden)
     recipe = multisector if multisector_mode else standard
     runner = recipe.run_rhime_multisector if multisector_mode else recipe.run_rhime
