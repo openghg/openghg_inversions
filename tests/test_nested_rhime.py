@@ -17,7 +17,7 @@ import openghg_inversions.rhime.nested as nested_module
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.cli import main
 from openghg_inversions.rhime._domain_support import rectangular_extent_mask, remove_domain_overlap
-from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs
+from openghg_inversions.inversion_data import RhimePreparedInputs
 from openghg_inversions.inversion_data import SiteOptions
 from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.postprocessing.nested_paris_outputs import (
@@ -48,6 +48,10 @@ from openghg_inversions.rhime.specs import (
     SectorSpec,
 )
 from tests.helpers import make_trace
+from openghg_inversions.hbmcmc.legacy_data import (
+    from_legacy_fp_all,
+    to_legacy_fp_all,
+)
 
 
 def _basis(lat: list[float], lon: list[float], labels: np.ndarray) -> BasisFunctions:
@@ -266,23 +270,23 @@ def test_mask_outer_merged_zeroes_overlap_lazily_without_mutating_inputs() -> No
         {"fp": (("time", "lat", "lon"), np.ones((1, 1, 1)))},
         coords={"time": time, "lat": [1.0], "lon": [1.0]},
     )
-    outer = RhimeMergedData.from_legacy_fp_all(
+    outer = from_legacy_fp_all(
         fp_all={"TAC": outer_site, ".flux": {"inventory": _FluxData(outer_flux, {"source": "x"})}},
         site_options=_site_options(),
     )
-    inner = RhimeMergedData.from_legacy_fp_all(
+    inner = from_legacy_fp_all(
         fp_all={"TAC": inner_site},
         site_options=_site_options(),
     )
 
     masked = mask_outer_merged_for_inner_domain(outer, inner)
 
-    assert isinstance(masked.to_legacy_fp_all()["TAC"]["fp"].data, da.Array)
-    assert isinstance(masked.to_legacy_fp_all()[".flux"]["inventory"].data["flux"].data, da.Array)
-    assert float(masked.to_legacy_fp_all()["TAC"]["fp"].isel(time=0, lat=1, lon=1).compute()) == 0.0
-    assert float(masked.to_legacy_fp_all()["TAC"]["fp"].isel(time=0, lat=0, lon=0).compute()) == 1.0
-    assert float(masked.to_legacy_fp_all()[".flux"]["inventory"].data["flux"].isel(time=0, lat=1, lon=1).compute()) == 0.0
-    assert float(outer.to_legacy_fp_all()["TAC"]["fp"].isel(time=0, lat=1, lon=1).compute()) == 1.0
+    assert isinstance(to_legacy_fp_all(masked)["TAC"]["fp"].data, da.Array)
+    assert isinstance(to_legacy_fp_all(masked)[".flux"]["inventory"].data["flux"].data, da.Array)
+    assert float(to_legacy_fp_all(masked)["TAC"]["fp"].isel(time=0, lat=1, lon=1).compute()) == 0.0
+    assert float(to_legacy_fp_all(masked)["TAC"]["fp"].isel(time=0, lat=0, lon=0).compute()) == 1.0
+    assert float(to_legacy_fp_all(masked)[".flux"]["inventory"].data["flux"].isel(time=0, lat=1, lon=1).compute()) == 0.0
+    assert float(to_legacy_fp_all(outer)["TAC"]["fp"].isel(time=0, lat=1, lon=1).compute()) == 1.0
 
 
 def test_domain_support_preserves_native_order_sources_and_lazy_payloads() -> None:
@@ -326,11 +330,11 @@ def test_domain_support_rejects_missing_or_empty_inner_grid(inner: xr.Dataset) -
 def test_inner_merged_alignment_mirrors_filtered_outer_times_with_tolerance() -> None:
     outer_times = pd.to_datetime(["2019-01-01T00:00", "2019-01-01T02:00"])
     inner_times = pd.to_datetime(["2019-01-01T00:10", "2019-01-01T01:10", "2019-01-01T02:10"])
-    outer = RhimeMergedData.from_legacy_fp_all(
+    outer = from_legacy_fp_all(
         fp_all={"TAC": xr.Dataset({"mf": ("time", [1.0, 2.0])}, coords={"time": outer_times})},
         site_options=_site_options(),
     )
-    inner = RhimeMergedData.from_legacy_fp_all(
+    inner = from_legacy_fp_all(
         fp_all={
             "TAC": xr.Dataset(
                 {"fp": (("time", "lat", "lon"), np.arange(3.0).reshape(3, 1, 1))},
@@ -346,20 +350,20 @@ def test_inner_merged_alignment_mirrors_filtered_outer_times_with_tolerance() ->
         time_tolerance="15min",
     )
 
-    np.testing.assert_array_equal(aligned.to_legacy_fp_all()["TAC"]["time"], outer_times)
-    np.testing.assert_allclose(aligned.to_legacy_fp_all()["TAC"]["fp"].values[:, 0, 0], [0.0, 2.0])
-    np.testing.assert_array_equal(inner.to_legacy_fp_all()["TAC"]["time"], inner_times)
+    np.testing.assert_array_equal(to_legacy_fp_all(aligned)["TAC"]["time"], outer_times)
+    np.testing.assert_allclose(to_legacy_fp_all(aligned)["TAC"]["fp"].values[:, 0, 0], [0.0, 2.0])
+    np.testing.assert_array_equal(to_legacy_fp_all(inner)["TAC"]["time"], inner_times)
 
 
 def test_inner_merged_alignment_rejects_reused_nearest_inner_footprint() -> None:
     """Satellite-like nearby observations cannot reuse one inner footprint."""
     outer_times = pd.to_datetime(["2019-01-01T00:00", "2019-01-01T00:05"])
     inner_times = pd.to_datetime(["2019-01-01T00:02", "2019-01-01T00:09"])
-    outer = RhimeMergedData.from_legacy_fp_all(
+    outer = from_legacy_fp_all(
         fp_all={"TAC": xr.Dataset({"mf": ("time", [1.0, 2.0])}, coords={"time": outer_times})},
         site_options=_site_options(),
     )
-    inner = RhimeMergedData.from_legacy_fp_all(
+    inner = from_legacy_fp_all(
         fp_all={
             "TAC": xr.Dataset(
                 {"fp": (("time", "lat", "lon"), np.arange(2.0).reshape(2, 1, 1))},
@@ -460,14 +464,15 @@ def test_cli_run_rhime_nested_passes_config(monkeypatch, tmp_path: Path) -> None
     assert seen == {"config_file": str(config_file), "kwargs": {}}
 
 
-def test_nested_preparation_uses_native_inner_domain_and_safe_basis_default(monkeypatch, capsys) -> None:
+@pytest.mark.parametrize("deprecated", [False, True])
+def test_nested_preparation_uses_native_inner_domain_and_safe_basis_default(monkeypatch, capsys, deprecated) -> None:
     basis = _basis([50.0], [-2.0], np.array([[1]]))
     prepared = _prepared(
         times=["2019-01-01T00:00"],
         sensitivity=np.array([[1.0]]),
         basis=basis,
     )
-    merged = RhimeMergedData.from_legacy_fp_all(fp_all={"TAC": xr.Dataset()}, site_options=_site_options())
+    merged = from_legacy_fp_all(fp_all={"TAC": xr.Dataset({"mf_error": ("time", [1.0]), "mf_repeatability": ("time", [0.0]), "mf_variability": ("time", [0.0])})}, site_options=_site_options())
     setup = RhimeConfig.from_params(params={
             "species": "ch4",
             "sites": ["TAC"],
@@ -496,7 +501,7 @@ def test_nested_preparation_uses_native_inner_domain_and_safe_basis_default(monk
         return prepared
 
     monkeypatch.setattr(nested_module.RhimeMergedData, "from_options", fake_retrieve)
-    monkeypatch.setattr(nested_module, "filter_rhime_observations", lambda value, **kwargs: value)
+    monkeypatch.setattr(nested_module, "filter_observations", lambda value, **kwargs: value)
     monkeypatch.setattr(
         nested_module,
         "align_inner_merged_to_outer_observations",
@@ -505,22 +510,23 @@ def test_nested_preparation_uses_native_inner_domain_and_safe_basis_default(monk
     monkeypatch.setattr(nested_module, "mask_outer_merged_for_inner_domain", lambda outer, inner: outer)
     monkeypatch.setattr(nested_module, "_prepare_one_domain", fake_prepare)
 
-    nested = nested_module.prepare_nested_rhime_inputs(
-        setup,
-        inner_domain="6km",
-        inner_footprint_store="inner-fp",
-        inner_emissions_store="inner-flux",
-        inner_emissions_domain="EUROPE",
-        inner_nbasis=40,
-    )
+    from contextlib import nullcontext
+
+    selectors = ({"inner_emissions_store": "inner-flux", "inner_emissions_domain": "EUROPE"}
+                 if deprecated else {"inner_flux_store": "inner-flux", "inner_flux_domain": "EUROPE"})
+    warning = pytest.warns(DeprecationWarning, match=r"removed in 0\.9") if deprecated else nullcontext()
+    with warning:
+        nested = nested_module.prepare_nested_rhime_inputs(
+            setup, inner_domain="6km", inner_footprint_store="inner-fp", inner_nbasis=40, **selectors
+        )
 
     assert capsys.readouterr().out.count("TIMING rhime.prepare_inputs.merged_data ") == 2
     assert len(retrieval_args) == 2
     inner_args = retrieval_args[1]
     assert inner_args["domain"] == "EUROPE-6km"
     assert inner_args["footprint_store"] == "inner-fp"
-    assert inner_args["emissions_store"] == "inner-flux"
-    assert inner_args["emissions_domain"] == "EUROPE"
+    assert inner_args["flux_store"] == "inner-flux"
+    assert inner_args["flux_domain"] == "EUROPE"
     assert inner_args["use_bc"] is False
     assert preparation_configs[1].basis_algorithm == "quadtree"
     assert preparation_configs[1].model.domain == preparation_configs[1].domain == "EUROPE-6km"
@@ -542,7 +548,7 @@ def test_nested_automatic_basis_budget_uses_bounded_sensitivity_share() -> None:
     lon = [0.0, 1.0]
     outer_values = da.ones((2, 2, 2), chunks=(2, 2, 1))
     inner_values = 3.0 * da.ones((2, 2, 2), chunks=(2, 2, 1))
-    outer = RhimeMergedData.from_legacy_fp_all(
+    outer = from_legacy_fp_all(
         fp_all={
             "TAC": xr.Dataset(
                 {"fp_x_flux": (("lat", "lon", "time"), outer_values)},
@@ -551,7 +557,7 @@ def test_nested_automatic_basis_budget_uses_bounded_sensitivity_share() -> None:
         },
         site_options=_site_options(),
     )
-    inner = RhimeMergedData.from_legacy_fp_all(
+    inner = from_legacy_fp_all(
         fp_all={
             "TAC": xr.Dataset(
                 {"fp_x_flux": (("lat", "lon", "time"), inner_values)},
@@ -568,8 +574,8 @@ def test_nested_automatic_basis_budget_uses_bounded_sensitivity_share() -> None:
     )
 
     assert (outer_nbasis, inner_nbasis) == (40, 60)
-    assert isinstance(outer.to_legacy_fp_all()["TAC"]["fp_x_flux"].data, da.Array)
-    assert isinstance(inner.to_legacy_fp_all()["TAC"]["fp_x_flux"].data, da.Array)
+    assert isinstance(to_legacy_fp_all(outer)["TAC"]["fp_x_flux"].data, da.Array)
+    assert isinstance(to_legacy_fp_all(inner)["TAC"]["fp_x_flux"].data, da.Array)
 
 
 def test_nested_preparation_routes_automatic_basis_budget(monkeypatch) -> None:
@@ -597,17 +603,17 @@ def test_nested_preparation_routes_automatic_basis_budget(monkeypatch) -> None:
         assert kwargs["split_by_sectors"] is False
         value = 9.0 if kwargs["domain"] == "EUROPE-6km" else 1.0
         dataset = xr.Dataset(
-            {"fp_x_flux": (("time", "lat", "lon"), [[[value]]])},
+            {"fp_x_flux": (("time", "lat", "lon"), [[[value]]]), "mf_error": ("time", [0.1])},
             coords={"time": pd.date_range("2019-01-01", periods=1), "lat": [50.0], "lon": [-2.0]},
         )
-        return RhimeMergedData.from_legacy_fp_all(fp_all={"TAC": dataset}, site_options=_site_options())
+        return from_legacy_fp_all(fp_all={"TAC": dataset}, site_options=_site_options())
 
     def fake_prepare(domain_merged, *, config, allow_empty_inner_region=False):
         preparation_configs.append(config)
         return prepared
 
     monkeypatch.setattr(nested_module.RhimeMergedData, "from_options", fake_retrieve)
-    monkeypatch.setattr(nested_module, "filter_rhime_observations", lambda value, **kwargs: value)
+    monkeypatch.setattr(nested_module, "filter_observations", lambda value, **kwargs: value)
     monkeypatch.setattr(
         nested_module,
         "align_inner_merged_to_outer_observations",
@@ -892,3 +898,14 @@ def test_nested_latest_paris_output_writes_index_as_unlimited_dimension(
     with xr.open_dataset(result.output_metadata["paris_concentration_path"]) as saved:
         assert saved.encoding["unlimited_dims"] == {"index"}
         assert saved.time.dims == ("index",)
+
+
+@pytest.mark.parametrize(("old", "new"), [
+    ("inner_emissions_store", "inner_flux_store"),
+    ("inner_emissions_domain", "inner_flux_domain"),
+])
+@pytest.mark.parametrize("value", [None, "same"])
+def test_nested_runner_rejects_duplicate_flux_spellings(old, new, value):
+    """Both nested spellings are rejected before configuration or retrieval."""
+    with pytest.raises(ValueError, match="cannot be supplied together"):
+        nested_module.run_rhime_nested(inner_domain="6km", **{old: value, new: value})

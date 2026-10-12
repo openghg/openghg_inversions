@@ -79,7 +79,8 @@ Python API
 For complete prerequisite-to-output walkthroughs, start with
 :doc:`rhime_standard_tutorial` or :doc:`rhime_multisector_tutorial`.
 
-The stable package imports below are unchanged. Scientists who want to inspect
+Use the public model selector below. Existing runner imports remain compatible
+as described in :doc:`cli`. Scientists who want to inspect
 or copy a complete implementation can read
 ``openghg_inversions.rhime.standard`` or
 ``openghg_inversions.rhime.multisector`` directly; each module shows its whole
@@ -87,9 +88,9 @@ scientific process from option resolution through output construction.
 
 .. code-block:: python
 
-   from openghg_inversions.rhime import run_rhime, run_rhime_multisector
+   from openghg_inversions.rhime import run
 
-   result = run_rhime(
+   result = run(
        species="ch4",
        sites=["TAC"],
        averaging_period=["1h"],
@@ -102,7 +103,8 @@ scientific process from option resolution through output construction.
        mismatch_model="pollution_event",
    )
 
-   multi_sector_result = run_rhime_multisector(
+   multi_sector_result = run(
+       model="multisector",
        species="ch4",
        sites=["TAC"],
        averaging_period=["1h"],
@@ -665,7 +667,7 @@ non-null values in a custom country map remain distinct classes. Small float
 storage differences are accepted; incompatible coordinate values, units, or
 CRS definitions are rejected, and null outer cells remain label ``0``. This
 adapter is separate from the legacy
-``fixed_outer_regions_basis`` weighted route, whose historical output remains
+``fixed_outer_regions_basis_from_data`` weighted route, whose historical output remains
 unchanged, and it is not yet routed through RHIME configuration.
 
 This groundwork composes a transient class field and still passes one weight

@@ -1,7 +1,7 @@
 Running RHIME from the command line
 ===================================
 
-The ``openghg-inversions`` command is the recommended entry point for running
+The ``rhime`` command is the recommended entry point for running
 RHIME from a terminal or a batch scheduler. It is installed with
 ``openghg_inversions``, so a run does not need to know where the package source
 code is located.
@@ -9,21 +9,21 @@ code is located.
 Standard, multisector, and nested runs
 --------------------------------------
 
-Use ``run-rhime`` for a standard inversion and
-``run-rhime-multisector`` for a shared-basis multisector inversion.
-``run-rhime-nested`` combines independent outer and inner spatial grids:
+Use ``rhime run`` for a standard inversion (the default). Select
+``--model multisector`` for shared-basis multisector inversion or
+``--model nested`` to combine independent outer and inner spatial grids:
 
 .. code-block:: console
 
-   $ openghg-inversions run-rhime 2019-01-01 2019-02-01 \
+   $ rhime run 2019-01-01 2019-02-01 \
        --config /path/to/rhime.ini \
        --output-path /path/to/outputs
 
-   $ openghg-inversions run-rhime-multisector 2019-01-01 2019-02-01 \
+   $ rhime run --model multisector 2019-01-01 2019-02-01 \
        --config /path/to/rhime_multisector.ini \
        --output-path /path/to/outputs
 
-   $ openghg-inversions run-rhime-nested 2019-01-01 2019-02-01 \
+   $ rhime run --model nested 2019-01-01 2019-02-01 \
        --config /path/to/rhime_nested.ini
 
 ``--config`` (or ``-c``) is required. The start and end dates are optional
@@ -34,12 +34,12 @@ with a JSON object passed to ``--kwargs``:
 
 .. code-block:: console
 
-   $ openghg-inversions run-rhime -c rhime.ini \
+   $ rhime run -c rhime.ini \
        --kwargs '{"draws": 2000, "tune": 1000, "chains": 4}'
 
 Keep the JSON in single quotes so the shell passes it as one argument. Run
-``openghg-inversions run-rhime --help`` or
-``openghg-inversions run-rhime-multisector --help`` for the complete ordinary
+``rhime run --help`` or
+``rhime run --model multisector --help`` for the complete ordinary
 command syntax. See the :doc:`nested-domain model family
 <nested_domain_model_family>` for its support boundary and configuration
 guide. New configuration files should use the RHIME vocabulary documented in
@@ -47,6 +47,39 @@ guide. New configuration files should use the RHIME vocabulary documented in
 ``openghg_inversions/config/templates/rhime_template.ini``. Complete,
 validated production-shape examples are used by
 :doc:`rhime_standard_tutorial` and :doc:`rhime_multisector_tutorial`.
+
+Python model selection and compatibility
+----------------------------------------
+
+The public Python selector is :func:`openghg_inversions.rhime.run`:
+
+.. code-block:: python
+
+   from openghg_inversions.rhime import run
+
+   result = run(config_file="rhime.ini")  # model="standard" by default
+   result = run(model="multisector", config_file="rhime_multisector.ini")
+
+The ``co2``, ``co2_cached_sigma``, ``co2_o2`` and ``co2_o2_cached_sigma`` Python
+choices call their existing prepared-input recipes. They require the appropriate
+``prepared_inputs`` object and preserve each recipe's arguments and return type;
+selection does not provide a new acquisition or checkpoint route. These families
+are therefore not choices for the configuration-driven ``rhime run`` command.
+Existing CO2 staged commands retain their current support boundaries.
+
+``openghg-inversions`` and its ``run-rhime``, ``run-rhime-multisector`` and
+``run-rhime-nested`` subcommands remain supported through the 0.9 compatibility
+cycle. Both executables expose the same command set. The existing runner imports and
+shared handoff/assembly names listed here remain aliases to their implementations: ``run_rhime`` is
+``run_standard``, ``run_rhime_multisector`` is ``run_multisector``, and
+``run_rhime_nested`` is ``run_nested``. No argument conversion or warning is
+added to these aliases. Shared ``MergedData`` and ``PreparedInputs`` retain the
+``RhimeMergedData`` and ``RhimePreparedInputs`` aliases and unchanged serialized
+schemas. ``assemble_inputs`` and ``with_prepared_sites`` retain their former
+``assemble_rhime_inputs`` and ``with_prepared_rhime_sites`` imports.
+
+Package naming, the recipe-module relocation proposed in #764/#776 and complete
+workflow parity remain separate changes.
 
 Translating the older batch example
 -----------------------------------
@@ -86,7 +119,7 @@ keeps the compiled HDF5 and NetCDF stack together on conda-forge; see
    INI_FILE=/user/home/example/my_inversions/rhime.ini
    OUTPUT_DIR=/user/home/example/my_inversions/outputs
 
-   pixi run --locked -e dev openghg-inversions run-rhime \
+   pixi run --locked -e dev rhime run \
        2019-01-01 2019-02-01 \
        --config "$INI_FILE" \
        --output-path "$OUTPUT_DIR"
@@ -110,7 +143,7 @@ with the following command, still running it from ``$REPOSITORY``:
 
 .. code-block:: bash
 
-   uv run --locked openghg-inversions run-rhime \
+   uv run --locked rhime run \
        2019-01-01 2019-02-01 \
        --config "$INI_FILE" \
        --output-path "$OUTPUT_DIR"
@@ -129,7 +162,7 @@ command with:
    eval "$(conda shell.bash hook)"
    conda activate pymc_env
 
-   openghg-inversions run-rhime \
+   rhime run \
        2019-01-01 2019-02-01 \
        --config "$INI_FILE" \
        --output-path "$OUTPUT_DIR"
@@ -144,7 +177,7 @@ For a multisector batch run, only the config and subcommand need to change:
    INI_FILE=/user/home/example/my_inversions/rhime_multisector.ini
    OUTPUT_DIR=/user/home/example/my_inversions/outputs
 
-   pixi run --locked -e dev openghg-inversions run-rhime-multisector \
+   pixi run --locked -e dev rhime run --model multisector \
        2019-01-01 2019-02-01 \
        --config "$INI_FILE" \
        --output-path "$OUTPUT_DIR"

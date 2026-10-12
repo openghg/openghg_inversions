@@ -3,15 +3,15 @@
 ## Context
 
 See [proposal.md](proposal.md) for the replacement's motivation. The inspected
-landed base is `devel` at `80b0ebf0` (11 October 2026). PRs #773/#774 and #822–#825
+landed base is `devel` at `42a32f62` (12 October 2026). PRs #773/#774 and #822–#825
 provide acquisition, prepared-value, inference and concrete configuration owners.
 This plan consumes that groundwork; #798 remains unmerged prototype evidence.
 
 Merged #826/#830 remove the obsolete checkpoint/cache workflow and provide dataset
-basis inputs. The remaining stack is not completion of this change. #832 isolates
-legacy utilities; #834 changes
-observation-error ordering; #835/#836 own terminology/public entry points; #837
-owns joint input materialization. PR #840 implements #838's explicit
+basis inputs. Merged #832 isolates legacy utilities; #834 changes
+observation-error ordering; #835/#836 provide terminology/public entry points;
+#837 provides joint input materialization. These deliveries do not complete this
+change. PR #840 implements #838's explicit
 basis paths and support maps. PR #841 implements #839's native runtime-flux
 resolution and operator-only loading and remains under review. Recheck their
 merged revisions before implementation.

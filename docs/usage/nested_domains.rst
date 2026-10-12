@@ -78,9 +78,9 @@ RHIME arguments plus the inner-domain options:
        flux_sources=["total-ukghg-edgar7"],
        obs_store="user",
        footprint_store="outer-footprints",
-       emissions_store="outer-emissions",
+       flux_store="outer-emissions",
        inner_footprint_store="inner-footprints",
-       inner_emissions_store="inner-emissions",
+       inner_flux_store="inner-emissions",
        basis_algorithm="weighted",
        nbasis=100,
        fix_basis_outer_regions=True,
@@ -109,10 +109,10 @@ against the packaged basis assets. Migrated legacy configs may still use
 ``outer_regions_path``.
 
 When a store contains fine-grid footprints but only a coarser flux product,
-set ``inner_emissions_domain`` to that flux product's domain. RHIME then
+set ``inner_flux_domain`` to that flux product's domain. RHIME then
 interpolates the flux density with nearest neighbours onto the inner footprint
 grid explicitly. For example, the PARIS 6 km footprints use
-``inner_emissions_domain="EUROPE"`` with the shared EUROPE emissions product.
+``inner_flux_domain="EUROPE"`` with the shared EUROPE emissions product.
 
 The EUHROB asset is a coarse-grid fixed-region map: its marked rectangle tells
 the outer-basis algorithm where the nested area lies, while all other labels
@@ -183,8 +183,8 @@ and option names must not be repeated between sections.
    [INPUT.NESTED_DOMAIN]
    inner_domain = "6km"
    inner_footprint_store = "inner-footprints"
-   inner_emissions_store = "inner-emissions"
-   inner_emissions_domain = None
+   inner_flux_store = "inner-emissions"
+   inner_flux_domain = None
    inner_basis_algorithm = "quadtree"
    inner_nbasis = 80
    inner_time_tolerance = None
@@ -241,9 +241,9 @@ as lists, even for one synthetic site, so they retain the modern schema shape:
        bc_store="satellite-store",
        obs_store="satellite-store",
        footprint_store="outer-satellite-store",
-       emissions_store="outer-emissions-store",
+       flux_store="outer-emissions-store",
        inner_footprint_store="inner-satellite-store",
-       inner_emissions_store="inner-emissions-store",
+       inner_flux_store="inner-emissions-store",
        mismatch_model="pollution_event",
        output_name="gosat_brazil_nested",
        output_format="none",

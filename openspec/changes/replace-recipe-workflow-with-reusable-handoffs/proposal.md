@@ -103,10 +103,19 @@ Their completed changes are archived after syncing. Configuration's historical
 wrapper/cache requirements were reconciled with #826's landed removals before
 promotion. This is an inspection of implementation, existing tests and recorded
 merge evidence, not a new runtime test run. The original scientific reconstruction
-requirements are preserved. Pending #832–#841 changes are not promoted into the
-main specs. When rebasing that stack, carry its spec edits as active deltas or
+requirements are preserved. At that closeout, pending #832–#841 changes were not
+promoted into the main specs. When rebasing that stack, carry its spec edits as active deltas or
 update the current capability with the corresponding landed implementation;
 do not recreate or append new requirements to an archived change.
+
+The 12 October conflict reconciliation includes merged `devel` `42a32f62`, with
+#832 and #834–#837 now landed. Their configuration amendments are incorporated
+in `openspec/specs/rhime-configuration/spec.md`, including observation-error
+ordering, in-memory acquisition and modern flux-selector deprecation. The
+archives retain their 11 October historical contents; the superseded workflow
+contract is not revived or promoted. Reconstruction specs remain unchanged and
+this replacement remains the only active change. Its implementation tasks stay
+unchecked.
 
 ## Impact
 
@@ -120,8 +129,8 @@ inventory, scientific order and saving semantics; [tasks.md](tasks.md) defines f
 implementation delivery phases and their acceptance gates. All implementation
 checkboxes remain unchecked. No runtime code, new file format or dependency ships.
 
-Reuse merged #773/#774, #822–#826 and #830. Reconcile pending #832 and
-#834–#837 before implementing over them. #840 implements #838's explicit basis
+Reuse merged #773/#774, #822–#826, #830, #832 and #834–#837.
+#840 implements #838's explicit basis
 paths; #841 implements #839's native flux/operator-loading work and remains under
 review. #808 coordinates bounded removal of representation-sensitive reuse gates
 within implementation; it is not a preliminary serialization project. Neither a

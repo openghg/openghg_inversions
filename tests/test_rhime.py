@@ -20,7 +20,7 @@ from dask.callbacks import Callback
 
 from examples.rhime_customisation import likelihoods as example_likelihoods
 import openghg_inversions.inversion_data.acquisition as acquisition_module
-import openghg_inversions.inversion_data.get_data as get_data_module
+import openghg_inversions.inversion_data.acquisition as get_data_module
 import openghg_inversions.models as models
 import openghg_inversions.postprocessing.inversion_output as inversion_output_module
 import openghg_inversions.rhime as rhime_public
@@ -35,6 +35,7 @@ import openghg_inversions.rhime.specs as rhime_specs
 import openghg_inversions.rhime.standard as rhime_standard
 import openghg_inversions.rhime.multisector as rhime_multisector
 from tests.helpers import make_trace, prepare_inputs
+import tests.helpers as preparation_helpers
 from openghg_inversions.basis.basis_functions import (
     BASIS_ARTIFACT_PATH_ATTR,
     BASIS_ARTIFACT_SOURCE_ATTR,
@@ -92,6 +93,10 @@ from openghg_inversions.rhime.standard import (
     build_standard_rhime_model as _build_rhime_model,
 )
 from openghg_inversions.sigma import SigmaAlignment
+from openghg_inversions.hbmcmc.legacy_data import (
+    from_legacy_fp_all,
+    to_legacy_fp_all,
+)
 
 
 @pytest.fixture(scope="module")
@@ -1843,7 +1848,7 @@ def test_assemble_rhime_inputs_preserves_borrowed_site_datasets(
         attrs={"source": "caller", "footprint_transport_model": "FLEXPART"},
     )
     site_data = {"TAC": supplied}
-    merged = RhimeMergedData.from_legacy_fp_all(
+    merged = from_legacy_fp_all(
         fp_all=site_data,
         site_options=_site_options(["TAC"], averaging_period=["1h"]),
     )
@@ -1854,7 +1859,7 @@ def test_assemble_rhime_inputs_preserves_borrowed_site_datasets(
         captured.update(kwargs["fp_data"])
         return _minimal_output_inv_inputs()
 
-    monkeypatch.setattr(rhime_preparation, "_make_inv_inputs", make_inputs)
+    monkeypatch.setattr(rhime_preparation, "make_inv_inputs", make_inputs)
     monkeypatch.setattr(
         rhime_preparation,
         "scale_satellite_boundary_sensitivity_to_column_signal",
@@ -2953,9 +2958,8 @@ def test_public_rhime_runners_follow_named_stage_order(
         site_options=config.site_options,
         split_by_sectors=multisector,
     )
-    if external_data:
-        merged = external_merged
-    filtered = cast(Any, object())
+    merged = external_merged
+    filtered = merged
     basis = cast(Any, object())
     site_data = cast(Any, object())
 
@@ -2975,9 +2979,9 @@ def test_public_rhime_runners_follow_named_stage_order(
         calls.append("filter")
         return filtered
 
-    def build_basis(actual: Any, **kwargs: Any) -> Any:
-        """Record public basis construction with resolved named values."""
-        assert actual is filtered
+    def build_basis(**kwargs: Any) -> Any:
+        """Record basis construction with resolved named values."""
+        assert kwargs["site_data"] is filtered.site_data
         assert kwargs["species"] == config.species
         assert kwargs["domain"] == config.domain
         assert kwargs["basis_algorithm"] == config.basis_algorithm
@@ -3059,9 +3063,9 @@ def test_public_rhime_runners_follow_named_stage_order(
 
     monkeypatch.setattr(recipe_module.RhimeConfig, "from_params", staticmethod(resolve))
     monkeypatch.setattr(recipe_module.RhimeMergedData, "from_options", retrieve)
-    monkeypatch.setattr(recipe_module, "filter_rhime_observations", filter_observations)
-    monkeypatch.setattr(recipe_module, "build_rhime_basis", build_basis)
-    monkeypatch.setattr(recipe_module, "build_rhime_sensitivities", build_sensitivities)
+    monkeypatch.setattr(recipe_module, "filter_observations", filter_observations)
+    monkeypatch.setattr(recipe_module, "make_basis_functions", build_basis)
+    monkeypatch.setattr(recipe_module, "build_sensitivities", build_sensitivities)
     monkeypatch.setattr(recipe_module, "assemble_rhime_inputs", assemble)
     monkeypatch.setattr(rhime_params.RhimeConfig, "retained_run_spec", align)
     monkeypatch.setattr(recipe_module, "materialize_pymc_inputs", materialize)
@@ -3198,9 +3202,9 @@ def test_rhime_public_package_exports_supported_orchestration_stages() -> None:
         "RhimeConfig",
         "read_rhime_ini",
         "RhimeMergedData",
-        "filter_rhime_observations",
-        "build_rhime_basis",
-        "build_rhime_sensitivities",
+        "filter_observations",
+        "prepare_observation_errors",
+        "build_sensitivities",
         "assemble_rhime_inputs",
         "with_prepared_rhime_sites",
         "materialize_pymc_inputs",
@@ -3247,9 +3251,9 @@ def test_each_rhime_recipe_keeps_the_scientific_process_visible(recipe: Callable
     stages = (
         "RhimeConfig.from_params",
         "RhimeMergedData.from_options",
-        "filter_rhime_observations",
-        "build_rhime_basis",
-        "build_rhime_sensitivities",
+        "filter_observations",
+        "make_basis_functions",
+        "build_sensitivities",
         "assemble_rhime_inputs",
         "retained_run_spec",
         "materialize_pymc_inputs",
@@ -3275,7 +3279,7 @@ def test_public_stages_compose_as_complete_external_runner(monkeypatch: pytest.M
         met_model=None,
         max_level=None,
     )
-    merged_fixture = RhimeMergedData.from_legacy_fp_all(
+    merged_fixture = from_legacy_fp_all(
         fp_all={"TAC": xr.Dataset(coords={"time": pd.to_datetime(["2019-01-01"])})},
         site_options=site_options,
     )
@@ -3285,13 +3289,14 @@ def test_public_stages_compose_as_complete_external_runner(monkeypatch: pytest.M
     idata = _minimal_output_idata()
 
     monkeypatch.setattr(rhime_public.RhimeMergedData, "from_options", lambda **kwargs: merged_fixture)
-    monkeypatch.setattr(rhime_preparation, "make_basis_functions", lambda **kwargs: basis_fixture)
+    from openghg_inversions import basis as basis_module
+    monkeypatch.setattr(basis_module, "make_basis_functions", lambda **kwargs: basis_fixture)
     monkeypatch.setattr(
-        rhime_preparation,
-        "_rhime_site_data_from_basis_functions",
-        lambda **kwargs: site_data_fixture,
+        rhime_public,
+        "build_sensitivities",
+        lambda *args, **kwargs: site_data_fixture,
     )
-    monkeypatch.setattr(rhime_preparation, "_make_inv_inputs", lambda **kwargs: inv_inputs_fixture)
+    monkeypatch.setattr(rhime_preparation, "make_inv_inputs", lambda **kwargs: inv_inputs_fixture)
     monkeypatch.setattr(RhimeSampler, "sample", lambda self, model, **kwargs: idata)
 
     setup = rhime_public.RhimeConfig.from_params(
@@ -3315,12 +3320,13 @@ def test_public_stages_compose_as_complete_external_runner(monkeypatch: pytest.M
         start_date=setup.start_date, end_date=setup.end_date,
         flux_sources=list(setup.flux_sources), use_bc=setup.use_bc,
     )
-    filtered = rhime_public.filter_rhime_observations(merged, filters=setup.filters)
-    basis_functions = rhime_public.build_rhime_basis(
-        filtered, species=setup.species, domain=setup.domain, start_date=setup.start_date,
-        flux_sources=setup.flux_sources, output_name=setup.output_name,
+    filtered = rhime_public.filter_observations(merged, filters=setup.filters)
+    basis_functions = basis_module.make_basis_functions(
+        site_data=filtered.site_data, flux_data=filtered.flux_data,
+        species=setup.species, domain=setup.domain, start_date=setup.start_date,
+        emissions_name=setup.flux_sources, outputname=setup.output_name, nbasis=setup.nbasis,
     )
-    site_data = rhime_public.build_rhime_sensitivities(
+    site_data = rhime_public.build_sensitivities(
         filtered,
         basis_functions,
         domain=setup.domain, flux_sources=setup.flux_sources, use_bc=setup.use_bc,
@@ -3359,38 +3365,6 @@ def test_public_stages_compose_as_complete_external_runner(monkeypatch: pytest.M
     assert "y" in build_result.model.named_vars
     assert result.idata is idata
 
-
-def test_build_rhime_basis_forwards_fixed_outer_region_asset(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The readable RHIME basis stage forwards the resolved fixed-region map."""
-    expected = _fake_basis_functions()
-    captured: dict[str, Any] = {}
-
-    def make_basis(**kwargs: Any) -> BasisFunctions:
-        captured.update(kwargs)
-        return expected
-
-    monkeypatch.setattr(rhime_preparation, "make_basis_functions", make_basis)
-    merged = RhimeMergedData(site_data={"TAC": xr.Dataset()}, flux_data={}, site_options=_site_options(["TAC"], averaging_period="1h"))
-    data_args = {
-        "basis_algorithm": "weighted",
-        "nbasis": 40,
-        "fp_basis_case": None,
-        "basis_directory": None,
-        "country_directory": None,
-        "outer_regions_path": "intem_region_definition_EUHROB.nc",
-        "species": "ch4",
-        "domain": "EUROPE",
-        "start_date": "2019-01-01",
-        "fix_basis_outer_regions": True,
-        "flux_sources": ["inventory"],
-        "output_name": "nested",
-        "basis_output_path": None,
-    }
-
-    actual = rhime_public.build_rhime_basis(merged, **data_args)
-
-    assert actual is expected
-    assert captured["outer_regions_path"] == "intem_region_definition_EUHROB.nc"
 
 
 def test_run_rhime_from_prepared_inputs_accepts_complete_model_builder(
@@ -3895,10 +3869,11 @@ def test_run_rhime_rejects_noncanonical_custom_likelihood_before_sampling(
         raise AssertionError("invalid likelihood must fail before sampling")
 
     monkeypatch.setattr(rhime_standard.RhimeConfig, "from_params", lambda *args, **kwargs: config)
-    monkeypatch.setattr(rhime_standard.RhimeMergedData, "from_options", lambda *args, **kwargs: object())
-    monkeypatch.setattr(rhime_standard, "filter_rhime_observations", lambda *args, **kwargs: object())
-    monkeypatch.setattr(rhime_standard, "build_rhime_basis", lambda *args, **kwargs: prepared.basis_functions)
-    monkeypatch.setattr(rhime_standard, "build_rhime_sensitivities", lambda *args, **kwargs: object())
+    monkeypatch.setattr(rhime_standard.RhimeMergedData, "from_options", lambda *args, **kwargs: RhimeMergedData(
+        site_data={"TAC": xr.Dataset({"mf_error": ("time", [1.0]), "mf_repeatability": ("time", [0.0]), "mf_variability": ("time", [0.0])})}, flux_data={}, site_options=config.site_options))
+    monkeypatch.setattr(rhime_standard, "filter_observations", lambda merged, **kwargs: merged)
+    monkeypatch.setattr(rhime_standard, "make_basis_functions", lambda *args, **kwargs: prepared.basis_functions)
+    monkeypatch.setattr(rhime_standard, "build_sensitivities", lambda *args, **kwargs: object())
     monkeypatch.setattr(rhime_standard, "assemble_rhime_inputs", lambda *args, **kwargs: prepared)
     monkeypatch.setattr(RhimeSampler, "sample", fail_sample)
 
@@ -5602,7 +5577,7 @@ def test_multisector_sensitivity_sources_fail_before_site_gathering() -> None:
         def sensitivity(self, _: xr.DataArray) -> xr.DataArray:
             return sensitivity
 
-    merged = RhimeMergedData.from_legacy_fp_all(
+    merged = from_legacy_fp_all(
         fp_all={"TAC": xr.Dataset({"fp_x_flux_sectoral": fp_x_flux})},
         site_options=_site_options(["TAC"], averaging_period=["1H"]),
     )
@@ -5611,11 +5586,11 @@ def test_multisector_sensitivity_sources_fail_before_site_gathering() -> None:
         ValueError,
         match="Site 'TAC'.*missing source\\(s\\): \\['ocean-inventory'\\]",
     ):
-        rhime_preparation._rhime_site_data_from_basis_functions(
+        rhime_preparation.build_sensitivities(
             merged=merged,
             basis_functions=cast(BasisFunctions, MissingSourceBasis()),
             domain="EUROPE",
-            split_by_sectors=True,
+            multisector=True,
             flux_sources=["ff-inventory", "ocean-inventory"],
             use_bc=False,
             bc_basis_case="NESW",
@@ -5652,16 +5627,16 @@ def test_multisector_site_preparation_keeps_gathered_source_state() -> None:
         def sensitivity(self, _: xr.DataArray) -> xr.DataArray:
             return sensitivity
 
-    merged = RhimeMergedData.from_legacy_fp_all(
+    merged = from_legacy_fp_all(
         fp_all={"TAC": xr.Dataset({"fp_x_flux_sectoral": fp_x_flux})},
         site_options=_site_options(["TAC"], averaging_period=["1H"]),
     )
 
-    prepared = rhime_preparation._rhime_site_data_from_basis_functions(
+    prepared = rhime_preparation.build_sensitivities(
         merged=merged,
         basis_functions=cast(BasisFunctions, GatheredBasis()),
         domain="EUROPE",
-        split_by_sectors=True,
+        multisector=True,
         flux_sources=["ff-inventory", "ocean-inventory"],
         use_bc=False,
         bc_basis_case="NESW",
@@ -5681,7 +5656,7 @@ def test_rhime_preparation_uses_platform_for_sites_retained_after_filtering(
 ) -> None:
     """RHIME scaling receives preserved footprint provenance after filtering."""
     satellite_data = _site_dataset([2.0]).assign_attrs(footprint_max_level=17)
-    merged = RhimeMergedData.from_legacy_fp_all(
+    merged = from_legacy_fp_all(
         fp_all={"TAC": _site_dataset([]), "OCO2-EASTASIA": satellite_data},
         site_options=_site_options(
             ["TAC", "OCO2-EASTASIA"],
@@ -5690,7 +5665,7 @@ def test_rhime_preparation_uses_platform_for_sites_retained_after_filtering(
             max_level=[None, 3],
         ),
     )
-    filtered_merged = RhimeMergedData.from_legacy_fp_all(
+    filtered_merged = from_legacy_fp_all(
         fp_all={"OCO2-EASTASIA": satellite_data},
         site_options=merged.site_options.select_indices([1]),
     )
@@ -5703,16 +5678,16 @@ def test_rhime_preparation_uses_platform_for_sites_retained_after_filtering(
         return merged
 
     monkeypatch.setattr(RhimeMergedData, "from_options", retrieve)
-    monkeypatch.setattr(rhime_preparation, "_filter_merged_inversion_data", lambda **kwargs: filtered_merged)
-    monkeypatch.setattr(rhime_preparation, "make_basis_functions", lambda **kwargs: _fake_basis_functions())
+    monkeypatch.setattr(rhime_preparation, "filter_observations", lambda *args, **kwargs: filtered_merged)
+    monkeypatch.setattr(preparation_helpers, "make_basis_functions", lambda **kwargs: _fake_basis_functions())
     monkeypatch.setattr(
         rhime_preparation,
-        "_rhime_site_data_from_basis_functions",
-        lambda **kwargs: {"OCO2-EASTASIA": satellite_data},
+        "build_sensitivities",
+        lambda *args, **kwargs: {"OCO2-EASTASIA": satellite_data},
     )
     monkeypatch.setattr(
         rhime_preparation,
-        "_make_inv_inputs",
+        "make_inv_inputs",
         lambda **kwargs: _minimal_prepared_inv_inputs(sites=("OCO2-EASTASIA",)),
     )
 
@@ -5787,11 +5762,11 @@ def test_canonical_preparation_uses_basis_sensitivity_without_legacy_side_channe
         return _minimal_prepared_inv_inputs()
 
     monkeypatch.setattr(
-        get_data_module,
-        "_retrieve_inversion_data_from_options",
+        RhimeMergedData,
+        "from_options",
         fake_data_processing_surface_notracer,
     )
-    monkeypatch.setattr(rhime_preparation, "make_basis_functions", fake_make_basis_functions)
+    monkeypatch.setattr(preparation_helpers, "make_basis_functions", fake_make_basis_functions)
     monkeypatch.setattr(rhime_preparation, "make_inv_inputs", fake_make_inv_inputs)
     prepared = prepare_inputs(
         species="ch4",
@@ -5833,11 +5808,11 @@ def test_canonical_preparation_matches_direct_sensitivity_inv_inputs(
         return basis_functions
 
     monkeypatch.setattr(
-        get_data_module,
-        "_retrieve_inversion_data_from_options",
+        RhimeMergedData,
+        "from_options",
         fake_data_processing_surface_notracer,
     )
-    monkeypatch.setattr(rhime_preparation, "make_basis_functions", fake_make_basis_functions)
+    monkeypatch.setattr(preparation_helpers, "make_basis_functions", fake_make_basis_functions)
 
     prepared = prepare_inputs(
         species="ch4",
@@ -5892,23 +5867,15 @@ def test_acquisition_keeps_requested_metadata_authoritative(
 ) -> None:
     """A middle retrieval failure retains every option from the requested record."""
 
-    def fake_data_processing(
-        **kwargs: object,
-    ) -> RhimeMergedData:
-        """Return the first and third requested sites in the acquisition record."""
-        return RhimeMergedData(
-            site_data={'TAC': _site_dataset([2.0]), 'RGL': _site_dataset([4.0])},
-            flux_data={},
-            site_options=cast(SiteOptions, kwargs["site_options"]).retain_sites(['TAC', 'RGL'], context="test retrieval"),
-            split_by_sectors=False,
-            acquisition=AcquisitionFacts(),
-        )
-
+    monkeypatch.setattr(get_data_module, "get_flux_data", lambda **kw: {})
     monkeypatch.setattr(
-        get_data_module,
-        "_retrieve_inversion_data_from_options",
-        fake_data_processing,
+        get_data_module, "get_obs_data",
+        lambda **kw: None if kw["site"] == "MHD" else SimpleNamespace(
+            data=_site_dataset([2.0]).assign_attrs(scale="WMO"), metadata={}
+        ),
     )
+    monkeypatch.setattr(get_data_module, "get_footprint_data", lambda **kw: object())
+    monkeypatch.setattr(get_data_module, "merged_scenario_data", lambda obs, *a, **kw: obs.data)
 
     merged = acquisition_module.RhimeMergedData.from_options(
         site_options=_site_options(
@@ -5948,17 +5915,15 @@ def test_acquisition_retains_record_selectors(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Fresh acquisition forwards the selector record owned by retrieval."""
+    monkeypatch.setattr(get_data_module, "get_flux_data", lambda **kw: {})
     monkeypatch.setattr(
-        get_data_module,
-        "_retrieve_inversion_data_from_options",
-        lambda **kwargs: RhimeMergedData(
-            site_data={'TAC': _site_dataset([2.0])},
-            flux_data={},
-            site_options=cast(SiteOptions, kwargs["site_options"]).retain_sites(['TAC'], context="test retrieval"),
-            split_by_sectors=False,
-            acquisition=AcquisitionFacts(),
+        get_data_module, "get_obs_data",
+        lambda **kw: SimpleNamespace(
+            data=_site_dataset([2.0]).assign_attrs(scale="WMO"), metadata={}
         ),
     )
+    monkeypatch.setattr(get_data_module, "get_footprint_data", lambda **kw: object())
+    monkeypatch.setattr(get_data_module, "merged_scenario_data", lambda obs, *a, **kw: obs.data)
 
     merged = acquisition_module.RhimeMergedData.from_options(
         site_options=_site_options(
@@ -6009,8 +5974,8 @@ def test_apply_filters_drops_complete_site_option_record() -> None:
         "RGL": _site_dataset([4.0]),
     }
 
-    merged = RhimeMergedData.from_legacy_fp_all(fp_data, site_options)
-    filtered = rhime_preparation.filter_rhime_observations(merged, filters=None)
+    merged = from_legacy_fp_all(fp_data, site_options)
+    filtered = rhime_preparation.filter_observations(merged, filters=None)
 
     assert set(filtered.site_data) == {"TAC", "RGL"}
     assert filtered.site_options == site_options.select_indices([0, 2])
@@ -6019,7 +5984,7 @@ def test_apply_filters_drops_complete_site_option_record() -> None:
 def test_filtering_preserves_shared_merged_data_when_dropping_sites() -> None:
     """Filtering keeps active shared inputs while removing an empty site."""
     flux = {"inventory": xr.Dataset({"flux": ("time", [1.])})}
-    merged = RhimeMergedData.from_legacy_fp_all(
+    merged = from_legacy_fp_all(
         fp_all={
             "TAC": _site_dataset([]),
             "MHD": _site_dataset([3.0]),
@@ -6029,11 +5994,11 @@ def test_filtering_preserves_shared_merged_data_when_dropping_sites() -> None:
         site_options=_site_options(["TAC", "MHD"], averaging_period=["1H", "1H"]),
     )
 
-    filtered = rhime_preparation._filter_merged_inversion_data(merged=merged, filters=None)
+    filtered = rhime_preparation.filter_observations(merged=merged, filters=None)
 
     assert filtered.sites == ("MHD",)
     assert filtered.flux_data["inventory"] is merged.flux_data["inventory"]
-    assert filtered.to_legacy_fp_all()[".split_by_sectors"] is False
+    assert to_legacy_fp_all(filtered)[".split_by_sectors"] is False
 
 
 @pytest.mark.parametrize(
@@ -6074,11 +6039,11 @@ def test_canonical_preparation_normalises_averaging_period_to_site_count(
         return _minimal_prepared_inv_inputs(("TAC", "MHD"))
 
     monkeypatch.setattr(
-        get_data_module,
-        "_retrieve_inversion_data_from_options",
+        RhimeMergedData,
+        "from_options",
         fake_data_processing_surface_notracer,
     )
-    monkeypatch.setattr(rhime_preparation, "make_basis_functions", fake_make_basis_functions)
+    monkeypatch.setattr(preparation_helpers, "make_basis_functions", fake_make_basis_functions)
     monkeypatch.setattr(rhime_preparation, "make_inv_inputs", fake_make_inv_inputs)
 
     prepared = prepare_inputs(
@@ -6191,11 +6156,11 @@ def test_canonical_preparation_treats_min_error_none_as_default(
         return _minimal_prepared_inv_inputs()
 
     monkeypatch.setattr(
-        get_data_module,
-        "_retrieve_inversion_data_from_options",
+        RhimeMergedData,
+        "from_options",
         fake_data_processing_surface_notracer,
     )
-    monkeypatch.setattr(rhime_preparation, "make_basis_functions", fake_make_basis_functions)
+    monkeypatch.setattr(preparation_helpers, "make_basis_functions", fake_make_basis_functions)
     monkeypatch.setattr(rhime_preparation, "make_inv_inputs", fake_make_inv_inputs)
 
     prepare_inputs(
@@ -6214,31 +6179,6 @@ def test_canonical_preparation_treats_min_error_none_as_default(
     assert captured_min_error == 0.0
 
 
-def test_make_inv_inputs_boundary_propagates_valid_by_site_option(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Preparation passes a valid per-site minimum-error choice to assembly."""
-    captured_by_site: bool | None = None
-
-    def fake_make_inv_inputs(*args: object, **kwargs: object) -> xr.Dataset:
-        """Capture the canonical per-site minimum-error flag."""
-        nonlocal captured_by_site
-        captured_by_site = cast(bool, kwargs["min_error_per_site"])
-        return _minimal_inv_inputs()
-
-    monkeypatch.setattr(rhime_preparation, "make_inv_inputs", fake_make_inv_inputs)
-
-    rhime_preparation._make_inv_inputs(
-        fp_data={"TAC": _site_dataset([2.0])},
-        sites=["TAC"],
-        start_date="2019-01-01",
-        bc_freq=None,
-        min_error="residual",
-        min_error_per_site=True,
-    )
-
-    assert captured_by_site is True
-
 
 def test_canonical_preparation_rejects_min_error_options_before_retrieval(
     monkeypatch: pytest.MonkeyPatch,
@@ -6250,8 +6190,8 @@ def test_canonical_preparation_rejects_min_error_options_before_retrieval(
         raise AssertionError("Data retrieval should not run for invalid min-error options.")
 
     monkeypatch.setattr(
-        get_data_module,
-        "_retrieve_inversion_data_from_options",
+        RhimeMergedData,
+        "from_options",
         fail_data_processing,
     )
 
@@ -6326,12 +6266,12 @@ def test_canonical_preparation_filters_sites_before_basis_generation(
         return _minimal_prepared_inv_inputs()
 
     monkeypatch.setattr(
-        get_data_module,
-        "_retrieve_inversion_data_from_options",
+        RhimeMergedData,
+        "from_options",
         fake_data_processing_surface_notracer,
     )
     monkeypatch.setattr(rhime_preparation, "filtering", fake_filtering)
-    monkeypatch.setattr(rhime_preparation, "make_basis_functions", fake_make_basis_functions)
+    monkeypatch.setattr(preparation_helpers, "make_basis_functions", fake_make_basis_functions)
     monkeypatch.setattr(rhime_preparation, "bc_sensitivity", fake_bc_sensitivity)
     monkeypatch.setattr(rhime_preparation, "make_inv_inputs", fake_make_inv_inputs)
 
@@ -6451,11 +6391,11 @@ def test_canonical_preparation_applies_daily_median_before_sensitivity(
         return _minimal_prepared_inv_inputs()
 
     monkeypatch.setattr(
-        get_data_module,
-        "_retrieve_inversion_data_from_options",
+        RhimeMergedData,
+        "from_options",
         fake_data_processing_surface_notracer,
     )
-    monkeypatch.setattr(rhime_preparation, "make_basis_functions", fake_make_basis_functions)
+    monkeypatch.setattr(preparation_helpers, "make_basis_functions", fake_make_basis_functions)
     monkeypatch.setattr(rhime_preparation, "make_inv_inputs", fake_make_inv_inputs)
 
     prepare_inputs(
@@ -6533,12 +6473,12 @@ def test_canonical_preparation_filters_multisector_sites_before_basis_generation
         return inv_inputs
 
     monkeypatch.setattr(
-        get_data_module,
-        "_retrieve_inversion_data_from_options",
+        RhimeMergedData,
+        "from_options",
         fake_data_processing_surface_notracer,
     )
     monkeypatch.setattr(rhime_preparation, "filtering", fake_filtering)
-    monkeypatch.setattr(rhime_preparation, "make_basis_functions", fake_make_basis_functions)
+    monkeypatch.setattr(preparation_helpers, "make_basis_functions", fake_make_basis_functions)
     monkeypatch.setattr(rhime_preparation, "make_inv_inputs", fake_make_inv_inputs)
 
     prepared = prepare_inputs(
@@ -6606,11 +6546,11 @@ def test_canonical_preparation_filters_loaded_basis_before_sensitivity(
         return _minimal_prepared_inv_inputs()
 
     monkeypatch.setattr(
-        get_data_module,
-        "_retrieve_inversion_data_from_options",
+        RhimeMergedData,
+        "from_options",
         fake_data_processing_surface_notracer,
     )
-    monkeypatch.setattr(rhime_preparation, "make_basis_functions", fake_make_basis_functions)
+    monkeypatch.setattr(preparation_helpers, "make_basis_functions", fake_make_basis_functions)
     monkeypatch.setattr(rhime_preparation, "filtering", fake_filtering)
     monkeypatch.setattr(rhime_preparation, "make_inv_inputs", fake_make_inv_inputs)
 
@@ -6665,11 +6605,11 @@ def test_canonical_preparation_aligns_averaging_period_after_empty_site_drop(
         return _minimal_prepared_inv_inputs()
 
     monkeypatch.setattr(
-        get_data_module,
-        "_retrieve_inversion_data_from_options",
+        RhimeMergedData,
+        "from_options",
         fake_data_processing_surface_notracer,
     )
-    monkeypatch.setattr(rhime_preparation, "make_basis_functions", fake_make_basis_functions)
+    monkeypatch.setattr(preparation_helpers, "make_basis_functions", fake_make_basis_functions)
     monkeypatch.setattr(rhime_preparation, "make_inv_inputs", fake_make_inv_inputs)
 
     prepared = prepare_inputs(
@@ -6710,11 +6650,11 @@ def test_canonical_preparation_rejects_all_sites_dropped_before_basis_generation
         raise AssertionError("Basis generation should not run when all sites are dropped.")
 
     monkeypatch.setattr(
-        get_data_module,
-        "_retrieve_inversion_data_from_options",
+        RhimeMergedData,
+        "from_options",
         fake_data_processing_surface_notracer,
     )
-    monkeypatch.setattr(rhime_preparation, "make_basis_functions", fake_make_basis_functions)
+    monkeypatch.setattr(preparation_helpers, "make_basis_functions", fake_make_basis_functions)
 
     with pytest.raises(ValueError, match="No sites remain"):
         prepare_inputs(
@@ -8779,8 +8719,16 @@ output_format = "inv_out"
         normalise_calls.append(dict(params))
         return original_normalise(params)
 
-    merged = cast(Any, object())
-    filtered = cast(Any, object())
+    merged = RhimeMergedData(
+        site_data={"TAC": xr.Dataset({
+            "mf_error": ("time", [1.0]),
+            "mf_repeatability": ("time", [0.0]),
+            "mf_variability": ("time", [0.0]),
+        })},
+        flux_data={},
+        site_options=SiteOptions.from_inputs(sites=["TAC"], averaging_period="1h"),
+    )
+    filtered = merged
     basis = cast(Any, object())
     site_data = cast(Any, object())
 
@@ -8797,7 +8745,7 @@ output_format = "inv_out"
         seen["acquisition"] = {**kwargs, "sites": site_options.sites, "averaging_period": site_options.averaging_period}
         return merged
 
-    def fake_basis(value: Any, **kwargs: Any) -> Any:
+    def fake_basis(**kwargs: Any) -> Any:
         """Capture the basis choices forwarded from the effective request."""
         seen["basis"] = kwargs
         return basis
@@ -8818,11 +8766,11 @@ output_format = "inv_out"
     monkeypatch.setattr(rhime_standard.RhimeMergedData, "from_options",
         fake_load,
     )
-    monkeypatch.setattr(rhime_standard, "filter_rhime_observations", lambda value, **kwargs: filtered)
-    monkeypatch.setattr(rhime_standard, "build_rhime_basis", fake_basis)
+    monkeypatch.setattr(rhime_standard, "filter_observations", lambda value, **kwargs: filtered)
+    monkeypatch.setattr(rhime_standard, "make_basis_functions", fake_basis)
     monkeypatch.setattr(
         rhime_standard,
-        "build_rhime_sensitivities",
+        "build_sensitivities",
         lambda value, actual_basis, **kwargs: site_data,
     )
     monkeypatch.setattr(rhime_standard, "assemble_rhime_inputs", fake_assemble)
@@ -8867,7 +8815,7 @@ output_format = "inv_out"
     assert tuple(preparation["flux_sources"]) == ("direct-source",)
     assert preparation["basis_algorithm"] == "weighted"
     assert preparation["bc_store"] == "config-bc-store"
-    assert preparation["output_name"] == "direct-name"
+    assert preparation["outputname"] == "direct-name"
 
     execution = seen["execution"]
     assert execution["prepared"] is prepared
@@ -8978,16 +8926,19 @@ def test_acquisition_keeps_acquired_flux_lazy(monkeypatch):
     flux = xr.Dataset({"flux": ("time", da.from_array([0., 0., 2.]))})
     options = _site_options(["TAC"], averaging_period="1h")
     monkeypatch.setattr(
-        get_data_module, "_retrieve_inversion_data_from_options",
-        lambda **kw: RhimeMergedData(
-            site_data={"TAC": _site_dataset([2.0])}, flux_data={"inventory": flux},
-            site_options=options,
-        ),
+        get_data_module, "get_flux_data",
+        lambda **kw: {"inventory": SimpleNamespace(data=flux, metadata={})},
     )
+    monkeypatch.setattr(
+        get_data_module, "get_obs_data",
+        lambda **kw: SimpleNamespace(data=_site_dataset([2.0]).assign_attrs(scale="WMO"), metadata={}),
+    )
+    monkeypatch.setattr(get_data_module, "get_footprint_data", lambda **kw: object())
+    monkeypatch.setattr(get_data_module, "merged_scenario_data", lambda obs, *a, **kw: obs.data)
     with Callback(pretask=lambda *args: pytest.fail("factory computed borrowed flux")):
         merged = RhimeMergedData.from_options(
             site_options=options, species="ch4", domain="EUROPE", start_date="2019-01-01",
-            end_date="2019-02-01",  flux_sources=["inventory"],
+            end_date="2019-02-01", flux_sources=["inventory"], use_bc=False,
         )
     assert merged.flux_data["inventory"] is flux
     np.testing.assert_array_equal(merged.flux_data["inventory"].flux.compute(), [0., 0., 2.])

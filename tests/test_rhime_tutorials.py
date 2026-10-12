@@ -14,8 +14,7 @@ from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.rhime import (
     RhimeSampler,
     params_from_config,
-    run_rhime,
-    run_rhime_multisector,
+    run,
 )
 from tests.helpers import make_trace
 
@@ -56,7 +55,7 @@ def _test_store_overrides(
         "bc_store": tac_ch4_data_args["bc_store"],
         "obs_store": tac_ch4_data_args["obs_store"],
         "footprint_store": tac_ch4_data_args["footprint_store"],
-        "emissions_store": tac_ch4_data_args["emissions_store"],
+        "flux_store": tac_ch4_data_args["emissions_store"],
         "domain": tac_ch4_data_args["domain"],
         "fp_model": tac_ch4_data_args["fp_model"],
         "fp_height": tac_ch4_data_args["fp_height"],
@@ -114,7 +113,7 @@ def test_standard_tutorial_runs_to_persisted_output(
         "sample",
         lambda self, model, **kwargs: _deterministic_trace(model, ("x", "mu")),
     )
-    result = run_rhime(
+    result = run(
         config_file=_STANDARD_CONFIG,
         **_test_store_overrides(tac_ch4_data_args, tmp_path),
     )
@@ -155,7 +154,8 @@ def test_multisector_tutorial_runs_to_sector_diagnostics(
             },
         }
     )
-    result = run_rhime_multisector(config_file=_MULTISECTOR_CONFIG, **overrides)
+    result = run(
+        model="multisector",config_file=_MULTISECTOR_CONFIG, **overrides)
 
     assert [sector.name for sector in result.model_spec.sectors] == ["FF", "ocean"]
     assert tuple(result.inv_inputs["H"].source.values) == (

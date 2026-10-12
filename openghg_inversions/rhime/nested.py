@@ -10,12 +10,15 @@ built, and combines only the two observation-aligned sensitivity matrices.
 
 from __future__ import annotations
 
+from openghg_inversions.basis import make_basis_functions
+from openghg_inversions._flux_options import UNSET, _Unset, normalise_flux_aliases, resolve_deprecated_keyword
+
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 import hashlib
 from numbers import Integral
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from dask import compute as dask_compute
 import numpy as np
@@ -50,9 +53,9 @@ from .ini import read_rhime_ini
 from .params import RhimeConfig
 from .preparation import (
     assemble_rhime_inputs,
-    build_rhime_basis,
-    build_rhime_sensitivities,
-    filter_rhime_observations,
+    build_sensitivities,
+    filter_observations,
+    prepare_observation_errors,
     with_prepared_rhime_sites,
 )
 from .sampling import RhimeSampler, sample_rhime_model
@@ -693,17 +696,22 @@ def _prepare_one_domain(
     allow_empty_inner_region: bool = False,
 ) -> RhimePreparedInputs:
     """Run one domain's scientific stages from already-resolved choices."""
-    basis_functions = build_rhime_basis(
-        merged,
-        **config.select(
-            "species", "domain", "start_date", "flux_sources",
-            "output_name", "basis_algorithm", "nbasis", "fp_basis_case",
-            "basis_directory", "country_directory", "outer_regions_path",
-            "fix_basis_outer_regions", "basis_output_path",
-        ),
-        allow_empty_inner_region=allow_empty_inner_region,
-    )
-    site_data = build_rhime_sensitivities(
+    with timed("rhime.prepare_inputs.basis_build", basis_algorithm=config.basis_algorithm):
+        basis_functions = make_basis_functions(
+            site_data=merged.site_data,
+            flux_data=merged.flux_data,
+            split_by_sectors=merged.split_by_sectors,
+            **config.select(
+                "species", "domain", "start_date", "basis_algorithm", "nbasis",
+                "fp_basis_case", "basis_directory", "country_directory", "outer_regions_path",
+            ),
+            flux_sources=config.flux_sources,
+            fix_outer_regions=config.fix_basis_outer_regions,
+            outputname=config.output_name,
+            output_path=config.basis_output_path,
+            allow_empty_inner_region=allow_empty_inner_region,
+        )
+    site_data = build_sensitivities(
         merged,
         basis_functions,
         **config.select(
@@ -800,8 +808,10 @@ def prepare_nested_rhime_inputs(
     *,
     inner_domain: str,
     inner_footprint_store: str | None = None,
-    inner_emissions_store: str | None = None,
-    inner_emissions_domain: str | None = None,
+    inner_flux_store: str | None | _Unset = UNSET,
+    inner_flux_domain: str | None | _Unset = UNSET,
+    inner_emissions_store: str | None | _Unset = UNSET,
+    inner_emissions_domain: str | None | _Unset = UNSET,
     inner_basis_algorithm: str | None = None,
     inner_nbasis: int | None = None,
     inner_fp_basis_case: str | None = None,
@@ -827,10 +837,14 @@ def prepare_nested_rhime_inputs(
             outer domain with a hyphen.
         inner_footprint_store: Inner footprint store; defaults to the outer
             request's store.
-        inner_emissions_store: Inner emissions store; defaults to the outer
+        inner_flux_store: Inner flux store; defaults to the outer
             request's store.
-        inner_emissions_domain: Optional inner flux-domain selector. ``None``
+        inner_flux_domain: Optional inner flux-domain selector. ``None``
             uses the inner domain rather than inheriting the outer selector.
+        inner_emissions_store: Deprecated spelling of ``inner_flux_store``;
+            removed in 0.9. Supplying both spellings is an error.
+        inner_emissions_domain: Deprecated spelling of ``inner_flux_domain``;
+            removed in 0.9. Supplying both spellings is an error.
         inner_basis_algorithm: Inner basis algorithm; defaults to ``quadtree``
             when no saved inner basis is selected.
         inner_nbasis: Explicit inner basis-region count. When omitted and
@@ -868,6 +882,12 @@ def prepare_nested_rhime_inputs(
         returned scientific arrays may remain Dask-backed, and PyMC model
         materialization is a separate boundary.
     """
+    inner_flux_store = cast(str | None, resolve_deprecated_keyword(
+        "inner_emissions_store", "inner_flux_store", inner_emissions_store, inner_flux_store
+    ))
+    inner_flux_domain = cast(str | None, resolve_deprecated_keyword(
+        "inner_emissions_domain", "inner_flux_domain", inner_emissions_domain, inner_flux_domain
+    ))
     if config.split_by_sectors or len(config.model.sectors) != 1:
         raise ValueError("Nested RHIME preparation currently requires a standard one-source request.")
 
@@ -881,8 +901,8 @@ def prepare_nested_rhime_inputs(
         model=replace(config.model, domain=inner_domain_name, use_bc=False),
         output=replace(config.output, output_name=f"{config.output_name}_inner"),
         footprint_store=inner_footprint_store or config.footprint_store,
-        emissions_store=inner_emissions_store or config.emissions_store,
-        emissions_domain=inner_emissions_domain,
+        flux_store=inner_flux_store or config.flux_store,
+        flux_domain=inner_flux_domain,
         use_bc=False,
         bc_input=None,
         output_name=f"{config.output_name}_inner",
@@ -908,9 +928,9 @@ def prepare_nested_rhime_inputs(
             **outer_config.select(
                 "site_options", "species", "domain", "start_date",
                 "end_date",  "flux_sources", "split_by_sectors",
-                "bc_store", "obs_store", "footprint_store", "emissions_store",
-                "emissions_domain", "fp_model", "fp_species", "calibration_scale",
-                "use_bc", "bc_input", "averaging_error",
+                "bc_store", "obs_store", "footprint_store", "flux_store",
+                "flux_domain", "fp_model", "fp_species", "calibration_scale",
+                "use_bc", "bc_input",
                 "flux_non_finite_check",
             ),
         )
@@ -923,14 +943,16 @@ def prepare_nested_rhime_inputs(
             **inner_config.select(
                 "site_options", "species", "domain", "start_date",
                 "end_date",  "flux_sources", "split_by_sectors",
-                "bc_store", "obs_store", "footprint_store", "emissions_store",
-                "emissions_domain", "fp_model", "fp_species", "calibration_scale",
-                "use_bc", "bc_input", "averaging_error",
+                "bc_store", "obs_store", "footprint_store", "flux_store",
+                "flux_domain", "fp_model", "fp_species", "calibration_scale",
+                "use_bc", "bc_input",
                 "flux_non_finite_check",
             ),
         )
+    outer_merged = prepare_observation_errors(outer_merged, averaging_error=outer_config.averaging_error)
+    inner_merged = prepare_observation_errors(inner_merged, averaging_error=inner_config.averaging_error)
     outer_merged, inner_merged = _retain_common_sites(outer_merged, inner_merged)
-    outer_filtered = filter_rhime_observations(outer_merged, filters=outer_config.filters)
+    outer_filtered = filter_observations(outer_merged, filters=outer_config.filters)
     outer_filtered, inner_merged = _retain_common_sites(outer_filtered, inner_merged)
     inner_filtered = align_inner_merged_to_outer_observations(
         outer_filtered,
@@ -1373,8 +1395,8 @@ _NESTED_PARAMETER_NAMES = frozenset(
     {
         "inner_domain",
         "inner_footprint_store",
-        "inner_emissions_store",
-        "inner_emissions_domain",
+        "inner_flux_store",
+        "inner_flux_domain",
         "inner_basis_algorithm",
         "inner_nbasis",
         "inner_fp_basis_case",
@@ -1387,7 +1409,7 @@ _NESTED_PARAMETER_NAMES = frozenset(
 )
 
 
-def run_rhime_nested(
+def run_nested(
     *,
     config_file: str | Path | None = None,
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
@@ -1410,6 +1432,7 @@ def run_rhime_nested(
         raise ValueError("Non-empty `likelihood_kwargs` require an active `likelihood_builder`.")
     params = read_rhime_ini(config_file) if config_file is not None else {}
     params.update(kwargs)
+    params = normalise_flux_aliases(params)
     nested_options = {name: params.pop(name) for name in tuple(params) if name in _NESTED_PARAMETER_NAMES}
     inner_domain = nested_options.pop("inner_domain", None)
     if inner_domain is None:
@@ -1440,3 +1463,7 @@ def run_rhime_nested(
         likelihood_builder=likelihood_builder,
         likelihood_kwargs=likelihood_kwargs,
     )
+
+
+# Established public import retained through the 0.9 compatibility cycle.
+run_rhime_nested = run_nested

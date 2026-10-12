@@ -19,9 +19,9 @@ completion of every OPE-207 delivery. A passing mock-forwarding test alone clear
 none of the scientific gates. Complete #769's production predictive integration,
 following #795, before adding new cached predictive-stage plumbing.
 
-The reviewed baseline is devel `80b0ebf0`: reuse the merged acquisition/inference
+The reviewed baseline is devel `42a32f62`: reuse the merged acquisition/inference
 ownership from #773/#774 and configuration/preparation work from #822–#825.
-Cleanup #826/#830 is merged; #832 and boundary work #834–#837 remain pending.
+Cleanup #826/#830, legacy isolation #832 and boundary work #834–#837 are merged.
 #840 addresses #838's explicit basis paths; #841 addresses #839's runtime-flux/
 operator-loading work and remains under review. Consume resulting APIs and record merged evidence rather than duplicating
 these owners or treating open PRs as landed. Coordinate #808's removal of redundant
