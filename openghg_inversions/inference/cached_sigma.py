@@ -391,14 +391,19 @@ class PymcCachedSigmaNutsStep(BlockedStep):
             tune: Number of tuning iterations.
             draws: Number of posterior draws.
         """
-        super().setup_chain(rng, tune, draws)
-        self.nuts_step.setup_chain(self.rng.spawn(1)[0], tune, draws)
+        parent_setup = getattr(super(), "setup_chain", None)
+        if parent_setup is None:  # PyMC 6.0 uses set_rng for per-chain setup.
+            super().set_rng(rng)
+            self.nuts_step.set_rng(self.rng.spawn(1)[0])
+        else:
+            parent_setup(rng, tune, draws)
+            self.nuts_step.setup_chain(self.rng.spawn(1)[0], tune, draws)
 
     def set_rng(self, rng: RandomGenerator) -> None:
         """Reseed this step and its delegated NUTS step.
 
-        This compatibility method preserves the pre-PyMC 6 public API. PyMC 6
-        calls :meth:`setup_chain` directly during sampling.
+        Older PyMC releases call this method during sampling. Newer releases
+        call :meth:`setup_chain` directly and supply tuning and draw counts.
 
         Args:
             rng: Random generator for this chain.
