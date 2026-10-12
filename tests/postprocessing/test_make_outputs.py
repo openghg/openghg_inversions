@@ -102,6 +102,163 @@ def test_multisector_flux_outputs_support_inversion_grid_mean_stats(
     assert "flux_ocean_posterior_mean" in outputs
     assert "flux_total_posterior_mean" in outputs
     assert float(outputs["flux_total_posterior_mean"].item()) == 2.0
+    mean_only = make_flux_outputs(
+        multisector_postprocessing_inv_out(), stats=["mean"],
+        include_scale_factors=False, report_flux_on_inversion_grid=True,
+    )
+    xr.testing.assert_allclose(mean_only, outputs[[name for name in outputs if str(name).endswith("_mean")]])
+
+
+@pytest.mark.parametrize("source_specific", [False, True])
+@pytest.mark.parametrize("dtype", ["float32", "float64"])
+@pytest.mark.parametrize("missing", ["none", "common"])
+def test_multisector_mean_reduces_state_before_reconstruction(
+    monkeypatch: pytest.MonkeyPatch,
+    multisector_postprocessing_inv_out: Callable[..., InversionOutput],
+    fake_source_specific_multisector_basis_functions: Callable[..., BasisFunctions],
+    source_specific: bool,
+    dtype: str,
+    missing: str,
+) -> None:
+    """Linear means match per-draw reconstruction with signed flux and padded groups."""
+    basis = fake_source_specific_multisector_basis_functions() if source_specific else None
+    inv_out = multisector_postprocessing_inv_out(basis)
+    flux = inv_out.basis_functions.flux.astype(dtype) * xr.DataArray(
+        [1, -1], dims="source", coords={"source": inv_out.basis_functions.flux.source}
+    )
+    flux = flux.expand_dims(time=np.array(["2019-01-01", "2019-01-02"], dtype="datetime64[ns]"))
+    flux = flux * xr.DataArray([1, 2], dims="time", coords={"time": flux.time})
+    flux = flux.astype(dtype)
+    flux = flux.chunk({"lon": 1})
+    inv_out.basis_functions = inv_out.basis_functions.with_flux(flux)
+    ff = np.arange(1, 9, dtype=dtype).reshape(2, 4, 1)
+    ocean = (ff * 2).copy()
+    if missing == "common":
+        ff[:, 0] = ocean[:, 0] = np.nan
+    posterior = xr.Dataset(
+        {"x_ff": (("chain", "draw", "region"), ff),
+         "x_ocean": (("chain", "draw", "region"), ocean)},
+        coords={"chain": [0, 1], "draw": np.arange(4), "region": [0]},
+    )
+    # Real merged traces pad the prior's missing chains and draws with NaNs.
+    prior = posterior.isel(chain=[0], draw=slice(0, 3)).fillna(1)
+    inv_out.trace = make_trace(
+        posterior=posterior.chunk({"draw": 2}),
+        prior=prior.chunk({"draw": 1}),
+    )
+    before = posterior.copy(deep=True)
+    retained_flux = inv_out.basis_functions.flux
+    reconstruct = make_outputs.reconstruct_flux_stats
+    baseline = make_flux_outputs(
+        inv_out, stats=["mean", "stdev"], report_flux_on_inversion_grid=False,
+    )
+    expected = baseline[[name for name in baseline if str(name).endswith("_mean")]]
+
+    def reconstruct_means(*args: object, **kwargs: object) -> xr.Dataset:
+        state = args[2]
+        assert isinstance(state, xr.Dataset)
+        assert not {"chain", "draw", "sample"}.intersection(state.dims)
+        return reconstruct(*args, **kwargs)
+
+    monkeypatch.setattr(make_outputs, "reconstruct_flux_stats", reconstruct_means)
+    actual = make_flux_outputs(
+        inv_out, stats=["mean"], report_flux_on_inversion_grid=False,
+    )
+
+    xr.testing.assert_allclose(actual, expected)
+    for name in actual:
+        assert actual[name].dtype == expected[name].dtype
+        assert actual[name].dtype == np.dtype(dtype)
+        assert actual[name].attrs == expected[name].attrs
+    assert actual.attrs == expected.attrs
+    xr.testing.assert_identical(inv_out.trace_group("posterior"), before)
+    assert inv_out.basis_functions.flux is retained_flux
+    assert retained_flux.chunks is not None
+
+
+def test_automatic_multisector_diagnostics_reconstruct_only_means(
+    monkeypatch: pytest.MonkeyPatch,
+    multisector_postprocessing_inv_out: Callable[..., InversionOutput],
+) -> None:
+    """The automatic diagnostic writer never constructs sample-by-native-grid flux."""
+    from openghg_inversions.rhime.outputs import _make_multisector_flux_diagnostics
+
+    inv_out = multisector_postprocessing_inv_out()
+    reconstruct = make_outputs.reconstruct_flux_stats
+
+    def reconstruct_means(*args: object, **kwargs: object) -> xr.Dataset:
+        assert not {"chain", "draw", "sample"}.intersection(args[2].dims)
+        return reconstruct(*args, **kwargs)
+
+    monkeypatch.setattr(make_outputs, "reconstruct_flux_stats", reconstruct_means)
+    actual = _make_multisector_flux_diagnostics(inv_out)
+    assert actual["flux_total_posterior_mean"].item() == 2
+
+
+@pytest.mark.parametrize("nonfinite", [np.nan, np.inf])
+def test_multisector_mean_falls_back_for_partial_state_nonfinite(
+    monkeypatch: pytest.MonkeyPatch,
+    multisector_postprocessing_inv_out: Callable[..., InversionOutput],
+    nonfinite: float,
+) -> None:
+    """State-dependent missingness and infinities preserve the per-draw result."""
+    basis = xr.DataArray([[1, 2]], dims=("lat", "lon"), coords={"lat": [0.0], "lon": [0.0, 1.0]})
+    flux = xr.DataArray(
+        [[[0.0, 1.0]], [[3.0, -2.0]]], dims=("source", "lat", "lon"),
+        coords={"source": ["ff-inventory", "ocean-inventory"], "lat": [0.0], "lon": [0.0, 1.0]},
+    )
+    inv_out = multisector_postprocessing_inv_out(
+        BasisFunctions.from_flat_basis(basis, flux, operator_kwargs={"state_dim": "region"})
+    )
+    inv_out.trace = make_trace(posterior=xr.Dataset(
+        {"x_ff": (("chain", "draw", "region"), [[[nonfinite, 2.0], [3.0, 4.0]]]),
+         "x_ocean": (("chain", "draw", "region"), [[[1.0, 2.0], [3.0, 4.0]]])},
+        coords={"chain": [0], "draw": [0, 1], "region": [0, 1]},
+    ))
+    baseline = make_flux_outputs(inv_out, stats=["mean", "stdev"], report_flux_on_inversion_grid=False)
+    reconstruct = make_outputs.reconstruct_flux_stats
+    calls = []
+
+    def reconstruct_draws(*args: object, **kwargs: object) -> xr.Dataset:
+        calls.append(tuple(args[2].dims))
+        return reconstruct(*args, **kwargs)
+
+    monkeypatch.setattr(make_outputs, "reconstruct_flux_stats", reconstruct_draws)
+    actual = make_flux_outputs(inv_out, stats=["mean"], report_flux_on_inversion_grid=False)
+    xr.testing.assert_allclose(actual, baseline[[name for name in baseline if str(name).endswith("_mean")]])
+    assert calls and all("draw" in dims for dims in calls)
+
+
+@pytest.mark.parametrize("stats,stats_args,optimized", [
+    (None, {"stats": ["mean"]}, True),
+    (["mean"], {"stats": ["stdev"]}, True),
+    (None, None, False),
+    (["mean", "stdev"], None, False),
+    (["mean"], {"sample_dim": "lat"}, False),
+    (["mean"], {"mean__sample_dim": "sample"}, False),
+])
+def test_multisector_mean_dispatch_respects_effective_stats(
+    monkeypatch: pytest.MonkeyPatch,
+    multisector_postprocessing_inv_out: Callable[..., InversionOutput],
+    stats: list[str] | None,
+    stats_args: dict | None,
+    optimized: bool,
+) -> None:
+    """Only effective mean requests with the standard sample reduction use the shortcut."""
+    inv_out = multisector_postprocessing_inv_out()
+    calls = []
+    mean_parts = make_outputs._multisector_flux_mean_parts
+
+    def record_mean_parts(*args: object, **kwargs: object) -> object:
+        calls.append(True)
+        return mean_parts(*args, **kwargs)
+
+    monkeypatch.setattr(make_outputs, "_multisector_flux_mean_parts", record_mean_parts)
+    make_flux_outputs(
+        inv_out, stats=stats, stats_args=stats_args,
+        include_scale_factors=False, report_flux_on_inversion_grid=False,
+    )
+    assert bool(calls) == optimized
 
 
 def test_multisector_flux_outputs_support_source_specific_basis(
