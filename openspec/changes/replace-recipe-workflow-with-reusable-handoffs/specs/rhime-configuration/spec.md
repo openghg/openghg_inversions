@@ -277,6 +277,11 @@ preparation and model construction. Current INI section interpretation, path
 conventions, file vocabulary, scientific calculations and sampling defaults
 SHALL remain unchanged.
 
+Established selector and shared-handoff aliases in the current
+[model-selection capability](https://github.com/openghg/openghg_inversions/blob/7269f50f09dc4b618766cb9d69abe260a564eebc/openspec/specs/rhime-model-selection/spec.md)
+SHALL remain supported for their documented compatibility period. The removed
+transitional imports above do not include those public aliases.
+
 Internal orchestration/setup records and their constructor/helper return shapes
 SHALL NOT be required compatibility contracts. Their in-repository consumers
 SHALL migrate to the unified requested configuration.

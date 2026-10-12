@@ -11,6 +11,12 @@ and [sampled-recipe-handoff](../sampled-recipe-handoff/spec.md), respectively.
 Configuration ownership and phase resolution follow the
 [rhime-configuration amendments](../rhime-configuration/spec.md).
 
+Existing public selection and aliases follow the current
+[model-selection capability](https://github.com/openghg/openghg_inversions/blob/7269f50f09dc4b618766cb9d69abe260a564eebc/openspec/specs/rhime-model-selection/spec.md).
+Registered coordinates and the standard/multisector custom-likelihood seam
+follow the current [model-composition capability](https://github.com/openghg/openghg_inversions/blob/7269f50f09dc4b618766cb9d69abe260a564eebc/openspec/specs/rhime-model-composition/spec.md).
+This change adds route and handoff behavior without redefining those contracts.
+
 These requirements describe pending implementation. Landed configuration and
 preparation foundations do not establish completion of the phase APIs or handoffs.
 
@@ -28,6 +34,13 @@ Direct scientific customization, signatures and numerical returns SHALL retain
 their contracts except for the explicit sampler-default migration below;
 staged/setup APIs and owned CO2 configuration conventions SHALL
 follow the declared reset instead of requiring compatibility aliases.
+The existing selector forwarding, full-run CLI model choices and established
+aliases SHALL remain supported under the model-selection capability. Saved-phase
+commands SHALL NOT implicitly extend prepared-only CO2 recipes with acquisition
+or configuration-file arguments. Existing registered-coordinate ownership,
+custom-likelihood arguments/results, conflict rules and descriptive callable
+metadata SHALL follow the model-composition capability. Shared output-role
+handling SHALL NOT relax the canonical custom-likelihood seam.
 Families supporting partial workflows SHALL remain usable without implementing
 unrelated stages or adopting a common inference algorithm or result format.
 

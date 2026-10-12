@@ -3,7 +3,7 @@
 ## Context
 
 See [proposal.md](proposal.md) for the replacement's motivation. The inspected
-landed base is `devel` at `42a32f62` (12 October 2026). PRs #773/#774 and #822–#825
+landed base is `devel` at `7269f50f` (12 October 2026). PRs #773/#774 and #822–#825
 provide acquisition, prepared-value, inference and concrete configuration owners.
 This plan consumes that groundwork; #798 remains unmerged prototype evidence.
 
@@ -25,6 +25,21 @@ and independently resolved phases through an explicit
 tasks do not establish implementation of this amendment. Only reconciled delivered
 capabilities are synced; the four deltas in this change remain pending.
 
+Merged #854 supplies current [model-selection](../../specs/rhime-model-selection/spec.md)
+and [model-composition](../../specs/rhime-model-composition/spec.md) baselines.
+Preserve the Python selector and installed full-run model choices, argument
+forwarding and established aliases. A saved-phase family selector is a separate
+boundary; it does not add CO2 acquisition or configuration-file support to the
+prepared-only Python recipes or extend the installed full-run selector.
+
+Construction reuses `CoordRegistry` and the existing custom-likelihood seam,
+including canonical `y`/`epsilon`, explicit kwargs, conflict precedence and
+bounded callable provenance. Sharing declared output roles with prediction does
+not relax that seam or turn callable metadata into executable instructions.
+Complete-model builders retain their separately declared roles. The registry's
+missing-auxiliary-value limitation remains tracked by #856; this plan does not
+claim that fix as delivered or add repeated downstream coordinate checks.
+
 Read the [execution](specs/recipe-execution/spec.md),
 [preparation](specs/prepared-recipe-handoff/spec.md) and
 [sample](specs/sampled-recipe-handoff/spec.md) contracts for normative acceptance.
@@ -34,7 +49,7 @@ Read the [execution](specs/recipe-execution/spec.md),
 **Goals:** Readable scientific order, reusable merged/prepared data, compatible
 inference reuse, and repeatable products from a completed run. Follow the
 [RHIME development rules](../../../docs/development/rhime_model_development.rst)
-and [array ownership rules](../../../docs/plans/numerical_data_ownership_and_execution_boundaries.md).
+and [array ownership rules](../../../docs/development/numerical_array_ownership.rst).
 
 **Non-goals:** A workflow engine, phase inheritance, publisher/storage framework,
 new numerical codecs, new inference algorithms or mandatory acquisition persistence.
@@ -311,7 +326,8 @@ Records store plain references and small descriptions, never runtime objects.
 A small CLI selection table chooses the concrete family once from the run context
 or saved record. There is no generic phase registry.
 Keep existing staged command names where applicable, coordinating the full-run
-entry point with #836. One shared file or phase-only files are both supported.
+entry point delivered by #836 and specified in the model-selection baseline.
+One shared file or phase-only files are both supported for these phase commands.
 Prior prediction needs preparation, model and check choices; diagnosis remains
 independently callable with posterior, optional supported sample record and check
 options. Partial families need not implement unrelated operations.

@@ -19,9 +19,12 @@ completion of every OPE-207 delivery. A passing mock-forwarding test alone clear
 none of the scientific gates. Complete #769's production predictive integration,
 following #795, before adding new cached predictive-stage plumbing.
 
-The reviewed baseline is devel `42a32f62`: reuse the merged acquisition/inference
+The reviewed baseline is devel `7269f50f`: reuse the merged acquisition/inference
 ownership from #773/#774 and configuration/preparation work from #822–#825.
 Cleanup #826/#830, legacy isolation #832 and boundary work #834–#837 are merged.
+#854 records existing model selection and composition in current capability specs;
+consume those contracts without reopening their implementation or counting them
+as completed handoff tasks. The #856 coordinate-registry limitation stays separate.
 #840 addresses #838's explicit basis paths; #841 addresses #839's runtime-flux/
 operator-loading work and remains under review. Consume resulting APIs and record merged evidence rather than duplicating
 these owners or treating open PRs as landed. Coordinate #808's removal of redundant
@@ -77,6 +80,8 @@ the PR records the bounded implementation and validation details.
   materialization boundary. Verify retained-site/averaging alignment, empty-set
   rejection, borrowed lazy arrays and custom builder/likelihood contracts across
   full, supplied-merged/prepared and saved routes; remove forwarding-only wrappers.
+  Preserve the current model-composition seam and registered-coordinate owner;
+  do not broaden the canonical custom-likelihood contract through role handling.
 - [ ] 1.4 Consume #838/#839's explicit basis and runtime-flux contracts. Verify a
   selected operator A binds current acquired native flux B, saving retains B and
   replay restores B without acquisition or the original inventory paths. Cover
@@ -120,7 +125,9 @@ the PR records the bounded implementation and validation details.
 - [ ] 1.10 Deliver standard one-manifest CLI forms, full/phase-only examples and
   cookiecutter consumer acceptance with this route. Verify family
   selection, explicit mismatch rejection, once-only override resolution, help and
-  destination behavior, and an executable generated scientific recipe. Update
+  destination behavior, and an executable generated scientific recipe. Preserve
+  the model-selection baseline's full-run choices and aliases; phase commands
+  do not implicitly extend the full-run CO2/config-file interface. Update
   stage guidance/docstrings with arguments, returns, file lifetime and reuse limits;
   remove premature `openghg-run` references in affected guidance. Coordinate the
   0.8 staged-contract release note with #808, distinguishing preserved numerical,
@@ -216,7 +223,8 @@ the PR records the bounded implementation and validation details.
 ## 5. Integrated acceptance and completion
 
 - [ ] 5.1 Reconcile all four family deliveries against the three new capability specs and configuration amendment
-  and record merged PRs, commands/results and justified numerical tolerances. Run
+  while preserving the current model-selection and model-composition baselines;
+  record merged PRs, commands/results and justified numerical tolerances. Run
   relevant broader scientific, configuration, CLI, staged/replay, builder and output
   coverage; run Ruff on changed Python paths and `git diff --check`. Submit required
   full-suite, compatibility and type environments through `scripts/slurm_tox.sh`,

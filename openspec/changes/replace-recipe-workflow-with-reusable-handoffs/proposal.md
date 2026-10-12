@@ -79,7 +79,16 @@ not a completed implementation or required artifact contract.
   preparation fields move into one `PreparationConfig` group; complete and
   phase-only resolution share owners without requiring unrelated sections.
 
-These capabilities replace [the archived superseded proposal](../archive/2026-10-11-unify-recipe-workflow-configuration/proposal.md).
+### Existing capabilities preserved
+
+Merged #854 records delivered [model selection](../../specs/rhime-model-selection/spec.md)
+and [model composition](../../specs/rhime-model-composition/spec.md). This change
+consumes those baselines without modifying them: established selectors/aliases,
+registered coordinates and custom-likelihood contracts keep their existing owners.
+New saved-phase interfaces and role validation are the deltas described here,
+not evidence that those proposed interfaces have already shipped.
+
+The three new capabilities and configuration amendment replace [the archived superseded proposal](../archive/2026-10-11-unify-recipe-workflow-configuration/proposal.md).
 That change was archived without syncing its requirements; its historical
 contract is not a current capability or an implementation prerequisite.
 
@@ -116,6 +125,14 @@ archives retain their 11 October historical contents; the superseded workflow
 contract is not revived or promoted. Reconstruction specs remain unchanged and
 this replacement remains the only active change. Its implementation tasks stay
 unchecked.
+
+The rebase onto `devel` `7269f50f` includes #854's retrospective model-selection
+and model-composition specs. There are now five current capability specs; the
+three new handoff/execution capabilities and configuration amendment remain
+active deltas. #854 changes documentation ownership, not runtime behavior or
+completion of any of this change's 27 tasks. Its two new baselines and the archived
+scientific records remain unchanged. The development contract map now links to
+current specs and the archived superseded proposal at their reconciled locations.
 
 ## Impact
 
