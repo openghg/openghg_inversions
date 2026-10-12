@@ -71,6 +71,37 @@ def test_get_xr_dummies_accepts_unlabelled_dimension(return_sparse: bool) -> Non
     np.testing.assert_array_equal(data, [[1, 0], [0, 1], [1, 0]])
 
 
+def test_to_dense_accepts_mixed_payloads_under_sparse_dask_metadata() -> None:
+    """Sparse metadata may describe either sparse or already dense delayed chunks."""
+    executions = []
+
+    @delayed
+    def chunk(sparse_payload: bool) -> np.ndarray | sparse.COO:
+        executions.append(sparse_payload)
+        values = np.asarray([0, 2], dtype="float32")
+        return sparse.COO.from_numpy(values) if sparse_payload else values
+
+    meta = sparse.COO.from_numpy(np.empty(0, dtype="float32"))
+    payload = da.concatenate([
+        da.from_delayed(chunk(sparse_payload), shape=(2,), dtype="float32", meta=meta)
+        for sparse_payload in (False, True)
+    ])
+    array = xr.DataArray(payload, dims="state", coords={"state": [4, 5, 6, 7]})
+
+    result = to_dense(array)
+
+    assert executions == []
+    assert array.data is payload
+    assert isinstance(array.data._meta, sparse.COO)
+    assert isinstance(result.data._meta, np.ndarray)
+    assert result.chunks == array.chunks == ((2, 2),)
+    assert result.dtype == np.dtype("float32")
+    xr.testing.assert_identical(result.state, array.state)
+    np.testing.assert_array_equal(result.compute().data, np.asarray([0, 2, 0, 2], dtype="float32"))
+    assert sorted(executions) == [False, True]
+    assert array.data is payload
+
+
 def test_unique_index_and_co2_index_comparison_semantics() -> None:
     """Ordinary Index names are ignored; gathered MultiIndex level names are not."""
     from openghg_inversions.rhime.co2.co2_o2_preparation import _same_index as co2_o2_same_index
