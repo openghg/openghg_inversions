@@ -72,7 +72,9 @@ common argument set.
 The callable SHALL return a PyTensor `TensorVariable` named `y` and create the
 canonical model variables `y` and `epsilon`. The seam SHALL reject a non-tensor
 return with `TypeError`, or a wrong return name or missing canonical variables
-with `ValueError`, before sampling.
+with `ValueError`, before sampling. These checks do not establish that the
+returned tensor is the registered observed variable, or validate the scientific
+meaning and dimensions of `epsilon`. The custom callable owns those guarantees.
 
 #### Scenario: Reject a noncanonical custom likelihood
 
@@ -85,8 +87,11 @@ with `ValueError`, before sampling.
 Standard and multisector requests SHALL reject a custom `likelihood_builder`
 combined with configured built-in mismatch/likelihood settings before acquisition
 in ordinary runners or materialization in the prepared-input runner. Their
-public build stages SHALL reject simultaneous `model_builder` and
-`likelihood_builder` inputs before either callable runs.
+public result-building stages, `build_standard_rhime_model_result` and
+`build_multisector_rhime_model_result`, SHALL reject simultaneous `model_builder`
+and `likelihood_builder` inputs before either callable runs. The lower-level
+`build_standard_rhime_model` and `build_multisector_rhime_model` functions do not
+accept `model_builder`.
 
 #### Scenario: Reject competing likelihood selections
 
@@ -96,17 +101,24 @@ public build stages SHALL reject simultaneous `model_builder` and
 
 #### Scenario: Reject competing builder ownership
 
-- **WHEN** a standard or multisector build stage receives both a complete-model
-  builder and a likelihood builder
+- **WHEN** `build_standard_rhime_model_result` or
+  `build_multisector_rhime_model_result` receives both a complete-model builder
+  and a likelihood builder
 - **THEN** it raises `ValueError` before either builder executes
 
 ### Requirement: Explicit custom options and recorded provenance
 
 The standard and multisector runners SHALL reject nonempty `likelihood_kwargs`
 without a `likelihood_builder` before configuration processing. Supported
-custom-likelihood result construction SHALL record the callable's module and
-qualified name and the supplied options as structured metadata. The
-prepared-input runner's saved inversion output SHALL retain those options.
+custom-likelihood result construction SHALL record module/qualified-name
+metadata and the supplied options as structured metadata. The prepared-input
+runner's saved inversion output SHALL retain those options.
+
+The metadata describes the runtime customization; it is not a reconstructable
+callable identity. Callable instances fall back to their class's module and
+qualified name. A `functools.partial` records `functools.partial`, without its
+wrapped function or bound arguments. Only explicitly supplied `likelihood_kwargs`
+are recorded as options.
 
 #### Scenario: Supply options without their callable owner
 
@@ -118,7 +130,8 @@ prepared-input runner's saved inversion output SHALL retain those options.
 
 - **WHEN** a prepared-input run uses a custom likelihood and JSON-compatible
   explicit options and saves its inversion output
-- **THEN** the result and output metadata identify the callable and options
+- **THEN** the result and output metadata retain the callable's
+  module/qualified-name metadata and explicit options
 - **AND** reloading the output preserves the options
 
 ## Source and test evidence

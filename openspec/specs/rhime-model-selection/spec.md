@@ -47,16 +47,29 @@ accept `config_file` on behalf of those prepared-input recipes.
 
 The `rhime` and `openghg-inversions` executables SHALL expose `run --model` for
 `standard`, `multisector`, and `nested`, defaulting to `standard`. Their run
-commands SHALL forward explicit date bounds, configuration path, and decoded
-keyword overrides to the Python selector. CO2-family models SHALL remain outside
-this configuration-driven CLI selector.
+commands SHALL forward the selected model, configuration path, effective date
+bounds, and noncolliding decoded keyword overrides to the Python selector.
+JSON `start_date` and `end_date` overrides SHALL take precedence over positional
+dates. CO2-family models SHALL remain outside this configuration-driven CLI
+selector.
+
+Current reserved-key limitation: JSON `model` or `config_file` entries collide
+with separately supplied keywords and raise `TypeError` before selection runs.
+They are not supported override keys.
 
 #### Scenario: Select a recipe through either executable
 
 - **WHEN** either executable receives an allowed model, explicit dates, an INI
-  path, and keyword overrides
+  path, and noncolliding keyword overrides such as `draws`
 - **THEN** it passes those values and the selected model to `rhime.run`
 - **AND** its parser rejects a CO2-family `--model` choice
+
+#### Scenario: Override positional date bounds
+
+- **WHEN** a run command supplies positional dates and JSON `start_date` or
+  `end_date` overrides
+- **THEN** it forwards the JSON values for the overridden dates
+- **AND** positional values remain effective for dates without a JSON override
 
 ### Requirement: Retain established public aliases
 
@@ -78,7 +91,10 @@ runner aliases SHALL refer to their current implementations:
 - `openghg_inversions/rhime/api.py`: `run` and its compatibility-period docstring;
   `openghg_inversions/rhime/__init__.py` and
   `openghg_inversions/inversion_data/__init__.py`: public exports.
-- `openghg_inversions/cli.py`: `build_parser`, `main`, and `rhime_main`.
+- `openghg_inversions/cli.py`: `build_parser`, `_command_kwargs`,
+  `_run_command`, `main`, and `rhime_main`. The CLI test below covers noncolliding
+  overrides; date precedence and reserved-key collisions follow directly from
+  `_command_kwargs` and `_run_command`.
 - `tests/test_public_run_api.py`:
   `test_established_imports_are_same_implementations`,
   `test_unknown_model_rejected`,

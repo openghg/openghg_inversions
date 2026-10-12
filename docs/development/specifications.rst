@@ -81,5 +81,7 @@ Planning records
 
 Plans preserve dated decisions, proposals, research, and validation evidence.
 They do not establish current behavioral requirements or supported features.
-The :download:`planning-record inventory <../plans/README.md>` identifies their
-status, maintained documentation, and owning issues.
+The `repository-rendered planning-record inventory
+<https://github.com/openghg/openghg_inversions/blob/27faed88c64517456dc5f4d176dc9232bef4c2d3/docs/plans/README.md>`_
+records their status, maintained documentation, and owning issues as of
+12 October 2026.
