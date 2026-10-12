@@ -124,7 +124,14 @@ shorthand for the selected phase; no scientific phase SHALL be responsible for
 completing those selected choices. Known unrelated groups in a shared file SHALL
 remain inactive; unsupported names and explicit wrong-phase overrides SHALL fail.
 Date-dependent configuration defaults SHALL use effective overridden dates for a
-full request and authenticated preparation dates for saved-input sampling.
+full request and recorded preparation dates for saved-input sampling.
+
+Configuration owners SHALL validate their choices once during parsing or
+construction, including the sampler's exclusion of inference-data `coords` and
+`dims`. Later operations SHALL trust resolved choices rather than repeat those
+checks because Python objects are mutable or attempt to reproduce all
+model-dependent PyMC validation. Existing sampler settings SHALL remain the
+owner; this change SHALL NOT require a separate sampler options class.
 
 #### Scenario: Override changes the requested site count
 
@@ -166,8 +173,11 @@ reinterpreting raw options. Independent prepared-input scientific contracts SHAL
 remain supported. Full configured orchestration SHALL use the same requested configuration rather
 than a second setup bundle holding a pre-preparation run description and a
 preparation dictionary. Saved phases SHALL resolve only their applicable groups
-and use authenticated preparation facts rather than require the original full
-request. These phase choices SHALL share their owners with complete requests.
+and use recorded preparation facts. Required run context MAY be retained,
+referenced or supplied by the caller; the applicable inputs together SHALL
+provide the facts the phase needs without requiring each record to stand alone
+or the original full configuration to be unavailable. These phase choices SHALL
+share their owners with complete requests.
 
 #### Scenario: Unified configured orchestration
 
@@ -324,9 +334,10 @@ SHALL NOT be forwarded to that phase or make its resolution depend on their
 values. Unsupported option names and explicitly supplied phase-inapplicable
 arguments SHALL fail at the applicable outer boundary before scientific artifact
 writes. Repeated claims about authoritative prepared facts SHALL be checked
-against the authenticated handoff rather than silently overwriting its facts.
+against the prepared inputs and applicable run context rather than silently
+overwriting their facts.
 
-Saved-input sampling and prior readiness SHALL bind model choices to authenticated
+Saved-input sampling and prior readiness SHALL bind model choices to recorded
 preparation facts, including species, domain, source/layout information and the
 recorded requested date anchor. Callers SHALL NOT have to repeat those facts to
 resolve a model-only request. Complete runs SHALL use the same model resolution
@@ -383,8 +394,8 @@ changing CO2's family-specific defaults.
   construction, including when model `use_bc=False`
 
 #### Scenario: Sample with model and sampler choices only
-- **WHEN** a caller supplies an authenticated prepared handoff and valid model
-  and sampler groups without acquisition or product configuration
+- **WHEN** a caller supplies a prepared handoff, applicable run context and valid
+  model and sampler groups without acquisition or product configuration
 - **THEN** sampling resolves those groups using authoritative saved facts and does
   not require unrelated configuration
 
@@ -396,6 +407,6 @@ changing CO2's family-specific defaults.
 
 #### Scenario: Conflicting saved-input claim
 - **WHEN** a sampling request repeats a species, domain, source/layout or date
-  claim that conflicts with the authenticated preparation facts
+  claim that conflicts with the preparation facts
 - **THEN** the request fails before model execution or scientific artifact writes
 - **AND** the handoff's facts remain unchanged

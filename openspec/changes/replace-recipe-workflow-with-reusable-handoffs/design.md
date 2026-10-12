@@ -31,8 +31,8 @@ Read the [execution](specs/recipe-execution/spec.md),
 
 ## Goals / Non-Goals
 
-**Goals:** Readable scientific order, one path per saved handoff, compatible
-inference reuse, and products reconstructed from saved meaning. Follow the
+**Goals:** Readable scientific order, reusable merged/prepared data, compatible
+inference reuse, and repeatable products from a completed run. Follow the
 [RHIME development rules](../../../docs/development/rhime_model_development.rst)
 and [array ownership rules](../../../docs/plans/numerical_data_ownership_and_execution_boundaries.md).
 
@@ -40,6 +40,15 @@ and [array ownership rules](../../../docs/plans/numerical_data_ownership_and_exe
 new numerical codecs, new inference algorithms or mandatory acquisition persistence.
 TOML support, nested/linked checkpoint implementation and MAP remain separate.
 Graph-free replay forbids graph construction, not imports of modules using PyMC.
+
+The supported workflow uses trusted package-produced files and the configuration
+for the run. Keep that context together or supply its existing parts explicitly;
+an individual stage record need not explain the whole run by itself. This change
+does not build portable authenticated bundles, protect against edited internal
+objects, or support adversarial combinations of files. Validate external inputs
+at their owning boundary and trust the resulting objects. Missing files and
+genuine scientific incompatibilities still fail through the applicable loader or
+scientific operation.
 
 ## Decisions
 
@@ -78,6 +87,9 @@ names remain errors; known unrelated groups in a shared file remain inactive.
 Explicit wrong-phase command overrides fail. A future section-preserving INI or
 TOML frontend can supply the same mappings, without being required by this work.
 
+Priors belong in model configuration, independently of preparation choices.
+Prior-derived numerical preparation still depends on those model inputs as
+described in the reuse table below.
 Species, domain, requested dates and prepared source layout belong to preparation.
 Final-product naming belongs to output; saved-stage destinations are explicit
 arguments. Translate historically shared keys such as `use_bc` deliberately:
@@ -108,8 +120,8 @@ These rules cover standard/multisector; CO2 retains its family-specific defaults
 and coherent preparation compatibility rules.
 
 Full resolution can bind model defaults against resolved requested facts before
-acquisition. Saved sampling binds the model section against authenticated prepared
-facts, including the original date anchor, then aligns per-site options to retained
+acquisition. Saved sampling binds the model section against prepared facts and
+the associated run context, including the original date anchor, then aligns per-site options to retained
 labels. The request and saved arrays are never mutated by this binding.
 
 ### 2. Live inference accepts an existing sampler or `"default"`
@@ -127,7 +139,7 @@ a complete resolved configuration combined with additional raw overrides.
 
 ```python
 def sample(prepared_manifest, *, model, sampler="default", output_dir):
-    # Authentication and scientific binding precede the inference shown below.
+    # Load prepared inputs and bind the scientific choices before inference.
     ...
 
 sample(prepared_manifest, model=model_a, output_dir="runs/a")
@@ -164,8 +176,10 @@ still describe samples produced earlier through its saved provenance.
 Take an invocation-local copy of the existing sampler and its owned keyword
 containers. Preserve supported list/tuple/NumPy values and isolate overrides.
 Do not indiscriminately deep-copy models, steps or borrowed scientific arrays.
-Reject `idata_kwargs.coords` and `dims` at resolution and direct sampling;
-model registration remains authoritative. Configuration may hold the existing
+Reject `idata_kwargs.coords` and `dims` once when constructing the sampler,
+including through configuration parsing; model registration remains authoritative.
+Do not repeat those checks during selection or sampling to detect later mutation.
+Leave model-dependent argument validation to PyMC. Configuration may hold the existing
 unbound sampler: strict separation into several settings/runtime classes is not
 needed to achieve these guarantees.
 
@@ -177,14 +191,20 @@ sampler: RhimeSampler | None = None
 
 # Live result: snapshot from the invocation actually used.
 result.output_metadata["sampler"] = describe_sampler(invocation_sampler)
-# Replay result: sampler stays None; use validated recorded values.
+# Replay result: sampler stays None; use the recorded description.
 result.output_metadata["sampler"] = saved_sampler_metadata
 ```
 
 Keep live sampler access available for existing direct callers. Shared outputs
-consume the descriptive metadata in either route. Result/replay construction never
-resolves `"default"`, creates a sampler, or treats recorded provenance as executable
-configuration. Remove the existing `RhimeResult` sampler default factory and adapt
+consume the descriptive metadata in either route. `RhimeSampler` owns the small
+explicit description of its actual settings; save that snapshot and reuse it.
+Missing descriptive metadata remains unavailable rather than acquiring today's
+defaults. It does not gate scientific postprocessing, and needs no strict-metadata
+flag or separate parser for hypothetical future sampler options. Result/replay
+construction never resolves `"default"` or performs inference. Ordinary parsing of
+the associated run configuration is allowed; forbidding configuration-object
+construction is not an acceptance criterion. Remove the existing `RhimeResult`
+sampler default factory and adapt
 the concrete result factories and output adapter together.
 The old factory only constructs an unbound object; it does not sample or build a
 model. Its problem is that omitting a result's sampler manufactures default
@@ -234,18 +254,17 @@ result reconstruction and products, without invoking file-handoff helpers. Saved
 sampling uses the same concrete scientific operations:
 
 ```python
-def sample(prepared_manifest, *, model, sampler="default", output_dir):
-    record, paths, preparation_identity = verify_preparation(prepared_manifest)
-    prepared = load_prepared(paths)
-    resolved_model = resolve_model_options(model, facts=record.facts)
-    check_scientific_requirements(prepared, resolved_model, record.baked_policy)
+def sample(prepared_manifest, *, model, sampler="default", output_dir, run_context=None):
+    record, paths, context = load_preparation_record(prepared_manifest, run_context)
+    prepared = load_prepared(paths.prepared)
+    resolved_model = resolve_model_options(model, facts=context.preparation)
     invocation = resolve_invocation_sampler(sampler, recipe="standard")
+    # Construction combines the prepared arrays with the selected model choices.
     built = build_standard_model(prepared, resolved_model)
     posterior = sample_standard_model(built, invocation)
-    validate_output_meaning(prepared, posterior, built.output_contract)
     return save_samples(
         output_dir, prepared_manifest, posterior, built.output_contract,
-        preparation_identity=preparation_identity,
+        run_config=paths.run_config,
         actual_inference=describe_invocation(resolved_model, invocation),
     )
 ```
@@ -253,11 +272,19 @@ def sample(prepared_manifest, *, model, sampler="default", output_dir):
 Validate declared model coordinates/output roles even when no products are requested.
 A custom model supporting only `none` is valid; it cannot claim unsupported replay
 products. Product-specific requirements are checked when products are requested.
+Use the model's existing variable roles/output contract as the shared source for
+predictive sampling and postprocessing, rather than have the sampler infer a
+second concentration role from variable names. Species-dependent mass conversion
+belongs to postprocessing and uses the associated run context.
 
-### 4. A saved handoff is one manifest path
+### 4. A saved handoff locates the run's existing inputs
 
-Preparation and sampling return absolute paths to completed manifests. Their callers
-do not repeat numerical paths or retain the original configuration. A configured
+Preparation and sampling return paths to completed records that locate their
+numerical inputs. The associated run configuration and reporting context may be
+referenced alongside those records or supplied explicitly; neither every file
+nor every stage record must be self-contained. Use the configuration from the
+completed run when interpreting its samples. Current output choices select
+products and destinations, and cannot redefine the sampled science. A configured
 full request can supply its preparation record; a preparation-only file can resolve
 that record independently:
 
@@ -267,7 +294,8 @@ prepared = standard_stages.prepare(preparation, output_dir="runs/prepared")
 a = standard_stages.sample(prepared, model=model_a, output_dir="runs/a")
 b = standard_stages.sample(prepared, model=model_b, output_dir="runs/b")
 result = standard_stages.postprocess(
-    a, output=RhimeOutputSpec(output_format="basic", output_path="runs/products")
+    a, run_context=context,
+    output=RhimeOutputSpec(output_format="basic", output_path="runs/products"),
 )
 ```
 
@@ -276,8 +304,12 @@ resolves them against saved facts. Existing direct prepared-input scientific API
 continue to accept their established resolved specifications. Do not hide an
 ambiguous raw-or-resolved configuration union behind the staged argument.
 
-A small CLI selection table chooses the concrete family once. Sampling/replay infer
-family from a checked supported manifest; an explicitly selected family must agree.
+In these sketches, `run_context` denotes an existing configuration path or mapping
+plus the recipe's explicit reporting inputs, not a new universal context class.
+Records store plain references and small descriptions, never runtime objects.
+
+A small CLI selection table chooses the concrete family once from the run context
+or saved record. There is no generic phase registry.
 Keep existing staged command names where applicable, coordinating the full-run
 entry point with #836. One shared file or phase-only files are both supported.
 Prior prediction needs preparation, model and check choices; diagnosis remains
@@ -293,69 +325,59 @@ publisher abstraction or remote publication. The final manifest marks completion
 ```python
 def save_samples(
     directory, prepared_manifest, posterior, contract,
-    *, preparation_identity, actual_inference,
+    *, run_config, actual_inference,
 ):
     directory = Path(directory).resolve()
-    check_destination_and_dependencies(directory, prepared_manifest)
     directory.mkdir(parents=True, exist_ok=False)
     save_trace(posterior, directory / "posterior.nc")
     record = sample_record(
-        preparation=relative_reference(
-            prepared_manifest, directory, digest=preparation_identity,
-        ),
-        posterior=relative_reference_with_digest(directory / "posterior.nc", directory),
+        preparation=str(Path(prepared_manifest).resolve()),
+        posterior="posterior.nc",
         output_contract=contract.to_dict(),
+        run_config=str(run_config) if run_config is not None else None,
         actual_inference=actual_inference,
     )
-    verify_required_dependencies(record, directory)
-    encoded = encode_record(record)
-    write_exclusive(directory / ".sample-manifest.tmp", encoded)
+    write_json(directory / ".sample-manifest.tmp", record)
     os.replace(directory / ".sample-manifest.tmp", directory / "sample-manifest.json")
     return directory / "sample-manifest.json"
 ```
 
-Use a fresh operation destination; reject existing destinations and any write
-that would replace a dependency. Writer-owned files stay under that destination.
-References never authorize writes through dependencies. An interrupted save may
-leave incomplete files, but no completed manifest. A temporary file and rename
-prevent readers seeing partial final JSON; this is not rollback, resumable
-transactions, concurrent-writer coordination or a power-loss durability promise.
+Use a fresh operation destination so sampling cannot silently overwrite a completed
+run or its prepared inputs. Write the final manifest after numerical saves succeed;
+a temporary JSON file and rename are enough. Do not add transaction machinery or
+recursive symlink scans.
 
-References are relative to their declaring manifest, including `../prepared/...`.
-Authenticate every required transitive dependency; never consult CWD, `RUN_ROOT`,
-absolute saved paths, URIs or environment placeholders. Several samples reference
-one preparation without copying it. Moving an intact dependency tree works; a
-sample directory alone need not be self-contained. Hash exact bytes: re-encoding
-creates a new artifact, while unchanged relocated content retains its identity.
-Digests check content association, not author identity or scientific equivalence.
+The optional `run_config` above is a reference to an existing configuration file.
+If context is supplied only in memory, the caller supplies it again for later
+postprocessing; saving does not serialize that runtime object.
 
-The initial prepared and sampled handoff contract uses NetCDF files for numerical
-payloads (including posterior and affine payloads) and JSON files for manifests.
-It does not accept directory Zarr stores as handoff dependencies. Reject an imported
-Zarr handoff before creating a destination, with guidance to explicitly save/export
-it through the existing NetCDF codec first. Direct numerical Zarr save/load and
-round-trip support remain available; this restriction belongs to the new handoff
-boundary, not those codecs. No directory hashing or implicit conversion is added.
-Sampling retains the preparation identity verified before inference and passes it
-to saving. Before completing the sample manifest, verify the current preparation
-and its required dependencies against that retained identity; fail if they have
-changed. Never replace the retained identity with a new digest computed after
-inference. This preserves the association with the inputs actually selected for
-sampling without adding a transaction framework.
+Resolve relative references from their record's directory. Explicit absolute paths
+are useful for shared preparation caches. Use those selected paths directly rather
+than search for replacement files through ambient state. Several samples may refer
+to the same preparation without copying it. Portable relocation of arbitrary file
+trees and detection of changes during inference are outside this delivery.
+
+The initial examples use existing NetCDF numerical codecs and JSON records. Existing
+numerical Zarr support remains available; this change adds no directory hashing,
+conversion framework or new codec. Loaders check the current format and required
+contents once. Hashes are not mandatory stage gates or full-configuration reuse
+keys; existing scientific affine associations remain owned by their numerical
+loader/composition boundary.
 
 ### 6. Record only the facts and provenance that outputs need
 
 | Location | Authoritative contents |
 | --- | --- |
 | Prepared numerical artifact | Retained observations/site metadata, coordinates, units, basis/operator and retained flux; existing numerical codec |
-| Preparation manifest | Envelope/family, numerical references/digests, original requested dates, species/domain and missing production/baked-policy facts; requested choices as provenance |
-| Sample manifest | Envelope/family/MCMC kind, exact preparation-manifest reference/digest, posterior reference/digest, embedded `OutputContract`, actual inference/sampler provenance and bounded output context |
+| Preparation record and associated configuration | Family and numerical references; original requested dates, species/domain and preparation choices at their existing owner |
+| Sample record | Preparation and posterior references, embedded `OutputContract`, actual inference/sampler description and reference to the run context |
+| Run context | Configuration used for the run and any required reporting/reconstruction inputs; may be retained beside records or supplied explicitly |
 | Current output policy | Supported products, reporting maps/options, names and destinations |
 
 Do not duplicate numerical coordinate arrays or conflicting preparation facts in
-every record. A sample refers to preparation transitively. Do not serialize the
-runtime dataclass layout of `RhimeConfig`, `RhimeModelSpec` or `RhimeSampler` as a
-replay schema. Declare the small metadata encoding explicitly; callable identity
+every record. Keep existing configuration files and numerical artifacts together
+instead of inventing an export codec for every runtime object. Declare the small
+record fields explicitly; do not infer a schema from `__slots__`. Callable identity
 and supported arguments are descriptive, never imports or executable instructions.
 Encoding numerical provenance is an explicit serialization boundary, not a hidden
 computation performed by configuration access or a compatibility hash.
@@ -371,23 +393,21 @@ The current output-consumer inventory establishes the standard slice's boundary:
 | Sector attribution | Recorded sector/source descriptions, retaining source order |
 | Sampler summary | Actual draws, burn, tune, chains and backend, plus supported invocation provenance |
 
-Verify this inventory against each supported product rather than reconstructing
-all current configuration classes to obtain defaults. Preserve available timing
-metadata. CO2 keeps its authenticated trace/affine representation instead of being
-forced into standard multiplicative output meaning.
+Use this inventory to pass existing run context to each supported product. Preserve
+available timing metadata, package version and Git revision when available; an
+unknown revision does not prevent execution. CO2 keeps its trace/affine meaning.
 
 ```python
-def postprocess(sample_manifest, *, output):
-    sample, preparation, paths = verify_complete_dependency_tree(sample_manifest)
+def postprocess(sample_manifest, *, output, run_context=None):
+    sample, paths, context = load_sample_record(sample_manifest, run_context)
     prepared = load_prepared(paths.prepared)
     posterior = load_trace(paths.posterior)
     contract = decode_output_contract(sample.output_contract)
-    validate_output_associations(prepared, posterior, contract)
     validate_requested_products(output, prepared, contract)
     preflight_product_destinations(output)
     result = make_standard_result(
         prepared=prepared, posterior=posterior, contract=contract,
-        requested_window=preparation.requested_window,
+        requested_window=context.requested_window,
         inference_metadata=sample.inference_metadata,
         sampler=None, output=output,
     )
@@ -395,12 +415,11 @@ def postprocess(sample_manifest, *, output):
     return result
 ```
 
-Supported versions, reference structure, exact associations and all required
-digests are checked before posterior loading or product destination creation.
-After loading, validate scientific labels, units and roles before writes. Matching
-digests do not replace these checks. Replay never validates a newly reconstructed
-model configuration, instantiates a sampler, imports recorded callables or recovers
-a graph. Shared result/product owners accept explicit saved provenance; remove
+The loader owns supported-format and required-content checks. Existing scientific
+composition owns label, unit and reconstruction compatibility; later code trusts
+its results. Replay does not build a model, sample, or execute recorded callables.
+It may parse the original run configuration without treating its provenance as a
+new scientific request. Shared result/product owners accept that context; remove
 the competing stage-owned `basic.nc` write and post-write artifact discovery.
 One output policy and one product-writing owner govern both live and saved routes.
 In-memory products remain available without a destination when no writing is requested.
@@ -436,34 +455,42 @@ with matching labels cannot establish compatibility.
 
 ## Migration Plan
 
-Four implementation children of OPE-207 are planned in [tasks.md](tasks.md): a
+Four implementation slices of OPE-207 are planned in [tasks.md](tasks.md): a
 complete standard proof, multisector adoption, ordinary CO2 adoption, and cached
 CO2 adoption. Review the standard working route before family expansion;
 multisector and ordinary CO2 can then proceed independently, with cached adoption
 following the ordinary handoff conventions. Each slice includes writer, reader,
 callers, CLI/examples, documentation and validation. Do not split out a speculative
-persistence framework as a prerequisite. Child issue identifiers are assigned when
-the issues are created; this document does not claim their creation.
+persistence framework or preliminary cleanup project as a prerequisite.
 
-#808 keeps its bounded hash/compatibility contract and consumer fixes. #838/#839
+#808 coordinates removal of representation-sensitive gates and the corresponding
+consumer fixes within these implementation slices. #838/#839
 keep basis/path/flux ownership; #829 remains deferred. OPE-164 is completed initial
 CO2 staging evidence; new CO2 work is adoption of these replacement handoffs.
-OPE-165 retains linked CO2/O2 integration. Nested and MAP remain future examples:
+OPE-165 retains linked CO2/O2 integration and depends on the common interfaces it
+actually consumes, not completion of every OPE-207 family adoption. Complete
+[#769](https://github.com/openghg/openghg_inversions/issues/769)'s production
+predictive integration using [#795](https://github.com/openghg/openghg_inversions/pull/795)
+before adding new cached predictive-stage plumbing. It replaces manual joint
+prediction with the standard PyMC route while preserving the efficient cached
+state step. Configuration, preparation reuse, ordinary sampling, diagnostics and
+postprocessing can proceed in parallel. Do not extend a temporary prediction path
+that this integration will remove. Nested and MAP remain future examples:
 load the appropriate preparation, call that family's science, and save only when
 that result has its own explicit replay contract.
 
-For new CO2 preparation, save numerical inputs, obtain their exact identity,
-bind/save the affine companion, validate their association, then save the complete
-manifest last. Imported pairs retain their exact binding. Require authoritative
-original requested dates for the supported output path; missing required facts
-fail rather than being inferred from surviving observations. The configured full
+For new CO2 preparation, use the existing numerical save/load and affine association
+operations, then save the run record last. Keep those scientific associations at
+their existing boundary instead of building another chain of digest gates. Obtain
+original requested dates from the run context where outputs need them, rather than
+inferring the inversion window from surviving observations. The configured full
 CO2 product entry point must be named and tested, while raw runners retain their
 numerical returns. Cached adoption tests its matched step order, accepted-cache
 updates, conditional predictions and target density against scientific references.
 
 Use 0.7.x to consume 0.7.x staged artifacts; 0.8.x does not promise compatibility.
 No historical hash emulation, migration layer or setup aliases are needed solely
-for retired staged contracts. Reject unsupported/down-labelled envelopes clearly.
+for retired staged contracts. Reject unsupported formats clearly.
 Preserve numerical codecs, scientific customization and product schemas; coordinate
 independent keyword/CLI transitions with their owners. Diagnosis's historical sample
 support is separate from scientific replay. Readiness retains its family-specific
@@ -475,10 +502,10 @@ with implementation release notes, not with a planning-only completion claim.
 - Grouped configuration can duplicate defaults: move preparation ownership rather
   than keeping flat and nested settings in parallel; test full/phase equivalence.
 - Defaults can hide invocation state: resolve `"default"` freshly in the live
-  recipe and save actual settings; replay never reconstructs them.
-- Saved metadata can grow into executable configuration: admit fields by their
-  output consumer and test with configuration/model/sampler construction disabled.
-- Shared files can disappear: fail on missing/changed dependencies and explain
-  relocation; no implicit copy or fallback search.
+  recipe and save actual settings; replay does not substitute current defaults.
+- Saved metadata can grow into another configuration system: keep the run's
+  existing configuration available and save only small explicit descriptions.
+- Shared files can disappear: report missing inputs through their loader; use the
+  selected run context without implicit copies or fallback search.
 - A broad plan can repeat #798: require real standard scientific evidence and
   a readability review before adoption by other families.

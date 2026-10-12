@@ -13,16 +13,20 @@ Deliver applicable commands, examples, documentation, focused checks and release
 notes with each family. The standard route must pass its scientific acceptance
 gate before multisector or ordinary CO2 adoption; those two adoptions can then
 proceed independently. Cached CO2 adoption follows the ordinary CO2 handoff and
-result conventions. A passing mock-forwarding test alone clears none of these
-gates.
+result conventions. Preparation and ordinary-model work can proceed in parallel
+with that proof. OPE-165 needs the actual shared interfaces it adopts, not
+completion of every OPE-207 delivery. A passing mock-forwarding test alone clears
+none of the scientific gates. Complete #769's production predictive integration,
+following #795, before adding new cached predictive-stage plumbing.
 
 The reviewed baseline is devel `80b0ebf0`: reuse the merged acquisition/inference
 ownership from #773/#774 and configuration/preparation work from #822–#825.
 Cleanup #826/#830 is merged; #832 and boundary work #834–#837 remain pending.
 #840 addresses #838's explicit basis paths; #841 addresses #839's runtime-flux/
 operator-loading work and remains under review. Consume resulting APIs and record merged evidence rather than duplicating
-these owners or treating open PRs as landed. #808 retains the bounded manifest,
-hash and consumer-contract work. Acquisition persistence/replay belongs to
+these owners or treating open PRs as landed. Coordinate #808's removal of redundant
+manifest/hash gates and its consumer fixes within the implementation that needs it, without
+making it a separate delivery prerequisite. Acquisition persistence/replay belongs to
 deferred #829 and is not required for prepared/sample handoffs. OPE-164 records
 the initial ordinary/cached CO2 staged delivery; the CO2 sections below adopt the
 replacement handoffs rather than reopening that completed scope. Linked CO2/O2
@@ -34,6 +38,8 @@ Implementation started in [#843](https://github.com/openghg/openghg_inversions/p
 stacked on #841 at `7f84645a`. Its first slice covers live sampler selection and
 sampler-free result/replay foundations from 1.2 and 1.8; it does not complete either
 task's acceptance across the new handoff APIs or the standard delivery gate.
+Finish the local validation and descriptive-metadata simplifications in #843;
+they do not require preliminary cleanup or new configuration infrastructure.
 At implementation head `61d0036c`, 39 focused sampler/prepared tests, 67 replay/stage
 tests and 330 configured-run/compatibility tests passed. Broader family coverage
 had 252 passes and one direct prior-predictive Numba precision failure reproduced
@@ -51,10 +57,14 @@ the PR records the bounded implementation and validation details.
   claims against the baked temporal policy.
 - [ ] 1.2 Use live `sampler="default"` consistently in new and existing
   default-selecting entry points as a request for a fresh family-default
-  sampler on each invocation, without importing a sampler from recorded metadata.
+  sampler on each invocation, without selecting execution defaults from saved
+  metadata.
   Give custom `RhimeSampler` invocations owned copies of nested keyword values;
   verify list/tuple/array fidelity, isolated overrides and unchanged caller values.
-  Reject `idata_kwargs.coords`/`dims` in resolved and direct sampling paths.
+  Reject `idata_kwargs.coords`/`dims` once at configuration parsing or sampler
+  construction; trust valid resolved choices in resolution and sampling. Do not
+  duplicate PyMC's model-dependent validation or add a sampler options class.
+  Keep ownership copies where backend side effects require them.
   Verify configured full runs preserve `config.sampler`, omitted/explicit default
   calls select fresh defaults, and invalid strings/explicit `None` fail at all live
   sampling boundaries. Remove `None`-means-default compatibility adapters and
@@ -75,49 +85,52 @@ the PR records the bounded implementation and validation details.
   independent reconstruction calculation. Record which prerequisite PRs supply
   these behaviors rather than implementing them again here.
 - [ ] 1.5 Validate declared coordinate/output roles even when immediate products
-  are disabled. Verify a valid custom no-product model is accepted, an invalid
+  are disabled. Share the existing variable-role/output-contract owner between
+  predictive sampling and postprocessing; remove independent concentration-name
+  inference in the sampler. Keep species-dependent mass conversion in
+  postprocessing. Verify a valid custom no-product model is accepted, an invalid
   declared role fails with `output_format="none"`, and direct scientific arguments,
   conflict checks and established returns remain usable.
 - [ ] 1.6 Implement standard `prepare` returning one absolute manifest path,
   using existing numerical codecs and #808's bounded contract. Omit the obsolete
   filtered checkpoint without adding acquisition persistence. Verify acquisition
   and retained subsets with unequal site options, original requested dates,
-  malformed inputs, parent-relative relocation, invalid references and digests,
-  protected saved dependencies and interrupted saving without a completed
-  manifest. Initially support NetCDF numerical dependencies and JSON manifests;
-  reject directory handoffs before writes while retaining direct Zarr codecs.
+  ordinary missing/malformed inputs, save/reopen and relative/shared-cache paths.
+  Use JSON records and the numerical formats supported by existing codecs.
   Keep the writer, loader and callers together.
 - [ ] 1.7 Implement standard `sample` from that manifest and current model/sampler
   choices. Record bounded actual inference provenance and embedded `OutputContract`.
   Verify two compatible priors/likelihoods reuse unchanged preparation, while
   missing required arrays or changed baked policy fail before inference. Distinguish
-  scientific compatibility from content integrity and descriptive provenance.
+  scientific compatibility from descriptive provenance. Record a Git revision
+  when available without making it a requirement for execution.
 - [ ] 1.8 Implement standard `postprocess` from one sample manifest and current
   output choices. Replayed results use `sampler=None` and plain saved metadata;
-  no sampler or callable is reconstructed. Verify fresh-process relocated replay
-  with original configuration, acquisition and graph constructors unavailable,
-  preserving requested window/retained metadata and matching live products from
-  the same samples. Reject missing, changed, swapped, malformed, unsupported or
-  down-labelled records and invalid roles/labels/units before product writes;
-  structural/digest failures precede posterior loading.
+  configuration construction is permitted, but replay does not build a model or
+  run inference. Use retained, referenced or supplied run context without filling
+  missing provenance from current defaults. Verify save/reopen and two output
+  choices from the same samples, preserving requested window/retained metadata
+  and matching live products. Let ordinary loaders report missing/malformed
+  files and scientific boundaries reject incompatible roles, labels or units.
 - [ ] 1.9 Preserve standard prior-predictive/readiness catch boundaries and
-  independent diagnosis, including its declared historical sample support. Verify
+  independent diagnosis with its supported inputs. Verify
   fail/pass/unknown, strict exit status, invalid predictive evidence and propagation
   of loading/serialization errors; readiness does not silently perform posterior
   inference or repair missing evidence during replay.
 - [ ] 1.10 Deliver standard one-manifest CLI forms, full/phase-only examples and
-  cookiecutter consumer acceptance with this route. Verify authenticated family
+  cookiecutter consumer acceptance with this route. Verify family
   selection, explicit mismatch rejection, once-only override resolution, help and
   destination behavior, and an executable generated scientific recipe. Update
   stage guidance/docstrings with arguments, returns, file lifetime and reuse limits;
   remove premature `openghg-run` references in affected guidance. Coordinate the
   0.8 staged-contract release note with #808, distinguishing preserved numerical,
-  product and direct scientific APIs from retired staged envelopes/aliases.
-- [ ] 1.11 Clear the standard gate with a runnable preparation/two-model/relocated-
-  replay example, distinct sample destinations and real prior or likelihood
+  product and direct scientific APIs from retired staged envelopes/aliases;
+  add no 0.7 staged compatibility adapters.
+- [ ] 1.11 Clear the standard gate with a runnable preparation/two-model/two-product
+  example, distinct sample destinations and real prior or likelihood
   calculations checked against an independent calculation or existing regression
-  reference. Demonstrate equivalent full execution with saved-handoff writers,
-  digests and encoding disabled. Record focused/broader relevant test results and
+  reference. Demonstrate equivalent full execution with intermediate saves
+  disabled. Record focused/broader relevant test results and
   review scientific parity, borrowed-array behavior and recipe readability before
   family expansion.
 
@@ -130,8 +143,8 @@ the PR records the bounded implementation and validation details.
   arrays without introducing shared scientific dispatch.
 - [ ] 2.2 Verify compatible sector-prior/likelihood changes reuse preparation and
   genuine preparation changes fail. Exercise saved-result products with unchanged
-  sample meaning and current reporting choices, including relocated graph-free
-  replay and rejection of swapped sector/source output associations.
+  sample meaning and current reporting choices, including graph-free
+  replay and rejection of scientifically incompatible source layouts.
 - [ ] 2.3 Deliver the applicable multisector CLI/example, guidance/docstrings,
   readiness/diagnosis checks and release notes with its writer/reader/callers.
   Verify full/phase-only choices, requested-window metadata and declared role
@@ -151,15 +164,15 @@ the PR records the bounded implementation and validation details.
 - [ ] 3.2 Implement ordinary CO2 prepared/sample handoffs using existing numerical
   persistence and trace/affine output meaning. Verify independent BC/offset priors
   or supported mismatch changes reuse coherent preparation; changed defining
-  native prior/covariance/operator/projection or an unrelated affine companion
-  cannot masquerade as compatible preparation.
+  native prior/covariance/operator/projection requires new preparation. Check that
+  the affine reconstruction uses the prepared sources and grid.
 - [ ] 3.3 Preserve authoritative requested dates separately from retained
   observation extrema for imported and newly produced CO2 preparations. Verify
   filtering both period edges does not shorten output metadata; make missing
   required imported facts explicit rather than inferring them from observations.
-  For new affine outputs, save prepared inputs, bind the companion to their saved
-  identity, validate the pair, then save the manifest last. Verify imported bound
-  pairs remain valid and relocated native/country replay works for a newly
+  For new affine outputs, save prepared inputs and their companion with existing
+  codecs, check their scientific compatibility, then save the manifest last.
+  Verify imported bound pairs remain valid and native/country replay works for a newly
   produced pair as well as an imported pair.
 - [ ] 3.4 Validate per-site model mappings at inference against prepared retained
   labels: permit valid extra requested sites, validate every supplied value even
@@ -170,7 +183,8 @@ the PR records the bounded implementation and validation details.
   independent diagnosis and applicable release notes with its writer/reader/callers.
   Verify unsupported science/output requests fail before expensive work or report
   destination creation, predictive evidence retains its scientific meaning and
-  replay uses saved metadata with `sampler=None` without graph/sampler construction.
+  replay uses saved metadata with `sampler=None` without rebuilding a graph or
+  running inference.
 - [ ] 3.6 Clear the ordinary CO2 gate against existing coherent, likelihood and
   affine reconstruction references, plus configured-full/staged/replay products
   and focused/relevant broader checks. Record the merged evidence and the public
@@ -185,11 +199,11 @@ the PR records the bounded implementation and validation details.
 - [ ] 4.2 Validate cached per-site initialization and OU time scales as positive,
   requiring retained coverage after checking all supplied values. Verify compatible
   mismatch changes reuse numerical preparation while dependent runtime caches are
-  rebuilt or proven matching; a valid preparation does not authenticate an unrelated
-  covariance cache/eigenbasis.
+  rebuilt for the selected model; reject a scientifically incompatible covariance
+  cache/eigenbasis at its owning boundary.
 - [ ] 4.3 Preserve exact prior-predictive support, conditional prediction, complete
   component contributions and cached annotations across full/staged/replay. Verify
-  readiness/independent diagnosis, scientific roles and graph/sampler-free output
+  readiness/independent diagnosis, scientific roles and graph-free output
   replay using existing cached references; check the likelihood at varied fixed
   states/sigma against a dense oracle and posterior moments against the existing
   independent reference, rather than requiring identical seeded draws from
@@ -207,9 +221,9 @@ the PR records the bounded implementation and validation details.
   coverage; run Ruff on changed Python paths and `git diff --check`. Submit required
   full-suite, compatibility and type environments through `scripts/slurm_tox.sh`,
   not local tox. Reconcile pending-owner status without claiming #839 or another
-  unmerged delivery complete, and keep #808's independent acceptance visible.
-- [ ] 5.2 Verify active routes retain no obsolete filtered checkpoint, executable
-  replay configuration, sampler reconstruction or full-config equality gate.
+  unmerged delivery complete, and record the coordinated #808 work where applicable.
+- [ ] 5.2 Verify active routes retain no obsolete filtered checkpoint, execution of
+  recorded callables, inference during product replay or full-config equality gate.
   Confirm every scenario has implementation and validation evidence before syncing
   these capabilities and archiving this completed change. Planning merge alone
   does not complete OPE-207; do not archive the superseded proposal as successfully

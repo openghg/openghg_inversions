@@ -80,15 +80,19 @@ retained by compatibility adapters. Omitted optional arguments SHALL continue to
 select defaults, while explicit `None` SHALL produce a migration error directing
 callers to omit the argument or use `"default"`. Lower-level operations requiring
 an already resolved sampler MAY retain their object-only argument.
-The contract SHALL NOT require a new sampler
-options class.
+The contract SHALL NOT require a new sampler options class.
 
 Resolving or overriding choices SHALL NOT mutate the caller's choices or affect
-later invocations. Sampler configuration round trips SHALL preserve supported
-values and container types, including lists and tuples. Model coordinate and
-dimension registration SHALL remain authoritative: inference-data keyword
-configuration SHALL reject `coords` and `dims` during resolution and at direct
-sampling rather than overriding the registered model.
+later invocations. Resolving supported options SHALL preserve their values and
+container types, including lists and tuples. Model coordinate and dimension
+registration SHALL remain authoritative: inference-data keyword
+configuration SHALL reject `coords` and `dims` once at configuration parsing or
+sampler construction rather than overriding the registered model. Downstream
+resolution and sampling SHALL trust valid resolved choices rather than repeat
+those checks because the Python object is mutable. The application SHALL NOT
+duplicate PyMC's model-dependent validation. Ownership copies SHALL protect
+caller settings from actual backend side effects while borrowing model, step,
+xarray and Dask objects.
 
 #### Scenario: Fresh default sampler
 - **WHEN** separate live inference invocations omit the sampler or pass `"default"`
@@ -117,24 +121,28 @@ sampling rather than overriding the registered model.
 - **WHEN** one invocation overrides sampler options containing nested lists,
   tuples or mappings and a later invocation uses the original options
 - **THEN** the original options and later behavior remain unchanged
-- **AND** serializing and restoring supported options preserves their values and
+- **AND** resolving the supported options preserves their values and
   list-versus-tuple distinctions
 
 #### Scenario: Attempted inference-data coordinate override
 - **WHEN** inference-data keyword options contain `coords` or `dims`
-- **THEN** option resolution rejects the conflicting keyword before sampling or
-  scientific artifact writes, including when its supplied value is empty
-- **AND** direct sampling enforces the same conflict rule
+- **THEN** configuration parsing or sampler construction rejects the keyword
+  before sampling or scientific artifact writes, including when its supplied
+  value is empty
+- **AND** the resulting valid sampler needs no repeated downstream check
 
-### Requirement: Results and replay do not create samplers
+### Requirement: Optional live samplers and descriptive replay metadata
 
 `RhimeResult.sampler` SHALL be optional and default to `None` without a sampler
-factory. Constructing or loading a scientific result SHALL NOT create a runtime
-sampler. Saved sampler provenance SHALL be plain metadata describing the actual
-inference invocation, rather than executable configuration requiring restoration
-of a sampler. Product replay and diagnosis SHALL operate without creating,
-defaulting or executing a sampler. Live execution SHALL retain access to a sampler
-only when its result contract explicitly supplies one.
+factory. Saved sampler provenance SHALL be plain metadata describing the actual
+inference invocation. Product replay and diagnosis SHALL NOT rebuild the
+producing model or execute inference. They MAY use existing configuration
+construction to inspect supplied or recorded choices; constructing a settings
+object does not imply execution. Missing provenance SHALL NOT be filled from
+current defaults, and descriptive sampling metadata SHALL NOT impose an
+additional scientific compatibility gate. No strict-metadata mode is required.
+Live execution SHALL retain access to a sampler only when its result contract
+explicitly supplies one.
 Here `None` SHALL mean absence of a live sampler, not absence of previously
 completed inference. `"default"` SHALL be an execution request only and SHALL NOT
 be retained as a result sampler or substituted for actual inference provenance.
@@ -142,8 +150,9 @@ be retained as a result sampler or substituted for actual inference provenance.
 #### Scenario: Result without a live sampler
 - **WHEN** a caller constructs a result without a sampler, or loads saved samples
   for product replay or diagnosis
-- **THEN** its sampler remains `None` and no runtime sampler is constructed
-- **AND** supported sampler provenance remains inspectable as metadata
+- **THEN** its live sampler remains `None` without selecting execution defaults
+- **AND** recorded sampler provenance remains inspectable as metadata without
+  rebuilding a model or running inference
 
 ### Requirement: Explicit numerical ownership and execution boundaries
 
@@ -195,7 +204,7 @@ without rebuilding the producing graph.
   than being ignored or requiring a separately resolved stage-only output setup
 
 #### Scenario: Live and saved products
-- **WHEN** live execution and authenticated replay use the same samples,
+- **WHEN** live execution and saved replay use the same samples,
   scientific output context and equivalent product policy
 - **THEN** their supported scientific products agree, including conditional or
   affine reconstruction where applicable
@@ -214,34 +223,32 @@ existing schemas, thresholds and pass/fail/unknown meanings. Returned empty or
 non-finite predictive evidence SHALL yield a fail check and preserve applicable
 predictive/report writes. Standard/multisector SHALL retain their scoped
 construction/prediction `KeyError` and `ValueError` catch; CO2 execution errors
-SHALL propagate before readiness destination creation. Loading, authentication
-outside that catch and serialization errors SHALL propagate as errors. Strict
+SHALL propagate before readiness destination creation. Loading outside that
+catch and serialization errors SHALL propagate as errors. Strict
 gates SHALL retain nonzero behavior for fail without newly treating unknown as
-fail. Diagnosis SHALL require no original recipe configuration or producing graph
-and SHALL declare its historical sample-record support independently of the
-scientific-stage compatibility reset.
+fail. Diagnosis SHALL consume the posterior and its check choices without
+rebuilding the producing graph. This change SHALL NOT add historical staged
+record compatibility.
 
 Prior readiness SHALL consume prepared inputs, compatible model choices and its
-check choices without requiring MCMC or final-product configuration or creating
-a runtime sampler. The existing family-specific predictive execution and write
+check choices without requiring MCMC or final-product configuration or running
+posterior inference. The existing family-specific predictive execution and write
 behavior SHALL remain unchanged.
 
 #### Scenario: Prior readiness without inference configuration
 - **WHEN** a caller requests prior readiness using a prepared handoff and valid
   model/check choices without sampler or final-product choices
-- **THEN** readiness runs its supported prior checks without constructing a
-  sampler or requiring unrelated configuration
+- **THEN** readiness runs its supported prior checks without posterior inference
+  or requiring unrelated configuration
 
 #### Scenario: Readiness execution and artifact failures
 - **WHEN** prediction returns invalid evidence or raises an execution error
 - **THEN** the family preserves the stated returned-evidence and exception behavior
-- **AND** authentication outside the catch or serialization failure remains an
+- **AND** loading outside the catch or serialization failure remains an
   error rather than being reported as a completed scientific check
 
 #### Scenario: Independent diagnosis and unavailable metrics
-- **WHEN** diagnosis receives a posterior, optional supported sample record and
-  convergence choices without a recipe configuration
+- **WHEN** diagnosis receives a posterior, optional supported run context and
+  convergence choices
 - **THEN** it assesses convergence without construction or sampling, retaining
   fail when any available metric fails and otherwise unknown when unassessable
-- **AND** a historical record is accepted only under diagnosis's explicitly
-  supported contract, independent of scientific-stage record support

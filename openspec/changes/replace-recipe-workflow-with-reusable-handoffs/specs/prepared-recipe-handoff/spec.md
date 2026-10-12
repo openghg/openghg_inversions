@@ -3,109 +3,98 @@
 ## Purpose
 
 Make saved scientific preparation reusable for compatible inference choices,
-with a portable, authenticated handoff that records what its numerical products mean.
+using ordinary files and the matched run context to describe its numerical products.
 
 ## ADDED Requirements
 
-### Requirement: One complete preparation handoff
+### Requirement: One reusable preparation handoff
 
 A successful saved preparation SHALL return one absolute manifest path as its
 handoff. The manifest SHALL identify its recipe family and supported contract
-version, its numerical artifacts and content digests, and the preparation facts
-needed to validate subsequent use without the original full configuration.
-The manifest SHALL preserve the original requested observation window,
-preparation provenance including basis provenance, and numerically baked policy.
+format and reference its numerical artifacts. The original requested observation
+window, preparation provenance including basis provenance, and numerically baked
+policy SHALL remain available in the record, numerical artifacts or matched run
+context kept alongside, referenced or explicitly supplied by the caller.
 Referenced numerical artifacts SHALL remain authoritative for retained observations and site metadata,
 coordinates and labels, scientific source/state layout, units, retained basis
-and flux. Consumers SHALL derive these retained facts from the authenticated
+and flux. Consumers SHALL derive these retained facts from the numerical
 artifacts rather than require duplicate arrays or labels in the manifest.
 Requested preparation choices SHALL remain distinguishable from retained facts.
-The handoff SHALL NOT require a saved whole configuration or runtime dataclass
-layout, or imply that later model, sampler or output choices were already
-executed or fixed by ordinary preparation.
+The manifest need not embed a whole configuration or every fact needed by later
+operations. It SHALL NOT depend on a runtime dataclass layout or imply that later
+model, sampler or output choices were already executed or fixed by preparation.
 
 #### Scenario: Preparation with a retained subset
 
 - **WHEN** a saved preparation requested TAC and MHD but retained only TAC
 - **THEN** its returned manifest path identifies the completed numerical handoff
-- **AND** the manifest preserves the original window/request and identifies numerical artifacts containing TAC's retained metadata
-- **AND** a consumer needs no original configuration or separately supplied numerical paths
+- **AND** the original window/request remains available in the matched run context and the manifest identifies numerical artifacts containing TAC's retained metadata
+- **AND** consumers use TAC's retained metadata from those artifacts
 
 #### Scenario: Baked inverse-model policy
 
 - **WHEN** preparation numerically encodes a boundary temporal parameterization or minimum-error floor
-- **THEN** the handoff records that policy as a preparation fact
+- **THEN** the matched preparation context records that policy as a preparation fact
 - **AND** selecting a later model does not silently replace the encoded numerical values
 
-### Requirement: Portable authenticated file references
+### Requirement: Ordinary file references and current formats
 
-Prepared and sampled scientific handoffs SHALL share explicit file-reference
-rules. Saved artifact and dependency references SHALL be ordinary relative file
-paths from the manifest that declares them, with content digests and identifiable
-schema contracts; relative parent-directory references SHALL be supported.
-Readers SHALL resolve references from that manifest's directory, independently
-of the current working directory or environment such as RUN_ROOT. Readers SHALL
-validate the selected family's supported contract and required digests before
-accepting numerical content. Absolute paths, URI references, environment
-placeholders, malformed references and unsupported or falsely labelled contracts
-SHALL fail clearly.
-Moving an intact dependency tree SHALL preserve its meaning; copying only one
-manifest SHALL NOT make unavailable or changed dependencies acceptable.
-Content digests SHALL bind the referenced file content; they SHALL NOT substitute
-for scientific compatibility checks or imply verification of an author's identity.
+Prepared and sampled handoffs SHALL use ordinary file references. Relative
+references, including parent-directory references, SHALL resolve from the record
+that declares them. Explicit absolute paths SHALL be accepted for shared caches
+or other caller-selected files. Readers SHALL NOT discover replacement files
+through environment settings such as RUN_ROOT. Missing files and unsupported
+formats SHALL produce clear errors.
+Only the current handoff formats SHALL be supported; 0.7 staged compatibility,
+schema downgrade recovery and transitive content authentication SHALL NOT be
+required. A handoff is used with its matched run context, not as an independently
+portable bundle. Content digests SHALL NOT be mandatory handoff requirements.
 
-The initial handoff contract SHALL use NetCDF numerical files and JSON manifests.
-Directory Zarr stores SHALL NOT be accepted as dependencies of prepared or sampled
-handoffs. Existing direct numerical codecs SHALL retain their NetCDF and Zarr
-support; callers MAY explicitly export to NetCDF before constructing a handoff.
-The handoff boundary SHALL NOT silently convert a directory or invent directory
-content-identity rules.
+Records SHALL use JSON and numerical artifacts SHALL use the formats already
+supported by their owning codecs. Initial examples MAY use NetCDF; stages SHALL
+NOT add a Zarr rejection or conversion requirement solely for content hashing.
 
-#### Scenario: NetCDF handoff and direct Zarr persistence
+#### Scenario: Reuse a supported numerical artifact
 
-- **WHEN** a caller saves a prepared or sampled handoff
-- **THEN** its numerical dependencies are NetCDF files authenticated by exact file bytes
-- **AND** importing a directory Zarr store as a handoff dependency fails before
-  destination creation with guidance to explicitly export it through the NetCDF codec
-- **AND** direct numerical save/load and round-trip use of Zarr remains supported
+- **WHEN** a prepared artifact uses NetCDF or Zarr supported by its existing loader
+- **THEN** the stage uses that loader without adding a new codec or conversion step
 
-#### Scenario: Relocated dependency tree
+#### Scenario: Relative references and a shared cache
 
-- **WHEN** a prepared handoff and sample handoffs referencing it move together with their relative dependency layout intact
-- **THEN** they resolve and authenticate the same content from an unrelated working directory
-- **AND** an unrelated RUN_ROOT value cannot select different files
+- **WHEN** a handoff uses a relative reference or an explicit absolute shared-cache path
+- **THEN** the relative reference resolves from its declaring record and the absolute path selects that cache directly
+- **AND** an unrelated working directory or RUN_ROOT value cannot select different files
 
-#### Scenario: Invalid reference or changed content
+#### Scenario: Missing file or unsupported format
 
-- **WHEN** a required dependency is missing, altered, has an invalid reference or uses an unsupported contract
-- **THEN** the reader rejects the handoff before inference or product writes
+- **WHEN** a required file is missing or uses an unsupported format
+- **THEN** the reader reports the problem before inference or product writes
 - **AND** it does not substitute another file found through configuration, working directory or environment defaults
 
-### Requirement: Saved handoffs are complete and stable
+### Requirement: Fresh destinations and manifest-last completion
 
 Saved scientific operations SHALL use a fresh caller-selected destination and
 reject an existing destination before owned writes. Ordinary numerical saves
-SHALL complete and required artifact digests SHALL be verified before the final
-manifest is made available. The final manifest SHALL be the completion marker;
-a failed save SHALL NOT leave one claiming completion. Writer-owned files SHALL
+SHALL complete before the final manifest is written. The final manifest SHALL be
+the completion marker; a failed save SHALL NOT leave one claiming completion. Writer-owned files SHALL
 remain under the explicit destination, and dependency references SHALL NOT
 authorize writes elsewhere or overwriting referenced artifacts.
-This filesystem guarantee SHALL NOT require rollback of incomplete files or a
-separate publication framework. Several inference runs SHALL be able to reference
-one completed preparation without mutating it or implicitly copying its large
+This ordinary I/O ordering SHALL NOT require rollback, transactions or repeated
+dependency checks before and after execution. Several inference runs SHALL be
+able to reference one completed preparation without mutating it or implicitly copying its large
 numerical data. Relocation and additional copies SHALL require explicit caller
 action.
 
 #### Scenario: Interrupted save
 
-- **WHEN** writing a required numerical artifact or computing its digest fails
+- **WHEN** writing a required numerical artifact fails
 - **THEN** the operation reports the error without leaving a final completion manifest
 - **AND** any incomplete files do not constitute an accepted handoff
 
 #### Scenario: Shared preparation and protected saves
 
 - **WHEN** two inference runs use one completed preparation and distinct new destinations
-- **THEN** both reference the same authenticated preparation without an implicit copy
+- **THEN** both reference the same preparation without an implicit copy
 - **AND** attempting to save into an existing destination fails without altering its completed handoff or referenced artifacts
 
 ### Requirement: Preparation owns filtering and retained-site alignment
@@ -139,10 +128,11 @@ options against prepared retained labels without making them preparation choices
 
 ### Requirement: Reuse requires scientific compatibility rather than full configuration equality
 
-Authenticated preparation SHALL be reusable with different compatible priors,
+Saved preparation SHALL be reusable with different compatible priors,
 likelihoods and sampler/output choices without repeating preparation. Acceptance
 SHALL check the selected model's required arrays, source/state/observation layout,
-units and preparation facts rather than equality to the original full configuration.
+units and preparation facts through their existing scientific owners rather than
+equality to the original full configuration or repeated downstream validation.
 Changing acquired data, filtering/averaging, native flux data, basis/sensitivities
 or baked numerical policy SHALL require a corresponding new preparation.
 When new preparation uses an explicitly selected saved basis, it SHALL consume
@@ -151,17 +141,19 @@ substitute historical flux from the basis artifact. The resulting numerical
 preparation SHALL retain the flux used by its later inference and replay.
 Explicit basis-path selection and native-flux/operator-only basis behavior SHALL
 follow their separately owned contracts; the handoff SHALL NOT redefine them.
-Ordinary scaling priors SHALL remain inference choices. A CO2 coherent reduction
-SHALL retain its prior moments, effective operator, affine intercept and unresolved
+Scaling priors constructed at graph time SHALL remain inference choices. A CO2
+coherent reduction SHALL retain its prior moments, effective operator, affine intercept and unresolved
 covariance as one linked preparation; changing their defining native prior,
 operator or projection SHALL require newly coherent products and matching
 reconstruction information. Replacing retained-prior arrays alone SHALL NOT
-establish compatibility. Independent boundary/offset priors and supported
-observation-mismatch choices SHALL permit reuse when their required inputs exist.
+establish compatibility. Linked CO2/O2 preparation that derives numerical means
+or covariances from a prior SHALL likewise be recomputed when that prior changes;
+reusable merged inputs need not be reacquired. Independent boundary/offset priors
+and supported observation-mismatch choices SHALL permit reuse when their required inputs exist.
 
 #### Scenario: Two compatible standard or multisector models
 
-- **WHEN** two models select different scaling priors or supported likelihoods from one authenticated preparation with all required arrays
+- **WHEN** two models select different graph-time scaling priors or supported likelihoods from one preparation with all required arrays
 - **THEN** both reuse the same preparation content without retrieval, filtering, basis or sensitivity reconstruction
 - **AND** a model requiring absent boundary or minimum-error inputs is rejected before inference
 
@@ -171,8 +163,8 @@ observation-mismatch choices SHALL permit reuse when their required inputs exist
 - **THEN** the new preparation uses and retains the current flux according to the basis-reuse contract
 - **AND** an existing completed preparation and its replay continue to use their own retained flux
 
-#### Scenario: Prior-dependent CO2 reduction
+#### Scenario: Prior-dependent CO2-family preparation
 
-- **WHEN** a caller changes the native flux prior defining a CO2 reduction
-- **THEN** the existing reduced operator/intercept/covariance are not accepted as a newly coherent preparation merely because retained-prior labels match
+- **WHEN** a caller changes a prior used to derive a CO2 reduction or linked CO2/O2 preparation
+- **THEN** the affected numerical preparation is recomputed rather than accepted merely because retained-prior labels match
 - **AND** changing only compatible independent boundary/offset or observation-mismatch choices can reuse the unchanged coherent handoff

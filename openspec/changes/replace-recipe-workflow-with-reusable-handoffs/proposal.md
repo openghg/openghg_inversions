@@ -9,6 +9,13 @@ completion of its implementation or an additional OpenSpec lifecycle state.
 The change remains active, implementation tasks stay unchecked until their
 acceptance evidence exists, and its deltas are not yet current main specs.
 
+The maintainer narrowed the operational contract on 12 October 2026: support an
+ordinary trusted scientific workflow with reusable preparation and repeatable
+postprocessing. Keep the run's configuration and numerical inputs available
+together; individual records need not be portable self-contained descriptions.
+Remove mandatory transitive authentication, repeated validation of local objects,
+and historical staged replay. This amends the existing implementation plan.
+
 ## Why
 
 Full and saved recipe routes still couple scientific preparation to later model
@@ -32,18 +39,23 @@ not a completed implementation or required artifact contract.
 - Retain `RhimeSampler`. New live inference accepts an instance or `"default"`,
   with omission selecting a fresh recipe-appropriate default per invocation.
   Isolate mutable settings, preserve supported container values and reject coordinate
-  overrides. Replay results use `sampler=None` and recorded metadata, with no implicit
-  sampler construction or additional sampler-settings class.
+  overrides once at sampler construction. Trust the resolved sampler thereafter.
+  Replay results use `sampler=None` and recorded descriptive metadata, without
+  manufacturing default settings or requiring another sampler-settings class.
 - Return one absolute manifest path from preparation and sampling. Reuse compatible
   graph-time priors/likelihoods through scientific checks rather than full-config
   equality. Preserve coherent CO2 reduction and affine association constraints.
 - Save bounded output meaning, actual inference provenance and the existing output
-  contract. Initially use NetCDF numerical files and JSON manifests, preserving
-  direct numerical Zarr codecs outside these handoffs. Resolve relative dependencies
-  and check digests; replay needs no original
-  configuration, model construction, runtime sampler or separate output-binding sidecar.
+  contract in a simple run record. Use existing numerical codecs and plain JSON;
+  keep configuration and reporting inputs alongside, referenced or supplied explicitly.
+  Replay uses those inputs without model construction or another sampling run.
+  No separate output-binding sidecar, mandatory digest tree or mutation-detection
+  protocol is required. Record Git revision when available; its absence is allowed.
 - Deliver a complete standard proof before multisector, ordinary CO2 and cached CO2
   adoption. Each phase owns callers, examples, documentation and meaningful validation.
+  Linked OPE-165 work consumes the common interfaces it needs without waiting for
+  every family adoption. Complete #769's standard PyMC predictive integration before
+  adding new cached predictive-stage code; independent workflow work can proceed.
 - **BREAKING:** Reset staged APIs/envelopes in 0.8 without historical hash emulation.
   Preserve numerical codecs, products and direct scientific contracts. Consume the
   earlier filtered-checkpoint/cache removal; acquisition replay remains deferred to
@@ -57,8 +69,8 @@ not a completed implementation or required artifact contract.
   explicit sampler defaults/array ownership, checks and route parity.
 - `prepared-recipe-handoff`: Saved preparation, production facts, compatible reuse
   and common file-reference/save-completion rules.
-- `sampled-recipe-handoff`: Saved inference meaning and products from one handoff
-  plus current output policy, without model or sampler reconstruction.
+- `sampled-recipe-handoff`: Saved inference, associated run context and current
+  output policy producing new products without model reconstruction or sampling.
 
 ### Modified Capabilities
 
@@ -111,9 +123,9 @@ checkboxes remain unchecked. No runtime code, new file format or dependency ship
 Reuse merged #773/#774, #822–#826 and #830. Reconcile pending #832 and
 #834–#837 before implementing over them. #840 implements #838's explicit basis
 paths; #841 implements #839's native flux/operator-loading work and remains under
-review. #808 retains its
-bounded integrity/compatibility contract. Neither a new acquisition codec nor all
-CO2 design decisions block the first standard route.
+review. #808 coordinates bounded removal of representation-sensitive reuse gates
+within implementation; it is not a preliminary serialization project. Neither a
+new acquisition codec nor all CO2 design decisions block the first standard route.
 
 OPE-207 remains coordination until its deliveries are validated and merged.
 OPE-164 provides initial CO2 staging evidence; OPE-165 retains linked CO2/O2 work.
