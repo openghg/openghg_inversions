@@ -1,4 +1,4 @@
-"""Saved outputs consume sampler provenance without constructing a sampler."""
+"""Saved outputs describe completed inference without running it again."""
 
 from dataclasses import replace
 import json
@@ -14,7 +14,7 @@ from test_staged_workflow import _prepared, _saved_output_binding
 
 
 def _forbidden(*args, **kwargs):
-    raise AssertionError("Replay must not construct a sampler or model.")
+    raise AssertionError("Replay must not construct a model or run inference.")
 
 
 def test_result_default_does_not_construct_a_sampler(monkeypatch):
@@ -38,7 +38,7 @@ def test_saved_sampler_metadata_matches_live_output_despite_current_defaults(tmp
     manifest["effective_configuration"]["sampler"] = recorded
     path.write_text(json.dumps(manifest))
     with monkeypatch.context() as patch:
-        patch.setattr(RhimeSampler, "__init__", _forbidden)
+        patch.setattr(RhimeSampler, "sample", _forbidden)
         patch.setattr(stages, "_build_prepared_model", _forbidden)
         replay = stages.postprocess_rhime_stage(**arguments)
     live = replace(replay, sampler=sampler, output_metadata={})
@@ -54,25 +54,36 @@ def test_saved_sampler_metadata_matches_live_output_despite_current_defaults(tmp
 
 
 @pytest.mark.parametrize(
-    "name,value",
-    [
-        ("draws", True), ("draws", "17"), ("draws", 0), ("burn", -1),
-        ("tune", []), ("chains", None), ("nuts_sampler", ""), ("nuts_sampler", {}),
-    ],
+    "recorded",
+    [None, {}, "unavailable", {"draws": "invalid"}, {"tune": []},
+     {"chains": None}, {"burn": "inf"}, {"nuts_sampler": "unavailable_backend"}],
 )
-def test_replay_rejects_invalid_scalar_sampler_metadata_before_loading_trace(
-    tmp_path, monkeypatch, name, value
-):
+def test_unavailable_sampler_description_does_not_block_products(tmp_path, monkeypatch, recorded):
     arguments = _saved_output_binding(tmp_path)
     path = arguments["sample_manifest"]
     manifest = json.loads(path.read_text())
-    if value is None:
-        del manifest["effective_configuration"]["sampler"][name]
+    if recorded is None:
+        del manifest["effective_configuration"]["sampler"]
     else:
-        manifest["effective_configuration"]["sampler"][name] = value
+        manifest["effective_configuration"]["sampler"] = recorded
     path.write_text(json.dumps(manifest))
-    monkeypatch.setattr(RhimeSampler, "__init__", _forbidden)
-    monkeypatch.setattr(stages, "load_trace", _forbidden)
-    with pytest.raises(ValueError, match="invalid sampler metadata.*" + name):
-        stages.postprocess_rhime_stage(**arguments)
-    assert not list(arguments["output_dir"].glob("*.nc"))
+    monkeypatch.setattr(RhimeSampler, "sample", _forbidden)
+    monkeypatch.setattr(stages, "_build_prepared_model", _forbidden)
+    replay = stages.postprocess_rhime_stage(**arguments)
+    assert replay.sampler is None
+    assert replay.inv_out.output_metadata["sampler"] == {}
+    assert list(arguments["output_dir"].glob("*.nc"))
+    output = json.loads((arguments["output_dir"] / "postprocess-manifest.json").read_text())
+    assert output["effective_configuration"]["sampler"] == recorded
+
+
+def test_partial_sampler_description_does_not_invent_defaults(tmp_path, monkeypatch):
+    arguments = _saved_output_binding(tmp_path)
+    path = arguments["sample_manifest"]
+    manifest = json.loads(path.read_text())
+    manifest["effective_configuration"]["sampler"] = {"draws": 17, "burn": 2}
+    path.write_text(json.dumps(manifest))
+    monkeypatch.setattr(RhimeSampler, "sample", _forbidden)
+    monkeypatch.setattr(stages, "_build_prepared_model", _forbidden)
+    replay = stages.postprocess_rhime_stage(**arguments)
+    assert replay.inv_out.output_metadata["sampler"] == {"draws": 17, "burn": 2}

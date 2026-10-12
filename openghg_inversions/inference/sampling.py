@@ -86,7 +86,7 @@ def resolve_sampler(
 
     Raises:
         TypeError: If the request is neither a sampler nor ``"default"``.
-        ValueError: If inference coordinates override model registration.
+        ValueError: If default sampler options override model coordinate registration.
     """
     if isinstance(sampler, str) and sampler == "default":
         return RhimeSampler(**default_options)
@@ -95,8 +95,6 @@ def resolve_sampler(
             "sampler must be a RhimeSampler or 'default'; None no longer selects defaults. "
             "Omit the optional sampler argument or pass sampler='default'."
         )
-    _validate_idata_options(sampler.sample_kwargs, label="sample_kwargs")
-    _validate_idata_options(sampler.posterior_predictive_kwargs, label="posterior_predictive_kwargs")
     resolved = copy(sampler)
     resolved.sample_kwargs = _copy_sampler_options(sampler.sample_kwargs)
     resolved.posterior_predictive_kwargs = _copy_sampler_options(sampler.posterior_predictive_kwargs)
@@ -289,6 +287,16 @@ class RhimeSampler:
             return (value,)
         return tuple(str(item) for item in value)
 
+    def describe(self) -> dict[str, int | str]:
+        """Snapshot the sampling settings used by output metadata."""
+        return {
+            "draws": self.draws,
+            "burn": self.burn,
+            "tune": self.tune,
+            "chains": self.chains,
+            "nuts_sampler": self.nuts_sampler,
+        }
+
     def __eq__(self, other: object) -> bool:
         """Compare sampler settings."""
         if not isinstance(other, RhimeSampler):
@@ -318,8 +326,6 @@ class RhimeSampler:
                 explicit ``concentration`` role when a custom model has no
                 variable named ``y``.
         """
-        _validate_idata_options(self.sample_kwargs, label="sample_kwargs")
-        _validate_idata_options(self.posterior_predictive_kwargs, label="posterior_predictive_kwargs")
         sample_kwargs = _copy_sampler_options(self.sample_kwargs or {})
         sample_kwargs.pop("return_inferencedata", None)
         idata_kwargs = dict(sample_kwargs.pop("idata_kwargs", {}))

@@ -454,7 +454,7 @@ def postprocess_co2_stage(
         "artifact_identities"
     ].get("affine_reconstruction"):
         raise ValueError("Posterior and preparation disagree on the affine reconstruction identity.")
-    sampler_metadata = _sampler_metadata_from_sample_manifest(sample, path=sample_manifest)
+    sampler_metadata = _sampler_metadata_from_sample_manifest(sample)
     trace = load_trace(posterior)
     destination = Path(output_dir).resolve()
     result = make_co2_rhime_result(
@@ -484,7 +484,8 @@ def postprocess_co2_stage(
         **preparation["artifact_identities"],
         "posterior": _file_identity(Path(posterior)),
     }
-    recorded_sampler = dict(sample["effective_configuration"]["sampler"])
+    recorded = sample.get("effective_configuration")
+    recorded_sampler = recorded.get("sampler") if isinstance(recorded, Mapping) else None
     manifest["effective_configuration"]["sampler"] = recorded_sampler
     manifest["sampling_configuration"] = recorded_sampler
     manifest["artifacts"] = artifacts

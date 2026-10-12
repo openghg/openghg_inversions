@@ -194,8 +194,10 @@ resources are checked by ``postprocess`` before creating its output directory;
   prepared-input digest and scientific configuration.  The sampler settings
   retained in result metadata come from that sample manifest; sampler values
   in the postprocessing configuration cannot relabel an existing posterior.
-  Replay returns ``result.sampler is None`` and forwards validated descriptive
-  sampler metadata to outputs without restoring a ``RhimeSampler`` object.
+  Replay returns ``result.sampler is None`` and forwards descriptive sampler
+  metadata without running inference. Existing sampler settings may be
+  constructed to describe recorded values. Missing or unparseable descriptions
+  remain unavailable, without blocking products or selecting current defaults.
   Modern derived ``basic`` and PARIS products use every retained posterior
   chain. Derived trace quantities preserve their ``chain`` and ``draw``
   identity until an explicitly requested statistic or covariance combines the

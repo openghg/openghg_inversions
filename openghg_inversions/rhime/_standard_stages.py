@@ -485,7 +485,7 @@ def postprocess_rhime_stage(
         configuration_identity=configuration_identity(setup, model=model),
         prepared_inputs=prepared_inputs,
     )
-    sampler_metadata = _sampler_metadata_from_sample_manifest(sample_contract, path=sample_manifest)
+    sampler_metadata = _sampler_metadata_from_sample_manifest(sample_contract)
     output_spec = replace(
         configured_output,
         output_path=str(destination),
@@ -545,7 +545,8 @@ def postprocess_rhime_stage(
                 f"Postprocessing artifact {name!r} at {path!r} escaped stage output directory {destination}."
             ) from None
     effective = effective_configuration(resolved, model=model)
-    effective["sampler"] = dict(sample_contract["effective_configuration"]["sampler"])
+    recorded = sample_contract.get("effective_configuration")
+    effective["sampler"] = recorded.get("sampler") if isinstance(recorded, Mapping) else None
     manifest = {
         "schema_version": 1,
         "producer": "openghg_inversions",

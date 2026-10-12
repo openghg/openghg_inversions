@@ -891,7 +891,7 @@ stages.RhimeMergedData.from_options = forbidden
 from openghg_inversions.rhime import stages as public_stages
 setup = public_stages.resolve_stage_setup(json.loads((root / 'params.json').read_text()), model='standard')
 from openghg_inversions.rhime.sampling import RhimeSampler
-RhimeSampler.__init__ = forbidden
+RhimeSampler.sample = forbidden
 result = public_stages.postprocess_rhime_stage(
     setup=setup, model='standard', prepared_inputs=root / 'prepared.nc',
     posterior=root / 'posterior.nc', preparation_manifest=root / 'prepare-manifest.json',

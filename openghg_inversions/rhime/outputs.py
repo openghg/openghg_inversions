@@ -97,7 +97,7 @@ class RhimeResult:
     def __post_init__(self) -> None:
         """Retain output information independently of the optional live model."""
         if self.sampler is not None:
-            self.output_metadata["sampler"] = _sampler_metadata(self.sampler)
+            self.output_metadata["sampler"] = self.sampler.describe()
         if self.output_contract is None and self.model_build_result is not None:
             self.output_contract = self.model_build_result.output_contract
 
@@ -337,17 +337,6 @@ def _make_inversion_output(
             "basis_representation": "operator-backed",
         },
     )
-
-
-def _sampler_metadata(sampler: RhimeSampler) -> dict[str, int | str]:
-    """Return serialisable sampler metadata for compatibility output attrs."""
-    return {
-        "draws": sampler.draws,
-        "burn": sampler.burn,
-        "tune": sampler.tune,
-        "chains": sampler.chains,
-        "nuts_sampler": sampler.nuts_sampler,
-    }
 
 
 def make_standard_rhime_outputs(

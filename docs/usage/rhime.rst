@@ -251,8 +251,11 @@ which retain their recipe-specific defaults. Complete configured runs use
 Live results retain their invocation's sampler and a descriptive snapshot in
 ``result.output_metadata["sampler"]``. A result constructed without a sampler,
 including a replay result, has ``result.sampler is None``. Replay passes the saved
-snapshot to outputs without constructing a sampler. ``None`` therefore denotes
-absence of a live object; it does not mean that no inference was performed.
+snapshot to outputs without running inference. It may construct sampler settings
+to describe recorded values; missing or unparseable descriptions remain unavailable
+and do not prevent scientific products. Current defaults do not fill missing
+provenance. ``None`` denotes absence of a live object, not absence of completed
+inference.
 
 The prepared object is trusted canonical input: it must already contain the
 observation, error, sensitivity, and optional boundary-condition variables

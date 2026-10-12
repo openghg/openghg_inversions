@@ -127,16 +127,10 @@ def test_predictive_idata_none_executes_with_pymc_defaults(
 
 @pytest.mark.parametrize("key", ["coords", "dims"])
 @pytest.mark.parametrize("container", ["sample_kwargs", "posterior_predictive_kwargs"])
-def test_model_coordinate_options_rejected_at_resolution_and_direct_sampling(key: str, container: str) -> None:
-    """Neither initial settings nor later sampler mutations override model labels."""
+def test_model_coordinate_options_rejected_at_construction(key: str, container: str) -> None:
+    """Configuration owns the restriction on model coordinate overrides."""
     with pytest.raises(ValueError, match="register coordinates and dimensions"):
         RhimeSampler(**{container: {"idata_kwargs": {key: {}}}})
-    sampler = RhimeSampler()
-    setattr(sampler, container, {"idata_kwargs": {key: {}}})
-    with pytest.raises(ValueError, match="register coordinates and dimensions"):
-        resolve_sampler(sampler)
-    with pytest.raises(ValueError, match="register coordinates and dimensions"):
-        sampler.sample(cast(pm.Model, object()))
 
 
 def test_direct_sampling_protects_reused_sampler_options(monkeypatch: pytest.MonkeyPatch) -> None:
