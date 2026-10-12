@@ -7,10 +7,11 @@ new model recipe must make explicit. They complement
 shows execution order, the concrete model shows scientific composition, and
 shared components own their scientific or technical contracts.
 
-These are design and review requirements. They do not assert that every
+These are design and review principles. They do not assert that every
 existing route already satisfies them or that a common staged interface has
-been implemented. Existing public behaviour and artifact contracts remain
-subject to their explicit compatibility policy.
+been implemented. See :doc:`specifications` for the scoped behavioral contracts
+and their delivery status. Existing public behaviour and artifact contracts
+remain subject to their explicit compatibility policy.
 
 .. _rhime-pipeline-checkpoints:
 
@@ -75,10 +76,11 @@ cache-update order together. State unsupported checkpoint routes explicitly.
 
 Current file-backed commands and their restrictions are documented in
 :doc:`../usage/staged_workflow` and :doc:`../usage/co2_model_family`.
-The reusable prepared/sample manifest interface in `PR 802
-<https://github.com/openghg/openghg_inversions/pull/802>`_ is a planned
-replacement, not the current common API. Existing routes still differ in
-retained-site policy and reuse checks. When bringing them into line with this
+The reusable recipe execution and prepared/sample handoffs in `PR 802
+<https://github.com/openghg/openghg_inversions/pull/802>`_ are a proposed
+replacement whose implementation remains outstanding at the 12 October 2026
+review. Check its current replacement proposal before adopting an interface.
+Existing routes still differ in retained-site policy and reuse checks. When bringing them into line with this
 design, demonstrate equivalent scientific inputs and products, not just shared
 helper calls. The sections below give the ownership and review criteria.
 

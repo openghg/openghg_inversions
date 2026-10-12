@@ -1,5 +1,7 @@
 # `run_rhime` Readability and Modifiability Plan
 
+> **Historical delivery record (status clarified 12 October 2026).** This roadmap records the readability programme and its original priorities, workstreams, and acceptance gates. It does not prescribe current production architecture or declare unfinished work delivered. The public selector and concrete recipe naming are delivered at the reviewed `devel` revision; later workflow/replay proposals retain their own review and implementation status. Current [development principles](../development/rhime_model_development.rst), [usage guidance](../usage/customising_rhime.rst), reviewed capability specifications, and [owning issues](README.md) supply their respective sources of truth.
+
 ## Public naming delivery alongside #764/#776
 
 The public selector is `run(..., model="standard")`, with concrete
@@ -13,7 +15,7 @@ recipe relocation or complete #802 route parity. Preserve procedural recipes
 and do not introduce a universal workflow engine.
 
 
-Status: approved delivery plan, P0 / highest project priority
+Recorded original status: approved delivery plan, P0 / highest project priority
 Date: 2026-08-15
 Owners: OpenGHG Inversions maintainers
 
