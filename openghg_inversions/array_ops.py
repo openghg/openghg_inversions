@@ -304,6 +304,20 @@ def to_dense(da: xr.DataArray) -> xr.DataArray:
     return da
 
 
+def jax_to_numpy(da: xr.DataArray) -> xr.DataArray:
+    """Convert JAX-backed data to NumPy, leaving other backends unchanged.
+
+    Args:
+        da: DataArray whose data may be backed by a JAX array.
+
+    Returns:
+        NumPy-backed DataArray for JAX input; otherwise the original DataArray.
+    """
+    if type(da.data).__module__.split(".", 1)[0] in {"jax", "jaxlib"}:
+        return da.copy(data=np.asarray(da.data))
+    return da
+
+
 T = TypeVar("T", xr.DataArray, xr.Dataset)
 
 

@@ -16,6 +16,7 @@ from openghg_inversions.array_ops import (
     expand_mapping,
     get_xr_dummies,
     iter_multi_index_level_slices,
+    jax_to_numpy,
     require_unique_index,
     same_index,
     select_gathered_data_array,
@@ -56,6 +57,29 @@ def test_to_dense_preserves_lazy_auxiliary_coordinates(sparse_payload: bool) -> 
     assert array.data is payload
     assert result.attrs == array.attrs
     assert result.encoding == array.encoding
+
+
+def test_jax_to_numpy_preserves_dataarray_metadata() -> None:
+    """Convert only JAX payloads while preserving xarray metadata and inputs."""
+    jnp = pytest.importorskip("jax.numpy")
+    array = xr.DataArray(
+        jnp.array([1.0, 2.0]),
+        dims="state",
+        coords={"state": ["north", "south"]},
+        name="flux",
+        attrs={"units": "kg"},
+    )
+    original_data = array.data
+
+    result = jax_to_numpy(array)
+
+    assert isinstance(result.data, np.ndarray)
+    assert result.dims == array.dims
+    assert result.name == array.name
+    assert result.attrs == array.attrs
+    np.testing.assert_array_equal(result.state, ["north", "south"])
+    np.testing.assert_array_equal(result.data, [1.0, 2.0])
+    assert array.data is original_data
 
 
 @pytest.mark.parametrize("return_sparse", [False, True])
