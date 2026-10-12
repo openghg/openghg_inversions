@@ -73,6 +73,13 @@ def combine_chain_draw(ds: XarrayObject, sample_dim: str = "draw") -> tuple[Xarr
     return combined, combined_dim
 
 
+def _normalize_jax_array(data: xr.DataArray) -> xr.DataArray:
+    """Convert JAX-backed statistic results to NumPy for xarray interoperability."""
+    if type(data.data).__module__.split(".", 1)[0] in {"jax", "jaxlib"}:
+        return data.copy(data=np.asarray(data.data))
+    return data
+
+
 @register_stat
 @add_suffix("quantile")
 @update_attrs("quantile_of")
@@ -323,4 +330,4 @@ def calculate_stats(ds: xr.Dataset, stats: Sequence[str] = ("mean", "quantiles")
             variable_stats.append(sf.func(samples, **sf_kwargs))
         stats_datasets.append(xr.merge(variable_stats))
 
-    return xr.merge(stats_datasets)
+    return xr.merge(stats_datasets).map(_normalize_jax_array)
