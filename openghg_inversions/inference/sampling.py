@@ -305,7 +305,11 @@ class RhimeSampler:
         model: pm.Model,
         variable_roles: Mapping[str, str] | None,
     ) -> dict[str, Any]:
-        """Resolve the effective prediction request before starting MCMC."""
+        """Resolve prediction names before MCMC, scoping roles to their model.
+
+        Alternate models use concrete names. For the sampled model, a missing
+        default ``y`` may resolve through an explicit concentration role.
+        """
         kwargs = dict(self.posterior_predictive_kwargs or {})
         kwargs.setdefault("model", model)
         if not self.sample_posterior_predictive:
@@ -317,11 +321,9 @@ class RhimeSampler:
             if isinstance(names, str):
                 names = [names]
             prediction_model = kwargs.get("model") or model
-            roles = dict(variable_roles or {})
+            roles = dict(variable_roles or {}) if prediction_model is model else {}
             if "y" not in prediction_model.named_vars and "concentration" in roles:
                 roles.setdefault("y", roles["concentration"])
-            if "concentration" not in prediction_model.named_vars and "y" in prediction_model.named_vars:
-                roles.setdefault("concentration", "y")
             resolved = [roles.get(name, name) for name in names]
             missing = sorted(set(resolved) - set(prediction_model.named_vars))
             if missing:

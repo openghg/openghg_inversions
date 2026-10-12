@@ -4816,8 +4816,18 @@ def test_rhime_sampler_resets_retained_draws_before_extending_predictive_groups(
         assert inference_data[group_name].attrs["burn"] == 1000
 
 
-@pytest.mark.parametrize("selection", [("y",), ("concentration",), ("y", "concentration")])
-@pytest.mark.parametrize("observed_name, roles", [("custom_y", {"concentration": "custom_y"}), ("y", None)])
+@pytest.mark.parametrize(
+    "selection, observed_name, roles",
+    [
+        (("y",), "custom_y", {"concentration": "custom_y"}),
+        (("concentration",), "custom_y", {"concentration": "custom_y"}),
+        (("y", "concentration"), "custom_y", {"concentration": "custom_y"}),
+        (("y",), "y", None),
+        (("concentration",), "y", {"concentration": "y"}),
+        (("y", "concentration"), "y", {"concentration": "y"}),
+        (("y",), "concentration", {"concentration": "concentration"}),
+    ],
+)
 def test_rhime_sampler_resolves_predictive_name_from_custom_model_roles(
     monkeypatch: pytest.MonkeyPatch,
     selection: tuple[str, ...],
@@ -4850,6 +4860,45 @@ def test_rhime_sampler_resolves_predictive_name_from_custom_model_roles(
     assert seen["var_names"] == [observed_name]
     assert seen["model"] is model
     assert "posterior_predictive" in result.children
+
+
+@pytest.mark.parametrize("names_in_kwargs", [False, True])
+@pytest.mark.parametrize("prediction_has_y", [False, True])
+def test_rhime_sampler_uses_concrete_names_from_alternate_prediction_model(
+    monkeypatch: pytest.MonkeyPatch,
+    names_in_kwargs: bool,
+    prediction_has_y: bool,
+) -> None:
+    """Concrete prediction names take precedence over roles from the sampled model."""
+    seen: dict[str, Any] = {}
+    trace = make_trace(posterior=xr.Dataset())
+    monkeypatch.setattr(inference_sampling.pm, "sample", lambda **kwargs: trace)
+
+    def fake_predictive(trace: xr.DataTree, **kwargs: Any) -> xr.DataTree:
+        seen.update(kwargs)
+        return make_trace(posterior_predictive=xr.Dataset())
+
+    monkeypatch.setattr(inference_sampling.pm, "sample_posterior_predictive", fake_predictive)
+    with pm.Model() as model:
+        pm.Normal("y", observed=0.0)
+    with pm.Model() as prediction_model:
+        pm.Normal("concentration", observed=0.0)
+        if prediction_has_y:
+            pm.Normal("y", observed=0.0)
+    predictive_kwargs: dict[str, Any] = {"model": prediction_model}
+    if names_in_kwargs:
+        predictive_kwargs["var_names"] = ["concentration"]
+    sampler = RhimeSampler(
+        sample_prior_predictive=False,
+        sample_posterior_predictive=True if names_in_kwargs else ("concentration",),
+        posterior_predictive_kwargs=predictive_kwargs,
+    )
+
+    sampler.sample(model, variable_roles={"concentration": "y"})
+
+    assert seen["model"] is prediction_model
+    assert seen["var_names"] == ["concentration"]
+    assert sampler.posterior_predictive_kwargs == predictive_kwargs
 
 
 def test_rhime_sampler_restores_registered_coords_after_predictive_steps(
@@ -4922,6 +4971,7 @@ def test_rhime_sampler_rejects_invalid_prior_counts_before_sampling(
         (("missing",), {}, None),
         (("y",), {"var_names": ["missing"]}, None),
         (("concentration",), {}, {"concentration": "missing"}),
+        (("concentration",), {}, None),
         (True, {"var_names": ["missing"]}, {}),
     ],
 )
@@ -4942,7 +4992,7 @@ def test_rhime_sampler_rejects_missing_effective_names_before_sampling(
         sample_posterior_predictive=selection,
         posterior_predictive_kwargs=predictive_kwargs,
     )
-    with pytest.raises(ValueError, match="posterior-predictive.*missing"):
+    with pytest.raises(ValueError, match="posterior-predictive variables are absent"):
         sampler.sample(model, variable_roles=roles)
 
 
