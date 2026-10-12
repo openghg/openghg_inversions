@@ -1,10 +1,10 @@
-# Spec Delta
+# co2-output-reconstruction Specification
 
 ## Purpose
 
 Defines the identity-bound affine native-scaling and flux value required to replay coherent-CO2 grid reconstruction after staged inference without reopening native preparation inputs.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Affine native-scaling and flux map
 The system SHALL expose one public affine native-flux value, `AffineFluxMap`, containing labelled native mean \(m\), signed reference flux \(F\), and covariance-natural prolongation \(U^*\). Given retained state \(\alpha\) and authoritative reference state \(\alpha_{ref}\), its public `state_to_native` and `state_to_flux` operations SHALL evaluate

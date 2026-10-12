@@ -1,4 +1,4 @@
-# RHIME configuration
+# rhime-configuration Specification
 
 ## Purpose
 
@@ -10,7 +10,7 @@ Serialization and INI writing are deferred to
 [#814](https://github.com/openghg/openghg_inversions/issues/814); they are not
 acceptance requirements for this implementation.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Complete format-neutral requested configuration
 
@@ -272,8 +272,9 @@ handoff SHALL retain its authoritative options and no-acquisition behavior.
 
 ### Requirement: Compatible public adapters and scientific choices
 
-Except for the former stage adapter, `resolve_rhime_config` and transitional
-old-location import removals, and the revised INI reader contract specified below, supported
+Except for the removed `prepare_rhime_inputs` convenience function, obsolete
+modern merged-cache options, former stage adapter, `resolve_rhime_config`,
+transitional old-location imports and revised INI reader contract specified below, supported
 scientific Python and CLI entry points SHALL retain their signatures, shorthand,
 override behavior and return contracts through adapters to the same semantic
 resolution or shared applicable site translation. Direct preparation/retrieval
@@ -331,6 +332,11 @@ preserve minimum-error `None`, integer and per-site mapping behavior.
 Modern acquisition SHALL NOT load or save merged-data caches. Historical
 six-tuple retrieval SHALL explicitly call the shared observation-error operation
 before returning or saving its established result.
+Prepared-input persistence SHALL remain available independently of acquisition
+persistence. Public selector construction SHALL use `SiteOptions.from_inputs`.
+The internal `inversion_data._site_options.convert_to_list` helper SHALL retain
+its calling and list-return contract through shared selector expansion without a
+warning; its old `get_data` import alias SHALL remain removed.
 
 #### Scenario: Error derivation precedes temporal reduction
 

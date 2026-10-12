@@ -25,7 +25,7 @@ approval or delivery. The map identifies both kinds of source.
 Current contracts and proposals
 --------------------------------
 
-The following map was reviewed against ``devel`` revision ``42a32f62`` on
+The following map was reviewed against ``devel`` revision ``7269f50f`` on
 12 October 2026. It covers RHIME selection, composition, configuration, and
 reconstruction boundaries; it is not a complete package API specification.
 
@@ -48,31 +48,35 @@ reconstruction boundaries; it is not a complete package API specification.
        :doc:`/usage/customising_rhime`. Covariance support remains recipe-specific.
    * - Requested configuration and preparation ownership
      - :download:`Resolve RHIME configuration
-       <../../openspec/changes/resolve-rhime-configuration/specs/rhime-configuration/spec.md>`
+       <../../openspec/specs/rhime-configuration/spec.md>`
      - Delivered configuration slice; :doc:`/usage/rhime_configuration`.
        Export/writer work remains with `issue 814
        <https://github.com/openghg/openghg_inversions/issues/814>`_.
    * - Retained-state scientific reconstruction
      - :download:`Retained-state reconstruction
-       <../../openspec/changes/unify-retained-state-reconstruction/specs/retained-state-reconstruction/spec.md>`
-     - Final reviewed scientific change; implemented routes and limitations in
+       <../../openspec/specs/retained-state-reconstruction/spec.md>`
+     - Delivered scientific capability; implemented routes and limitations in
        :doc:`/usage/retained_state_reconstruction`.
    * - Saved CO2 affine reconstruction
      - :download:`CO2 affine output reconstruction
-       <../../openspec/changes/persist-co2-affine-output-reconstruction/specs/co2-output-reconstruction/spec.md>`
-     - Final reviewed scientific change with an explicit owner-consent gate;
+       <../../openspec/specs/co2-output-reconstruction/spec.md>`
+     - Delivered scientific capability retaining its owner-consent requirement;
        :doc:`/usage/affine_flux_map` and :doc:`/usage/co2_model_family` describe
        current support and conditional uncertainty.
    * - Reusable recipe execution and prepared/sample handoffs
-     - Current replacement proposal in `PR 802
-       <https://github.com/openghg/openghg_inversions/pull/802>`_
-     - Proposed interfaces and configuration regrouping; implementation remains
-       outstanding at this review date. Current routes are documented in
+     - :download:`Reusable handoff proposal
+       <../../openspec/changes/replace-recipe-workflow-with-reusable-handoffs/proposal.md>`
+       in `PR 802 <https://github.com/openghg/openghg_inversions/pull/802>`_
+     - Approved implementation plan; full phase interfaces remain outstanding.
+       PR 843 implements a sampler/result slice without completing the handoff
+       delivery. Current routes are documented in
        :doc:`/usage/staged_workflow` and the family pages.
 
 The older :download:`workflow configuration proposal
-<../../openspec/changes/unify-recipe-workflow-configuration/proposal.md>` in this
-checkout is a planning record whose replacement is under review in PR 802.
+<../../openspec/changes/archive/2026-10-11-unify-recipe-workflow-configuration/proposal.md>`
+is archived as superseded, without promoting its requirements. Delivered
+configuration and reconstruction changes are also archived after reconciliation
+into their current specs. The replacement in PR 802 remains active.
 Neither proposal makes a common checkpoint interface a prerequisite for all
 recipes. Do not silently merge their pending behavior into a delivered baseline.
 

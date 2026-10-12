@@ -405,7 +405,7 @@ remain under <code class="docutils literal notranslate"><span class="pre">opensp
 approval or delivery. The map identifies both kinds of source.</p>
 <section id="current-contracts-and-proposals">
 <h2>Current contracts and proposals<a class="headerlink" href="#current-contracts-and-proposals" title="Link to this heading">#</a></h2>
-<p>The following map was reviewed against <code class="docutils literal notranslate"><span class="pre">devel</span></code> revision <code class="docutils literal notranslate"><span class="pre">42a32f62</span></code> on
+<p>The following map was reviewed against <code class="docutils literal notranslate"><span class="pre">devel</span></code> revision <code class="docutils literal notranslate"><span class="pre">7269f50f</span></code> on
 12 October 2026. It covers RHIME selection, composition, configuration, and
 reconstruction boundaries; it is not a complete package API specification.</p>
 <div class="pst-scrollable-table-container"><table class="table" id="id1">
@@ -433,32 +433,36 @@ reconstruction boundaries; it is not a complete package API specification.</p>
 <a class="reference internal" href="../usage/customising_rhime.html"><span class="doc">Customising RHIME</span></a>. Covariance support remains recipe-specific.</p></td>
 </tr>
 <tr class="row-even"><td><p>Requested configuration and preparation ownership</p></td>
-<td><p><a class="reference download internal" download="" href="../_downloads/199ec02d50789e694c8a63a7d70bec7f/spec.md"><code class="xref download docutils literal notranslate"><span class="pre">Resolve</span> <span class="pre">RHIME</span> <span class="pre">configuration</span></code></a></p></td>
+<td><p><a class="reference download internal" download="" href="../_downloads/79c713b960fe2b8d6f921406d647266f/spec.md"><code class="xref download docutils literal notranslate"><span class="pre">Resolve</span> <span class="pre">RHIME</span> <span class="pre">configuration</span></code></a></p></td>
 <td><p>Delivered configuration slice; <a class="reference internal" href="../usage/rhime_configuration.html"><span class="doc">Advanced RHIME configuration</span></a>.
 Export/writer work remains with <a class="reference external" href="https://github.com/openghg/openghg_inversions/issues/814">issue 814</a>.</p></td>
 </tr>
 <tr class="row-odd"><td><p>Retained-state scientific reconstruction</p></td>
-<td><p><a class="reference download internal" download="" href="../_downloads/c5068c27c963b84b66ed043fb23acbb7/spec.md"><code class="xref download docutils literal notranslate"><span class="pre">Retained-state</span> <span class="pre">reconstruction</span></code></a></p></td>
-<td><p>Final reviewed scientific change; implemented routes and limitations in
+<td><p><a class="reference download internal" download="" href="../_downloads/afb4eced312ab891f80bb9edc1215594/spec.md"><code class="xref download docutils literal notranslate"><span class="pre">Retained-state</span> <span class="pre">reconstruction</span></code></a></p></td>
+<td><p>Delivered scientific capability; implemented routes and limitations in
 <a class="reference internal" href="../usage/retained_state_reconstruction.html"><span class="doc">Linear retained-state reconstruction</span></a>.</p></td>
 </tr>
 <tr class="row-even"><td><p>Saved CO2 affine reconstruction</p></td>
-<td><p><a class="reference download internal" download="" href="../_downloads/12615c79916200d50b8e554c28c31f86/spec.md"><code class="xref download docutils literal notranslate"><span class="pre">CO2</span> <span class="pre">affine</span> <span class="pre">output</span> <span class="pre">reconstruction</span></code></a></p></td>
-<td><p>Final reviewed scientific change with an explicit owner-consent gate;
+<td><p><a class="reference download internal" download="" href="../_downloads/525d7a9c43da31f3dadebe4556ff140f/spec.md"><code class="xref download docutils literal notranslate"><span class="pre">CO2</span> <span class="pre">affine</span> <span class="pre">output</span> <span class="pre">reconstruction</span></code></a></p></td>
+<td><p>Delivered scientific capability retaining its owner-consent requirement;
 <a class="reference internal" href="../usage/affine_flux_map.html"><span class="doc">Affine native-flux reconstruction</span></a> and <a class="reference internal" href="../usage/co2_model_family.html"><span class="doc">CO₂ model family</span></a> describe
 current support and conditional uncertainty.</p></td>
 </tr>
 <tr class="row-odd"><td><p>Reusable recipe execution and prepared/sample handoffs</p></td>
-<td><p>Current replacement proposal in <a class="reference external" href="https://github.com/openghg/openghg_inversions/pull/802">PR 802</a></p></td>
-<td><p>Proposed interfaces and configuration regrouping; implementation remains
-outstanding at this review date. Current routes are documented in
+<td><p><a class="reference download internal" download="" href="../_downloads/b76571a82a11a34cd12aee762bba8061/proposal.md"><code class="xref download docutils literal notranslate"><span class="pre">Reusable</span> <span class="pre">handoff</span> <span class="pre">proposal</span></code></a>
+in <a class="reference external" href="https://github.com/openghg/openghg_inversions/pull/802">PR 802</a></p></td>
+<td><p>Approved implementation plan; full phase interfaces remain outstanding.
+PR 843 implements a sampler/result slice without completing the handoff
+delivery. Current routes are documented in
 <a class="reference internal" href="../usage/staged_workflow.html"><span class="doc">Staged RHIME workflows</span></a> and the family pages.</p></td>
 </tr>
 </tbody>
 </table>
 </div>
-<p>The older <a class="reference download internal" download="" href="../_downloads/95b100869d03e8b64d2fccdd158b7a7a/proposal.md"><code class="xref download docutils literal notranslate"><span class="pre">workflow</span> <span class="pre">configuration</span> <span class="pre">proposal</span></code></a> in this
-checkout is a planning record whose replacement is under review in PR 802.
+<p>The older <a class="reference download internal" download="" href="../_downloads/6d2d042600108f8356ca3bede996b508/proposal.md"><code class="xref download docutils literal notranslate"><span class="pre">workflow</span> <span class="pre">configuration</span> <span class="pre">proposal</span></code></a>
+is archived as superseded, without promoting its requirements. Delivered
+configuration and reconstruction changes are also archived after reconciliation
+into their current specs. The replacement in PR 802 remains active.
 Neither proposal makes a common checkpoint interface a prerequisite for all
 recipes. Do not silently merge their pending behavior into a delivered baseline.</p>
 </section>

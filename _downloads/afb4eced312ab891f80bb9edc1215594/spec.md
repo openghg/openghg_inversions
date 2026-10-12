@@ -1,12 +1,10 @@
-# Spec Delta
-
-> Status: Final. Approved by the specification owner on 2026-09-25.
+# retained-state-reconstruction Specification
 
 ## Purpose
 
 Defines how retained basis states reconstruct labelled native scaling and signed flux, with explicit source and execution semantics that align with affine reconstruction terminology.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Directional retained-state application
 The retained basis API SHALL expose `state_to_native` for the linear native-scaling action \(x=U_{bucket}\alpha\) and `state_to_flux` for the signed flux action \(f=F x\). The basis operator SHALL own the unweighted native action; the flux-bearing basis value SHALL expose both operations using its retained reference flux. Documentation and docstrings SHALL define the underlying retained-to-native map on first use as a *coarse-to-fine map (prolongation)* and call the requested output operation *reconstruction*. The public API SHALL use one map term rather than retaining a second public adapter name. These operations SHALL NOT change the affine map's \(m+U^*(\alpha-\alpha_{ref})\) equation or infer an affine reference state for the linear basis action.
