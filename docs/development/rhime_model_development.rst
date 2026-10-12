@@ -161,7 +161,7 @@ than an ambient context object or implicit forwarding through the pipeline.
 The current standard/multisector request and its compatibility adapters are
 described in :doc:`/usage/rhime_configuration`. That reference and the reviewed
 :download:`configuration change
-<../../openspec/changes/resolve-rhime-configuration/specs/rhime-configuration/spec.md>`
+<../../openspec/specs/rhime-configuration/spec.md>`
 own constructor and resolution details. The request precedes preparation;
 retained-site execution facts become known later. Frozen records do not imply
 recursive immutability of borrowed arrays or caller-owned containers.

@@ -1,5 +1,11 @@
 # Proposal
 
+> **Superseded:** Follow [replace-recipe-workflow-with-reusable-handoffs](../../replace-recipe-workflow-with-reusable-handoffs/proposal.md).
+> This accepted OPE-207 plan is retained as history. PR #798 is unmerged prototype
+> evidence; do not implement or sync this older contract as the current plan.
+> Archived on 11 October 2026 without syncing requirements. Archiving records
+> supersession, not implementation completion; no task list was created.
+
 > Implementation plan for OPE-207. This PR approves the plan; implementation and
 > validation remain outstanding.
 
