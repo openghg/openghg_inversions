@@ -1,14 +1,13 @@
-"""Serialization, path and content-digest mechanics shared by scientific workflows.
+"""Serialization and path mechanics shared by scientific workflows.
 
 Recipes own artifact schemas, required contents, validation policy and execution
-order. These functions only convert, write, locate and fingerprint artifacts.
+order. These functions only convert, write and locate artifacts.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
 from datetime import date, datetime
-from hashlib import sha256
 import json
 import os
 from pathlib import Path
@@ -17,7 +16,7 @@ from typing import Any
 import numpy as np
 import xarray as xr
 
-__all__ = ["artifact_path", "file_identity", "json_value", "write_json"]
+__all__ = ["artifact_path", "json_value", "write_json"]
 
 
 def json_value(value: Any) -> Any:
@@ -83,15 +82,6 @@ def artifact_path(path: Path) -> str:
         except ValueError:
             pass
     return str(path.resolve())
-
-
-def file_identity(path: Path) -> str:
-    """Read a file in bounded chunks and return its ``sha256:`` content digest."""
-    digest = sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return f"sha256:{digest.hexdigest()}"
 
 
 def _output_path(output_dir: Path, requested: str | Path | None, default_name: str) -> Path:

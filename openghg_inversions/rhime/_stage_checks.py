@@ -15,12 +15,11 @@ from openghg_inversions.serialization import load_trace, reset_serialisation_mul
 
 from ._stage_artifacts import (
     artifact_path as _artifact_path,
-    file_identity as _file_identity,
     write_json as _write_json,
     _output_path,
     _stage_output_directory,
 )
-from ._stage_authentication import _verify_sample_manifest
+from ._stage_authentication import _load_stage_manifest
 
 PREPARATION_CHECK_NAME = "prior-predictive-readiness"
 CONVERGENCE_CHECK_NAME = "sampler-convergence"
@@ -94,7 +93,11 @@ def diagnose_rhime_stage(
     max_divergences: int = 0,
     stage: str = "posterior",
 ) -> dict[str, Any]:
-    """Calculate the stable posterior convergence check."""
+    """Calculate convergence from the supplied posterior.
+
+    An optional sample manifest supplies descriptive run context, without
+    authenticating the posterior file.
+    """
     stage = _check_stage(stage)
     _validate_diagnostic_thresholds(
         max_rhat=max_rhat,
@@ -105,7 +108,7 @@ def diagnose_rhime_stage(
     posterior_path = Path(posterior).resolve()
     sample_contract = None
     if sample_manifest is not None:
-        sample_contract = _verify_sample_manifest(sample_manifest, posterior=posterior_path)
+        _, sample_contract = _load_stage_manifest(sample_manifest, stage="sample")
     idata = load_trace(posterior_path)
     summary = posterior_summary(idata["posterior"].to_dataset())
     destination = _stage_output_directory(output_dir)
@@ -227,16 +230,11 @@ def diagnose_rhime_stage(
                 "schema_version": 1,
                 "producer": "openghg_inversions",
                 "stage": "diagnose",
-                "configuration_identity": sample_contract["configuration_identity"],
+                "configuration_identity": sample_contract.get("configuration_identity"),
                 "ogi": installed_ogi_provenance(),
-                "input_identities": {"posterior": _file_identity(posterior_path)},
                 "artifacts": {
                     "diagnostics": _artifact_path(summary_path),
                     "check": _artifact_path(check_path),
-                },
-                "artifact_identities": {
-                    "diagnostics": _file_identity(summary_path),
-                    "check": _file_identity(check_path),
                 },
             },
         )

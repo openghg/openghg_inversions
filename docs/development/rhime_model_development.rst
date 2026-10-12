@@ -373,7 +373,7 @@ Configuration serialization and INI writing are deferred to
 Effective ``use_tracer=True`` remains unsupported and is rejected before data
 access. Omitted/false requests produce no tracer configuration field. Do not
 restore raw spellings or disabled fields to preserve old hashes; staged
-authentication and version compatibility belong to their existing owners.
+artifact formats and version compatibility belong to their existing owners.
 See :doc:`../usage/rhime_configuration` for configuration inspection and
 :doc:`../usage/staged_workflow` for the 0.7/0.8 artifact boundary.
 
@@ -553,9 +553,10 @@ File-backed staged workflows
 ``rhime.stages`` is the public facade for file-backed execution. The concrete
 standard and multisector staged workflows remain together in
 ``rhime._standard_stages`` so their preparation, sampling, and replay sequence
-can be read procedurally. Shared serialization, path, and digest mechanics
+can be read procedurally. Shared serialization and path mechanics
 belong to ``rhime._stage_artifacts``; manifest and saved-output binding
-authentication belongs to ``rhime._stage_authentication``. Each family owns its
+format checks belong to ``rhime._stage_authentication``. Stage records consume
+trusted, matched run files without content authentication. Each family owns its
 configuration identity and replay policy. Shared staged checks belong to
 ``rhime._stage_checks`` and retain their existing diagnostic calculations,
 thresholds, and check schemas. Family implementations import these owners

@@ -238,9 +238,8 @@ def test_prepare_is_independent_and_writes_inspectable_contract(
     prepared_path = Path(manifest["artifacts"]["prepared_inputs"])
     assert prepared_path.is_file()
     assert set(manifest["artifacts"]) == {"prepared_inputs"}
-    assert set(manifest["artifact_identities"]) == {"prepared_inputs"}
+    assert "artifact_identities" not in manifest
     assert not (tmp_path / "prepare" / "merged-data").exists()
-    assert manifest["artifact_identities"]["prepared_inputs"].startswith("sha256:")
     assert manifest["effective_configuration"]["preparation"]["basis_output_path"] == "/outside/basis"
     assert Path(manifest["manifest_path"]).is_file()
     persisted_manifest = json.loads(Path(manifest["manifest_path"]).read_text(encoding="utf-8"))
@@ -410,9 +409,11 @@ def test_prior_predictive_rejects_invalid_draw_counts(tmp_path: Path, draws: int
         )
 
 
-def test_preparation_manifest_authenticates_supplied_prepared_inputs(
+@pytest.mark.parametrize("contents", [None, "not a prepared NetCDF file"])
+def test_preparation_uses_ordinary_prepared_input_loader(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    contents: str | None,
 ) -> None:
     from openghg_inversions.rhime import _standard_stages as stages
 
@@ -434,19 +435,12 @@ def test_preparation_manifest_authenticates_supplied_prepared_inputs(
     setup = resolve_stage_setup(_params(), model="standard")
     preparation = prepare_rhime_stage(setup=setup, model="standard", output_dir=tmp_path / "prepare")
 
-    unrelated_inputs = prepared.inv_inputs.copy(deep=True)
-    unrelated_inputs["mf"].data[0] = 99.0
-    unrelated = RhimePreparedInputs(
-        inv_inputs=unrelated_inputs,
-        basis_functions=prepared.basis_functions,
-        site_metadata=prepared.site_metadata,
-    )
-    unrelated_path = tmp_path / "unrelated.nc"
-    unrelated.save(unrelated_path)
-
-    with pytest.raises(ValueError, match="content does not match"):
+    supplied_path = tmp_path / "supplied.nc"
+    if contents is not None:
+        supplied_path.write_text(contents)
+    with pytest.raises((OSError, ValueError)):
         stages._load_prepared(
-            unrelated_path,
+            supplied_path,
             setup=setup,
             model="standard",
             preparation_manifest=preparation["manifest_path"],
@@ -625,18 +619,15 @@ def test_diagnostics_reject_empty_check_stage_before_loading(tmp_path: Path) -> 
         )
 
 
-def test_diagnostics_authenticate_posterior_with_sample_manifest(tmp_path: Path) -> None:
+@pytest.mark.parametrize("model", ["standard", "co2"])
+def test_diagnostics_accept_digest_free_sample_manifest(tmp_path: Path, model: str) -> None:
     from openghg_inversions.rhime import _standard_stages as stages
 
     posterior = make_trace(
         posterior=xr.Dataset({"x": (("chain", "draw"), np.ones((2, 4)))})
     )
-    recorded_path = tmp_path / "recorded.nc"
     supplied_path = tmp_path / "supplied.nc"
-    save_trace(posterior, recorded_path)
-    changed = posterior.copy()
-    changed.posterior["x"].data[0, 0] = 2.0
-    save_trace(changed, supplied_path)
+    save_trace(posterior, supplied_path)
     manifest_path = tmp_path / "sample-manifest.json"
     stages._write_json(
         manifest_path,
@@ -644,16 +635,20 @@ def test_diagnostics_authenticate_posterior_with_sample_manifest(tmp_path: Path)
             "schema_version": 1,
             "producer": "openghg_inversions",
             "stage": "sample",
-            "artifact_identities": {"posterior": stages._file_identity(recorded_path)},
+            "effective_configuration": {"model": model},
         },
     )
 
-    with pytest.raises(ValueError, match="Posterior content does not match"):
-        diagnose_rhime_stage(
-            posterior=supplied_path,
-            sample_manifest=manifest_path,
-            output_dir=tmp_path / "diagnose",
-        )
+    result = diagnose_rhime_stage(
+        posterior=supplied_path,
+        sample_manifest=manifest_path,
+        output_dir=tmp_path / "diagnose",
+    )
+    assert result["measured_values"]["chains"] == 2
+    assert result["measured_values"]["draws_per_chain"] == 4
+    if model == "co2":
+        manifest = json.loads((tmp_path / "diagnose" / "diagnose-manifest.json").read_text())
+        assert manifest["configuration_identity"] is None
 
 
 @pytest.mark.parametrize("output_name", ["/tmp/outside-", "../outside-"])
@@ -788,7 +783,8 @@ def test_synthetic_staged_tracer_bullet(
     postprocess_manifest = Path(result.output_metadata["postprocess_manifest_path"])
     assert postprocess_manifest.is_file()
     postprocess_contract = json.loads(postprocess_manifest.read_text(encoding="utf-8"))
-    assert postprocess_contract["input_identities"] == sampled["artifact_identities"]
+    assert "input_identities" not in postprocess_contract
+    assert "artifact_identities" not in sampled
     assert postprocess_contract["effective_configuration"]["sampler"] == sample_contract[
         "effective_configuration"
     ]["sampler"]
@@ -814,10 +810,6 @@ def _saved_output_binding(tmp_path: Path) -> dict[str, Any]:
     )
     save_trace(trace, posterior_path)
     setup = resolve_stage_setup(_params(), model="standard")
-    identities = {
-        "prepared_inputs": stages._file_identity(prepared_path),
-        "posterior": stages._file_identity(posterior_path),
-    }
     prepare_manifest = tmp_path / "prepare-manifest.json"
     stages._write_json(
         prepare_manifest,
@@ -826,7 +818,6 @@ def _saved_output_binding(tmp_path: Path) -> dict[str, Any]:
             "schema_version": 1,
             "stage": "prepare",
             "configuration_identity": configuration_identity(setup, model="standard"),
-            "artifact_identities": {"prepared_inputs": identities["prepared_inputs"]},
         },
     )
     contract = OutputContract(
@@ -840,7 +831,6 @@ def _saved_output_binding(tmp_path: Path) -> dict[str, Any]:
         {
             "schema": "openghg_inversions.output_binding",
             "schema_version": 1,
-            "artifact_identities": identities,
             "output_contract": contract.to_dict(),
         },
     )
@@ -854,7 +844,6 @@ def _saved_output_binding(tmp_path: Path) -> dict[str, Any]:
             "configuration_identity": configuration_identity(setup, model="standard"),
             "effective_configuration": stages.effective_configuration(setup, model="standard"),
             "artifacts": {"output_binding": binding_path.name},
-            "artifact_identities": {**identities, "output_binding": stages._file_identity(binding_path)},
         },
     )
     return {
@@ -908,7 +897,9 @@ assert result.output_contract.variable_roles['flux_scale'] == 'x'
     assert loaded.model_metadata["builder"] == {"fixture": "distinct chains"}
 
 
-@pytest.mark.parametrize("corruption", ["missing", "changed", "swapped", "schema", "contract", "downgraded"])
+@pytest.mark.parametrize(
+    "corruption", ["missing_reference", "missing_file", "json", "contents", "schema", "contract", "downgraded"]
+)
 def test_new_replay_rejects_invalid_output_binding_without_graph_fallback(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, corruption: str
 ) -> None:
@@ -919,21 +910,22 @@ def test_new_replay_rejects_invalid_output_binding_without_graph_fallback(
     manifest = json.loads(manifest_path.read_text())
     binding_path = tmp_path / "output-binding.json"
     binding = json.loads(binding_path.read_text())
-    if corruption == "missing":
+    if corruption == "missing_reference":
         del manifest["artifacts"]["output_binding"]
+    elif corruption == "missing_file":
+        binding_path.unlink()
+    elif corruption == "json":
+        binding_path.write_text("{", encoding="utf-8")
     elif corruption == "downgraded":
         manifest["schema_version"] = 1
-    elif corruption == "changed":
+    elif corruption == "contents":
         binding_path.write_text("{}", encoding="utf-8")
     else:
-        if corruption == "swapped":
-            binding["artifact_identities"]["posterior"] = "sha256:another-posterior"
-        elif corruption == "schema":
+        if corruption == "schema":
             binding["schema_version"] = True
         else:
             binding["output_contract"]["state_dimension_mapping"] = {"trace": "region"}
         stages._write_json(binding_path, binding)
-        manifest["artifact_identities"]["output_binding"] = stages._file_identity(binding_path)
     stages._write_json(manifest_path, manifest)
 
     def forbidden(*args: Any, **kwargs: Any) -> None:
@@ -941,7 +933,7 @@ def test_new_replay_rejects_invalid_output_binding_without_graph_fallback(
 
     monkeypatch.setattr(stages, "_build_prepared_model", forbidden)
     monkeypatch.setattr(stages, "load_trace", forbidden)
-    with pytest.raises(ValueError):
+    with pytest.raises((ValueError, FileNotFoundError)):
         postprocess_rhime_stage(**arguments)
     assert not list(arguments["output_dir"].glob("*.nc"))
 
@@ -957,7 +949,6 @@ def test_legacy_sample_manifest_retains_explicit_graph_compatibility(
     manifest = json.loads(path.read_text())
     manifest["schema_version"] = 1
     del manifest["artifacts"]["output_binding"]
-    del manifest["artifact_identities"]["output_binding"]
     stages._write_json(path, manifest)
     calls = []
 

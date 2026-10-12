@@ -213,7 +213,7 @@ Record allowed dependencies by responsibility:
 * General reconstruction consumes scientific values and contracts without
   importing a recipe or requiring a live graph. Family-specific output
   interpretation stays with the family and calls shared output operations.
-* Shared artifact/path/digest helpers own mechanics. A recipe owns the artifact
+* Shared artifact/path helpers own mechanics. A recipe owns the artifact
   versions and scientific compatibility decisions it supports.
 * Neutral diagnostic calculations own their mathematical results; recipe or
   stage policy owns acceptance thresholds and reporting decisions.
