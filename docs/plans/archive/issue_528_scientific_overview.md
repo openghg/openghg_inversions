@@ -1,5 +1,7 @@
 # From native scientific model to trustworthy inversion
 
+> **Archive authority clarification (12 October 2026).** This superseded research/design record retains its original dated proposals and status claims. Current [development principles](../../development/rhime_model_development.rst), maintained [scientific explanation](../../usage/shared_scientific_concepts.rst), and reviewed capability specifications have separate roles; this archive does not define current behavior or architecture. See the [planning-record inventory](../README.md).
+
 ## Scientific and design overview for issue #528
 
 This document is written to work as either a short presentation or a
@@ -14,7 +16,7 @@ Status snapshot: OpenGHG Inversions `devel` at `7665d41`, 10 August 2026.
 > linked observation channels. Its semantic-model/compiler delivery proposal
 > is superseded by the production
 > [`run_rhime` readability plan](../run_rhime_readability_and_modifiability.md)
-> and [model-family expansion plan](../rhime_model_family_expansion.md).
+> and [model-family expansion plan](../rhime_model_family_expansion.md), both now historical delivery records.
 
 The central proposal is:
 

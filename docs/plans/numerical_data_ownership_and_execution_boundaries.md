@@ -1,11 +1,13 @@
 # Numerical data ownership and execution boundaries
 
-- **Status:** Working design guidance
+- **Status:** Dated design investigation; not maintained guidance
 - **Date:** 2026-08-12
 - **Scope:** NumPy-, xarray-, and Dask-backed scientific data; eager numerical
   kernels; PyMC preparation; serialization; and array-bearing Python classes
 - **Motivation:** Design discussion prompted by the native covariance work in
   PR #581 and similar ownership patterns elsewhere in the codebase
+
+> **Status clarification (12 October 2026):** This investigation retains its original discussion, proposed experiments, and dated implementation observations. It is not a second policy or capability specification. The maintained [numerical ownership explanation](../development/numerical_array_ownership.rst) separates the enduring concepts from this record's unadopted Zarr-cache hypothesis. Current behavior and task ownership must be checked against implementation, reviewed capability specifications, and the [planning-record inventory](README.md).
 
 ## Summary
 

@@ -1,571 +1,226 @@
 Developing RHIME models
 =======================
 
-Purpose
--------
-
 RHIME is maintained for atmospheric scientists who need to read, adapt, and
-cite the model code. Its production architecture therefore favours code
-locality and a visible scientific narrative over a generic model framework.
+cite the model code. Its development principles favour code locality and a
+visible scientific narrative over a generic model framework.
 
 The target style is a **procedural shell with a concept-oriented functional
 core**. The useful quality of the release-0.6 ``fixedbasisMCMC`` workflow was
 that a scientist could inspect one imperative recipe and then follow plainly
-named scientific functions. New RHIME code should provide that reading
-experience without restoring the old monolithic function, mutable dictionaries,
-parallel-list state, or implicit ``**kwargs`` forwarding.
+named scientific functions. Preserve that reading experience without restoring
+the old monolithic function, mutable dictionaries, parallel-list state, or
+implicit ``**kwargs`` forwarding.
 
-Start by reading a recipe as a **scientific pipeline with optional
-checkpoints**: acquire, prepare, build, sample, reconstruct, and write products.
-The runner makes that sequence visible; saved-stage entry points resume the
-same scientific operations from a declared handoff. The
-:ref:`pipeline and checkpoint architecture <rhime-pipeline-checkpoints>`
-explains phase ownership, reuse and current implementation limits. A recipe
-need only implement the entry points and products it actually supports.
+This page gives design and review guidance. Exact supported arguments, errors,
+compatibility periods, and artifact guarantees belong to their scoped
+capability specifications and usage references. See :doc:`specifications` for
+those sources, their delivery status, and the disposition of material formerly
+kept here. A design recommendation is not evidence that an API implements it.
 
-Core principles
----------------
+Start with the scientific recipe
+--------------------------------
 
-The following principles are requirements for production RHIME development:
+Read a recipe as a **scientific pipeline with optional checkpoints**: acquire,
+prepare, build, sample, reconstruct, and write products. The runner makes the
+sequence visible; a saved-stage entry point resumes supported operations from
+a declared handoff. The :ref:`pipeline and checkpoint architecture
+<rhime-pipeline-checkpoints>` explains these responsibilities. A prepared-input
+recipe need only implement the entry points and products it actually supports.
 
-* Top-level orchestration is procedural and readable from top to bottom.
-* Model construction appears in mathematical and scientific order.
-* Functions use scientifically meaningful names and explicit inputs.
-* Components remain directly callable. Labelled model components require the
-  small ``CoordRegistry`` attached by ``registered_model()``; configuration
-  remains an optional convenience.
-* Small duplication is acceptable when it keeps alternative scientific
-  workflows visible.
-* Dataclasses are reserved for concrete scientific concepts or durable
-  boundaries.
-* Configuration is normalized once at the boundary. Forward named values
-  directly or with an explicit ``config.select("name", ...)`` selection.
-* Tiny registries are appropriate for homogeneous families such as filters.
-* Private numerical helpers are acceptable, but reading the main path must not
-  require reconstructing a framework.
-* Scientists should be able to copy a runner or component and modify it
-  locally.
+The core principles for new RHIME work are:
 
-Preparation helpers must own a scientific operation, policy, meaningful handoff
-contract or necessary compatibility boundary. A uniform stage name, timing or
-argument renaming alone does not justify a second forwarding signature. Call
-basis construction directly and keep shared indexing utilities reusable.
-Shared preparation must not be named as if it belonged only to the standard
-model; model-specific policy stays visible beside its procedural recipe.
-
-Observation errors are preparation policy. Derive them before temporal
-filtering or aggregation, preserving supplied errors and borrowed datasets.
-Nested recipes prepare errors on both domains before filtering/time alignment.
-Historical retrieval uses that same operation before returning or saving its
-compatibility result. Acquisition replay remains separate from prepared-input
-persistence.
+* Keep top-level orchestration procedural and readable from top to bottom.
+* Construct the concrete model in mathematical and scientific order.
+* Use scientifically meaningful names, explicit inputs, and ordinary callable
+  components. Configuration is a convenience for selecting resolved values.
+* Accept small duplication when it keeps alternative scientific recipes clear.
+* Use dataclasses for concrete scientific concepts or durable handoffs.
+* Normalize configuration at its owning boundary and forward named values
+  explicitly, including an explicit ``config.select("name", ...)`` selection
+  where useful.
+* Keep helpers close to their scientific owner. Tiny registries can serve
+  homogeneous families such as filters without controlling the whole model.
+* Make local modification possible: a scientist can copy a runner or replace
+  one component without reconstructing a framework lifecycle.
 
 The review test is:
 
-  A scientist familiar with release-0.6 ``fixedbasisMCMC`` should be able to
-  read a runner, open one nearby concrete model function, and replace one
-  ordinary component whose interface explains what RHIME supplies. They should
-  not need to learn a compiler, dependency-injection system, manifest, or
-  framework lifecycle first.
-
-Use :doc:`architecture_principles` to assess module responsibilities,
-six-layer handoffs, and consumer interfaces. Different recipes may retain
-similar orchestration; equivalent execution routes through one recipe should
-share its scientific operations. Explicit interfaces for actual consumers are
-compatible with ordinary callable components and procedural runners.
-
-Model recipes
--------------
-
-A production **model recipe** contains a named procedural runner and a readable
-concrete model builder. A recipe may reuse preparation, numerical, sampling,
-and output functions, but it owns the scientific order in which they are
-composed.
-
-Near-term model development may produce several explicit recipes. This is an
-intentional way to deliver tested and citable scientific models before their
-actual similarities are known. Do not introduce a generic pipeline or model
-registry to control this proliferation in advance.
-
-Use these rules when extending RHIME:
-
-1. Add an option to an existing component when data preparation, state sharing,
-   observation channels, and outputs retain the same shape and meaning.
-2. Add a named model recipe when any of those structures changes. A repeated
-   orchestration sequence is acceptable.
-3. Extract a shared component after the same scientific equations and option
-   meanings occur in at least two production recipes.
-4. Keep callable extension points, such as ``likelihood_builder``, as useful
-   incubation and project-specific escape hatches.
-5. Graduate a recurring paper-facing variant into a tested, named in-tree
-   recipe so the released OpenGHG Inversions version and DOI identify its
-   implementation.
-6. Reconsider a registry or framework only after real model recipes demonstrate
-   stable repeated structure.
-
-Each public recipe should provide:
-
-* one obvious runner and concrete model builder;
-* a runnable configuration or example stored beside the recipe or in an
-  obviously parallel ``rhime/config`` layout;
-* focused tests of its equations and an end-to-end smoke test;
-* a description of inputs, outputs, assumptions, and limitations; and
-* the relevant scientific citation and model provenance.
-
-The current model-family expansion plan is recorded in
-``docs/plans/rhime_model_family_expansion.md``.
-
-Public names and model selection
---------------------------------
-
-Use ``run(..., model="standard")`` as the ordinary Python selector and
-``rhime run --model standard`` at the command line. Selection calls concrete
-procedural recipes; it does not impose a common acquisition or checkpoint
-contract on unrelated model families. CO2-family Python selection starts from
-its existing prepared inputs.
-
-Name concrete runners ``run_standard``, ``run_multisector`` and ``run_nested``.
-Use shared names such as ``MergedData``, ``PreparedInputs`` and
-``assemble_inputs`` for shared handoffs and preparation. Keep ``standard`` for
-standard-specific science. Established runner and shared handoff imports and the
-``openghg-inversions`` executable remain supported through the 0.9 compatibility
-cycle; see :doc:`/usage/cli`. Do not add redundant ``rhime`` qualifiers or move
-whole modules solely to make names uniform.
-
-Components and composite components
------------------------------------
-
-A component represents a concept used when discussing the scientific model.
-Examples include basis functions, a flux contribution, a baseline, pollution
-events, model-data mismatch error, aggregation error, and a likelihood.
-
-A component does not have to be mathematically atomic. A baseline may combine
-mapped boundary conditions, an offset, and fixed outer-domain fluxes. A
-likelihood may combine measurement error, aggregation error, model-data
-mismatch, pollution-event treatment, and a probability distribution. A
-multisector flux component may combine several forward terms that are all
-pollution contributions to one observation model.
-
-Prefer a normal function for a component. A composite function may call nearby
-smaller functions, but its public name, options, inputs, and output should
-describe the scientific concept. Keep a model-specific composite beside its
-recipe until another production recipe uses the same equations and meanings.
-
-Do not require inheritance, registration, a semantic graph, or a manifest to
-author an ordinary component. A dataclass is justified when it is itself a
-recognizable product, such as ``BasisFunctions`` or a prepared handoff joining
-two aligned observation channels. It is not justified solely to shorten a
-function signature.
-
-Likelihood, covariance, and sampler conventions
-------------------------------------------------
-
-A likelihood is a scientific component, not a metadata or strategy object.
-Implement an ordinary likelihood as a directly callable function whose
-signature names the completed model mean, observations, reported observation
-error, fixed aggregation error, and the mismatch parameters or alignment it
-actually uses. Keep covariance construction visible in the order in which its
-terms enter the observation model.
-
-Aggregation error is fixed scientific input, separate from reported
-measurement error and inferred model-data mismatch. It may be represented as
-diagonal, dense, or low-rank-plus-diagonal covariance. Each concrete recipe
-must state which representations it supports and select one explicitly before
-model construction. The likelihood must include the selected representation
-exactly once.
-
-Aggregation error and correlated mismatch models can make the observation
-covariance non-diagonal. When a sampled mismatch parameter changes that
-covariance, ordinary NUTS may repeatedly perform expensive factorizations.
-Sampler choice is therefore part of a concrete scientific recipe when the
-graph and update algorithm are genuinely coupled. Keep such a graph and
-sampler together in a named recipe and show their update order. Do not add a
-general sampler protocol or one runner per ordinary likelihood variation.
-
-A sampler-independent likelihood belongs behind the recipe's ordinary
-likelihood-selection seam. A specialized sampler deserves a separate runner
-only when it requires a matched graph, state-likelihood cache, or ordered
-``CompoundStep``. A component should not publish bespoke sampler-capability
-metadata merely to predict whether another PyMC backend supports its graph.
-Let PyMC or PyTensor reject unsupported operations during backend conversion.
-A recipe may reject an incompatible sampler setting when it constructs and
-owns a required step method itself.
-
-The current production home for covariance-aware likelihoods and optimized
-samplers is the CO2 model family because CO2 and CO2/O2 currently own
-aggregation-error preparation and the associated non-diagonal observation
-covariance. The general ``likelihood_builder`` seam remains useful for
-experiments and downstream customization. A repeatedly used, paper-facing CO2
-variant must also be selectable from the named CO2 recipe instead of existing
-only in Verification Games customization. Apply a CO2-only mismatch equation
-to the joint CO2/O2 stack only after its cross-tracer covariance, units, and
-parameter-sharing semantics have been stated explicitly.
-
-Fixed OU, IID site sigma, and scalar/global sigma are distinct scientific
-targets. Keep their names, equations, options, and tests distinct even when
-they reuse the same covariance preparation or numerical kernel. Stock PyMC is
-the correctness oracle and fallback for an optimized sampler; it need not be
-the efficient production route for every non-diagonal covariance.
-
-Use ``SigmaAlignment`` for site- or period-varying mismatch parameters. It is
-the single labelled value mapping latent sigma coordinates to observations.
-Derive it once at a visible preparation or model-composition boundary and pass
-it explicitly when components share it. Do not repeat site factorization,
-dummy encoding, label ordering, or observation lookup in individual
-likelihoods. A small component may encapsulate closely related preparation
-when doing so leaves its scientific meaning obvious; mechanical separation is
-not a goal.
-
-Use labelled xarray operations before positional indexing. Expand mappings
-keyed by site or state by selection against the canonical labelled coordinate,
-not by parallel lists or hand-written loops. Preserve labels until the named
-PyMC, SciPy, or other eager numerical boundary.
-
-Covariance matrices require specialized xarray and NetCDF handling because
-their two axes carry the same scientific labels but need distinct dimension
-names. Use ``dim`` for rows and ``dim_cov`` for columns and establish once,
-with ``validate_covariance_coordinates``, that both coordinates contain the
-same labels in the same order. This does not weaken ordinary coordinate
-registration. Conversely, a genuinely latent-only dimension may be added
-directly when no model data exists from which to register it; a bare
-``add_coords`` call is not intrinsically an error.
-
-Validate independently sourced observations, covariance representations,
-coordinates, units, mappings, cached artifacts, and user configuration at the
-boundary which owns them. After construction, trust package-created
-intermediates. Prefer ``xr.align(..., join="exact")``, labelled selection,
-Pint conversion, and the factorization or backend operation itself to repeated
-assertions. Add a bespoke check only when it protects a scientific policy or a
-real boundary those mechanisms cannot express and gives a materially better
-failure.
-
-Positive-support prior policy is general prior-building behavior. Normalize or
-reject unsupported positive priors in one helper beside ``parse_prior``; do
-not duplicate distribution allow-lists and support checks in each likelihood.
-
-Return the smallest object the caller needs. Return the observed tensor when
-that is the component's sole product. Return a small dataclass when several
-outputs form one recognizable scientific result that a caller consumes. Do
-not introduce a dataclass solely to carry provenance, sampler restrictions, or
-future flexibility.
-
-Trace provenance for a custom likelihood consists of safe callable identity
-and explicit JSON-compatible arguments unless an output consumer demonstrates
-a further requirement. Do not add likelihood-specific ``rhime_metadata``,
-variable-role maps, or redundant derived arrays by default. Scientific roles
-belong to the concrete model/output contract and should be added only for
-quantities postprocessing genuinely consumes.
-
-Public scientific citations belong in recipe documentation and should point
-to accessible scientific sources. Private repository paths, private commit
-hashes, and development-history citations do not belong in runtime model code,
-trace attributes, public API documentation, or test names. Record such
-implementation provenance in the pull request, issue, or internal parity
-record. Tests and released documentation must remain understandable without
-access to Verification Games.
-
-OpenGHG Inversions owns released, generally useful numerical components,
-likelihoods, samplers, and named production recipes. Verification Games owns
-calibration cases, experimental orchestration, campaign-specific configuration,
-and independent acceptance evidence. Verification Games should consume OGI
-through public APIs and remove its duplicate implementation after parity is
-established. A migration is not complete merely because the OGI implementation
-has merged; the corresponding Verification Games consumer and duplicate-code
-removal are compensating parts of the same cutover.
-
-Configuration ownership
------------------------
-
-Runtime scientific inputs and user configuration options are different
-contracts:
-
-* Function signatures should describe runtime values such as observations,
-  sensitivities, basis functions, priors, and existing PyMC terms.
-* Configuration documentation should group user choices by the scientific
-  component that owns them.
-
-For example, ``bc_prior`` and ``bc_freq`` belong to the baseline component,
-while ``sigma_prior``, ``sigma_freq``, and ``sigma_per_site`` belong to the
-model-data mismatch component. A component may publish a small explicit tuple
-or table of owned option names. Do not infer the user configuration schema from
-every argument in its runtime function signature.
-
-Configuration parsing should:
-
-* translate legacy spellings and normalize values once at the runner boundary;
-* reject unknown and unused options;
-* let each file frontend interpret its own sections and value syntax; and
-* pass resolved values explicitly to the functions that own them.
-
-Standard and multisector requests use ``rhime.params.RhimeConfig`` as the
-semantic boundary. ``read_rhime_ini`` only decodes an INI file into options;
-it has no recipe-mode or override arguments and does not construct configuration.
-Each runner combines winning overrides, extracts recipe-specific options and
-calls ``RhimeConfig.from_params`` once. This keeps shorthand editable until the
-final requested values are known. Preserve the existing first-occurrence rule
-for repeated INI keys without imposing it on other frontends.
-
-Historical fixedbasis conversion and deprecated RHIME spellings belong to the
-lightweight ``hbmcmc.compatibility`` module. ``RhimeConfig.from_params`` invokes
-the alias translator once before modern normalization and construction; runners
-do not repeat it. Translation emits ``DeprecationWarning`` only when it replaces
-or removes deprecated names or output values. Modern options remain quiet.
-The former ``resolve_rhime_config`` wrapper is removed;
-``params_from_config`` retains its historical dictionary/normalization contract
-as a deprecated adapter. Do not import the executable HBMCMC runner into modern
-configuration code. Existing default policy is unchanged by this ownership move.
-
-Keep accepted option names and defaults beside the preparation, model, output
-or sampling consumer that owns them. The configuration constructor composes
-those declared choices explicitly; do not infer options from runtime signatures
-or add a generic option registry. INI headings do not require matching classes.
-Complete runners accept an already resolved ``config`` and start scientific
-work without resolving it again. That input is exclusive with ``config_file``
-and raw configuration keywords. Compatibility entry points can therefore
-validate once before their own side effects and pass the same request onward.
-
-``RhimeConfig`` owns acquisition and preparation fields directly, alongside
-one public ``inversion_data.SiteOptions`` and the existing ``RhimeModelSpec``,
-``RhimeOutputSpec`` and ``inference.sampling.RhimeSampler``. The model
-specification describes scientific choices, the output specification describes
-final products, and the sampler holds settings and executes only when given a
-completed model. Do not add a separate preparation configuration or duplicate
-sampler settings class. Constructing configuration does not acquire scientific
-data, bind a model or execute inference.
-
-``SiteOptions.from_inputs`` and its small helpers establish complete aligned
-selectors independently of file syntax. Direct construction accepts resolved
-aligned values. Canonical acquisition consumes those values without another
-shorthand pass; retained-site selection selects every applicable selector
-together and returns a new record. ``RhimeMergedData.from_options`` performs
-fresh in-memory acquisition. The recipe first reuses compatible supplied data,
-then acquires fresh data when no handoff was supplied. Repeated sampling uses
-the durable prepared-input artifact. The deprecated
-``openghg_inversions.hbmcmc.legacy_data.data_processing_surface_notracer``
-wrapper preserves its six-tuple contract. Modern acquisition calls only the
-dataset owner.
-
-Keep the procedural runner's acquisition, preparation, model construction and
-sampling sequence visible. Pass needed resolved values directly or unpack an
-explicit ``config.select("name", ...)`` selection into the scientific function's
-named arguments. Selection creates a shallow dictionary with borrowed values;
-it does not inspect signatures, resolve options or define another schema.
-A private orchestration helper may accept the resolved configuration to coordinate
-several stages, while scientific components retain independently usable inputs.
-The named preparation functions no longer accept positional ``data_args`` maps.
-The stages and their scientific helpers live together in ``rhime.preparation``.
-The combined ``prepare_rhime_inputs`` adapter has been removed; compose the
-named stages directly when custom preparation is required.
-
-Apply raw overrides before resolution. Use ``dataclasses.replace`` only when the
-replacement fields are already mutually consistent; it does not recompute
-site expansion, date-dependent defaults or repeated model/output facts.
-Shared species/domain, source, BC-use and artifact-naming facts come from one
-resolution boundary; their small explicit duplication in independently usable
-model/output specifications does not justify a shared context hierarchy or
-repeated consistency checks.
-
-The requested configuration has no run specification. After preparation,
-derive ``RhimeRunSpec`` from retained sites/periods, requested date bounds,
-prepared layout and resolved model/output choices. It describes execution;
-``RhimeResult`` describes completed execution with prepared inputs, posterior
-and products. Internal setup bundles and their requested-site run projections
-are removed. Independent prepared-input APIs remain supported. Resolve known
-configuration defaults at the request boundary; conversions that require
-retained labels or numerical arrays remain with their scientific owner.
-Frozen records do not imply recursive immutability of existing mappings or
-samplers; preserve borrowed scientific arrays and caller-owned containers.
-Configuration serialization and INI writing are deferred to
-`Issue 814 <https://github.com/openghg/openghg_inversions/issues/814>`_.
-
-Effective ``use_tracer=True`` remains unsupported and is rejected before data
-access. Omitted/false requests produce no tracer configuration field. Do not
-restore raw spellings or disabled fields to preserve old hashes; staged
-authentication and version compatibility belong to their existing owners.
-See :doc:`../usage/rhime_configuration` for configuration inspection and
-:doc:`../usage/staged_workflow` for the 0.7/0.8 artifact boundary.
-
-The legacy ``hbmcmc/config`` template tree has been removed. Keep new RHIME
-templates in
-``openghg_inversions/rhime/config`` so the configuration layout mirrors the
-model-recipe layout. Choose a human-readable format appropriate to the recipe;
-new recipes do not need to use the legacy INI format. A complex recipe
-implemented as a subpackage may keep a small model-specific resolver in that
-subpackage. Migrate an existing template or format only with a compatibility
-plan; that migration is not a prerequisite for adding a new model.
-
-It is acceptable for a stage function to have a moderately long keyword-only
-signature. Do not replace honest parameters with an ambient context object or
-forward ``**kwargs`` through the scientific pipeline.
-
-Model input requirements
-------------------------
-
-Some components also require named arrays at the PyMC materialization boundary.
-When an ordinary function signature cannot describe those requirements early
-enough, use a small constant or pure function beside the component. This
-information may drive early validation and coordinated materialization.
-
-It is not a caller-authored manifest and must not determine execution order.
-Ordinary runners should not construct or thread a requirements object through
-the pipeline merely to satisfy a framework contract.
-
-Component registration owns cross-component coordinate consistency. Data
-passed through ``add_model_data`` / ``add_coords`` is checked by the model's
-``CoordRegistry``, so recipes should not repeat pairwise alignment checks for
-arrays that those components register. Validate scientific invariants at the
-component that owns them, and explicitly validate arrays whose labels are
-not shared through one registered dimension name, such as the second
-observation axis of a dense aggregation-error covariance. Construct direct and
-complete custom models with ``registered_model()``; ``add_coords`` rejects a
-model without that registry so the ownership rule is enforced at every
-labelled component boundary.
-
-Prepared-input inventory and ownership
---------------------------------------
-
-``RhimePreparedInputs`` is the durable, backend-neutral labelled-data boundary
-for the standard and multisector recipes. It may retain project-specific
-arrays that no current PyMC recipe uses. Concrete recipes declare only the
-names they select, materialize those arrays together, and pass them to
-components as honest named arguments.
-
-A scientifically distinct recipe may define a dedicated prepared-input type.
-Prefer composition of the reusable canonical boundary over inheritance when
-the recipe is not substitutable for the standard model.
-
-.. list-table:: Current ``inv_inputs`` inventory
-   :header-rows: 1
-   :widths: 18 20 32 30
-
-   * - Field or value
-     - Kind
-     - Current owner
-     - Model use
-   * - ``H``
-     - Reusable scientific product
-     - Sensitivity preparation or an external prepared-data producer
-     - Selected by the standard or multisector flux component as
-       ``flux_sensitivity``
-   * - ``H_bc``
-     - Reusable baseline sensitivity
-     - Baseline preparation; its current period expansion remains there
-     - Selected by the baseline component as ``boundary_sensitivity``
-   * - ``mf``, ``mf_error``
-     - Reusable observation data
-     - Observation preparation
-     - Passed as ``observations`` and ``observation_error`` to the likelihood
-   * - ``min_error``
-     - Reusable error-model product
-     - Currently calculated by preparation
-     - Selected as ``minimum_error`` by pollution-event mismatch or by another
-       built-in component which explicitly opts into the historical total-error
-       floor; custom likelihoods do not require it
-   * - ``aggregation_error_covariance``, ``low_rank_factor``,
-       ``diagonal_residual_variance``, ``aggregation_error_sd``
-     - Optional reusable fixed-error products
-     - Prepared data or an external scientific producer
-     - The selected likelihood representation is validated as one
-       ``AggregationError`` value
-   * - ``mf_repeatability``, ``mf_variability``, release coordinates,
-       column-prior factors, and arbitrary labelled extensions
-     - Durable diagnostics or recipe extensions
-     - Their scientific producer
-     - Not materialized unless a concrete recipe explicitly selects them
-   * - ``site_indicator``
-     - Legacy output/compatibility wiring
-     - ``RhimePreparedInputs`` derives and validates it from labelled
-       ``(site, time)`` observations
-     - Built-in likelihoods do not materialize it; the offset component may
-       still register its own model data
-   * - ``site_names``
-     - Output/compatibility wiring
-     - ``RhimePreparedInputs`` regenerates it from site metadata
-     - Not a PyMC input
-   * - ``SigmaAlignment``
-     - Cohesive model-only value
-     - The shared likelihood dispatcher derives it from ``mf.coords["site"]``,
-       time, and resolved model-error options
-     - Passed explicitly to the likelihood
-   * - Source/sector selection and state grouping
-     - Cohesive model-only mapping
-     - The multisector flux component validates source labels and derives its
-       state names beside the consuming recipe
-     - Never stored in a generic model-input context
-
-The current preparation ownership of ``min_error`` calculation and boundary
-period expansion is explicit rather than accidental. A concrete recipe does
-not materialize ``min_error`` unless its selected mismatch component owns the
-floor. Moving either preparation equation requires its own scientific parity
-change. An externally cached sensitivity,
-including a Verification Games ``fp_x_flux`` projection, can be installed as
-labelled ``H`` at this durable handoff. Its Dask graph and provenance remain
-borrowed until a selected flux recipe reaches the named PyMC materialization
-boundary.
-
-State and source selection
---------------------------
-
-Sector/source validation and state-vector grouping are genuine reusable
-scientific operations. They should be implemented as plainly named functions
-over labelled data and retained artifacts. They must remain independent of a
-compiler plan so nested-domain, multisector, and linked-tracer recipes can use
-them directly.
-
-Different resolutions, basis partitions, sources, and observation channels
-must retain explicit labels. Do not encode these meanings only in variable
-suffixes, array positions, or generated backend names.
-
-Scientific variable roles
--------------------------
-
-Postprocessing should identify quantities by a small backend-neutral scientific
-role, not by a PyMC variable name. Roles such as ``modelled_concentration``,
-``pollution_concentration``, ``baseline_concentration``, ``flux_scaling``, and
-``model_data_mismatch`` are analogous to project-level CF ``standard_name``
-values: they describe meaning while allowing each backend to use convenient
-local names.
-
-A model or backend adapter may provide a plain mapping from these roles to its
-actual variables. This is an output and postprocessing contract, not a semantic
-model or compiler manifest. Keep the vocabulary small, documented, and driven
-by real consumers. Document one scientific definition and the dimensional or
-unit expectations needed by consumers for each role. The role identifies a
-quantity; it does not prescribe a PyMC name, analytic-result field, storage
-layout, or execution step.
-
-Preparation should remain backend-neutral through labelled scientific inputs
-and coherent-reduction products. Cross an explicit boundary only when a
-backend-specific representation is required. PyMC and analytic-Gaussian
-builders should be able to share preparation and scientific role definitions
-without pretending that their internal values or execution lifecycles are the
-same.
-
-Numerical boundaries
---------------------
-
-The repository's xarray ownership rules still apply. Inputs are borrowed and
-may be Dask-backed. Copying, eager computation, densification, persistence, and
-serialization must happen at named boundaries and must not be hidden behind a
-property or model framework.
-
-Further guidance is in
-``docs/development/validation_and_xarray.rst``,
-``docs/plans/numerical_data_ownership_and_execution_boundaries.md`` and the
-active ``run_rhime`` plan in
-``docs/plans/run_rhime_readability_and_modifiability.md``.
-
-File-backed staged workflows
-----------------------------
-
-``rhime.stages`` is the public facade for file-backed execution. The concrete
-standard and multisector staged workflows remain together in
-``rhime._standard_stages`` so their preparation, sampling, and replay sequence
-can be read procedurally. Shared serialization, path, and digest mechanics
-belong to ``rhime._stage_artifacts``; manifest and saved-output binding
-authentication belongs to ``rhime._stage_authentication``. Each family owns its
-configuration identity and replay policy. Shared staged checks belong to
-``rhime._stage_checks`` and retain their existing diagnostic calculations,
-thresholds, and check schemas. Family implementations import these owners
-directly, without importing helpers from the public facade. These private
-owners can move together when complete workflows migrate to ``recipes``.
+  A scientist familiar with release-0.6 ``fixedbasisMCMC`` can read a runner,
+  open one nearby concrete model function, and replace one ordinary component
+  whose interface explains what RHIME supplies.
+
+Preparation helpers should own an operation, policy, meaningful handoff, or
+necessary compatibility boundary. A uniform stage name, timing, or argument
+renaming alone does not justify a second forwarding signature. Keep shared
+indexing reusable and model-specific preparation policy beside its recipe.
+Use :doc:`architecture_principles` to assess responsibilities and consumer
+interfaces, and :doc:`validation_and_xarray` to identify validation owners.
+
+Choose the smallest useful extension
+------------------------------------
+
+A named model recipe combines a procedural runner with a readable concrete
+model builder. It may reuse preparation, numerical, sampling, and output
+functions while keeping their scientific composition visible.
+
+Use these questions when extending RHIME:
+
+1. Can an existing component accept the option while preparation, state sharing,
+   observation channels, and output meaning remain the same?
+2. Does a change to those structures deserve a named recipe with its own
+   assumptions and tests? Similar short orchestration is acceptable.
+3. Do two production recipes use the same equations and option meanings?
+   Extract that demonstrated shared component.
+4. Is this still a project-specific experiment? An ordinary callable extension
+   point can provide a useful incubation path.
+5. Is a variant recurring in papers? A tested in-tree recipe lets the released
+   package version and DOI identify its implementation.
+
+Reconsider a general registry or framework only after real recipes show stable
+repeated structure. A public recipe should have an obvious runner and builder,
+a runnable example, equation tests and a smoke test, and documentation of its
+inputs, outputs, assumptions, limitations, and scientific citation.
+
+For current public selection and names, use :doc:`/usage/rhime` and
+:doc:`/usage/cli`, backed by the :download:`model-selection contract
+<../../openspec/specs/rhime-model-selection/spec.md>`. Selection dispatches to
+concrete recipes; their input contracts can differ. The
+:doc:`/usage/standard_model_family`, :doc:`/usage/nested_domain_model_family`,
+and :doc:`/usage/co2_model_family` pages describe implemented family support.
+
+Compose scientific concepts directly
+------------------------------------
+
+A component represents a concept used when discussing the model: basis
+functions, a flux contribution, a baseline, pollution events, model-data
+mismatch, aggregation error, or a likelihood. It need not be mathematically
+atomic. A baseline can combine boundary conditions, an offset, and fixed outer
+fluxes; a multisector component can combine several pollution contributions.
+
+Prefer a normal function. Its name, options, inputs, and result should explain
+the scientific concept. A composite can call nearby smaller functions; keep a
+model-specific composite beside its recipe until another production recipe
+uses the same equations and meanings. Inheritance, semantic graphs, and
+manifests are unnecessary prerequisites for authoring a component.
+
+Return the smallest result the consumer needs. An observed tensor can be the
+whole result of a likelihood. A small dataclass can join related scientific
+outputs, such as aligned observation channels or a coherent reduction. A
+shorter signature, speculative flexibility, or provenance alone does not
+justify a new domain object.
+
+For a concrete likelihood, show the completed mean and how measurement error,
+fixed aggregation error, and inferred mismatch enter its probability model.
+These quantities have different scientific meanings; the supported covariance
+representations belong to the concrete likelihood and recipe. Do not infer
+universal support from a common calling signature. Current equations and
+restrictions are explained in :doc:`/usage/rhime` and :doc:`/usage/co2_models`.
+
+Sampler choice becomes part of the recipe when the graph and update algorithm
+are coupled, for example through a state-likelihood cache or an ordered
+``CompoundStep``. Keep the graph, sampler, and update order together. An ordinary
+likelihood variation can use the existing callable seam without a new runner
+or a general sampler protocol. Fixed OU, IID site sigma, and global sigma are
+different scientific targets even when they reuse numerical kernels. Use a
+stock PyMC calculation as the correctness reference for an optimized route.
+
+Preserve labels until a named numerical boundary. Shared alignment values such
+as ``SigmaAlignment`` keep site/period interpretation close to the mismatch
+component; repeated factorization or parallel lists can hide that meaning.
+The :download:`model-composition contract
+<../../openspec/specs/rhime-model-composition/spec.md>` owns the registered
+coordinate and standard/multisector custom-likelihood interfaces. Follow
+:doc:`/usage/customising_rhime` for a concrete replacement example. Covariance
+axes still need their own scientific alignment; registering one dimension does
+not establish that an independently supplied matrix has the right second axis.
+
+Keep positive-support prior policy beside prior construction rather than
+repeating distribution allow-lists in each likelihood. Validate independently
+sourced values at the boundary that owns them, then trust locally constructed
+intermediates. Ordinary labelled alignment, Pint conversion, and the numerical
+operation itself often express the required check; add a custom assertion when
+it protects a scientific policy or gives a materially better boundary failure.
+
+Keep configuration with its scientific owner
+--------------------------------------------
+
+Runtime inputs and user choices are different interfaces. Function signatures
+describe observations, sensitivities, priors, and existing model terms.
+Configuration groups choices by the component that owns their meaning. For
+example, boundary-condition prior and period choices belong to the baseline;
+site/period mismatch choices belong to the error model.
+
+Keep accepted options and defaults beside those consumers. Compose them
+explicitly at resolution rather than inferring a schema from every runtime
+argument or introducing a generic option registry. Let each file frontend own
+its syntax, apply raw overrides before normalization, and forward resolved
+values explicitly. A moderately long keyword-only signature can be clearer
+than an ambient context object or implicit forwarding through the pipeline.
+
+The current standard/multisector request and its compatibility adapters are
+described in :doc:`/usage/rhime_configuration`. That reference and the reviewed
+:download:`configuration change
+<../../openspec/changes/resolve-rhime-configuration/specs/rhime-configuration/spec.md>`
+own constructor and resolution details. The request precedes preparation;
+retained-site execution facts become known later. Frozen records do not imply
+recursive immutability of borrowed arrays or caller-owned containers.
+
+Configuration grouping and reusable handoffs are being reconsidered in
+`PR 802 <https://github.com/openghg/openghg_inversions/pull/802>`_. Check its
+current proposal and implementation status before adopting those interfaces.
+This guide does not fix private module locations, configuration class layout,
+or future manifest structure. Existing templates and complete option listings
+belong with their recipes and usage references.
+
+Preserve scientific handoffs and output meaning
+-----------------------------------------------
+
+Prepared inputs join labelled, backend-neutral scientific products. A recipe
+selects the arrays it consumes and materializes related values together at the
+named model boundary. Extension or diagnostic variables need not become model
+inputs merely because they share a Dataset. A scientifically distinct recipe
+can compose reusable prepared values without pretending to be substitutable
+for another family.
+
+Moving a preparation equation, including observation-error derivation,
+minimum-error calculation, or boundary-period expansion, is a scientific
+change requiring its own parity evidence. The configuration contract records
+the current observation-error-before-filtering policy. Supported prepared-input
+contents and examples are in :doc:`/usage/rhime` and
+:doc:`/usage/customising_rhime`; checkpoint limitations are in
+:doc:`/usage/staged_workflow`.
+
+Source selection and state grouping should remain plainly named operations on
+labelled values and retained artifacts. Resolutions, partitions, sources, and
+observation channels need explicit labels. Variable suffixes or positions alone
+cannot preserve those scientific meanings.
+
+Postprocessing needs quantity meaning as well as arrays. Small scientific-role
+mappings can connect a model's local names to real output consumers without
+imposing a compiler or backend naming convention. Define the quantity, units,
+dimensions, and uncertainty scope with the output contract. The maintained
+:doc:`/usage/retained_state_reconstruction` and :doc:`/usage/affine_flux_map`
+pages explain current reconstruction and its limits; their reviewed capability
+changes are linked from :doc:`specifications`. A role name alone does not
+promise a storage schema or graph-free replay for every analysis.
+
+The numerical ownership rules apply throughout: inputs are borrowed and may be
+Dask-backed; copying, computation, densification, persistence, and serialization
+belong at visible boundaries. See :doc:`numerical_array_ownership` for the
+reasoning and :doc:`validation_and_xarray` for practical patterns.
+
+Record evidence and scientific ownership
+----------------------------------------
+
+Public recipe documentation should cite accessible scientific sources.
+Implementation-history paths and private commit hashes belong in issues,
+pull requests, or internal parity records. Released code, examples, and tests
+should remain understandable without private Verification Games access.
+
+OpenGHG Inversions owns released reusable components and production recipes;
+Verification Games owns calibration cases, experimental orchestration,
+campaign configuration, and independent acceptance evidence. A cutover includes
+the downstream consumer and removal of its duplicate implementation after
+parity, as well as merging the package implementation. Track that acceptance
+work in the owning issue rather than treating a historical plan as completion.
