@@ -243,12 +243,20 @@ class RhimeSampler:
         if not isinstance(self.sample_prior_predictive, bool | int | np.integer) or self.sample_prior_predictive < 0:
             raise ValueError("sample_prior_predictive must be a boolean or non-negative integer.")
         posterior_kwargs = self._posterior_predictive_options(model, variable_roles)
-        # Reserve prediction siblings after PyMC's per-chain streams.
+        # PyMC copies random_seed and spawns one child per chain. Copy here too
+        # so spawning prediction streams cannot advance a caller-owned RNG.
         root_rng = get_random_generator(sample_kwargs.get("random_seed"), copy=True)
+        # Skip those chain children; the next two are prediction siblings.
+        # For two chains: [chain0, chain1, prior, posterior_predictive]. Spawn
+        # both even if prior prediction is disabled, keeping the latter fixed.
         prior_rng, posterior_rng = root_rng.spawn(self.chains + 2)[-2:]
+        # An explicit posterior seed wins, including None (unseeded prediction).
         posterior_kwargs.setdefault("random_seed", posterior_rng)
         posterior_seed = posterior_kwargs["random_seed"]
         if self.sample_posterior_predictive and posterior_seed is not None:
+            # Validate before MCMC and copy mutable RNGs. Normalize sequences
+            # to one RNG: posterior prediction otherwise treats them as a list
+            # of per-chain seeds. Keep integers unchanged for native semantics.
             normalized_seed = get_random_generator(posterior_seed, copy=True)
             if not isinstance(posterior_seed, int | np.integer):
                 posterior_kwargs["random_seed"] = normalized_seed
