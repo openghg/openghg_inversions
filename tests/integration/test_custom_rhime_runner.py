@@ -94,6 +94,13 @@ def test_custom_runner_uses_supported_stages_for_acquisition(
         calls.append("resolve")
         return config
 
+    resolved_basis = {"landsea_classes": object(), "outer_regions": None}
+
+    def resolve_basis_inputs(actual: RhimeConfig) -> dict[str, Any]:
+        assert actual is config
+        calls.append("basis-inputs")
+        return resolved_basis
+
     def retrieve(**kwargs: Any) -> Any:
         assert kwargs["site_options"] is config.site_options
         assert kwargs["split_by_sectors"] is False
@@ -111,6 +118,8 @@ def test_custom_runner_uses_supported_stages_for_acquisition(
         assert kwargs["site_data"] is filtered.site_data
         assert kwargs["domain"] == config.domain
         assert kwargs["nbasis"] == config.nbasis
+        assert kwargs["landsea_classes"] is resolved_basis["landsea_classes"]
+        assert kwargs["output_path"] == config.basis_output_path
         calls.append("basis")
         return basis
 
@@ -177,9 +186,10 @@ def test_custom_runner_uses_supported_stages_for_acquisition(
 
     monkeypatch.setattr(custom_runner, "read_rhime_ini", parse_config)
     monkeypatch.setattr(custom_runner.RhimeConfig, "from_params", classmethod(resolve))
+    monkeypatch.setattr(custom_runner, "resolve_basis_inputs", resolve_basis_inputs)
     monkeypatch.setattr(custom_runner.RhimeMergedData, "from_options", retrieve)
     monkeypatch.setattr(custom_runner, "filter_observations", filter_observations)
-    monkeypatch.setattr(custom_runner, "make_basis_functions", build_basis)
+    monkeypatch.setattr(custom_runner, "prepare_basis", build_basis)
     monkeypatch.setattr(custom_runner, "build_sensitivities", build_sensitivities)
     monkeypatch.setattr(custom_runner, "assemble_rhime_inputs", assemble)
     monkeypatch.setattr(
@@ -198,6 +208,7 @@ def test_custom_runner_uses_supported_stages_for_acquisition(
     assert result is expected_result
     assert calls == [
         "resolve",
+        "basis-inputs",
         "retrieve",
         "filter",
         "basis",

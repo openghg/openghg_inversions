@@ -2,7 +2,12 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from openghg_inversions.basis.algorithms._weighted import bucket_split_landsea_basis, load_landsea_indices
+from openghg_inversions.basis.algorithms._weighted import bucket_split_landsea_basis
+from openghg_inversions.basis.compatibility import load_landsea_indices
+from openghg_inversions.basis.support import (
+    load_basis_support_map,
+    packaged_basis_support_path,
+)
 
 
 def _assert_labels_do_not_cross_classes(labels: np.ndarray, classes: np.ndarray) -> None:
@@ -14,7 +19,8 @@ def _assert_labels_do_not_cross_classes(labels: np.ndarray, classes: np.ndarray)
 
 
 def test_centralasia_landsea_grid_is_packaged():
-    assert load_landsea_indices("CENTRALASIA").shape == (310, 330)
+    path = packaged_basis_support_path("landsea", "CENTRALASIA")
+    assert load_basis_support_map(path, "country").shape == (310, 330)
 
 
 def test_weighted_landsea_basis_labels_do_not_cross_landsea_classes(tmp_path):
@@ -42,7 +48,7 @@ def test_weighted_landsea_basis_labels_do_not_cross_landsea_classes(tmp_path):
         grid,
         bucket=12.0,
         domain="TEST",
-        country_directory=str(tmp_path),
+        landsea_indices=load_basis_support_map(tmp_path / "country-land-sea_TEST.nc", "country").to_numpy(),
     )
 
     assert labels.shape == grid.shape
@@ -51,8 +57,8 @@ def test_weighted_landsea_basis_labels_do_not_cross_landsea_classes(tmp_path):
 
 
 def test_weighted_basis_requires_a_matching_domain_landsea_file() -> None:
-    with pytest.raises(FileNotFoundError, match="basis_algorithm='quadtree'"):
-        load_landsea_indices("NESTED-DOMAIN-WITHOUT-A-PACKAGED-MASK")
+    with pytest.raises(FileNotFoundError, match="NESTED-DOMAIN-WITHOUT-A-PACKAGED-MASK"):
+        packaged_basis_support_path("landsea", "NESTED-DOMAIN-WITHOUT-A-PACKAGED-MASK")
 
 
 def test_weighted_basis_rejects_landsea_shape_mismatch(tmp_path) -> None:
@@ -65,7 +71,7 @@ def test_weighted_basis_rejects_landsea_shape_mismatch(tmp_path) -> None:
             np.ones((3, 3)),
             bucket=1.0,
             domain="NESTED",
-            country_directory=str(tmp_path),
+            landsea_indices=load_basis_support_map(tmp_path / "country-land-sea_NESTED.nc", "country").to_numpy(),
         )
 
 
@@ -77,7 +83,7 @@ def test_weighted_basis_accepts_pre_aligned_subdomain_landsea_mask(monkeypatch) 
         raise AssertionError("A supplied land/sea mask must not trigger full-domain loading.")
 
     monkeypatch.setattr(
-        "openghg_inversions.basis.algorithms._weighted.load_landsea_indices",
+        "openghg_inversions.basis.support.load_basis_support_map",
         fail_load,
     )
 
@@ -90,3 +96,12 @@ def test_weighted_basis_accepts_pre_aligned_subdomain_landsea_mask(monkeypatch) 
 
     assert labels.shape == grid.shape
     _assert_labels_do_not_cross_classes(labels, landsea)
+
+
+def test_compatibility_landsea_reader_preserves_selected_directory(tmp_path) -> None:
+    """Historical directory selection resolves the same class values."""
+    classes = np.array([[0, 1], [1, 0]])
+    xr.Dataset({"country": (("lat", "lon"), classes)}).to_netcdf(
+        tmp_path / "country-land-sea_TEST.nc"
+    )
+    np.testing.assert_array_equal(load_landsea_indices("TEST", str(tmp_path)), classes)

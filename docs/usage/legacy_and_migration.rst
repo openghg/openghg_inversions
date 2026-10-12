@@ -184,7 +184,7 @@ the retained RHIME abstractions:
      - ``RhimePreparedInputs``
      - Backend-neutral prepared observations and sensitivities
    * - ``basis_functions_wrapper``
-     - ``make_basis_functions``
+     - ``prepare_basis``
      - Call ``BasisFunctions.sensitivity`` when applying the retained basis;
        complete inversions should normally use ``run_rhime``
    * - ``add_inferpymc_likelihood_component``
@@ -286,6 +286,10 @@ now live in ``openghg_inversions.hbmcmc.legacy_basis``. The previous canonical
 module paths and exports have been removed.
 
 Modern acquisition uses ``RhimeMergedData.from_options`` or direct dataset
-construction. Modern basis functions accept explicit ``site_data`` and
-``flux_data`` datasets. For reusable RHIME runs, save ``RhimePreparedInputs``;
+construction. Modern ``prepare_basis`` accepts explicit ``site_data`` and ``flux_data``
+datasets, exact ``basis_path`` / ``output_path`` artifacts, and resolved
+scientific map arrays. Historical case/glob discovery, directory-based filename
+construction, flat-file adaptation and explicit legacy writing are isolated in
+``basis.compatibility``. See :doc:`rhime_configuration` for the 0.8 modern basis
+artifact default, explicit legacy opt-in, and migration examples. For reusable RHIME runs, save ``RhimePreparedInputs``;
 legacy merged-data files are a separate explicit utility workflow.

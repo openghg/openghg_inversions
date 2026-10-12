@@ -103,6 +103,7 @@ value and its unchanged version-1 schema live in
    openghg_inversions.inversion_data.MergedData.from_options
    openghg_inversions.inversion_data.MergedData.validate_for_preparation
    openghg_inversions.inversion_data.MergedData.with_site_data
+   openghg_inversions.rhime.preparation.resolve_basis_inputs
    openghg_inversions.rhime.filter_observations
    openghg_inversions.rhime.prepare_observation_errors
    openghg_inversions.rhime.build_sensitivities
@@ -144,6 +145,10 @@ executed layout example and :doc:`affine native-flux reconstruction
    openghg_inversions.basis.AffineFluxMapArtifact
    openghg_inversions.basis.save_affine_flux_map
    openghg_inversions.basis.load_affine_flux_map
+   openghg_inversions.basis.prepare_basis
+   openghg_inversions.basis.packaged_basis_support_path
+   openghg_inversions.basis.load_basis_support_map
+   openghg_inversions.basis.load_basis_partition
    openghg_inversions.basis.make_basis_functions
    openghg_inversions.basis.load_basis_functions
    openghg_inversions.basis.basis_functions_from_flat_basis
@@ -225,6 +230,7 @@ and samples; it does not write products. See
 .. autosummary::
    :nosignatures:
 
+   openghg_inversions.rhime.outputs.validate_output_resources
    openghg_inversions.postprocessing.inversion_output.InversionOutput
    openghg_inversions.postprocessing.contracts.OutputContract
    openghg_inversions.postprocessing.output_views.make_inversion_output

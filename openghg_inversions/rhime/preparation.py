@@ -53,6 +53,7 @@ __all__ = [
     "build_sensitivities",
     "filter_observations",
     "with_prepared_rhime_sites",
+    "resolve_basis_inputs",
 ]
 
 
@@ -396,3 +397,70 @@ def _validate_multisector_sensitivity_sources(
 # Established public imports retained through the 0.9 compatibility cycle.
 assemble_rhime_inputs = assemble_inputs
 with_prepared_rhime_sites = with_prepared_sites
+
+
+def resolve_basis_inputs(config: Any) -> dict[str, Any]:
+    """Resolve exact scientific inputs before acquisition.
+
+    Configuration resolution itself stays data-free. This application boundary
+    reads selected maps and partitions, checks retained paths, and consumes
+    deprecated case/directory choices once. Numerical preparation receives only
+    the resulting exact artifact path and borrowed labelled arrays. Reporting
+    resources are validated separately by the output owner.
+
+    Args:
+        config: Resolved :class:`~openghg_inversions.rhime.params.RhimeConfig`.
+            Explicit retained artifacts and partition files bypass algorithm
+            support defaults; explicitly selected support files are still read.
+
+    Returns:
+        Keyword arguments for :func:`openghg_inversions.basis.prepare_basis`:
+        an optional exact ``basis_path`` or eager ``basis_partition``, plus
+        eager support maps or None. Retained artifacts are checked for existence
+        here and loaded later by basis preparation. The request is not mutated.
+
+    Raises:
+        ValueError: If modern and historical selections conflict or both saved
+            input forms are supplied.
+        FileNotFoundError: If a selected artifact or resource is missing.
+        KeyError: If a map or partition lacks its required variable.
+
+    Warns:
+        DeprecationWarning: When historical case/directory options are consumed.
+    """
+    from openghg_inversions.basis.support import load_basis_partition, resolve_basis_support_maps
+
+    if config.basis_path is not None and config.basis_partition_path is not None:
+        raise ValueError("Supply either basis_path or basis_partition_path.")
+    selected: dict[str, Any] = {}
+    landsea_path = config.landsea_path
+    outer_path = config.outer_regions_path
+    if config.fp_basis_case is not None or config.basis_directory is not None or config.country_directory is not None:
+        from openghg_inversions.basis.compatibility import resolve_legacy_basis_inputs
+
+        if config.fp_basis_case is not None and (config.basis_path is not None or config.basis_partition_path is not None):
+            raise ValueError("Do not combine fp_basis_case with an explicit basis input.")
+        selected = resolve_legacy_basis_inputs(
+            **config.select("domain", "fp_basis_case", "basis_directory", "country_directory", "outer_regions_path"),
+        )
+        if landsea_path is not None and "landsea_path" in selected:
+            raise ValueError("Do not combine country_directory with landsea_path.")
+        legacy_landsea_path = selected.pop("landsea_path", None)
+        if config.basis_algorithm == "weighted" and not ("basis_path" in selected or "basis_partition" in selected):
+            landsea_path = legacy_landsea_path or landsea_path
+        legacy_outer_path = selected.pop("outer_regions_path", None)
+        if legacy_outer_path is not None and (outer_path is not None or config.fix_basis_outer_regions):
+            outer_path = legacy_outer_path
+    if config.basis_path is not None:
+        selected["basis_path"] = config.basis_path
+    if config.basis_partition_path is not None:
+        selected["basis_partition"] = load_basis_partition(config.basis_partition_path)
+    if selected.get("basis_path") is not None and not Path(selected["basis_path"]).exists():
+        raise FileNotFoundError(selected["basis_path"])
+    loading = "basis_path" in selected or "basis_partition" in selected
+    selected.update(resolve_basis_support_maps(
+        domain=config.domain, basis_algorithm=None if loading else config.basis_algorithm,
+        fix_outer_regions=config.fix_basis_outer_regions and not loading,
+        landsea_path=landsea_path, outer_regions_path=outer_path,
+    ))
+    return selected

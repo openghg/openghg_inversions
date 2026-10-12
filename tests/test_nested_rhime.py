@@ -465,7 +465,10 @@ def test_cli_run_rhime_nested_passes_config(monkeypatch, tmp_path: Path) -> None
 
 
 @pytest.mark.parametrize("deprecated", [False, True])
-def test_nested_preparation_uses_native_inner_domain_and_safe_basis_default(monkeypatch, capsys, deprecated) -> None:
+@pytest.mark.parametrize("output_format", ["none", "basic", "paris"])
+def test_nested_preparation_uses_native_inner_domain_and_safe_basis_default(
+    monkeypatch, capsys, deprecated, output_format,
+) -> None:
     basis = _basis([50.0], [-2.0], np.array([[1]]))
     prepared = _prepared(
         times=["2019-01-01T00:00"],
@@ -485,7 +488,7 @@ def test_nested_preparation_uses_native_inner_domain_and_safe_basis_default(monk
             "use_bc": True,
             "basis_algorithm": "weighted",
             "nbasis": 100,
-            "output_format": "none",
+            "output_format": output_format,
         }, multisector=False)
     retrieval_args: list[dict[str, object]] = []
     preparation_configs: list[rhime_params.RhimeConfig] = []
@@ -495,7 +498,7 @@ def test_nested_preparation_uses_native_inner_domain_and_safe_basis_default(monk
         retrieval_args.append(kwargs)
         return merged
 
-    def fake_prepare(domain_merged, *, config, allow_empty_inner_region=False):
+    def fake_prepare(domain_merged, *, config, allow_empty_inner_region=False, basis_support_maps=None):
         assert domain_merged.sites == ("TAC",)
         preparation_configs.append(config)
         return prepared
@@ -608,7 +611,7 @@ def test_nested_preparation_routes_automatic_basis_budget(monkeypatch) -> None:
         )
         return from_legacy_fp_all(fp_all={"TAC": dataset}, site_options=_site_options())
 
-    def fake_prepare(domain_merged, *, config, allow_empty_inner_region=False):
+    def fake_prepare(domain_merged, *, config, allow_empty_inner_region=False, basis_support_maps=None):
         preparation_configs.append(config)
         return prepared
 
@@ -860,11 +863,13 @@ def test_make_nested_inversion_outputs_builds_per_domain_views(retain_graph: boo
 def test_nested_latest_paris_output_writes_index_as_unlimited_dimension(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    europe_country_file: Path,
 ) -> None:
     """Nested latest concentration files preserve their index-based time axis."""
     run_spec = _run_spec()
     output_spec = RhimeOutputSpec(
         output_format="paris",
+        country_file=str(europe_country_file),
         output_path=str(tmp_path),
         output_name="nested-test",
         save_inversion_output=False,

@@ -31,6 +31,27 @@ from openghg_inversions.serialization import save_trace
 from openghg_inversions.utils import ncdf_encoding, write_netcdf_preserving_bounds_attrs
 
 
+def validate_output_resources(output_spec: RhimeOutputSpec) -> None:
+    """Check country reporting resources without creating products or paths.
+
+    Any explicitly selected ``country_file`` must be an existing file, even
+    when the requested output format does not use it. ``basic`` and ``paris``
+    outputs require an explicit country file. This check reads filesystem
+    metadata only; it does not open or validate the file contents.
+
+    Args:
+        output_spec: Resolved output choices. The specification is not mutated.
+
+    Raises:
+        FileNotFoundError: If the selected country file is missing or is a directory.
+        ValueError: If country reporting is requested without a country file.
+    """
+    if output_spec.country_file is not None and not Path(output_spec.country_file).is_file():
+        raise FileNotFoundError(output_spec.country_file)
+    if output_spec.output_format in ("basic", "paris") and output_spec.country_file is None:
+        raise ValueError("country_file must be supplied for country reporting outputs.")
+
+
 @dataclass
 class RhimeResult:
     """Complete result of a concrete RHIME recipe, including coherent CO2.
@@ -339,8 +360,13 @@ def make_standard_rhime_outputs(
         prepared: Retained canonical inputs and basis functions.
         compatibility_output_chain: Optional zero-based chain index used only
             for ``run_hbmcmc`` derived-output compatibility.
+
+    Raises:
+        ValueError: If country reporting is requested without a country file.
+        FileNotFoundError: If a selected country file is missing or is a directory.
     """
     output_spec = result.output_spec
+    validate_output_resources(output_spec)
     run_spec = result.run_spec
     model_spec = result.model_spec
     if output_spec.output_format == "none":
@@ -476,8 +502,13 @@ def make_multisector_rhime_outputs(
     Args:
         result: Sampled multisector result receiving requested products.
         prepared: Retained source-resolved inputs and basis functions.
+
+    Raises:
+        ValueError: If country reporting is requested without a country file.
+        FileNotFoundError: If a selected country file is missing or is a directory.
     """
     output_spec = result.output_spec
+    validate_output_resources(output_spec)
     if output_spec.output_format == "none":
         return
 

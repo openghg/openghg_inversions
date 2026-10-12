@@ -5,7 +5,7 @@ Mainly for creating fake data.
 
 from __future__ import annotations
 
-from openghg_inversions.basis import make_basis_functions
+from openghg_inversions.basis import prepare_basis
 
 import numpy as np
 import pandas as pd
@@ -231,6 +231,7 @@ def prepare_inputs(**params):
 
     config = RhimeConfig.from_params({"output_format": "none", **params},
                                      multisector=params.get("split_by_sectors", False))
+    basis_inputs = preparation.resolve_basis_inputs(config)
     merged = RhimeMergedData.from_options(**config.select(
         "site_options", "species", "domain", "start_date", "end_date",
         "flux_sources", "split_by_sectors", "bc_store", "obs_store", "footprint_store",
@@ -239,17 +240,16 @@ def prepare_inputs(**params):
     ))
     merged = preparation.prepare_observation_errors(merged, averaging_error=config.averaging_error)
     filtered = preparation.filter_observations(merged, filters=config.filters)
-    basis = make_basis_functions(
+    basis = prepare_basis(
         site_data=filtered.site_data,
         flux_data=filtered.flux_data,
         split_by_sectors=filtered.split_by_sectors,
         **config.select(
-            "species", "domain", "start_date", "basis_algorithm", "nbasis",
-            "fp_basis_case", "basis_directory", "country_directory", "outer_regions_path",
+            "domain", "start_date", "basis_algorithm", "nbasis",
         ),
         flux_sources=config.flux_sources,
         fix_outer_regions=config.fix_basis_outer_regions,
-        outputname=config.output_name,
+        **basis_inputs,
         output_path=config.basis_output_path,
     )
     sites = preparation.build_sensitivities(filtered, basis, **config.select(

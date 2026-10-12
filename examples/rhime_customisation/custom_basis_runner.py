@@ -34,7 +34,8 @@ from openghg_inversions.basis import (
     BasisFunctions,
     basis_functions_from_flat_basis,
     basis_weights_from_data,
-    load_country_region_classes,
+    load_basis_support_map,
+    packaged_basis_support_path,
 )
 from openghg_inversions.basis.algorithms import (
     ConnectedComponentPartitionStep,
@@ -56,6 +57,7 @@ from openghg_inversions.rhime import (
     prepare_observation_errors,
     make_standard_rhime_result,
     make_standard_rhime_outputs,
+    validate_output_resources,
     materialize_pymc_inputs,
     read_rhime_ini,
     sample_rhime_model,
@@ -66,32 +68,9 @@ from openghg_inversions.rhime import (
 DEFAULT_MAX_CHILD_PCA_ECCENTRICITY = 10.0
 
 
-def _land_ocean_classes(
-    *,
-    domain: str,
-    country_directory: str | Path | None = None,
-) -> xr.DataArray:
-    """Reduce the public country grid to the project's land/ocean classes.
-
-    Args:
-        domain: RHIME domain used to select the country grid.
-        country_directory: Optional directory containing the domain country
-            file.
-
-    Returns:
-        An eager object-valued ``(lat, lon)`` class grid preserving the loaded
-        coordinates. Positive country codes are ``land``; null, zero, and
-        negative codes are ``ocean``.
-
-    Raises:
-        FileNotFoundError: If the requested country grid does not exist.
-        KeyError: If the country-grid artifact does not contain ``country``.
-    """
-    country_classes = load_country_region_classes(
-        domain,
-        country_directory,
-    )
-    return xr.where(country_classes > 0, "land", "ocean").astype(object).rename("basis_class")
+def _land_ocean_classes(region_classes: xr.DataArray) -> xr.DataArray:
+    """Reduce borrowed country/class codes to project land/ocean classes."""
+    return xr.where(region_classes > 0, "land", "ocean").astype(object).rename("basis_class")
 
 
 def _guarded_basis(
@@ -100,7 +79,7 @@ def _guarded_basis(
     domain: str,
     flux_sources: Sequence[str] | None = None,
     nbasis: int = 100,
-    country_directory: str | Path | None = None,
+    region_classes: xr.DataArray,
     max_child_pca_eccentricity: float,
 ) -> BasisFunctions:
     """Build the project's connected, eccentricity-guarded retained basis.
@@ -112,10 +91,10 @@ def _guarded_basis(
 
     Args:
         merged: Filtered, borrowed RHIME observations and flux data.
-        domain: Model domain used to load country classes.
+        domain: Model domain recorded on the generated basis.
         flux_sources: Resolved sources used for spatial weights.
         nbasis: Requested number of basis regions.
-        country_directory: Optional country-grid directory.
+        region_classes: Resolved borrowed country/class map.
         max_child_pca_eccentricity: Project limit on each proposed child's
             physical-coordinate PCA eccentricity.
 
@@ -123,8 +102,6 @@ def _guarded_basis(
         Retained basis functions fitted within connected land/ocean regions.
 
     Raises:
-        FileNotFoundError: If the requested country grid does not exist.
-        KeyError: If ``domain`` or country-grid content is missing.
         ValueError: If zero-filled weights do not have a positive finite
             maximum, or geometry, allocation, or guarded splitting is invalid.
     """
@@ -142,10 +119,7 @@ def _guarded_basis(
     normalized_weights = finite_weights / maximum
 
     # 2. Define scientific boundaries that no basis region may cross.
-    region_classes = _land_ocean_classes(
-        domain=domain,
-        country_directory=country_directory,
-    )
+    region_classes = _land_ocean_classes(region_classes)
     geometry = LatLonGridGeometry.from_dataarray(normalized_weights)
     # 3. Compose the split algorithm and its shape/connectivity safeguards.
     strategy = ConnectedComponentSplitStrategy(
@@ -201,7 +175,7 @@ def build_project_basis(
     domain: str,
     flux_sources: Sequence[str] | None = None,
     nbasis: int = 100,
-    country_directory: str | Path | None = None,
+    region_classes: xr.DataArray | None = None,
     project_basis_path: str | Path | None = None,
     max_child_pca_eccentricity: float = DEFAULT_MAX_CHILD_PCA_ECCENTRICITY,
 ) -> BasisFunctions:
@@ -209,10 +183,10 @@ def build_project_basis(
 
     Args:
         merged: Filtered, borrowed RHIME observations and flux data.
-        domain: Model domain used to load country classes.
+        domain: Model domain recorded on the generated basis.
         flux_sources: Resolved sources used for spatial weights.
         nbasis: Requested number of basis regions.
-        country_directory: Optional country-grid directory.
+        region_classes: Resolved borrowed country/class map.
         project_basis_path: Optional ``.nc`` or ``.zarr`` artifact previously
             written by :meth:`BasisFunctions.save`.  The artifact is
             self-contained, so its serialized operator, metadata, and flux are
@@ -238,12 +212,14 @@ def build_project_basis(
     """
     if project_basis_path is not None:
         return BasisFunctions.load(project_basis_path)
+    if region_classes is None:
+        raise ValueError("Generating a project basis requires resolved region_classes.")
     return _guarded_basis(
         merged,
         domain=domain,
         flux_sources=flux_sources,
         nbasis=nbasis,
-        country_directory=country_directory,
+        region_classes=region_classes,
         max_child_pca_eccentricity=max_child_pca_eccentricity,
     )
 
@@ -266,7 +242,7 @@ def run_custom_rhime(
             When omitted, the merged config/keyword value is used, falling back
             to ``10``. This option is removed before standard RHIME resolution.
         **kwargs: Standard RHIME option names that override values from
-            ``config_file``. Built-in ``basis_algorithm`` and ``fp_basis_case``
+            ``config_file``. Built-in ``basis_algorithm`` and ``basis_path``
             choices are unused by this project basis stage and are discarded
             before standard configuration resolution.
 
@@ -298,8 +274,17 @@ def run_custom_rhime(
     # A built-in algorithm choice is irrelevant to this copied recipe.
     params.pop("basis_algorithm", None)
     params.pop("fp_basis_case", None)
+    params.pop("basis_path", None)
     config = RhimeConfig.from_params(params, multisector=False)
+    validate_output_resources(config.output)
 
+    # This project selects and loads its scientific class map before acquisition.
+    region_classes = None
+    if project_basis_path is None:
+        class_path = config.landsea_path or packaged_basis_support_path("landsea", config.domain)
+        region_classes = load_basis_support_map(class_path, "country")
+    if project_basis_path is not None and not Path(project_basis_path).exists():
+        raise FileNotFoundError(project_basis_path)
     merged = RhimeMergedData.from_options(
         **config.select(
             "site_options", "species", "domain", "start_date",
@@ -316,7 +301,8 @@ def run_custom_rhime(
     # Replace only basis construction; subsequent scientific stages stay visible.
     basis_functions = build_project_basis(
         filtered,
-        **config.select("domain", "flux_sources", "nbasis", "country_directory"),
+        **config.select("domain", "flux_sources", "nbasis"),
+        region_classes=region_classes,
         project_basis_path=project_basis_path,
         max_child_pca_eccentricity=max_child_pca_eccentricity,
     )

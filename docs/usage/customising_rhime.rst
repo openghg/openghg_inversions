@@ -74,6 +74,45 @@ the retained site order; the owner selects matching ``SiteOptions`` and input
 provenance together. It returns new metadata while borrowing the numerical
 arrays. The caller owns any files backing supplied datasets.
 
+Follow the modern preparation spine
+------------------------------------
+
+The ordinary runner resolves ``basis_path`` and selected support maps before
+acquisition. It prepares errors, filters retained observations, then calls the
+canonical load-or-generate operation with exact paths and labelled arrays:
+
+.. code-block:: python
+
+   from openghg_inversions.basis import prepare_basis
+   from openghg_inversions.rhime.preparation import resolve_basis_inputs
+   from openghg_inversions.rhime import validate_output_resources
+
+   # For a complete run that will produce outputs:
+   validate_output_resources(config.output)
+   basis_inputs = resolve_basis_inputs(config)
+   # Acquire merged data, prepare errors and filter observations here.
+   basis = prepare_basis(
+       site_data=filtered.site_data,
+       flux_data=filtered.flux_data,
+       split_by_sectors=filtered.split_by_sectors,
+       domain=config.domain,
+       start_date=config.start_date,
+       flux_sources=config.flux_sources,
+       nbasis=config.nbasis,
+       basis_algorithm=config.basis_algorithm,
+       fix_outer_regions=config.fix_basis_outer_regions,
+       output_path=config.basis_output_path,
+       **basis_inputs,
+   )
+
+A selected ``basis_path`` reuses saved geometry with current merged flux;
+otherwise preparation generates a partition from the filtered observations.
+An ``output_path`` saves the completed retained basis. Sensitivity construction
+and input assembly consume the returned ``BasisFunctions``. Historical names,
+case/glob discovery and filename construction end at the compatibility entry
+boundary described in :doc:`rhime_configuration`; these scientific steps receive
+resolved values.
+
 Acquire a merged handoff
 -------------------------
 
@@ -415,14 +454,15 @@ Compose a custom basis stage
 ----------------------------
 
 The second complete runner replaces one call in the preparation spine:
-``build_project_basis`` replaces ``openghg_inversions.basis.make_basis_functions``. The project function
+``build_project_basis`` replaces ``openghg_inversions.basis.prepare_basis``. The project function
 composes public basis primitives instead of selecting a built-in basis
 algorithm. It:
 
 * derives and normalises a two-dimensional weight field with
   ``basis_weights_from_data(merged.site_data, merged.flux_data, flux_sources)``;
-* loads the public country grid and reduces positive country codes to ``land``
-  and the remaining cells to ``ocean``;
+* receives a class map resolved before acquisition from an exact ``landsea_path``
+  or explicitly selected packaged support map, then reduces positive codes to
+  ``land`` and the remaining cells to ``ocean``;
 * creates physical north-south/east-west coordinates with
   ``LatLonGridGeometry``;
 * uses balanced inertial splits, decomposes every proposed child into
@@ -489,14 +529,15 @@ RHIME option resolution::
 
 ``BasisFunctions.load`` loads the saved operator, metadata, and flux into
 memory, then closes the artifact. The saved flux is deliberately retained. Use
-the standard public ``load_basis_functions`` helper instead when loading a
-named RHIME basis cache that should take its retained flux from the current
-``fp_all`` acquisition.
+the standard public ``prepare_basis`` operation with an exact ``basis_path``
+in a new preparation run that should take its retained flux from the current
+merged acquisition.
 
 Without an artifact, the basis-building function computes the arrays needed by
 the splitting algorithm. Before that point, the filtered xarray objects may
 still defer their calculations with Dask. The function derives and normalises
-the two-dimensional weights, loads the country classes, constructs the
+the two-dimensional weights, uses the class map resolved before acquisition,
+constructs the
 geometry, and creates the region labels. It then combines the labels with the
 current run's flux in a ``BasisFunctions`` object. That object flows unchanged
 through sensitivity construction and labelled assembly. The concrete recipe's
@@ -507,7 +548,7 @@ immediately before model construction; project-owned lazy extensions in
 
 The customisation is concentrated in ``_guarded_basis``. The runner's one
 deliberate substitution is marked by an inline comment where
-``build_project_basis`` replaces the standard ``openghg_inversions.basis.make_basis_functions`` call. The
+``build_project_basis`` replaces the standard ``openghg_inversions.basis.prepare_basis`` call. The
 complete source remains below because the test suite executes the same file
 that the documentation displays.
 

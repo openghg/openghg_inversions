@@ -10,7 +10,8 @@ built, and combines only the two observation-aligned sensitivity matrices.
 
 from __future__ import annotations
 
-from openghg_inversions.basis import make_basis_functions
+from openghg_inversions.basis import prepare_basis
+from openghg_inversions.rhime.preparation import resolve_basis_inputs
 from openghg_inversions._flux_options import UNSET, _Unset, normalise_flux_aliases, resolve_deprecated_keyword
 
 from collections.abc import Mapping, Sequence
@@ -48,7 +49,7 @@ from .builders import (
     validate_model_build_result,
 )
 from .materialization import materialize_pymc_inputs
-from .outputs import RhimeResult, _make_inversion_output
+from .outputs import RhimeResult, _make_inversion_output, validate_output_resources
 from .ini import read_rhime_ini
 from .params import RhimeConfig
 from .preparation import (
@@ -694,20 +695,20 @@ def _prepare_one_domain(
     config: RhimeConfig,
     *,
     allow_empty_inner_region: bool = False,
+    basis_support_maps: Mapping[str, Any],
 ) -> RhimePreparedInputs:
     """Run one domain's scientific stages from already-resolved choices."""
     with timed("rhime.prepare_inputs.basis_build", basis_algorithm=config.basis_algorithm):
-        basis_functions = make_basis_functions(
+        basis_functions = prepare_basis(
             site_data=merged.site_data,
             flux_data=merged.flux_data,
             split_by_sectors=merged.split_by_sectors,
             **config.select(
-                "species", "domain", "start_date", "basis_algorithm", "nbasis",
-                "fp_basis_case", "basis_directory", "country_directory", "outer_regions_path",
+                "domain", "start_date", "basis_algorithm", "nbasis",
             ),
             flux_sources=config.flux_sources,
             fix_outer_regions=config.fix_basis_outer_regions,
-            outputname=config.output_name,
+            **basis_support_maps,
             output_path=config.basis_output_path,
             allow_empty_inner_region=allow_empty_inner_region,
         )
@@ -814,6 +815,10 @@ def prepare_nested_rhime_inputs(
     inner_emissions_domain: str | None | _Unset = UNSET,
     inner_basis_algorithm: str | None = None,
     inner_nbasis: int | None = None,
+    inner_basis_path: str | Path | None = None,
+    inner_basis_partition_path: str | Path | None = None,
+    inner_landsea_path: str | Path | None = None,
+    inner_outer_regions_path: str | Path | None = None,
     inner_fp_basis_case: str | None = None,
     inner_basis_directory: str | None = None,
     inner_country_directory: str | None = None,
@@ -852,14 +857,18 @@ def prepare_nested_rhime_inputs(
             total budget split by the square-root sensitivity ratio, with an
             inner share bounded to 35--60 percent. Otherwise the inner count
             defaults to ``config.nbasis``.
-        inner_fp_basis_case: Saved inner basis case; takes precedence over
+        inner_basis_path: Exact retained inner basis artifact path.
+        inner_basis_partition_path: Exact labelled inner partition file.
+        inner_landsea_path: Exact selected inner land/sea support map.
+        inner_outer_regions_path: Exact selected inner fixed-outer support map.
+        inner_fp_basis_case: Deprecated saved inner basis case; takes precedence over
             an inner basis algorithm.
         inner_basis_directory: Saved inner basis directory; defaults to the
             outer request's directory.
         inner_country_directory: Inner country-grid directory; defaults to
             the outer request's directory.
-        inner_basis_output_path: Optional destination for a generated inner
-            basis. ``None`` disables saving the inner basis.
+        inner_basis_output_path: Exact retained-artifact destination for the
+            inner basis, whether generated or loaded. ``None`` disables saving.
         time_tolerance: Maximum difference for nearest-time inner footprint
             matching. ``None`` requires exact times; matching never reuses an
             inner footprint for multiple outer rows.
@@ -880,7 +889,8 @@ def prepare_nested_rhime_inputs(
         artifacts. Automatic budget allocation computes sensitivity sums;
         filtering and basis algorithms may also compute their inputs. The
         returned scientific arrays may remain Dask-backed, and PyMC model
-        materialization is a separate boundary.
+        materialization is a separate boundary. Reporting resources are not
+        required for preparation.
     """
     inner_flux_store = cast(str | None, resolve_deprecated_keyword(
         "inner_emissions_store", "inner_flux_store", inner_emissions_store, inner_flux_store
@@ -910,6 +920,10 @@ def prepare_nested_rhime_inputs(
             inner_basis_algorithm if inner_basis_algorithm is not None
             else (None if inner_fp_basis_case is not None else "quadtree")
         ),
+        basis_path=inner_basis_path,
+        basis_partition_path=inner_basis_partition_path,
+        landsea_path=inner_landsea_path,
+        outer_regions_path=inner_outer_regions_path,
         fp_basis_case=inner_fp_basis_case,
         basis_output_path=inner_basis_output_path,
         fix_basis_outer_regions=False,
@@ -919,6 +933,8 @@ def prepare_nested_rhime_inputs(
     )
 
     preparation_start = timer_start()
+    support_maps = [resolve_basis_inputs(domain_config) for domain_config in (outer_config, inner_config)]
+
     with timed(
         "rhime.prepare_inputs.merged_data",
         sites=len(outer_config.site_options.sites),
@@ -963,7 +979,11 @@ def prepare_nested_rhime_inputs(
 
     if (
         inner_nbasis is None
+        and outer_config.basis_partition_path is None
+        and outer_config.basis_path is None
         and outer_config.fp_basis_case is None
+        and inner_config.basis_partition_path is None
+        and inner_config.basis_path is None
         and inner_config.fp_basis_case is None
     ):
         outer_nbasis, allocated_inner_nbasis = _allocate_nested_nbasis(
@@ -974,8 +994,17 @@ def prepare_nested_rhime_inputs(
         outer_config = replace(outer_config, nbasis=outer_nbasis)
         inner_config = replace(inner_config, nbasis=allocated_inner_nbasis)
 
-    outer_prepared = _prepare_one_domain(masked_outer, config=outer_config, allow_empty_inner_region=True)
-    inner_prepared = _prepare_one_domain(inner_filtered, config=inner_config)
+    outer_prepared = _prepare_one_domain(
+        masked_outer,
+        config=outer_config,
+        allow_empty_inner_region=True,
+        basis_support_maps=support_maps[0],
+    )
+    inner_prepared = _prepare_one_domain(
+        inner_filtered,
+        config=inner_config,
+        basis_support_maps=support_maps[1],
+    )
     prepared = combine_nested_rhime_inputs(
         outer_prepared,
         inner_prepared,
@@ -1246,6 +1275,7 @@ def _write_nested_paris_outputs(nested_result: NestedRhimeResult) -> None:
 
     result = nested_result.rhime_result
     output_spec = result.output_spec
+    validate_output_resources(output_spec)
     model_spec = result.model_spec
     run_spec = result.run_spec
     prepared = nested_result.prepared_inputs
@@ -1331,7 +1361,12 @@ def run_rhime_nested_from_prepared_inputs(
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
     likelihood_kwargs: Mapping[str, Any] | None = None,
 ) -> NestedRhimeResult:
-    """Build and sample nested RHIME from independently prepared native grids."""
+    """Build and sample nested RHIME from independently prepared native grids.
+
+    Validate reporting resources before materialization or sampling. Missing
+    selected country files raise ``FileNotFoundError``; PARIS output without a
+    country file raises ``ValueError``.
+    """
     if likelihood_builder is not None and not callable(likelihood_builder):
         raise TypeError(
             f"`likelihood_builder` must be callable or None; got {type(likelihood_builder).__name__}."
@@ -1349,6 +1384,7 @@ def run_rhime_nested_from_prepared_inputs(
     if run_spec.split_by_sectors or len(run_spec.model.sectors) != 1:
         raise ValueError("Nested RHIME currently requires a standard one-sector run specification.")
 
+    validate_output_resources(run_spec.output)
     prepared_inputs = prepared_inputs.validated()
     run_spec = with_prepared_rhime_sites(run_spec, prepared_inputs.combined)
     model_inputs = materialize_pymc_inputs(
@@ -1399,6 +1435,10 @@ _NESTED_PARAMETER_NAMES = frozenset(
         "inner_flux_domain",
         "inner_basis_algorithm",
         "inner_nbasis",
+        "inner_basis_path",
+        "inner_basis_partition_path",
+        "inner_landsea_path",
+        "inner_outer_regions_path",
         "inner_fp_basis_case",
         "inner_basis_directory",
         "inner_country_directory",
@@ -1449,6 +1489,7 @@ def run_nested(
         raise ValueError("A nested RHIME run requires a built-in or custom likelihood.")
     if config.output.output_format not in ("none", "paris"):
         raise ValueError("`run_rhime_nested` currently requires output_format='none' or 'paris'.")
+    validate_output_resources(config.output)
     prepared = prepare_nested_rhime_inputs(
         config,
         inner_domain=str(inner_domain),

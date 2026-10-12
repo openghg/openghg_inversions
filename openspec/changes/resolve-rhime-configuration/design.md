@@ -120,7 +120,7 @@ adopted names for this revision; other established names are retained.
 | `RhimeMergedData.from_options` | Fresh in-memory acquisition with resolved selectors. | Returns borrowed scientific datasets and aligned retained options; no observation-error preparation or modern cache I/O. |
 | `RhimeMergedData` (keep) | Acquired in-memory numerical handoff. | Borrowed, potentially lazy datasets, retained site options and selected provenance. Selected provenance is not persisted in prepared inputs or their manifest. |
 | `prepare_rhime_inputs` (removed in #826) | Obsolete acquisition-and-preparation adapter. | Use the visible scientific operations or prepared-input persistence; no replacement forwarding adapter. |
-| Preparation operations | Scientific work in ordinary recipes. | Derive observation errors, filter observations, call `make_basis_functions`, build sensitivities and assemble inputs using explicit resolved values. Keep meaningful contracts, not forwarding signatures. |
+| Preparation operations | Scientific work in ordinary recipes. | Derive observation errors, filter observations, call `prepare_basis`, build sensitivities and assemble inputs using explicit resolved values. Keep meaningful contracts, not forwarding signatures. |
 | `RhimePreparedInputs` (keep) | Labelled prepared model-input handoff. | Numerical inputs, basis and retained metadata; independent of full requested configuration. |
 | `RhimeRunSpec` (keep) | Execution description. | Constructed after ordinary preparation from requested dates, retained sites/periods, prepared layout and resolved model/output choices. No acquisition options or sampler execution. |
 | `RhimeRunnerSetup` / `make_rhime_runner_setup` / `resolve_rhime_options` (remove) | Redundant internal setup bundle and its constructors. | Migrate ordinary, nested, staged, shim and example consumers to `RhimeConfig.from_params`; construct retained run descriptions only after preparation. Do not retain a renamed bundle or compatibility projection. |
@@ -356,6 +356,32 @@ preserve scientific output checks. Run relevant broader coverage before handoff.
 The previous locked Python 3.12/3.13 and documentation passes validate the old
 implementation only. They do not establish conformance to this revised design.
 Track the remaining reconciliation in [tasks.md](tasks.md).
+
+### Explicit basis paths and isolated compatibility (#838)
+
+The application preparation owner calls `resolve_basis_inputs(config)` before
+acquisition. It checks exact retained paths, loads `basis_partition_path` when
+selected, and resolves labelled scientific support maps. Configuration
+construction remains data-free. Modern `prepare_basis` then reads the selected
+retained operator or generates a partition, binds current merged flux, and
+optionally saves to an exact destination. Numerical construction receives map
+arrays and has no directory/glob or deprecated-option policy.
+
+Transitional scalar/path fields for shipped requests remain on the outer
+configuration. The application resolver dispatches to `basis.compatibility`
+only when these legacy fields are supplied. That module alone owns historical
+case/glob discovery, filenames, flat-artifact adaptation and opt-in legacy
+writing; adapters call canonical operations. The valid labelled partition
+representation remains available to modern callers.
+
+Modern retained basis output is the devel/0.8 default, superseding #360's
+temporary legacy default. Legacy output remains explicit adapter opt-in and is
+deprecated in 0.9 without automatic removal. Staged preparation preserves exact
+caller destinations. Packaged basis support maps remain selectable; absent
+domain maps fail without fallback. Country reporting requires caller-selected
+files, separate from basis support resources. BC case/directory migration is
+inventoried but deferred; acquisition replay remains #829. Runtime native-flux
+ownership and operator-only loading are the next bounded slice (#839).
 
 ### Modern flux terminology and compatibility
 

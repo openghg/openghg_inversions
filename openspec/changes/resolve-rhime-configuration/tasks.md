@@ -139,3 +139,13 @@ applied to #813 at those revisions only.
 - [x] Export canonical configuration names and preserve dataset-domain selection/interpolation.
 - [x] Deprecate the shipped basis `emissions_name` keyword at its actual implementation boundary.
 - [ ] Record final Slurm compatibility/documentation validation on the owning PR.
+
+## Explicit basis inputs follow-up (#838)
+
+- [x] Use exact retained artifact paths/destinations and resolved labelled scientific maps.
+- [x] Keep configuration construction data-free and resolve selected resources before acquisition.
+- [x] Isolate historical discovery, filenames, deprecated arguments and legacy writing in compatibility code.
+- [x] Document modern retained output as the 0.8 default and legacy opt-in, deprecated in 0.9 without automatic removal.
+- [x] Update ordinary/nested/staged/copied-runner guidance and preserve exact staged destinations.
+- [ ] Record independent review and revision-specific broader/Slurm validation on the owning PR.
+- [ ] Complete the separately bounded native runtime-flux ownership and operator-only reuse follow-up (#839).

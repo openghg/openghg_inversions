@@ -61,7 +61,7 @@ def test_dataset_generated_basis_matches_array_kernel(algorithm, tmp_path):
         expected = quadtree_basis_from_weights(weights, "2020-01-01", "TEST", seed=1, **kwargs)
     elif algorithm == "weighted":
         expected = bucket_basis_from_weights(weights, "2020-01-01", "TEST",
-                                             country_directory=str(tmp_path), **kwargs)
+                                             landsea_classes=classes, **kwargs)
     else:
         expected = region_constrained_basis_from_weights(weights, "2020-01-01", "TEST",
                                                          region_classes=classes, **kwargs)
@@ -144,7 +144,7 @@ def test_unknown_algorithm_does_not_execute_borrowed_dask_graph(entry_point):
     with pytest.raises(ValueError, match="Basis algorithm not recognised"):
         if entry_point == "fixed":
             fixed_outer_regions_basis_from_data(
-                sites, sources, "2020-01-01", "invalid", "TEST", ["a"])
+                sites, sources, "2020-01-01", "invalid", "TEST", ["a"], outer_regions=xr.DataArray())
         else:
             make_basis_functions(
                 site_data=sites, flux_data=sources, species="ch4", domain="TEST",
@@ -203,7 +203,7 @@ def test_fixed_outer_executes_shared_weight_graph_once(empty_inner, tmp_path):
     outer.to_dataset().to_netcdf(outer_path)
     actual = fixed_outer_regions_basis_from_data(
         sites, sources, "2020-01-01", "region_constrained", "TEST", ["a"], nbasis=1,
-        region_classes=xr.ones_like(outer), outer_regions_path=outer_path, allow_empty_inner_region=True)
+        region_classes=xr.ones_like(outer), outer_regions=outer, allow_empty_inner_region=True)
     expected = outer + 1
     if not empty_inner:
         expected = expected.where(outer != 1, 4)
