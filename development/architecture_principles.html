@@ -51,8 +51,8 @@
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="Validation and labelled-array patterns" href="validation_and_xarray.html" />
-    <link rel="prev" title="Developing RHIME models" href="rhime_model_development.html" />
+    <link rel="next" title="Numerical array ownership and execution" href="numerical_array_ownership.html" />
+    <link rel="prev" title="Development guidance and behavioral specifications" href="specifications.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="" />
@@ -315,7 +315,9 @@
   <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
   <div class="bd-toc-item navbar-nav"><ul class="current nav bd-sidenav">
 <li class="toctree-l1"><a class="reference internal" href="rhime_model_development.html">Developing RHIME models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="specifications.html">Development guidance and behavioral specifications</a></li>
 <li class="toctree-l1 current active"><a class="current reference internal" href="#">Architecture principles and recipe boundaries</a></li>
+<li class="toctree-l1"><a class="reference internal" href="numerical_array_ownership.html">Numerical array ownership and execution</a></li>
 <li class="toctree-l1"><a class="reference internal" href="validation_and_xarray.html">Validation and labelled-array patterns</a></li>
 <li class="toctree-l1"><a class="reference internal" href="documentation.html">Maintain the documentation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="observation_uncertainty.html">Missing observation uncertainty: behavior and decisions</a></li>
@@ -387,10 +389,11 @@ new model recipe must make explicit. They complement
 <a class="reference internal" href="rhime_model_development.html"><span class="doc">Developing RHIME models</span></a> and <a class="reference internal" href="validation_and_xarray.html"><span class="doc">Validation and labelled-array patterns</span></a>: the runner
 shows execution order, the concrete model shows scientific composition, and
 shared components own their scientific or technical contracts.</p>
-<p>These are design and review requirements. They do not assert that every
+<p>These are design and review principles. They do not assert that every
 existing route already satisfies them or that a common staged interface has
-been implemented. Existing public behaviour and artifact contracts remain
-subject to their explicit compatibility policy.</p>
+been implemented. See <a class="reference internal" href="specifications.html"><span class="doc">Development guidance and behavioral specifications</span></a> for the scoped behavioral contracts
+and their delivery status. Existing public behaviour and artifact contracts
+remain subject to their explicit compatibility policy.</p>
 <section id="a-scientific-pipeline-with-optional-checkpoints">
 <span id="rhime-pipeline-checkpoints"></span><h2>A scientific pipeline with optional checkpoints<a class="headerlink" href="#a-scientific-pipeline-with-optional-checkpoints" title="Link to this heading">#</a></h2>
 <p>Read a RHIME recipe as a pipeline of ordinary scientific operations. Its
@@ -449,9 +452,10 @@ overlap masking; cached CO2 inference keeps its matched graph, sampler and
 cache-update order together. State unsupported checkpoint routes explicitly.</p>
 <p>Current file-backed commands and their restrictions are documented in
 <a class="reference internal" href="../usage/staged_workflow.html"><span class="doc">Staged RHIME workflows</span></a> and <a class="reference internal" href="../usage/co2_model_family.html"><span class="doc">CO₂ model family</span></a>.
-The reusable prepared/sample manifest interface in <a class="reference external" href="https://github.com/openghg/openghg_inversions/pull/802">PR 802</a> is a planned
-replacement, not the current common API. Existing routes still differ in
-retained-site policy and reuse checks. When bringing them into line with this
+The reusable recipe execution and prepared/sample handoffs in <a class="reference external" href="https://github.com/openghg/openghg_inversions/pull/802">PR 802</a> are a proposed
+replacement whose implementation remains outstanding at the 12 October 2026
+review. Check its current replacement proposal before adopting an interface.
+Existing routes still differ in retained-site policy and reuse checks. When bringing them into line with this
 design, demonstrate equivalent scientific inputs and products, not just shared
 helper calls. The sections below give the ownership and review criteria.</p>
 </section>
@@ -709,20 +713,20 @@ numerical contracts.</p>
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="rhime_model_development.html"
+       href="specifications.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">Developing RHIME models</p>
+        <p class="prev-next-title">Development guidance and behavioral specifications</p>
       </div>
     </a>
     <a class="right-next"
-       href="validation_and_xarray.html"
+       href="numerical_array_ownership.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">Validation and labelled-array patterns</p>
+        <p class="prev-next-title">Numerical array ownership and execution</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>

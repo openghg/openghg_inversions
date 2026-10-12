@@ -51,7 +51,7 @@
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="Architecture principles and recipe boundaries" href="architecture_principles.html" />
+    <link rel="next" title="Development guidance and behavioral specifications" href="specifications.html" />
     <link rel="prev" title="Developing OpenGHG Inversions" href="index.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
@@ -315,7 +315,9 @@
   <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
   <div class="bd-toc-item navbar-nav"><ul class="current nav bd-sidenav">
 <li class="toctree-l1 current active"><a class="current reference internal" href="#">Developing RHIME models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="specifications.html">Development guidance and behavioral specifications</a></li>
 <li class="toctree-l1"><a class="reference internal" href="architecture_principles.html">Architecture principles and recipe boundaries</a></li>
+<li class="toctree-l1"><a class="reference internal" href="numerical_array_ownership.html">Numerical array ownership and execution</a></li>
 <li class="toctree-l1"><a class="reference internal" href="validation_and_xarray.html">Validation and labelled-array patterns</a></li>
 <li class="toctree-l1"><a class="reference internal" href="documentation.html">Maintain the documentation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="observation_uncertainty.html">Missing observation uncertainty: behavior and decisions</a></li>
@@ -382,538 +384,199 @@
                   
   <section id="developing-rhime-models">
 <h1>Developing RHIME models<a class="headerlink" href="#developing-rhime-models" title="Link to this heading">#</a></h1>
-<section id="purpose">
-<h2>Purpose<a class="headerlink" href="#purpose" title="Link to this heading">#</a></h2>
 <p>RHIME is maintained for atmospheric scientists who need to read, adapt, and
-cite the model code. Its production architecture therefore favours code
-locality and a visible scientific narrative over a generic model framework.</p>
+cite the model code. Its development principles favour code locality and a
+visible scientific narrative over a generic model framework.</p>
 <p>The target style is a <strong>procedural shell with a concept-oriented functional
 core</strong>. The useful quality of the release-0.6 <code class="docutils literal notranslate"><span class="pre">fixedbasisMCMC</span></code> workflow was
 that a scientist could inspect one imperative recipe and then follow plainly
-named scientific functions. New RHIME code should provide that reading
-experience without restoring the old monolithic function, mutable dictionaries,
-parallel-list state, or implicit <code class="docutils literal notranslate"><span class="pre">**kwargs</span></code> forwarding.</p>
-<p>Start by reading a recipe as a <strong>scientific pipeline with optional
-checkpoints</strong>: acquire, prepare, build, sample, reconstruct, and write products.
-The runner makes that sequence visible; saved-stage entry points resume the
-same scientific operations from a declared handoff. The
-<a class="reference internal" href="architecture_principles.html#rhime-pipeline-checkpoints"><span class="std std-ref">pipeline and checkpoint architecture</span></a>
-explains phase ownership, reuse and current implementation limits. A recipe
-need only implement the entry points and products it actually supports.</p>
-</section>
-<section id="core-principles">
-<h2>Core principles<a class="headerlink" href="#core-principles" title="Link to this heading">#</a></h2>
-<p>The following principles are requirements for production RHIME development:</p>
+named scientific functions. Preserve that reading experience without restoring
+the old monolithic function, mutable dictionaries, parallel-list state, or
+implicit <code class="docutils literal notranslate"><span class="pre">**kwargs</span></code> forwarding.</p>
+<p>This page gives design and review guidance. Exact supported arguments, errors,
+compatibility periods, and artifact guarantees belong to their scoped
+capability specifications and usage references. See <a class="reference internal" href="specifications.html"><span class="doc">Development guidance and behavioral specifications</span></a> for
+those sources and how to establish their review and delivery status.
+A design recommendation is not evidence that an API implements it.</p>
+<section id="start-with-the-scientific-recipe">
+<h2>Start with the scientific recipe<a class="headerlink" href="#start-with-the-scientific-recipe" title="Link to this heading">#</a></h2>
+<p>Read a recipe as a <strong>scientific pipeline with optional checkpoints</strong>: acquire,
+prepare, build, sample, reconstruct, and write products. The runner makes the
+sequence visible; a saved-stage entry point resumes supported operations from
+a declared handoff. The <a class="reference internal" href="architecture_principles.html#rhime-pipeline-checkpoints"><span class="std std-ref">pipeline and checkpoint architecture</span></a> explains these responsibilities. A prepared-input
+recipe need only implement the entry points and products it actually supports.</p>
+<p>The core principles for new RHIME work are:</p>
 <ul class="simple">
-<li><p>Top-level orchestration is procedural and readable from top to bottom.</p></li>
-<li><p>Model construction appears in mathematical and scientific order.</p></li>
-<li><p>Functions use scientifically meaningful names and explicit inputs.</p></li>
-<li><p>Components remain directly callable. Labelled model components require the
-small <code class="docutils literal notranslate"><span class="pre">CoordRegistry</span></code> attached by <code class="docutils literal notranslate"><span class="pre">registered_model()</span></code>; configuration
-remains an optional convenience.</p></li>
-<li><p>Small duplication is acceptable when it keeps alternative scientific
-workflows visible.</p></li>
-<li><p>Dataclasses are reserved for concrete scientific concepts or durable
-boundaries.</p></li>
-<li><p>Configuration is normalized once at the boundary. Forward named values
-directly or with an explicit <code class="docutils literal notranslate"><span class="pre">config.select(&quot;name&quot;,</span> <span class="pre">...)</span></code> selection.</p></li>
-<li><p>Tiny registries are appropriate for homogeneous families such as filters.</p></li>
-<li><p>Private numerical helpers are acceptable, but reading the main path must not
-require reconstructing a framework.</p></li>
-<li><p>Scientists should be able to copy a runner or component and modify it
-locally.</p></li>
+<li><p>Keep top-level orchestration procedural and readable from top to bottom.</p></li>
+<li><p>Construct the concrete model in mathematical and scientific order.</p></li>
+<li><p>Use scientifically meaningful names, explicit inputs, and ordinary callable
+components. Configuration is a convenience for selecting resolved values.</p></li>
+<li><p>Accept small duplication when it keeps alternative scientific recipes clear.</p></li>
+<li><p>Use dataclasses for concrete scientific concepts or durable handoffs.</p></li>
+<li><p>Normalize configuration at its owning boundary and forward named values
+explicitly, including an explicit <code class="docutils literal notranslate"><span class="pre">config.select(&quot;name&quot;,</span> <span class="pre">...)</span></code> selection
+where useful.</p></li>
+<li><p>Keep helpers close to their scientific owner. Tiny registries can serve
+homogeneous families such as filters without controlling the whole model.</p></li>
+<li><p>Make local modification possible: a scientist can copy a runner or replace
+one component without reconstructing a framework lifecycle.</p></li>
 </ul>
-<p>Preparation helpers must own a scientific operation, policy, meaningful handoff
-contract or necessary compatibility boundary. A uniform stage name, timing or
-argument renaming alone does not justify a second forwarding signature. Call
-basis construction directly and keep shared indexing utilities reusable.
-Shared preparation must not be named as if it belonged only to the standard
-model; model-specific policy stays visible beside its procedural recipe.</p>
-<p>Observation errors are preparation policy. Derive them before temporal
-filtering or aggregation, preserving supplied errors and borrowed datasets.
-Nested recipes prepare errors on both domains before filtering/time alignment.
-Historical retrieval uses that same operation before returning or saving its
-compatibility result. Acquisition replay remains separate from prepared-input
-persistence.</p>
 <p>The review test is:</p>
 <blockquote>
-<div><p>A scientist familiar with release-0.6 <code class="docutils literal notranslate"><span class="pre">fixedbasisMCMC</span></code> should be able to
-read a runner, open one nearby concrete model function, and replace one
-ordinary component whose interface explains what RHIME supplies. They should
-not need to learn a compiler, dependency-injection system, manifest, or
-framework lifecycle first.</p>
+<div><p>A scientist familiar with release-0.6 <code class="docutils literal notranslate"><span class="pre">fixedbasisMCMC</span></code> can read a runner,
+open one nearby concrete model function, and replace one ordinary component
+whose interface explains what RHIME supplies.</p>
 </div></blockquote>
-<p>Use <a class="reference internal" href="architecture_principles.html"><span class="doc">Architecture principles and recipe boundaries</span></a> to assess module responsibilities,
-six-layer handoffs, and consumer interfaces. Different recipes may retain
-similar orchestration; equivalent execution routes through one recipe should
-share its scientific operations. Explicit interfaces for actual consumers are
-compatible with ordinary callable components and procedural runners.</p>
+<p>Preparation helpers should own an operation, policy, meaningful handoff, or
+necessary compatibility boundary. A uniform stage name, timing, or argument
+renaming alone does not justify a second forwarding signature. Keep shared
+indexing reusable and model-specific preparation policy beside its recipe.
+Use <a class="reference internal" href="architecture_principles.html"><span class="doc">Architecture principles and recipe boundaries</span></a> to assess responsibilities and consumer
+interfaces, and <a class="reference internal" href="validation_and_xarray.html"><span class="doc">Validation and labelled-array patterns</span></a> to identify validation owners.</p>
 </section>
-<section id="model-recipes">
-<h2>Model recipes<a class="headerlink" href="#model-recipes" title="Link to this heading">#</a></h2>
-<p>A production <strong>model recipe</strong> contains a named procedural runner and a readable
-concrete model builder. A recipe may reuse preparation, numerical, sampling,
-and output functions, but it owns the scientific order in which they are
-composed.</p>
-<p>Near-term model development may produce several explicit recipes. This is an
-intentional way to deliver tested and citable scientific models before their
-actual similarities are known. Do not introduce a generic pipeline or model
-registry to control this proliferation in advance.</p>
-<p>Use these rules when extending RHIME:</p>
+<section id="choose-the-smallest-useful-extension">
+<h2>Choose the smallest useful extension<a class="headerlink" href="#choose-the-smallest-useful-extension" title="Link to this heading">#</a></h2>
+<p>A named model recipe combines a procedural runner with a readable concrete
+model builder. It may reuse preparation, numerical, sampling, and output
+functions while keeping their scientific composition visible.</p>
+<p>Use these questions when extending RHIME:</p>
 <ol class="arabic simple">
-<li><p>Add an option to an existing component when data preparation, state sharing,
-observation channels, and outputs retain the same shape and meaning.</p></li>
-<li><p>Add a named model recipe when any of those structures changes. A repeated
-orchestration sequence is acceptable.</p></li>
-<li><p>Extract a shared component after the same scientific equations and option
-meanings occur in at least two production recipes.</p></li>
-<li><p>Keep callable extension points, such as <code class="docutils literal notranslate"><span class="pre">likelihood_builder</span></code>, as useful
-incubation and project-specific escape hatches.</p></li>
-<li><p>Graduate a recurring paper-facing variant into a tested, named in-tree
-recipe so the released OpenGHG Inversions version and DOI identify its
-implementation.</p></li>
-<li><p>Reconsider a registry or framework only after real model recipes demonstrate
-stable repeated structure.</p></li>
+<li><p>Can an existing component accept the option while preparation, state sharing,
+observation channels, and output meaning remain the same?</p></li>
+<li><p>Does a change to those structures deserve a named recipe with its own
+assumptions and tests? Similar short orchestration is acceptable.</p></li>
+<li><p>Do two production recipes use the same equations and option meanings?
+Extract that demonstrated shared component.</p></li>
+<li><p>Is this still a project-specific experiment? An ordinary callable extension
+point can provide a useful incubation path.</p></li>
+<li><p>Is a variant recurring in papers? A tested in-tree recipe lets the released
+package version and DOI identify its implementation.</p></li>
 </ol>
-<p>Each public recipe should provide:</p>
-<ul class="simple">
-<li><p>one obvious runner and concrete model builder;</p></li>
-<li><p>a runnable configuration or example stored beside the recipe or in an
-obviously parallel <code class="docutils literal notranslate"><span class="pre">rhime/config</span></code> layout;</p></li>
-<li><p>focused tests of its equations and an end-to-end smoke test;</p></li>
-<li><p>a description of inputs, outputs, assumptions, and limitations; and</p></li>
-<li><p>the relevant scientific citation and model provenance.</p></li>
-</ul>
-<p>The current model-family expansion plan is recorded in
-<code class="docutils literal notranslate"><span class="pre">docs/plans/rhime_model_family_expansion.md</span></code>.</p>
+<p>Reconsider a general registry or framework only after real recipes show stable
+repeated structure. A public recipe should have an obvious runner and builder,
+a runnable example, equation tests and a smoke test, and documentation of its
+inputs, outputs, assumptions, limitations, and scientific citation.</p>
+<p>For current public selection and names, use <a class="reference internal" href="../usage/rhime.html"><span class="doc">RHIME terminology and prepared-input reference</span></a> and
+<a class="reference internal" href="../usage/cli.html"><span class="doc">Running RHIME from the command line</span></a>, backed by the <a class="reference download internal" download="" href="../_downloads/ae3e6910aa484b2a03d80d16faefd14d/spec.md"><code class="xref download docutils literal notranslate"><span class="pre">model-selection</span> <span class="pre">contract</span></code></a>. Selection dispatches to
+concrete recipes; their input contracts can differ. The
+<a class="reference internal" href="../usage/standard_model_family.html"><span class="doc">Standard RHIME model family</span></a>, <a class="reference internal" href="../usage/nested_domain_model_family.html"><span class="doc">Nested-domain model family</span></a>,
+and <a class="reference internal" href="../usage/co2_model_family.html"><span class="doc">CO₂ model family</span></a> pages describe implemented family support.</p>
 </section>
-<section id="public-names-and-model-selection">
-<h2>Public names and model selection<a class="headerlink" href="#public-names-and-model-selection" title="Link to this heading">#</a></h2>
-<p>Use <code class="docutils literal notranslate"><span class="pre">run(...,</span> <span class="pre">model=&quot;standard&quot;)</span></code> as the ordinary Python selector and
-<code class="docutils literal notranslate"><span class="pre">rhime</span> <span class="pre">run</span> <span class="pre">--model</span> <span class="pre">standard</span></code> at the command line. Selection calls concrete
-procedural recipes; it does not impose a common acquisition or checkpoint
-contract on unrelated model families. CO2-family Python selection starts from
-its existing prepared inputs.</p>
-<p>Name concrete runners <code class="docutils literal notranslate"><span class="pre">run_standard</span></code>, <code class="docutils literal notranslate"><span class="pre">run_multisector</span></code> and <code class="docutils literal notranslate"><span class="pre">run_nested</span></code>.
-Use shared names such as <code class="docutils literal notranslate"><span class="pre">MergedData</span></code>, <code class="docutils literal notranslate"><span class="pre">PreparedInputs</span></code> and
-<code class="docutils literal notranslate"><span class="pre">assemble_inputs</span></code> for shared handoffs and preparation. Keep <code class="docutils literal notranslate"><span class="pre">standard</span></code> for
-standard-specific science. Established runner and shared handoff imports and the
-<code class="docutils literal notranslate"><span class="pre">openghg-inversions</span></code> executable remain supported through the 0.9 compatibility
-cycle; see <a class="reference internal" href="../usage/cli.html"><span class="doc">Running RHIME from the command line</span></a>. Do not add redundant <code class="docutils literal notranslate"><span class="pre">rhime</span></code> qualifiers or move
-whole modules solely to make names uniform.</p>
+<section id="compose-scientific-concepts-directly">
+<h2>Compose scientific concepts directly<a class="headerlink" href="#compose-scientific-concepts-directly" title="Link to this heading">#</a></h2>
+<p>A component represents a concept used when discussing the model: basis
+functions, a flux contribution, a baseline, pollution events, model-data
+mismatch, aggregation error, or a likelihood. It need not be mathematically
+atomic. A baseline can combine boundary conditions, an offset, and fixed outer
+fluxes; a multisector component can combine several pollution contributions.</p>
+<p>Prefer a normal function. Its name, options, inputs, and result should explain
+the scientific concept. A composite can call nearby smaller functions; keep a
+model-specific composite beside its recipe until another production recipe
+uses the same equations and meanings. Inheritance, semantic graphs, and
+manifests are unnecessary prerequisites for authoring a component.</p>
+<p>Return the smallest result the consumer needs. An observed tensor can be the
+whole result of a likelihood. A small dataclass can join related scientific
+outputs, such as aligned observation channels or a coherent reduction. A
+shorter signature, speculative flexibility, or provenance alone does not
+justify a new domain object.</p>
+<p>For a concrete likelihood, show the completed mean and how measurement error,
+fixed aggregation error, and inferred mismatch enter its probability model.
+These quantities have different scientific meanings; the supported covariance
+representations belong to the concrete likelihood and recipe. Do not infer
+universal support from a common calling signature. Current equations and
+restrictions are explained in <a class="reference internal" href="../usage/rhime.html"><span class="doc">RHIME terminology and prepared-input reference</span></a> and <a class="reference internal" href="../usage/co2_models.html"><span class="doc">CO₂ model recipes</span></a>.</p>
+<p>Sampler choice becomes part of the recipe when the graph and update algorithm
+are coupled, for example through a state-likelihood cache or an ordered
+<code class="docutils literal notranslate"><span class="pre">CompoundStep</span></code>. Keep the graph, sampler, and update order together. An ordinary
+likelihood variation can use the existing callable seam without a new runner
+or a general sampler protocol. Fixed OU, IID site sigma, and global sigma are
+different scientific targets even when they reuse numerical kernels. Use a
+stock PyMC calculation as the correctness reference for an optimized route.</p>
+<p>Preserve labels until a named numerical boundary. Shared alignment values such
+as <code class="docutils literal notranslate"><span class="pre">SigmaAlignment</span></code> keep site/period interpretation close to the mismatch
+component; repeated factorization or parallel lists can hide that meaning.
+The <a class="reference download internal" download="" href="../_downloads/cbe51aa62a6c7ccf6f896eb64c46e23b/spec.md"><code class="xref download docutils literal notranslate"><span class="pre">model-composition</span> <span class="pre">contract</span></code></a> owns the registered
+coordinate and standard/multisector custom-likelihood interfaces. Follow
+<a class="reference internal" href="../usage/customising_rhime.html"><span class="doc">Customising RHIME</span></a> for a concrete replacement example. Covariance
+axes still need their own scientific alignment; registering one dimension does
+not establish that an independently supplied matrix has the right second axis.</p>
+<p>Keep positive-support prior policy beside prior construction rather than
+repeating distribution allow-lists in each likelihood. Validate independently
+sourced values at the boundary that owns them, then trust locally constructed
+intermediates. Ordinary labelled alignment, Pint conversion, and the numerical
+operation itself often express the required check; add a custom assertion when
+it protects a scientific policy or gives a materially better boundary failure.</p>
 </section>
-<section id="components-and-composite-components">
-<h2>Components and composite components<a class="headerlink" href="#components-and-composite-components" title="Link to this heading">#</a></h2>
-<p>A component represents a concept used when discussing the scientific model.
-Examples include basis functions, a flux contribution, a baseline, pollution
-events, model-data mismatch error, aggregation error, and a likelihood.</p>
-<p>A component does not have to be mathematically atomic. A baseline may combine
-mapped boundary conditions, an offset, and fixed outer-domain fluxes. A
-likelihood may combine measurement error, aggregation error, model-data
-mismatch, pollution-event treatment, and a probability distribution. A
-multisector flux component may combine several forward terms that are all
-pollution contributions to one observation model.</p>
-<p>Prefer a normal function for a component. A composite function may call nearby
-smaller functions, but its public name, options, inputs, and output should
-describe the scientific concept. Keep a model-specific composite beside its
-recipe until another production recipe uses the same equations and meanings.</p>
-<p>Do not require inheritance, registration, a semantic graph, or a manifest to
-author an ordinary component. A dataclass is justified when it is itself a
-recognizable product, such as <code class="docutils literal notranslate"><span class="pre">BasisFunctions</span></code> or a prepared handoff joining
-two aligned observation channels. It is not justified solely to shorten a
-function signature.</p>
+<section id="keep-configuration-with-its-scientific-owner">
+<h2>Keep configuration with its scientific owner<a class="headerlink" href="#keep-configuration-with-its-scientific-owner" title="Link to this heading">#</a></h2>
+<p>Runtime inputs and user choices are different interfaces. Function signatures
+describe observations, sensitivities, priors, and existing model terms.
+Configuration groups choices by the component that owns their meaning. For
+example, boundary-condition prior and period choices belong to the baseline;
+site/period mismatch choices belong to the error model.</p>
+<p>Keep accepted options and defaults beside those consumers. Compose them
+explicitly at resolution rather than inferring a schema from every runtime
+argument or introducing a generic option registry. Let each file frontend own
+its syntax, apply raw overrides before normalization, and forward resolved
+values explicitly. A moderately long keyword-only signature can be clearer
+than an ambient context object or implicit forwarding through the pipeline.</p>
+<p>The current standard/multisector request and its compatibility adapters are
+described in <a class="reference internal" href="../usage/rhime_configuration.html"><span class="doc">Advanced RHIME configuration</span></a>. That reference and the reviewed
+<a class="reference download internal" download="" href="../_downloads/199ec02d50789e694c8a63a7d70bec7f/spec.md"><code class="xref download docutils literal notranslate"><span class="pre">configuration</span> <span class="pre">change</span></code></a>
+own constructor and resolution details. The request precedes preparation;
+retained-site execution facts become known later. Frozen records do not imply
+recursive immutability of borrowed arrays or caller-owned containers.</p>
+<p>Configuration grouping and reusable handoffs are being reconsidered in
+<a class="reference external" href="https://github.com/openghg/openghg_inversions/pull/802">PR 802</a>. Check its
+current proposal and implementation status before adopting those interfaces.
+This guide does not fix private module locations, configuration class layout,
+or future manifest structure. Existing templates and complete option listings
+belong with their recipes and usage references.</p>
 </section>
-<section id="likelihood-covariance-and-sampler-conventions">
-<h2>Likelihood, covariance, and sampler conventions<a class="headerlink" href="#likelihood-covariance-and-sampler-conventions" title="Link to this heading">#</a></h2>
-<p>A likelihood is a scientific component, not a metadata or strategy object.
-Implement an ordinary likelihood as a directly callable function whose
-signature names the completed model mean, observations, reported observation
-error, fixed aggregation error, and the mismatch parameters or alignment it
-actually uses. Keep covariance construction visible in the order in which its
-terms enter the observation model.</p>
-<p>Aggregation error is fixed scientific input, separate from reported
-measurement error and inferred model-data mismatch. It may be represented as
-diagonal, dense, or low-rank-plus-diagonal covariance. Each concrete recipe
-must state which representations it supports and select one explicitly before
-model construction. The likelihood must include the selected representation
-exactly once.</p>
-<p>Aggregation error and correlated mismatch models can make the observation
-covariance non-diagonal. When a sampled mismatch parameter changes that
-covariance, ordinary NUTS may repeatedly perform expensive factorizations.
-Sampler choice is therefore part of a concrete scientific recipe when the
-graph and update algorithm are genuinely coupled. Keep such a graph and
-sampler together in a named recipe and show their update order. Do not add a
-general sampler protocol or one runner per ordinary likelihood variation.</p>
-<p>A sampler-independent likelihood belongs behind the recipe’s ordinary
-likelihood-selection seam. A specialized sampler deserves a separate runner
-only when it requires a matched graph, state-likelihood cache, or ordered
-<code class="docutils literal notranslate"><span class="pre">CompoundStep</span></code>. A component should not publish bespoke sampler-capability
-metadata merely to predict whether another PyMC backend supports its graph.
-Let PyMC or PyTensor reject unsupported operations during backend conversion.
-A recipe may reject an incompatible sampler setting when it constructs and
-owns a required step method itself.</p>
-<p>The current production home for covariance-aware likelihoods and optimized
-samplers is the CO2 model family because CO2 and CO2/O2 currently own
-aggregation-error preparation and the associated non-diagonal observation
-covariance. The general <code class="docutils literal notranslate"><span class="pre">likelihood_builder</span></code> seam remains useful for
-experiments and downstream customization. A repeatedly used, paper-facing CO2
-variant must also be selectable from the named CO2 recipe instead of existing
-only in Verification Games customization. Apply a CO2-only mismatch equation
-to the joint CO2/O2 stack only after its cross-tracer covariance, units, and
-parameter-sharing semantics have been stated explicitly.</p>
-<p>Fixed OU, IID site sigma, and scalar/global sigma are distinct scientific
-targets. Keep their names, equations, options, and tests distinct even when
-they reuse the same covariance preparation or numerical kernel. Stock PyMC is
-the correctness oracle and fallback for an optimized sampler; it need not be
-the efficient production route for every non-diagonal covariance.</p>
-<p>Use <code class="docutils literal notranslate"><span class="pre">SigmaAlignment</span></code> for site- or period-varying mismatch parameters. It is
-the single labelled value mapping latent sigma coordinates to observations.
-Derive it once at a visible preparation or model-composition boundary and pass
-it explicitly when components share it. Do not repeat site factorization,
-dummy encoding, label ordering, or observation lookup in individual
-likelihoods. A small component may encapsulate closely related preparation
-when doing so leaves its scientific meaning obvious; mechanical separation is
-not a goal.</p>
-<p>Use labelled xarray operations before positional indexing. Expand mappings
-keyed by site or state by selection against the canonical labelled coordinate,
-not by parallel lists or hand-written loops. Preserve labels until the named
-PyMC, SciPy, or other eager numerical boundary.</p>
-<p>Covariance matrices require specialized xarray and NetCDF handling because
-their two axes carry the same scientific labels but need distinct dimension
-names. Use <code class="docutils literal notranslate"><span class="pre">dim</span></code> for rows and <code class="docutils literal notranslate"><span class="pre">dim_cov</span></code> for columns and establish once,
-with <code class="docutils literal notranslate"><span class="pre">validate_covariance_coordinates</span></code>, that both coordinates contain the
-same labels in the same order. This does not weaken ordinary coordinate
-registration. Conversely, a genuinely latent-only dimension may be added
-directly when no model data exists from which to register it; a bare
-<code class="docutils literal notranslate"><span class="pre">add_coords</span></code> call is not intrinsically an error.</p>
-<p>Validate independently sourced observations, covariance representations,
-coordinates, units, mappings, cached artifacts, and user configuration at the
-boundary which owns them. After construction, trust package-created
-intermediates. Prefer <code class="docutils literal notranslate"><span class="pre">xr.align(...,</span> <span class="pre">join=&quot;exact&quot;)</span></code>, labelled selection,
-Pint conversion, and the factorization or backend operation itself to repeated
-assertions. Add a bespoke check only when it protects a scientific policy or a
-real boundary those mechanisms cannot express and gives a materially better
-failure.</p>
-<p>Positive-support prior policy is general prior-building behavior. Normalize or
-reject unsupported positive priors in one helper beside <code class="docutils literal notranslate"><span class="pre">parse_prior</span></code>; do
-not duplicate distribution allow-lists and support checks in each likelihood.</p>
-<p>Return the smallest object the caller needs. Return the observed tensor when
-that is the component’s sole product. Return a small dataclass when several
-outputs form one recognizable scientific result that a caller consumes. Do
-not introduce a dataclass solely to carry provenance, sampler restrictions, or
-future flexibility.</p>
-<p>Trace provenance for a custom likelihood consists of safe callable identity
-and explicit JSON-compatible arguments unless an output consumer demonstrates
-a further requirement. Do not add likelihood-specific <code class="docutils literal notranslate"><span class="pre">rhime_metadata</span></code>,
-variable-role maps, or redundant derived arrays by default. Scientific roles
-belong to the concrete model/output contract and should be added only for
-quantities postprocessing genuinely consumes.</p>
-<p>Public scientific citations belong in recipe documentation and should point
-to accessible scientific sources. Private repository paths, private commit
-hashes, and development-history citations do not belong in runtime model code,
-trace attributes, public API documentation, or test names. Record such
-implementation provenance in the pull request, issue, or internal parity
-record. Tests and released documentation must remain understandable without
-access to Verification Games.</p>
-<p>OpenGHG Inversions owns released, generally useful numerical components,
-likelihoods, samplers, and named production recipes. Verification Games owns
-calibration cases, experimental orchestration, campaign-specific configuration,
-and independent acceptance evidence. Verification Games should consume OGI
-through public APIs and remove its duplicate implementation after parity is
-established. A migration is not complete merely because the OGI implementation
-has merged; the corresponding Verification Games consumer and duplicate-code
-removal are compensating parts of the same cutover.</p>
+<section id="preserve-scientific-handoffs-and-output-meaning">
+<h2>Preserve scientific handoffs and output meaning<a class="headerlink" href="#preserve-scientific-handoffs-and-output-meaning" title="Link to this heading">#</a></h2>
+<p>Prepared inputs join labelled, backend-neutral scientific products. A recipe
+selects the arrays it consumes and materializes related values together at the
+named model boundary. Extension or diagnostic variables need not become model
+inputs merely because they share a Dataset. A scientifically distinct recipe
+can compose reusable prepared values without pretending to be substitutable
+for another family.</p>
+<p>Moving a preparation equation, including observation-error derivation,
+minimum-error calculation, or boundary-period expansion, is a scientific
+change requiring its own parity evidence. The configuration contract records
+the current observation-error-before-filtering policy. Supported prepared-input
+contents and examples are in <a class="reference internal" href="../usage/rhime.html"><span class="doc">RHIME terminology and prepared-input reference</span></a> and
+<a class="reference internal" href="../usage/customising_rhime.html"><span class="doc">Customising RHIME</span></a>; checkpoint limitations are in
+<a class="reference internal" href="../usage/staged_workflow.html"><span class="doc">Staged RHIME workflows</span></a>.</p>
+<p>Source selection and state grouping should remain plainly named operations on
+labelled values and retained artifacts. Resolutions, partitions, sources, and
+observation channels need explicit labels. Variable suffixes or positions alone
+cannot preserve those scientific meanings.</p>
+<p>Postprocessing needs quantity meaning as well as arrays. Small scientific-role
+mappings can connect a model’s local names to real output consumers without
+imposing a compiler or backend naming convention. Define the quantity, units,
+dimensions, and uncertainty scope with the output contract. The maintained
+<a class="reference internal" href="../usage/retained_state_reconstruction.html"><span class="doc">Linear retained-state reconstruction</span></a> and <a class="reference internal" href="../usage/affine_flux_map.html"><span class="doc">Affine native-flux reconstruction</span></a>
+pages explain current reconstruction and its limits; their reviewed capability
+changes are linked from <a class="reference internal" href="specifications.html"><span class="doc">Development guidance and behavioral specifications</span></a>. A role name alone does not
+promise a storage schema or graph-free replay for every analysis.</p>
+<p>The numerical ownership rules apply throughout: inputs are borrowed and may be
+Dask-backed; copying, computation, densification, persistence, and serialization
+belong at visible boundaries. See <a class="reference internal" href="numerical_array_ownership.html"><span class="doc">Numerical array ownership and execution</span></a> for the
+reasoning and <a class="reference internal" href="validation_and_xarray.html"><span class="doc">Validation and labelled-array patterns</span></a> for practical patterns.</p>
 </section>
-<section id="configuration-ownership">
-<h2>Configuration ownership<a class="headerlink" href="#configuration-ownership" title="Link to this heading">#</a></h2>
-<p>Runtime scientific inputs and user configuration options are different
-contracts:</p>
-<ul class="simple">
-<li><p>Function signatures should describe runtime values such as observations,
-sensitivities, basis functions, priors, and existing PyMC terms.</p></li>
-<li><p>Configuration documentation should group user choices by the scientific
-component that owns them.</p></li>
-</ul>
-<p>For example, <code class="docutils literal notranslate"><span class="pre">bc_prior</span></code> and <code class="docutils literal notranslate"><span class="pre">bc_freq</span></code> belong to the baseline component,
-while <code class="docutils literal notranslate"><span class="pre">sigma_prior</span></code>, <code class="docutils literal notranslate"><span class="pre">sigma_freq</span></code>, and <code class="docutils literal notranslate"><span class="pre">sigma_per_site</span></code> belong to the
-model-data mismatch component. A component may publish a small explicit tuple
-or table of owned option names. Do not infer the user configuration schema from
-every argument in its runtime function signature.</p>
-<p>Configuration parsing should:</p>
-<ul class="simple">
-<li><p>translate legacy spellings and normalize values once at the runner boundary;</p></li>
-<li><p>reject unknown and unused options;</p></li>
-<li><p>let each file frontend interpret its own sections and value syntax; and</p></li>
-<li><p>pass resolved values explicitly to the functions that own them.</p></li>
-</ul>
-<p>Standard and multisector requests use <code class="docutils literal notranslate"><span class="pre">rhime.params.RhimeConfig</span></code> as the
-semantic boundary. <code class="docutils literal notranslate"><span class="pre">read_rhime_ini</span></code> only decodes an INI file into options;
-it has no recipe-mode or override arguments and does not construct configuration.
-Each runner combines winning overrides, extracts recipe-specific options and
-calls <code class="docutils literal notranslate"><span class="pre">RhimeConfig.from_params</span></code> once. This keeps shorthand editable until the
-final requested values are known. Preserve the existing first-occurrence rule
-for repeated INI keys without imposing it on other frontends.</p>
-<p>Historical fixedbasis conversion and deprecated RHIME spellings belong to the
-lightweight <code class="docutils literal notranslate"><span class="pre">hbmcmc.compatibility</span></code> module. <code class="docutils literal notranslate"><span class="pre">RhimeConfig.from_params</span></code> invokes
-the alias translator once before modern normalization and construction; runners
-do not repeat it. Translation emits <code class="docutils literal notranslate"><span class="pre">DeprecationWarning</span></code> only when it replaces
-or removes deprecated names or output values. Modern options remain quiet.
-The former <code class="docutils literal notranslate"><span class="pre">resolve_rhime_config</span></code> wrapper is removed;
-<code class="docutils literal notranslate"><span class="pre">params_from_config</span></code> retains its historical dictionary/normalization contract
-as a deprecated adapter. Do not import the executable HBMCMC runner into modern
-configuration code. Existing default policy is unchanged by this ownership move.</p>
-<p>Keep accepted option names and defaults beside the preparation, model, output
-or sampling consumer that owns them. The configuration constructor composes
-those declared choices explicitly; do not infer options from runtime signatures
-or add a generic option registry. INI headings do not require matching classes.
-Complete runners accept an already resolved <code class="docutils literal notranslate"><span class="pre">config</span></code> and start scientific
-work without resolving it again. That input is exclusive with <code class="docutils literal notranslate"><span class="pre">config_file</span></code>
-and raw configuration keywords. Compatibility entry points can therefore
-validate once before their own side effects and pass the same request onward.</p>
-<p><code class="docutils literal notranslate"><span class="pre">RhimeConfig</span></code> owns acquisition and preparation fields directly, alongside
-one public <code class="docutils literal notranslate"><span class="pre">inversion_data.SiteOptions</span></code> and the existing <code class="docutils literal notranslate"><span class="pre">RhimeModelSpec</span></code>,
-<code class="docutils literal notranslate"><span class="pre">RhimeOutputSpec</span></code> and <code class="docutils literal notranslate"><span class="pre">inference.sampling.RhimeSampler</span></code>. The model
-specification describes scientific choices, the output specification describes
-final products, and the sampler holds settings and executes only when given a
-completed model. Do not add a separate preparation configuration or duplicate
-sampler settings class. Constructing configuration does not acquire scientific
-data, bind a model or execute inference.</p>
-<p><code class="docutils literal notranslate"><span class="pre">SiteOptions.from_inputs</span></code> and its small helpers establish complete aligned
-selectors independently of file syntax. Direct construction accepts resolved
-aligned values. Canonical acquisition consumes those values without another
-shorthand pass; retained-site selection selects every applicable selector
-together and returns a new record. <code class="docutils literal notranslate"><span class="pre">RhimeMergedData.from_options</span></code> performs
-fresh in-memory acquisition. The recipe first reuses compatible supplied data,
-then acquires fresh data when no handoff was supplied. Repeated sampling uses
-the durable prepared-input artifact. The deprecated
-<code class="docutils literal notranslate"><span class="pre">openghg_inversions.hbmcmc.legacy_data.data_processing_surface_notracer</span></code>
-wrapper preserves its six-tuple contract. Modern acquisition calls only the
-dataset owner.</p>
-<p>Keep the procedural runner’s acquisition, preparation, model construction and
-sampling sequence visible. Pass needed resolved values directly or unpack an
-explicit <code class="docutils literal notranslate"><span class="pre">config.select(&quot;name&quot;,</span> <span class="pre">...)</span></code> selection into the scientific function’s
-named arguments. Selection creates a shallow dictionary with borrowed values;
-it does not inspect signatures, resolve options or define another schema.
-A private orchestration helper may accept the resolved configuration to coordinate
-several stages, while scientific components retain independently usable inputs.
-The named preparation functions no longer accept positional <code class="docutils literal notranslate"><span class="pre">data_args</span></code> maps.
-The stages and their scientific helpers live together in <code class="docutils literal notranslate"><span class="pre">rhime.preparation</span></code>.
-The combined <code class="docutils literal notranslate"><span class="pre">prepare_rhime_inputs</span></code> adapter has been removed; compose the
-named stages directly when custom preparation is required.</p>
-<p>Apply raw overrides before resolution. Use <code class="docutils literal notranslate"><span class="pre">dataclasses.replace</span></code> only when the
-replacement fields are already mutually consistent; it does not recompute
-site expansion, date-dependent defaults or repeated model/output facts.
-Shared species/domain, source, BC-use and artifact-naming facts come from one
-resolution boundary; their small explicit duplication in independently usable
-model/output specifications does not justify a shared context hierarchy or
-repeated consistency checks.</p>
-<p>The requested configuration has no run specification. After preparation,
-derive <code class="docutils literal notranslate"><span class="pre">RhimeRunSpec</span></code> from retained sites/periods, requested date bounds,
-prepared layout and resolved model/output choices. It describes execution;
-<code class="docutils literal notranslate"><span class="pre">RhimeResult</span></code> describes completed execution with prepared inputs, posterior
-and products. Internal setup bundles and their requested-site run projections
-are removed. Independent prepared-input APIs remain supported. Resolve known
-configuration defaults at the request boundary; conversions that require
-retained labels or numerical arrays remain with their scientific owner.
-Frozen records do not imply recursive immutability of existing mappings or
-samplers; preserve borrowed scientific arrays and caller-owned containers.
-Configuration serialization and INI writing are deferred to
-<a class="reference external" href="https://github.com/openghg/openghg_inversions/issues/814">Issue 814</a>.</p>
-<p>Effective <code class="docutils literal notranslate"><span class="pre">use_tracer=True</span></code> remains unsupported and is rejected before data
-access. Omitted/false requests produce no tracer configuration field. Do not
-restore raw spellings or disabled fields to preserve old hashes; staged
-authentication and version compatibility belong to their existing owners.
-See <a class="reference internal" href="../usage/rhime_configuration.html"><span class="doc">Advanced RHIME configuration</span></a> for configuration inspection and
-<a class="reference internal" href="../usage/staged_workflow.html"><span class="doc">Staged RHIME workflows</span></a> for the 0.7/0.8 artifact boundary.</p>
-<p>The legacy <code class="docutils literal notranslate"><span class="pre">hbmcmc/config</span></code> template tree has been removed. Keep new RHIME
-templates in
-<code class="docutils literal notranslate"><span class="pre">openghg_inversions/rhime/config</span></code> so the configuration layout mirrors the
-model-recipe layout. Choose a human-readable format appropriate to the recipe;
-new recipes do not need to use the legacy INI format. A complex recipe
-implemented as a subpackage may keep a small model-specific resolver in that
-subpackage. Migrate an existing template or format only with a compatibility
-plan; that migration is not a prerequisite for adding a new model.</p>
-<p>It is acceptable for a stage function to have a moderately long keyword-only
-signature. Do not replace honest parameters with an ambient context object or
-forward <code class="docutils literal notranslate"><span class="pre">**kwargs</span></code> through the scientific pipeline.</p>
-</section>
-<section id="model-input-requirements">
-<h2>Model input requirements<a class="headerlink" href="#model-input-requirements" title="Link to this heading">#</a></h2>
-<p>Some components also require named arrays at the PyMC materialization boundary.
-When an ordinary function signature cannot describe those requirements early
-enough, use a small constant or pure function beside the component. This
-information may drive early validation and coordinated materialization.</p>
-<p>It is not a caller-authored manifest and must not determine execution order.
-Ordinary runners should not construct or thread a requirements object through
-the pipeline merely to satisfy a framework contract.</p>
-<p>Component registration owns cross-component coordinate consistency. Data
-passed through <code class="docutils literal notranslate"><span class="pre">add_model_data</span></code> / <code class="docutils literal notranslate"><span class="pre">add_coords</span></code> is checked by the model’s
-<code class="docutils literal notranslate"><span class="pre">CoordRegistry</span></code>, so recipes should not repeat pairwise alignment checks for
-arrays that those components register. Validate scientific invariants at the
-component that owns them, and explicitly validate arrays whose labels are
-not shared through one registered dimension name, such as the second
-observation axis of a dense aggregation-error covariance. Construct direct and
-complete custom models with <code class="docutils literal notranslate"><span class="pre">registered_model()</span></code>; <code class="docutils literal notranslate"><span class="pre">add_coords</span></code> rejects a
-model without that registry so the ownership rule is enforced at every
-labelled component boundary.</p>
-</section>
-<section id="prepared-input-inventory-and-ownership">
-<h2>Prepared-input inventory and ownership<a class="headerlink" href="#prepared-input-inventory-and-ownership" title="Link to this heading">#</a></h2>
-<p><code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code> is the durable, backend-neutral labelled-data boundary
-for the standard and multisector recipes. It may retain project-specific
-arrays that no current PyMC recipe uses. Concrete recipes declare only the
-names they select, materialize those arrays together, and pass them to
-components as honest named arguments.</p>
-<p>A scientifically distinct recipe may define a dedicated prepared-input type.
-Prefer composition of the reusable canonical boundary over inheritance when
-the recipe is not substitutable for the standard model.</p>
-<div class="pst-scrollable-table-container"><table class="table" id="id1">
-<caption><span class="caption-text">Current <code class="docutils literal notranslate"><span class="pre">inv_inputs</span></code> inventory</span><a class="headerlink" href="#id1" title="Link to this table">#</a></caption>
-<colgroup>
-<col style="width: 18.0%" />
-<col style="width: 20.0%" />
-<col style="width: 32.0%" />
-<col style="width: 30.0%" />
-</colgroup>
-<thead>
-<tr class="row-odd"><th class="head"><p>Field or value</p></th>
-<th class="head"><p>Kind</p></th>
-<th class="head"><p>Current owner</p></th>
-<th class="head"><p>Model use</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">H</span></code></p></td>
-<td><p>Reusable scientific product</p></td>
-<td><p>Sensitivity preparation or an external prepared-data producer</p></td>
-<td><p>Selected by the standard or multisector flux component as
-<code class="docutils literal notranslate"><span class="pre">flux_sensitivity</span></code></p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">H_bc</span></code></p></td>
-<td><p>Reusable baseline sensitivity</p></td>
-<td><p>Baseline preparation; its current period expansion remains there</p></td>
-<td><p>Selected by the baseline component as <code class="docutils literal notranslate"><span class="pre">boundary_sensitivity</span></code></p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">mf</span></code>, <code class="docutils literal notranslate"><span class="pre">mf_error</span></code></p></td>
-<td><p>Reusable observation data</p></td>
-<td><p>Observation preparation</p></td>
-<td><p>Passed as <code class="docutils literal notranslate"><span class="pre">observations</span></code> and <code class="docutils literal notranslate"><span class="pre">observation_error</span></code> to the likelihood</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">min_error</span></code></p></td>
-<td><p>Reusable error-model product</p></td>
-<td><p>Currently calculated by preparation</p></td>
-<td><p>Selected as <code class="docutils literal notranslate"><span class="pre">minimum_error</span></code> by pollution-event mismatch or by another
-built-in component which explicitly opts into the historical total-error
-floor; custom likelihoods do not require it</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">aggregation_error_covariance</span></code>, <code class="docutils literal notranslate"><span class="pre">low_rank_factor</span></code>,
-<code class="docutils literal notranslate"><span class="pre">diagonal_residual_variance</span></code>, <code class="docutils literal notranslate"><span class="pre">aggregation_error_sd</span></code></p></td>
-<td><p>Optional reusable fixed-error products</p></td>
-<td><p>Prepared data or an external scientific producer</p></td>
-<td><p>The selected likelihood representation is validated as one
-<code class="docutils literal notranslate"><span class="pre">AggregationError</span></code> value</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">mf_repeatability</span></code>, <code class="docutils literal notranslate"><span class="pre">mf_variability</span></code>, release coordinates,
-column-prior factors, and arbitrary labelled extensions</p></td>
-<td><p>Durable diagnostics or recipe extensions</p></td>
-<td><p>Their scientific producer</p></td>
-<td><p>Not materialized unless a concrete recipe explicitly selects them</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">site_indicator</span></code></p></td>
-<td><p>Legacy output/compatibility wiring</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code> derives and validates it from labelled
-<code class="docutils literal notranslate"><span class="pre">(site,</span> <span class="pre">time)</span></code> observations</p></td>
-<td><p>Built-in likelihoods do not materialize it; the offset component may
-still register its own model data</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">site_names</span></code></p></td>
-<td><p>Output/compatibility wiring</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code> regenerates it from site metadata</p></td>
-<td><p>Not a PyMC input</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">SigmaAlignment</span></code></p></td>
-<td><p>Cohesive model-only value</p></td>
-<td><p>The shared likelihood dispatcher derives it from <code class="docutils literal notranslate"><span class="pre">mf.coords[&quot;site&quot;]</span></code>,
-time, and resolved model-error options</p></td>
-<td><p>Passed explicitly to the likelihood</p></td>
-</tr>
-<tr class="row-odd"><td><p>Source/sector selection and state grouping</p></td>
-<td><p>Cohesive model-only mapping</p></td>
-<td><p>The multisector flux component validates source labels and derives its
-state names beside the consuming recipe</p></td>
-<td><p>Never stored in a generic model-input context</p></td>
-</tr>
-</tbody>
-</table>
-</div>
-<p>The current preparation ownership of <code class="docutils literal notranslate"><span class="pre">min_error</span></code> calculation and boundary
-period expansion is explicit rather than accidental. A concrete recipe does
-not materialize <code class="docutils literal notranslate"><span class="pre">min_error</span></code> unless its selected mismatch component owns the
-floor. Moving either preparation equation requires its own scientific parity
-change. An externally cached sensitivity,
-including a Verification Games <code class="docutils literal notranslate"><span class="pre">fp_x_flux</span></code> projection, can be installed as
-labelled <code class="docutils literal notranslate"><span class="pre">H</span></code> at this durable handoff. Its Dask graph and provenance remain
-borrowed until a selected flux recipe reaches the named PyMC materialization
-boundary.</p>
-</section>
-<section id="state-and-source-selection">
-<h2>State and source selection<a class="headerlink" href="#state-and-source-selection" title="Link to this heading">#</a></h2>
-<p>Sector/source validation and state-vector grouping are genuine reusable
-scientific operations. They should be implemented as plainly named functions
-over labelled data and retained artifacts. They must remain independent of a
-compiler plan so nested-domain, multisector, and linked-tracer recipes can use
-them directly.</p>
-<p>Different resolutions, basis partitions, sources, and observation channels
-must retain explicit labels. Do not encode these meanings only in variable
-suffixes, array positions, or generated backend names.</p>
-</section>
-<section id="scientific-variable-roles">
-<h2>Scientific variable roles<a class="headerlink" href="#scientific-variable-roles" title="Link to this heading">#</a></h2>
-<p>Postprocessing should identify quantities by a small backend-neutral scientific
-role, not by a PyMC variable name. Roles such as <code class="docutils literal notranslate"><span class="pre">modelled_concentration</span></code>,
-<code class="docutils literal notranslate"><span class="pre">pollution_concentration</span></code>, <code class="docutils literal notranslate"><span class="pre">baseline_concentration</span></code>, <code class="docutils literal notranslate"><span class="pre">flux_scaling</span></code>, and
-<code class="docutils literal notranslate"><span class="pre">model_data_mismatch</span></code> are analogous to project-level CF <code class="docutils literal notranslate"><span class="pre">standard_name</span></code>
-values: they describe meaning while allowing each backend to use convenient
-local names.</p>
-<p>A model or backend adapter may provide a plain mapping from these roles to its
-actual variables. This is an output and postprocessing contract, not a semantic
-model or compiler manifest. Keep the vocabulary small, documented, and driven
-by real consumers. Document one scientific definition and the dimensional or
-unit expectations needed by consumers for each role. The role identifies a
-quantity; it does not prescribe a PyMC name, analytic-result field, storage
-layout, or execution step.</p>
-<p>Preparation should remain backend-neutral through labelled scientific inputs
-and coherent-reduction products. Cross an explicit boundary only when a
-backend-specific representation is required. PyMC and analytic-Gaussian
-builders should be able to share preparation and scientific role definitions
-without pretending that their internal values or execution lifecycles are the
-same.</p>
-</section>
-<section id="numerical-boundaries">
-<h2>Numerical boundaries<a class="headerlink" href="#numerical-boundaries" title="Link to this heading">#</a></h2>
-<p>The repository’s xarray ownership rules still apply. Inputs are borrowed and
-may be Dask-backed. Copying, eager computation, densification, persistence, and
-serialization must happen at named boundaries and must not be hidden behind a
-property or model framework.</p>
-<p>Further guidance is in
-<code class="docutils literal notranslate"><span class="pre">docs/development/validation_and_xarray.rst</span></code>,
-<code class="docutils literal notranslate"><span class="pre">docs/plans/numerical_data_ownership_and_execution_boundaries.md</span></code> and the
-active <code class="docutils literal notranslate"><span class="pre">run_rhime</span></code> plan in
-<code class="docutils literal notranslate"><span class="pre">docs/plans/run_rhime_readability_and_modifiability.md</span></code>.</p>
-</section>
-<section id="file-backed-staged-workflows">
-<h2>File-backed staged workflows<a class="headerlink" href="#file-backed-staged-workflows" title="Link to this heading">#</a></h2>
-<p><code class="docutils literal notranslate"><span class="pre">rhime.stages</span></code> is the public facade for file-backed execution. The concrete
-standard and multisector staged workflows remain together in
-<code class="docutils literal notranslate"><span class="pre">rhime._standard_stages</span></code> so their preparation, sampling, and replay sequence
-can be read procedurally. Shared serialization, path, and digest mechanics
-belong to <code class="docutils literal notranslate"><span class="pre">rhime._stage_artifacts</span></code>; manifest and saved-output binding
-authentication belongs to <code class="docutils literal notranslate"><span class="pre">rhime._stage_authentication</span></code>. Each family owns its
-configuration identity and replay policy. Shared staged checks belong to
-<code class="docutils literal notranslate"><span class="pre">rhime._stage_checks</span></code> and retain their existing diagnostic calculations,
-thresholds, and check schemas. Family implementations import these owners
-directly, without importing helpers from the public facade. These private
-owners can move together when complete workflows migrate to <code class="docutils literal notranslate"><span class="pre">recipes</span></code>.</p>
+<section id="record-evidence-and-scientific-ownership">
+<h2>Record evidence and scientific ownership<a class="headerlink" href="#record-evidence-and-scientific-ownership" title="Link to this heading">#</a></h2>
+<p>Public recipe documentation should cite accessible scientific sources.
+Implementation-history paths and private commit hashes belong in issues,
+pull requests, or internal parity records. Released code, examples, and tests
+should remain understandable without private Verification Games access.</p>
+<p>OpenGHG Inversions owns released reusable components and production recipes;
+Verification Games owns calibration cases, experimental orchestration,
+campaign configuration, and independent acceptance evidence. A cutover includes
+the downstream consumer and removal of its duplicate implementation after
+parity, as well as merging the package implementation. Track that acceptance
+work in the owning issue rather than treating a historical plan as completion.</p>
 </section>
 </section>
 
@@ -937,11 +600,11 @@ owners can move together when complete workflows migrate to <code class="docutil
       </div>
     </a>
     <a class="right-next"
-       href="architecture_principles.html"
+       href="specifications.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">Architecture principles and recipe boundaries</p>
+        <p class="prev-next-title">Development guidance and behavioral specifications</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -964,19 +627,12 @@ owners can move together when complete workflows migrate to <code class="docutil
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#purpose">Purpose</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#core-principles">Core principles</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#model-recipes">Model recipes</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#public-names-and-model-selection">Public names and model selection</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#components-and-composite-components">Components and composite components</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#likelihood-covariance-and-sampler-conventions">Likelihood, covariance, and sampler conventions</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#configuration-ownership">Configuration ownership</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#model-input-requirements">Model input requirements</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#prepared-input-inventory-and-ownership">Prepared-input inventory and ownership</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#state-and-source-selection">State and source selection</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#scientific-variable-roles">Scientific variable roles</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#numerical-boundaries">Numerical boundaries</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#file-backed-staged-workflows">File-backed staged workflows</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#start-with-the-scientific-recipe">Start with the scientific recipe</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#choose-the-smallest-useful-extension">Choose the smallest useful extension</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#compose-scientific-concepts-directly">Compose scientific concepts directly</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#keep-configuration-with-its-scientific-owner">Keep configuration with its scientific owner</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#preserve-scientific-handoffs-and-output-meaning">Preserve scientific handoffs and output meaning</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#record-evidence-and-scientific-ownership">Record evidence and scientific ownership</a></li>
 </ul>
   </nav></div>
 

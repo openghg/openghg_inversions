@@ -316,7 +316,9 @@
   <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
   <div class="bd-toc-item navbar-nav"><ul class="nav bd-sidenav">
 <li class="toctree-l1"><a class="reference internal" href="rhime_model_development.html">Developing RHIME models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="specifications.html">Development guidance and behavioral specifications</a></li>
 <li class="toctree-l1"><a class="reference internal" href="architecture_principles.html">Architecture principles and recipe boundaries</a></li>
+<li class="toctree-l1"><a class="reference internal" href="numerical_array_ownership.html">Numerical array ownership and execution</a></li>
 <li class="toctree-l1"><a class="reference internal" href="validation_and_xarray.html">Validation and labelled-array patterns</a></li>
 <li class="toctree-l1"><a class="reference internal" href="documentation.html">Maintain the documentation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="observation_uncertainty.html">Missing observation uncertainty: behavior and decisions</a></li>
@@ -381,24 +383,23 @@
   <section id="developing-openghg-inversions">
 <h1>Developing OpenGHG Inversions<a class="headerlink" href="#developing-openghg-inversions" title="Link to this heading">#</a></h1>
 <p>These pages cover scientific model development, observation-uncertainty
-decisions, and release practices. The model-development and validation guides
-are normative for new RHIME work.</p>
+decisions, and release practices. The development guides explain design and
+review principles; scoped behavioral specifications define supported contracts.
+See <a class="reference internal" href="specifications.html"><span class="doc">Development guidance and behavioral specifications</span></a> for their ownership and delivery status.</p>
 <div class="toctree-wrapper compound">
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="rhime_model_development.html">Developing RHIME models</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="rhime_model_development.html#purpose">Purpose</a></li>
-<li class="toctree-l2"><a class="reference internal" href="rhime_model_development.html#core-principles">Core principles</a></li>
-<li class="toctree-l2"><a class="reference internal" href="rhime_model_development.html#model-recipes">Model recipes</a></li>
-<li class="toctree-l2"><a class="reference internal" href="rhime_model_development.html#public-names-and-model-selection">Public names and model selection</a></li>
-<li class="toctree-l2"><a class="reference internal" href="rhime_model_development.html#components-and-composite-components">Components and composite components</a></li>
-<li class="toctree-l2"><a class="reference internal" href="rhime_model_development.html#likelihood-covariance-and-sampler-conventions">Likelihood, covariance, and sampler conventions</a></li>
-<li class="toctree-l2"><a class="reference internal" href="rhime_model_development.html#configuration-ownership">Configuration ownership</a></li>
-<li class="toctree-l2"><a class="reference internal" href="rhime_model_development.html#model-input-requirements">Model input requirements</a></li>
-<li class="toctree-l2"><a class="reference internal" href="rhime_model_development.html#prepared-input-inventory-and-ownership">Prepared-input inventory and ownership</a></li>
-<li class="toctree-l2"><a class="reference internal" href="rhime_model_development.html#state-and-source-selection">State and source selection</a></li>
-<li class="toctree-l2"><a class="reference internal" href="rhime_model_development.html#scientific-variable-roles">Scientific variable roles</a></li>
-<li class="toctree-l2"><a class="reference internal" href="rhime_model_development.html#numerical-boundaries">Numerical boundaries</a></li>
-<li class="toctree-l2"><a class="reference internal" href="rhime_model_development.html#file-backed-staged-workflows">File-backed staged workflows</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rhime_model_development.html#start-with-the-scientific-recipe">Start with the scientific recipe</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rhime_model_development.html#choose-the-smallest-useful-extension">Choose the smallest useful extension</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rhime_model_development.html#compose-scientific-concepts-directly">Compose scientific concepts directly</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rhime_model_development.html#keep-configuration-with-its-scientific-owner">Keep configuration with its scientific owner</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rhime_model_development.html#preserve-scientific-handoffs-and-output-meaning">Preserve scientific handoffs and output meaning</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rhime_model_development.html#record-evidence-and-scientific-ownership">Record evidence and scientific ownership</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="specifications.html">Development guidance and behavioral specifications</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="specifications.html#current-contracts-and-proposals">Current contracts and proposals</a></li>
+<li class="toctree-l2"><a class="reference internal" href="specifications.html#planning-records">Planning records</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="architecture_principles.html">Architecture principles and recipe boundaries</a><ul>
@@ -410,6 +411,15 @@ are normative for new RHIME work.</p>
 <li class="toctree-l2"><a class="reference internal" href="architecture_principles.html#make-consumer-interfaces-explicit">Make consumer interfaces explicit</a></li>
 <li class="toctree-l2"><a class="reference internal" href="architecture_principles.html#make-dependency-boundaries-observable">Make dependency boundaries observable</a></li>
 <li class="toctree-l2"><a class="reference internal" href="architecture_principles.html#background">Background</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="numerical_array_ownership.html">Numerical array ownership and execution</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="numerical_array_ownership.html#borrowing-is-different-from-a-snapshot">Borrowing is different from a snapshot</a></li>
+<li class="toctree-l2"><a class="reference internal" href="numerical_array_ownership.html#labels-can-be-checked-before-values-are-computed">Labels can be checked before values are computed</a></li>
+<li class="toctree-l2"><a class="reference internal" href="numerical_array_ownership.html#sparse-storage-and-lazy-execution-are-separate">Sparse storage and lazy execution are separate</a></li>
+<li class="toctree-l2"><a class="reference internal" href="numerical_array_ownership.html#related-computations-can-share-work">Related computations can share work</a></li>
+<li class="toctree-l2"><a class="reference internal" href="numerical_array_ownership.html#an-eager-kernel-has-an-explicit-memory-boundary">An eager kernel has an explicit memory boundary</a></li>
+<li class="toctree-l2"><a class="reference internal" href="numerical_array_ownership.html#evidence-for-execution-behavior">Evidence for execution behavior</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="validation_and_xarray.html">Validation and labelled-array patterns</a><ul>
