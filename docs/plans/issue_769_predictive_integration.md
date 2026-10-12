@@ -1,14 +1,36 @@
 # Issue 769: production predictive integration plan
 
 Status: planned; prototype step 1 complete; production implementation not started.
-Date: 2026-10-02.
-Base: `devel` at `f6ca9aa1`; branch: `codex/gh769-predictive-integration`.
+Created: 2026-10-02; refreshed: 2026-10-12.
+Base: `devel` at `42a32f62`; branch: `codex/gh769-predictive-integration`.
 
 Deliver one production PR resolving [issue 769](https://github.com/openghg/openghg_inversions/issues/769).
 [PR 786](https://github.com/openghg/openghg_inversions/pull/786) remains an
 unmerged experiment, not a dependency. This plan incorporates its
 [production review](https://github.com/openghg/openghg_inversions/pull/786#issuecomment-5954802380)
-and current devel's newer CO2 staged-prior and linked prepared-input APIs.
+and the [sequencing review on PR 795](https://github.com/openghg/openghg_inversions/pull/795#issuecomment-6122168447).
+Complete native predictive integration before new cached CO2/O2 predictive stages
+in the OPE-207 workflow. Existing staged APIs remain supported;
+their future replacements should consume this predictive interface. Workflow
+specification redesign, manifest authentication, legacy replay support and a new
+metadata framework are outside this change.
+
+## Current implementation owners
+
+- The CO2 and CO2/O2 concrete builders and runners remain in
+  `openghg_inversions/rhime/co2/`; they own scientific composition, initialization,
+  annotations and the matched graph/step selection.
+- `openghg_inversions/inference/cached_sigma.py` owns the cached step factory and
+  shared quadratic. `openghg_inversions/rhime/cached_sigma.py` is a compatibility
+  import module, not the implementation target.
+- `openghg_inversions/inference/sampling.py` owns `RhimeSampler` and predictive
+  execution. `openghg_inversions/rhime/sampling.py` retains the build-result
+  adapter `sample_rhime_model` and the established sampler import alias.
+
+Follow `docs/development/architecture_principles.rst`: recipes pass explicit
+models, cached expressions, initial values and variable roles to inference.
+Keep inference independent of RHIME recipe/configuration/stage modules and keep
+the existing compatibility imports. No additional namespace refactoring is needed.
 
 ## Step 1: completed evidence
 
@@ -34,7 +56,8 @@ and CO2/O2 builders. Their completed means already exist before this boundary.
 - Return the shared-cache quadratic as an ordinary, unregistered scalar
   expression through the existing recipe result. Do not add a second likelihood
   Potential or replace the density with a cache-dependent callback.
-- Extend `make_cached_sigma_compound_step` with an explicit cached-expression
+- Extend `make_cached_sigma_compound_step` in
+  `openghg_inversions/inference/cached_sigma.py` with an explicit cached-expression
   input. Compile state priors and transform Jacobians plus that expression,
   replacing random variables with value variables. Retain the amplitude-prior
   constant too, so full conditional energy matches the original sampler.
@@ -76,7 +99,11 @@ cache amplitudes, and actual state transitions perform no covariance work.
 
 ## Step 3: make RhimeSampler own prediction and seed propagation
 
-Update `openghg_inversions/rhime/sampling.py` and both cached runners.
+Update `openghg_inversions/inference/sampling.py` and both cached runners.
+Keep the `rhime/sampling.py` build-result adapter; do not restore a second sampler
+implementation there. Retain the existing configuration-owned option subset;
+this integration does not introduce another sampler settings class or widen
+the ordinary configured frontend's predictive options.
 
 Remove forced disabling of generic predictions and likelihood output. Remove
 manual `_append_joint_outputs` generation and its request/seed helpers. Current
@@ -128,7 +155,9 @@ The cached fixed-OU linked recipe still requires common channel concentration
 units; this change does not add mixed-unit covariance support. Preserve existing
 input materialization and borrowed-array ownership.
 
-Migrate staged prior tests and replay callers alongside the runner changes.
+Migrate existing staged prior tests and prepared-input replay callers alongside
+the runner changes. Preserve the current exported prior API; new cached CO2/O2
+predictive stages follow production native prediction in the workflow change.
 Retain NetCDF save/load metadata, saved independent-error selection and staged
 output behavior. Respect explicit `idata_kwargs['log_likelihood']=False` rather
 than regenerating density after sampling.
@@ -144,7 +173,8 @@ Extend existing fixtures and tests; do not import prototype scripts.
 | Cached execution | `tests/test_cached_sigma_sampling.py`: actual supplied state function/step, forbid kernel evaluation and Cholesky, accepted/rejected amplitude cache synchronization, distinct spawned chain starts and repeatability |
 | Initialization and compatibility | Existing recipe/sampler fixtures: preserved prior starts, physical/transformed caller overrides, per-chain strategies, generic log-likelihood transformation, old Potential-only factory callers and missing-expression rejection for observed graphs |
 | Real prediction routes | Both named runner smoke tests with two chains, nonzero burn and both prediction groups; supplement short MCMC with heterogeneous trace oracles; generic joint log likelihood for both families |
-| Seeds and early validation | `tests/test_rhime.py` sampler cases: integer/sequence/generator seeds, input RNG immutability, overrides and prior-toggle independence; invalid effective names/options fail before sampling |
+| Seeds and early validation | `tests/test_rhime.py` sampler cases: integer/sequence/generator seeds, input RNG immutability, overrides and prior-toggle independence; invalid effective names/options fail before sampling; patch `inference.sampling` at its owning boundary |
+| Shared inference/configuration boundary | Existing sampler tests plus `tests/test_rhime_configuration.py` and `tests/test_pymc_config.py`: preserve caller-owned settings, independent inference imports and configuration defaults; assert RHIME sampler/factory aliases retain identity with their inference owners |
 | Output/stage compatibility | Existing CO2 staged builder/contract/output/workflow and linked runner tests: unequal prior/posterior lengths, labels/units/joint metadata, save/load and prepared-input replay |
 
 Migrate tests that expect a Potential or call the deleted manual generator.
@@ -154,7 +184,7 @@ Assert constructor amplitudes match the initial cache, public graphs retain no
 custom initial-value metadata, and both sampler-generated and standalone generic
 joint log likelihood work for both families.
 
-Benchmark the old production baseline at `f6ca9aa1` against the new **production**
+Benchmark the rebased production baseline at `42a32f62` against the new **production**
 step factory/runners in separate processes. Include both model families, actual
 available prepared-case dimensions and controlled increases of observations and
 covariance rank. Record case sizes, versions and multiple seeds. Separate warm
@@ -171,6 +201,7 @@ uv run pytest tests/test_co2_cached_sigma.py tests/test_co2_o2_fixed_ou.py \
   tests/test_cached_sigma_sampling.py tests/models/test_cached_sigma.py \
   tests/models/test_fixed_ou.py tests/models/test_fixed_ou_rhime.py
 uv run pytest tests/test_rhime.py -k rhime_sampler
+uv run pytest tests/test_rhime_configuration.py tests/test_pymc_config.py
 uv run pytest tests/test_rhime_co2_configuration.py tests/test_linked_ou_configuration.py \
   tests/test_rhime_co2_o2_runner.py tests/test_co2_stage_contracts.py \
   tests/test_co2_staged_builders.py tests/test_co2_staged_outputs.py \
@@ -188,20 +219,25 @@ sbatch scripts/slurm_tox.sh -e py312-pymc60 \
   tests/test_co2_o2_fixed_ou.py tests/models/test_shape_hooks.py
 ```
 
-The PyMC 6.0 lower-bound gate is required: the explicit compiled-function and
-initialization design has been inspected against installed PyMC 6.3.2 only.
+The PyMC 6.0 lower-bound gate is required: the prototype's explicit
+compiled-function and initialization design was inspected against PyMC 6.3.2
+only. Revalidate against the implementation environment; the current declared
+dependency remains `pymc>=6,<7`, with Python 3.12 and 3.13 supported.
 
 ## Step 6: document and deliver one mergeable PR
 
-Update cached-model/runner docstrings, relevant shared-sampler documentation,
+Update cached-model/runner docstrings, the canonical `inference` API documentation,
 `docs/usage/co2_models.rst` and affected model-family/staged usage text. Document
 prediction names/options, seeds, dimensions/units, joint likelihood meaning,
 initialization precedence and fixed-data rebuilding. Add
 `newsfragments/769.feature.md`; leave CHANGELOG assembly to release tooling.
 
-Open a new PR targeting devel after implementation and its gates are complete.
-Use SSH git push, the GitHub connector and the repository PR template. The PR
-should close #769 and report production-route validation/performance evidence.
-Keep #786 unmerged and keep namespace work from #764 out of this change. A
-separate predictive model is a fallback only if explicit cached state assembly
+Continue production implementation in [draft PR 795](https://github.com/openghg/openghg_inversions/pull/795)
+after plan review, targeting devel. Keep it draft until implementation and its
+gates are complete, then rewrite its title/description around the delivered
+behavior. Use SSH git push, the GitHub connector and the repository PR template.
+The completed PR should close #769 and report production-route validation and
+performance evidence. Keep #786 unmerged and use the existing inference owners
+without further namespace work. A separate predictive model is a fallback only
+if explicit cached state assembly
 fails a concrete compatibility gate.
