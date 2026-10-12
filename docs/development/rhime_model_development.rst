@@ -15,8 +15,8 @@ implicit ``**kwargs`` forwarding.
 This page gives design and review guidance. Exact supported arguments, errors,
 compatibility periods, and artifact guarantees belong to their scoped
 capability specifications and usage references. See :doc:`specifications` for
-those sources, their delivery status, and the disposition of material formerly
-kept here. A design recommendation is not evidence that an API implements it.
+those sources and how to establish their review and delivery status.
+A design recommendation is not evidence that an API implements it.
 
 Start with the scientific recipe
 --------------------------------
