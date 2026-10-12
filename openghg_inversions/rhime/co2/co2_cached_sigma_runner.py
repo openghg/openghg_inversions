@@ -13,7 +13,7 @@ import json
 from typing import Any, cast
 
 import pymc as pm
-from pymc.initial_point import convert_str_to_rv_dict, make_initial_point_fn
+from pymc.initial_point import convert_str_to_rv_dict, make_initial_point_fn  # type: ignore[import-untyped]
 import xarray as xr
 
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
@@ -138,7 +138,7 @@ def _sampler_for_cached_graph(
     if isinstance(overrides, Sequence) and not isinstance(overrides, (str, bytes)):
         sample_kwargs["initvals"] = [merge_initial_values(item) for item in overrides]
     else:
-        sample_kwargs["initvals"] = merge_initial_values(overrides)
+        sample_kwargs["initvals"] = merge_initial_values(cast(Mapping[str, Any] | None, overrides))
     baseline = make_initial_point_fn(
         model=model, overrides=defaults, return_transformed=True,
     )(seed=0)

@@ -18,7 +18,7 @@ from typing import Any, ClassVar, Literal, cast
 import numpy as np
 import pymc as pm
 import xarray as xr
-from pymc.util import get_random_generator
+from pymc.util import get_random_generator  # type: ignore[import-untyped]
 
 from openghg_inversions._timing import log_timing, timer_seconds, timer_start
 from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
@@ -310,7 +310,7 @@ class RhimeSampler:
         kwargs.setdefault("model", model)
         if not self.sample_posterior_predictive:
             return kwargs
-        if self.sample_posterior_predictive is not True:
+        if not isinstance(self.sample_posterior_predictive, bool):
             kwargs.setdefault("var_names", list(self.sample_posterior_predictive))
         names = kwargs.get("var_names")
         if names is not None:
