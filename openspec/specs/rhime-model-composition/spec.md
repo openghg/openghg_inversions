@@ -15,10 +15,18 @@ property of each concrete likelihood and recipe.
 
 `registered_model()` SHALL retain scientific coordinates in a `CoordRegistry`
 and supply PyMC range coordinates. `add_coords()` SHALL require a registry,
-accept identical coordinates, and reject conflicting values or lengths.
+accept identical coordinates subject to the missing-value limitation below,
+and reject conflicting values or lengths.
 Auxiliaries SHALL remain metadata through `registered_model(coords=xr.Coordinates)`
 or `add_coords(..., model_dims=(...))`. Without `model_dims`, `add_coords()`
 considers all supplied coordinate mapping keys as model dimensions.
+
+Known implementation limitation: repeating an unchanged auxiliary coordinate
+containing `NaN` can raise `ValueError` because the registry's array comparison
+treats missing values as unequal. This false conflict is tracked in
+[#856](https://github.com/openghg/openghg_inversions/issues/856); accepting
+unchanged missing auxiliary metadata remains follow-up work, not current
+supported behavior.
 
 #### Scenario: Register a measurement MultiIndex
 
