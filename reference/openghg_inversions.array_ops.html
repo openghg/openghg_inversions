@@ -744,6 +744,23 @@ Coordinates retain their original backends and are not computed.</p>
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.array_ops.jax_to_numpy">
+<span class="sig-name descname"><span class="pre">jax_to_numpy</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">da</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.array_ops.jax_to_numpy" title="Link to this definition">#</a></dt>
+<dd><p>Convert JAX-backed data to NumPy, leaving other backends unchanged.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>da</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – DataArray whose data may be backed by a JAX array.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>NumPy-backed DataArray for JAX input; otherwise the original DataArray.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.array_ops.force_align">
 <span class="sig-name descname"><span class="pre">force_align</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">obj</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">reference</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">dims</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rtol</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1e-05</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">atol</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1e-08</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.array_ops.force_align" title="Link to this definition">#</a></dt>
 <dd><p>Force coordinate identity with a reference object along given dimensions.</p>
@@ -1077,6 +1094,7 @@ installed on <cite>multi_dim</cite>.</p>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.array_ops.sparse_xr_dot"><code class="docutils literal notranslate"><span class="pre">sparse_xr_dot()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.array_ops.align_sparse_lat_lon"><code class="docutils literal notranslate"><span class="pre">align_sparse_lat_lon()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.array_ops.to_dense"><code class="docutils literal notranslate"><span class="pre">to_dense()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.array_ops.jax_to_numpy"><code class="docutils literal notranslate"><span class="pre">jax_to_numpy()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.array_ops.force_align"><code class="docutils literal notranslate"><span class="pre">force_align()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.array_ops.concat_data_arrays"><code class="docutils literal notranslate"><span class="pre">concat_data_arrays()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.array_ops.concat_gather_data_arrays"><code class="docutils literal notranslate"><span class="pre">concat_gather_data_arrays()</span></code></a></li>
