@@ -93,7 +93,8 @@ def test_reuse_preserves_source_subset_order_and_operator_dimensions(tmp_path):
 @pytest.mark.parametrize("suffix", [".nc", ".zarr"])
 def test_operator_reuse_does_not_execute_saved_flux_payload(monkeypatch, tmp_path, suffix):
     basis = basis_functions_from_flat_basis(
-        flux=_flux(), basis_flat=xr.ones_like(_flux().isel(time=0, drop=True), dtype=int)
+        flux=_flux(), basis_flat=xr.ones_like(_flux().isel(time=0, drop=True), dtype=int),
+        metadata={"openghg_inversions:provenance": {"enabled": True, "missing": None}},
     )
     path = tmp_path / f"basis{suffix}"
     basis.save(path)
@@ -116,6 +117,7 @@ def test_operator_reuse_does_not_execute_saved_flux_payload(monkeypatch, tmp_pat
     monkeypatch.setattr(xr, "open_datatree", trapped_tree)
     reused = BasisFunctions.reuse_operator(path, flux=_flux(-4))
     xr.testing.assert_equal(reused.flux, _flux(-4))
+    assert reused.metadata == basis.metadata
     assert executions == []
     with pytest.raises(AssertionError, match="saved flux payload"):
         BasisFunctions.load(path)
@@ -234,3 +236,134 @@ def test_retained_native_prior_and_observation_response_have_independent_times()
     np.testing.assert_allclose(sensitivity.squeeze("region"), [4., 8., 12.])
     np.testing.assert_array_equal(sensitivity.time, observation_times)
     xr.testing.assert_equal(basis.flux.time, native.time)
+
+
+@pytest.mark.parametrize("suffix", [".nc", ".zarr", ".NC", ".ZARR"])
+def test_basis_metadata_json_roundtrip_and_irregular_flux_chunks(tmp_path, suffix):
+    """Both load routes restore JSON metadata and saving borrows lazy payloads."""
+    flux = _flux().isel(time=[0, 1, 0, 1, 0]).assign_coords(
+        time=pd.date_range("2020-01-01", periods=5)
+    ).chunk({"time": (2, 1, 2)})
+    metadata = {
+        "openghg_inversions:provenance": {
+            "enabled": np.bool_(True), "missing": None,
+            "values": (np.int64(3), np.float64(1.5), "inventory", False),
+        },
+        "ignored": object(),
+    }
+    basis = basis_functions_from_flat_basis(
+        flux=flux, basis_flat=xr.ones_like(flux.isel(time=0, drop=True), dtype=int).compute(),
+        metadata=metadata,
+    )
+    borrowed = basis.flux.data
+    chunks = basis.flux.chunks
+    path = tmp_path / f"basis{suffix}"
+    basis.save(path)
+    assert path.exists()
+    assert basis.flux.data is borrowed
+    assert basis.flux.chunks == chunks
+    assert metadata["openghg_inversions:provenance"]["values"] == (3, 1.5, "inventory", False)
+    expected = {"openghg_inversions:provenance": {
+        "enabled": True, "missing": None, "values": [3, 1.5, "inventory", False],
+    }}
+    loaded = BasisFunctions.load(path)
+    reused = BasisFunctions.reuse_operator(path, flux=flux)
+    assert loaded.metadata == reused.metadata == expected
+    xr.testing.assert_identical(loaded.flux, basis.flux.compute())
+    engine = "zarr" if suffix.lower() == ".zarr" else None
+    with xr.open_datatree(path, engine=engine) as tree:
+        assert "basis_metadata_json" in tree.attrs
+        assert "openghg_inversions:provenance" not in tree.attrs
+
+
+@pytest.mark.parametrize("suffix", [".nc", ".zarr"])
+@pytest.mark.parametrize("encoded", ["{broken", "[]", "null", '{"other": 2}',
+                                     '{"openghg_inversions:value": NaN}',
+                                     '{"openghg_inversions:value": 1e999}', 12])
+def test_basis_malformed_metadata_rejected_by_both_load_routes(tmp_path, suffix, encoded):
+    basis = basis_functions_from_flat_basis(
+        flux=_flux(), basis_flat=xr.ones_like(_flux().isel(time=0, drop=True), dtype=int)
+    )
+    tree = basis.to_datatree()
+    tree.attrs["basis_metadata_json"] = encoded
+    tree.attrs["openghg_inversions:legacy"] = "must not mask invalid JSON"
+    path = tmp_path / f"invalid{suffix}"
+    if suffix == ".nc":
+        tree.to_netcdf(path)
+    else:
+        tree.to_zarr(path)
+    with pytest.raises(ValueError, match="Invalid serialized basis metadata"):
+        BasisFunctions.load(path)
+    with pytest.raises(ValueError, match="Invalid serialized basis metadata"):
+        BasisFunctions.reuse_operator(path, flux=_flux())
+
+
+@pytest.mark.parametrize("suffix", [".nc", ".zarr"])
+def test_basis_legacy_raw_namespaced_metadata_remains_readable(tmp_path, suffix):
+    basis = basis_functions_from_flat_basis(
+        flux=_flux(), basis_flat=xr.ones_like(_flux().isel(time=0, drop=True), dtype=int)
+    )
+    tree = basis.to_datatree()
+    del tree.attrs["basis_metadata_json"]
+    tree.attrs.update({"openghg_inversions:legacy": "inventory", "ignored": "other"})
+    path = tmp_path / f"legacy{suffix}"
+    if suffix == ".nc":
+        tree.to_netcdf(path)
+    else:
+        tree.to_zarr(path)
+    expected = {"openghg_inversions:legacy": "inventory"}
+    assert BasisFunctions.load(path).metadata == expected
+    assert BasisFunctions.reuse_operator(path, flux=_flux()).metadata == expected
+
+
+@pytest.mark.parametrize("value,error", [
+    ({"nested": {1: "invalid"}}, TypeError), ([{None: "invalid"}], TypeError),
+    (object(), TypeError), (np.array([1, 2]), TypeError),
+    (np.complex128(1 + 2j), TypeError), (np.datetime64("2020-01-01"), TypeError),
+    (float("nan"), ValueError), ({"nested": [float("inf")]}, ValueError),
+])
+def test_basis_metadata_rejects_unsupported_values(value, error):
+    basis = basis_functions_from_flat_basis(
+        flux=_flux(), basis_flat=xr.ones_like(_flux().isel(time=0, drop=True), dtype=int),
+        metadata={"openghg_inversions:value": value},
+    )
+    with pytest.raises(error):
+        basis.to_datatree()
+
+
+@pytest.mark.parametrize("suffix", [".nc", ".zarr"])
+@pytest.mark.parametrize("source_specific", [False, True])
+@pytest.mark.parametrize("merge", [False, True])
+def test_consolidation_connectivity_flag_survives_basis_storage(tmp_path, suffix, source_specific, merge):
+    """Actual consolidation output stores and restores its common Boolean flag."""
+    from openghg_inversions.basis.algorithms import (
+        ContrastProximityComponentConsolidation, LatLonGridGeometry,
+    )
+
+    labels = xr.DataArray(
+        [[1, 1, 0, 2]], dims=("lat", "lon"),
+        coords={"lat": [50.0], "lon": [0.0, 0.1, 0.2, 0.3]},
+    )
+    policy = ContrastProximityComponentConsolidation(
+        contribution=np.ones((1, *labels.shape)), cell_weight=np.ones(labels.shape),
+        geometry=LatLonGridGeometry.from_dataarray(labels),
+        max_merge_distance_km=100.0 if merge else 0.0, max_merge_lambda=0.0,
+    )
+    consolidated = policy(labels, xr.full_like(labels, "land", dtype=object))
+    flag = not merge
+    assert consolidated.attrs["strict_connected_labels"] is flag
+    partitions = {"a": consolidated, "b": consolidated} if source_specific else consolidated
+    basis = basis_functions_from_flat_basis(flux=xr.ones_like(labels, dtype=float), basis_flat=partitions)
+    flat = basis.operator.basis_flat
+    retained = flat["a"] if source_specific else flat
+    borrowed = retained.data
+    path = tmp_path / f"consolidated{suffix}"
+    basis.save(path)
+    assert retained.data is borrowed
+    assert retained.attrs["strict_connected_labels"] is flag
+    for restored in (BasisFunctions.load(path), BasisFunctions.reuse_operator(path, flux=basis.flux)):
+        restored_flat = restored.operator.basis_flat
+        arrays = restored_flat.values() if source_specific else [restored_flat]
+        for array in arrays:
+            assert array.attrs["strict_connected_labels"] is flag
+            xr.testing.assert_identical(array, consolidated.rename("basis_flat"))

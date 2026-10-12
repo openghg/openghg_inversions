@@ -6,7 +6,9 @@ including region and optional source ordering; the flux remains separate so
 the same object can project sensitivities and reconstruct gridded fluxes.
 
 NetCDF and Zarr persistence uses a versioned DataTree with separate ``basis``
-and ``flux`` children. Only namespaced OpenGHG Inversions metadata is retained.
+and ``flux`` children. Only namespaced OpenGHG Inversions metadata is retained,
+encoded in the root ``basis_metadata_json`` attribute. Legacy raw namespaced
+root attributes remain readable; a present JSON attribute must be valid.
 Loading reconstructs the operator and preserves its grid, state, region, and
 source coordinates. A shared flux may omit the source dimension; when source
 labels are present, they must exactly match the operator's labels.
@@ -25,6 +27,7 @@ Example:
 
 from __future__ import annotations
 
+import json
 import warnings
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -35,6 +38,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import xarray as xr
 
+from openghg_inversions._serialization_codecs import _numpy_scalar_json_default
 from openghg_inversions.array_ops import (
     force_align,
     require_unique_index,
@@ -47,10 +51,11 @@ from openghg_inversions.basis.operators import (
     RegionLabels,
 )
 from openghg_inversions.flux_sanitization import sanitize_flux_nonfinite
-from openghg_inversions.serialization import open_datatree_loaded
+from openghg_inversions.serialization import open_datatree_loaded, save_datatree
 from openghg_inversions.native_flux import _stack_flux_sources_with_alignment
 
 BASIS_METADATA_ATTR_PREFIX = "openghg_inversions:"
+_BASIS_METADATA_JSON_ATTR = "basis_metadata_json"
 BASIS_ARTIFACT_SOURCE_ATTR = f"{BASIS_METADATA_ATTR_PREFIX}basis_artifact_source"
 BASIS_ARTIFACT_PATH_ATTR = f"{BASIS_METADATA_ATTR_PREFIX}basis_artifact_path"
 _BASIS_ARTIFACT_SOURCE_FALLBACK_ATTR = "basis_artifact_source"
@@ -72,8 +77,16 @@ class FluxWeightedBasis:
         flux: Native prior flux on the operator grid. Callers must supply
             compatible spatial coordinates. May include ``time`` and ``source``.
         metadata: Namespaced metadata carried through DataTree serialization.
+            Values may be JSON scalars (including ``None`` and finite floats),
+            nested lists, or dictionaries with string keys. NumPy counterparts
+            of supported JSON scalars are normalized to Python scalars and
+            tuples to lists when saved.
+            Other values and non-string dictionary keys are rejected.
 
     Notes:
+        - Namespaced metadata is stored in the ``basis_metadata_json`` root
+          attribute. Both loading routes also accept legacy raw namespaced
+          attributes; malformed JSON metadata is rejected when present.
         - A flux with a `source` dimension can still be paired with a `BucketBasisOperator`; in that case
           the same basis is applied to each source when broadcasting occurs in downstream operations.
         - Spatial alignment and broadcasting are enforced by the operations
@@ -307,11 +320,19 @@ class FluxWeightedBasis:
     def to_datatree(self) -> xr.DataTree:
         """Serialise to a DataTree with `basis` and `flux` groups.
 
+        Root namespaced metadata is encoded as JSON according to the class's
+        metadata contract, normalizing supported NumPy scalars and tuples.
+        Array payloads remain borrowed and lazy.
+
         Returns:
             A DataTree with:
               - `basis`: BasisOperator DataTree (via operator.to_datatree()).
               - `flux`: a Dataset containing the flux DataArray as variable `flux`.
 
+        Raises:
+            TypeError: If namespaced metadata contains unsupported values or
+                non-string dictionary keys.
+            ValueError: If namespaced metadata contains non-finite floats.
         """
         basis_functions = self.validated()
         dt_basis = basis_functions.operator.to_datatree()
@@ -345,8 +366,8 @@ class FluxWeightedBasis:
         Raises:
             KeyError: If required groups are missing.
             ValueError: If the schema/version is unsupported, the flux
-                variable is missing, or stored multi-source flux labels do not
-                match the basis operator.
+                variable is missing, serialized metadata is invalid, or stored
+                multi-source flux labels do not match the basis operator.
         """
         metadata = _basis_artifact_metadata(dt)
         operator = BasisOperator.decode_datatree(cast(xr.DataTree, dt["basis"]))
@@ -377,19 +398,22 @@ class FluxWeightedBasis:
 
         Args:
             output_file: Path to a ``.nc`` or ``.zarr`` artifact. NetCDF is used
-                for ``.nc`` paths and Zarr is used for ``.zarr`` paths.
+                for ``.nc`` paths and Zarr is used for ``.zarr`` paths. Suffixes
+                are case-insensitive and the requested path is preserved.
+                Zarr storage lazily regularizes chunks without changing borrowed
+                arrays. Metadata follows the class's JSON value contract.
 
         Raises:
-            ValueError: If ``output_file`` does not end with ``.nc`` or ``.zarr``.
+            TypeError: If retained metadata contains unsupported values or
+                non-string dictionary keys.
+            ValueError: If ``output_file`` does not end with ``.nc`` or ``.zarr``,
+                or retained metadata contains non-finite floats.
         """
         output_file = Path(output_file)
         suffix = output_file.suffix.lower()
-        if suffix == ".nc":
-            self.to_datatree().to_netcdf(output_file)
-        elif suffix == ".zarr":
-            self.to_datatree().to_zarr(output_file)
-        else:
+        if suffix not in (".nc", ".zarr"):
             raise ValueError(f"BasisFunctions artifact path {output_file} must end in '.nc' or '.zarr'.")
+        save_datatree(self.to_datatree(), output_file)
 
     @classmethod
     def load(cls: type[Self], file_path: str | Path) -> Self:
@@ -443,7 +467,7 @@ class FluxWeightedBasis:
         Raises:
             OSError: If the artifact cannot be opened.
             KeyError: If a required DataTree group or basis variable is missing.
-            ValueError: If the artifact schema or operator is invalid, its flux
+            ValueError: If artifact schema, metadata, or operator is invalid, its flux
                 variable is missing, or current flux source labels or spatial
                 coordinates are incompatible.
         """
@@ -640,8 +664,29 @@ def basis_functions_from_flat_basis(
 
 
 def _serialisable_basis_metadata(metadata: Mapping[str, Any]) -> dict[str, Any]:
-    """Keep only namespaced metadata that can be stored as DataTree root attributes."""
-    return {key: value for key, value in metadata.items() if str(key).startswith(BASIS_METADATA_ATTR_PREFIX)}
+    """Encode namespaced JSON metadata in one backend-safe root attribute."""
+
+    def require_string_keys(value: Any) -> None:
+        if isinstance(value, dict):
+            if not all(isinstance(key, str) for key in value):
+                raise TypeError("Basis metadata dictionaries must have string keys.")
+            for item in value.values():
+                require_string_keys(item)
+        elif isinstance(value, (list, tuple)):
+            for item in value:
+                require_string_keys(item)
+
+    retained = {
+        key: value
+        for key, value in metadata.items()
+        if isinstance(key, str) and key.startswith(BASIS_METADATA_ATTR_PREFIX)
+    }
+    require_string_keys(retained)
+    return {
+        _BASIS_METADATA_JSON_ATTR: json.dumps(
+            retained, default=_numpy_scalar_json_default, allow_nan=False
+        )
+    }
 
 
 def _validated_flux_source_labels(flux: xr.DataArray) -> tuple[str, ...]:
@@ -739,6 +784,19 @@ def _basis_artifact_metadata(dt: xr.DataTree) -> dict[str, Any]:
 
     if not isinstance(dt["basis"], xr.DataTree):
         raise ValueError("'basis' is not an xr.DataTree.")
+
+    if _BASIS_METADATA_JSON_ATTR in dt.attrs:
+        try:
+            decoded_metadata = json.loads(dt.attrs[_BASIS_METADATA_JSON_ATTR])
+            if not isinstance(decoded_metadata, dict) or not all(
+                key.startswith(BASIS_METADATA_ATTR_PREFIX) for key in decoded_metadata
+            ):
+                raise ValueError("Expected a dictionary of namespaced basis metadata.")
+            # Reject non-finite JSON numbers accepted by Python's decoder.
+            json.dumps(decoded_metadata, allow_nan=False)
+        except (TypeError, ValueError) as error:
+            raise ValueError("Invalid serialized basis metadata JSON.") from error
+        return decoded_metadata
 
     metadata: dict[str, Any] = {}
     for key, value in dt.attrs.items():
