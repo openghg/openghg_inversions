@@ -31,7 +31,6 @@ from openghg_inversions.rhime.specs import RhimeModelSpec, RhimeOutputSpec, Rhim
 from openghg_inversions._provenance import installed_ogi_provenance
 from openghg_inversions.rhime._stage_artifacts import (
     artifact_path as _artifact_path,
-    file_identity as _file_identity,
     json_value as _json_value,
     write_json as _write_json,
     _filename_component,
@@ -41,7 +40,6 @@ from openghg_inversions.rhime._stage_artifacts import (
 from openghg_inversions.rhime._stage_authentication import (
     _load_stage_manifest,
     _sampler_metadata_from_sample_manifest,
-    _verify_manifest_artifact,
 )
 from openghg_inversions.rhime._stage_checks import PREPARATION_CHECK_NAME, _check_result, _check_stage
 from openghg_inversions.serialization import load_trace, reset_serialisation_multiindexes, save_trace
@@ -184,7 +182,7 @@ def effective_co2_configuration(setup: Co2StageSetup) -> dict[str, Any]:
 def co2_configuration_identity(setup: Co2StageSetup) -> str:
     """Hash resolved recipe settings needed for scientific replay.
 
-    Prepared data are authenticated separately by artifact content hashes.
+    Prepared data are validated by their numerical consumers.
     Transport paths, output settings, and sampler tuning may change without
     changing this configuration identity.
     """
@@ -199,12 +197,8 @@ def co2_configuration_identity(setup: Co2StageSetup) -> str:
 
 
 def _manifest(setup: Co2StageSetup, stage: str) -> dict[str, Any]:
-    """Build a CO2 manifest requiring an identifiable installed revision."""
+    """Build a CO2 manifest with available installed-version provenance."""
     ogi = installed_ogi_provenance()
-    if ogi["revision"] is None:
-        raise ValueError(
-            "Staged CO2 execution requires an identifiable installed Git revision (VCS install or checkout)."
-        )
     return {
         "schema_version": 1,
         "producer": "openghg_inversions",
@@ -252,7 +246,7 @@ def prepare_co2_stage(
     Pass both ``canonical_inputs`` and ``reduction`` to call the public
     preparation boundary directly. Otherwise copy ``prepared_inputs.path``
     from the configuration after validation. Existing handoffs and their
-    optional bound affine artifacts retain exact byte identities. Invalid
+    optional bound affine artifacts are copied without re-encoding. Invalid
     science or output requests fail before creating the destination.
     """
     if (canonical_inputs is None) != (reduction is None):
@@ -294,7 +288,6 @@ def prepare_co2_stage(
         artifacts["affine_reconstruction"] = companion
     manifest["requested_configuration"] = effective_co2_configuration(setup)
     manifest["artifacts"] = {key: _artifact_path(path) for key, path in artifacts.items()}
-    manifest["artifact_identities"] = {key: _file_identity(path) for key, path in artifacts.items()}
     manifest["manifest_path"] = str(_write_json(destination / "prepare-manifest.json", manifest))
     return manifest
 
@@ -303,30 +296,19 @@ def _load_prepared(
     setup: Co2StageSetup,
     prepared_inputs: str | Path,
     preparation_manifest: str | Path,
-) -> tuple[Co2PreparedInputs, BoundCo2AffineFluxMap | None, dict[str, Any]]:
-    manifest_path, manifest = _load_stage_manifest(preparation_manifest, stage="prepare")
+) -> tuple[Co2PreparedInputs, BoundCo2AffineFluxMap | None]:
+    _, manifest = _load_stage_manifest(preparation_manifest, stage="prepare")
     if manifest.get("configuration_identity") != co2_configuration_identity(setup):
         raise ValueError("Prepared inputs do not match the effective CO2 configuration.")
-    _verify_manifest_artifact(
-        manifest, manifest_path=manifest_path, artifact_name="prepared_inputs", artifact_path=prepared_inputs
-    )
     prepared = Co2PreparedInputs.load(prepared_inputs)
     _validate_inputs(setup, prepared)
     bound = None
     if setup.reconstruction_path is not None:
-        # The configured artifact is authenticated by content, allowing the
-        # caller to relocate it without changing scientific identity.
-        _verify_manifest_artifact(
-            manifest,
-            manifest_path=manifest_path,
-            artifact_name="affine_reconstruction",
-            artifact_path=setup.reconstruction_path,
-        )
         bound = load_and_bind_affine_flux_map(setup.reconstruction_path, prepared_inputs)
     from .co2_outputs import validate_co2_outputs
 
     validate_co2_outputs(setup.output, bound=bound, source_to_sector=setup.source_to_sector)
-    return prepared, bound, manifest
+    return prepared, bound
 
 
 def prior_predictive_co2_stage(
@@ -343,7 +325,7 @@ def prior_predictive_co2_stage(
     stage = _check_stage(stage)
     if isinstance(draws, bool) or not isinstance(draws, Integral) or draws <= 0:
         raise ValueError("Prior-predictive draws must be a positive integer.")
-    prepared, _, preparation = _load_prepared(setup, prepared_inputs, preparation_manifest)
+    prepared, _ = _load_prepared(setup, prepared_inputs, preparation_manifest)
     seed = dict(setup.recipe.sampler.sample_kwargs or {}).get("random_seed")
     kwargs = dict(cast(Mapping[str, Any], setup.recipe.runner_kwargs))
     if setup.recipe.runner is run_rhime_co2_cached_sigma:
@@ -376,9 +358,7 @@ def prior_predictive_co2_stage(
         stage=stage,
     )
     _write_json(_output_path(destination, check_output, "prior-predictive-readiness.json"), result)
-    manifest["input_identities"] = preparation["artifact_identities"]
     manifest["artifacts"] = {"prior_predictive": _artifact_path(prior_path)}
-    manifest["artifact_identities"] = {"prior_predictive": _file_identity(prior_path)}
     _write_json(destination / "prior-predictive-manifest.json", manifest)
     return result
 
@@ -391,20 +371,15 @@ def sample_co2_stage(
     output_dir: str | Path,
 ) -> dict[str, Any]:
     """Sample with the public ordinary or matched cached runner, then save canonically."""
-    prepared, _, preparation = _load_prepared(setup, prepared_inputs, preparation_manifest)
+    prepared, _ = _load_prepared(setup, prepared_inputs, preparation_manifest)
     manifest = _manifest(setup, "sample")
     trace = setup.recipe.runner(**setup.recipe.runner_arguments(prepared))
     destination = _stage_output_directory(output_dir)
     posterior_path = _output_path(destination, None, "posterior.nc")
     save_trace(trace, posterior_path)
-    manifest["input_identities"] = preparation["artifact_identities"]
     manifest["artifacts"] = {
         "posterior": _artifact_path(posterior_path),
         "prepared_inputs": _artifact_path(Path(prepared_inputs)),
-    }
-    manifest["artifact_identities"] = {
-        "posterior": _file_identity(posterior_path),
-        **preparation["artifact_identities"],
     }
     manifest["manifest_path"] = str(_write_json(destination / "sample-manifest.json", manifest))
     return manifest
@@ -439,21 +414,15 @@ def postprocess_co2_stage(
     sample_manifest: str | Path,
     output_dir: str | Path,
 ) -> RhimeResult:
-    """Authenticate version-1 CO2 artifacts and create role-selected common products."""
+    """Load version-1 CO2 artifacts and create role-selected common products."""
     from .co2_outputs import make_co2_rhime_outputs, make_co2_rhime_result
 
-    prepared, bound, preparation = _load_prepared(setup, prepared_inputs, preparation_manifest)
-    path, sample = _load_stage_manifest(sample_manifest, stage="sample")
+    prepared, bound = _load_prepared(setup, prepared_inputs, preparation_manifest)
+    _, sample = _load_stage_manifest(sample_manifest, stage="sample")
     if sample["schema_version"] != 1:
         raise ValueError("CO2 postprocessing requires schema_version=1 sample manifests.")
     if sample.get("configuration_identity") != co2_configuration_identity(setup):
         raise ValueError("Posterior does not match the effective CO2 configuration.")
-    for name, artifact in (("posterior", posterior), ("prepared_inputs", prepared_inputs)):
-        _verify_manifest_artifact(sample, manifest_path=path, artifact_name=name, artifact_path=artifact)
-    if bound is not None and sample["artifact_identities"].get("affine_reconstruction") != preparation[
-        "artifact_identities"
-    ].get("affine_reconstruction"):
-        raise ValueError("Posterior and preparation disagree on the affine reconstruction identity.")
     sampler_metadata = _sampler_metadata_from_sample_manifest(sample)
     trace = load_trace(posterior)
     destination = Path(output_dir).resolve()
@@ -480,18 +449,11 @@ def postprocess_co2_stage(
                 reset_serialisation_multiindexes(product).to_netcdf(path)
             artifacts[name] = _artifact_path(path)
             result.output_metadata[f"{name}_path"] = str(path)
-    manifest["input_identities"] = {
-        **preparation["artifact_identities"],
-        "posterior": _file_identity(Path(posterior)),
-    }
     recorded = sample.get("effective_configuration")
     recorded_sampler = recorded.get("sampler") if isinstance(recorded, Mapping) else None
     manifest["effective_configuration"]["sampler"] = recorded_sampler
     manifest["sampling_configuration"] = recorded_sampler
     manifest["artifacts"] = artifacts
-    manifest["artifact_identities"] = {
-        name: _file_identity(Path(result.output_metadata[f"{name}_path"])) for name in artifacts
-    }
     result.output_metadata["postprocess_manifest_path"] = str(
         _write_json(destination / "postprocess-manifest.json", manifest)
     )

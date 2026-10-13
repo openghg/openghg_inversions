@@ -104,8 +104,8 @@ def configuration_identity(setup: RhimeConfig | Co2StageSetup, *, model: ModelKi
     """Hash the resolved settings required for scientific replay.
 
     Standard and multisector identities cover preparation, period, model,
-    and prior choices. CO2 identities cover recipe replay settings; separate
-    artifact content hashes authenticate the prepared data.
+    and prior choices. CO2 identities cover recipe replay settings. Numerical
+    artifacts are loaded through their scientific owners without stage digests.
     """
 
     if model == "co2":
@@ -184,8 +184,8 @@ def sample_rhime_stage(
     """Sample prepared inputs without invoking preparation.
 
     Standard/multisector workflows persist version-2 sample manifests with
-    output bindings. CO2 retains its version-1 manifest and authenticates any
-    supplied affine artifact separately.
+    output bindings. CO2 retains its version-1 manifest and validates any
+    supplied affine artifact at its numerical owner.
     """
 
     if model == "co2":
@@ -216,7 +216,7 @@ def postprocess_rhime_stage(
     preparation_manifest: str | Path,
     sample_manifest: str | Path,
 ) -> RhimeResult:
-    """Build products from authenticated saved artifacts.
+    """Build products from trusted, matched saved artifacts.
 
     Standard/multisector version-2 sample manifests and CO2 version-1
     manifests replay without a graph. Historical standard/multisector

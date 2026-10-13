@@ -79,18 +79,17 @@ were executed are written to ``prepare-manifest.json``.  Its
 ``configuration_identity`` is a SHA-256 digest of the resolved preparation,
 period, model and prior settings.  Sampling and output-only changes do not
 invalidate reusable prepared inputs; cache locations and preparation artifact
-destinations are likewise excluded because the artifact digest identifies the
-resulting input content.  Consequently a gas, period, site, source, transport
-or prior change produces a different identity.  Downstream scientific commands
-require ``--preparation-manifest`` and reject a mismatched configuration or
-prepared-input content digest before model construction.  Preparation also
-treats every configured site as required and fails with the gas and period
+destinations are likewise excluded. Consequently a gas, period, site, source,
+transport or prior change produces a different identity. Downstream scientific commands
+require ``--preparation-manifest`` and reject a mismatched configuration
+before model construction. Preparation also treats every configured site as
+required and fails with the gas and period
 named if the existing acquisition layer could not produce it.
 
 .. important::
 
-   Version 0.8 does not support staged artifacts produced by 0.7. Use 0.7 to
-   consume those artifacts, or regenerate them with 0.8. Removing the unused
+   Staged artifacts produced by 0.7.x are not guaranteed to be readable by
+   0.8.x; use 0.7.x to consume those artifacts. Removing the unused
    ``use_tracer=False`` field from resolved preparation options changes the
    configuration hash even when scientific settings are unchanged.
    Resolved configuration also expands site shorthand and applies defaults;
@@ -103,13 +102,16 @@ execution run specification: ``RhimeRunSpec`` is created from retained prepared
 metadata. This mapping is owned by staged manifests, not a serialization API
 for ``RhimeConfig``. The resolved representation changes staged configuration
 identity; historical hash equality is not a compatibility guarantee. Existing
-prepared-content and manifest authentication checks still apply.
+configuration-equality checks still apply.
 
-The manifest also records a content SHA-256 for ``prepared-inputs.nc``.
-``openghg-run``
-independently verifies the declared stage-output directory and records its own
-filesystem identity; the OpenGHG Inversions digest gives scientific consumers
-a compact, direct identity for the prepared handoff.
+Stages consume trusted, matched run files and configuration. Stage records do
+not write or require content digests for their dependencies. Readers check
+record formats, required contents and file references; numerical consumers
+check scientific compatibility, including CO2 affine associations.
+Keep the original scientific configuration with the run and use current output
+settings only to select products and destinations. The configuration-equality
+restrictions described above remain until the corresponding workflow changes
+provide their replacement context routing.
 
 Commands and artifacts
 ----------------------
@@ -139,7 +141,8 @@ resources are checked by ``postprocess`` before creating its output directory;
   bound prior for later reconstruction, which needs no reacquisition.
   For ``co2``, preparation validates and copies the configured
   ``Co2PreparedInputs`` artifact and optional bound affine reconstruction,
-  preserving their content identities; it does not acquire observation data.
+  without re-encoding them; it does not acquire observation data. The numerical
+  affine binder still checks its association with the prepared artifact.
 
 ``prior-predictive``
   Loads ``--prepared-inputs``, validates its layout against the explicit
@@ -156,33 +159,33 @@ resources are checked by ``postprocess`` before creating its output directory;
   selected model, sample it with the resolved ``RhimeSampler``, and write
   ``posterior.nc``, ``output-binding.json``, and ``sample-manifest.json``. The sample manifest
   uses schema version 2 and records the effective sampling configuration and
-  content identities for the posterior, prepared input, and output binding.
+  file references.
   The binding stores variable roles, supported formats, provenance, and any
-  explicit state-dimension mapping, together with the two numerical artifact
-  identities. Keep the binding beside its sample manifest when moving a run.
+  explicit state-dimension mapping. Keep the binding beside its sample
+  manifest when moving a run.
   CO2 writes ``posterior.nc`` and a schema-version-1 sample manifest, retaining
-  saved trace roles and any authenticated affine-reconstruction identity.
+  saved trace roles. Affine reconstruction compatibility is checked by its
+  existing numerical owner.
   No family silently invokes preparation.
 
 ``diagnose``
   Loads ``--posterior``, writes ``posterior-diagnostics.nc`` and emits the
   ``sampler-convergence`` CheckResult.  Scientific failure exits zero by
   default, keeping scheduler status separate from scientific health.
-  ``--sample-manifest`` authenticates a posterior produced by the staged
-  sampler. It is optional so persisted posteriors from earlier OpenGHG
-  Inversions runs can
-  still be diagnosed.  ``--strict`` is available only for an explicitly
+  ``--sample-manifest`` optionally supplies descriptive run context; it does
+  not authenticate the supplied posterior. Persisted posteriors can also be
+  diagnosed without a manifest. ``--strict`` is available only for an explicitly
   chosen process policy.
 
 ``postprocess``
   Standard and multisector workflows load matched prepared inputs, posterior,
   and the saved output binding, then invoke the existing RHIME output
-  implementation without constructing a PyMC model. A missing, altered, or
-  mismatched binding fails validation; it does not cause a model rebuild.
+  implementation without constructing a PyMC model. A missing, malformed or
+  unsupported binding fails loading; it does not cause a model rebuild.
   Genuine standard/multisector schema-version-1 sample manifests retain the
   older graph-building compatibility route because they did not store output
   bindings. CO2 schema-version-1 replay remains graph-free, using roles in the
-  authenticated saved trace and any separately authenticated affine artifact.
+  saved trace and any scientifically compatible bound affine artifact.
   CO2 postprocessing rejects other sample-manifest versions before replay.
   New posterior predictive calculations still require a separate explicit
   model-building route. The standard/multisector configuration's
@@ -190,8 +193,8 @@ resources are checked by ``postprocess`` before creating its output directory;
   products; explicit save paths in configuration are replaced so every product
   remains beneath the stage output directory. For the same
   reason, staged postprocessing requires safe filename components and both the
-  preparation and sample manifests.  The latter binds the posterior to its
-  prepared-input digest and scientific configuration.  The sampler settings
+  preparation and sample manifests. Their scientific configuration-equality
+  checks remain in this workflow. The sampler settings
   retained in result metadata come from that sample manifest; sampler values
   in the postprocessing configuration cannot relabel an existing posterior.
   Replay returns ``result.sampler is None`` and forwards descriptive sampler

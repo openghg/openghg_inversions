@@ -122,12 +122,10 @@ handoff from your observation preparation and coherent reduction. The staged
 ``prepare`` command validates and copies that artifact and writes a manifest.
 It does not acquire OpenGHG data or infer a coherent reduction from a gas name.
 
-CO₂ manifests record the installed package version, exact Git revision and
-checkout modification status when available. Run from a source checkout or a
-VCS installation
-whose package metadata records the commit. An installation without an
-identifiable Git revision, such as a release wheel without VCS metadata or an
-associated checkout, is rejected by these stages.
+CO₂ manifests record the installed package version, Git revision and checkout
+modification status when available. A release wheel without VCS metadata or an
+associated checkout can run these stages; unavailable revision and modification
+status are recorded as ``null``.
 
 For example, an ordinary configuration can contain:
 
@@ -201,10 +199,11 @@ Keep ``sampling.nuts_sampler = "pymc"``. The same staged commands apply. The
 ordinary variant also supports its documented fixed-OU and specialized
 likelihood choices; their prepared data and cache prerequisites still apply.
 
-The preparation and sample manifests authenticate the configured recipe,
-prepared artifact and posterior. Preserve these manifests with the NetCDF
-files. Replacing an artifact with another having the same labels does not make
-it compatible with an existing posterior. Paths inside the TOML file resolve
+Preserve the preparation and sample manifests with the matched NetCDF files
+and original scientific configuration. Stages retain configuration-equality
+checks but do not authenticate files with workflow digests. Numerical consumers
+validate scientific compatibility, including the affine reconstruction's
+association with its prepared artifact. Paths inside the TOML file resolve
 relative to that file.
 
 Conditional native-flux and country outputs require prior draws

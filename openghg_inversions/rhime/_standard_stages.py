@@ -62,7 +62,6 @@ from .materialization import materialize_pymc_inputs
 
 from ._stage_artifacts import (
     artifact_path as _artifact_path,
-    file_identity as _file_identity,
     json_value as _json_value,
     write_json as _write_json,
     _filename_component,
@@ -73,8 +72,7 @@ from ._stage_authentication import (
     _load_output_binding,
     _load_stage_manifest,
     _sampler_metadata_from_sample_manifest,
-    _verify_manifest_artifact,
-    _verify_sample_manifest,
+    _load_sample_manifest,
 )
 from ._stage_checks import PREPARATION_CHECK_NAME, _check_result, _check_stage
 
@@ -280,9 +278,6 @@ def prepare_rhime_stage(
         "artifacts": {
             "prepared_inputs": _artifact_path(prepared_path),
         },
-        "artifact_identities": {
-            "prepared_inputs": _file_identity(prepared_path),
-        },
     }
     manifest_path = _write_json(_output_path(destination, None, "prepare-manifest.json"), manifest)
     manifest["manifest_path"] = str(manifest_path)
@@ -297,19 +292,13 @@ def _load_prepared(
     preparation_manifest: str | Path,
 ) -> tuple[RhimePreparedInputs, RhimeRunSpec]:
     prepared_path = Path(path).resolve()
-    manifest_path, manifest = _load_stage_manifest(preparation_manifest, stage="prepare")
+    _, manifest = _load_stage_manifest(preparation_manifest, stage="prepare")
     expected = configuration_identity(setup, model=model)
     if manifest.get("configuration_identity") != expected:
         raise ValueError(
             "Prepared inputs do not match the effective RHIME configuration: "
             f"manifest has {manifest.get('configuration_identity')!r}, current configuration has {expected!r}."
         )
-    _verify_manifest_artifact(
-        manifest,
-        manifest_path=manifest_path,
-        artifact_name="prepared_inputs",
-        artifact_path=prepared_path,
-    )
     prepared = RhimePreparedInputs.load(prepared_path)
     return prepared, setup.retained_run_spec(prepared)
 
@@ -396,11 +385,10 @@ def sample_rhime_stage(
     output_dir: str | Path,
     preparation_manifest: str | Path,
 ) -> dict[str, Any]:
-    """Sample prepared inputs and persist matched posterior/output bindings.
+    """Sample prepared inputs and persist posterior and output-role records.
 
-    Writes the trace, a versioned output contract bound to both numerical
-    artifacts, and a schema-version-2 sample manifest. Preparation is never
-    invoked implicitly.
+    Writes the trace, a versioned output contract and a schema-version-2
+    sample manifest. Preparation is never invoked implicitly.
     """
     setup = replace(setup, sampler=resolve_sampler(setup.sampler))
     destination = _stage_output_directory(output_dir)
@@ -414,16 +402,11 @@ def sample_rhime_stage(
     idata = sample_rhime_model(built, setup.sampler)
     trace_path = _output_path(destination, None, "posterior.nc")
     save_trace(idata, trace_path)
-    identities = {
-        "posterior": _file_identity(trace_path),
-        "prepared_inputs": _file_identity(Path(prepared_inputs).resolve()),
-    }
     binding_path = _write_json(
         _output_path(destination, None, "output-binding.json"),
         {
             "schema": "openghg_inversions.output_binding",
             "schema_version": 1,
-            "artifact_identities": identities,
             "output_contract": built.output_contract.to_dict(),
         },
     )
@@ -437,10 +420,6 @@ def sample_rhime_stage(
             "posterior": _artifact_path(trace_path),
             "prepared_inputs": _artifact_path(Path(prepared_inputs)),
             "output_binding": binding_path.name,
-        },
-        "artifact_identities": {
-            **identities,
-            "output_binding": _file_identity(binding_path),
         },
     }
     manifest_path = _write_json(_output_path(destination, None, "sample-manifest.json"), manifest)
@@ -460,7 +439,7 @@ def postprocess_rhime_stage(
 ) -> RhimeResult:
     """Build requested products from matched prepared, posterior and role artifacts.
 
-    Version-2 sample manifests use their verified saved output bindings, without
+    Version-2 sample manifests use their saved output bindings, without
     materializing model inputs or constructing a graph. Genuine version-1
     manifests retain graph reconstruction to recover their missing roles.
     Output settings may change; the sampled scientific configuration may not.
@@ -479,11 +458,9 @@ def postprocess_rhime_stage(
         preparation_manifest=preparation_manifest,
     )
     posterior_path = Path(posterior).resolve()
-    sample_contract = _verify_sample_manifest(
+    sample_contract = _load_sample_manifest(
         sample_manifest,
-        posterior=posterior_path,
         configuration_identity=configuration_identity(setup, model=model),
-        prepared_inputs=prepared_inputs,
     )
     sampler_metadata = _sampler_metadata_from_sample_manifest(sample_contract)
     output_spec = replace(
@@ -553,7 +530,6 @@ def postprocess_rhime_stage(
         "stage": "postprocess",
         "configuration_identity": configuration_identity(resolved, model=model),
         "effective_configuration": effective,
-        "input_identities": dict(sample_contract["artifact_identities"]),
         "artifacts": {name: _artifact_path(Path(path)) for name, path in artifacts.items()},
     }
     manifest_path = _write_json(_output_path(destination, None, "postprocess-manifest.json"), manifest)
