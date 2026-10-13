@@ -13,9 +13,9 @@ from openghg_inversions.cli import main
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.rhime import (
     RhimeSampler,
-    params_from_config,
     run,
 )
+from openghg_inversions.rhime.ini import read_rhime_ini
 from tests.helpers import make_trace
 
 
@@ -70,8 +70,8 @@ def _test_store_overrides(
 
 def test_packaged_tutorial_configs_are_complete_and_distinct() -> None:
     """Both installed resources parse and describe their intended workflow."""
-    standard = params_from_config(_STANDARD_CONFIG)
-    multisector = params_from_config(_MULTISECTOR_CONFIG)
+    standard = read_rhime_ini(_STANDARD_CONFIG)
+    multisector = read_rhime_ini(_MULTISECTOR_CONFIG)
 
     assert standard["sites"] == ["MHD", "TAC"]
     assert standard["averaging_period"] == ["4h", "4h"]

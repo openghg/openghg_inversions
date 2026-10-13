@@ -13,7 +13,7 @@ return new handoffs when they need to attach variables or metadata and never
 mutate caller-owned datasets. Acquisition reads OpenGHG stores and returns an
 in-memory handoff. Filtering may
 compute when a selected filter cannot operate lazily.  Basis construction may
-read, fit, or write a basis artifact, and sensitivity construction may execute
+read or fit a basis; runners own optional exports. Sensitivity construction may execute
 the basis and boundary-condition algorithms.  Labelled assembly validates the
 durable :class:`~openghg_inversions.inversion_data.RhimePreparedInputs`
 artifact and jointly materializes core payloads before dropping unusable
@@ -123,28 +123,24 @@ def build_sensitivities(
     merged: RhimeMergedData,
     basis_functions: BasisFunctions,
     *,
-    domain: str,
     flux_sources: Sequence[str],
     use_bc: bool = True,
-    bc_basis_case: str = "NESW",
-    bc_basis_directory: str | Path | None = None,
+    bc_basis: xr.Dataset | None = None,
     multisector: bool,
 ) -> dict[str, xr.Dataset]:
     """Construct labelled flux and optional boundary-condition sensitivities.
 
     The stage creates per-site dataset copies, computes the basis projection,
-    and may load boundary-condition basis data.  ``merged`` and
+    using preloaded boundary-condition basis data. ``merged`` and
     ``basis_functions`` remain borrowed.
 
     Args:
         merged: Filtered observations and footprints with aligned site options.
         basis_functions: Retained basis and fluxes to project onto observations.
-        domain: Domain used for boundary-condition basis lookup.
         flux_sources: Source names used to align the flux sensitivities.
         use_bc: Whether to construct boundary-condition sensitivities.
-        bc_basis_case: Boundary-condition basis case used when ``use_bc`` is
-            true.
-        bc_basis_directory: Optional directory containing that basis case.
+        bc_basis: Loaded boundary basis; None uses acquired NESW directional
+            contributions without a basis file. Ignored when BCs are disabled.
         multisector: Whether to retain separate source sensitivities instead
             of the standard single-source layout.
 
@@ -206,9 +202,7 @@ def build_sensitivities(
             with timed("rhime.prepare_inputs.bc_sensitivity", sites=len(merged.sites)):
                 fp_data = bc_sensitivity(
                     fp_data,
-                    domain=domain,
-                    basis_case=bc_basis_case,
-                    bc_basis_directory=str(bc_basis_directory) if isinstance(bc_basis_directory, Path) else bc_basis_directory,
+                    bc_basis=bc_basis,
                 )
 
         return fp_data
@@ -403,8 +397,9 @@ def resolve_basis_inputs(config: Any) -> dict[str, Any]:
     """Resolve exact scientific inputs before acquisition.
 
     Configuration resolution itself stays data-free. This application boundary
-    reads selected maps and partitions, checks retained paths, and consumes
-    deprecated case/directory choices once. Numerical preparation receives only
+    reads selected maps and partitions and checks retained paths. Entry
+    adapters have already translated deprecated case/directory selections.
+    Numerical preparation receives only
     the resulting exact artifact path and borrowed labelled arrays. Reporting
     resources are validated separately by the output owner.
 
@@ -412,6 +407,8 @@ def resolve_basis_inputs(config: Any) -> dict[str, Any]:
         config: Resolved :class:`~openghg_inversions.rhime.params.RhimeConfig`.
             Explicit retained artifacts and partition files bypass algorithm
             support defaults; explicitly selected support files are still read.
+            Plural partition paths are sorted before loading; the first file
+            supplies the reference spatial coordinates.
 
     Returns:
         Keyword arguments for :func:`openghg_inversions.basis.prepare_basis`:
@@ -420,41 +417,31 @@ def resolve_basis_inputs(config: Any) -> dict[str, Any]:
         here and loaded later by basis preparation. The request is not mutated.
 
     Raises:
-        ValueError: If modern and historical selections conflict or both saved
-            input forms are supplied.
+        ValueError: If mutually exclusive saved input forms are supplied.
         FileNotFoundError: If a selected artifact or resource is missing.
         KeyError: If a map or partition lacks its required variable.
 
-    Warns:
-        DeprecationWarning: When historical case/directory options are consumed.
     """
     from openghg_inversions.basis.support import load_basis_partition, resolve_basis_support_maps
 
-    if config.basis_path is not None and config.basis_partition_path is not None:
-        raise ValueError("Supply either basis_path or basis_partition_path.")
+    if sum(value is not None for value in (
+        config.basis_path, config.basis_partition_path, config.basis_partition_paths,
+    )) > 1:
+        raise ValueError("Supply either basis_path, basis_partition_path or basis_partition_paths.")
     selected: dict[str, Any] = {}
     landsea_path = config.landsea_path
     outer_path = config.outer_regions_path
-    if config.fp_basis_case is not None or config.basis_directory is not None or config.country_directory is not None:
-        from openghg_inversions.basis.compatibility import resolve_legacy_basis_inputs
-
-        if config.fp_basis_case is not None and (config.basis_path is not None or config.basis_partition_path is not None):
-            raise ValueError("Do not combine fp_basis_case with an explicit basis input.")
-        selected = resolve_legacy_basis_inputs(
-            **config.select("domain", "fp_basis_case", "basis_directory", "country_directory", "outer_regions_path"),
-        )
-        if landsea_path is not None and "landsea_path" in selected:
-            raise ValueError("Do not combine country_directory with landsea_path.")
-        legacy_landsea_path = selected.pop("landsea_path", None)
-        if config.basis_algorithm == "weighted" and not ("basis_path" in selected or "basis_partition" in selected):
-            landsea_path = legacy_landsea_path or landsea_path
-        legacy_outer_path = selected.pop("outer_regions_path", None)
-        if legacy_outer_path is not None and (outer_path is not None or config.fix_basis_outer_regions):
-            outer_path = legacy_outer_path
     if config.basis_path is not None:
         selected["basis_path"] = config.basis_path
     if config.basis_partition_path is not None:
         selected["basis_partition"] = load_basis_partition(config.basis_partition_path)
+    if config.basis_partition_paths is not None:
+        if not config.basis_partition_paths:
+            raise ValueError("basis_partition_paths must select at least one file.")
+        from openghg_inversions.utils import read_netcdfs
+
+        with read_netcdfs(sorted(config.basis_partition_paths)) as dataset:
+            selected["basis_partition"] = dataset["basis"].load()
     if selected.get("basis_path") is not None and not Path(selected["basis_path"]).exists():
         raise FileNotFoundError(selected["basis_path"])
     loading = "basis_path" in selected or "basis_partition" in selected

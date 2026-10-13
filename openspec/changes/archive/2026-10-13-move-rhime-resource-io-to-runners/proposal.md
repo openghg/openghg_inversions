@@ -19,12 +19,15 @@ selection from scientific preparation, including BC basis discovery.
 - Preserve exact exports, early selected-resource checks, scientific results,
   borrowed inputs and existing numerical codecs.
 - Translate supported historical case/directory selections at the input
-  compatibility boundary; pass explicit BC basis selections to the runner and
+  HBMCMC compatibility boundary under the separate isolation/retirement contract;
+  pass explicit BC basis selections to the runner and
   resolved basis data to sensitivities. NESW requires no basis file.
 - **BREAKING (0.8):** Remove `country_directory`; use `country_file` for reporting
   and explicit or runner-selected packaged support maps for preparation.
 - Identify filesystem fields through type annotations and normalize them with
-  a small standard-library converter using the frontend's base directory.
+  a small independent standard-library converter supplied with the owning
+  record's annotations and frontend base. Convert each external value once and
+  forward canonical paths, including independently usable output configuration.
 
 ## Capabilities
 
@@ -44,3 +47,9 @@ guidance with a 0.8 section and a separate list of planned 0.9 deprecations and
 removals. No resource manager or replacement serialization layer is introduced.
 Sync only after implementation and acceptance; the durable resource spec retains
 the existing optional preparation-save contract until then.
+
+Dependency direction, legacy-only routing and complete HBMCMC removal in 0.9
+belong to the separate [isolation/retirement change](../../isolate-and-retire-hbmcmc/proposal.md).
+This change consumes that boundary without owning or duplicating its prohibition.
+The 0.8 isolation correction is required before acceptance here; 0.9 deletion is
+tracked separately and does not block the resource-I/O delivery.

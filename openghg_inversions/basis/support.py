@@ -4,10 +4,13 @@ These maps define basis geometry. Country reporting maps are independent,
 caller-supplied inputs.
 """
 
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Literal
 
 import xarray as xr
+
+from openghg_inversions.utils import read_netcdfs
 
 
 def packaged_basis_support_path(kind: Literal["landsea", "outer_regions"], domain: str) -> Path:
@@ -106,3 +109,17 @@ def load_basis_partition(path: str | Path) -> xr.DataArray:
     """
     with xr.open_dataset(path, decode_coords="all") as dataset:
         return dataset["basis"].load()
+
+
+def load_bc_basis(paths: Sequence[str | Path]) -> xr.Dataset:
+    """Eagerly load every explicitly selected BC basis file before acquisition.
+
+    Files are sorted by path and concatenated along time, with latitude and
+    longitude reindexed to the first file within the existing 1e-5 tolerance.
+    The returned dataset is independent of closed files. Missing or unreadable
+    files propagate their read error; an empty selection raises ValueError.
+    NESW and disabled BCs do not need this loader.
+    """
+    if not paths:
+        raise ValueError("Select at least one boundary-condition basis file.")
+    return read_netcdfs(sorted(Path(path) for path in paths), verbose=False)

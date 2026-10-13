@@ -13,9 +13,9 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import MISSING, dataclass, field, fields
 from pathlib import Path
-from typing import Any, ClassVar, cast, get_args
+from typing import Any, ClassVar, cast, get_args, get_type_hints
 
-from openghg_inversions._flux_options import normalise_flux_aliases
+from openghg_inversions.rhime._resources import resolve_resource_paths
 from openghg_inversions.flux_sanitization import FluxNonFiniteCheck
 from openghg_inversions.inversion_data._site_options import SiteOptions
 from openghg_inversions.model_error import MinErrorConfig
@@ -24,9 +24,6 @@ from openghg_inversions.model_error import normalise_min_error, normalise_min_er
 from openghg_inversions.models._flux import safe_pymc_name
 from openghg_inversions.observation_error import AggregationErrorMode
 from openghg_inversions.inference.sampling import RhimeSampler
-from openghg_inversions.hbmcmc.compatibility import (
-    translate_rhime_aliases,
-)
 from openghg_inversions.rhime.specs import (
     DEFAULT_BC_PRIOR,
     DEFAULT_OFFSET_PRIOR,
@@ -53,16 +50,12 @@ class RhimeConfig:
     choices, ``output`` final-product policy and ``sampler`` sampling settings.
     Inference executes only when the sampler receives a constructed model.
 
-    Use :meth:`from_params` for external options; deprecated spellings emit
-    warnings. It owns ordinary configuration containers and borrows opaque
-    numerical values. Modern ``emissions_store``/``emissions_domain`` spellings
-    are removed in 0.9; supplying either with its ``flux_*`` replacement is an
-    error, including equal values. Resolved fields use only ``flux_*`` names.
-    Deprecated ``fp_basis_case``, ``basis_directory`` and ``country_directory``
-    remain outer request fields for the transition. ``resolve_basis_inputs``
-    consumes them once before acquisition; numerical code receives exact paths
-    and resolved arrays. Prefer ``basis_path``/``basis_partition_path``,
-    ``landsea_path`` and ``outer_regions_path``.
+    Use :meth:`from_params` for canonical external options. It owns ordinary
+    configuration containers and borrows opaque numerical values. Runner
+    frontends translate deprecated spellings before construction; this class
+    has no alias vocabulary and emits no alias deprecation warnings.
+    Canonical requests retain only exact typed paths; resource loading belongs
+    to runners.
     Direct construction and dataclass replacement expect
     already-resolved values and do not copy them.
     A frozen record does not make contained mappings or the sampler immutable.
@@ -87,15 +80,12 @@ class RhimeConfig:
     fp_species: str | None = None
     calibration_scale: str | None = None
     use_bc: bool = True
-    basis_path: str | Path | None = None
-    basis_partition_path: str | Path | None = None
-    landsea_path: str | Path | None = None
-    fp_basis_case: str | None = None
-    basis_directory: str | Path | None = None
-    bc_basis_case: str = "NESW"
-    bc_basis_directory: str | Path | None = None
-    country_directory: str | Path | None = None
-    outer_regions_path: str | Path | None = None
+    basis_path: Path | None = None
+    basis_partition_path: Path | None = None
+    landsea_path: Path | None = None
+    basis_partition_paths: tuple[Path, ...] | None = None
+    bc_basis_paths: tuple[Path, ...] | None = None
+    outer_regions_path: Path | None = None
     bc_input: str | None = None
     basis_algorithm: str | None = "weighted"
     nbasis: int = 100
@@ -103,7 +93,7 @@ class RhimeConfig:
     fix_basis_outer_regions: bool = False
     averaging_error: bool = True
     bc_freq: str | None = None
-    basis_output_path: str | Path | None = None
+    basis_output_path: Path | None = None
     min_error: MinErrorConfig = 0.0
     min_error_options: dict[str, bool] = field(default_factory=lambda: normalise_min_error_options(None))
     flux_non_finite_check: FluxNonFiniteCheck = "lazy"
@@ -154,10 +144,13 @@ class RhimeConfig:
     ) -> RhimeConfig:
         """Resolve external options into the complete requested run.
 
+        Relative filesystem paths resolve from the invocation working directory;
+        already resolved absolute paths pass through unchanged. File frontends
+        must supply paths resolved against their own documented file base.
+
         Args:
             params: Python or decoded file options after winning overrides.
-                Canonical names are preferred; deprecated spellings are
-                translated with ``DeprecationWarning``.
+                Only canonical option names are accepted.
             multisector: Whether to resolve the multisector recipe.
 
         Returns:
@@ -170,7 +163,8 @@ class RhimeConfig:
             ValueError: If options are missing, unsupported, malformed, or
                 incompatible with the selected runner mode.
         """
-        normalized = normalise_rhime_params(translate_rhime_aliases(params))
+        normalized = normalise_rhime_params(params)
+        normalized = resolve_resource_paths(normalized, annotations=get_type_hints(cls), base_dir=Path.cwd())
         validate_supported_params(normalized)
         validate_required_params(normalized)
 
@@ -265,11 +259,11 @@ class RhimeConfig:
         if (
             remaining.get("basis_path") is None
             and remaining.get("basis_partition_path") is None
-            and remaining.get("fp_basis_case") is None
+            and remaining.get("basis_partition_paths") is None
             and basis_algorithm not in allowed_basis_algorithms
         ):
             raise ValueError(
-                f"`basis_algorithm` must be one of {allowed_basis_algorithms!r} when no `fp_basis_case` "
+                f"`basis_algorithm` must be one of {allowed_basis_algorithms!r} when no saved basis "
                 f"is supplied; got {basis_algorithm!r}."
             )
         min_error = normalise_min_error(remaining.pop("min_error", cls.min_error))
@@ -393,12 +387,8 @@ def resolve_flux_sources(
 
 
 def normalise_rhime_params(params: Mapping[str, Any]) -> dict[str, Any]:
-    """Resolve modern flux spellings, coerce scalars and validate values.
-
-    Historical HBMCMC aliases are translated before this step. Modern flux
-    aliases are resolved here, with warnings and strict old/new conflicts.
-    """
-    normalized = normalise_flux_aliases(params)
+    """Copy canonical options, coerce scalars and validate values."""
+    normalized = dict(params)
     coerce_simple_param_types(normalized)
     validate_rhime_param_types(normalized)
     return normalized
@@ -483,7 +473,7 @@ def validate_multisector_x_prior(x_prior: Mapping[str, Any] | None) -> None:
         return
     raise ValueError(
         "Invalid RHIME config value for `x_prior`: multi-sector source-keyed priors are not "
-        "supported via `xprior`/`x_prior`; use `sector_priors` keyed by sector name, or provide "
+        "supported via `x_prior`; use `sector_priors` keyed by sector name, or provide "
         "a single shared prior dict with top-level `pdf`."
     )
 

@@ -77,20 +77,28 @@ arrays. The caller owns any files backing supplied datasets.
 Follow the modern preparation spine
 ------------------------------------
 
-The ordinary runner resolves ``basis_path`` and selected support maps before
-acquisition. It prepares errors, filters retained observations, then calls the
-canonical load-or-generate operation with exact paths and labelled arrays:
+The ordinary runner resolves ``basis_path``, support maps and selected BC basis
+files before acquisition. It prepares errors, filters retained observations,
+then calls the canonical load-or-generate operation with exact paths and
+labelled arrays:
 
 .. code-block:: python
 
    from openghg_inversions.basis import prepare_basis
+   from openghg_inversions.basis.support import load_bc_basis
+   from openghg_inversions.basis.basis_functions import BASIS_ARTIFACT_PATH_ATTR
    from openghg_inversions.native_flux import resolve_runtime_flux
    from openghg_inversions.rhime.preparation import resolve_basis_inputs
    from openghg_inversions.rhime import validate_output_resources
 
+   # config was constructed from external options with RhimeConfig.from_params.
    # For a complete run that will produce outputs:
    validate_output_resources(config.output)
    basis_inputs = resolve_basis_inputs(config)
+   bc_basis = (
+       load_bc_basis(config.bc_basis_paths)
+       if config.use_bc and config.bc_basis_paths is not None else None
+   )
    # Acquire merged data, prepare errors and filter observations here.
    runtime_flux = resolve_runtime_flux(
        filtered.flux_data, split_by_sectors=filtered.split_by_sectors,
@@ -106,17 +114,26 @@ canonical load-or-generate operation with exact paths and labelled arrays:
        nbasis=config.nbasis,
        basis_algorithm=config.basis_algorithm,
        fix_outer_regions=config.fix_basis_outer_regions,
-       output_path=config.basis_output_path,
        **basis_inputs,
    )
+   if config.basis_output_path is not None:
+       basis.save(config.basis_output_path)
+       basis = basis.with_metadata(
+           {BASIS_ARTIFACT_PATH_ATTR: str(config.basis_output_path)}
+       )
 
 A selected ``basis_path`` reuses saved geometry with current merged flux;
 otherwise preparation generates a partition from the filtered observations.
-An ``output_path`` saves the completed retained basis. Sensitivity construction
-and input assembly consume the returned ``BasisFunctions``. Historical names,
-case/glob discovery and filename construction end at the compatibility entry
-boundary described in :doc:`rhime_configuration`; these scientific steps receive
-resolved values.
+The runner optionally saves the returned basis at ``basis_output_path`` and
+attaches export metadata without mutating the prepared basis. ``prepare_basis``
+accepts no export destination and performs no export write. Sensitivity construction
+and input assembly consume the returned ``BasisFunctions``. Pass ``bc_basis`` to
+``build_sensitivities``; ``None`` uses NESW without any BC basis-file I/O.
+Historical names,
+case/glob discovery and filename construction belong only to the temporary
+HBMCMC entry route described in :doc:`rhime_configuration`. Modern custom runners
+accept explicit selections and forward already resolved paths. These scientific
+steps receive resolved values.
 
 ``runtime_flux`` is native prior flux, resolved once for this domain/grid
 context. It retains all sources and their signed values. ``weighting_flux``
@@ -164,7 +181,9 @@ provenance. Its arrays remain borrowed and may be Dask-backed. It has no
 window bounds alongside other retrieval choices. For example,
 ``AcquisitionFacts(species="ch4", domain="EUROPE")`` makes no claim about dates.
 Explicit ``from_legacy_fp_all`` and ``to_legacy_fp_all`` utility functions
-in ``openghg_inversions.hbmcmc.legacy_data`` support legacy callers until 0.9.
+in ``openghg_inversions.hbmcmc.legacy_data`` support legacy callers in 0.8.
+The entire HBMCMC subpackage, including these utilities, is removed in 0.9;
+see :doc:`legacy_and_migration` for replacements and older-release guidance.
 They are separate from the modern data model.
 
 Acquisition stays in memory. For a reusable file, prepare the data with the

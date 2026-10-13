@@ -74,7 +74,7 @@ def test_resolved_request_checks_recipe_and_likelihood_before_acquisition(monkey
 
 @pytest.mark.parametrize("multisector_mode", [False, True])
 def test_ini_runner_merges_before_one_resolution_and_alias_translation(monkeypatch, tmp_path, multisector_mode):
-    """Raw file aliases and winning overrides reach the single factory boundary."""
+    """Runners translate winning options before the single canonical factory call."""
     recipe = multisector if multisector_mode else standard
     runner = recipe.run_rhime_multisector if multisector_mode else recipe.run_rhime
     sources = ["inventory", "ocean"] if multisector_mode else ["inventory"]
@@ -92,8 +92,10 @@ def test_ini_runner_merges_before_one_resolution_and_alias_translation(monkeypat
     configs = []
 
     def resolve(cls, params, *, multisector):
-        assert params["outputname"] == "file-name"
-        assert params["emissions_name"] == sources
+        assert "outputname" not in params
+        assert "emissions_name" not in params
+        assert params["output_name"] == "winning-name"
+        assert params["flux_sources"] == sources
         resolved = original_factory(params, multisector=multisector)
         configs.append(resolved)
         return resolved

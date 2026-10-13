@@ -129,7 +129,7 @@ def test_custom_basis_runner_replaces_only_basis_stage(
     def build_sensitivities(actual: Any, actual_basis: Any, **kwargs: Any) -> Any:
         assert actual is filtered
         assert actual_basis is basis
-        assert kwargs["domain"] == config.domain
+        assert kwargs["bc_basis"] is None
         assert kwargs["flux_sources"] == config.flux_sources
         assert kwargs["multisector"] is False
         calls.append("sensitivities")
@@ -469,7 +469,7 @@ def test_custom_basis_runner_resolves_before_loading_project_artifact(
         species="ch4", sites=["TAC"], domain="EUROPE", averaging_period="1h",
         start_date="2019-01-01", end_date="2019-02-01", output_name="artifact",
         output_format="none", flux_sources=["inventory"],
-        project_basis_path=str(artifact_path), basis_algorithm=algorithm, fp_basis_case=None,
+        project_basis_path=str(artifact_path), basis_algorithm=algorithm,
         max_child_pca_eccentricity=7.0,
     )
     merged = RhimeMergedData(

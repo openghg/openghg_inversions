@@ -35,7 +35,38 @@ read ambient ``CONFIG_FILE``.  ``OUTPUT_DIR`` is the only automatic path
 default, and the effective ``openghg-run`` ``STAGE`` is the default check-stage
 label.
 Relative filesystem values inside an INI or JSON parameter file are resolved
-against that file's directory, not the process working directory.
+against that file's directory. This includes ``output_path`` and explicit
+``save_trace`` / ``save_inversion_output`` filenames: staged output destinations
+now follow the same file-relative rule as resource inputs. Ordinary full-run
+INI values remain relative to the invocation directory. Explicit ``--kwargs``
+path overrides resolve from the invocation working directory; absolute paths
+keep their destination.
+Filesystem annotations identify the fields to convert: resolved configuration
+uses ``Path`` values, including tuples of paths, while parameter JSON and stage
+manifests store paths as strings and path collections as JSON arrays. Scientific
+strings such as domain names are unchanged; configuration construction does not
+load scientific resources. Each owner converts its declared fields once; later
+configured execution and identity encoding forward canonical paths.
+
+For file-backed boundary conditions, specify exact files, for example
+``"bc_basis_paths": ["bc/january.nc", "bc/february.nc"]`` in the parameter JSON.
+``prepare`` loads all selected files before acquisition and passes their labelled
+data to sensitivity construction, preserving time combination and alignment.
+Missing or unreadable selected files fail before acquisition. Omit
+``bc_basis_paths`` for NESW: it uses acquired directional contributions without
+reading a BC basis file. Disabled BCs load no BC basis resources. Staged commands
+reject historical ``fp_basis_case``, ``basis_directory``, ``bc_basis_case`` and
+``bc_basis_directory`` options. Use explicit modern paths. During 0.8, only the
+HBMCMC entry route translates those historical selectors after winning overrides;
+on that route, an NESW directory warns that it is unused without any lookup.
+
+
+``country_directory`` is removed in 0.8. Use ``country_file`` for reporting,
+``landsea_path`` for preparation land/sea classes, or ``outer_regions_path`` for
+fixed outer regions. Required preparation maps default to packaged files for the
+exact requested domain; explicit paths win and missing resources fail without
+fallback. Reporting country files remain explicit and independent of these
+preparation defaults. See :doc:`legacy_and_migration` for the migration schedule.
 
 ``openghg-run``'s ``EFFECTIVE_CONFIG`` is a stage-specific TOML envelope, not
 an OpenGHG Inversions scientific parameter file, so do not pass it to
@@ -45,10 +76,14 @@ parameter file and pass that path (for example beneath ``SOURCE_DIR`` or
 ``RUN_ROOT/scripts``).
 
 Legacy fixedbasis-style PARIS INIs contain options such as ``nit``, ``nchain``,
-``xprior`` and ``mcmc_type``.  Their translation remains owned by the existing
-``run_hbmcmc`` compatibility path.  Do not copy those aliases into a staged
-JSON file; use canonical RHIME names or first migrate the configuration through
-that existing compatibility boundary.
+``xprior`` and ``mcmc_type``. Fixedbasis policy such as ``nit``, ``nchain`` and
+``mcmc_type`` belongs to the temporary ``run_hbmcmc`` route in 0.8. Modern name
+aliases such as ``xprior`` remain supported at the staged frontend until 0.9
+with deprecation warnings and their existing precedence; prefer ``x_prior`` in
+new files. Translation happens before ``RhimeConfig.from_params``, which accepts
+canonical names only and emits no alias warnings. Migrate fixedbasis policy and
+resource discovery to canonical RHIME options before using staged commands.
+The entire HBMCMC subpackage and its entry points are removed in 0.9.
 
 For ``--model co2``, pass ``--config co2.toml`` using the CO2-family TOML
 vocabulary, or a ``--params-file`` JSON object with the same nested structure.
@@ -120,11 +155,13 @@ Stage-owned artifacts are written below ``--output-dir`` (or
 ``openghg-run``'s ``OUTPUT_DIR``). An explicitly configured
 ``basis_output_path`` keeps its exact destination; preparation does not replace
 it with a stage directory. Relative configured paths resolve from the INI or
-JSON file as described above. Commands do not depend on the caller's
-working directory and reject pre-existing symlinks beneath a stage output
-directory.
+JSON file as described above; explicit overrides and ``--output-dir`` resolve
+from the invocation working directory. The runner saves the basis separately
+from checkpoint-owned files using the existing basis codec. Commands reject
+pre-existing symlinks beneath a stage output directory.
 
-Preparation resolves selected basis and support resources. Country reporting
+Preparation resolves selected basis, BC basis and support resources before
+acquisition. Country reporting
 resources are checked by ``postprocess`` before creating its output directory;
 ``prepare`` and ``sample`` do not require them.
 

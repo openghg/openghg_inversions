@@ -56,8 +56,9 @@ For example, a scalar period broadcasts across the effective requested sites:
    assert config.site_options.sites == ("TAC", "MHD")
    assert config.site_options.averaging_period == ("1h", "1h")
 
-The constructor translates supported deprecated aliases, then applies established
-defaults, validation and site expansion beside the configuration it creates. Pass an
+The constructor accepts canonical option names and applies established defaults,
+validation and site expansion beside the configuration it creates. It does not
+translate deprecated spellings or emit their deprecation warnings. Pass an
 inspected configuration to the matching runner to execute it without resolving
 its options again:
 
@@ -107,14 +108,24 @@ resolution expands the final values together. The resulting ``config`` can be
 passed to a runner without resolving again.
 
 ``RhimeConfig.from_params`` is the single construction entry point; the former
-``resolve_rhime_config`` wrapper has been removed. The constructor calls the
-translator in ``hbmcmc.compatibility`` and emits ``DeprecationWarning`` when a
-deprecated name or output-format value is replaced or removed. For historical HBMCMC aliases, canonical names take precedence. Modern flux
-keyword deprecations follow the stricter rules below. Canonical inputs emit no
-deprecation warning. The deprecated
-``params_from_config`` adapter retains its dictionary return, overrides and
-``normalise`` control there; modern readers and runners do not depend on that
-adapter. Prefer modern names such as ``x_prior``, ``output_name`` and
+``resolve_rhime_config`` wrapper has been removed. Runner frontends, including
+``run_rhime`` and staged commands, translate supported deprecated names before
+calling this constructor. They emit ``DeprecationWarning`` on devel and in 0.8;
+these aliases are removed in 0.9. For names such as ``xprior`` and ``outputname``,
+canonical names take precedence. Flux keyword deprecations follow the stricter
+rules below. Canonical inputs emit no warning. Configuration construction has no
+alias vocabulary; deprecated names passed directly to ``RhimeConfig.from_params``
+are ordinary unknown options. Modern configuration and runners do not import or
+call HBMCMC.
+
+The deprecated dictionary-returning ``params_from_config`` adapter is available
+only from ``openghg_inversions.hbmcmc.compatibility`` during 0.8; its RHIME
+re-export is removed. ``normalise=False`` returns decoded values plus winning
+overrides. ``normalise=True`` translates aliases and historical resource
+selections after overrides and returns canonical keys and resolved ``Path``
+values. It does not construct configuration defaults or expand site shorthand.
+Modern callers use ``read_rhime_ini``, apply overrides, then call
+``RhimeConfig.from_params`` as above. Prefer ``x_prior``, ``output_name`` and
 ``flux_sources`` when migrating code or files.
 
 Basis artifact defaults and the 0.8 transition are described below; a redesign
@@ -130,13 +141,15 @@ a nested inner domain. Nested preparation uses ``inner_flux_store`` (default:
 outer flux store) and ``inner_flux_domain`` (default: inner footprint domain,
 independent of the outer flux-domain selector).
 
-The modern spellings ``emissions_store``, ``emissions_domain``,
+At runner frontends, the deprecated spellings ``emissions_store``,
+``emissions_domain``,
 ``inner_emissions_store`` and ``inner_emissions_domain`` remain accepted with
 ``DeprecationWarning`` until removal in **0.9**. Supply only one spelling of
 each selector: old and new names together raise ``ValueError``, including
 equal values and explicit ``None``. These modern deprecations are resolved
-separately from historical HBMCMC aliases. Resolved configuration fields and
-canonical option inventories contain only the new names.
+before configuration construction. ``RhimeConfig.from_params`` accepts only
+the ``flux_*`` names, with no translation or deprecation warnings. Resolved
+configuration fields and canonical option inventories contain only the new names.
 
 Basis paths, support maps and compatibility
 -------------------------------------------
@@ -146,7 +159,14 @@ arbitrary filename ending in ``.nc`` or ``.zarr``. Omit it to generate a basis
 with ``basis_algorithm`` and ``nbasis``. Alternatively,
 ``basis_partition_path`` selects an exact file containing a labelled ``basis``
 partition; this valid scientific representation does not require historical
-case/glob selection. ``basis_output_path`` is an optional
+case/glob selection. For multiple labelled partition files, use the nonempty
+``basis_partition_paths`` collection. Files are sorted by path before loading;
+the first sorted file supplies the reference coordinates. Select only one of
+``basis_path``, ``basis_partition_path`` and ``basis_partition_paths``. Nested
+inner preparation has the equivalent mutually exclusive ``inner_basis_path``,
+``inner_basis_partition_path`` and ``inner_basis_partition_paths`` options.
+
+``basis_output_path`` is an optional
 exact destination, including the filename; it is not an output directory or an
 enable flag. Staged preparation preserves this destination too.
 
@@ -164,13 +184,22 @@ complete saved basis with its saved prior, without acquisition. See the
 files. ``RhimeConfig.from_params`` resolves options without opening scientific
 data. The application preparation boundary loads selected maps before
 acquisition, then passes labelled ``landsea_classes`` and ``outer_regions``
-arrays to ``prepare_basis``. The single application helper
-``rhime.preparation.resolve_basis_inputs(config)`` resolves these values and
-consumes any supported deprecated path fields once. Modern requests do not
-enter compatibility code. The numerical functions do no file discovery.
+arrays to ``prepare_basis``. This function returns the scientific basis without
+writing an export and no longer accepts ``output_path``. Runners explicitly
+save it through ``BasisFunctions.save`` when ``basis_output_path`` is requested,
+then retain the selected export path in metadata. The application helper
+``rhime.preparation.resolve_basis_inputs(config)`` loads these scientific inputs.
+Historical case/directory selections are accepted only by the temporary HBMCMC
+entry points in 0.8, which translate winning selections before calling modern
+APIs. Modern runners reject ``fp_basis_case``, ``basis_directory``,
+``bc_basis_case`` and ``bc_basis_directory`` before acquisition; resolved requests
+contain explicit selections. The numerical functions do no file discovery.
 When the selected algorithm needs a packaged support map, the application
-resolves that domain's packaged resource. Missing selected files or unavailable
-domain resources raise; another domain is never substituted.
+resolves omitted support paths to that exact domain's packaged resources.
+Explicit paths take precedence; missing files do not fall back to defaults.
+Unavailable domain resources raise before acquisition, without substituting
+another domain or creating directories. Algorithms that do not need a map
+do not require its packaged resource.
 
 To select a packaged resource explicitly from Python:
 
@@ -198,10 +227,11 @@ automatic removal in 0.9. This changes basis artifacts, independently of the
 final inversion product's ``output_format``.
 
 Historical ``fp_basis_case`` / ``basis_directory`` discovery, directory-style
-basis outputs, ``country_directory``, ``emissions_name`` and legacy artifact
+basis outputs, ``emissions_name`` and legacy artifact
 adaptation belong to the compatibility boundary. Deprecated public
 ``make_basis_functions`` and ``load_basis_functions`` adapters live in
-``basis.compatibility`` and invoke canonical modern operations. Migrate a
+``basis.compatibility`` and invoke canonical modern operations. Their independent
+deprecation schedule is unaffected by removing HBMCMC in 0.9. Migrate a
 case/directory pair to an explicit artifact and output destination::
 
    # Before: fp_basis_case="monthly", basis_directory="/data/bases"
@@ -212,8 +242,28 @@ case/directory pair to an explicit artifact and output destination::
 
 The first requested flux source still determines generated-basis weighting;
 all runtime sources are retained. A selected saved basis takes precedence over
-generation. Boundary-condition basis selection still uses ``bc_basis_case`` /
-``bc_basis_directory``; its discovery migration is separate from this change.
+generation.
+
+For file-backed boundary conditions, select exact files with
+``bc_basis_paths=("/data/bc/january.nc", "/data/bc/february.nc")`` (a one-file
+collection is also supported). The runner loads every selected file before
+acquisition and passes a labelled ``bc_basis`` dataset to sensitivity
+construction, preserving time combination and alignment. Missing or unreadable
+selected files fail before acquisition. Scientific sensitivity functions accept
+resolved data, not ``bc_basis_case`` or ``bc_basis_directory`` discovery options.
+
+The default NESW calculation uses acquired directional boundary contributions
+and needs no basis file. Leave ``bc_basis_paths`` unset for NESW; scientific
+calls use ``bc_basis=None``. On the HBMCMC route only, a legacy
+``bc_basis_directory`` supplied with NESW warns that it is unused and deprecated;
+it triggers neither discovery nor a missing-directory error. ``use_bc=False``
+skips BC resource loading.
+
+``country_directory`` is removed from run configuration in 0.8 and is rejected
+before acquisition. Replace it with ``country_file`` for reporting,
+``landsea_path`` for land/sea classes, or ``outer_regions_path`` for fixed outer
+regions. Reporting maps remain explicit: ``domain`` never selects a reporting
+``country_file``. See :doc:`legacy_and_migration` for the migration schedule.
 
 Site selectors and retained observations
 ----------------------------------------
@@ -289,8 +339,8 @@ Selection does not normalize, validate, copy nested values or serialize settings
 an unknown attribute raises ``AttributeError``. Scientific stages still accept
 named keyword arguments and can be called without configuration. Their former
 positional ``data_args`` mappings have been removed. Supply the required basis
-identity/source arguments, sensitivity domain/source arguments, and assembly
-domain/start date by keyword; the API reference lists each function's signature.
+identity/source arguments, sensitivity source arguments and resolved BC basis,
+and assembly domain/start date by keyword; the API reference lists each function's signature.
 
 Changing and persisting configuration
 -------------------------------------
@@ -311,4 +361,17 @@ configuration hashes.
 For persisted workflows, see :doc:`staged_workflow`: version 0.8 does not
 support staged artifacts produced by 0.7; consume them with 0.7 or regenerate
 them with 0.8. Ordinary paths remain relative to the working directory and
-staged paths retain their configuration-file-relative convention.
+staged file resources retain their configuration-file-relative convention.
+Explicit staged path overrides resolve from the invocation working directory.
+Runners forward absolute resource and export paths downstream; absolute inputs
+keep their destinations. Ordinary full-run INI values retain the invocation
+working directory convention. Filesystem fields are declared as ``Path`` types,
+including optional paths and collections such as ``bc_basis_paths``. Frontends
+accept path strings and convert only these annotated fields; domain names and
+scientific selectors remain ordinary strings. Each configuration owner supplies
+its own field annotations to the independent converter. External-input factories
+resolve paths once without loading resources; configured runners and identity
+encoding forward canonical values. Direct dataclass construction expects resolved
+values. ``RhimeOutputSpec.from_params`` accepts external output options on its
+own, without constructing a full run. Explicit ``save_trace`` and
+``save_inversion_output`` paths remain supported alongside their Boolean switches.

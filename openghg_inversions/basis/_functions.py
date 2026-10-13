@@ -2,11 +2,9 @@
 
 import getpass
 import logging
-import os
 from collections.abc import Hashable, Mapping
 from functools import partial
 from numbers import Integral
-from pathlib import Path
 from typing import Any, Literal, cast
 
 import numpy as np
@@ -29,70 +27,12 @@ from .algorithms import quadtree_algorithm, weighted_algorithm
 
 from openghg_inversions.array_ops import to_dense
 from openghg_inversions.config.paths import Paths
-from openghg_inversions.utils import read_netcdfs
 
 logger = logging.getLogger(__name__)
 
 
 openghginv_path = Paths.openghginv
 _INNER_REGION_LABEL_ATTR = "inner_region_label"
-
-
-def basis_boundary_conditions(domain: str, basis_case: str, bc_basis_directory: str | None = None):
-    """Load matching boundary-condition basis files for a domain and case.
-
-    Files match ``<directory>/<domain>/<basis_case>_<domain>*.nc``.
-    Unreadable matches are reported and skipped.
-
-    Args:
-        domain: Domain subdirectory and filename suffix.
-        basis_case: Filename prefix used to select boundary-condition basis files.
-        bc_basis_directory: Optional root directory. Defaults to the
-            repository's ``bc_basis_functions`` directory.
-
-    Returns:
-        Combined dataset of readable matching basis files.
-
-    Raises:
-        ValueError: If the default directory is missing; the directory is
-            created before this error is raised.
-        FileNotFoundError: If no readable files match the domain and basis case.
-    """
-    if bc_basis_directory is None:
-        bc_basis_path = openghginv_path / "bc_basis_functions"
-        if not bc_basis_path.exists():
-            bc_basis_path.mkdir()
-            raise ValueError(
-                f"Default BC basis directory {bc_basis_path} was empty. "
-                "Add basis files or specify `bc_basis_path`."
-            )
-    else:
-        bc_basis_path = Path(bc_basis_directory)
-
-    file_path = (bc_basis_path / domain).glob(f"{basis_case}_{domain}*.nc")
-    files = sorted(list(file_path))
-
-    # check for files that we can't access
-    # NOTE: Hannah added this in 2021 to the ACRG code.
-    # I don't know why it is only for BC boundary conditions -- BM, 2024
-    file_no_acc = [ff for ff in files if not os.access(ff, os.R_OK)]
-    if len(file_no_acc) > 0:
-        print(
-            "Warning: unable to read all boundary conditions basis function files which match this criteria:"
-        )
-        print("\n".join(map(str, file_no_acc)))
-
-    # only use files we can access
-    files = [ff for ff in files if ff not in file_no_acc]
-
-    if len(files) == 0:
-        raise FileNotFoundError(
-            f"Can't find BC basis function files for domain '{domain}' and bc_basis_case '{basis_case}' "
-        )
-
-    basis_ds = read_netcdfs(files)
-
-    return basis_ds
 
 
 def _mean_fp_times_mean_flux(

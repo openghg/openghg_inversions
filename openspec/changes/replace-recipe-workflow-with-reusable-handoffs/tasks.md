@@ -6,7 +6,7 @@ Start with a bounded implementation PR stacked on #841. This planning change
 itself changes no runtime behavior. Follow [design.md](design.md) and the three
 new capability specs and the
 [configuration amendments](../group-rhime-configuration-by-owner/proposal.md) and
-[resource-I/O prerequisite](../move-rhime-resource-io-to-runners/proposal.md).
+[resource-I/O prerequisite](../../specs/rhime-resource-io/spec.md).
 Their durable capability specs describe the delivered baselines.
 The four delivery sections below define proposed bounded
 implementation-child scopes for OPE-207; they do not create Linear issues or

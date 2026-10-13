@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from openghg_inversions.native_flux import resolve_runtime_flux
+from openghg_inversions.basis.support import load_bc_basis
 from openghg_inversions.inference.sampling import resolve_sampler
 from openghg_inversions.basis import prepare_basis
+from openghg_inversions.basis.basis_functions import BASIS_ARTIFACT_PATH_ATTR
 from openghg_inversions.rhime.preparation import resolve_basis_inputs
 
 from collections.abc import Mapping, Sequence
@@ -44,6 +46,7 @@ from openghg_inversions.observation_error import (
     resolve_aggregation_error,
 )
 from openghg_inversions.sigma import SigmaAlignment
+from openghg_inversions.rhime._runner_compat import translate_rhime_aliases
 from .specs import (
     DEFAULT_BC_PRIOR,
     DEFAULT_OFFSET_PRIOR,
@@ -715,7 +718,7 @@ def run_multisector(
         params.update(kwargs)
         if likelihood_builder is not None and params.get("mismatch_model") is not None:
             raise ValueError("A custom likelihood cannot be combined with a built-in mismatch model.")
-        config = RhimeConfig.from_params(params, multisector=True)
+        config = RhimeConfig.from_params(translate_rhime_aliases(params), multisector=True)
     sampler = resolve_sampler(config.sampler)
     log_timing("rhime.runner_setup", timer_seconds(setup_start), multisector=True)
     if likelihood_builder is None and config.model.likelihood is None:
@@ -724,6 +727,7 @@ def run_multisector(
     # Read selected scientific resources before expensive data acquisition.
     validate_output_resources(config.output)
     basis_inputs = resolve_basis_inputs(config)
+    bc_basis = load_bc_basis(config.bc_basis_paths) if config.use_bc and config.bc_basis_paths is not None else None
 
 
     # 1. Resolve acquisition through the data owner.
@@ -764,15 +768,19 @@ def run_multisector(
             ),
             fix_outer_regions=config.fix_basis_outer_regions,
             **basis_inputs,
-            output_path=config.basis_output_path,
+        )
+    if config.basis_output_path is not None:
+        basis_functions.save(config.basis_output_path)
+        basis_functions = basis_functions.with_metadata(
+            {BASIS_ARTIFACT_PATH_ATTR: str(config.basis_output_path)}
         )
     site_data = build_sensitivities(
         filtered,
         basis_functions,
         **config.select(
-            "domain", "flux_sources", "use_bc", "bc_basis_case",
-            "bc_basis_directory",
+            "flux_sources", "use_bc",
         ),
+        bc_basis=bc_basis,
         multisector=True,
     )
     prepared = assemble_rhime_inputs(

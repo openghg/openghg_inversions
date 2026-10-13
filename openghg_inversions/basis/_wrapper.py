@@ -34,7 +34,6 @@ def prepare_basis(
     fix_outer_regions: bool = False,
     basis_path: str | Path | None = None,
     basis_partition: xr.DataArray | Mapping[str, xr.DataArray] | None = None,
-    output_path: str | Path | None = None,
     landsea_classes: xr.DataArray | None = None,
     outer_regions: xr.DataArray | None = None,
     region_classes: xr.DataArray | None = None,
@@ -50,15 +49,15 @@ def prepare_basis(
     contrast_s_diag: xr.DataArray | None = None,
     allow_empty_inner_region: bool = False,
 ) -> BasisFunctions:
-    """Load or generate an operator, bind current flux, and optionally save it.
+    """Load or generate an operator and bind current flux without exporting it.
 
-    ``basis_path`` and ``output_path`` are exact retained-artifact destinations
+    ``basis_path`` is an exact retained-artifact input
     (.nc or .zarr). Scientific support maps are borrowed labelled arrays;
     callers resolve paths and packaged resources before acquisition. Loading
     reuses the saved operator with current runtime flux. Reconstruction uses
     ``BasisFunctions.load`` to restore the complete saved object instead.
-    Generation fits an eager numerical kernel; saving is an explicit
-    serialization/execution boundary. Borrowed inputs are not modified.
+    Generation fits an eager numerical kernel. Callers may explicitly export
+    the returned object with ``BasisFunctions.save``. Borrowed inputs are not modified.
 
     Args:
         site_data: Site datasets with footprints used to construct weights.
@@ -82,8 +81,6 @@ def prepare_basis(
             exclusive with ``basis_partition``; either bypasses generation.
         basis_partition: Labelled partition, or source-keyed partitions, to
             bind to runtime flux. Spatial coordinates must match the flux grid.
-        output_path: Exact retained-artifact destination. None disables saving;
-            saving also applies to loaded operators and supplied partitions.
         landsea_classes: Resolved labelled map required for weighted fitting.
             Values 0 and 1 are split separately; other cells retain label 0.
         outer_regions: Resolved fixed-outer map on the flux grid, required when
@@ -107,12 +104,12 @@ def prepare_basis(
 
     Returns:
         Retained operator bound to runtime flux with artifact-source metadata
-        and, when loaded or saved, the selected artifact path.
+        and, when loaded, the selected input artifact path.
 
     Raises:
         ValueError: If saved input selections conflict, no input or algorithm is
             supplied, or required maps or scientific fitting inputs are invalid.
-        OSError: If an artifact cannot be opened or written.
+        OSError: If an artifact cannot be opened.
     """
     if basis_path is not None and basis_partition is not None:
         raise ValueError("Supply either basis_path or basis_partition.")
@@ -207,9 +204,4 @@ def prepare_basis(
 
     print(f"Computing basis took {time() - basis_start}s.")
 
-    if output_path is not None:
-        basis_functions_object.save(output_path)
-        basis_functions_object = basis_functions_object.with_metadata(
-            {BASIS_ARTIFACT_PATH_ATTR: str(output_path)}
-        )
     return basis_functions_object
