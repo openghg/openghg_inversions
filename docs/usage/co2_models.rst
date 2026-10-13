@@ -1078,11 +1078,38 @@ the runner rather than putting a generic ``target_accept`` in
 fixed-OU generalized eigenbasis are runtime numerical state derived from the
 materialized prepared inputs; they are not external cache artifacts.
 
-Because the cached graph uses a normalized joint ``Potential``, it does not
-invent an independent observed distribution. After sampling, the same exact
-fixed-OU target adds ``log_likelihood.y`` as one scalar per complete
-observation vector and, when requested, draws complete correlated vectors in
-``posterior_predictive.y``. The variables carry explicit joint-scope metadata.
+The graph exposes one exact observed ``y`` distribution. Native
+``pm.sample_prior_predictive``, ``pm.sample_posterior_predictive`` and
+``pm.compute_log_likelihood`` therefore use each draw's complete mean and
+amplitudes without reading the sampler cache. The matched state NUTS step
+uses an explicitly compiled cached quadratic with the same priors and
+transform Jacobians; it does not refactor the observation covariance during
+state trajectories. Prepared observations, covariance, designs and activity
+masks must remain fixed; rebuild the recipe to replace them.
+
+``log_likelihood.y`` contains one normalized scalar per ``(chain, draw)`` for
+the complete observation vector. Its ``rhime_likelihood_scope`` is
+``joint_observation_vector``; it is unsuitable for pointwise LOO or WAIC.
+Both predictive groups contain complete correlated observation vectors and
+carry the same joint scope and concentration units. Set
+``sample_kwargs={"idata_kwargs": {"log_likelihood": False}}`` to omit density
+output. Prediction can be disabled independently.
+
+The shared sampler derives separate prior and posterior prediction streams
+from ``sample_kwargs["random_seed"]``. Toggling prior prediction does not
+change posterior prediction or MCMC. An explicit predictive ``random_seed``
+overrides the posterior stream, including ``None`` for an unseeded draw.
+Cached runners accept posterior names ``y`` and ``concentration`` (the same
+observation variable), or a boolean; an empty sequence disables prediction.
+Only ``random_seed`` is supported in ``posterior_predictive_kwargs``.
+
+The builder returns ``initial_values`` containing physical amplitude defaults
+and any boundary/offset prior start strategies. The runner merges caller
+``sample_kwargs["initvals"]`` over these defaults, including transformed keys
+and per-chain mappings. For direct low-level sampling, pass this mapping as
+``initvals`` and construct the matched step with ``cached_state_logp`` and an
+initial point resolved from those defaults. The public graph carries no custom
+initial-value metadata, so generic log-likelihood computation works directly.
 
 This route deliberately supports only independent HalfNormal site-amplitude
 priors and fixed positive OU timescales. Sampled tau and alternative amplitude
@@ -1163,6 +1190,8 @@ Both routes retain species and native channel identity in the trace. The
 ``ou_site`` coordinate uses the species/site labels, with ``ou_species`` and
 ``ou_station`` coordinates describing each group. Amplitudes retain
 concentration units and ``ou_tau_hours`` retains hours through serialization.
-The cached runner supplies one normalized joint log likelihood per posterior
-draw and optional correlated joint predictive vectors; these are not
-independent per-observation likelihoods.
+The cached runner uses the same native prediction and cached state sampling
+interface as the CO2 runner described above. It supplies one normalized joint
+log likelihood per posterior draw and optional correlated joint prior and
+posterior predictive vectors, preserving cross-channel aggregation covariance.
+The joint likelihood must not be treated as pointwise observation densities.

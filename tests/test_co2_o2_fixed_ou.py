@@ -11,6 +11,10 @@ import pytensor
 import pytensor.tensor as pt
 import pytest
 from scipy.stats import multivariate_normal
+from scipy.stats import halfnorm, norm
+from pymc.blocking import DictToArrayBijection
+
+from openghg_inversions.models.fixed_ou import FixedOuLowRank
 
 from openghg_inversions.rhime.co2 import Co2O2PreparedInputs, prepare_co2_o2_inputs
 from openghg_inversions.rhime.co2.co2_o2_model import build_co2_o2_model
@@ -26,6 +30,7 @@ from openghg_inversions.serialization import save_trace, load_trace
 
 from test_rhime_co2_o2 import _inputs, _independent_error
 from test_cached_sigma_sampling import _nuts_stats
+from test_co2_cached_sigma import _assert_native_joint_outputs, _compound
 
 
 def _prepared():
@@ -109,6 +114,18 @@ def _dense(kwargs, amplitudes, tau):
             -np.abs(hours[rows, None] - hours[None, rows]) / tau[label]
         )
     return result
+
+
+def test_linked_native_joint_predictions_and_density_ignore_poisoned_cache():
+    kwargs = _kwargs(_prepared(), interleaved=True, native_multiindex=True)
+    tau = {"co2:A": 6.0, "o2:A": 8.0, "o2:B": 2.0}
+    cached = build_co2_o2_cached_sigma_model(**kwargs, tau_hours=tau, site_amplitude_prior_scale=0.8)
+    assert not cached.model.potentials
+    assert [rv.name for rv in cached.model.observed_RVs] == ["y"]
+    covariance = _dense(kwargs, np.zeros(3), tau)
+    species = kwargs["observations"].species.values
+    assert np.any(covariance[np.ix_(species == "co2", species == "o2")] != 0.0)
+    _assert_native_joint_outputs(cached, lambda amplitude: _dense(kwargs, amplitude, tau))
 
 
 @pytest.mark.parametrize("interleaved", [False, True])
@@ -222,6 +239,8 @@ def test_linked_cache_accept_reject_order_and_chain_locality(monkeypatch):
     _, stats = amplitude_step.step(updated)
     assert stats[0]["cache_refreshes"] == 0
     monkeypatch.setattr(first.target, "refresh", lambda _: pytest.fail("state step refreshed covariance"))
+    monkeypatch.setattr(FixedOuLowRank, "evaluate", lambda *_: pytest.fail("state step evaluated covariance"))
+    monkeypatch.setattr(np.linalg, "cholesky", lambda *_: pytest.fail("state step factored covariance"))
     state_step.step(updated)
 
 
@@ -276,10 +295,10 @@ def test_linked_sampling_serializes_group_labels_and_joint_outputs(tmp_path, cac
         **options,
         sampler=RhimeSampler(
             nuts_sampler="pymc",
-            draws=4,
+            draws=5,
             tune=4,
-            chains=1,
-            burn=0,
+            chains=2,
+            burn=1,
             sample_kwargs={
                 "cores": 1,
                 "random_seed": 171,
@@ -308,8 +327,15 @@ def test_linked_sampling_serializes_group_labels_and_joint_outputs(tmp_path, cac
         restored.constant_data.ou_tau_hours.values, np.array([6, 8, 2], dtype="timedelta64[h]")
     )
     assert restored.log_likelihood.y.dims == ("chain", "draw")
+    assert restored.log_likelihood.y.shape == (2, 4)
     assert restored.log_likelihood.y.attrs["rhime_likelihood_scope"] == "joint_observation_vector"
     assert restored.posterior_predictive.y.sizes["observation"] == 5
+    assert restored.posterior_predictive.y.shape == (2, 4, 5)
+    assert restored.prior_predictive.y.shape == (1, 4, 5)
+    np.testing.assert_array_equal(restored.posterior_predictive.draw, np.arange(4))
+    assert restored.posterior_predictive.attrs["burn"] == 1
+    assert restored.prior_predictive.y.attrs["units"] == "ppm"
+    assert restored.posterior_predictive.y.attrs["units"] == "ppm"
     assert restored.posterior_predictive.species.values.tolist() == ["co2", "co2", "o2", "o2", "o2"]
     assert "flux_scaling" in restored.prior
 
@@ -395,6 +421,39 @@ def test_cached_affine_design_includes_fixed_pruned_boundary_and_channel_offsets
         stock.compile_logp(vars=[stock["y"]])(point),
         rtol=2e-6,
     )
+    state_step = _compound(cached).methods[1]
+    public_logp = cached.model.compile_logp()
+    stock_logp = stock.compile_logp()
+    public_gradient = cached.model.compile_dlogp(vars=list(cached.states))
+    tau = {str(label): 6.0 for label in cached.target.prepared.site_labels}
+    mean_fn = cached.model.compile_fn(
+        cached.model.replace_rvs_by_values([cached.modelled_mean])[0],
+        inputs=cached.model.value_vars, on_unused_input="ignore",
+    )
+    for shift in (-0.2, 0.3):
+        varied = {name: value.copy() for name, value in point.items()}
+        for name in state_step.var_names:
+            varied[name] += shift
+        amplitudes = np.linspace(0.3 + shift / 10, 0.9, cached.target.n_group)
+        varied["ou_site_amplitude_log__"] = np.log(amplitudes)
+        cached.shared_cache.update(cached.target.refresh(amplitudes))
+        state_step._logp_dlogp_func.set_extra_values(varied)
+        actual, gradient = state_step._logp_dlogp_func(DictToArrayBijection.map(
+            {name: varied[name] for name in state_step.var_names}
+        ))
+        prior = halfnorm.logpdf(amplitudes, scale=0.8).sum() + np.log(amplitudes).sum()
+        for name in state_step.var_names:
+            location, scale = (0.0, 1.0) if name == "flux_scaling_latent" else (
+                (1.0, 0.1) if name.endswith("bc_active") else (0.1, 0.2)
+            )
+            prior += norm.logpdf(varied[name], loc=location, scale=scale).sum()
+        expected = prior + multivariate_normal.logpdf(
+            kwargs["observations"].values, mean=mean_fn(varied), cov=_dense(kwargs, amplitudes, tau),
+        )
+        np.testing.assert_allclose(actual, expected, atol=1e-8)
+        np.testing.assert_allclose(actual, public_logp(varied), atol=1e-8)
+        np.testing.assert_allclose(actual, stock_logp(varied), atol=1e-8)
+        np.testing.assert_allclose(gradient, public_gradient(varied), atol=1e-8)
     assert [rv.name for rv in cached.states] == [
         "flux_scaling_latent",
         "co2_bc_active",

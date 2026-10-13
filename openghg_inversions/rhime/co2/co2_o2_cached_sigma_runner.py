@@ -13,9 +13,6 @@ from openghg_inversions.rhime.builders import RhimeModelBuildResult
 from openghg_inversions.rhime.sampling import RhimeSampler, sample_rhime_model
 
 from .co2_cached_sigma_runner import (
-    _append_joint_outputs,
-    _posterior_predictive_requested,
-    _predictive_seed,
     _sampler_for_cached_graph,
 )
 from .co2_o2_cached_sigma_model import build_co2_o2_cached_sigma_model
@@ -92,7 +89,7 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
             PyMC backend is supported. Caller-supplied step or target_accept
             controls are rejected because the runner owns both NUTS steps.
             Joint predictive output supports only random_seed in predictive
-            keyword arguments and is drawn from the same numerical target.
+            keyword arguments and uses the exact observed PyMC distribution.
         sigma_target_accept: Target acceptance probability for the amplitude
             NUTS step, defaulting to 0.8.
         state_target_accept: Target acceptance probability for the affine-state
@@ -193,13 +190,6 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
         state_target_accept=state_target_accept,
     )
     trace = sample_rhime_model(built, sampling_sampler)
-    trace = _append_joint_outputs(
-        trace,
-        cached_model=cached,
-        observations=observations,
-        posterior_predictive=_posterior_predictive_requested(requested_sampler),
-        random_seed=_predictive_seed(requested_sampler),
-    )
     trace = _annotate_co2_o2_trace(trace, built=built)
     trace = _annotate_linked_fixed_ou_trace(trace, observations=observations)
     trace.attrs["rhime_recipe"] = "co2_o2_cached_sigma_fixed_ou"

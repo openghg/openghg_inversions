@@ -73,7 +73,10 @@ def build_co2_o2_cached_sigma_model(
     with ``site_amplitude_prior_scale`` in concentration units. Optional positive
     initial amplitudes use the same scalar or species/site mapping convention.
     The returned graph must be sampled with the CO2 sigma-then-state
-    CompoundStep, never stock NUTS alone.
+    CompoundStep and its explicit cached state function. The observed joint
+    Gaussian remains exact independently of that cache. Scientific initial
+    values are returned separately for sampling; observations, designs,
+    activity masks, and covariance stay fixed after construction.
     """
     if not np.isfinite(site_amplitude_prior_scale) or site_amplitude_prior_scale <= 0:
         raise ValueError("site_amplitude_prior_scale must be finite and strictly positive.")
@@ -179,6 +182,7 @@ def build_co2_o2_cached_sigma_model(
         cached = _add_cached_likelihood(
             tuple(terms),
             covariance=covariance,
+            modelled_mean=mean,
             observations=observations,
             observation_error=independent_error_sd,
             site_coord=site_coord,
@@ -195,5 +199,7 @@ def build_co2_o2_cached_sigma_model(
         amplitude=cached.amplitude,
         states=cached.states,
         modelled_mean=mean,
+        cached_state_logp=cached.cached_state_logp,
+        initial_values=cached.initial_values,
         site_amplitude_prior_scale=site_amplitude_prior_scale,
     )
