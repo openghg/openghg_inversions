@@ -206,6 +206,12 @@ when comparing source contributions. The inversion output's provenance has the
 same limits described by the standard tutorial: it retains prepared arrays,
 basis, trace and resolved metadata, but is not an object-store query snapshot.
 
+For ordinary finite traces, sector diagnostics reduce scaling samples before
+reconstructing mean fluxes.
+Requesting total quantiles or standard deviations needs draw-wise fluxes and
+can use much more memory; see :doc:`retained_state_reconstruction` before
+building those products for a large grid.
+
 For a clean-checkout mechanics test, run
 ``uv run pytest tests/test_rhime_tutorials.py -q``. Its multisector case uses
 two maintained fixture products, one a dimension-shuffled numerical duplicate,

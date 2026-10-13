@@ -434,7 +434,7 @@ array or coordinate is being inspected.</p>
 <li><p>An eager sparse payload becomes a dense NumPy-backed DataArray.</p></li>
 <li><p>Sparse Dask chunks are converted by a lazy block operation. The outer Dask
 collection and chunk layout are retained until execution.</p></li>
-<li><p>A Dask array with dense chunks is returned unchanged.</p></li>
+<li><p>A Dask array with dense chunk metadata is returned unchanged.</p></li>
 </ul>
 <p>Consequently, <code class="docutils literal notranslate"><span class="pre">compute()</span></code> alone need not produce NumPy data: it can return
 an eager sparse payload. A scalar reduction can be computed and then densified

@@ -683,7 +683,14 @@ per year. Variables are named <code class="docutils literal notranslate"><span c
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.postprocessing.make_outputs.make_sector_flux_outputs" title="Link to this definition">#</a></dt>
-<dd><p>Return multisector flux statistics by sector plus correctly reconstructed total flux statistics.</p>
+<dd><p>Return sector and total multisector flux statistics.</p>
+<p>Mean-only requests reduce pooled chain/draw state samples before gridded
+reconstruction, including whole-sample NaN padding. Sector means use their
+own available samples; totals require every sector in a sample. The shortcut
+requires shared, nonempty sample masks across sectors. Differing masks,
+partial-state NaNs or infinities, custom sample dimensions, and other
+statistics retain per-draw reconstruction. Completed products are materialized
+as dense NumPy arrays; borrowed inputs are not modified.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a></p>

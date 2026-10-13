@@ -465,6 +465,41 @@ explicit reference state <span class="math notranslate nohighlight">\(\alpha_{re
 keep their historical <code class="docutils literal notranslate"><span class="pre">flux_time</span></code> coordinate label. The retained flux keeps
 its own native time coordinate until that output boundary; a state sample
 <code class="docutils literal notranslate"><span class="pre">time</span></code> axis remains independent.</p>
+<section id="multisector-flux-statistics-and-memory">
+<h2>Multisector flux statistics and memory<a class="headerlink" href="#multisector-flux-statistics-and-memory" title="Link to this heading">#</a></h2>
+<p><a class="reference internal" href="../reference/openghg_inversions.postprocessing.make_outputs.html#openghg_inversions.postprocessing.make_outputs.make_sector_flux_outputs" title="openghg_inversions.postprocessing.make_outputs.make_sector_flux_outputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">make_sector_flux_outputs()</span></code></a>
+reports sector and total flux statistics. For <code class="docutils literal notranslate"><span class="pre">stats=[&quot;mean&quot;]</span></code> with ordinary
+jointly sampled chain/draw traces, it reduces scaling samples before
+reconstructing the grid.
+Linearity makes this equivalent to averaging reconstructed draws, without
+creating a latitude/longitude flux field for every sample. Shared whole-sample
+NaN padding, such as different prior and posterior sample counts, is supported.
+Unusual missing-data layouts, including differing sample availability across
+sectors or entirely missing sample groups, use the general draw-wise path.
+Partial-state NaNs, infinities, or a custom sample dimension also use that path.</p>
+<p>RHIME’s sector flux diagnostics request means. The multisector route
+through <a class="reference internal" href="../reference/openghg_inversions.postprocessing.make_outputs.html#openghg_inversions.postprocessing.make_outputs.make_flux_outputs" title="openghg_inversions.postprocessing.make_outputs.make_flux_outputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">make_flux_outputs()</span></code></a>
+uses the same optimization when only the mean is requested.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>Other statistics, including the default mean and quantiles, and mean-only
+inputs outside the conditions above reconstruct draw-wise multisector fluxes.
+Total quantiles and standard deviations must be calculated after summing
+sectors at matching chain/draw coordinates so that posterior dependence
+between sectors is retained. Summing sector
+quantiles or standard deviations does not give the total’s statistic.</p>
+<p>These products can require substantial memory as the spatial grid, retained
+flux times, samples, and number of sectors grow. Concurrent Dask tasks and
+temporary arrays also affect peak memory; lazy input alone does not make
+this calculation fit in memory. Request <code class="docutils literal notranslate"><span class="pre">stats=[&quot;mean&quot;]</span></code> when means are
+sufficient, and size nonlinear-statistic jobs for their draw-wise workspace.</p>
+</div>
+<p>The mean-only path preserves float32 flux products when the scaling samples,
+basis, and prior flux use float32; it does not impose a blanket float64 cast.
+Mixed input precision and operations with an explicitly chosen accumulation
+precision can still produce wider results. Storage precision and PyTensor graph
+precision are separate choices; see <a class="reference internal" href="rhime.html#rhime-terminology-and-quickstart"><span class="std std-ref">RHIME terminology and prepared-input reference</span></a>.</p>
+</section>
 </section>
 
 
@@ -505,6 +540,18 @@ its own native time coordinate until that output boundary; a state sample
                 <dialog id="pst-secondary-sidebar-modal"></dialog>
                 <div id="pst-secondary-sidebar" class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
 
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#multisector-flux-statistics-and-memory">Multisector flux statistics and memory</a></li>
+</ul>
+  </nav></div>
 
   <div class="sidebar-secondary-item">
 

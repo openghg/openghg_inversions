@@ -728,7 +728,8 @@ identity. No interpolation or reindexing is performed.</p>
 <p>For an eager sparse input, this returns an eager NumPy-backed DataArray. For
 a Dask array with sparse chunks, the outer Dask collection and its chunking
 are preserved while a lazy block operation converts each chunk to NumPy when
-executed. An array whose Dask chunks are already dense is returned unchanged.
+executed. Already dense chunk payloads under sparse metadata are retained.
+An array with dense Dask chunk metadata is returned unchanged.
 Coordinates retain their original backends and are not computed.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
