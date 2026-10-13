@@ -547,7 +547,9 @@ their affine reconstruction binding remains valid.</p>
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.co2.stages.resolve_co2_stage_setup">
 <span class="sig-name descname"><span class="pre">resolve_co2_stage_setup</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">params</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.stages.resolve_co2_stage_setup" title="Link to this definition">#</a></dt>
-<dd><p>Reuse the CO2 resolver and reject unsupported stage outputs early.</p>
+<dd><p>Resolve CO2 settings and output capabilities independently of saved draws.</p>
+<p>Output consumers validate the actual trace’s required draws. Current
+sampler settings do not restrict products from a completed invocation.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference internal" href="#openghg_inversions.rhime.co2.stages.Co2StageSetup" title="openghg_inversions.rhime.co2.stages.Co2StageSetup"><em>Co2StageSetup</em></a></p>

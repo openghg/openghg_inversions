@@ -608,7 +608,9 @@ samples. <code class="docutils literal notranslate"><span class="pre">postproces
 in-memory <code class="docutils literal notranslate"><span class="pre">basic</span></code> product is written as <code class="docutils literal notranslate"><span class="pre">basic.nc</span></code>.
 CO2 supports <code class="docutils literal notranslate"><span class="pre">none</span></code>, <code class="docutils literal notranslate"><span class="pre">basic</span></code> and constrained <code class="docutils literal notranslate"><span class="pre">paris</span></code> products. Its
 native-flux and country outputs require an exact bound affine reconstruction
-and prior draws, and retain conditional uncertainty scope. The complete
+and saved prior/posterior state draws, and retain conditional uncertainty
+scope. The output consumer checks those draws; the current sampler’s
+<code class="docutils literal notranslate"><span class="pre">sample_prior_predictive</span></code> setting does not gate replay. The complete
 supported CO2 contract is documented in <a class="reference internal" href="co2_model_family.html"><span class="doc">CO₂ model family</span></a>.</p>
 </dd>
 </dl>

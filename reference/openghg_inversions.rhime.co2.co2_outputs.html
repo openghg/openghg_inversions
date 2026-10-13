@@ -560,8 +560,8 @@ represent coherent affine CO2 reconstruction.</p>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_outputs.make_co2_rhime_result" title="Link to this definition">#</a></dt>
 <dd><p>Join a saved annotated CO2 posterior with its validated preparation.</p>
-<p>Artifact identity checks belong to the stage loader. The adapter borrows
-the trace and scientific inputs without rebuilding a graph or serializing.
+<p>The caller supplies the matched trace and preparation. The adapter borrows
+those scientific inputs without rebuilding a graph or serializing.
 An in-memory runner may additionally retain its existing model build.
 Passing <code class="docutils literal notranslate"><span class="pre">sampler=None</span></code> retains no live sampler; saved-output orchestration
 supplies recorded descriptive values in <code class="docutils literal notranslate"><span class="pre">result.output_metadata[&quot;sampler&quot;]</span></code>.</p>
