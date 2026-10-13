@@ -111,8 +111,8 @@ def make_co2_rhime_result(
 ) -> RhimeResult:
     """Join a saved annotated CO2 posterior with its validated preparation.
 
-    Artifact identity checks belong to the stage loader. The adapter borrows
-    the trace and scientific inputs without rebuilding a graph or serializing.
+    The caller supplies the matched trace and preparation. The adapter borrows
+    those scientific inputs without rebuilding a graph or serializing.
     An in-memory runner may additionally retain its existing model build.
     Passing ``sampler=None`` retains no live sampler; saved-output orchestration
     supplies recorded descriptive values in ``result.output_metadata["sampler"]``.

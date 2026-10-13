@@ -77,15 +77,89 @@ def test_invalid_cached_site_mapping_has_no_destination(tmp_path):
     assert not (tmp_path / "unopened").exists()
 
 
-def test_unsupported_sector_request_and_missing_prior_fail_at_config_boundary(tmp_path):
+def test_unsupported_sector_request_fails_at_config_boundary(tmp_path):
     params = _config(tmp_path / "absent.nc")
     params["outputs"] = {"source_to_sector": {"fossil": "total"}}
     with pytest.raises(ValueError, match="source_to_sector"):
         resolve_co2_stage_setup(params)
-    params["outputs"] = {"reconstruction_path": str(tmp_path / "absent-affine.nc")}
+
+
+@pytest.mark.parametrize("variant", ["ordinary", "cached_fixed_ou"])
+@pytest.mark.parametrize("has_prior", [True, False])
+def test_affine_replay_checks_saved_draws_instead_of_current_sampler(
+    tmp_path, monkeypatch, variant, has_prior
+):
+    from openghg_inversions.basis.affine_flux_map_io import save
+    from openghg_inversions.rhime.co2 import stages
+    from openghg_inversions.rhime.co2.co2_affine_output import (
+        prepared_inputs_content_id,
+        produce_bucket_affine_flux_map,
+    )
+    from openghg_inversions.rhime.sampling import RhimeSampler
+    from openghg_inversions.serialization import save_trace
+    from test_co2_affine_output import _prepared
+    from test_co2_staged_outputs import _components_fixture
+
+    prepared, trace = _components_fixture()
+    _, native_mean = _prepared()
+    source = tmp_path / "source.nc"
+    prepared.save(source)
+    companion = tmp_path / "affine.nc"
+    save(
+        produce_bucket_affine_flux_map(
+            prepared, native_mean, prepared_inputs_id=prepared_inputs_content_id(source)
+        ),
+        companion,
+    )
+    params = _config(source)
+    if variant == "cached_fixed_ou":
+        params.update(
+            variant=variant,
+            likelihood={"kind": "fixed_ou", "tau_hours": 24.0, "site_amplitude_prior_scale": 1.0},
+        )
+        trace.attrs["rhime_model_metadata"] = json.dumps({"recipe": "co2_cached_sigma_fixed_ou"})
+    params["outputs"] = {"output_format": "basic", "reconstruction_path": str(companion)}
+    params["sampling"]["sample_prior_predictive"] = 4
+    sampled_setup = resolve_co2_stage_setup(params)
+    preparation = prepare_co2_stage(setup=sampled_setup, output_dir=tmp_path / "prepare")
+    sample = stages._manifest(sampled_setup, "sample")
+    sampling = tmp_path / "sample-manifest.json"
+    sampling.write_text(json.dumps(sample))
+    if not has_prior:
+        del trace["prior"]
+    posterior = tmp_path / "posterior.nc"
+    save_trace(trace, posterior)
+
+    # The current sampling choice cannot remove draws from the saved trace.
     params["sampling"]["sample_prior_predictive"] = False
-    with pytest.raises(ValueError, match="prior_predictive"):
-        resolve_co2_stage_setup(params)
+    replay_setup = resolve_co2_stage_setup(params)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("Saved CO2 replay must not build a model or execute inference.")
+
+    monkeypatch.setattr(stages, "build_rhime_co2", forbidden)
+    monkeypatch.setattr(stages, "build_rhime_co2_cached_sigma", forbidden)
+    monkeypatch.setattr(RhimeSampler, "sample", forbidden)
+    arguments = {
+        "setup": replay_setup,
+        "prepared_inputs": tmp_path / "prepare" / "prepared-inputs.nc",
+        "preparation_manifest": preparation["manifest_path"],
+        "posterior": posterior,
+        "sample_manifest": sampling,
+        "output_dir": tmp_path / "replay",
+    }
+    if not has_prior:
+        with pytest.raises(ValueError, match="Affine CO2 flux outputs require prior flux_scale draws"):
+            stages.postprocess_co2_stage(**arguments)
+        assert not (tmp_path / "replay").exists()
+        return
+    result = stages.postprocess_co2_stage(**arguments)
+    assert result.model is None
+    assert result.sampler is None
+    assert (tmp_path / "replay" / "native_flux.nc").is_file()
+    assert "flux_total_prior_mean" in result.outputs["native_flux"]
+    manifest = json.loads(Path(result.output_metadata["postprocess_manifest_path"]).read_text())
+    assert manifest["sampling_configuration"]["sample_prior_predictive"] == 4
 
 
 def test_cached_tuning_is_sampling_configuration(tmp_path):

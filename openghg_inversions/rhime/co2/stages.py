@@ -119,7 +119,11 @@ def resolve_co2_stage_paths(params: Mapping[str, Any], *, base_dir: Path) -> dic
 
 
 def resolve_co2_stage_setup(params: Mapping[str, Any]) -> Co2StageSetup:
-    """Reuse the CO2 resolver and reject unsupported stage outputs early."""
+    """Resolve CO2 settings and output capabilities independently of saved draws.
+
+    Output consumers validate the actual trace's required draws. Current
+    sampler settings do not restrict products from a completed invocation.
+    """
     from .co2_outputs import validate_co2_output_spec
 
     options = dict(params)
@@ -149,12 +153,6 @@ def resolve_co2_stage_setup(params: Mapping[str, Any]) -> Co2StageSetup:
     recipe = resolve_co2_family_config(options)
     if not isinstance(recipe, Co2RunSetup):
         raise ValueError("The staged co2 model requires recipe='co2'; linked CO2/O2 is not supported.")
-    if (
-        output.output_format != "none"
-        and reconstruction is not None
-        and not recipe.sampler.sample_prior_predictive
-    ):
-        raise ValueError("Conditional CO2 flux outputs require sampling.sample_prior_predictive draws.")
     return Co2StageSetup(
         recipe, output, Path(reconstruction) if reconstruction is not None else None, sectors
     )
