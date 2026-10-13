@@ -25,6 +25,7 @@ import xarray as xr
 
 from openghg_inversions._timing import timed
 from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs
+from openghg_inversions.inference.sampling import resolve_sampler
 from .specs import RhimeRunSpec
 from openghg_inversions.serialization import (
     load_trace,
@@ -71,7 +72,7 @@ from ._stage_artifacts import (
 from ._stage_authentication import (
     _load_output_binding,
     _load_stage_manifest,
-    _sampler_from_sample_manifest,
+    _sampler_metadata_from_sample_manifest,
     _verify_manifest_artifact,
     _verify_sample_manifest,
 )
@@ -401,6 +402,7 @@ def sample_rhime_stage(
     artifacts, and a schema-version-2 sample manifest. Preparation is never
     invoked implicitly.
     """
+    setup = replace(setup, sampler=resolve_sampler(setup.sampler))
     destination = _stage_output_directory(output_dir)
     prepared, run_spec = _load_prepared(
         prepared_inputs,
@@ -483,7 +485,7 @@ def postprocess_rhime_stage(
         configuration_identity=configuration_identity(setup, model=model),
         prepared_inputs=prepared_inputs,
     )
-    sampled_sampler = _sampler_from_sample_manifest(sample_contract, path=sample_manifest)
+    sampler_metadata = _sampler_metadata_from_sample_manifest(sample_contract)
     output_spec = replace(
         configured_output,
         output_path=str(destination),
@@ -491,7 +493,7 @@ def postprocess_rhime_stage(
         save_inversion_output=bool(configured_output.save_inversion_output),
     )
     run_spec = replace(run_spec, output=output_spec)
-    resolved = replace(setup, output=output_spec, sampler=sampled_sampler)
+    resolved = replace(setup, output=output_spec)
     if sample_contract["schema_version"] == 1:
         # Older manifests did not persist roles; preserve their explicit graph replay.
         built = _build_prepared_model(prepared, run_spec, model=model)
@@ -505,23 +507,25 @@ def postprocess_rhime_stage(
         result = make_multisector_rhime_result(
             prepared=prepared,
             run_spec=run_spec,
-            sampler=resolved.sampler,
+            sampler=None,
             model_build_result=built,
             output_contract=output_contract,
             idata=idata,
             build_and_sample_seconds=0.0,
         )
+        result.output_metadata["sampler"] = sampler_metadata
         make_multisector_rhime_outputs(result=result, prepared=prepared)
     else:
         result = make_standard_rhime_result(
             prepared=prepared,
             run_spec=run_spec,
-            sampler=resolved.sampler,
+            sampler=None,
             model_build_result=built,
             output_contract=output_contract,
             idata=idata,
             build_and_sample_seconds=0.0,
         )
+        result.output_metadata["sampler"] = sampler_metadata
         make_standard_rhime_outputs(result=result, prepared=prepared)
     artifacts = {
         name: path
@@ -540,12 +544,15 @@ def postprocess_rhime_stage(
             raise ValueError(
                 f"Postprocessing artifact {name!r} at {path!r} escaped stage output directory {destination}."
             ) from None
+    effective = effective_configuration(resolved, model=model)
+    recorded = sample_contract.get("effective_configuration")
+    effective["sampler"] = recorded.get("sampler") if isinstance(recorded, Mapping) else None
     manifest = {
         "schema_version": 1,
         "producer": "openghg_inversions",
         "stage": "postprocess",
         "configuration_identity": configuration_identity(resolved, model=model),
-        "effective_configuration": effective_configuration(resolved, model=model),
+        "effective_configuration": effective,
         "input_identities": dict(sample_contract["artifact_identities"]),
         "artifacts": {name: _artifact_path(Path(path)) for name, path in artifacts.items()},
     }

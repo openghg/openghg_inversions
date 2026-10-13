@@ -104,7 +104,7 @@ def make_co2_rhime_result(
     *,
     prepared: Co2PreparedInputs,
     run_spec: RhimeRunSpec,
-    sampler: RhimeSampler,
+    sampler: RhimeSampler | None,
     model_build_result: RhimeModelBuildResult | None = None,
     idata: xr.DataTree,
     build_and_sample_seconds: float = 0.0,
@@ -114,6 +114,8 @@ def make_co2_rhime_result(
     Artifact identity checks belong to the stage loader. The adapter borrows
     the trace and scientific inputs without rebuilding a graph or serializing.
     An in-memory runner may additionally retain its existing model build.
+    Passing ``sampler=None`` retains no live sampler; saved-output orchestration
+    supplies recorded descriptive values in ``result.output_metadata["sampler"]``.
     """
     return RhimeResult(
         run_spec=run_spec,

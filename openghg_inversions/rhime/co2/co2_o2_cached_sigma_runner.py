@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, Literal
 
 import xarray as xr
 
 from openghg_inversions.models import StateActivity
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.rhime.builders import RhimeModelBuildResult
+from openghg_inversions.inference.sampling import resolve_sampler
 from openghg_inversions.rhime.sampling import RhimeSampler, sample_rhime_model
 
 from .co2_cached_sigma_runner import (
@@ -39,7 +40,7 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
     bc_state_activity: Mapping[str, StateActivity] | None = None,
     offset_prior: Mapping[str, PriorArgs] | None = None,
     offset_args: Mapping[str, Mapping[str, Any]] | None = None,
-    sampler: RhimeSampler | None = None,
+    sampler: RhimeSampler | Literal["default"] = "default",
     sigma_target_accept: float = 0.8,
     state_target_accept: float = 0.9,
 ) -> xr.DataTree:
@@ -85,7 +86,7 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
         offset_args: Per-channel per_site, offset_freq, and drop_first options
             with the ordinary CO2 offset meanings. Requires an offset prior
             for each configured channel; the default is one offset per site.
-        sampler: Optional sampling configuration, defaulting to PyMC. Only the
+        sampler: Sampler configuration or ``"default"`` for PyMC; ``None`` is invalid. Only the
             PyMC backend is supported. Caller-supplied step or target_accept
             controls are rejected because the runner owns both NUTS steps.
             Joint predictive output supports only random_seed in predictive
@@ -112,9 +113,10 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
             predictive keyword. Label, prior, covariance, and activity errors
             from model construction also propagate.
         TypeError: If channel offset frequency or boolean options have
-            unsupported types.
+            unsupported types, or the sampler is neither a configuration nor
+            ``"default"``.
     """
-    requested_sampler = sampler or RhimeSampler(nuts_sampler="pymc")
+    requested_sampler = resolve_sampler(sampler, nuts_sampler="pymc")
     if requested_sampler.nuts_sampler != "pymc":
         raise ValueError("Linked cached fixed-OU requires nuts_sampler='pymc'.")
     prepared = prepared_inputs

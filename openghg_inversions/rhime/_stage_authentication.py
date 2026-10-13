@@ -11,10 +11,10 @@ from pathlib import Path
 from typing import Any
 from collections.abc import Mapping
 
+from openghg_inversions.inference.sampling import RhimeSampler
 from openghg_inversions.postprocessing.contracts import OutputContract
 
 from ._stage_artifacts import file_identity as _file_identity
-from .sampling import RhimeSampler
 
 
 def _load_stage_manifest(path: str | Path, *, stage: str) -> tuple[Path, dict[str, Any]]:
@@ -134,15 +134,25 @@ def _verify_sample_manifest(
     return manifest
 
 
-def _sampler_from_sample_manifest(manifest: Mapping[str, Any], *, path: str | Path) -> RhimeSampler:
-    """Restore the sampler configuration recorded by the sampling stage."""
+def _sampler_metadata_from_sample_manifest(manifest: Mapping[str, Any]) -> dict[str, int | str]:
+    """Describe recorded settings; unavailable descriptions do not prevent replay.
+
+    Use the sampler's existing normalization and output description, retaining
+    only supplied fields. Unknown runtime options are not needed for products.
+    If known settings cannot be parsed, leave their description unavailable;
+    the original record still retains the supplied provenance.
+    """
     effective = manifest.get("effective_configuration")
     sampler = effective.get("sampler") if isinstance(effective, Mapping) else None
     if not isinstance(sampler, Mapping):
-        raise ValueError(f"Sample manifest {Path(path).resolve()} has no effective sampler configuration.")
+        return {}
+    options = {
+        name: sampler[name]
+        for name in (*RhimeSampler.INTEGER_OPTION_NAMES, "nuts_sampler")
+        if name in sampler
+    }
     try:
-        return RhimeSampler(**dict(sampler))
-    except (TypeError, ValueError) as exc:
-        raise ValueError(
-            f"Sample manifest {Path(path).resolve()} has an invalid effective sampler configuration: {exc}"
-        ) from exc
+        description = RhimeSampler(**options).describe()
+    except (TypeError, ValueError, OverflowError):
+        return {}
+    return {name: value for name, value in description.items() if name in options}

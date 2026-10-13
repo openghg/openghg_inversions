@@ -2733,7 +2733,7 @@ def test_public_rhime_dataclasses_keep_existing_positional_order() -> None:
     assert not hasattr(run_spec, "sampler")
     assert not hasattr(run_spec, "sampling")
     assert result.output_metadata == output_metadata
-    assert result.sampler == RhimeSampler()
+    assert result.sampler is None
 
 
 @pytest.mark.parametrize("sector_count", [1, 2])
@@ -4003,9 +4003,11 @@ def test_run_rhime_from_prepared_inputs_rejects_flag_h_layout_mismatch_before_ex
 
 
 @pytest.mark.rhime_contract
+@pytest.mark.parametrize("sampler_request", [{}, {"sampler": "default"}])
 def test_run_rhime_from_prepared_inputs_defaults_sampler_and_skips_none_output_writes(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    sampler_request: dict[str, Any],
 ) -> None:
     """Prepared standard runs default the sampler and write nothing for none output."""
     model_spec, _, run_spec = _minimal_output_specs(output_format="none")
@@ -4045,7 +4047,9 @@ def test_run_rhime_from_prepared_inputs_defaults_sampler_and_skips_none_output_w
 
     monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
 
-    result = run_rhime_from_prepared_inputs(prepared_inputs=prepared, run_spec=run_spec)
+    result = run_rhime_from_prepared_inputs(
+        prepared_inputs=prepared, run_spec=run_spec, **sampler_request
+    )
 
     assert len(sampled_with) == 1
     assert sampled_with[0] is result.sampler
@@ -5060,7 +5064,11 @@ def test_rhime_sampler_seeds_native_predictions_without_consuming_input(
     initial_state = repr(get_state_from_generator(seed)) if is_rng else repr(seed)
 
     def fake_sample(**kwargs: Any) -> xr.DataTree:
-        assert kwargs["random_seed"] is seed
+        if isinstance(seed, list):
+            assert kwargs["random_seed"] == seed
+            assert kwargs["random_seed"] is not seed
+        else:
+            assert kwargs["random_seed"] is seed
         # Match PyMC's copied RNG ownership while consuming its MCMC stream.
         inference_sampling.get_random_generator(kwargs["random_seed"]).normal(size=100)
         return trace

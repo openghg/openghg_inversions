@@ -2,6 +2,7 @@
 
 from copy import deepcopy
 import json
+from pathlib import Path
 
 import pytest
 import xarray as xr
@@ -119,8 +120,13 @@ def test_shared_provenance_allows_unknown_revision_but_co2_requires_it(tmp_path,
         stages._manifest(setup, "prepare")
 
 
-@pytest.mark.parametrize("binding", [None, "absent", "malformed", "incorrect_digest"])
-def test_co2_replay_requires_version_one_and_stays_graph_free(tmp_path, monkeypatch, binding):
+@pytest.mark.parametrize(
+    "binding,recorded",
+    [(None, "complete"), (None, None), (None, {"draws": "invalid"}),
+     (None, {"draws": 17}), ("absent", "complete"),
+     ("malformed", "complete"), ("incorrect_digest", "complete")],
+)
+def test_co2_replay_requires_version_one_and_stays_graph_free(tmp_path, monkeypatch, binding, recorded):
     from openghg_inversions.rhime import _standard_stages, stages
     from openghg_inversions.rhime._stage_artifacts import file_identity, write_json
     from openghg_inversions.rhime.co2 import stages as co2_stages
@@ -148,6 +154,11 @@ def test_co2_replay_requires_version_one_and_stays_graph_free(tmp_path, monkeypa
             "posterior": file_identity(posterior),
         },
     }
+    sampled_settings = sample["effective_configuration"]["sampler"]
+    sampled_settings.update(draws=17, burn=2, tune=13, chains=3)
+    if recorded != "complete":
+        sampled_settings = recorded
+        sample["effective_configuration"]["sampler"] = recorded
     if binding is not None:
         sample["schema_version"] = 2
         if binding != "absent":
@@ -162,6 +173,9 @@ def test_co2_replay_requires_version_one_and_stays_graph_free(tmp_path, monkeypa
     def forbidden(*args, **kwargs):
         raise AssertionError("CO2 version-1 replay must not build a model.")
 
+    from openghg_inversions.rhime.sampling import RhimeSampler
+
+    monkeypatch.setattr(RhimeSampler, "sample", forbidden)
     monkeypatch.setattr(co2_stages, "build_rhime_co2", forbidden)
     monkeypatch.setattr(co2_stages, "build_rhime_co2_cached_sigma", forbidden)
     monkeypatch.setattr(_standard_stages, "_build_prepared_model", forbidden)
@@ -189,6 +203,15 @@ def test_co2_replay_requires_version_one_and_stays_graph_free(tmp_path, monkeypa
         output_dir=tmp_path / "replay",
     )
     assert result.model is None
+    assert result.sampler is None
+    if recorded == "complete":
+        expected = {"draws": 17, "burn": 2, "tune": 13, "chains": 3, "nuts_sampler": "pymc"}
+    else:
+        expected = {"draws": 17} if recorded == {"draws": 17} else {}
+    assert result.output_metadata["sampler"] == expected
+    replay = json.loads(Path(result.output_metadata["postprocess_manifest_path"]).read_text())
+    assert replay["effective_configuration"]["sampler"] == sampled_settings
+    assert replay["sampling_configuration"] == sampled_settings
     assert (tmp_path / "replay" / "basic.nc").is_file()
 
 
