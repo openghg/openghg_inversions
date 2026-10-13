@@ -17,13 +17,12 @@ resolution and operator-only loading and remains under review. Recheck their
 merged revisions before implementation.
 Acquisition replay is deferred to #829 and does not block prepared/sample handoffs.
 
-The [current configuration capability](../../specs/rhime-configuration/spec.md)
-describes the landed flat preparation fields and complete requested configuration.
-This proposal deliberately replaces those two constraints with grouped ownership
-and independently resolved phases through an explicit
-[configuration delta](specs/rhime-configuration/spec.md). Completed baseline
-tasks do not establish implementation of this amendment. Only reconciled delivered
-capabilities are synced; the four deltas in this change remain pending.
+The [configuration capability](../../specs/rhime-configuration/spec.md) owns
+grouped configuration and independent phase resolution. Its delivery-status
+section distinguishes those pending amendments from the delivered foundations.
+This handoff change consumes that contract without a duplicate configuration
+delta. Its three execution/handoff deltas remain pending, and completed baseline
+tasks do not establish their implementation.
 
 Merged #854 supplies current [model-selection](../../specs/rhime-model-selection/spec.md)
 and [model-composition](../../specs/rhime-model-composition/spec.md) baselines.
@@ -70,26 +69,29 @@ scientific operation.
 ### 1. Group choices once, then resolve the selected phase
 
 Use one complete requested `RhimeConfig` for full configured execution. Move its
-existing preparation fields/defaults into `DataConfig`; do not keep
-another authoritative flat copy or parallel default table. Keep `SiteOptions`,
+existing acquisition/preparation fields/defaults into `RhimeConfig.data: DataConfig`;
+do not keep another authoritative flat copy or parallel default table. Keep `SiteOptions`,
 `RhimeModelSpec`, `RhimeSampler` and `RhimeOutputSpec` as their existing owners.
-One preparation record has a concrete purpose: it can be resolved and consumed
+One data record has a concrete purpose: it can be resolved and consumed
 without constructing a model, sampler or output request. No replacement sampler
 settings class, `ModelChoices` class or generic phase registry is required.
-The record covers acquisition as well as preparation; its name does not merge
-those operations. Keep the `preparation` section as the phase-selection key.
+The record covers acquisition as well as preparation. Use `data` for both the
+complete configuration field and the grouped mapping key. The runner explicitly
+selects acquisition arguments and preparation arguments from that record;
+sharing it does not combine the operations. The proposed `preparation` field/key
+has not shipped and needs no compatibility alias.
 
 Illustrative pseudocode below describes the intended interfaces, not installed
 API names. Decoded sections are ordinary mappings, not resolved records:
 
 ```python
 sections = group_legacy_options(read_rhime_ini("run.ini"))
-# {"preparation": {...}, "model": {...}, "sampler": {...}, "output": {...}}
+# {"data": {...}, "model": {...}, "sampler": {...}, "output": {...}}
 
-preparation = DataConfig.from_params(sections["preparation"])
+data = DataConfig.from_params(sections["data"])
 config = RhimeConfig(
-    preparation=preparation,
-    model=resolve_model_options(sections["model"], facts=preparation.requested_facts),
+    data=data,
+    model=resolve_model_options(sections["model"], facts=data.requested_facts),
     sampler=resolve_sampler_options(sections.get("sampler", {})),
     output=RhimeOutputSpec.from_params(sections.get("output", {})),
 )
@@ -110,7 +112,11 @@ and wrong-phase override keys together before scientific work.
 Runners resolve direct Python/CLI resource and export paths against the invocation
 directory; saved-phase file resources resolve beside their configuration file.
 Forward exact absolute paths thereafter. This distinguishes invocation paths from
-manifest-relative dependency references; see the configuration delta's path rules.
+manifest-relative dependency references; see the configuration capability's path rules.
+Deliver this boundary and runner-owned optional basis saving in the separate
+[#868](https://github.com/openghg/openghg_inversions/issues/868) prerequisite.
+Reuse `resolve_basis_inputs` and the existing codecs; this plan consumes those
+operations rather than adding another resource or persistence abstraction.
 
 Priors belong in model configuration, independently of preparation choices.
 Prior-derived numerical preparation still depends on those model inputs as
@@ -241,8 +247,9 @@ configuration may still be appropriate because that object requests future work.
 Both full and saved routes call the same scientific owners. Small repeated
 orchestration is preferable to a forwarding wrapper introduced only to give every
 family identical stage names. The following sketch consumes #834/#837/#838/#839;
-its helper names must be reconciled with those deliveries rather than implemented
-again here:
+its helper names must be reconciled with those deliveries and #868 rather than
+implemented again here. Acquisition and preparation receive separate explicit
+selections from `config.data`; resource paths/maps have already been resolved:
 
 ```python
 merged = acquire(explicit_acquisition_options)
@@ -256,14 +263,21 @@ basis = prepare_basis(
 )
 site_data = build_sensitivities(filtered, basis, ...)
 prepared = assemble_inputs(filtered, basis, site_data, ...)
+# Optional export is a runner operation using the scientific result.
+if basis_output_path is not None:
+    basis.save(basis_output_path)
 # Only saved preparation adds this file boundary.
 prepared_manifest = save_preparation(prepared, requested_facts, destination)
 ```
 
 Acquisition or supplied-data selection stays visible in the runner. A shared
 scientific preparation function accepts the acquired handoff and never retrieves
-it internally. The runner also coordinates any separately requested basis export;
-scientific preparation receives its exact resolved destination.
+it internally. Scientific preparation returns its basis result without an export
+argument or save. The runner calls the existing save codec on that result when an
+export is requested and coordinates that save with any checkpoint writes. This
+also applies when the scientific calls are grouped in a preparation function:
+the runner obtains the basis from its returned prepared handoff. Exact export
+destinations remain governed by #840's existing contract.
 
 Preparation aligns metadata to retained observations; inference aligns its own
 numeric per-site choices. Validate every supplied value, including dropped-site
@@ -319,12 +333,12 @@ referenced alongside those records or supplied explicitly; neither every file
 nor every stage record must be self-contained. Use the configuration from the
 completed run when interpreting its samples. Current output choices select
 products and destinations, and cannot redefine the sampled science. A configured
-full request can supply its preparation record; a preparation-only file can resolve
-that record independently:
+full request can supply its data record; a preparation-only invocation can resolve
+the same `data` mapping independently:
 
 ```python
-preparation = DataConfig.from_params(sections["preparation"])
-prepared = standard_stages.prepare(preparation, output_dir="runs/prepared")
+data = DataConfig.from_params(sections["data"])
+prepared = standard_stages.prepare(data, output_dir="runs/prepared")
 a = standard_stages.sample(prepared, model=model_a, output_dir="runs/a")
 b = standard_stages.sample(prepared, model=model_b, output_dir="runs/b")
 result = standard_stages.postprocess(
@@ -381,9 +395,9 @@ Use a fresh operation destination so sampling cannot silently overwrite a comple
 run or its prepared inputs. Write the final manifest after numerical saves succeed;
 a temporary JSON file and rename are enough. Do not add transaction machinery or
 recursive symlink scans.
-Checkpoint containment applies to checkpoint-owned files. A separately requested
-basis export keeps its exact runner-resolved path, including outside that directory;
-the checkpoint writer does not redirect it or infer permission from a dependency.
+Checkpoint containment applies to checkpoint-owned files. The runner's separate
+basis export follows #840's existing exact-destination contract and #868's save
+boundary; this handoff design does not introduce a new export restriction.
 
 The optional `run_config` above is a reference to an existing configuration file.
 If context is supplied only in memory, the caller supplies it again for later
@@ -499,7 +513,11 @@ CO2 adoption. Review the standard working route before family expansion;
 multisector and ordinary CO2 can then proceed independently, with cached adoption
 following the ordinary handoff conventions. Each slice includes writer, reader,
 callers, CLI/examples, documentation and validation. Do not split out a speculative
-persistence framework or preliminary cleanup project as a prerequisite.
+persistence framework or preliminary cleanup project as a prerequisite. The
+concrete exception agreed during review is #868: land resource-path resolution
+and runner-owned optional basis saves before #866, then consume those existing
+operations in the new handoff routes. Its implementation includes affected callers
+and API documentation; it does not implement the grouped configuration or handoffs.
 
 #808 coordinates removal of representation-sensitive gates and the corresponding
 consumer fixes within these implementation slices. #838/#839

@@ -18,9 +18,10 @@ To find the requirements for a behavior you are changing:
    version you are changing. A proposed requirement or a checked planning task
    alone does not establish delivered behavior.
 
-Capability baselines live under ``openspec/specs/``. Some reviewed contracts
-remain under ``openspec/changes/``; directory location alone does not establish
-approval or delivery. The map identifies both kinds of source.
+Capability contracts live under ``openspec/specs/``. Some include explicitly
+marked pending amendments; other reviewed contracts remain under
+``openspec/changes/``. Directory location alone does not establish approval or
+delivery. The map identifies both kinds of source.
 
 Current contracts and proposals
 --------------------------------
@@ -28,6 +29,7 @@ Current contracts and proposals
 The following map was reviewed against ``devel`` revision ``7269f50f`` on
 12 October 2026. It covers RHIME selection, composition, configuration, and
 reconstruction boundaries; it is not a complete package API specification.
+The configuration entry was amended on 13 October 2026 during review of PR 867.
 
 .. list-table:: Behavioral ownership and delivery status
    :header-rows: 1
@@ -49,8 +51,12 @@ reconstruction boundaries; it is not a complete package API specification.
    * - Requested configuration and preparation ownership
      - :download:`Resolve RHIME configuration
        <../../openspec/specs/rhime-configuration/spec.md>`
-     - Delivered configuration slice; :doc:`/usage/rhime_configuration`.
-       Export/writer work remains with `issue 814
+     - Delivered foundations plus explicitly marked pending grouped/phase
+       amendments in `PR 866 <https://github.com/openghg/openghg_inversions/pull/866>`_
+       and resource-path/basis-export ownership in `issue 868
+       <https://github.com/openghg/openghg_inversions/issues/868>`_.
+       Current usage: :doc:`/usage/rhime_configuration`.
+       Configuration serialization/INI writing remains with `issue 814
        <https://github.com/openghg/openghg_inversions/issues/814>`_.
    * - Retained-state scientific reconstruction
      - :download:`Retained-state reconstruction
@@ -79,6 +85,9 @@ configuration and reconstruction changes are also archived after reconciliation
 into their current specs. The replacement in PR 802 remains active.
 Neither proposal makes a common checkpoint interface a prerequisite for all
 recipes. Do not silently merge their pending behavior into a delivered baseline.
+The configuration amendments reviewed in PR 867 now live in the existing
+configuration capability with explicit delivery status; PR 802 consumes that
+contract and no longer owns a duplicate configuration delta.
 
 Planning records
 -----------------
