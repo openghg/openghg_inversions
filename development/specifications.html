@@ -400,14 +400,16 @@ precede implementation.</p></li>
 version you are changing. A proposed requirement or a checked planning task
 alone does not establish delivered behavior.</p></li>
 </ol>
-<p>Capability baselines live under <code class="docutils literal notranslate"><span class="pre">openspec/specs/</span></code>. Some reviewed contracts
-remain under <code class="docutils literal notranslate"><span class="pre">openspec/changes/</span></code>; directory location alone does not establish
-approval or delivery. The map identifies both kinds of source.</p>
+<p>Durable contracts under <code class="docutils literal notranslate"><span class="pre">openspec/specs/</span></code> describe delivered behavior. Proposed
+requirements and amendments remain under <code class="docutils literal notranslate"><span class="pre">openspec/changes/</span></code> until implemented
+and validated, even when their design is approved. Delivery status and review
+history belong in the change records and the map below, not in durable specs.</p>
 <section id="current-contracts-and-proposals">
 <h2>Current contracts and proposals<a class="headerlink" href="#current-contracts-and-proposals" title="Link to this heading">#</a></h2>
 <p>The following map was reviewed against <code class="docutils literal notranslate"><span class="pre">devel</span></code> revision <code class="docutils literal notranslate"><span class="pre">7269f50f</span></code> on
 12 October 2026. It covers RHIME selection, composition, configuration, and
-reconstruction boundaries; it is not a complete package API specification.</p>
+reconstruction boundaries; it is not a complete package API specification.
+The configuration entry was amended on 13 October 2026 during review of PR 867.</p>
 <div class="pst-scrollable-table-container"><table class="table" id="id1">
 <caption><span class="caption-text">Behavioral ownership and delivery status</span><a class="headerlink" href="#id1" title="Link to this table">#</a></caption>
 <colgroup>
@@ -434,21 +436,31 @@ reconstruction boundaries; it is not a complete package API specification.</p>
 </tr>
 <tr class="row-even"><td><p>Requested configuration and preparation ownership</p></td>
 <td><p><a class="reference download internal" download="" href="../_downloads/79c713b960fe2b8d6f921406d647266f/spec.md"><code class="xref download docutils literal notranslate"><span class="pre">Resolve</span> <span class="pre">RHIME</span> <span class="pre">configuration</span></code></a></p></td>
-<td><p>Delivered configuration slice; <a class="reference internal" href="../usage/rhime_configuration.html"><span class="doc">Advanced RHIME configuration</span></a>.
-Export/writer work remains with <a class="reference external" href="https://github.com/openghg/openghg_inversions/issues/814">issue 814</a>.</p></td>
+<td><p>Delivered flat configuration. Pending <a class="reference download internal" download="" href="../_downloads/3ac19a095efb5a69d290b0dfab8c5f4e/proposal.md"><code class="xref download docutils literal notranslate"><span class="pre">grouped/phase</span> <span class="pre">amendments</span></code></a>
+are coordinated with <a class="reference external" href="https://github.com/openghg/openghg_inversions/pull/866">PR 866</a>.
+Current usage: <a class="reference internal" href="../usage/rhime_configuration.html"><span class="doc">Advanced RHIME configuration</span></a>.
+Configuration serialization/INI writing remains with <a class="reference external" href="https://github.com/openghg/openghg_inversions/issues/814">issue 814</a>.</p></td>
 </tr>
-<tr class="row-odd"><td><p>Retained-state scientific reconstruction</p></td>
+<tr class="row-odd"><td><p>External resources and basis exports</p></td>
+<td><p><a class="reference download internal" download="" href="../_downloads/c23f3e251e80eaeb7631265c50ed7dd4/spec.md"><code class="xref download docutils literal notranslate"><span class="pre">RHIME</span> <span class="pre">resource</span> <span class="pre">I/O</span></code></a></p></td>
+<td><p>Delivered exact destinations, selected-resource checks and optional
+saving inside preparation. The <a class="reference download internal" download="" href="../_downloads/068776f2c1949c5612c1184983b6f7b6/proposal.md"><code class="xref download docutils literal notranslate"><span class="pre">runner</span> <span class="pre">resource-I/O</span> <span class="pre">change</span></code></a>
+tracks pending path/save migration in
+<a class="reference external" href="https://github.com/openghg/openghg_inversions/issues/868">issue 868</a>.
+Manifest references and checkpoint completion stay with the handoff specs.</p></td>
+</tr>
+<tr class="row-even"><td><p>Retained-state scientific reconstruction</p></td>
 <td><p><a class="reference download internal" download="" href="../_downloads/afb4eced312ab891f80bb9edc1215594/spec.md"><code class="xref download docutils literal notranslate"><span class="pre">Retained-state</span> <span class="pre">reconstruction</span></code></a></p></td>
 <td><p>Delivered scientific capability; implemented routes and limitations in
 <a class="reference internal" href="../usage/retained_state_reconstruction.html"><span class="doc">Linear retained-state reconstruction</span></a>.</p></td>
 </tr>
-<tr class="row-even"><td><p>Saved CO2 affine reconstruction</p></td>
+<tr class="row-odd"><td><p>Saved CO2 affine reconstruction</p></td>
 <td><p><a class="reference download internal" download="" href="../_downloads/525d7a9c43da31f3dadebe4556ff140f/spec.md"><code class="xref download docutils literal notranslate"><span class="pre">CO2</span> <span class="pre">affine</span> <span class="pre">output</span> <span class="pre">reconstruction</span></code></a></p></td>
 <td><p>Delivered scientific capability retaining its owner-consent requirement;
 <a class="reference internal" href="../usage/affine_flux_map.html"><span class="doc">Affine native-flux reconstruction</span></a> and <a class="reference internal" href="../usage/co2_model_family.html"><span class="doc">CO₂ model family</span></a> describe
 current support and conditional uncertainty.</p></td>
 </tr>
-<tr class="row-odd"><td><p>Reusable recipe execution and prepared/sample handoffs</p></td>
+<tr class="row-even"><td><p>Reusable recipe execution and prepared/sample handoffs</p></td>
 <td><p><a class="reference download internal" download="" href="../_downloads/b76571a82a11a34cd12aee762bba8061/proposal.md"><code class="xref download docutils literal notranslate"><span class="pre">Reusable</span> <span class="pre">handoff</span> <span class="pre">proposal</span></code></a>
 in <a class="reference external" href="https://github.com/openghg/openghg_inversions/pull/802">PR 802</a></p></td>
 <td><p>Approved implementation plan; full phase interfaces remain outstanding.
@@ -464,7 +476,12 @@ is archived as superseded, without promoting its requirements. Delivered
 configuration and reconstruction changes are also archived after reconciliation
 into their current specs. The replacement in PR 802 remains active.
 Neither proposal makes a common checkpoint interface a prerequisite for all
-recipes. Do not silently merge their pending behavior into a delivered baseline.</p>
+recipes. Do not silently merge their pending behavior into a delivered baseline.
+PR 867 separates the pending configuration and resource-I/O amendments into
+their own active changes. PR 802 consumes them without duplicate deltas. The
+resource-I/O capability records existing behavior retrospectively, including
+PR 840’s exact destinations; only completed amendments are synced into durable
+specs.</p>
 </section>
 <section id="planning-records">
 <h2>Planning records<a class="headerlink" href="#planning-records" title="Link to this heading">#</a></h2>
