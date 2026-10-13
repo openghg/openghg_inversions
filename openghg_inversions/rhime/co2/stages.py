@@ -94,7 +94,10 @@ def load_co2_stage_params(
         if not isinstance(loaded, dict):
             raise ValueError(f"RHIME params file {source_path} must contain one JSON object.")
         params = loaded
-    params = resolve_co2_stage_paths(params, base_dir=source_path.parent)
+    params = resolve_co2_stage_paths(
+        {name: value for name, value in params.items() if name not in (overrides or {})},
+        base_dir=source_path.parent,
+    )
     if overrides:
         params.update(resolve_co2_stage_paths(overrides, base_dir=Path.cwd()))
     return params

@@ -37,7 +37,10 @@ def load_stage_params(
     """Load existing RHIME parameters from one explicit source.
 
     ``CONFIG_FILE`` is intentionally not an environment default: an unrelated
-    ambient variable must never select the scientific configuration.
+    ambient variable must never select the scientific configuration. Relative
+    file resource paths resolve beside the configuration file; explicit overrides
+    resolve from the invocation working directory. Absolute paths retain their
+    destinations.
     """
 
     if model == "co2":

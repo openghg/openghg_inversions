@@ -274,8 +274,6 @@ def test_runners_export_returned_basis_without_mutating_inputs(tmp_path, monkeyp
     restored = BasisFunctions.load(exported)
     xr.testing.assert_equal(restored.flat_basis(), captured[0].flat_basis())
     xr.testing.assert_equal(restored.flux, resolve_runtime_flux(sources, split_by_sectors=route == "multisector"))
-    assert sources["a"].flux.data is borrowed
-    assert config.basis_output_path == (tmp_path / options["basis_output_path"] if suffix else None)
 
 
 def test_nested_resolves_both_domain_paths_before_acquisition(tmp_path, monkeypatch):

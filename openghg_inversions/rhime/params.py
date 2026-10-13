@@ -144,6 +144,10 @@ class RhimeConfig:
     ) -> RhimeConfig:
         """Resolve external options into the complete requested run.
 
+        Relative filesystem paths resolve from the invocation working directory;
+        already resolved absolute paths pass through unchanged. File frontends
+        must supply paths resolved against their own documented file base.
+
         Args:
             params: Python or decoded file options after winning overrides.
                 Only canonical option names are accepted.

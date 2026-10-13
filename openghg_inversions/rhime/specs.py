@@ -310,6 +310,10 @@ class RhimeOutputSpec:
         Remaining omitted values use the record's declared defaults. PARIS
         option containers are owned; opaque numerical payloads remain borrowed.
 
+        Relative filesystem paths resolve from the invocation working directory;
+        already resolved absolute paths pass through unchanged. File frontends
+        must supply paths resolved against their own documented file base.
+
         Args:
             params: Canonical output option names after aliases and overrides.
                 Format and filename-convention values are case-insensitive.

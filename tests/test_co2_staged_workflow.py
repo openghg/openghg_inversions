@@ -345,3 +345,23 @@ def test_installed_co2_prepare_rejects_unsupported_output_before_writing(tmp_pat
     )
     assert "unsupported" in failure.stderr or "support" in failure.stderr
     assert not destination.exists()
+
+
+def test_co2_overrides_replace_sections_before_file_path_conversion(tmp_path, monkeypatch):
+    from openghg_inversions.rhime.stages import load_stage_params
+
+    file_dir = tmp_path / "config"
+    file_dir.mkdir()
+    source = file_dir / "run.json"
+    source.write_text(json.dumps({
+        "prepared_inputs": {"path": "prepared.nc"},
+        "outputs": {"country_file": None, "reconstruction_path": None},
+    }))
+    monkeypatch.chdir(tmp_path)
+    overrides = {"outputs": {"country_file": "countries.nc"}}
+
+    params = load_stage_params(params_file=source, overrides=overrides, model="co2")
+
+    assert params["prepared_inputs"] == {"path": str(file_dir / "prepared.nc")}
+    assert params["outputs"] == {"country_file": str(tmp_path / "countries.nc")}
+    assert overrides == {"outputs": {"country_file": "countries.nc"}}
