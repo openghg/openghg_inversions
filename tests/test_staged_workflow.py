@@ -138,7 +138,7 @@ def test_stage_config_paths_are_relative_to_the_config_source(
     params_path = tmp_path / "config" / "params.json"
     params_path.parent.mkdir()
     params_path.write_text(
-        json.dumps(_params(basis_directory="relative/basis", basis_partition_path="relative/partition.nc",
+        json.dumps(_params(bc_basis_paths=["relative/bc.nc"], basis_partition_path="relative/partition.nc",
                            country_file="relative/country.nc")),
         encoding="utf-8",
     )
@@ -146,9 +146,9 @@ def test_stage_config_paths_are_relative_to_the_config_source(
 
     loaded = load_stage_params(params_file=params_path)
 
-    assert loaded["basis_directory"] == str(params_path.parent / "relative/basis")
-    assert loaded["country_file"] == str(params_path.parent / "relative/country.nc")
-    assert loaded["basis_partition_path"] == str(params_path.parent / "relative/partition.nc")
+    assert loaded["bc_basis_paths"] == (params_path.parent / "relative/bc.nc",)
+    assert loaded["country_file"] == params_path.parent / "relative/country.nc"
+    assert loaded["basis_partition_path"] == params_path.parent / "relative/partition.nc"
 
 
 @pytest.mark.parametrize(
@@ -246,9 +246,10 @@ def test_prepare_is_independent_and_writes_inspectable_contract(
     assert set(manifest["artifacts"]) == {"prepared_inputs"}
     assert "artifact_identities" not in manifest
     assert not (tmp_path / "prepare" / "merged-data").exists()
-    assert manifest["effective_configuration"]["preparation"]["basis_output_path"] == str(tmp_path / export)
+    assert manifest["effective_configuration"]["preparation"]["basis_output_path"] == tmp_path / export
     assert Path(manifest["manifest_path"]).is_file()
     persisted_manifest = json.loads(Path(manifest["manifest_path"]).read_text(encoding="utf-8"))
+    assert persisted_manifest["effective_configuration"]["preparation"]["basis_output_path"] == str(tmp_path / export)
     assert persisted_manifest["effective_configuration"]["preparation"]["inlet"] == [
         {"type": "slice", "start": 3, "stop": 10, "step": None}
     ]
@@ -1010,7 +1011,7 @@ def test_resource_origins_match_full_requests(tmp_path, monkeypatch, use_overrid
     source.write_text(json.dumps(_params(**resources)))
     loaded = load_stage_params(params_file=source, overrides=resources if use_override else None)
     base = invocation if use_override else config_dir
-    expected = {name: str(base / value) for name, value in resources.items()}
+    expected = {name: base / value for name, value in resources.items()}
     assert {name: loaded[name] for name in resources} == expected
     full = resolve_config_paths(RhimeConfig.from_params(_params(**expected), multisector=False))
     staged = resolve_config_paths(RhimeConfig.from_params(loaded, multisector=False))

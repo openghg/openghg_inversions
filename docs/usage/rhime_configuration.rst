@@ -167,13 +167,17 @@ acquisition, then passes labelled ``landsea_classes`` and ``outer_regions``
 arrays to ``prepare_basis``. This function returns the scientific basis without
 writing an export and no longer accepts ``output_path``. Runners explicitly
 save it through ``BasisFunctions.save`` when ``basis_output_path`` is requested,
-then retain the selected export path in metadata. The single application helper
-``rhime.preparation.resolve_basis_inputs(config)`` resolves these values and
-consumes any supported deprecated path fields once. Modern requests do not
-enter compatibility code. The numerical functions do no file discovery.
+then retain the selected export path in metadata. The application helper
+``rhime.preparation.resolve_basis_inputs(config)`` loads these scientific inputs.
+Historical case/directory selections are translated earlier, at the HBMCMC input
+compatibility boundary after winning overrides; resolved requests contain
+explicit selections. The numerical functions do no file discovery.
 When the selected algorithm needs a packaged support map, the application
-resolves that domain's packaged resource. Missing selected files or unavailable
-domain resources raise; another domain is never substituted.
+resolves omitted support paths to that exact domain's packaged resources.
+Explicit paths take precedence; missing files do not fall back to defaults.
+Unavailable domain resources raise before acquisition, without substituting
+another domain or creating directories. Algorithms that do not need a map
+do not require its packaged resource.
 
 To select a packaged resource explicitly from Python:
 
@@ -201,7 +205,7 @@ automatic removal in 0.9. This changes basis artifacts, independently of the
 final inversion product's ``output_format``.
 
 Historical ``fp_basis_case`` / ``basis_directory`` discovery, directory-style
-basis outputs, ``country_directory``, ``emissions_name`` and legacy artifact
+basis outputs, ``emissions_name`` and legacy artifact
 adaptation belong to the compatibility boundary. Deprecated public
 ``make_basis_functions`` and ``load_basis_functions`` adapters live in
 ``basis.compatibility`` and invoke canonical modern operations. Migrate a
@@ -215,8 +219,29 @@ case/directory pair to an explicit artifact and output destination::
 
 The first requested flux source still determines generated-basis weighting;
 all runtime sources are retained. A selected saved basis takes precedence over
-generation. Boundary-condition basis selection still uses ``bc_basis_case`` /
-``bc_basis_directory``; its discovery migration is separate from this change.
+generation.
+
+For file-backed boundary conditions, select exact files with
+``bc_basis_paths=("/data/bc/january.nc", "/data/bc/february.nc")`` (a one-file
+collection is also supported). The runner loads every selected file before
+acquisition and passes a labelled ``bc_basis`` dataset to sensitivity
+construction, preserving time combination and alignment. Missing or unreadable
+selected files fail before acquisition. Scientific sensitivity functions accept
+resolved data, not ``bc_basis_case`` or ``bc_basis_directory`` discovery options.
+
+The default NESW calculation uses acquired directional boundary contributions
+and needs no basis file. Leave ``bc_basis_paths`` unset for NESW; scientific
+calls use ``bc_basis=None``. Supported historical case/directory selections are
+translated at the input compatibility boundary. A legacy
+``bc_basis_directory`` supplied with NESW warns that it is unused and deprecated;
+it triggers neither discovery nor a missing-directory error. ``use_bc=False``
+skips BC resource loading.
+
+``country_directory`` is removed from run configuration in 0.8 and is rejected
+before acquisition. Replace it with ``country_file`` for reporting,
+``landsea_path`` for land/sea classes, or ``outer_regions_path`` for fixed outer
+regions. Reporting maps remain explicit: ``domain`` never selects a reporting
+``country_file``. See :doc:`legacy_and_migration` for the migration schedule.
 
 Site selectors and retained observations
 ----------------------------------------
@@ -292,8 +317,8 @@ Selection does not normalize, validate, copy nested values or serialize settings
 an unknown attribute raises ``AttributeError``. Scientific stages still accept
 named keyword arguments and can be called without configuration. Their former
 positional ``data_args`` mappings have been removed. Supply the required basis
-identity/source arguments, sensitivity domain/source arguments, and assembly
-domain/start date by keyword; the API reference lists each function's signature.
+identity/source arguments, sensitivity source arguments and resolved BC basis,
+and assembly domain/start date by keyword; the API reference lists each function's signature.
 
 Changing and persisting configuration
 -------------------------------------
@@ -318,5 +343,8 @@ staged file resources retain their configuration-file-relative convention.
 Explicit staged path overrides resolve from the invocation working directory.
 Runners forward absolute resource and export paths downstream; absolute inputs
 keep their destinations. Ordinary full-run INI values retain the invocation
-working directory convention. Historical ``country_directory`` outer-map
-lookup remains with the compatibility adapter.
+working directory convention. Filesystem fields are declared as ``Path`` types,
+including optional paths and collections such as ``bc_basis_paths``. Frontends
+accept path strings and convert only these annotated fields; domain names and
+scientific selectors remain ordinary strings. Configuration construction resolves
+paths without loading scientific resources.

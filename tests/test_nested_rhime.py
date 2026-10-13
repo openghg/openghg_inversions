@@ -498,7 +498,7 @@ def test_nested_preparation_uses_native_inner_domain_and_safe_basis_default(
         retrieval_args.append(kwargs)
         return merged
 
-    def fake_prepare(domain_merged, *, config, allow_empty_inner_region=False, basis_support_maps=None):
+    def fake_prepare(domain_merged, *, config, allow_empty_inner_region=False, basis_support_maps=None, bc_basis=None):
         assert domain_merged.sites == ("TAC",)
         preparation_configs.append(config)
         return prepared
@@ -536,7 +536,8 @@ def test_nested_preparation_uses_native_inner_domain_and_safe_basis_default(
     assert preparation_configs[1].model.use_bc is preparation_configs[1].use_bc is False
     assert preparation_configs[1].output.output_name == preparation_configs[1].output_name == "nested-test_inner"
     assert preparation_configs[1].nbasis == 40
-    assert preparation_configs[1].fp_basis_case is None
+    assert preparation_configs[1].basis_path is None
+    assert preparation_configs[1].basis_partition_paths is None
     assert preparation_configs[1].basis_output_path is None
     assert preparation_configs[0].basis_algorithm == "weighted"
     assert preparation_configs[1].basis_algorithm == "quadtree"
@@ -611,7 +612,7 @@ def test_nested_preparation_routes_automatic_basis_budget(monkeypatch) -> None:
         )
         return from_legacy_fp_all(fp_all={"TAC": dataset}, site_options=_site_options())
 
-    def fake_prepare(domain_merged, *, config, allow_empty_inner_region=False, basis_support_maps=None):
+    def fake_prepare(domain_merged, *, config, allow_empty_inner_region=False, basis_support_maps=None, bc_basis=None):
         preparation_configs.append(config)
         return prepared
 
@@ -657,7 +658,7 @@ def test_outer_regions_path_routes_through_modern_rhime_setup() -> None:
         multisector=False,
     )
 
-    assert setup.outer_regions_path == "/data/EUHROB.nc"
+    assert setup.outer_regions_path == Path("/data/EUHROB.nc")
 
 
 def test_domain_variable_roles_strips_tag_and_keeps_shared_roles() -> None:

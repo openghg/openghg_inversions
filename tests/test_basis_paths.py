@@ -9,7 +9,6 @@ import pytest
 import xarray as xr
 
 from openghg_inversions.native_flux import resolve_runtime_flux
-from openghg_inversions.array_ops import to_dense
 from openghg_inversions.basis import BasisFunctions, prepare_basis
 from openghg_inversions.basis.compatibility import make_basis_functions
 from openghg_inversions.basis.support import packaged_basis_support_path
@@ -179,13 +178,12 @@ def test_legacy_relative_outer_map_resolves_at_compatibility_boundary(tmp_path, 
     )
     xr.testing.assert_equal(historical_partition.squeeze("time", drop=True), modern.flat_basis())
     assert resolve_legacy_outer_path("EUHROB", "intem_region_definition_EUHROB.nc", None).is_file()
-    config = RhimeConfig.from_params(_params(domain="TEST", basis_algorithm="quadtree", country_directory=tmp_path,
-                                            outer_regions_path="custom.nc", fix_basis_outer_regions=True),
-                                     multisector=False)
-    # A historical directory selects its map only for algorithms which consume it.
-    with pytest.warns(DeprecationWarning):
-        resolved = resolve_basis_inputs(config)
-    xr.testing.assert_equal(resolved["outer_regions"], to_dense(outer).compute())
+    with pytest.raises(ValueError, match="country_file.*landsea_path.*outer_regions_path"):
+        RhimeConfig.from_params(
+            _params(domain="TEST", basis_algorithm="quadtree", country_directory=tmp_path,
+                    outer_regions_path="custom.nc", fix_basis_outer_regions=True),
+            multisector=False,
+        )
     assert outer.data is borrowed_payload
 
 
@@ -265,7 +263,7 @@ def test_runners_export_returned_basis_without_mutating_inputs(tmp_path, monkeyp
         else:
             module.run_rhime(config=config)
     assert sources["a"].flux.data is borrowed
-    assert config.basis_output_path == options["basis_output_path"]
+    assert config.basis_output_path == (tmp_path / options["basis_output_path"] if suffix else None)
     if suffix is None:
         assert captured[0] is captured[1]
         assert not list((tmp_path / "runs/prepared").glob("basis*"))
@@ -279,7 +277,7 @@ def test_runners_export_returned_basis_without_mutating_inputs(tmp_path, monkeyp
     xr.testing.assert_equal(restored.flat_basis(), captured[0].flat_basis())
     xr.testing.assert_equal(restored.flux, resolve_runtime_flux(sources, split_by_sectors=route == "multisector"))
     assert sources["a"].flux.data is borrowed
-    assert config.basis_output_path == options["basis_output_path"]
+    assert config.basis_output_path == (tmp_path / options["basis_output_path"] if suffix else None)
 
 
 def test_nested_resolves_both_domain_paths_before_acquisition(tmp_path, monkeypatch):
@@ -304,11 +302,11 @@ def test_nested_resolves_both_domain_paths_before_acquisition(tmp_path, monkeypa
     with pytest.raises(BeforeAcquisition):
         nested.prepare_nested_rhime_inputs(config, inner_domain="6km", inner_basis_path="inner.nc",
                                            inner_basis_output_path="inner-out.zarr")
-    assert captured[0].basis_path == str(tmp_path / "outer.nc")
-    assert captured[0].basis_output_path == str(tmp_path / "outer-out.nc")
-    assert captured[1].basis_path == str(tmp_path / "inner.nc")
-    assert captured[1].basis_output_path == str(tmp_path / "inner-out.zarr")
-    assert config.basis_path == "outer.nc"
+    assert captured[0].basis_path == tmp_path / "outer.nc"
+    assert captured[0].basis_output_path == tmp_path / "outer-out.nc"
+    assert captured[1].basis_path == tmp_path / "inner.nc"
+    assert captured[1].basis_output_path == tmp_path / "inner-out.zarr"
+    assert config.basis_path == tmp_path / "outer.nc"
     assert not list(tmp_path.iterdir())
 
 
@@ -325,8 +323,8 @@ def test_full_ini_resources_keep_invocation_directory_convention(tmp_path, monke
         pass
 
     def resources(config):
-        assert config.basis_path == str(tmp_path / "input.nc")
-        assert config.basis_output_path == str(tmp_path / "override.nc")
+        assert config.basis_path == tmp_path / "input.nc"
+        assert config.basis_output_path == tmp_path / "override.nc"
         raise BeforeAcquisition
 
     monkeypatch.setattr(standard, "resolve_basis_inputs", resources)

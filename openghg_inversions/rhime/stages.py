@@ -72,7 +72,9 @@ def resolve_stage_setup(params: Mapping[str, Any], *, model: ModelKind) -> Rhime
         return resolve_co2_stage_setup(params=params)
     if model not in ("standard", "multisector"):
         raise ValueError(f"Unsupported staged model {model!r}.")
-    return RhimeConfig.from_params(params, multisector=model == "multisector")
+    from openghg_inversions.hbmcmc.compatibility import adapt_resource_params
+
+    return RhimeConfig.from_params(adapt_resource_params(params), multisector=model == "multisector")
 
 
 def effective_configuration(setup: RhimeConfig | Co2StageSetup, *, model: ModelKind) -> dict[str, Any]:

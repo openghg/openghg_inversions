@@ -129,7 +129,7 @@ def test_custom_basis_runner_replaces_only_basis_stage(
     def build_sensitivities(actual: Any, actual_basis: Any, **kwargs: Any) -> Any:
         assert actual is filtered
         assert actual_basis is basis
-        assert kwargs["domain"] == config.domain
+        assert kwargs["bc_basis"] is None
         assert kwargs["flux_sources"] == config.flux_sources
         assert kwargs["multisector"] is False
         calls.append("sensitivities")

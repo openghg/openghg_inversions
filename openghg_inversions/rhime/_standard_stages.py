@@ -8,6 +8,8 @@ orchestrator or scheduler.
 from __future__ import annotations
 
 from openghg_inversions.native_flux import resolve_runtime_flux
+from openghg_inversions.basis.support import load_bc_basis
+from openghg_inversions.hbmcmc.compatibility import adapt_resource_params
 from openghg_inversions.basis import prepare_basis
 from openghg_inversions.basis.basis_functions import BASIS_ARTIFACT_PATH_ATTR
 from openghg_inversions.rhime.preparation import resolve_basis_inputs
@@ -28,7 +30,7 @@ from openghg_inversions._timing import timed
 from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs
 from openghg_inversions.inference.sampling import resolve_sampler
 from .specs import RhimeRunSpec
-from ._resources import resolve_config_paths, resolve_resource_paths
+from ._resources import resolve_config_paths
 from openghg_inversions.serialization import (
     load_trace,
     reset_serialisation_multiindexes,
@@ -112,10 +114,7 @@ def load_stage_params(
         if not isinstance(loaded, dict):
             raise ValueError(f"RHIME params file {source_path} must contain one JSON object.")
         params = loaded
-    params = resolve_resource_paths(params, base_dir=source_path.parent)
-    if overrides:
-        params.update(resolve_resource_paths(overrides, base_dir=Path.cwd()))
-    return params
+    return adapt_resource_params(params, base_dir=source_path.parent, overrides=overrides)
 
 
 def effective_configuration(setup: RhimeConfig, *, model: ModelKind) -> dict[str, Any]:
@@ -182,6 +181,7 @@ def prepare_rhime_stage(
     setup = resolve_config_paths(setup)
     multisector = model == "multisector"
     basis_inputs = resolve_basis_inputs(setup)
+    bc_basis = load_bc_basis(setup.bc_basis_paths) if setup.use_bc and setup.bc_basis_paths is not None else None
     destination = _stage_output_directory(output_dir)
 
     with timed(
@@ -230,9 +230,9 @@ def prepare_rhime_stage(
         filtered,
         basis,
         **setup.select(
-            "domain", "flux_sources", "use_bc", "bc_basis_case",
-            "bc_basis_directory",
+            "flux_sources", "use_bc",
         ),
+        bc_basis=bc_basis,
         multisector=multisector,
     )
     prepared = assemble_rhime_inputs(

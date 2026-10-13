@@ -48,6 +48,8 @@ from openghg_inversions.basis.algorithms import (
 )
 from openghg_inversions.inversion_data import RhimeMergedData
 from openghg_inversions.native_flux import resolve_runtime_flux
+from openghg_inversions.basis.support import load_bc_basis
+from openghg_inversions.hbmcmc.compatibility import adapt_resource_params
 from openghg_inversions.rhime import (
     RhimeConfig,
     RhimeResult,
@@ -279,8 +281,9 @@ def run_custom_rhime(
     params.pop("basis_algorithm", None)
     params.pop("fp_basis_case", None)
     params.pop("basis_path", None)
-    config = RhimeConfig.from_params(params, multisector=False)
+    config = RhimeConfig.from_params(adapt_resource_params(params), multisector=False)
     validate_output_resources(config.output)
+    bc_basis = load_bc_basis(config.bc_basis_paths) if config.use_bc and config.bc_basis_paths is not None else None
 
     # This project selects and loads its scientific class map before acquisition.
     region_classes = None
@@ -321,9 +324,9 @@ def run_custom_rhime(
         filtered,
         basis_functions,
         **config.select(
-            "domain", "flux_sources", "use_bc", "bc_basis_case",
-            "bc_basis_directory",
+            "flux_sources", "use_bc",
         ),
+        bc_basis=bc_basis,
         multisector=False,
     )
     prepared = assemble_rhime_inputs(

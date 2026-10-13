@@ -16,6 +16,8 @@ from __future__ import annotations
 from openghg_inversions.basis import prepare_basis
 from openghg_inversions.basis.basis_functions import BASIS_ARTIFACT_PATH_ATTR
 from openghg_inversions.native_flux import resolve_runtime_flux
+from openghg_inversions.basis.support import load_bc_basis
+from openghg_inversions.hbmcmc.compatibility import adapt_resource_params
 from openghg_inversions.rhime.preparation import resolve_basis_inputs
 from openghg_inversions.rhime._resources import resolve_config_paths
 
@@ -76,12 +78,13 @@ def run_custom_rhime(
     params = read_rhime_ini(config_file) if config_file is not None else {}
     params.update(kwargs)
     params["mismatch_model"] = None
-    config = RhimeConfig.from_params(params, multisector=False)
+    config = RhimeConfig.from_params(adapt_resource_params(params), multisector=False)
     config = resolve_config_paths(config)
     validate_output_resources(config.output)
 
     # Resolve selected support files before acquiring observations or flux.
     basis_inputs = resolve_basis_inputs(config)
+    bc_basis = load_bc_basis(config.bc_basis_paths) if config.use_bc and config.bc_basis_paths is not None else None
     merged = RhimeMergedData.from_options(
         **config.select(
             "site_options", "species", "domain", "start_date",
@@ -119,9 +122,9 @@ def run_custom_rhime(
         filtered,
         basis_functions,
         **config.select(
-            "domain", "flux_sources", "use_bc", "bc_basis_case",
-            "bc_basis_directory",
+            "flux_sources", "use_bc",
         ),
+        bc_basis=bc_basis,
         multisector=False,
     )
     prepared = assemble_rhime_inputs(

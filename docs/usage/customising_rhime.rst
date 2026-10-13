@@ -77,13 +77,15 @@ arrays. The caller owns any files backing supplied datasets.
 Follow the modern preparation spine
 ------------------------------------
 
-The ordinary runner resolves ``basis_path`` and selected support maps before
-acquisition. It prepares errors, filters retained observations, then calls the
-canonical load-or-generate operation with exact paths and labelled arrays:
+The ordinary runner resolves ``basis_path``, support maps and selected BC basis
+files before acquisition. It prepares errors, filters retained observations,
+then calls the canonical load-or-generate operation with exact paths and
+labelled arrays:
 
 .. code-block:: python
 
    from openghg_inversions.basis import prepare_basis
+   from openghg_inversions.basis.support import load_bc_basis
    from openghg_inversions.basis.basis_functions import BASIS_ARTIFACT_PATH_ATTR
    from openghg_inversions.rhime._resources import resolve_config_paths
    from openghg_inversions.native_flux import resolve_runtime_flux
@@ -94,6 +96,10 @@ canonical load-or-generate operation with exact paths and labelled arrays:
    # For a complete run that will produce outputs:
    validate_output_resources(config.output)
    basis_inputs = resolve_basis_inputs(config)
+   bc_basis = (
+       load_bc_basis(config.bc_basis_paths)
+       if config.use_bc and config.bc_basis_paths is not None else None
+   )
    # Acquire merged data, prepare errors and filter observations here.
    runtime_flux = resolve_runtime_flux(
        filtered.flux_data, split_by_sectors=filtered.split_by_sectors,
@@ -122,7 +128,9 @@ otherwise preparation generates a partition from the filtered observations.
 The runner optionally saves the returned basis at ``basis_output_path`` and
 attaches export metadata without mutating the prepared basis. ``prepare_basis``
 accepts no export destination and performs no export write. Sensitivity construction
-and input assembly consume the returned ``BasisFunctions``. Historical names,
+and input assembly consume the returned ``BasisFunctions``. Pass ``bc_basis`` to
+``build_sensitivities``; ``None`` uses NESW without any BC basis-file I/O.
+Historical names,
 case/glob discovery and filename construction end at the compatibility entry
 boundary described in :doc:`rhime_configuration`; these scientific steps receive
 resolved values.

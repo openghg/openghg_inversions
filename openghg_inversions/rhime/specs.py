@@ -328,11 +328,11 @@ class RhimeOutputSpec:
         return make_output_spec(multisector=multisector, **options)
 
     output_format: OutputFormat = "inv_out"
-    output_path: str | None = None
+    output_path: Path | None = None
     output_name: str = "rhime"
-    save_trace: str | Path | bool = False
-    save_inversion_output: str | Path | bool = True
-    country_file: str | None = None
+    save_trace: Path | bool = False
+    save_inversion_output: Path | bool = True
+    country_file: Path | None = None
     paris_postprocessing_kwargs: dict[str, Any] | None = None
     output_filename_convention: OutputFilenameConvention = "rhime"
 
@@ -381,7 +381,7 @@ def validate_output_format(output_format: str) -> None:
 def validate_output_path_settings(
     *,
     output_format: str,
-    output_path: str | None,
+    output_path: str | Path | None,
     save_trace: str | Path | bool,
     save_inversion_output: str | Path | bool,
     multisector: bool,
@@ -433,11 +433,11 @@ def validate_output_filename_convention(output_filename_convention: str) -> None
 def make_output_spec(
     *,
     output_format: str = RhimeOutputSpec.output_format,
-    output_path: str | None = RhimeOutputSpec.output_path,
+    output_path: str | Path | None = RhimeOutputSpec.output_path,
     output_name: str = RhimeOutputSpec.output_name,
     save_trace: str | Path | bool = RhimeOutputSpec.save_trace,
     save_inversion_output: str | Path | bool = RhimeOutputSpec.save_inversion_output,
-    country_file: str | None = RhimeOutputSpec.country_file,
+    country_file: str | Path | None = RhimeOutputSpec.country_file,
     paris_postprocessing_kwargs: dict[str, Any] | None = RhimeOutputSpec.paris_postprocessing_kwargs,
     output_filename_convention: str = RhimeOutputSpec.output_filename_convention,
     multisector: bool,
@@ -472,7 +472,9 @@ def make_output_spec(
         save_inversion_output=save_inversion_output,
         multisector=multisector,
     )
-    return RhimeOutputSpec(
+    from ._resources import resolve_resource_paths
+
+    options = dict(
         output_format=cast(OutputFormat, output_format),
         output_path=output_path,
         output_name=output_name,
@@ -482,3 +484,4 @@ def make_output_spec(
         paris_postprocessing_kwargs=paris_postprocessing_kwargs,
         output_filename_convention=cast(OutputFilenameConvention, output_filename_convention),
     )
+    return RhimeOutputSpec(**resolve_resource_paths(options, base_dir=Path.cwd()))

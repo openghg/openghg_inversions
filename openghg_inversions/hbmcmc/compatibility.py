@@ -30,6 +30,11 @@ _OUTPUT_FORMAT_ALIASES = {
 def normalise_param_aliases(params: Mapping[str, Any]) -> dict[str, Any]:
     """Normalize legacy config spellings to modern snake-case names."""
     normalized = dict(params)
+    if "country_directory" in normalized:
+        raise ValueError(
+            "`country_directory` was removed in 0.8; use `country_file` for reporting, "
+            "`landsea_path` for land/sea classes, or `outer_regions_path` for outer regions."
+        )
     for old, new in _ALIASES.items():
         if old not in normalized:
             continue
@@ -298,4 +303,88 @@ def params_from_config(
 
     from openghg_inversions.rhime.params import normalise_rhime_params
 
-    return normalise_rhime_params(translate_rhime_aliases(params))
+    return normalise_rhime_params(adapt_resource_params(params))
+
+
+def adapt_resource_params(
+    params: Mapping[str, Any],
+    *,
+    base_dir: Path | None = None,
+    overrides: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Translate winning historical resource selections before configuration.
+
+    File values use ``base_dir``; explicit overrides use the invocation directory.
+    Discovery selects exact paths without loading scientific arrays. Canonical
+    requests contain no historical case/directory fields. Disabled BCs and NESW
+    never discover BC files. Removed country directories are rejected outright.
+    """
+    from openghg_inversions.basis.compatibility import _basis_artifact_files, _is_basis_datatree_artifact
+    from openghg_inversions.config.paths import Paths
+    from openghg_inversions.rhime._resources import resolve_resource_paths
+
+    invocation_dir = Path.cwd()
+    file_base = invocation_dir if base_dir is None else base_dir
+    winning = {**params, **(overrides or {})}
+    # Preserve each winning value's origin while aliases change option names.
+    translated = translate_rhime_aliases(winning)
+    origins = {
+        _ALIASES.get(name, name): invocation_dir if overrides and name in overrides else file_base
+        for name in winning
+        if name not in _ALIASES or _ALIASES[name] not in winning
+    }
+
+    def directory(name: str, default: Path) -> Path:
+        value = translated.pop(name, None)
+        path = default if value is None else Path(value).expanduser()
+        return path if path.is_absolute() else (origins.get(name, file_base) / path).resolve()
+
+    historical_basis = "fp_basis_case" in translated or "basis_directory" in translated
+    basis_case = translated.pop("fp_basis_case", None)
+    basis_directory = directory("basis_directory", Paths.openghginv / "basis_functions")
+    if historical_basis:
+        warnings.warn(
+            "`fp_basis_case` and `basis_directory` are deprecated; use exact `basis_path` "
+            "or `basis_partition_path` selections.", DeprecationWarning, stacklevel=2,
+        )
+    if basis_case is not None:
+        if any(translated.get(name) is not None for name in
+               ("basis_path", "basis_partition_path", "basis_partition_paths")):
+            raise ValueError("Use either historical `fp_basis_case` or an exact basis selection, not both.")
+        files = _basis_artifact_files(
+            domain=translated["domain"], basis_case=basis_case, basis_directory=basis_directory,
+        )
+        retained = [path for path in files if _is_basis_datatree_artifact(path)]
+        if retained:
+            if len(retained) != 1:
+                raise ValueError("Historical basis case matched multiple retained artifacts; use `basis_path`.")
+            translated["basis_path"] = retained[0]
+        else:
+            translated["basis_partition_paths"] = tuple(files)
+
+    historical_bc = "bc_basis_case" in translated or "bc_basis_directory" in translated
+    bc_case = translated.pop("bc_basis_case", "NESW")
+    is_nesw = isinstance(bc_case, str) and bc_case.lower() == "nesw"
+    bc_directory = directory("bc_basis_directory", Paths.openghginv / "bc_basis_functions")
+    if historical_bc:
+        warnings.warn(
+            "`bc_basis_case` and `bc_basis_directory` are deprecated; use exact `bc_basis_paths`."
+            + (" The directory is unused for NESW." if is_nesw else ""),
+            DeprecationWarning, stacklevel=2,
+        )
+    if translated.get("use_bc", True) and not is_nesw:
+        if translated.get("bc_basis_paths") is not None:
+            raise ValueError("Use either historical `bc_basis_case` or exact `bc_basis_paths`, not both.")
+        domain = translated["domain"]
+        files = tuple(sorted((bc_directory / domain).glob(f"{bc_case}_{domain}*.nc")))
+        if not files:
+            raise FileNotFoundError(f"No BC basis files match {bc_case!r} for domain {domain!r}.")
+        translated["bc_basis_paths"] = files
+
+    file_options = {name: value for name, value in translated.items()
+                    if origins.get(name, file_base) == file_base}
+    invocation_options = {name: value for name, value in translated.items() if name not in file_options}
+    return (
+        resolve_resource_paths(file_options, base_dir=file_base)
+        | resolve_resource_paths(invocation_options, base_dir=invocation_dir)
+    )

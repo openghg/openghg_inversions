@@ -8,6 +8,8 @@ scientist can read or copy this module without reconstructing a pipeline.
 from __future__ import annotations
 
 from openghg_inversions.native_flux import resolve_runtime_flux
+from openghg_inversions.basis.support import load_bc_basis
+from openghg_inversions.hbmcmc.compatibility import adapt_resource_params
 from openghg_inversions.inference.sampling import resolve_sampler
 from openghg_inversions.basis import prepare_basis
 from openghg_inversions.basis.basis_functions import BASIS_ARTIFACT_PATH_ATTR
@@ -551,7 +553,7 @@ def run_standard(
         params.update(kwargs)
         if likelihood_builder is not None and params.get("mismatch_model") is not None:
             raise ValueError("A custom likelihood cannot be combined with a built-in mismatch model.")
-        config = RhimeConfig.from_params(params, multisector=False)
+        config = RhimeConfig.from_params(adapt_resource_params(params), multisector=False)
     sampler = resolve_sampler(config.sampler)
     log_timing("rhime.runner_setup", timer_seconds(setup_start), multisector=False)
     if likelihood_builder is None and config.model.likelihood is None:
@@ -561,6 +563,7 @@ def run_standard(
     config = resolve_config_paths(config)
     validate_output_resources(config.output)
     basis_inputs = resolve_basis_inputs(config)
+    bc_basis = load_bc_basis(config.bc_basis_paths) if config.use_bc and config.bc_basis_paths is not None else None
 
 
     # 1. Resolve acquisition through the data owner.
@@ -611,9 +614,9 @@ def run_standard(
         filtered,
         basis_functions,
         **config.select(
-            "domain", "flux_sources", "use_bc", "bc_basis_case",
-            "bc_basis_directory",
+            "flux_sources", "use_bc",
         ),
+        bc_basis=bc_basis,
         multisector=False,
     )
     prepared = assemble_rhime_inputs(

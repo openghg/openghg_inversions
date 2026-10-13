@@ -228,10 +228,14 @@ def prepare_inputs(**params):
     from openghg_inversions.inversion_data import RhimeMergedData
     from openghg_inversions.rhime.params import RhimeConfig
     from openghg_inversions.rhime import preparation
+    from openghg_inversions.hbmcmc.compatibility import adapt_resource_params
+    from openghg_inversions.basis.support import load_bc_basis
+    from openghg_inversions.basis.basis_functions import BASIS_ARTIFACT_PATH_ATTR
 
-    config = RhimeConfig.from_params({"output_format": "none", **params},
+    config = RhimeConfig.from_params(adapt_resource_params({"output_format": "none", **params}),
                                      multisector=params.get("split_by_sectors", False))
     basis_inputs = preparation.resolve_basis_inputs(config)
+    bc_basis = load_bc_basis(config.bc_basis_paths) if config.use_bc and config.bc_basis_paths is not None else None
     merged = RhimeMergedData.from_options(**config.select(
         "site_options", "species", "domain", "start_date", "end_date",
         "flux_sources", "split_by_sectors", "bc_store", "obs_store", "footprint_store",
@@ -252,11 +256,13 @@ def prepare_inputs(**params):
         ),
         fix_outer_regions=config.fix_basis_outer_regions,
         **basis_inputs,
-        output_path=config.basis_output_path,
     )
+    if config.basis_output_path is not None:
+        basis.save(config.basis_output_path)
+        basis = basis.with_metadata({BASIS_ARTIFACT_PATH_ATTR: str(config.basis_output_path)})
     sites = preparation.build_sensitivities(filtered, basis, **config.select(
-        "domain", "flux_sources", "use_bc", "bc_basis_case", "bc_basis_directory",
-    ), multisector=config.split_by_sectors)
+        "flux_sources", "use_bc",
+    ), bc_basis=bc_basis, multisector=config.split_by_sectors)
     return preparation.assemble_rhime_inputs(filtered, basis, sites, **config.select(
         "domain", "start_date", "bc_freq", "min_error", "min_error_options", "use_bc",
     ))

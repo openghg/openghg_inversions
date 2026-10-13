@@ -13,6 +13,57 @@ This page is for users with fixedbasis-style Python calls, INI files, batch
 scripts, or HBMCMC outputs. For a new inversion, start with the
 :doc:`model recipe chooser <model_recipes>` and :doc:`RHIME guide <rhime>`.
 
+0.8 resource migration
+-----------------------
+
+Resource selection now ends at the runner boundary. Update existing calls and
+configuration as follows:
+
+* Remove ``output_path`` from ``prepare_basis``. Save its returned object with
+  ``basis.save(selected_path)``, or set the configured runner's
+  ``basis_output_path`` to an exact artifact filename. Checkpoint files and this
+  optional export have separate destinations.
+* Remove ``country_directory`` from run configuration. Use ``country_file`` for
+  reporting, ``landsea_path`` for preparation land/sea classes, and
+  ``outer_regions_path`` for fixed outer regions. Required preparation maps
+  default to vendored files for the exact requested domain; explicit paths win.
+  Missing explicit files or required domain defaults fail before acquisition.
+  Country reporting requires an explicit file, independently of these defaults.
+* Select file-backed BC bases using ``bc_basis_paths``, for example
+  ``("/data/bc/january.nc", "/data/bc/february.nc")``. Runners load these files
+  before acquisition and preserve their time combination and alignment.
+  Custom scientific sensitivity calls receive the loaded ``bc_basis`` dataset.
+  NESW uses acquired directional contributions and ``bc_basis=None``; it needs
+  no file. An old ``bc_basis_directory`` with NESW is unused and warns, even if
+  that directory does not exist. Disabled BCs load no BC resources.
+* Translate supported historical case/directory selections at the HBMCMC input
+  compatibility boundary after overrides. Canonical requests contain explicit
+  selections; scientific functions no longer discover files.
+* Use invocation-relative paths for Python/CLI calls and explicit overrides.
+  Saved-phase INI/JSON resource values remain relative to their configuration
+  file; full-run INI values retain their invocation-directory convention.
+  Absolute paths keep their destinations. Frontends convert declared ``Path``
+  fields, including path collections, without treating scientific strings as
+  paths or loading scientific data during configuration construction.
+
+See :doc:`rhime_configuration` for complete resource selection examples and
+:doc:`staged_workflow` for the separate 0.7-to-0.8 staged artifact migration.
+
+Planned 0.9 deprecations and removals
+-------------------------------------
+
+**Deprecations:** historical directory/name basis output conventions and legacy
+basis output are scheduled for deprecation in 0.9. Explicit legacy output has no
+automatic removal date; a deprecation version is not a removal commitment.
+
+**Removals:** ``emissions_store``, ``emissions_domain``,
+``inner_emissions_store`` and ``inner_emissions_domain`` are already deprecated
+and scheduled for removal in 0.9. Replace them with their ``flux_*`` spellings.
+The transitional HBMCMC wrapper and explicit legacy data/basis utilities are
+supported until 0.9; migrate those workflows to RHIME and modern handoffs.
+Established public RHIME imports and CLI aliases retained *through* the 0.9
+compatibility cycle are not promised to disappear at the start of 0.9.
+
 Chain handling in ``run_hbmcmc.py``
 -----------------------------------
 
@@ -292,10 +343,12 @@ Modern ``prepare_basis`` accepts explicit ``site_data``, resolved ``runtime_flux
 and singular ``weighting_flux`` arrays, an exact ``basis_path`` input,
 and resolved scientific map arrays. The ``output_path`` argument has been
 removed: call ``basis.save(selected_path)`` on the returned object to export
-it. Configured runners own ``basis_output_path`` and preserve export metadata. Historical case/glob discovery,
-directory-based filename construction, flat-file adaptation and explicit legacy writing are isolated in
+it. Configured runners own ``basis_output_path`` and preserve export metadata.
+Historical run selectors end at the HBMCMC input compatibility boundary.
+Flat-file adaptation and explicit legacy writing remain in
 ``basis.compatibility``. See :doc:`rhime_configuration` for the 0.8 modern basis
-artifact default, explicit legacy opt-in, and migration examples. For reusable RHIME runs, save ``RhimePreparedInputs``;
+artifact default, explicit legacy opt-in, and migration examples. For reusable
+RHIME runs, save ``RhimePreparedInputs``;
 legacy merged-data files are a separate explicit utility workflow.
 
 Dataset and ``fp_all`` basis adapters resolve native flux once at their

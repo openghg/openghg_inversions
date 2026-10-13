@@ -2995,7 +2995,7 @@ def test_public_rhime_runners_follow_named_stage_order(
         """Record public sensitivity construction."""
         assert actual is filtered
         assert actual_basis is basis
-        assert kwargs["domain"] == config.domain
+        assert kwargs["bc_basis"] is None
         assert kwargs["use_bc"] is config.use_bc
         assert kwargs["multisector"] is multisector
         calls.append("sensitivities")
@@ -3014,7 +3014,7 @@ def test_public_rhime_runners_follow_named_stage_order(
 
     def align(actual_config: rhime_params.RhimeConfig, actual: RhimePreparedInputs) -> RhimeRunSpec:
         """Record public retained-site alignment."""
-        assert actual_config is config
+        assert actual_config == config
         assert actual is prepared
         calls.append("align")
         return run_spec
@@ -3337,8 +3337,7 @@ def test_public_stages_compose_as_complete_external_runner(monkeypatch: pytest.M
     site_data = rhime_public.build_sensitivities(
         filtered,
         basis_functions,
-        domain=setup.domain, flux_sources=setup.flux_sources, use_bc=setup.use_bc,
-        bc_basis_case=setup.bc_basis_case, bc_basis_directory=setup.bc_basis_directory,
+        flux_sources=setup.flux_sources, use_bc=setup.use_bc,
         multisector=False,
     )
     prepared = rhime_public.assemble_rhime_inputs(
@@ -4238,7 +4237,7 @@ def test_rhime_configuration_builds_specs_before_preparation(tmp_path: Path) -> 
     assert setup.site_options.time_resolved == (True,)
     assert setup.basis_algorithm == "weighted"
     assert setup.nbasis == 100
-    assert setup.bc_basis_case == "NESW"
+    assert setup.bc_basis_paths is None
     assert setup.min_error_options == {"by_site": False}
     for selector in ("inlet", "instrument", "platform", "fp_height"):
         assert getattr(setup.site_options, selector) == (None,)
@@ -5830,12 +5829,9 @@ def test_multisector_sensitivity_sources_fail_before_site_gathering() -> None:
         rhime_preparation.build_sensitivities(
             merged=merged,
             basis_functions=cast(BasisFunctions, MissingSourceBasis()),
-            domain="EUROPE",
             multisector=True,
             flux_sources=["ff-inventory", "ocean-inventory"],
             use_bc=False,
-            bc_basis_case="NESW",
-            bc_basis_directory=None,
         )
 
 
@@ -5876,12 +5872,9 @@ def test_multisector_site_preparation_keeps_gathered_source_state() -> None:
     prepared = rhime_preparation.build_sensitivities(
         merged=merged,
         basis_functions=cast(BasisFunctions, GatheredBasis()),
-        domain="EUROPE",
         multisector=True,
         flux_sources=["ff-inventory", "ocean-inventory"],
         use_bc=False,
-        bc_basis_case="NESW",
-        bc_basis_directory=None,
     )
 
     xr.testing.assert_identical(prepared["TAC"]["H"], sensitivity.rename("H"))
@@ -9143,7 +9136,7 @@ output_format = "inv_out"
         "sigma": 0.125,
     }
     assert seen["sampler"].draws == 7
-    assert run_spec.output.output_path == str(tmp_path)
+    assert run_spec.output.output_path == tmp_path
     assert run_spec.output.output_name == "direct-name"
     assert run_spec.output.output_format == "none"
     assert len(normalise_calls) == 1

@@ -153,11 +153,11 @@ def test_valid_finite_choices_are_preserved(option, value):
 
 
 @pytest.mark.parametrize("algorithm", ["typo", None])
-def test_saved_basis_case_takes_precedence_during_resolution(algorithm):
+def test_saved_basis_path_takes_precedence_during_resolution(algorithm):
     config = rhime_params.RhimeConfig.from_params(
-        _request(fp_basis_case="saved_case", basis_algorithm=algorithm), multisector=False
+        _request(basis_path="saved.nc", basis_algorithm=algorithm), multisector=False
     )
-    assert config.fp_basis_case == "saved_case"
+    assert config.basis_path == Path.cwd() / "saved.nc"
     assert config.basis_algorithm == algorithm
 
 
@@ -231,7 +231,7 @@ def test_ini_dictionary_adapter_retains_normalization_controls(tmp_path: Path):
         normalized = params_from_config(
             path, output_path="cli-output", extra_kwargs={"output_path": "winning-output"}
         )
-    assert normalized == {"output_name": "old-name", "draws": 7, "output_path": "winning-output"}
+    assert normalized == {"output_name": "old-name", "draws": 7, "output_path": Path.cwd() / "winning-output"}
 
 
 @pytest.mark.parametrize("invalid", [False, True])
@@ -373,9 +373,8 @@ def test_multisector_preparation_selects_sources_from_typed_request():
     basis = SimpleNamespace(sensitivity=lambda values: sensitivity)
 
     site_data = rhime.build_sensitivities(
-        merged, basis, domain=config.domain, flux_sources=config.flux_sources,
-        use_bc=config.use_bc, bc_basis_case=config.bc_basis_case,
-        bc_basis_directory=config.bc_basis_directory, multisector=True,
+        merged, basis, flux_sources=config.flux_sources,
+        use_bc=config.use_bc, bc_basis=None, multisector=True,
     )
 
     # Assignment preserves the merged dataset's labelled source axis.
@@ -533,3 +532,115 @@ def test_canonical_flux_defaults_and_explicit_source_domain():
     assert selected.flux_store == "coarse-store"
     assert selected.flux_domain == "COARSE"
     assert selected.domain == "EUROPE"
+
+
+def test_resource_paths_follow_annotations_and_preserve_origins(tmp_path, monkeypatch):
+    from dataclasses import fields
+    from openghg_inversions.hbmcmc.compatibility import adapt_resource_params
+
+    invocation = tmp_path / "invocation"
+    invocation.mkdir()
+    monkeypatch.chdir(invocation)
+    saved = tmp_path / "saved"
+    options = adapt_resource_params(
+        _request(basis_path="file.nc", country_file="country.nc", bc_basis_paths=["bc.nc"]),
+        base_dir=saved,
+        overrides={"basis_path": "override.nc", "save_trace": True},
+    )
+    config = rhime_params.RhimeConfig.from_params(options, multisector=False)
+    assert config.basis_path == invocation / "override.nc"
+    assert config.output.country_file == saved / "country.nc"
+    assert config.bc_basis_paths == (saved / "bc.nc",)
+    assert config.domain == "EUROPE"
+    assert config.output.save_trace is True
+    assert not {"fp_basis_case", "basis_directory", "bc_basis_case", "bc_basis_directory", "country_directory"} & {
+        field.name for field in fields(config)
+    }
+
+
+def test_resource_adapter_discovers_only_winning_legacy_selection(tmp_path, monkeypatch):
+    from openghg_inversions.hbmcmc.compatibility import adapt_resource_params
+
+    monkeypatch.chdir(tmp_path)
+    directory = tmp_path / "chosen" / "EUROPE"
+    directory.mkdir(parents=True)
+    for month in ("01", "02"):
+        xr.Dataset({"basis": ("region", [1])}).to_netcdf(directory / f"case_EUROPE_{month}.nc")
+    with pytest.warns(DeprecationWarning):
+        options = adapt_resource_params(
+            _request(fp_basis_case="missing", basis_directory="absent"),
+            base_dir=tmp_path / "file-origin",
+            overrides={"fp_basis_case": "case", "basis_directory": "chosen"},
+        )
+    assert options["basis_partition_paths"] == tuple(sorted(directory.glob("*.nc")))
+    assert "fp_basis_case" not in options
+    assert "basis_directory" not in options
+
+
+@pytest.mark.parametrize("use_bc,case", [(True, "NESW"), (True, "nesw"), (False, "missing")])
+def test_resource_adapter_skips_unused_bc_discovery(tmp_path, use_bc, case):
+    from openghg_inversions.hbmcmc.compatibility import adapt_resource_params
+
+    with pytest.warns(DeprecationWarning, match="unused" if use_bc else "deprecated"):
+        options = adapt_resource_params(
+            _request(use_bc=use_bc, bc_basis_case=case, bc_basis_directory=tmp_path / "missing")
+        )
+    assert "bc_basis_paths" not in options
+    assert "bc_basis_case" not in options
+    assert not (tmp_path / "missing").exists()
+
+
+@pytest.mark.parametrize("value", [None, "old-country-dir"])
+def test_removed_country_directory_rejects_before_config_or_discovery(value):
+    from openghg_inversions.hbmcmc.compatibility import adapt_resource_params
+
+    for resolve in (adapt_resource_params, lambda p: rhime_params.RhimeConfig.from_params(p, multisector=False)):
+        with pytest.raises(ValueError, match="country_file.*landsea_path.*outer_regions_path"):
+            resolve(_request(country_directory=value, fp_basis_case="missing"))
+
+
+def test_canonical_path_construction_does_not_load_resources(tmp_path, monkeypatch):
+    def unexpected_read(*args, **kwargs):
+        pytest.fail("Canonical configuration must not load scientific resources")
+
+    monkeypatch.setattr(xr, "open_dataset", unexpected_read)
+    monkeypatch.setattr(xr, "open_datatree", unexpected_read)
+    monkeypatch.chdir(tmp_path)
+    config = rhime_params.RhimeConfig.from_params(
+        _request(basis_path="missing.nc", bc_basis_paths=["missing-bc.nc"], country_file="missing-country.nc"),
+        multisector=False,
+    )
+    assert config.basis_path == tmp_path / "missing.nc"
+    assert config.bc_basis_paths == (tmp_path / "missing-bc.nc",)
+    assert config.output.country_file == tmp_path / "missing-country.nc"
+
+
+def test_legacy_bc_discovery_preserves_file_directory_origin(tmp_path):
+    from openghg_inversions.hbmcmc.compatibility import adapt_resource_params
+
+    selected = tmp_path / "bc" / "EUROPE"
+    selected.mkdir(parents=True)
+    # Discovery must not read these files; the runner owns loading and errors.
+    paths = [selected / f"monthly_EUROPE_{month}.nc" for month in ("01", "02")]
+    for path in paths:
+        path.touch()
+    with pytest.warns(DeprecationWarning):
+        resolved = adapt_resource_params(
+            _request(bc_basis_case="monthly", bc_basis_directory="bc"), base_dir=tmp_path,
+        )
+    assert resolved["bc_basis_paths"] == tuple(paths)
+
+
+@pytest.mark.parametrize("factory", [rhime_specs.make_output_spec, rhime_specs.RhimeOutputSpec.from_params])
+def test_output_factories_convert_external_paths(tmp_path, monkeypatch, factory):
+    monkeypatch.chdir(tmp_path)
+    options = dict(output_path="outputs", country_file="country.nc", save_trace="trace.nc",
+                   save_inversion_output=False)
+    if factory is rhime_specs.make_output_spec:
+        output = factory(**options, multisector=False)
+    else:
+        output = factory(options, multisector=False)
+    assert output.output_path == tmp_path / "outputs"
+    assert output.country_file == tmp_path / "country.nc"
+    assert output.save_trace == tmp_path / "trace.nc"
+    assert output.save_inversion_output is False

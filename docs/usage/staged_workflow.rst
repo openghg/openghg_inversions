@@ -37,6 +37,29 @@ label.
 Relative filesystem values inside an INI or JSON parameter file are resolved
 against that file's directory. Explicit ``--kwargs`` path overrides resolve
 from the invocation working directory; absolute paths keep their destination.
+Filesystem annotations identify the fields to convert: resolved configuration
+uses ``Path`` values, including tuples of paths, while parameter JSON and stage
+manifests store paths as strings and path collections as JSON arrays. Scientific
+strings such as domain names are unchanged; configuration construction does not
+load scientific resources.
+
+For file-backed boundary conditions, specify exact files, for example
+``"bc_basis_paths": ["bc/january.nc", "bc/february.nc"]`` in the parameter JSON.
+``prepare`` loads all selected files before acquisition and passes their labelled
+data to sensitivity construction, preserving time combination and alignment.
+Missing or unreadable selected files fail before acquisition. Omit
+``bc_basis_paths`` for NESW: it uses acquired directional contributions without
+reading a BC basis file. A historical ``bc_basis_directory`` supplied with NESW
+warns that it is unused and deprecated, even if the directory does not exist.
+Disabled BCs load no BC basis resources. Supported historical resource selectors
+are translated at the input compatibility boundary after winning overrides.
+
+``country_directory`` is removed in 0.8. Use ``country_file`` for reporting,
+``landsea_path`` for preparation land/sea classes, or ``outer_regions_path`` for
+fixed outer regions. Required preparation maps default to packaged files for the
+exact requested domain; explicit paths win and missing resources fail without
+fallback. Reporting country files remain explicit and independent of these
+preparation defaults. See :doc:`legacy_and_migration` for the migration schedule.
 
 ``openghg-run``'s ``EFFECTIVE_CONFIG`` is a stage-specific TOML envelope, not
 an OpenGHG Inversions scientific parameter file, so do not pass it to
@@ -126,7 +149,8 @@ from the invocation working directory. The runner saves the basis separately
 from checkpoint-owned files using the existing basis codec. Commands reject
 pre-existing symlinks beneath a stage output directory.
 
-Preparation resolves selected basis and support resources. Country reporting
+Preparation resolves selected basis, BC basis and support resources before
+acquisition. Country reporting
 resources are checked by ``postprocess`` before creating its output directory;
 ``prepare`` and ``sample`` do not require them.
 
