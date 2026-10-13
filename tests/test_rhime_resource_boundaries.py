@@ -7,7 +7,6 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-from openghg_inversions.hbmcmc.compatibility import adapt_resource_params
 from openghg_inversions.rhime.params import RhimeConfig
 from tests.test_bc_basis_resources import _basis
 from tests.test_staged_workflow import _params
@@ -29,9 +28,7 @@ def test_bc_resource_loading_precedes_acquisition(tmp_path, monkeypatch, route, 
         times = pd.date_range("2020-01-01", periods=2)
         for path, time, weight in zip(paths, times, [2, 3], strict=True):
             _basis([time], [weight]).to_netcdf(path)
-    if selection == "nesw":
-        options.update(bc_basis_case="NeSw", bc_basis_directory="absent")
-    else:
+    if selection != "nesw":
         options["bc_basis_paths"] = paths
     loaded = []
     real_load = module.load_bc_basis
@@ -57,24 +54,20 @@ def test_bc_resource_loading_precedes_acquisition(tmp_path, monkeypatch, route, 
 
     def run():
         if route in ("staged", "nested"):
-            config = RhimeConfig.from_params(adapt_resource_params(options), multisector=False)
+            config = RhimeConfig.from_params(options, multisector=False)
             if route == "staged":
                 module.prepare_rhime_stage(setup=config, model="standard", output_dir="stage")
             else:
                 module.prepare_nested_rhime_inputs(config, inner_domain="6km")
         elif route == "multisector":
             module.run_rhime_multisector(**options)
-        elif route == "example":
+        elif route in ("example", "custom_basis"):
             module.run_custom_rhime(**options)
         else:
             module.run_rhime(**options)
 
-    if selection == "nesw":
-        with pytest.warns(DeprecationWarning, match="unused"), pytest.raises(Acquired):
-            run()
-    else:
-        with pytest.raises(FileNotFoundError if selection == "missing" else Acquired):
-            run()
+    with pytest.raises(FileNotFoundError if selection == "missing" else Acquired):
+        run()
     assert not Path("absent").exists()
     if selection == "missing":
         assert not Path("stage").exists()
@@ -115,3 +108,29 @@ def test_packaged_preparation_defaults_are_independent_of_reporting(tmp_path):
         resolve_basis_inputs(replace(outer_config, outer_regions_path=tmp_path / "missing-outer.nc"))
     with pytest.raises(FileNotFoundError):
         resolve_basis_inputs(replace(outer_config, domain="NO-SUCH-PACKAGED-DOMAIN"))
+
+
+@pytest.mark.parametrize("route", ["standard", "multisector", "staged", "nested", "example", "custom_basis"])
+def test_modern_routes_reject_historical_resource_selectors_before_acquisition(monkeypatch, route):
+    module = import_module(
+        "examples.rhime_customisation.custom_basis_runner" if route == "custom_basis" else
+        "examples.rhime_customisation.runner" if route == "example"
+        else f"openghg_inversions.rhime.{'stages' if route == 'staged' else route}"
+    )
+    options = _params(output_format="none", bc_basis_case="NESW", bc_basis_directory=None)
+
+    def unexpected_acquisition(**kwargs):
+        pytest.fail("Historical options reached acquisition")
+
+    monkeypatch.setattr("openghg_inversions.inversion_data.RhimeMergedData.from_options", unexpected_acquisition)
+    with pytest.raises(ValueError, match="Historical resource selectors.*HBMCMC"):
+        if route == "staged":
+            module.resolve_stage_setup(options, model="standard")
+        elif route == "nested":
+            module.run_nested(**options, inner_domain="inner")
+        elif route == "multisector":
+            module.run_rhime_multisector(**{**options, "flux_sources": ["a", "b"]})
+        elif route in ("example", "custom_basis"):
+            module.run_custom_rhime(**options)
+        else:
+            module.run_rhime(**options)

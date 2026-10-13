@@ -17,9 +17,7 @@ from openghg_inversions.basis import prepare_basis
 from openghg_inversions.basis.basis_functions import BASIS_ARTIFACT_PATH_ATTR
 from openghg_inversions.native_flux import resolve_runtime_flux
 from openghg_inversions.basis.support import load_bc_basis
-from openghg_inversions.hbmcmc.compatibility import adapt_resource_params
 from openghg_inversions.rhime.preparation import resolve_basis_inputs
-from openghg_inversions.rhime._resources import resolve_config_paths
 
 import argparse
 from collections.abc import Sequence
@@ -78,8 +76,7 @@ def run_custom_rhime(
     params = read_rhime_ini(config_file) if config_file is not None else {}
     params.update(kwargs)
     params["mismatch_model"] = None
-    config = RhimeConfig.from_params(adapt_resource_params(params), multisector=False)
-    config = resolve_config_paths(config)
+    config = RhimeConfig.from_params(params, multisector=False)
     validate_output_resources(config.output)
 
     # Resolve selected support files before acquiring observations or flux.

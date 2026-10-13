@@ -49,7 +49,6 @@ from openghg_inversions.basis.algorithms import (
 from openghg_inversions.inversion_data import RhimeMergedData
 from openghg_inversions.native_flux import resolve_runtime_flux
 from openghg_inversions.basis.support import load_bc_basis
-from openghg_inversions.hbmcmc.compatibility import adapt_resource_params
 from openghg_inversions.rhime import (
     RhimeConfig,
     RhimeResult,
@@ -279,9 +278,8 @@ def run_custom_rhime(
     # The project basis stage owns its algorithm and optional saved artifact.
     # A built-in algorithm choice is irrelevant to this copied recipe.
     params.pop("basis_algorithm", None)
-    params.pop("fp_basis_case", None)
     params.pop("basis_path", None)
-    config = RhimeConfig.from_params(adapt_resource_params(params), multisector=False)
+    config = RhimeConfig.from_params(params, multisector=False)
     validate_output_resources(config.output)
     bc_basis = load_bc_basis(config.bc_basis_paths) if config.use_bc and config.bc_basis_paths is not None else None
 

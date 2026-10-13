@@ -644,3 +644,58 @@ def test_output_factories_convert_external_paths(tmp_path, monkeypatch, factory)
     assert output.country_file == tmp_path / "country.nc"
     assert output.save_trace == tmp_path / "trace.nc"
     assert output.save_inversion_output is False
+
+
+def test_canonical_paths_are_forwarded_without_conversion(tmp_path, monkeypatch):
+    path = tmp_path / "basis.nc"
+    paths = (tmp_path / "bc.nc",)
+
+    def unexpected_normalization(*args, **kwargs):
+        pytest.fail("Canonical paths must not be normalized again")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "resolve", unexpected_normalization)
+        patch.setattr(Path, "expanduser", unexpected_normalization)
+        config = rhime_params.RhimeConfig.from_params(
+            _request(basis_path=path, bc_basis_paths=paths, country_file=path), multisector=False,
+        )
+    assert config.basis_path is path
+    assert config.bc_basis_paths is paths
+    assert config.output.country_file is path
+
+
+@pytest.mark.parametrize("name,collection", [("bc_basis_paths", False), ("basis_path", True)])
+def test_declared_path_shape_is_validated_for_absolute_paths(tmp_path, name, collection):
+    path = tmp_path / "basis.nc"
+    with pytest.raises(ValueError, match="filesystem path"):
+        rhime_params.RhimeConfig.from_params(
+            _request(**{name: (path,) if collection else path}), multisector=False,
+        )
+
+
+@pytest.mark.parametrize("name", ["fp_basis_case", "basis_directory", "bc_basis_case", "bc_basis_directory"])
+def test_modern_configuration_rejects_historical_resource_selectors(name):
+    with pytest.raises(ValueError, match="HBMCMC.*basis_path.*bc_basis_paths"):
+        rhime_params.RhimeConfig.from_params(_request(**{name: "old"}), multisector=False)
+
+
+def test_output_factory_inspects_only_its_own_fields(tmp_path, monkeypatch):
+    original = rhime_specs.get_type_hints
+
+    def output_only(owner):
+        assert owner is rhime_specs.RhimeOutputSpec
+        return original(owner)
+
+    monkeypatch.setattr(rhime_specs, "get_type_hints", output_only)
+    monkeypatch.setattr(rhime_params, "get_type_hints", lambda _: pytest.fail("Output inspected full configuration"))
+    monkeypatch.chdir(tmp_path)
+    output = rhime_specs.make_output_spec(output_path="products", multisector=False)
+    assert output.output_path == tmp_path / "products"
+
+
+@pytest.mark.parametrize("template", ["rhime_template.ini", "rhime_satellite_template.ini"])
+def test_modern_templates_construct_without_legacy_translation(template):
+    path = Path(__file__).resolve().parents[1] / "openghg_inversions/config/templates" / template
+    decoded = read_rhime_ini(path)
+    config = rhime_params.RhimeConfig.from_params({**decoded, **_request(sites=["TAC"])}, multisector=False)
+    assert config.bc_basis_paths is None

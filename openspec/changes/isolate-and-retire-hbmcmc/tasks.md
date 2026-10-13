@@ -6,21 +6,21 @@ work rather than deleting the package in 0.8 or claiming retirement is delivered
 
 ## 1. Isolate legacy behavior in 0.8
 
-- [ ] 1.1 Give retained RHIME aliases/validation modern owners and remove all
+- [x] 1.1 Give retained RHIME aliases/validation modern owners and remove all
   production imports/re-exports of HBMCMC outside that package, including the
   RHIME dictionary adapter export and copied examples. Verify modern imports and
   representative configured/output-only execution with HBMCMC unavailable;
   preserve alias warnings, precedence and the independent flux-alias contract.
-- [ ] 1.2 Wire historical selection into the actual HBMCMC CLI and normalized
+- [x] 1.2 Wire historical selection into the actual HBMCMC CLI and normalized
   dictionary route after overrides and before canonical construction. Verify the
   reported NESW options through `run_hbmcmc.main`, file-backed selection,
   superseded missing inputs, dictionary normalization controls, early removed-
   option errors, unchanged caller mappings and established output policy.
-- [ ] 1.3 Add the small production import-boundary check and early modern errors
+- [x] 1.3 Add the small production import-boundary check and early modern errors
   for HBMCMC-only selectors. Verify absolute/relative import and re-export
   violations fail the check while legacy-entry tests remain allowed; verify
   errors provide modern replacements or the temporary legacy route.
-- [ ] 1.4 Update usage migration guidance and add a release fragment: document
+- [x] 1.4 Update usage migration guidance and add a release fragment: document
   0.8 legacy-only routing and complete HBMCMC removal in 0.9 separately from
   other deprecations. Verify links, the full documentation build, and focused
   HBMCMC/configuration/resource tests, including corrected typed-path assertions.

@@ -6,8 +6,9 @@ The direct ``fixedbasisMCMC`` and ``inferpymc`` implementation was removed in
 0.8 after its remaining known active user agreed to migrate. The 0.7.x release
 line is the last line containing that implementation and the
 ``--legacy-fixedbasis`` option. The ``openghg_inversions.hbmcmc`` namespace
-hosts the transitional ``run_hbmcmc`` wrapper and explicit legacy data
-utilities until 0.9.
+hosts the transitional ``run_hbmcmc`` wrapper and explicit legacy data/basis
+utilities during 0.8. The complete subpackage is scheduled for removal in 0.9,
+including its imports, adapters and executable entry points.
 
 This page is for users with fixedbasis-style Python calls, INI files, batch
 scripts, or HBMCMC outputs. For a new inversion, start with the
@@ -34,11 +35,18 @@ configuration as follows:
   before acquisition and preserve their time combination and alignment.
   Custom scientific sensitivity calls receive the loaded ``bc_basis`` dataset.
   NESW uses acquired directional contributions and ``bc_basis=None``; it needs
-  no file. An old ``bc_basis_directory`` with NESW is unused and warns, even if
-  that directory does not exist. Disabled BCs load no BC resources.
-* Translate supported historical case/directory selections at the HBMCMC input
-  compatibility boundary after overrides. Canonical requests contain explicit
-  selections; scientific functions no longer discover files.
+  no file. On the HBMCMC route, an old ``bc_basis_directory`` with NESW is
+  unused and warns, even if that directory does not exist. Disabled BCs load no BC resources.
+* Modern runners reject ``fp_basis_case``, ``basis_directory``, ``bc_basis_case``
+  and ``bc_basis_directory``. Replace them with exact basis/BC selections, or use
+  the temporary HBMCMC CLI or normalized dictionary adapter during 0.8. Only that
+  legacy route translates historical selections after winning overrides.
+  Scientific functions receive explicit selections and never discover files.
+* Replace the removed RHIME ``params_from_config`` re-export with
+  ``read_rhime_ini``, apply overrides, then call ``RhimeConfig.from_params``.
+  The dictionary adapter remains only in ``hbmcmc.compatibility`` during 0.8.
+  Supported modern aliases retain their warnings and conflict rules without
+  depending on HBMCMC; modern output formats and explicit save paths remain.
 * Use invocation-relative paths for Python/CLI calls and explicit overrides.
   Saved-phase INI/JSON resource values remain relative to their configuration
   file; full-run INI values retain their invocation-directory convention.
@@ -59,8 +67,15 @@ automatic removal date; a deprecation version is not a removal commitment.
 **Removals:** ``emissions_store``, ``emissions_domain``,
 ``inner_emissions_store`` and ``inner_emissions_domain`` are already deprecated
 and scheduled for removal in 0.9. Replace them with their ``flux_*`` spellings.
-The transitional HBMCMC wrapper and explicit legacy data/basis utilities are
-supported until 0.9; migrate those workflows to RHIME and modern handoffs.
+The entire ``openghg_inversions.hbmcmc`` subpackage is removed in 0.9: its
+wrapper, compatibility adapters and legacy data/basis utilities will have no
+forwarding imports or executable shims. Use RHIME runners, ``RhimeMergedData``
+for in-memory acquisition, ``RhimePreparedInputs`` for saved preparation, and
+``BasisFunctions`` for retained basis artifacts where applicable. For legacy-only
+utilities or unsupported historical artifacts, keep a compatible older release;
+this migration does not add readers for those artifacts. Modern
+``output_format="legacy"`` and ``save_inversion_output`` remain independently
+supported and are not removed with the package.
 Established public RHIME imports and CLI aliases retained *through* the 0.9
 compatibility cycle are not promised to disappear at the start of 0.9.
 
@@ -200,7 +215,7 @@ RHIME. It creates the HBMCMC-compatible NetCDF product from the modern
 ``InversionOutput``; it does not invoke ``fixedbasisMCMC`` or ``inferpymc``.
 The deprecated output names ``hbmcmc`` and ``hbmcmc_postprocessing`` remain
 aliases for ``legacy`` with ``DeprecationWarning``. ``RhimeConfig.from_params``
-calls the translator in ``hbmcmc.compatibility`` before modern normalization,
+resolves these aliases through modern-owned translation before normalization,
 after file options and Python overrides have been combined. It warns when a
 deprecated spelling is replaced or removed; canonical inputs remain quiet.
 Prefer ``legacy`` in new configurations. The former ``resolve_rhime_config``
@@ -256,8 +271,8 @@ implementation types and the low-level ``convert_to_list`` helper live in
 ``inversion_data._site_options``; their former ``acquisition`` and
 ``get_data.convert_to_list`` import aliases are removed.
 
-Import legacy option translators from ``hbmcmc.compatibility`` instead of
-``rhime.params`` or ``hbmcmc.run_hbmcmc``. Import ``read_rhime_ini`` from
+During 0.8, legacy callers import their option translators and dictionary adapter
+from ``hbmcmc.compatibility``. Modern callers do not use this package. Import ``read_rhime_ini`` from
 ``rhime.ini`` or the public ``rhime`` package instead of ``rhime.params``.
 
 Legacy merged-data metadata

@@ -479,7 +479,6 @@ def prepared_from_real_route(
             "basis_algorithm": "quadtree",
             "nbasis": 4,
             "use_bc": True,
-            "bc_basis_directory": default_bc_basis_directory,
         }
     )
     return prepare_inputs(**preparation_args)

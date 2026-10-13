@@ -9,7 +9,7 @@ from __future__ import annotations
 import warnings
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, get_type_hints
 
 _ALIASES = {
     "outputpath": "output_path",
@@ -322,6 +322,10 @@ def adapt_resource_params(
     from openghg_inversions.basis.compatibility import _basis_artifact_files, _is_basis_datatree_artifact
     from openghg_inversions.config.paths import Paths
     from openghg_inversions.rhime._resources import resolve_resource_paths
+    from openghg_inversions.rhime.params import RhimeConfig
+    from openghg_inversions.rhime.specs import RhimeOutputSpec
+
+    annotations = get_type_hints(RhimeConfig) | get_type_hints(RhimeOutputSpec)
 
     invocation_dir = Path.cwd()
     file_base = invocation_dir if base_dir is None else base_dir
@@ -385,6 +389,6 @@ def adapt_resource_params(
                     if origins.get(name, file_base) == file_base}
     invocation_options = {name: value for name, value in translated.items() if name not in file_options}
     return (
-        resolve_resource_paths(file_options, base_dir=file_base)
-        | resolve_resource_paths(invocation_options, base_dir=invocation_dir)
+        resolve_resource_paths(file_options, annotations=annotations, base_dir=file_base)
+        | resolve_resource_paths(invocation_options, annotations=annotations, base_dir=invocation_dir)
     )

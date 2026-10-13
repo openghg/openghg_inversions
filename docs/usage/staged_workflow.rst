@@ -41,7 +41,8 @@ Filesystem annotations identify the fields to convert: resolved configuration
 uses ``Path`` values, including tuples of paths, while parameter JSON and stage
 manifests store paths as strings and path collections as JSON arrays. Scientific
 strings such as domain names are unchanged; configuration construction does not
-load scientific resources.
+load scientific resources. Each owner converts its declared fields once; later
+configured execution and identity encoding forward canonical paths.
 
 For file-backed boundary conditions, specify exact files, for example
 ``"bc_basis_paths": ["bc/january.nc", "bc/february.nc"]`` in the parameter JSON.
@@ -49,10 +50,12 @@ For file-backed boundary conditions, specify exact files, for example
 data to sensitivity construction, preserving time combination and alignment.
 Missing or unreadable selected files fail before acquisition. Omit
 ``bc_basis_paths`` for NESW: it uses acquired directional contributions without
-reading a BC basis file. A historical ``bc_basis_directory`` supplied with NESW
-warns that it is unused and deprecated, even if the directory does not exist.
-Disabled BCs load no BC basis resources. Supported historical resource selectors
-are translated at the input compatibility boundary after winning overrides.
+reading a BC basis file. Disabled BCs load no BC basis resources. Staged commands
+reject historical ``fp_basis_case``, ``basis_directory``, ``bc_basis_case`` and
+``bc_basis_directory`` options. Use explicit modern paths. During 0.8, only the
+HBMCMC entry route translates those historical selectors after winning overrides;
+on that route, an NESW directory warns that it is unused without any lookup.
+
 
 ``country_directory`` is removed in 0.8. Use ``country_file`` for reporting,
 ``landsea_path`` for preparation land/sea classes, or ``outer_regions_path`` for
@@ -69,10 +72,12 @@ parameter file and pass that path (for example beneath ``SOURCE_DIR`` or
 ``RUN_ROOT/scripts``).
 
 Legacy fixedbasis-style PARIS INIs contain options such as ``nit``, ``nchain``,
-``xprior`` and ``mcmc_type``.  Their translation remains owned by the existing
-``run_hbmcmc`` compatibility path.  Do not copy those aliases into a staged
-JSON file; use canonical RHIME names or first migrate the configuration through
-that existing compatibility boundary.
+``xprior`` and ``mcmc_type``. Fixedbasis policy such as ``nit``, ``nchain`` and
+``mcmc_type`` belongs to the temporary ``run_hbmcmc`` route in 0.8. Modern name
+aliases such as ``xprior`` remain supported with their existing warning and
+precedence, but prefer ``x_prior`` in new files. Migrate fixedbasis policy and
+resource discovery to canonical RHIME options before using staged commands.
+The entire HBMCMC subpackage and its entry points are removed in 0.9.
 
 For ``--model co2``, pass ``--config co2.toml`` using the CO2-family TOML
 vocabulary, or a ``--params-file`` JSON object with the same nested structure.

@@ -12,11 +12,10 @@ from __future__ import annotations
 
 from openghg_inversions.native_flux import resolve_runtime_flux
 from openghg_inversions.basis.support import load_bc_basis
-from openghg_inversions.hbmcmc.compatibility import adapt_resource_params
 from openghg_inversions.basis import prepare_basis
 from openghg_inversions.basis.basis_functions import BASIS_ARTIFACT_PATH_ATTR
 from openghg_inversions.rhime.preparation import resolve_basis_inputs
-from openghg_inversions.rhime._resources import resolve_config_paths
+from openghg_inversions.rhime._resources import resolve_resource_paths
 from openghg_inversions._flux_options import UNSET, _Unset, normalise_flux_aliases, resolve_deprecated_keyword
 
 from collections.abc import Mapping, Sequence
@@ -24,7 +23,7 @@ from dataclasses import dataclass, replace
 import hashlib
 from numbers import Integral
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, Literal, cast, get_type_hints
 
 from dask import compute as dask_compute
 import numpy as np
@@ -875,10 +874,10 @@ def prepare_nested_rhime_inputs(
         inner_basis_partition_paths: Explicit collection of labelled inner partition files.
         inner_landsea_path: Exact selected inner land/sea support map.
         inner_outer_regions_path: Exact selected inner fixed-outer support map.
-        inner_fp_basis_case: Deprecated saved inner basis case; takes precedence over
-            an inner basis algorithm.
-        inner_basis_directory: Deprecated directory for historical inner case
-            selection, translated at this entry boundary.
+        inner_fp_basis_case: Unsupported historical selector; use inner_basis_path
+            or inner_basis_partition_path instead.
+        inner_basis_directory: Unsupported historical directory; select an exact
+            inner basis path instead.
         inner_country_directory: Removed in 0.8; use inner_landsea_path or
             inner_outer_regions_path for preparation, country_file for reporting.
         inner_basis_output_path: Exact retained-artifact destination for the
@@ -920,7 +919,7 @@ def prepare_nested_rhime_inputs(
 
     # Outer overlap masking leaves an intentionally empty inner basis region.
     # Allow that fixed label when constructing the outer basis below.
-    outer_config = resolve_config_paths(config)
+    outer_config = config
     inner_domain_name = _inner_domain_name(config.domain, inner_domain)
     inner_basis_options = {
         "domain": inner_domain_name,
@@ -931,11 +930,14 @@ def prepare_nested_rhime_inputs(
         "outer_regions_path": inner_outer_regions_path,
         "basis_output_path": inner_basis_output_path,
     }
-    if inner_fp_basis_case is not None:
-        inner_basis_options["fp_basis_case"] = inner_fp_basis_case
-    if inner_basis_directory is not None:
-        inner_basis_options["basis_directory"] = inner_basis_directory
-    inner_basis_options = adapt_resource_params(inner_basis_options)
+    if inner_fp_basis_case is not None or inner_basis_directory is not None:
+        raise ValueError(
+            "Historical inner basis selectors are not supported by modern RHIME; "
+            "use `inner_basis_path`, `inner_basis_partition_path` or `inner_basis_partition_paths`."
+        )
+    inner_basis_options = resolve_resource_paths(
+        inner_basis_options, annotations=get_type_hints(RhimeConfig), base_dir=Path.cwd(),
+    )
     inner_config = replace(
         config,
         **inner_basis_options,
@@ -949,14 +951,13 @@ def prepare_nested_rhime_inputs(
         output_name=f"{config.output_name}_inner",
         basis_algorithm=(
             inner_basis_algorithm if inner_basis_algorithm is not None
-            else (None if inner_fp_basis_case is not None else "quadtree")
+            else "quadtree"
         ),
         bc_basis_paths=None,
         fix_basis_outer_regions=False,
         nbasis=inner_nbasis if inner_nbasis is not None else config.nbasis,
     )
 
-    inner_config = resolve_config_paths(inner_config)
     preparation_start = timer_start()
     support_maps = [resolve_basis_inputs(domain_config) for domain_config in (outer_config, inner_config)]
     bc_basis = load_bc_basis(outer_config.bc_basis_paths) if outer_config.use_bc and outer_config.bc_basis_paths is not None else None
@@ -1506,8 +1507,11 @@ def run_nested(
     if "inner_country_directory" in params:
         raise ValueError("`inner_country_directory` was removed in 0.8; use `inner_landsea_path` "
                          "or `inner_outer_regions_path` for preparation and `country_file` for reporting.")
-    if params.get("inner_fp_basis_case") is not None and "inner_basis_directory" not in params:
-        params["inner_basis_directory"] = params.get("basis_directory")
+    if {"inner_fp_basis_case", "inner_basis_directory"} & params.keys():
+        raise ValueError(
+            "Historical inner basis selectors are not supported by modern RHIME; "
+            "use `inner_basis_path`, `inner_basis_partition_path` or `inner_basis_partition_paths`."
+        )
     nested_options = {name: params.pop(name) for name in tuple(params) if name in _NESTED_PARAMETER_NAMES}
     inner_domain = nested_options.pop("inner_domain", None)
     if inner_domain is None:
@@ -1519,12 +1523,11 @@ def run_nested(
 
     if likelihood_builder is not None and params.get("mismatch_model") is not None:
         raise ValueError("A custom likelihood cannot be combined with a built-in mismatch model.")
-    config = RhimeConfig.from_params(adapt_resource_params(params), multisector=False)
+    config = RhimeConfig.from_params(params, multisector=False)
     if likelihood_builder is None and config.model.likelihood is None:
         raise ValueError("A nested RHIME run requires a built-in or custom likelihood.")
     if config.output.output_format not in ("none", "paris"):
         raise ValueError("`run_rhime_nested` currently requires output_format='none' or 'paris'.")
-    config = resolve_config_paths(config)
     validate_output_resources(config.output)
     prepared = prepare_nested_rhime_inputs(
         config,

@@ -87,12 +87,11 @@ labelled arrays:
    from openghg_inversions.basis import prepare_basis
    from openghg_inversions.basis.support import load_bc_basis
    from openghg_inversions.basis.basis_functions import BASIS_ARTIFACT_PATH_ATTR
-   from openghg_inversions.rhime._resources import resolve_config_paths
    from openghg_inversions.native_flux import resolve_runtime_flux
    from openghg_inversions.rhime.preparation import resolve_basis_inputs
    from openghg_inversions.rhime import validate_output_resources
 
-   config = resolve_config_paths(config)
+   # config was constructed from external options with RhimeConfig.from_params.
    # For a complete run that will produce outputs:
    validate_output_resources(config.output)
    basis_inputs = resolve_basis_inputs(config)
@@ -131,9 +130,10 @@ accepts no export destination and performs no export write. Sensitivity construc
 and input assembly consume the returned ``BasisFunctions``. Pass ``bc_basis`` to
 ``build_sensitivities``; ``None`` uses NESW without any BC basis-file I/O.
 Historical names,
-case/glob discovery and filename construction end at the compatibility entry
-boundary described in :doc:`rhime_configuration`; these scientific steps receive
-resolved values.
+case/glob discovery and filename construction belong only to the temporary
+HBMCMC entry route described in :doc:`rhime_configuration`. Modern custom runners
+accept explicit selections and forward already resolved paths. These scientific
+steps receive resolved values.
 
 ``runtime_flux`` is native prior flux, resolved once for this domain/grid
 context. It retains all sources and their signed values. ``weighting_flux``
@@ -181,7 +181,9 @@ provenance. Its arrays remain borrowed and may be Dask-backed. It has no
 window bounds alongside other retrieval choices. For example,
 ``AcquisitionFacts(species="ch4", domain="EUROPE")`` makes no claim about dates.
 Explicit ``from_legacy_fp_all`` and ``to_legacy_fp_all`` utility functions
-in ``openghg_inversions.hbmcmc.legacy_data`` support legacy callers until 0.9.
+in ``openghg_inversions.hbmcmc.legacy_data`` support legacy callers in 0.8.
+The entire HBMCMC subpackage, including these utilities, is removed in 0.9;
+see :doc:`legacy_and_migration` for replacements and older-release guidance.
 They are separate from the modern data model.
 
 Acquisition stays in memory. For a reusable file, prepare the data with the

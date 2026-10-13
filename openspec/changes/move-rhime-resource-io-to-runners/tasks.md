@@ -5,7 +5,7 @@ selected-resource checks already exist; preserve their tests and scientific beha
 
 ## 1. Runner-owned resources and exports
 
-- [ ] 1.1 Resolve file resource values and explicit invocation overrides at their
+- [x] 1.1 Resolve file resource values and explicit invocation overrides at their
   owning boundary; verify selected paths from a different working directory,
   absolute paths and equivalent full/staged requests.
   Drive conversion from declared path fields, preserving each value's origin;
@@ -19,7 +19,7 @@ selected-resource checks already exist; preserve their tests and scientific beha
   staged and copied/example caller to the existing save codec; verify generated,
   reused and partition bases, export metadata, no unrequested writes and exact
   destinations inside/outside checkpoint directories without a repeated prefix.
-- [ ] 1.3 Update affected API documentation and add the #868 release note; pass
+- [x] 1.3 Update affected API documentation and add the #868 release note; pass
   focused caller/scientific parity checks, including early missing-resource errors
   without fallback or read-side directory creation.
   Add a 0.8 migration section and a distinct list of planned 0.9 deprecations and

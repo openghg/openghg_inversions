@@ -991,7 +991,6 @@ def test_configuration_identity_does_not_visit_opaque_output_options():
 @pytest.mark.parametrize("use_override", [False, True])
 @pytest.mark.parametrize("absolute", [False, True])
 def test_resource_origins_match_full_requests(tmp_path, monkeypatch, use_override, absolute):
-    from openghg_inversions.rhime._resources import resolve_config_paths
     from openghg_inversions.rhime._standard_stages import load_stage_params
     from openghg_inversions.rhime.params import RhimeConfig
 
@@ -1013,8 +1012,8 @@ def test_resource_origins_match_full_requests(tmp_path, monkeypatch, use_overrid
     base = invocation if use_override else config_dir
     expected = {name: base / value for name, value in resources.items()}
     assert {name: loaded[name] for name in resources} == expected
-    full = resolve_config_paths(RhimeConfig.from_params(_params(**expected), multisector=False))
-    staged = resolve_config_paths(RhimeConfig.from_params(loaded, multisector=False))
+    full = RhimeConfig.from_params(_params(**expected), multisector=False)
+    staged = RhimeConfig.from_params(loaded, multisector=False)
     for name, path in expected.items():
         if name == "country_file":
             assert full.output.country_file == staged.output.country_file == path

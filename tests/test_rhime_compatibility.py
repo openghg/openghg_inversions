@@ -4,6 +4,7 @@ import os
 import subprocess
 import sys
 import warnings
+from pathlib import Path
 
 import pytest
 
@@ -47,7 +48,7 @@ def test_dictionary_adapter_applies_overrides_before_normalizing(tmp_path):
             start_date="2020-01-01",
             extra_kwargs={"output_path": "final", "x_prior": {"pdf": "normal"}},
         )
-    assert result["output_path"] == "final"
+    assert result["output_path"] == Path.cwd() / "final"
     assert result["start_date"] == "2020-01-01"
     assert result["draws"] == 7
     assert result["x_prior"] == {"pdf": "normal"}
@@ -97,9 +98,50 @@ assert "pytensor" not in sys.modules
     subprocess.run([sys.executable, "-c", code], env=os.environ.copy(), check=True)
 
 
-def test_output_alias_and_public_adapter_import():
-    from openghg_inversions.rhime import params_from_config as public_adapter
+def test_output_alias_and_legacy_only_adapter_import():
+    import openghg_inversions.rhime as rhime
 
-    assert public_adapter is params_from_config
+    assert not hasattr(rhime, "params_from_config")
     with pytest.warns(DeprecationWarning, match="output_format"):
         assert translate_rhime_aliases({"output_format": "HBMCMC"}) == {"output_format": "legacy"}
+
+
+def test_dictionary_resource_translation_respects_raw_mode_and_winning_overrides(tmp_path, monkeypatch):
+    path = tmp_path / "legacy.ini"
+    path.write_text('[RUN]\ndomain = "EUROPE"\nbc_basis_case = "missing"\n'
+                    'bc_basis_directory = "absent"\nfp_basis_case = "missing"\nbasis_directory = "absent"\n')
+    overrides = {"bc_basis_case": "NESW", "fp_basis_case": None}
+    original = dict(overrides)
+
+    def no_glob(*args, **kwargs):
+        pytest.fail("superseded missing cases must not be discovered")
+
+    monkeypatch.setattr(Path, "glob", no_glob)
+    with pytest.warns(DeprecationWarning):
+        raw = params_from_config(path, normalise=False, extra_kwargs=overrides)
+    assert raw["bc_basis_case"] == "NESW"
+    assert raw["bc_basis_directory"] == "absent"
+    with pytest.warns(DeprecationWarning):
+        normalized = params_from_config(path, extra_kwargs=overrides)
+    assert normalized == {"domain": "EUROPE"}
+    assert overrides == original
+
+
+def test_dictionary_resource_translation_selects_explicit_files(tmp_path):
+    path = tmp_path / "legacy.ini"
+    domain_dir = tmp_path / "EUROPE"
+    domain_dir.mkdir()
+    basis_file = domain_dir / "custom_EUROPE_2019.nc"
+    basis_file.touch()  # Translation selects paths; loading belongs to the runner.
+    path.write_text(f'[RUN]\ndomain = "EUROPE"\nbc_basis_case = "custom"\n'
+                    f'bc_basis_directory = "{tmp_path}"\n')
+    with pytest.warns(DeprecationWarning):
+        normalized = params_from_config(path)
+    assert normalized == {"domain": "EUROPE", "bc_basis_paths": (basis_file,)}
+
+
+def test_dictionary_removed_country_directory_is_an_error(tmp_path):
+    path = tmp_path / "legacy.ini"
+    path.write_text('[RUN]\ncountry_directory = "old"\n')
+    with pytest.warns(DeprecationWarning), pytest.raises(ValueError, match="country_file.*landsea_path.*outer_regions_path"):
+        params_from_config(path)

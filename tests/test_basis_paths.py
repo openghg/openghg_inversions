@@ -194,7 +194,6 @@ def test_runners_export_returned_basis_without_mutating_inputs(tmp_path, monkeyp
     from importlib import import_module
 
     from openghg_inversions.inversion_data import RhimeMergedData, SiteOptions
-    from openghg_inversions.rhime._resources import resolve_config_paths
 
     module = import_module(
         "examples.rhime_customisation.runner" if route == "example"
@@ -254,8 +253,7 @@ def test_runners_export_returned_basis_without_mutating_inputs(tmp_path, monkeyp
         if route == "staged":
             module.prepare_rhime_stage(setup=config, model="standard", output_dir="runs/prepared")
         elif route == "nested":
-            resolved = resolve_config_paths(config)
-            module._prepare_one_domain(merged, resolved, basis_support_maps=resolve_basis_inputs(resolved))
+            module._prepare_one_domain(merged, config, basis_support_maps=resolve_basis_inputs(config))
         elif route == "example":
             module.run_custom_rhime(**options)
         elif route == "multisector":

@@ -228,11 +228,10 @@ def prepare_inputs(**params):
     from openghg_inversions.inversion_data import RhimeMergedData
     from openghg_inversions.rhime.params import RhimeConfig
     from openghg_inversions.rhime import preparation
-    from openghg_inversions.hbmcmc.compatibility import adapt_resource_params
     from openghg_inversions.basis.support import load_bc_basis
     from openghg_inversions.basis.basis_functions import BASIS_ARTIFACT_PATH_ATTR
 
-    config = RhimeConfig.from_params(adapt_resource_params({"output_format": "none", **params}),
+    config = RhimeConfig.from_params({"output_format": "none", **params},
                                      multisector=params.get("split_by_sectors", False))
     basis_inputs = preparation.resolve_basis_inputs(config)
     bc_basis = load_bc_basis(config.bc_basis_paths) if config.use_bc and config.bc_basis_paths is not None else None

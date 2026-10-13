@@ -107,14 +107,19 @@ resolution expands the final values together. The resulting ``config`` can be
 passed to a runner without resolving again.
 
 ``RhimeConfig.from_params`` is the single construction entry point; the former
-``resolve_rhime_config`` wrapper has been removed. The constructor calls the
-translator in ``hbmcmc.compatibility`` and emits ``DeprecationWarning`` when a
-deprecated name or output-format value is replaced or removed. For historical HBMCMC aliases, canonical names take precedence. Modern flux
-keyword deprecations follow the stricter rules below. Canonical inputs emit no
-deprecation warning. The deprecated
-``params_from_config`` adapter retains its dictionary return, overrides and
-``normalise`` control there; modern readers and runners do not depend on that
-adapter. Prefer modern names such as ``x_prior``, ``output_name`` and
+``resolve_rhime_config`` wrapper has been removed. Modern alias handling emits
+``DeprecationWarning`` when a supported deprecated name or output-format value
+is replaced or removed. For retained RHIME name aliases such as ``xprior`` and
+``outputname``, canonical names take precedence. Modern flux keyword
+deprecations follow the stricter rules below. Canonical inputs emit no warning.
+Modern configuration and runners do not import or call HBMCMC.
+
+The deprecated dictionary-returning ``params_from_config`` adapter is available
+only from ``openghg_inversions.hbmcmc.compatibility`` during 0.8; its RHIME
+re-export is removed. It retains overrides and ``normalise`` control, and its
+normalized route translates historical selections after overrides. Modern
+callers use ``read_rhime_ini``, apply overrides, then call
+``RhimeConfig.from_params`` as above. Prefer ``x_prior``, ``output_name`` and
 ``flux_sources`` when migrating code or files.
 
 Basis artifact defaults and the 0.8 transition are described below; a redesign
@@ -169,9 +174,11 @@ writing an export and no longer accepts ``output_path``. Runners explicitly
 save it through ``BasisFunctions.save`` when ``basis_output_path`` is requested,
 then retain the selected export path in metadata. The application helper
 ``rhime.preparation.resolve_basis_inputs(config)`` loads these scientific inputs.
-Historical case/directory selections are translated earlier, at the HBMCMC input
-compatibility boundary after winning overrides; resolved requests contain
-explicit selections. The numerical functions do no file discovery.
+Historical case/directory selections are accepted only by the temporary HBMCMC
+entry points in 0.8, which translate winning selections before calling modern
+APIs. Modern runners reject ``fp_basis_case``, ``basis_directory``,
+``bc_basis_case`` and ``bc_basis_directory`` before acquisition; resolved requests
+contain explicit selections. The numerical functions do no file discovery.
 When the selected algorithm needs a packaged support map, the application
 resolves omitted support paths to that exact domain's packaged resources.
 Explicit paths take precedence; missing files do not fall back to defaults.
@@ -231,8 +238,7 @@ resolved data, not ``bc_basis_case`` or ``bc_basis_directory`` discovery options
 
 The default NESW calculation uses acquired directional boundary contributions
 and needs no basis file. Leave ``bc_basis_paths`` unset for NESW; scientific
-calls use ``bc_basis=None``. Supported historical case/directory selections are
-translated at the input compatibility boundary. A legacy
+calls use ``bc_basis=None``. On the HBMCMC route only, a legacy
 ``bc_basis_directory`` supplied with NESW warns that it is unused and deprecated;
 it triggers neither discovery nor a missing-directory error. ``use_bc=False``
 skips BC resource loading.
@@ -346,5 +352,10 @@ keep their destinations. Ordinary full-run INI values retain the invocation
 working directory convention. Filesystem fields are declared as ``Path`` types,
 including optional paths and collections such as ``bc_basis_paths``. Frontends
 accept path strings and convert only these annotated fields; domain names and
-scientific selectors remain ordinary strings. Configuration construction resolves
-paths without loading scientific resources.
+scientific selectors remain ordinary strings. Each configuration owner supplies
+its own field annotations to the independent converter. External-input factories
+resolve paths once without loading resources; configured runners and identity
+encoding forward canonical values. Direct dataclass construction expects resolved
+values. ``RhimeOutputSpec.from_params`` accepts external output options on its
+own, without constructing a full run. Explicit ``save_trace`` and
+``save_inversion_output`` paths remain supported alongside their Boolean switches.

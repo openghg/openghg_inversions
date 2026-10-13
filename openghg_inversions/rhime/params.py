@@ -13,9 +13,10 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import MISSING, dataclass, field, fields
 from pathlib import Path
-from typing import Any, ClassVar, cast, get_args
+from typing import Any, ClassVar, cast, get_args, get_type_hints
 
 from openghg_inversions._flux_options import normalise_flux_aliases
+from openghg_inversions.rhime._resources import resolve_resource_paths
 from openghg_inversions.flux_sanitization import FluxNonFiniteCheck
 from openghg_inversions.inversion_data._site_options import SiteOptions
 from openghg_inversions.model_error import MinErrorConfig
@@ -24,7 +25,7 @@ from openghg_inversions.model_error import normalise_min_error, normalise_min_er
 from openghg_inversions.models._flux import safe_pymc_name
 from openghg_inversions.observation_error import AggregationErrorMode
 from openghg_inversions.inference.sampling import RhimeSampler
-from openghg_inversions.hbmcmc.compatibility import (
+from openghg_inversions.rhime._aliases import (
     translate_rhime_aliases,
 )
 from openghg_inversions.rhime.specs import (
@@ -58,7 +59,7 @@ class RhimeConfig:
     numerical values. Modern ``emissions_store``/``emissions_domain`` spellings
     are removed in 0.9; supplying either with its ``flux_*`` replacement is an
     error, including equal values. Resolved fields use only ``flux_*`` names.
-    Entry adapters translate historical basis selectors before construction.
+    HBMCMC entry points translate historical basis selectors before construction.
     Canonical requests retain only exact typed paths; resource loading belongs
     to runners. ``country_directory`` was removed in 0.8.
     Direct construction and dataclass replacement expect
@@ -165,10 +166,8 @@ class RhimeConfig:
             ValueError: If options are missing, unsupported, malformed, or
                 incompatible with the selected runner mode.
         """
-        from ._resources import resolve_resource_paths
-
         normalized = normalise_rhime_params(translate_rhime_aliases(params))
-        normalized = resolve_resource_paths(normalized, base_dir=Path.cwd())
+        normalized = resolve_resource_paths(normalized, annotations=get_type_hints(cls), base_dir=Path.cwd())
         validate_supported_params(normalized)
         validate_required_params(normalized)
 

@@ -81,7 +81,6 @@ from openghg_inversions.rhime import (
     RhimeRunSpec,
     RhimeSampler,
     SectorSpec,
-    params_from_config,
     resolve_flux_sources,
     run_rhime,
     run_rhime_from_prepared_inputs,
@@ -94,6 +93,7 @@ from openghg_inversions.rhime.standard import (
     build_standard_rhime_model as _build_rhime_model,
 )
 from openghg_inversions.sigma import SigmaAlignment
+from openghg_inversions.hbmcmc.compatibility import params_from_config
 from openghg_inversions.hbmcmc.legacy_data import (
     from_legacy_fp_all,
     to_legacy_fp_all,
@@ -113,7 +113,6 @@ def rhime_inv_inputs(
         flux_sources=flux_sources,
         bc_freq="3h",
         min_error=0.0,
-        bc_basis_directory=default_bc_basis_directory,
     )
     return prepared.inv_inputs
 
@@ -5527,7 +5526,6 @@ def _rhime_preparation_args(data_args: dict, flux_sources: list[str], bc_basis_d
             "basis_algorithm": "quadtree",
             "nbasis": 4,
             "use_bc": True,
-            "bc_basis_directory": bc_basis_directory,
         }
     )
     return args
@@ -8750,7 +8748,6 @@ def test_run_rhime_api_smoke(
             "output_path": str(tmp_path),
             "basis_algorithm": "quadtree",
             "basis_output_path": str(tmp_path / "selected-basis.nc"),
-            "bc_basis_directory": default_bc_basis_directory,
             "nbasis": 4,
             "draws": 1,
             "burn": 0,
@@ -8892,7 +8889,6 @@ def test_run_rhime_multisector_api_smoke(
             "output_path": str(tmp_path),
             "basis_algorithm": "quadtree",
             "basis_output_path": str(tmp_path / "selected-basis.nc"),
-            "bc_basis_directory": default_bc_basis_directory,
             "nbasis": 4,
             "draws": 1,
             "burn": 0,

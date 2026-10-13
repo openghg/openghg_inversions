@@ -469,7 +469,7 @@ def test_custom_basis_runner_resolves_before_loading_project_artifact(
         species="ch4", sites=["TAC"], domain="EUROPE", averaging_period="1h",
         start_date="2019-01-01", end_date="2019-02-01", output_name="artifact",
         output_format="none", flux_sources=["inventory"],
-        project_basis_path=str(artifact_path), basis_algorithm=algorithm, fp_basis_case=None,
+        project_basis_path=str(artifact_path), basis_algorithm=algorithm,
         max_child_pca_eccentricity=7.0,
     )
     merged = RhimeMergedData(

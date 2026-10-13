@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from openghg_inversions.native_flux import resolve_runtime_flux
 from openghg_inversions.basis.support import load_bc_basis
-from openghg_inversions.hbmcmc.compatibility import adapt_resource_params
 from openghg_inversions.basis import prepare_basis
 from openghg_inversions.basis.basis_functions import BASIS_ARTIFACT_PATH_ATTR
 from openghg_inversions.rhime.preparation import resolve_basis_inputs
@@ -19,7 +18,7 @@ from hashlib import sha256
 import json
 from numbers import Integral
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, Literal, cast, get_type_hints
 from collections.abc import Mapping
 
 import numpy as np
@@ -29,8 +28,9 @@ import xarray as xr
 from openghg_inversions._timing import timed
 from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs
 from openghg_inversions.inference.sampling import resolve_sampler
-from .specs import RhimeRunSpec
-from ._resources import resolve_config_paths
+from .specs import RhimeRunSpec, RhimeOutputSpec
+from ._resources import resolve_resource_paths
+from ._aliases import _ALIASES, translate_rhime_aliases
 from openghg_inversions.serialization import (
     load_trace,
     reset_serialisation_multiindexes,
@@ -114,7 +114,20 @@ def load_stage_params(
         if not isinstance(loaded, dict):
             raise ValueError(f"RHIME params file {source_path} must contain one JSON object.")
         params = loaded
-    return adapt_resource_params(params, base_dir=source_path.parent, overrides=overrides)
+    winning = {**params, **(overrides or {})}
+    translated = translate_rhime_aliases(winning)
+    invocation_names = {
+        _ALIASES.get(name, name) for name in overrides or {}
+        if name not in _ALIASES or _ALIASES[name] not in winning
+    }
+    annotations = get_type_hints(RhimeConfig) | get_type_hints(RhimeOutputSpec)
+    return resolve_resource_paths(
+        {name: value for name, value in translated.items() if name not in invocation_names},
+        annotations=annotations, base_dir=source_path.parent,
+    ) | resolve_resource_paths(
+        {name: value for name, value in translated.items() if name in invocation_names},
+        annotations=annotations, base_dir=Path.cwd(),
+    )
 
 
 def effective_configuration(setup: RhimeConfig, *, model: ModelKind) -> dict[str, Any]:
@@ -144,7 +157,6 @@ def configuration_identity(setup: RhimeConfig, *, model: ModelKind) -> str:
     The resolved encoding supersedes historical raw/default projections;
     existing artifacts with a different configuration identity require preparation.
     """
-    setup = resolve_config_paths(setup)
     site_names = {field.name for field in fields(setup.site_options)}
     preparation = setup.select(*(RHIME_PREPARATION_OPTION_NAMES - site_names))
     preparation.update({name: getattr(setup.site_options, name) for name in site_names})
@@ -178,7 +190,6 @@ def prepare_rhime_stage(
     it is not relocated below ``output_dir``. The stage writes prepared inputs
     and their manifest below ``output_dir`` and returns the manifest mapping.
     """
-    setup = resolve_config_paths(setup)
     multisector = model == "multisector"
     basis_inputs = resolve_basis_inputs(setup)
     bc_basis = load_bc_basis(setup.bc_basis_paths) if setup.use_bc and setup.bc_basis_paths is not None else None
@@ -430,7 +441,6 @@ def postprocess_rhime_stage(
     manifests retain graph reconstruction to recover their missing roles.
     Output settings may change; the sampled scientific configuration may not.
     """
-    setup = resolve_config_paths(setup)
     validate_output_resources(setup.output)
     destination = _stage_output_directory(output_dir)
     configured_output = setup.output

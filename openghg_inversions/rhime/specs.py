@@ -5,9 +5,10 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field, fields
 from pathlib import Path
-from typing import Any, ClassVar, Literal, cast, get_args
+from typing import Any, ClassVar, Literal, cast, get_args, get_type_hints
 
 from openghg_inversions.inversion_inputs import DatetimeLike
+from openghg_inversions.rhime._resources import resolve_resource_paths
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.models.additive_sigma import DEFAULT_ADDITIVE_SIGMA_PRIOR
 from openghg_inversions.models.state_activity import StateActivity
@@ -472,8 +473,6 @@ def make_output_spec(
         save_inversion_output=save_inversion_output,
         multisector=multisector,
     )
-    from ._resources import resolve_resource_paths
-
     options = dict(
         output_format=cast(OutputFormat, output_format),
         output_path=output_path,
@@ -484,4 +483,4 @@ def make_output_spec(
         paris_postprocessing_kwargs=paris_postprocessing_kwargs,
         output_filename_convention=cast(OutputFilenameConvention, output_filename_convention),
     )
-    return RhimeOutputSpec(**resolve_resource_paths(options, base_dir=Path.cwd()))
+    return RhimeOutputSpec(**resolve_resource_paths(options, annotations=get_type_hints(RhimeOutputSpec), base_dir=Path.cwd()))
