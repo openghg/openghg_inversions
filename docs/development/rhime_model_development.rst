@@ -18,6 +18,19 @@ capability specifications and usage references. See :doc:`specifications` for
 those sources and how to establish their review and delivery status.
 A design recommendation is not evidence that an API implements it.
 
+Keep legacy dependencies one-way
+--------------------------------
+
+The pending :download:`HBMCMC isolation and retirement contract
+<../../openspec/changes/isolate-and-retire-hbmcmc/specs/hbmcmc-isolation-retirement/spec.md>`
+sets the target boundary: HBMCMC may call modern APIs, while production code
+outside HBMCMC must not import, re-export or execute through it. Keep historical
+translation inside the legacy entry point. Give retained modern behavior modern
+owners; small duplication inside HBMCMC is acceptable to preserve this direction.
+The separate contract owns the exact compatibility rules and 0.9 removal timing.
+This proposal is awaiting implementation and acceptance; see :doc:`specifications`
+for delivery status.
+
 Start with the scientific recipe
 --------------------------------
 

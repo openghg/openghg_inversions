@@ -71,6 +71,13 @@ The configuration entry was amended on 13 October 2026 during review of PR 867.
        <../../openspec/specs/retained-state-reconstruction/spec.md>`
      - Delivered scientific capability; implemented routes and limitations in
        :doc:`/usage/retained_state_reconstruction`.
+   * - HBMCMC dependency direction and retirement
+     - :download:`HBMCMC isolation and retirement proposal
+       <../../openspec/changes/isolate-and-retire-hbmcmc/proposal.md>`
+     - Pending review and implementation in
+       `PR 869 <https://github.com/openghg/openghg_inversions/pull/869>`_.
+       Separates 0.8 isolation from complete 0.9 removal. Owns the dependency
+       boundary; path conversion and resource loading stay with resource I/O.
    * - Saved CO2 affine reconstruction
      - :download:`CO2 affine output reconstruction
        <../../openspec/specs/co2-output-reconstruction/spec.md>`

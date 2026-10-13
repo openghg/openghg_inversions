@@ -6,7 +6,8 @@
 
 Except for the resource-I/O migrations removing `prepare_basis(output_path=...)`
 and `country_directory` in 0.8 and replacing scientific BC case/directory inputs
-with resolved basis data,
+with resolved basis data, the legacy-only routing and namespace migration owned
+by the [pending HBMCMC isolation/retirement contract](../../../isolate-and-retire-hbmcmc/specs/hbmcmc-isolation-retirement/spec.md),
 the removed `prepare_rhime_inputs` convenience function, obsolete
 modern merged-cache options, former stage adapter, `resolve_rhime_config`,
 transitional old-location imports and revised INI reader contract specified below, supported
@@ -64,7 +65,8 @@ independently of historical artifact policy. Scientific preparation and numerica
 kernels SHALL NOT depend on legacy discovery or naming policy.
 
 `RhimeConfig.from_params` SHALL remain data-free. Supported deprecated resource
-selectors SHALL be translated once at entry compatibility boundaries before
+selectors SHALL be translated once at the legacy entry boundary defined by the
+separate HBMCMC isolation/retirement contract before
 canonical configuration is handed to scientific execution; resolved requests
 SHALL NOT retain historical case/directory discovery fields. The removed
 `country_directory` option SHALL be rejected rather than translated. Resource
@@ -90,9 +92,17 @@ retain their distinct bases during conversion. Ordinary strings such as domain
 names and scientific selectors SHALL NOT be interpreted as paths.
 
 Path-field identification SHALL use type annotations through a small
-standard-library converter, without a second path-name registry or a new
-configuration framework dependency. Historical selection translation SHALL
-precede canonical conversion; packaged scientific defaults remain runner-owned.
+standard-library converter supplied with the owning record's declarations. The
+converter SHALL NOT import concrete configuration owners or inspect unrelated
+configuration records. No second path-name registry or new configuration framework
+dependency SHALL be introduced. Each external value SHALL acquire its base and
+canonical path at one owning boundary; downstream factories, runners and identity
+encoding SHALL forward resolved paths without repeating normalization. Independent
+output configuration SHALL normalize its own external inputs without requiring a
+complete run configuration. Historical selection translation, when applicable
+under the separate legacy contract, SHALL precede canonical construction;
+packaged scientific defaults remain runner-owned. Canonical construction SHALL
+NOT glob or open candidate resource artifacts.
 
 #### Scenario: Typed paths retain their frontend origins
 
@@ -100,3 +110,16 @@ precede canonical conversion; packaged scientific defaults remain runner-owned.
 - **THEN** conversion produces absolute `Path` values using each value's file or invocation base
 - **AND** non-path strings retain their scientific meaning without path conversion
 - **AND** configuration construction performs no scientific resource loading
+
+#### Scenario: Forward a resolved request
+
+- **WHEN** a configured runner or identity encoder receives canonical configuration
+- **THEN** it uses the resolved paths without another conversion or legacy adaptation
+- **AND** direct canonical construction accepts resolved values, while public
+  external-input factories accept supported path strings
+
+#### Scenario: Construct output configuration independently
+
+- **WHEN** a caller constructs only output configuration from external strings
+- **THEN** its owner converts only its declared filesystem fields using the invocation base
+- **AND** it does not inspect or construct full run configuration or load resources

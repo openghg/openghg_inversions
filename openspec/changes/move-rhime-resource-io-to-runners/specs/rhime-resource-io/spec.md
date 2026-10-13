@@ -54,8 +54,9 @@ files SHALL retain the existing time combination and alignment semantics.
 
 The built-in NESW calculation SHALL use the acquired directional BC contributions
 without reading any BC basis file. Supported historical case/directory requests
-SHALL be translated once at the configuration compatibility boundary, after
-winning overrides and before scientific work. For NESW, a supplied legacy
+SHALL be translated once at the legacy entry boundary owned by the
+[pending HBMCMC isolation/retirement contract](../../../isolate-and-retire-hbmcmc/specs/hbmcmc-isolation-retirement/spec.md),
+after winning overrides and before scientific work. For NESW, a supplied legacy
 `bc_basis_directory` SHALL produce an unused/deprecated-option warning and SHALL
 NOT cause file discovery or a missing-directory error. Disabled BCs SHALL NOT
 trigger basis-resource loading. File-backed selections SHALL fail early for
@@ -63,7 +64,7 @@ missing or unreadable selected files rather than silently dropping them.
 
 #### Scenario: NESW does not select a file
 
-- **WHEN** a request uses NESW and includes a historical `bc_basis_directory`
+- **WHEN** a legacy entry-point request uses NESW and includes a historical `bc_basis_directory`
 - **THEN** the input adapter explains that the directory is unused and deprecated
 - **AND** the runner performs no BC basis-file lookup, even if that directory is absent
 - **AND** sensitivities use the acquired directional BC contributions

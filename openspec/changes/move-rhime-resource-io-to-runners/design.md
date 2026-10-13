@@ -16,24 +16,35 @@ No configuration grouping, new checkpoints or generic resource framework.
 
 ## Decisions
 
-Resolve file-origin resource paths before combining explicit invocation overrides;
-resolve the latter against the invocation directory. Forward exact absolute paths
-and reuse `resolve_basis_inputs` for selected-resource checks and map loading.
-Preserve other documented frontend conventions.
+Apply winning overrides before semantic resolution while retaining each winning
+value's origin. At each external configuration boundary, resolve file-origin
+resources against their documented file base and invocation values against the
+invocation directory. Forward exact absolute paths and reuse `resolve_basis_inputs`
+for selected-resource checks and map loading. Preserve other documented frontend
+conventions; superseded inputs must not trigger discovery or validation.
 
 Keep syntax decoding separate from compatibility interpretation. After applying
 winning overrides, the legacy HBMCMC input adapter resolves supported historical
-case/directory selections once. Public RHIME entry adapters may reuse it for
-supported deprecated inputs; modern resolved requests and numerical functions
-do not carry discovery rules. Remove `country_directory` in 0.8 and reject it
+case/directory selections once. Legacy routing and modern dependency direction
+are owned by the separate [HBMCMC isolation/retirement change](../isolate-and-retire-hbmcmc/proposal.md).
+Modern entry adapters receive explicit selections; modern resolved requests and
+numerical functions do not carry discovery rules. Remove `country_directory` in 0.8 and reject it
 early with named replacements, rather than retaining a path-resolution exception.
 
 Use declared filesystem types to drive a small standard-library converter
-(for example, `typing.get_type_hints` over concrete configuration fields).
-Canonical paths use `Path`; annotations identify the values, while the frontend
-provides their origin/base. Do not introduce Pydantic, recursive object traversal
-or another registry of path option names. Configuration construction stays
-data-free; runners load selected resources before acquisition.
+with the owning record's declarations supplied by that owner (for example,
+`typing.get_type_hints`). The converter imports no concrete configuration classes
+and does not combine independently owned schemas. Canonical paths use `Path`;
+annotations identify the values, while the frontend provides their origin/base.
+Each external value is converted once; factories, configured runners and identity
+encoding forward already canonical values without another normalization pass.
+Standalone output configuration normalizes only its own external inputs and does
+not require a full run request. Direct canonical dataclass construction expects
+resolved values; external-string factories remain available. Do not introduce
+Pydantic, recursive object traversal or another registry of path option names.
+Configuration construction stays data-free, including no globbing or candidate
+artifact inspection; do not move the legacy adapter into `from_params`. Runners
+load selected resources before acquisition.
 
 For file-backed BCs, replace case/directory discovery inside sensitivities with
 explicit file selection at the boundary and resolved labelled data as the
@@ -71,5 +82,6 @@ release note. Sync the resource and compatibility deltas only after acceptance;
 the durable spec keeps the existing optional preparation-save API until then.
 Add a 0.8 migration section covering the removed arguments, explicit BC inputs,
 NESW's file-free behavior, packaged preparation defaults and path origins. List
-planned 0.9 deprecations separately from removals, preserving existing schedules;
-a deprecation version alone is not a removal commitment.
+planned 0.9 deprecations separately from removals. The separate HBMCMC change
+owns its complete removal in 0.9; preserve other schedules rather than treating
+every deprecation version as a removal commitment.
