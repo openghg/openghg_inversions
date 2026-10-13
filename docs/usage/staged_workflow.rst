@@ -208,7 +208,9 @@ resources are checked by ``postprocess`` before creating its output directory;
   in-memory ``basic`` product is written as ``basic.nc``.
   CO2 supports ``none``, ``basic`` and constrained ``paris`` products. Its
   native-flux and country outputs require an exact bound affine reconstruction
-  and prior draws, and retain conditional uncertainty scope. The complete
+  and saved prior/posterior state draws, and retain conditional uncertainty
+  scope. The output consumer checks those draws; the current sampler's
+  ``sample_prior_predictive`` setting does not gate replay. The complete
   supported CO2 contract is documented in :doc:`co2_model_family`.
 
 CheckResult contract

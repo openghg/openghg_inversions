@@ -206,9 +206,12 @@ validate scientific compatibility, including the affine reconstruction's
 association with its prepared artifact. Paths inside the TOML file resolve
 relative to that file.
 
-Conditional native-flux and country outputs require prior draws
-(``sampling.sample_prior_predictive``) and a saved affine reconstruction bound
-to the exact prepared artifact. Add the following to
+Conditional native-flux and country outputs require saved prior and posterior
+``flux_scale`` draws and an affine reconstruction bound to the exact prepared
+artifact. Enable ``sampling.sample_prior_predictive`` when generating the prior
+draws. During replay, the output consumer checks the saved trace; current
+sampler settings do not restrict products from existing draws. Missing required
+draws fail before output files are written. Add the following to
 ``[outputs]`` when those artifacts are available:
 
 .. code-block:: toml
