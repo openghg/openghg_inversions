@@ -7,7 +7,9 @@ scientist can read or copy this module without reconstructing a pipeline.
 
 from __future__ import annotations
 
-from openghg_inversions.basis import make_basis_functions
+from openghg_inversions.native_flux import resolve_runtime_flux
+from openghg_inversions.basis import prepare_basis
+from openghg_inversions.rhime.preparation import resolve_basis_inputs
 
 from collections.abc import Mapping
 from pathlib import Path
@@ -49,7 +51,12 @@ from .builders import (
 )
 
 from .materialization import materialize_pymc_inputs
-from .outputs import RhimeResult, annotate_likelihood_trace, make_standard_rhime_outputs
+from .outputs import (
+    RhimeResult,
+    annotate_likelihood_trace,
+    make_standard_rhime_outputs,
+    validate_output_resources,
+)
 from .ini import read_rhime_ini
 from .params import RhimeConfig
 from .preparation import (
@@ -469,6 +476,11 @@ def run_standard(
     errors → filter → basis → sensitivities → assemble → materialize → build → sample → result →
     requested outputs.
 
+    Selected basis/support files and reporting country files are checked before
+    acquisition, including when merged data is supplied. Basis partitions and
+    support maps are loaded at that boundary. Saved bases are rebound to current
+    flux; ``basis_output_path`` is an exact retained-artifact destination.
+
     Without supplied merged data, this runner acquires fresh data. Persisted
     prepared inputs can be reused with
     :func:`openghg_inversions.rhime.run_rhime_from_prepared_inputs`.
@@ -541,6 +553,11 @@ def run_standard(
     if likelihood_builder is None and config.model.likelihood is None:
         raise ValueError("A standard RHIME run requires a built-in or custom likelihood.")
 
+    # Read selected scientific resources before expensive data acquisition.
+    validate_output_resources(config.output)
+    basis_inputs = resolve_basis_inputs(config)
+
+
     # 1. Resolve acquisition through the data owner.
     preparation_start = timer_start()
     if merged_data is not None:
@@ -568,18 +585,17 @@ def run_standard(
     # 2. Keep the scientific preparation order visible in this recipe.
     merged = prepare_observation_errors(merged, averaging_error=config.averaging_error)
     filtered = filter_observations(merged, filters=config.filters)
+    runtime_flux = resolve_runtime_flux(filtered.flux_data, split_by_sectors=filtered.split_by_sectors)
     with timed("rhime.prepare_inputs.basis_build", basis_algorithm=config.basis_algorithm):
-        basis_functions = make_basis_functions(
+        basis_functions = prepare_basis(
             site_data=filtered.site_data,
-            flux_data=filtered.flux_data,
-            split_by_sectors=filtered.split_by_sectors,
+            runtime_flux=runtime_flux,
+            weighting_flux=filtered.flux_data[config.flux_sources[0]]["flux"],
             **config.select(
-                "species", "domain", "start_date", "basis_algorithm", "nbasis",
-                "fp_basis_case", "basis_directory", "country_directory", "outer_regions_path",
+                "domain", "start_date", "basis_algorithm", "nbasis",
             ),
-            flux_sources=config.flux_sources,
             fix_outer_regions=config.fix_basis_outer_regions,
-            outputname=config.output_name,
+            **basis_inputs,
             output_path=config.basis_output_path,
         )
     site_data = build_sensitivities(

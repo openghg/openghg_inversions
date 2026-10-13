@@ -17,7 +17,12 @@ from .builders import RhimeLikelihoodBuilder, RhimeModelBuilder
 from .materialization import materialize_pymc_inputs
 from .multisector import build_multisector_rhime_model_result, make_multisector_rhime_result
 from .multisector import multisector_model_input_names
-from .outputs import RhimeResult, make_multisector_rhime_outputs, make_standard_rhime_outputs
+from .outputs import (
+    RhimeResult,
+    make_multisector_rhime_outputs,
+    make_standard_rhime_outputs,
+    validate_output_resources,
+)
 from .preparation import with_prepared_rhime_sites
 from .sampling import RhimeSampler, sample_rhime_model
 from .specs import (
@@ -47,7 +52,8 @@ def run_rhime_from_prepared_inputs(
     This advanced route intentionally starts after retrieval, filtering, basis
     construction, sensitivity construction, and labelled-input assembly. It
     validates the retained scientific layout before crossing the PyMC
-    materialization boundary.
+    materialization boundary. Selected reporting resources are checked before
+    materialization or sampling.
 
     Args:
         prepared_inputs: Validated canonical inversion inputs and retained
@@ -66,6 +72,7 @@ def run_rhime_from_prepared_inputs(
         ValueError: If layouts, extension points, aggregation error, or output
             settings are inconsistent.
         TypeError: If an extension point has an invalid callable contract.
+        FileNotFoundError: If a selected country file is missing or is a directory.
     """
     if model_builder is not None and likelihood_builder is not None:
         raise ValueError("Pass either `model_builder` or `likelihood_builder`, not both.")
@@ -124,6 +131,7 @@ def run_rhime_from_prepared_inputs(
         save_inversion_output=output_spec.save_inversion_output,
         multisector=multisector,
     )
+    validate_output_resources(output_spec)
     if model_builder is None and likelihood_builder is None and run_spec.model.likelihood is None:
         raise ValueError("A prepared RHIME run requires a model builder or likelihood.")
 

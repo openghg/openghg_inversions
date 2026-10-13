@@ -114,10 +114,17 @@ a compact, direct identity for the prepared handoff.
 Commands and artifacts
 ----------------------
 
-All paths are explicit and outputs are written below ``--output-dir`` (or
-``openghg-run``'s ``OUTPUT_DIR``). Commands do not depend on the caller's
+Stage-owned artifacts are written below ``--output-dir`` (or
+``openghg-run``'s ``OUTPUT_DIR``). An explicitly configured
+``basis_output_path`` keeps its exact destination; preparation does not replace
+it with a stage directory. Relative configured paths resolve from the INI or
+JSON file as described above. Commands do not depend on the caller's
 working directory and reject pre-existing symlinks beneath a stage output
 directory.
+
+Preparation resolves selected basis and support resources. Country reporting
+resources are checked by ``postprocess`` before creating its output directory;
+``prepare`` and ``sample`` do not require them.
 
 ``prepare``
   Retrieves merged data, filters observations, constructs basis and
@@ -126,6 +133,10 @@ directory.
   posterior. The NetCDF is a versioned ``RhimePreparedInputs`` artifact and is
   independently inspectable/loadable. Later stages consume this artifact;
   preparation does not write a filtered merged-data snapshot.
+  Native runtime flux is resolved once from the filtered source datasets; basis
+  design weights use the first requested source. A selected saved basis reuses
+  its operator with current runtime flux. The prepared artifact retains that
+  bound prior for later reconstruction, which needs no reacquisition.
   For ``co2``, preparation validates and copies the configured
   ``Co2PreparedInputs`` artifact and optional bound affine reconstruction,
   preserving their content identities; it does not acquire observation data.

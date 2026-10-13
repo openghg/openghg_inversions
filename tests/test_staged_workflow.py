@@ -15,7 +15,7 @@ import xarray as xr
 
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.cli import build_parser
-from openghg_inversions.inversion_data import RhimePreparedInputs, SiteOptions
+from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs, SiteOptions
 from openghg_inversions.inference import diagnostics as inference_diagnostics
 from openghg_inversions.rhime.stages import (
     CONVERGENCE_CHECK_NAME,
@@ -31,7 +31,6 @@ from openghg_inversions.rhime.stages import (
 )
 from openghg_inversions.serialization import save_trace
 from tests.helpers import make_trace
-from openghg_inversions.hbmcmc.legacy_data import from_legacy_fp_all
 
 
 def _params(**overrides: Any) -> dict[str, Any]:
@@ -139,7 +138,8 @@ def test_stage_config_paths_are_relative_to_the_config_source(
     params_path = tmp_path / "config" / "params.json"
     params_path.parent.mkdir()
     params_path.write_text(
-        json.dumps(_params(basis_directory="relative/basis", country_file="relative/country.nc")),
+        json.dumps(_params(basis_directory="relative/basis", basis_partition_path="relative/partition.nc",
+                           country_file="relative/country.nc")),
         encoding="utf-8",
     )
     monkeypatch.chdir(tmp_path.parent)
@@ -148,6 +148,7 @@ def test_stage_config_paths_are_relative_to_the_config_source(
 
     assert loaded["basis_directory"] == str(params_path.parent / "relative/basis")
     assert loaded["country_file"] == str(params_path.parent / "relative/country.nc")
+    assert loaded["basis_partition_path"] == str(params_path.parent / "relative/partition.nc")
 
 
 @pytest.mark.parametrize(
@@ -190,18 +191,32 @@ def test_configuration_identity_serialises_slice_inlet_selectors() -> None:
     assert configuration_identity(setup, model="standard").startswith("sha256:")
 
 
+@pytest.mark.parametrize("output_format", ["inv_out", "basic", "paris"])
 def test_prepare_is_independent_and_writes_inspectable_contract(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
+    output_format: str,
 ) -> None:
     from openghg_inversions.rhime import _standard_stages as stages
 
     prepared = _prepared()
-    sentinel = from_legacy_fp_all({"TAC": xr.Dataset({"mf_error": ("time", [1.0]), "mf_repeatability": ("time", [0.0]), "mf_variability": ("time", [0.0])})}, SiteOptions.from_inputs(sites=("TAC",), averaging_period="1h"))
+    sentinel = RhimeMergedData(
+        site_data={"TAC": xr.Dataset({
+            "mf_error": ("time", [1.0]),
+            "mf_repeatability": ("time", [0.0]),
+            "mf_variability": ("time", [0.0]),
+        })},
+        flux_data={"synthetic-total": prepared.basis_functions.flux.to_dataset(name="flux")},
+        site_options=SiteOptions.from_inputs(sites=("TAC",), averaging_period="1h"),
+    )
     monkeypatch.setattr(stages.RhimeMergedData, "from_options", lambda *args, **kwargs: sentinel)
     monkeypatch.setattr(stages, "filter_observations", lambda *args, **kwargs: sentinel)
-    monkeypatch.setattr(stages, "make_basis_functions", lambda *args, **kwargs: prepared.basis_functions)
+    def prepare_selected_basis(**kwargs):
+        assert kwargs["output_path"] == "/outside/basis"
+        return prepared.basis_functions
+
+    monkeypatch.setattr(stages, "prepare_basis", prepare_selected_basis)
     monkeypatch.setattr(stages, "build_sensitivities", lambda *args, **kwargs: {})
     monkeypatch.setattr(stages, "assemble_rhime_inputs", lambda *args, **kwargs: prepared)
     monkeypatch.setattr(stages, "sample_rhime_model", lambda *args, **kwargs: pytest.fail("sampled"))
@@ -209,6 +224,7 @@ def test_prepare_is_independent_and_writes_inspectable_contract(
     setup = resolve_stage_setup(
         _params(
             basis_output_path="/outside/basis",
+            output_format=output_format,
             inlet=[slice(3, 10)],
         ),
         model="standard",
@@ -225,9 +241,7 @@ def test_prepare_is_independent_and_writes_inspectable_contract(
     assert set(manifest["artifact_identities"]) == {"prepared_inputs"}
     assert not (tmp_path / "prepare" / "merged-data").exists()
     assert manifest["artifact_identities"]["prepared_inputs"].startswith("sha256:")
-    assert manifest["effective_configuration"]["preparation"]["basis_output_path"] == str(
-        tmp_path / "prepare" / "basis"
-    )
+    assert manifest["effective_configuration"]["preparation"]["basis_output_path"] == "/outside/basis"
     assert Path(manifest["manifest_path"]).is_file()
     persisted_manifest = json.loads(Path(manifest["manifest_path"]).read_text(encoding="utf-8"))
     assert persisted_manifest["effective_configuration"]["preparation"]["inlet"] == [
@@ -245,10 +259,18 @@ def test_prepare_fails_when_a_requested_site_was_dropped(
     from openghg_inversions.rhime import _standard_stages as stages
 
     prepared = _prepared()
-    merged = from_legacy_fp_all({"TAC": xr.Dataset({"mf_error": ("time", [1.0]), "mf_repeatability": ("time", [0.0]), "mf_variability": ("time", [0.0])})}, SiteOptions.from_inputs(sites=("TAC",), averaging_period="1h"))
+    merged = RhimeMergedData(
+        site_data={"TAC": xr.Dataset({
+            "mf_error": ("time", [1.0]),
+            "mf_repeatability": ("time", [0.0]),
+            "mf_variability": ("time", [0.0]),
+        })},
+        flux_data={"synthetic-total": prepared.basis_functions.flux.to_dataset(name="flux")},
+        site_options=SiteOptions.from_inputs(sites=("TAC",), averaging_period="1h"),
+    )
     monkeypatch.setattr(stages.RhimeMergedData, "from_options", lambda *args, **kwargs: merged)
     monkeypatch.setattr(stages, "filter_observations", lambda *args, **kwargs: merged)
-    monkeypatch.setattr(stages, "make_basis_functions", lambda *args, **kwargs: prepared.basis_functions)
+    monkeypatch.setattr(stages, "prepare_basis", lambda *args, **kwargs: prepared.basis_functions)
     monkeypatch.setattr(stages, "build_sensitivities", lambda *args, **kwargs: {})
     monkeypatch.setattr(stages, "assemble_rhime_inputs", lambda *args, **kwargs: prepared)
 
@@ -270,10 +292,18 @@ def test_prepare_accepts_canonicalised_site_labels(
     from openghg_inversions.rhime import _standard_stages as stages
 
     prepared = _prepared()
-    merged = from_legacy_fp_all({"TAC": xr.Dataset({"mf_error": ("time", [1.0]), "mf_repeatability": ("time", [0.0]), "mf_variability": ("time", [0.0])})}, SiteOptions.from_inputs(sites=("TAC",), averaging_period="1h"))
+    merged = RhimeMergedData(
+        site_data={"TAC": xr.Dataset({
+            "mf_error": ("time", [1.0]),
+            "mf_repeatability": ("time", [0.0]),
+            "mf_variability": ("time", [0.0]),
+        })},
+        flux_data={"synthetic-total": prepared.basis_functions.flux.to_dataset(name="flux")},
+        site_options=SiteOptions.from_inputs(sites=("TAC",), averaging_period="1h"),
+    )
     monkeypatch.setattr(stages.RhimeMergedData, "from_options", lambda *args, **kwargs: merged)
     monkeypatch.setattr(stages, "filter_observations", lambda *args, **kwargs: merged)
-    monkeypatch.setattr(stages, "make_basis_functions", lambda *args, **kwargs: prepared.basis_functions)
+    monkeypatch.setattr(stages, "prepare_basis", lambda *args, **kwargs: prepared.basis_functions)
     monkeypatch.setattr(stages, "build_sensitivities", lambda *args, **kwargs: {})
     monkeypatch.setattr(stages, "assemble_rhime_inputs", lambda *args, **kwargs: prepared)
 
@@ -387,10 +417,18 @@ def test_preparation_manifest_authenticates_supplied_prepared_inputs(
     from openghg_inversions.rhime import _standard_stages as stages
 
     prepared = _prepared()
-    merged = from_legacy_fp_all({"TAC": xr.Dataset({"mf_error": ("time", [1.0]), "mf_repeatability": ("time", [0.0]), "mf_variability": ("time", [0.0])})}, SiteOptions.from_inputs(sites=("TAC",), averaging_period="1h"))
+    merged = RhimeMergedData(
+        site_data={"TAC": xr.Dataset({
+            "mf_error": ("time", [1.0]),
+            "mf_repeatability": ("time", [0.0]),
+            "mf_variability": ("time", [0.0]),
+        })},
+        flux_data={"synthetic-total": prepared.basis_functions.flux.to_dataset(name="flux")},
+        site_options=SiteOptions.from_inputs(sites=("TAC",), averaging_period="1h"),
+    )
     monkeypatch.setattr(stages.RhimeMergedData, "from_options", lambda *args, **kwargs: merged)
     monkeypatch.setattr(stages, "filter_observations", lambda *args, **kwargs: merged)
-    monkeypatch.setattr(stages, "make_basis_functions", lambda *args, **kwargs: prepared.basis_functions)
+    monkeypatch.setattr(stages, "prepare_basis", lambda *args, **kwargs: prepared.basis_functions)
     monkeypatch.setattr(stages, "build_sensitivities", lambda *args, **kwargs: {})
     monkeypatch.setattr(stages, "assemble_rhime_inputs", lambda *args, **kwargs: prepared)
     setup = resolve_stage_setup(_params(), model="standard")
@@ -665,10 +703,18 @@ def test_synthetic_staged_tracer_bullet(
     from openghg_inversions.rhime import _standard_stages as stages
 
     prepared = _prepared()
-    sentinel = from_legacy_fp_all({"TAC": xr.Dataset({"mf_error": ("time", [1.0]), "mf_repeatability": ("time", [0.0]), "mf_variability": ("time", [0.0])})}, SiteOptions.from_inputs(sites=("TAC",), averaging_period="1h"))
+    sentinel = RhimeMergedData(
+        site_data={"TAC": xr.Dataset({
+            "mf_error": ("time", [1.0]),
+            "mf_repeatability": ("time", [0.0]),
+            "mf_variability": ("time", [0.0]),
+        })},
+        flux_data={"synthetic-total": prepared.basis_functions.flux.to_dataset(name="flux")},
+        site_options=SiteOptions.from_inputs(sites=("TAC",), averaging_period="1h"),
+    )
     monkeypatch.setattr(stages.RhimeMergedData, "from_options", lambda *args, **kwargs: sentinel)
     monkeypatch.setattr(stages, "filter_observations", lambda *args, **kwargs: sentinel)
-    monkeypatch.setattr(stages, "make_basis_functions", lambda *args, **kwargs: prepared.basis_functions)
+    monkeypatch.setattr(stages, "prepare_basis", lambda *args, **kwargs: prepared.basis_functions)
     monkeypatch.setattr(stages, "build_sensitivities", lambda *args, **kwargs: {})
     monkeypatch.setattr(stages, "assemble_rhime_inputs", lambda *args, **kwargs: prepared)
     setup = resolve_stage_setup(

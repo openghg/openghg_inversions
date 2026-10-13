@@ -12,7 +12,8 @@ import openghg_inversions.basis as basis_package
 import openghg_inversions.basis._functions as basis_module
 import openghg_inversions.hbmcmc.legacy_basis as legacy_basis_module
 from openghg_inversions.basis.algorithms import ConnectedComponentSplitStrategy
-from openghg_inversions.basis._functions import (basis, _mean_fp_times_mean_flux)
+from openghg_inversions.basis._functions import _mean_fp_times_mean_flux
+from openghg_inversions.basis.compatibility import basis
 from openghg_inversions.hbmcmc.legacy_basis import (
     basis_functions,
     _flux_fp_from_fp_all,
@@ -27,7 +28,7 @@ from openghg_inversions.hbmcmc.legacy_basis import (
     flux_from_fp_all,
 )
 from openghg_inversions.basis import (bucket_basis_from_weights, load_country_region_classes, load_intem_outer_regions, paired_abs_response_weights, quadtree_basis_from_weights, region_constrained_basis_from_weights, region_constrained_fixed_outer_basis_from_weights)
-from openghg_inversions.basis._wrapper import (_save_basis, _save_basis_datatree)
+from openghg_inversions.basis.compatibility import (_save_basis, _save_basis_datatree)
 from openghg_inversions.basis.basis_functions import (BASIS_ARTIFACT_PATH_ATTR, BASIS_ARTIFACT_SOURCE_ATTR, BasisFunctions)
 from openghg_inversions.basis.operators import (
     BucketBasisOperator,
@@ -419,13 +420,13 @@ def test_bucket_basis_from_weights_sanitizes_nonfinite_before_dispatch(monkeypat
         nregion: int,
         bucket: float,
         domain: str,
-        country_directory: str | None = None,
+        landsea_indices: np.ndarray | None = None,
     ) -> np.ndarray:
         """Assert non-finite cells were replaced and normalized before dispatch."""
         assert nregion == 4
         assert bucket == 1
         assert domain == "TEST"
-        assert country_directory == "/tmp/countries"
+        assert landsea_indices is not None
         np.testing.assert_allclose(grid, np.array([[0.0, 0.0], [0.0, 1.0]]))
         return np.arange(1, grid.size + 1).reshape(grid.shape)
 
@@ -436,7 +437,7 @@ def test_bucket_basis_from_weights_sanitizes_nonfinite_before_dispatch(monkeypat
         "2019-01-01",
         "TEST",
         nbasis=4,
-        country_directory="/tmp/countries",
+        landsea_indices=np.ones(weights.shape, dtype=int),
     )
 
     assert basis_func.dims == ("lat", "lon", "time")
@@ -458,16 +459,16 @@ def test_bucket_basis_from_weights_preserves_all_negative_normalization(monkeypa
         nregion: int,
         bucket: float,
         domain: str,
-        country_directory: str | None = None,
+        landsea_indices: np.ndarray | None = None,
     ) -> np.ndarray:
         """Assert all-negative weights are still divided by their maximum."""
-        del nregion, bucket, domain, country_directory
+        del nregion, bucket, domain, landsea_indices
         np.testing.assert_allclose(grid, np.array([[4.0, 2.0], [1.0, 3.0]]))
         return np.arange(1, grid.size + 1).reshape(grid.shape)
 
     monkeypatch.setattr(basis_module, "weighted_algorithm", fake_weighted_algorithm)
 
-    basis_func = bucket_basis_from_weights(weights, "2019-01-01", "TEST")
+    basis_func = bucket_basis_from_weights(weights, "2019-01-01", "TEST", landsea_classes=xr.ones_like(weights, dtype=int))
 
     assert basis_func.dims == ("lat", "lon", "time")
     assert basis_func.attrs["domain"] == "TEST"
@@ -535,7 +536,8 @@ def test_quadtree_and_bucket_basis_from_weights_reject_empty_sanitized_weights(f
     )
 
     with pytest.raises(ValueError, match=message):
-        factory(weights, "2019-01-01", "TEST")
+        kwargs = {"landsea_classes": xr.ones_like(weights, dtype=int)} if factory is bucket_basis_from_weights else {}
+        factory(weights, "2019-01-01", "TEST", **kwargs)
 
 
 def test_region_constrained_basis_from_weights_all_zero_falls_back_to_area():
@@ -728,13 +730,13 @@ def test_bucket_basis_from_weights_matches_fp_all_adapter(monkeypatch):
         nregion: int,
         bucket: float,
         domain: str,
-        country_directory: str | None = None,
+        landsea_indices: np.ndarray | None = None,
     ) -> np.ndarray:
         """Return deterministic labels while recording expected adapter args."""
         assert nregion == 4
         assert bucket == 1
         assert domain == "TEST"
-        assert country_directory == "/tmp/countries"
+        assert landsea_indices is not None
         assert np.isclose(grid.max(), 1.0)
         return np.arange(1, grid.size + 1).reshape(grid.shape)
 
@@ -745,7 +747,7 @@ def test_bucket_basis_from_weights_matches_fp_all_adapter(monkeypatch):
         "2019-01-01",
         "TEST",
         nbasis=4,
-        country_directory="/tmp/countries",
+        landsea_indices=np.ones(weights.shape, dtype=int),
     )
     from_fp_all = bucket_basis_function(
         fp_all,
@@ -753,7 +755,7 @@ def test_bucket_basis_from_weights_matches_fp_all_adapter(monkeypatch):
         "TEST",
         emissions_name=["test-source"],
         nbasis=4,
-        country_directory="/tmp/countries",
+        landsea_indices=np.ones(weights.shape, dtype=int),
     )
 
     xr.testing.assert_equal(from_fp_all, from_weights)
@@ -1371,9 +1373,9 @@ def test_fixed_outer_weighted_basis_crops_landsea_mask_to_inner_region(monkeypat
     ).to_netcdf(tmp_path / "country-land-sea_TEST.nc")
     seen: dict[str, np.ndarray] = {}
 
-    def fake_weighted_basis(weights, start_date, domain, nbasis=100, country_directory=None,
+    def fake_weighted_basis(weights, start_date, domain, nbasis=100, landsea_classes=None,
                             landsea_indices=None):
-        del domain, nbasis, country_directory
+        del domain, nbasis, landsea_classes
         assert landsea_indices is not None
         seen["landsea"] = landsea_indices
         inner = xr.ones_like(weights, dtype=int)
@@ -1668,7 +1670,7 @@ def test_region_constrained_fixed_outer_basis_from_weights_rejects_non_integral_
             "2020-01-01",
             "TEST",
             nbasis=nbasis,
-        )
+         outer_regions=xr.ones_like(weights, dtype=int), region_classes=xr.ones_like(weights, dtype=int))
 
 
 def test_fixed_outer_loaders_use_separate_custom_paths(tmp_path):
@@ -1701,8 +1703,8 @@ def test_fixed_outer_loaders_use_separate_custom_paths(tmp_path):
         "2020-01-01",
         "TEST",
         nbasis=2,
-        country_directory=country_directory,
-        outer_regions_path=outer_regions_path,
+        region_classes=load_country_region_classes("TEST", country_directory),
+        outer_regions=loaded_outer_regions,
         allocation="area",
     ).squeeze("time", drop=True)
 
@@ -2601,7 +2603,7 @@ def test_flux_from_fp_all_rejects_source_only_extra_dimension():
     )
     with_ensemble = reference.expand_dims(ensemble=[0, 1])
 
-    with pytest.raises(ValueError, match="different dimensions"):
+    with pytest.raises(ValueError, match="permuted list"):
         flux_from_fp_all(
             {
                 ".flux": {"a": reference, "b": with_ensemble},

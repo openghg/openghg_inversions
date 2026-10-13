@@ -315,7 +315,8 @@ def save_datatree(
             supplied, the matching ``.nc`` or ``.zarr`` suffix is added or
             replaces an existing suffix as needed.
         output_format: Storage format. When omitted, infer the format from an
-            existing ``.nc`` or ``.zarr`` suffix.
+            existing ``.nc`` or ``.zarr`` suffix, case-insensitively. Matching
+            suffixes retain their requested spelling.
 
     Raises:
         ValueError: If the format cannot be inferred or is unsupported.
@@ -324,18 +325,18 @@ def save_datatree(
 
     if output_format is None:
         try:
-            output_format = {".nc": "netcdf", ".zarr": "zarr"}[output_path.suffix]  # type: ignore[assignment]
+            output_format = {".nc": "netcdf", ".zarr": "zarr"}[output_path.suffix.lower()]  # type: ignore[assignment]
         except KeyError:
             raise ValueError(
                 f"Output file {output_path} does not end in '.nc' or '.zarr'; please specify `output_format`."
             ) from None
 
     if output_format == "netcdf":
-        if output_path.suffix != ".nc":
+        if output_path.suffix.lower() != ".nc":
             output_path = output_path.with_suffix(".nc")
         dt.to_netcdf(output_path)
     elif output_format == "zarr":
-        if output_path.suffix != ".zarr":
+        if output_path.suffix.lower() != ".zarr":
             output_path = output_path.with_suffix(".zarr")
         dt = dt.map_over_datasets(
             lambda dataset: dataset.assign(

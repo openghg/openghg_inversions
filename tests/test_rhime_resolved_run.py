@@ -168,7 +168,10 @@ def test_acquired_data_binding_preserves_selectors_and_rejects_conflicts(
         acquisition=AcquisitionFacts(species="CH4", domain="europe",
                      start_date="2019-01-01T00:00:00", end_date="2019-02-01"),
     )
-    config_options = {"inlet": "10m", "nbasis": 3, "output_name": "different-model-choice"}
+    config_options = {
+        "inlet": "10m", "nbasis": 3, "output_name": "different-model-choice",
+        "basis_algorithm": "quadtree",
+    }
     recipe = multisector if multisector_mode else standard
     runner = recipe.run_rhime_multisector if multisector_mode else recipe.run_rhime
     reached = []
