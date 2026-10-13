@@ -52,12 +52,17 @@ The configuration entry was amended on 13 October 2026 during review of PR 867.
      - :download:`Resolve RHIME configuration
        <../../openspec/specs/rhime-configuration/spec.md>`
      - Delivered foundations plus explicitly marked pending grouped/phase
-       amendments in `PR 866 <https://github.com/openghg/openghg_inversions/pull/866>`_
-       and resource-path/basis-export ownership in `issue 868
-       <https://github.com/openghg/openghg_inversions/issues/868>`_.
+       amendments in `PR 866 <https://github.com/openghg/openghg_inversions/pull/866>`_.
        Current usage: :doc:`/usage/rhime_configuration`.
        Configuration serialization/INI writing remains with `issue 814
        <https://github.com/openghg/openghg_inversions/issues/814>`_.
+   * - External resources and basis exports
+     - :download:`RHIME resource I/O
+       <../../openspec/specs/rhime-resource-io/spec.md>`
+     - Exact destinations and selected-resource checks delivered by PR 840;
+       consistent path resolution and runner-owned optional saves pending in
+       `issue 868 <https://github.com/openghg/openghg_inversions/issues/868>`_.
+       Manifest references and checkpoint completion stay with the handoff specs.
    * - Retained-state scientific reconstruction
      - :download:`Retained-state reconstruction
        <../../openspec/specs/retained-state-reconstruction/spec.md>`
@@ -88,6 +93,8 @@ recipes. Do not silently merge their pending behavior into a delivered baseline.
 The configuration amendments reviewed in PR 867 now live in the existing
 configuration capability with explicit delivery status; PR 802 consumes that
 contract and no longer owns a duplicate configuration delta.
+Runtime resource and export policy has its own resource-I/O capability, with
+delivered guarantees distinguished from the pending issue 868 work.
 
 Planning records
 -----------------

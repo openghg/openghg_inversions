@@ -80,11 +80,8 @@ the completion marker; a failed save SHALL NOT leave one claiming completion.
 Files owned by the checkpoint writer SHALL remain under the explicit checkpoint
 destination, and dependency references SHALL NOT authorize writes elsewhere or
 overwriting referenced artifacts.
-A separately requested basis export remains outside checkpoint-writer ownership;
-its destination already follows #840's delivered exact-export contract. The
-runner's explicit save operation is delivered by the #868 prerequisite and
-specified in the [configuration capability](../../../../specs/rhime-configuration/spec.md),
-rather than added to scientific preparation.
+A separately requested basis export remains outside checkpoint-writer ownership
+and follows [rhime-resource-io](../../../../specs/rhime-resource-io/spec.md).
 This ordinary I/O ordering SHALL NOT require rollback, transactions or repeated
 dependency checks before and after execution. Several inference runs SHALL be
 able to reference one completed preparation without mutating it or implicitly copying its large

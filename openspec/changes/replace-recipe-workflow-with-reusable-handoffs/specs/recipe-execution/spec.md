@@ -10,6 +10,8 @@ and [sampled-recipe-handoff](../sampled-recipe-handoff/spec.md), respectively.
 
 Configuration ownership and phase resolution follow the
 [rhime-configuration capability](../../../../specs/rhime-configuration/spec.md).
+External resource paths and optional basis exports follow
+[rhime-resource-io](../../../../specs/rhime-resource-io/spec.md).
 
 Existing public selection and aliases follow the current
 [model-selection capability](https://github.com/openghg/openghg_inversions/blob/7269f50f09dc4b618766cb9d69abe260a564eebc/openspec/specs/rhime-model-selection/spec.md).
@@ -37,9 +39,8 @@ handoff and SHALL NOT retrieve data internally. Acquired data SHALL remain befor
 preparation-derived errors, filtering, basis/sensitivity construction and stacking;
 existing `ModelScenario` products such as `fp_x_flux` and BC sensitivities remain
 acquisition products. A combined `DataConfig` SHALL NOT obscure this boundary.
-Scientific preparation SHALL return its basis result without saving an optional
-export; runners SHALL consume #868's separate save and resource-resolution
-boundary, using the existing codecs.
+Runners SHALL consume the resource-I/O contract's save and resource-resolution
+boundary supplied by #868.
 Direct scientific customization, signatures and numerical returns SHALL retain
 their contracts except for the explicit sampler-default migration below and
 #868's removal of the basis-preparation export argument;

@@ -4,8 +4,9 @@ The maintainer approved this plan for implementation on 11 October 2026. These
 are implementation tasks, all unchecked until their acceptance evidence exists.
 Start with a bounded implementation PR stacked on #841. This planning change
 itself changes no runtime behavior. Follow [design.md](design.md) and the three
-new capability specs and the existing
-[configuration capability](../../specs/rhime-configuration/spec.md).
+new capability specs and the
+[configuration](../../specs/rhime-configuration/spec.md) and
+[resource-I/O](../../specs/rhime-resource-io/spec.md) capabilities.
 The four delivery sections below define proposed bounded
 implementation-child scopes for OPE-207; they do not create Linear issues or
 represent one assignment spanning every family.
@@ -243,7 +244,7 @@ the PR records the bounded implementation and validation details.
 
 ## 5. Integrated acceptance and completion
 
-- [ ] 5.1 Reconcile all four family deliveries against the three new capability specs and the configuration capability
+- [ ] 5.1 Reconcile all four family deliveries against the three new capability specs and the configuration/resource-I/O capabilities
   while preserving the current model-selection and model-composition baselines;
   record merged PRs, commands/results and justified numerical tolerances. Run
   relevant broader scientific, configuration, CLI, staged/replay, builder and output

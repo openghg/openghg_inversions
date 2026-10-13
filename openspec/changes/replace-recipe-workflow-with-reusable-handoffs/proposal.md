@@ -25,7 +25,7 @@ implementation PRs consume it rather than revise the contract to match their cod
 
 Deliver [#868](https://github.com/openghg/openghg_inversions/issues/868)'s bounded
 resource-resolution and runner-owned basis-export work before #866. Exact export
-destinations are already guaranteed by #840 and the current configuration spec;
+destinations are already guaranteed by #840 and now owned by the resource-I/O spec;
 the duplicated-directory behavior in #866 is a regression, not a new requirement.
 
 ## Why
@@ -87,11 +87,13 @@ not a completed implementation or required artifact contract.
 ### Existing capabilities consumed
 
 The [configuration capability](../../specs/rhime-configuration/spec.md) owns
-grouped `RhimeConfig.data`, independent phase resolution and resource/export
-ownership. At the maintainer's request, #867 updates that existing spec directly
-and removes this change's duplicate configuration delta. The capability records
-which amendments remain pending in #866 and prerequisite #868; this move is not
-an implementation-completion claim.
+grouped `RhimeConfig.data`, option resolution and independent phase selection.
+At the maintainer's request, #867 updates that spec directly and removes this
+change's duplicate configuration delta. The separate
+[resource-I/O capability](../../specs/rhime-resource-io/spec.md) owns resource
+selection, exact export destinations and runner-owned optional saves. Their
+status notes distinguish delivered guarantees from pending #866/#868 work;
+reorganizing those contracts is not an implementation-completion claim.
 
 Merged #854 records delivered [model selection](../../specs/rhime-model-selection/spec.md)
 and [model composition](../../specs/rhime-model-composition/spec.md). This change
@@ -106,7 +108,7 @@ That change was archived without syncing its requirements; its historical
 contract is not a current capability or an implementation prerequisite.
 
 The three new capabilities live under this active change as proposed deltas.
-The separate configuration capability explicitly distinguishes delivered behavior
+The configuration and resource-I/O capabilities explicitly distinguish delivered behavior
 from pending amendments; `openspec/changes/archive/` retains completed or superseded history.
 This replacement remains active with all implementation tasks unchecked. Its
 deltas SHALL NOT be synced merely because planning is approved.

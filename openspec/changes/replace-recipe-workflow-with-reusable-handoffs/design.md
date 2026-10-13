@@ -109,12 +109,10 @@ Use the same alias precedence across full and saved requests, including a
 canonical file option combined with a deprecated override. Report all unsupported
 and wrong-phase override keys together before scientific work.
 
-Runners resolve direct Python/CLI resource and export paths against the invocation
-directory; saved-phase file resources resolve beside their configuration file.
-Forward exact absolute paths thereafter. This distinguishes invocation paths from
-manifest-relative dependency references; see the configuration capability's path rules.
-Deliver this boundary and runner-owned optional basis saving in the separate
-[#868](https://github.com/openghg/openghg_inversions/issues/868) prerequisite.
+Resource-path interpretation and runner-owned optional basis saving follow
+[rhime-resource-io](../../specs/rhime-resource-io/spec.md), delivered by the separate
+[#868](https://github.com/openghg/openghg_inversions/issues/868) prerequisite where
+marked pending. Manifest-relative dependency references retain their handoff owner.
 Reuse `resolve_basis_inputs` and the existing codecs; this plan consumes those
 operations rather than adding another resource or persistence abstraction.
 
@@ -272,12 +270,9 @@ prepared_manifest = save_preparation(prepared, requested_facts, destination)
 
 Acquisition or supplied-data selection stays visible in the runner. A shared
 scientific preparation function accepts the acquired handoff and never retrieves
-it internally. Scientific preparation returns its basis result without an export
-argument or save. The runner calls the existing save codec on that result when an
-export is requested and coordinates that save with any checkpoint writes. This
-also applies when the scientific calls are grouped in a preparation function:
-the runner obtains the basis from its returned prepared handoff. Exact export
-destinations remain governed by #840's existing contract.
+it internally. Optional basis saving follows the resource-I/O contract. When the
+scientific calls are grouped in a preparation function, the runner obtains the
+basis from its returned prepared handoff and uses the existing save codec.
 
 Preparation aligns metadata to retained observations; inference aligns its own
 numeric per-site choices. Validate every supplied value, including dropped-site
@@ -395,9 +390,9 @@ Use a fresh operation destination so sampling cannot silently overwrite a comple
 run or its prepared inputs. Write the final manifest after numerical saves succeed;
 a temporary JSON file and rename are enough. Do not add transaction machinery or
 recursive symlink scans.
-Checkpoint containment applies to checkpoint-owned files. The runner's separate
-basis export follows #840's existing exact-destination contract and #868's save
-boundary; this handoff design does not introduce a new export restriction.
+Checkpoint containment applies to checkpoint-owned files. Separately requested
+basis exports follow the resource-I/O contract; this handoff design does not
+introduce a new export restriction.
 
 The optional `run_config` above is a reference to an existing configuration file.
 If context is supplied only in memory, the caller supplies it again for later
