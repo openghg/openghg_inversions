@@ -257,3 +257,6 @@ the PR records the bounded implementation and validation details.
   these capabilities and archiving this completed change. Planning merge alone
   does not complete OPE-207; do not archive the superseded proposal as successfully
   implemented or count linked OPE-165 work as delivered by this change.
+  Update remaining consumers and the developer contract map to the delivered
+  capabilities when archiving; use the actual archive location for historical
+  references. Verify links in promoted specs and remaining active changes.

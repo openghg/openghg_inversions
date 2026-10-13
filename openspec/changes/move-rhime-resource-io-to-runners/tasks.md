@@ -21,3 +21,8 @@ selected-resource checks already exist; preserve their tests and scientific beha
 - [ ] 2.1 Record merged implementation and acceptance, then sync both deltas and
   archive this change before the grouped-configuration delta is synced. Confirm
   the durable resource spec describes the resulting implemented save boundary.
+  As part of sync/archive, update remaining active consumers and the developer
+  contract map from this change to the delivered capability; retain historical
+  references only via the actual archive location. Check links in promoted specs
+  and remaining active changes after archival. Requirement links use durable
+  capability URLs so copying them does not depend on source-directory depth.

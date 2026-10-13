@@ -9,10 +9,9 @@ Saved preparation and inference follow [prepared-recipe-handoff](../prepared-rec
 and [sampled-recipe-handoff](../sampled-recipe-handoff/spec.md), respectively.
 
 Configuration ownership and phase resolution follow the
-[configuration amendments](../../../group-rhime-configuration-by-owner/specs/rhime-configuration/spec.md).
-External resource paths and optional basis exports follow the
-[runner resource-I/O amendments](../../../move-rhime-resource-io-to-runners/specs/rhime-resource-io/spec.md),
-preserving the [delivered resource guarantees](../../../../specs/rhime-resource-io/spec.md).
+[rhime-configuration capability](https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/rhime-configuration/spec.md).
+External resource paths and optional basis exports follow
+[rhime-resource-io](https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/rhime-resource-io/spec.md).
 
 Existing public selection and aliases follow the current
 [model-selection capability](https://github.com/openghg/openghg_inversions/blob/7269f50f09dc4b618766cb9d69abe260a564eebc/openspec/specs/rhime-model-selection/spec.md).

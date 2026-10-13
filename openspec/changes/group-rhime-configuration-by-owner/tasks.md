@@ -22,3 +22,8 @@ tasks; this planning split does not complete configuration or handoff work.
   resource-I/O compatibility changes and established sampler behavior.
 - [ ] 2.2 Record merged delivery and scenario evidence, then sync and archive this
   configuration change; confirm unrelated handoff tasks are not marked complete.
+  As part of sync/archive, update remaining active consumers and the developer
+  contract map from this change to the delivered capability; retain historical
+  references only via the actual archive location. Check links in promoted specs
+  and remaining active changes after archival. Requirement links use durable
+  capability URLs so copying them does not depend on source-directory depth.

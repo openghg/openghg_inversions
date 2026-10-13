@@ -245,7 +245,7 @@ and flux-source routing SHALL retain consistent existing meanings across data
 preparation and model construction. Current INI section interpretation, path
 conventions, file vocabulary, scientific calculations and sampling defaults
 SHALL remain unchanged except for the path conventions specified by
-[rhime-resource-io](../../../../specs/rhime-resource-io/spec.md).
+[rhime-resource-io](https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/rhime-resource-io/spec.md).
 
 Established selector and shared-handoff aliases in the current
 [model-selection capability](https://github.com/openghg/openghg_inversions/blob/7269f50f09dc4b618766cb9d69abe260a564eebc/openspec/specs/rhime-model-selection/spec.md)

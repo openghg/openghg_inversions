@@ -18,7 +18,7 @@ and flux-source routing SHALL retain consistent existing meanings across data
 preparation and model construction. Current INI section interpretation, path
 conventions, file vocabulary, scientific calculations and sampling defaults
 SHALL remain unchanged except for the path conventions specified by
-[rhime-resource-io](../../../../specs/rhime-resource-io/spec.md).
+[rhime-resource-io](https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/rhime-resource-io/spec.md).
 
 Internal orchestration/setup records and their constructor/helper return shapes
 SHALL NOT be required compatibility contracts. Their in-repository consumers
