@@ -231,8 +231,10 @@ share their owners with complete requests.
 
 ### Requirement: Compatible public adapters and scientific choices
 
-Except for the explicit sampler-default migration, the prerequisite #868 removal
-of `prepare_basis(output_path=...)`, removed `prepare_rhime_inputs` convenience function, obsolete
+Except for the explicit sampler-default migration, the prerequisite #868 resource-I/O
+migrations removing `prepare_basis(output_path=...)` and `country_directory` in 0.8
+and replacing scientific BC case/directory inputs with resolved basis data,
+removed `prepare_rhime_inputs` convenience function, obsolete
 modern merged-cache options, former stage adapter, `resolve_rhime_config`,
 transitional old-location imports and revised INI reader contract specified below, supported
 scientific Python and CLI entry points SHALL retain their signatures, shorthand,
@@ -244,7 +246,7 @@ SHALL remain independent of full configuration. Shared choices such as BC use
 and flux-source routing SHALL retain consistent existing meanings across data
 preparation and model construction. Current INI section interpretation, path
 conventions, file vocabulary, scientific calculations and sampling defaults
-SHALL remain unchanged except for the path conventions specified by
+SHALL remain unchanged except for the path and legacy-resource migrations specified by
 [rhime-resource-io](https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/rhime-resource-io/spec.md).
 
 Established selector and shared-handoff aliases in the current
