@@ -133,6 +133,10 @@ resources are checked by ``postprocess`` before creating its output directory;
   posterior. The NetCDF is a versioned ``RhimePreparedInputs`` artifact and is
   independently inspectable/loadable. Later stages consume this artifact;
   preparation does not write a filtered merged-data snapshot.
+  Native runtime flux is resolved once from the filtered source datasets; basis
+  design weights use the first requested source. A selected saved basis reuses
+  its operator with current runtime flux. The prepared artifact retains that
+  bound prior for later reconstruction, which needs no reacquisition.
   For ``co2``, preparation validates and copies the configured
   ``Co2PreparedInputs`` artifact and optional bound affine reconstruction,
   preserving their content identities; it does not acquire observation data.

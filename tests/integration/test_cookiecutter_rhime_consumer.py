@@ -40,7 +40,8 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
             })
             for site in config.site_options.sites
         },
-        flux_data={},
+        flux_data={"inventory": xr.Dataset({"flux": (("lat", "lon"), [[2.]])},
+                                           coords={"lat": [50.], "lon": [0.]})},
         site_options=config.site_options,
     )
     filtered = merged
@@ -87,9 +88,9 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
 
     def build_basis(**kwargs: Any) -> Any:
         assert kwargs["site_data"] is filtered.site_data
-        assert kwargs["flux_data"] is filtered.flux_data
+        assert kwargs["weighting_flux"].data is filtered.flux_data[config.flux_sources[0]]["flux"].data
+        xr.testing.assert_equal(kwargs["runtime_flux"], filtered.flux_data[config.flux_sources[0]]["flux"])
         assert kwargs["domain"] == config.domain
-        assert kwargs["flux_sources"] == config.flux_sources
         calls.append("basis")
         return basis
 

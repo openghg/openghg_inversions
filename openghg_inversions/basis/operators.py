@@ -55,6 +55,7 @@ from typing import Any, ClassVar, Literal, Self, TypeVar, cast
 import numpy as np
 import xarray as xr
 
+from openghg_inversions._serialization_codecs import _decode_serialized_bool
 from openghg_inversions.array_ops import (
     align_to_multi_index_level_values,
     concat_gather_data_arrays,
@@ -767,11 +768,14 @@ class BucketBasisOperator(BasisOperator):
     def to_datatree(self) -> xr.DataTree:
         """Serialises the operator to a DataTree.
 
+        The consolidation ``strict_connected_labels`` attribute is stored as
+        integer 0/1 and restored as Boolean when read. Payloads remain borrowed.
+
         Returns:
             A DataTree with a dataset containing `basis_flat` and attributes sufficient
             to reconstruct the operator.
         """
-        ds = xr.Dataset({"basis_flat": self.basis_flat})
+        ds = xr.Dataset({"basis_flat": _encode_basis_connectivity(self.basis_flat)})
         dt = xr.DataTree(ds)
         dt.attrs.update(
             {
@@ -804,7 +808,7 @@ class BucketBasisOperator(BasisOperator):
         """
         ds = dt.to_dataset()
 
-        basis_flat = ds["basis_flat"]
+        basis_flat = _restore_basis_connectivity(ds["basis_flat"])
         state_metadata = dt["state_metadata"].to_dataset() if "state_metadata" in dt else None
         meta = BasisMeta(
             grid_dims=tuple(dt.attrs.get("grid_dims", ("lat", "lon"))),
@@ -1277,7 +1281,9 @@ class MultiSourceBucketBasisOperator(BasisOperator):
 
         The returned DataTree stores one source-labelled ``basis_flat`` array.
         Its source coordinate is the sole source-order representation, avoiding
-        source names in storage paths and redundant JSON metadata.
+        source names in storage paths and redundant JSON metadata. The common
+        consolidation ``strict_connected_labels`` attribute retained by stacking
+        is stored as integer 0/1 and restored as Boolean when read.
 
         Returns:
             DataTree representation of the operator.
@@ -1285,7 +1291,7 @@ class MultiSourceBucketBasisOperator(BasisOperator):
         Raises:
             ValueError: If source bases do not have compatible labeled grids.
         """
-        dt = xr.DataTree(xr.Dataset({"basis_flat": self._stacked_basis_flat()}))
+        dt = xr.DataTree(xr.Dataset({"basis_flat": _encode_basis_connectivity(self._stacked_basis_flat())}))
         dt.attrs.update(
             {
                 "schema": self.schema,
@@ -1327,7 +1333,7 @@ class MultiSourceBucketBasisOperator(BasisOperator):
 
         root_dataset = dt.to_dataset()
         if "basis_flat" in root_dataset:
-            stacked_basis = root_dataset["basis_flat"]
+            stacked_basis = _restore_basis_connectivity(root_dataset["basis_flat"])
             if source_dim not in stacked_basis.dims:
                 raise ValueError(f"Stored multi-source 'basis_flat' must have dimension {source_dim!r}.")
 
@@ -1378,7 +1384,7 @@ class MultiSourceBucketBasisOperator(BasisOperator):
             ds = child.to_dataset()
             if "basis_flat" not in ds:
                 raise ValueError(f"Missing 'basis_flat' variable for source '{src}'.")
-            basis_flat[str(src)] = ds["basis_flat"]
+            basis_flat[str(src)] = _restore_basis_connectivity(ds["basis_flat"])
 
         return cls(
             basis_flat=basis_flat,
@@ -1386,3 +1392,19 @@ class MultiSourceBucketBasisOperator(BasisOperator):
             source_dim=source_dim,
             region_in_source_dim=region_in_source_dim,
         )
+
+
+def _encode_basis_connectivity(basis: xr.DataArray) -> xr.DataArray:
+    """Store the consolidation connectivity flag as a NetCDF-safe integer."""
+    if "strict_connected_labels" not in basis.attrs:
+        return basis
+    flag = _decode_serialized_bool(basis.attrs["strict_connected_labels"], "strict_connected_labels")
+    return basis.assign_attrs(strict_connected_labels=int(flag))
+
+
+def _restore_basis_connectivity(basis: xr.DataArray) -> xr.DataArray:
+    """Restore the consolidation connectivity flag without copying payloads."""
+    if "strict_connected_labels" not in basis.attrs:
+        return basis
+    flag = _decode_serialized_bool(basis.attrs["strict_connected_labels"], "strict_connected_labels")
+    return basis.assign_attrs(strict_connected_labels=flag)

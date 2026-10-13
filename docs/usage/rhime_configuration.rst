@@ -144,6 +144,16 @@ case/glob selection. ``basis_output_path`` is an optional
 exact destination, including the filename; it is not an output directory or an
 enable flag. Staged preparation preserves this destination too.
 
+A selected retained artifact supplies its operator and metadata to new
+preparation. The runner resolves current native prior flux once after filtering
+and binds it with ``BasisFunctions.reuse_operator``; the saved flux payload is
+not read. Generated-basis weights use only the first requested source (or the
+first source mapping entry), while retained flux includes all runtime sources.
+These resolved arrays are local scientific inputs, not configuration fields.
+``BasisFunctions.load`` has a separate reconstruction contract: it restores the
+complete saved basis with its saved prior, without acquisition. See the
+:doc:`modern preparation example <customising_rhime>`.
+
 ``landsea_path`` and ``outer_regions_path`` select exact scientific support
 files. ``RhimeConfig.from_params`` resolves options without opening scientific
 data. The application preparation boundary loads selected maps before

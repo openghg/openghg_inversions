@@ -148,4 +148,5 @@ applied to #813 at those revisions only.
 - [x] Document modern retained output as the 0.8 default and legacy opt-in, deprecated in 0.9 without automatic removal.
 - [x] Update ordinary/nested/staged/copied-runner guidance and preserve exact staged destinations.
 - [ ] Record independent review and revision-specific broader/Slurm validation on the owning PR.
-- [ ] Complete the separately bounded native runtime-flux ownership and operator-only reuse follow-up (#839).
+- [x] Implement explicit native runtime-flux ownership and operator-only reuse (#839), with complete saved-prior restoration kept separate.
+- [ ] Record independent #839 code, documentation-impact and docstring review plus revision-specific validation on the owning PR.

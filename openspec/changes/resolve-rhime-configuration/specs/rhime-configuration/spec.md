@@ -541,3 +541,32 @@ interfaces SHALL use canonical names directly without forwarding wrappers.
 - **WHEN** a caller selects a different `flux_domain`
 - **THEN** the requested flux dataset uses that domain and footprint retrieval
   retains its own domain and existing interpolation behavior
+
+### Requirement: Native runtime flux has an explicit preparation owner
+
+Each compatible domain/grid preparation context SHALL resolve native
+`runtime_flux` once from its retained source datasets, after scientific masking
+where applicable. Runners SHALL pass this labelled array and a singular
+`weighting_flux` to canonical basis preparation. Weighting SHALL use the first
+requested source or the first mapping entry; retained flux SHALL include all
+runtime sources. Configuration SHALL NOT retain these numerical arrays. Native
+prior flux SHALL remain distinct from observation-aligned `fp_x_flux` and
+`fp_x_flux_sectoral`. Existing source alignment and signed-flux semantics SHALL
+be preserved. Historical dataset and `fp_all` translation SHALL end at named
+compatibility boundaries.
+
+#### Scenario: Current prior binds a reused operator
+
+- **GIVEN** a retained basis saved with prior A and acquired current prior B
+- **WHEN** new preparation selects that artifact
+- **THEN** `BasisFunctions.reuse_operator(path, flux=runtime_flux)` SHALL load and
+  validate the operator without eagerly reading the saved flux payload
+- **AND** source-specific operators SHALL follow the current ordered sources
+- **AND** sensitivities and reconstructed flux SHALL use current prior B
+
+#### Scenario: Reconstruction restores the retained prior
+
+- **GIVEN** a retained basis saved with prior A
+- **WHEN** postprocessing calls `BasisFunctions.load(path)`
+- **THEN** the complete operator and saved flux SHALL be restored
+- **AND** reconstruction SHALL use prior A without acquisition

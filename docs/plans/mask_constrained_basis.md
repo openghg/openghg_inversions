@@ -5,9 +5,14 @@
 This tracks the branch sequence for issues #318, #449, #325, and the split-strategy
 part of #340.
 
-## Current input boundary (#838)
+## Current input boundary (#838 / #839)
 
-Modern basis preparation accepts exact `basis_path` / `output_path` destinations
+Modern basis preparation receives explicit native `runtime_flux` and singular
+first-source `weighting_flux`, resolved by the procedural preparation owner.
+Native prior flux remains separate from observation-aligned response arrays.
+Saved-operator reuse binds the current prior without loading saved flux; complete
+`BasisFunctions.load` restoration retains saved flux for reconstruction.
+Preparation accepts exact `basis_path` / `output_path` destinations
 and resolved labelled scientific maps. Select packaged support maps explicitly
 with `packaged_basis_support_path`; read selected files at the application
 preparation boundary, before acquisition or weight computation. Missing requested

@@ -3,7 +3,7 @@
 import getpass
 import logging
 import os
-from collections.abc import Hashable, Mapping, Sequence
+from collections.abc import Hashable, Mapping
 from functools import partial
 from numbers import Integral
 from pathlib import Path
@@ -244,22 +244,32 @@ def paired_abs_response_weights(
 
 def basis_weights_from_data(
     site_data: Mapping[str, xr.Dataset],
-    flux_data: Mapping[str, xr.Dataset],
-    flux_sources: Sequence[str] | None = None,
+    weighting_flux: xr.DataArray,
     *,
     abs_flux: bool = False,
     mask: xr.DataArray | None = None,
 ) -> xr.DataArray:
     """Materialize mean-footprint times mean-flux weights for basis fitting.
 
-    Select only the first requested emissions source, or the first mapping
-    entry when omitted. All site footprint times contribute to the mean. This
-    named eager algorithm boundary leaves the borrowed datasets unchanged.
-    ``abs_flux=True`` takes the absolute flux before temporal averaging.
-    ``mask`` optionally drops cells outside the fitting region.
+    All site footprint times contribute to the measurement-weighted footprint
+    mean. Flux is averaged over its own native time axis; it is not paired to
+    individual observation times. This named eager algorithm boundary leaves
+    borrowed inputs unchanged.
+
+    Args:
+        site_data: Non-empty mapping of site datasets containing ``fp`` with
+            ``time`` and spatial dimensions. Spatial cells must already match
+            the flux grid in size and order; footprint coordinates are adopted.
+        weighting_flux: One selected source flux with ``time`` and the same
+            spatial dimensions as the footprints. Callers implementing the
+            standard RHIME policy select the first requested source.
+        abs_flux: Take absolute flux values before temporal averaging.
+        mask: Optional Boolean spatial mask; cells outside it are dropped.
+
+    Returns:
+        Eager spatial weights equal to mean footprint times mean selected flux.
     """
-    source = flux_sources[0] if flux_sources is not None else next(iter(flux_data))
-    flux = flux_data[source]["flux"]
+    flux = weighting_flux
     footprints = [dataset["fp"] for dataset in site_data.values()]
     return _mean_fp_times_mean_flux(flux, footprints, abs_flux=abs_flux, mask=mask).as_numpy()
 
@@ -886,11 +896,10 @@ def _region_constrained_split_strategy(
 
 def fixed_outer_regions_basis_from_data(
     site_data: Mapping[str, xr.Dataset],
-    flux_data: Mapping[str, xr.Dataset],
+    weighting_flux: xr.DataArray,
     start_date: str,
     basis_algorithm: str,
     domain: str,
-    flux_sources: Sequence[str] | None = None,
     nbasis: int = 100,
     abs_flux: bool = False,
     *,
@@ -926,14 +935,12 @@ def fixed_outer_regions_basis_from_data(
 
     Args:
         site_data: Borrowed site datasets containing footprints.
-        flux_data: Borrowed flux datasets keyed by runtime source label.
+        weighting_flux: Borrowed singular source flux used to fit weights.
         start_date: Start date of the inversion period.
         basis_algorithm: Algorithm used to fit the inner region. Supported
             values are ``"quadtree"``, ``"weighted"``, and
             ``"region_constrained"``.
         domain: Domain across which to calculate basis functions.
-        flux_sources: Optional list of OpenGHG flux source names used to
-            select the first source for weighting.
         nbasis: Desired number of inner-region basis labels.
         abs_flux: If true, use absolute flux values when constructing weights.
         outer_regions: Borrowed resolved fixed outer-region map.
@@ -970,8 +977,7 @@ def fixed_outer_regions_basis_from_data(
     intem_regions = outer_regions
 
     # Validate the physical grid before adopting the authoritative flux coordinates.
-    source = flux_sources[0] if flux_sources is not None else next(iter(flux_data))
-    flux = flux_data[source]["flux"]
+    flux = weighting_flux
     flux_grid = flux.isel(
         {dimension: 0 for dimension in flux.dims if dimension not in intem_regions.dims},
         drop=True,
@@ -991,7 +997,7 @@ def fixed_outer_regions_basis_from_data(
     mask = intem_regions == inner_index
 
     weights = basis_weights_from_data(
-        site_data, flux_data, flux_sources, abs_flux=abs_flux, mask=mask,
+        site_data, weighting_flux, abs_flux=abs_flux, mask=mask,
     )
     if allow_empty_inner_region:
         finite_inner_weights = weights.to_numpy()

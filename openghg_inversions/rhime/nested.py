@@ -10,6 +10,7 @@ built, and combines only the two observation-aligned sensitivity matrices.
 
 from __future__ import annotations
 
+from openghg_inversions.native_flux import resolve_runtime_flux
 from openghg_inversions.basis import prepare_basis
 from openghg_inversions.rhime.preparation import resolve_basis_inputs
 from openghg_inversions._flux_options import UNSET, _Unset, normalise_flux_aliases, resolve_deprecated_keyword
@@ -698,15 +699,15 @@ def _prepare_one_domain(
     basis_support_maps: Mapping[str, Any],
 ) -> RhimePreparedInputs:
     """Run one domain's scientific stages from already-resolved choices."""
+    runtime_flux = resolve_runtime_flux(merged.flux_data, split_by_sectors=merged.split_by_sectors)
     with timed("rhime.prepare_inputs.basis_build", basis_algorithm=config.basis_algorithm):
         basis_functions = prepare_basis(
             site_data=merged.site_data,
-            flux_data=merged.flux_data,
-            split_by_sectors=merged.split_by_sectors,
+            runtime_flux=runtime_flux,
+            weighting_flux=merged.flux_data[config.flux_sources[0]]["flux"],
             **config.select(
                 "domain", "start_date", "basis_algorithm", "nbasis",
             ),
-            flux_sources=config.flux_sources,
             fix_outer_regions=config.fix_basis_outer_regions,
             **basis_support_maps,
             output_path=config.basis_output_path,

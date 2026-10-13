@@ -286,10 +286,24 @@ now live in ``openghg_inversions.hbmcmc.legacy_basis``. The previous canonical
 module paths and exports have been removed.
 
 Modern acquisition uses ``RhimeMergedData.from_options`` or direct dataset
-construction. Modern ``prepare_basis`` accepts explicit ``site_data`` and ``flux_data``
-datasets, exact ``basis_path`` / ``output_path`` artifacts, and resolved
-scientific map arrays. Historical case/glob discovery, directory-based filename
-construction, flat-file adaptation and explicit legacy writing are isolated in
+construction. Modern runners resolve native prior flux once with
+``native_flux.resolve_runtime_flux(merged.flux_data, split_by_sectors=...)``.
+Modern ``prepare_basis`` accepts explicit ``site_data``, resolved ``runtime_flux``
+and singular ``weighting_flux`` arrays, exact ``basis_path`` / ``output_path``
+artifacts, and resolved scientific map arrays. Historical case/glob discovery,
+directory-based filename construction, flat-file adaptation and explicit legacy writing are isolated in
 ``basis.compatibility``. See :doc:`rhime_configuration` for the 0.8 modern basis
 artifact default, explicit legacy opt-in, and migration examples. For reusable RHIME runs, save ``RhimePreparedInputs``;
 legacy merged-data files are a separate explicit utility workflow.
+
+Dataset and ``fp_all`` basis adapters resolve native flux once at their
+compatibility boundary. ``basis_functions_from_flat_basis`` now accepts
+``flux=`` rather than source datasets and a combination flag. Weight builders
+accept one ``weighting_flux`` array rather than a source dictionary and selector.
+
+For new preparation, ``BasisFunctions.reuse_operator(path, flux=runtime_flux)``
+reuses the saved partition and binds the current prior without reading the saved
+flux payload. ``prepare_basis(basis_path=..., ...)`` performs that operation.
+For reconstruction, ``BasisFunctions.load(path)`` restores the complete saved
+basis and its retained flux without acquiring data. Acquisition replay remains
+deferred to #829.

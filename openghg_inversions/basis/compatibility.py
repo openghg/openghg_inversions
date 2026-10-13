@@ -9,6 +9,7 @@ import xarray as xr
 
 from openghg_inversions._flux_options import UNSET, _Unset, resolve_deprecated_keyword
 
+from openghg_inversions.native_flux import resolve_runtime_flux
 from openghg_inversions.utils import read_netcdfs
 from .support import packaged_basis_support_path, load_basis_support_map
 
@@ -74,12 +75,15 @@ def make_basis_functions(
     selected support maps are loaded eagerly.
 
     ``emissions_name`` aliases ``flux_sources`` and cannot be supplied with it.
+    The first requested source supplies generation weights, falling back to
+    the first ``flux_data`` entry. All runtime sources are retained, separately
+    in mapping order when ``split_by_sectors=True`` and combined otherwise.
     ``output_path`` is a historical root directory, with a domain subdirectory
     and filename derived from ``species``, algorithm, month and ``outputname``.
     It is used only for generated bases. ``basis_output_format="datatree"``
     writes a retained operator/flux artifact; ``"legacy"`` writes its flat
-    partition. ``output_path=None`` disables saving. Returns the operator bound to runtime flux
-    with source and, where applicable, artifact-path metadata.
+    partition. ``output_path=None`` disables saving. Returns the operator bound
+    to runtime flux with source and, where applicable, artifact-path metadata.
     """
     from ._wrapper import prepare_basis
     from .support import resolve_basis_support_maps
@@ -120,11 +124,10 @@ def make_basis_functions(
         )
         result = prepare_basis(
             site_data=site_data,
-            flux_data=flux_data,
-            split_by_sectors=split_by_sectors,
+            runtime_flux=resolve_runtime_flux(flux_data, split_by_sectors=split_by_sectors),
+            weighting_flux=flux_data[flux_sources[0] if flux_sources else next(iter(flux_data))]["flux"],
             domain=domain,
             start_date=start_date,
-            flux_sources=flux_sources,
             nbasis=nbasis,
             basis_algorithm=basis_algorithm,
             fix_outer_regions=fix_outer_regions,
@@ -171,9 +174,10 @@ def load_basis_functions(
 
     DataTree artifacts are preferred when the matching file carries the
     ``openghg_inversions.flux_weighted_basis`` schema and are loaded through
-    ``BasisFunctions.load``. Otherwise the existing legacy flat artifact loader
+    ``BasisFunctions.reuse_operator`` with current runtime flux. Saved flux
+    payloads are not read. Otherwise the existing legacy flat artifact loader
     is used and a retained basis object is built from runtime flux in
-    ``flux_data``.
+    ``flux_data``. Use ``BasisFunctions.load`` to restore the saved prior.
 
     Args:
         flux_data: Borrowed runtime flux datasets used for flat artifacts and
@@ -202,8 +206,8 @@ def load_basis_functions(
     )
     result = prepare_basis(
         site_data={},
-        flux_data=flux_data,
-        split_by_sectors=split_by_sectors,
+        runtime_flux=resolve_runtime_flux(flux_data, split_by_sectors=split_by_sectors),
+        weighting_flux=flux_data[next(iter(flux_data))]["flux"],
         domain=domain,
         start_date="",
         nbasis=0,

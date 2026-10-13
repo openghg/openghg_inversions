@@ -84,6 +84,7 @@ canonical load-or-generate operation with exact paths and labelled arrays:
 .. code-block:: python
 
    from openghg_inversions.basis import prepare_basis
+   from openghg_inversions.native_flux import resolve_runtime_flux
    from openghg_inversions.rhime.preparation import resolve_basis_inputs
    from openghg_inversions.rhime import validate_output_resources
 
@@ -91,13 +92,17 @@ canonical load-or-generate operation with exact paths and labelled arrays:
    validate_output_resources(config.output)
    basis_inputs = resolve_basis_inputs(config)
    # Acquire merged data, prepare errors and filter observations here.
+   runtime_flux = resolve_runtime_flux(
+       filtered.flux_data, split_by_sectors=filtered.split_by_sectors,
+   )
+   weighting_source = config.flux_sources[0] if config.flux_sources else next(iter(filtered.flux_data))
+   weighting_flux = filtered.flux_data[weighting_source]["flux"]
    basis = prepare_basis(
        site_data=filtered.site_data,
-       flux_data=filtered.flux_data,
-       split_by_sectors=filtered.split_by_sectors,
+       runtime_flux=runtime_flux,
+       weighting_flux=weighting_flux,
        domain=config.domain,
        start_date=config.start_date,
-       flux_sources=config.flux_sources,
        nbasis=config.nbasis,
        basis_algorithm=config.basis_algorithm,
        fix_outer_regions=config.fix_basis_outer_regions,
@@ -112,6 +117,16 @@ and input assembly consume the returned ``BasisFunctions``. Historical names,
 case/glob discovery and filename construction end at the compatibility entry
 boundary described in :doc:`rhime_configuration`; these scientific steps receive
 resolved values.
+
+``runtime_flux`` is native prior flux, resolved once for this domain/grid
+context. It retains all sources and their signed values. ``weighting_flux``
+selects only the first requested source for basis design. Non-sectoral source
+combination follows the established OpenGHG time alignment and forward-fill
+policy; sectoral native flux retains its time/grid compatibility checks.
+Observation-aligned ``fp_x_flux`` and ``fp_x_flux_sectoral`` remain in the site
+datasets used by ``build_sensitivities``. They are response arrays, not substitutes
+for the native prior used in reconstruction. Resolving the native flux once
+establishes ownership; it does not imply fewer executed Dask tasks.
 
 Acquire a merged handoff
 -------------------------
@@ -459,7 +474,7 @@ composes public basis primitives instead of selecting a built-in basis
 algorithm. It:
 
 * derives and normalises a two-dimensional weight field with
-  ``basis_weights_from_data(merged.site_data, merged.flux_data, flux_sources)``;
+  ``basis_weights_from_data(site_data, weighting_flux)``;
 * receives a class map resolved before acquisition from an exact ``landsea_path``
   or explicitly selected packaged support map, then reduces positive codes to
   ``land`` and the remaining cells to ``ocean``;
@@ -470,8 +485,7 @@ algorithm. It:
   exceed the configured PCA eccentricity guard;
 * generates class-safe labels with ``region_constrained_basis``; and
 * wraps the flat labels and current run flux in retained ``BasisFunctions``
-  with ``basis_functions_from_flat_basis``, passing ``merged.flux_data`` and
-  ``merged.split_by_sectors`` explicitly.
+  with ``basis_functions_from_flat_basis(flux=runtime_flux, ...)``.
 
 The weight field uses the first requested source. The retained basis attaches
 all runtime flux sources, combining them for an ordinary inversion or stacking
@@ -527,11 +541,13 @@ RHIME option resolution::
    python -m package_name.custom_basis_runner config.ini \
        --max-child-pca-eccentricity 10
 
-``BasisFunctions.load`` loads the saved operator, metadata, and flux into
-memory, then closes the artifact. The saved flux is deliberately retained. Use
-the standard public ``prepare_basis`` operation with an exact ``basis_path``
-in a new preparation run that should take its retained flux from the current
-merged acquisition.
+``BasisFunctions.reuse_operator(project_basis_path, flux=runtime_flux)``
+loads the saved operator and metadata, selects any source-specific operator in
+current source order, and binds the current native prior. It closes the artifact
+without loading the saved flux payload. The standard ``prepare_basis`` operation
+uses the same rule for ``basis_path``. For reconstruction of a saved result,
+``BasisFunctions.load`` instead restores the complete retained basis, including
+its saved flux, without acquisition.
 
 Without an artifact, the basis-building function computes the arrays needed by
 the splitting algorithm. Before that point, the filtered xarray objects may

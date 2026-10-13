@@ -15,7 +15,7 @@ import xarray as xr
 
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.cli import build_parser
-from openghg_inversions.inversion_data import RhimePreparedInputs, SiteOptions
+from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs, SiteOptions
 from openghg_inversions.inference import diagnostics as inference_diagnostics
 from openghg_inversions.rhime.stages import (
     CONVERGENCE_CHECK_NAME,
@@ -31,7 +31,6 @@ from openghg_inversions.rhime.stages import (
 )
 from openghg_inversions.serialization import save_trace
 from tests.helpers import make_trace
-from openghg_inversions.hbmcmc.legacy_data import from_legacy_fp_all
 
 
 def _params(**overrides: Any) -> dict[str, Any]:
@@ -202,7 +201,15 @@ def test_prepare_is_independent_and_writes_inspectable_contract(
     from openghg_inversions.rhime import _standard_stages as stages
 
     prepared = _prepared()
-    sentinel = from_legacy_fp_all({"TAC": xr.Dataset({"mf_error": ("time", [1.0]), "mf_repeatability": ("time", [0.0]), "mf_variability": ("time", [0.0])})}, SiteOptions.from_inputs(sites=("TAC",), averaging_period="1h"))
+    sentinel = RhimeMergedData(
+        site_data={"TAC": xr.Dataset({
+            "mf_error": ("time", [1.0]),
+            "mf_repeatability": ("time", [0.0]),
+            "mf_variability": ("time", [0.0]),
+        })},
+        flux_data={"synthetic-total": prepared.basis_functions.flux.to_dataset(name="flux")},
+        site_options=SiteOptions.from_inputs(sites=("TAC",), averaging_period="1h"),
+    )
     monkeypatch.setattr(stages.RhimeMergedData, "from_options", lambda *args, **kwargs: sentinel)
     monkeypatch.setattr(stages, "filter_observations", lambda *args, **kwargs: sentinel)
     def prepare_selected_basis(**kwargs):
@@ -252,7 +259,15 @@ def test_prepare_fails_when_a_requested_site_was_dropped(
     from openghg_inversions.rhime import _standard_stages as stages
 
     prepared = _prepared()
-    merged = from_legacy_fp_all({"TAC": xr.Dataset({"mf_error": ("time", [1.0]), "mf_repeatability": ("time", [0.0]), "mf_variability": ("time", [0.0])})}, SiteOptions.from_inputs(sites=("TAC",), averaging_period="1h"))
+    merged = RhimeMergedData(
+        site_data={"TAC": xr.Dataset({
+            "mf_error": ("time", [1.0]),
+            "mf_repeatability": ("time", [0.0]),
+            "mf_variability": ("time", [0.0]),
+        })},
+        flux_data={"synthetic-total": prepared.basis_functions.flux.to_dataset(name="flux")},
+        site_options=SiteOptions.from_inputs(sites=("TAC",), averaging_period="1h"),
+    )
     monkeypatch.setattr(stages.RhimeMergedData, "from_options", lambda *args, **kwargs: merged)
     monkeypatch.setattr(stages, "filter_observations", lambda *args, **kwargs: merged)
     monkeypatch.setattr(stages, "prepare_basis", lambda *args, **kwargs: prepared.basis_functions)
@@ -277,7 +292,15 @@ def test_prepare_accepts_canonicalised_site_labels(
     from openghg_inversions.rhime import _standard_stages as stages
 
     prepared = _prepared()
-    merged = from_legacy_fp_all({"TAC": xr.Dataset({"mf_error": ("time", [1.0]), "mf_repeatability": ("time", [0.0]), "mf_variability": ("time", [0.0])})}, SiteOptions.from_inputs(sites=("TAC",), averaging_period="1h"))
+    merged = RhimeMergedData(
+        site_data={"TAC": xr.Dataset({
+            "mf_error": ("time", [1.0]),
+            "mf_repeatability": ("time", [0.0]),
+            "mf_variability": ("time", [0.0]),
+        })},
+        flux_data={"synthetic-total": prepared.basis_functions.flux.to_dataset(name="flux")},
+        site_options=SiteOptions.from_inputs(sites=("TAC",), averaging_period="1h"),
+    )
     monkeypatch.setattr(stages.RhimeMergedData, "from_options", lambda *args, **kwargs: merged)
     monkeypatch.setattr(stages, "filter_observations", lambda *args, **kwargs: merged)
     monkeypatch.setattr(stages, "prepare_basis", lambda *args, **kwargs: prepared.basis_functions)
@@ -394,7 +417,15 @@ def test_preparation_manifest_authenticates_supplied_prepared_inputs(
     from openghg_inversions.rhime import _standard_stages as stages
 
     prepared = _prepared()
-    merged = from_legacy_fp_all({"TAC": xr.Dataset({"mf_error": ("time", [1.0]), "mf_repeatability": ("time", [0.0]), "mf_variability": ("time", [0.0])})}, SiteOptions.from_inputs(sites=("TAC",), averaging_period="1h"))
+    merged = RhimeMergedData(
+        site_data={"TAC": xr.Dataset({
+            "mf_error": ("time", [1.0]),
+            "mf_repeatability": ("time", [0.0]),
+            "mf_variability": ("time", [0.0]),
+        })},
+        flux_data={"synthetic-total": prepared.basis_functions.flux.to_dataset(name="flux")},
+        site_options=SiteOptions.from_inputs(sites=("TAC",), averaging_period="1h"),
+    )
     monkeypatch.setattr(stages.RhimeMergedData, "from_options", lambda *args, **kwargs: merged)
     monkeypatch.setattr(stages, "filter_observations", lambda *args, **kwargs: merged)
     monkeypatch.setattr(stages, "prepare_basis", lambda *args, **kwargs: prepared.basis_functions)
@@ -672,7 +703,15 @@ def test_synthetic_staged_tracer_bullet(
     from openghg_inversions.rhime import _standard_stages as stages
 
     prepared = _prepared()
-    sentinel = from_legacy_fp_all({"TAC": xr.Dataset({"mf_error": ("time", [1.0]), "mf_repeatability": ("time", [0.0]), "mf_variability": ("time", [0.0])})}, SiteOptions.from_inputs(sites=("TAC",), averaging_period="1h"))
+    sentinel = RhimeMergedData(
+        site_data={"TAC": xr.Dataset({
+            "mf_error": ("time", [1.0]),
+            "mf_repeatability": ("time", [0.0]),
+            "mf_variability": ("time", [0.0]),
+        })},
+        flux_data={"synthetic-total": prepared.basis_functions.flux.to_dataset(name="flux")},
+        site_options=SiteOptions.from_inputs(sites=("TAC",), averaging_period="1h"),
+    )
     monkeypatch.setattr(stages.RhimeMergedData, "from_options", lambda *args, **kwargs: sentinel)
     monkeypatch.setattr(stages, "filter_observations", lambda *args, **kwargs: sentinel)
     monkeypatch.setattr(stages, "prepare_basis", lambda *args, **kwargs: prepared.basis_functions)

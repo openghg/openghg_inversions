@@ -12,11 +12,12 @@ from openghg_inversions.basis import (
     basis_weights_from_data,
     bucket_basis_from_weights,
     make_basis_functions,
+    prepare_basis,
     quadtree_basis_from_weights,
     region_constrained_basis_from_weights,
 )
 from openghg_inversions.basis._functions import _mean_fp_times_mean_flux
-from openghg_inversions.basis.basis_functions import flux_from_data
+from openghg_inversions.native_flux import resolve_runtime_flux
 
 
 def _inputs():
@@ -33,7 +34,7 @@ def _inputs():
 @pytest.mark.parametrize("split_by_sectors", [False, True])
 def test_dataset_weights_select_first_requested_source_and_retain_all_flux(split_by_sectors):
     sites, sources = _inputs()
-    weights = basis_weights_from_data(sites, sources, ["b", "a"])
+    weights = basis_weights_from_data(sites, sources["b"].flux)
     xr.testing.assert_equal(weights, _mean_fp_times_mean_flux(
         sources["b"].flux, [value.fp for value in sites.values()]).compute())
     np.testing.assert_array_equal(weights, np.full((4, 4), 21.))
@@ -41,7 +42,7 @@ def test_dataset_weights_select_first_requested_source_and_retain_all_flux(split
     assert isinstance(sources["a"].flux.data, da.Array)
     labels = xr.ones_like(weights, dtype=int)
     retained = basis_functions_from_flat_basis(
-        flux_data=sources, split_by_sectors=split_by_sectors, basis_flat=labels)
+        flux=resolve_runtime_flux(sources, split_by_sectors=split_by_sectors), basis_flat=labels)
     assert isinstance(retained.flux.data, da.Array)
     if split_by_sectors:
         assert list(retained.flux.source.values) == ["a", "b"]
@@ -51,11 +52,10 @@ def test_dataset_weights_select_first_requested_source_and_retain_all_flux(split
 
 
 @pytest.mark.parametrize("algorithm", ["quadtree", "weighted", "region_constrained"])
-def test_dataset_generated_basis_matches_array_kernel(algorithm, tmp_path):
+def test_dataset_generated_basis_matches_array_kernel(algorithm):
     sites, sources = _inputs()
-    weights = basis_weights_from_data(sites, sources, ["b"])
+    weights = basis_weights_from_data(sites, sources["b"].flux)
     classes = xr.ones_like(weights, dtype=int)
-    xr.Dataset({"country": classes}).to_netcdf(tmp_path / "country-land-sea_TEST.nc")
     kwargs = {"nbasis": 4}
     if algorithm == "quadtree":
         expected = quadtree_basis_from_weights(weights, "2020-01-01", "TEST", seed=1, **kwargs)
@@ -65,10 +65,10 @@ def test_dataset_generated_basis_matches_array_kernel(algorithm, tmp_path):
     else:
         expected = region_constrained_basis_from_weights(weights, "2020-01-01", "TEST",
                                                          region_classes=classes, **kwargs)
-    actual = make_basis_functions(
-        site_data=sites, flux_data=sources, split_by_sectors=True,
-        species="ch4", domain="TEST", start_date="2020-01-01", flux_sources=["b"],
-        nbasis=4, basis_algorithm=algorithm, country_directory=str(tmp_path), region_classes=classes)
+    actual = prepare_basis(
+        site_data=sites, runtime_flux=resolve_runtime_flux(sources, split_by_sectors=True),
+        weighting_flux=sources["b"].flux, domain="TEST", start_date="2020-01-01",
+        nbasis=4, basis_algorithm=algorithm, landsea_classes=classes, region_classes=classes)
     xr.testing.assert_equal(actual.flat_basis(), expected.squeeze("time", drop=True))
     assert list(actual.flux.source.values) == ["a", "b"]
     assert isinstance(actual.flux.data, da.Array)
@@ -90,13 +90,13 @@ def test_dataset_saved_basis_uses_runtime_flux_and_source_order(output_format, t
         nbasis=2, fp_basis_case="region_constrained_ch4", basis_directory=str(tmp_path),
         basis_algorithm="unused_invalid_algorithm")
     xr.testing.assert_equal(loaded.flat_basis(), generated.flat_basis())
-    xr.testing.assert_equal(loaded.flux, flux_from_data(runtime, split_by_sectors=True))
+    xr.testing.assert_equal(loaded.flux, resolve_runtime_flux(runtime, split_by_sectors=True))
     assert list(loaded.flux.source.values) == ["b", "a"]
     assert isinstance(loaded.flux.data, da.Array)
 
 
 @pytest.mark.parametrize("empty_inner", [False, True])
-def test_dataset_fixed_outer_matches_label_composition(empty_inner, tmp_path):
+def test_dataset_fixed_outer_matches_label_composition(empty_inner):
     sites, sources = _inputs()
     outer = xr.DataArray([[0, 0, 2, 2], [0, 1, 1, 2], [0, 1, 1, 2], [0, 0, 2, 2]],
                          dims=("lat", "lon"), coords={"lat": sources["a"].lat, "lon": sources["a"].lon},
@@ -104,13 +104,11 @@ def test_dataset_fixed_outer_matches_label_composition(empty_inner, tmp_path):
     if empty_inner:
         sites = {key: dataset.assign(fp=dataset.fp.where(outer != 1, 0.))
                  for key, dataset in sites.items()}
-    outer_path = tmp_path / "outer.nc"
-    outer.to_dataset().to_netcdf(outer_path)
-    actual = make_basis_functions(
-        site_data=sites, flux_data=sources, split_by_sectors=True,
-        species="ch4", domain="TEST", start_date="2020-01-01", flux_sources=["b"],
+    actual = prepare_basis(
+        site_data=sites, runtime_flux=resolve_runtime_flux(sources, split_by_sectors=True),
+        weighting_flux=sources["b"].flux, domain="TEST", start_date="2020-01-01",
         nbasis=1, basis_algorithm="region_constrained", region_classes=xr.ones_like(outer),
-        fix_outer_regions=True, outer_regions_path=outer_path, allow_empty_inner_region=empty_inner)
+        fix_outer_regions=True, outer_regions=outer, allow_empty_inner_region=empty_inner)
     expected = outer + 1
     if not empty_inner:
         expected = expected.where(outer != 1, 4)
@@ -144,7 +142,7 @@ def test_unknown_algorithm_does_not_execute_borrowed_dask_graph(entry_point):
     with pytest.raises(ValueError, match="Basis algorithm not recognised"):
         if entry_point == "fixed":
             fixed_outer_regions_basis_from_data(
-                sites, sources, "2020-01-01", "invalid", "TEST", ["a"], outer_regions=xr.DataArray())
+                sites, sources["a"].flux, "2020-01-01", "invalid", "TEST", outer_regions=xr.DataArray())
         else:
             make_basis_functions(
                 site_data=sites, flux_data=sources, species="ch4", domain="TEST",
@@ -202,7 +200,7 @@ def test_fixed_outer_executes_shared_weight_graph_once(empty_inner, tmp_path):
     outer_path = tmp_path / "outer.nc"
     outer.to_dataset().to_netcdf(outer_path)
     actual = fixed_outer_regions_basis_from_data(
-        sites, sources, "2020-01-01", "region_constrained", "TEST", ["a"], nbasis=1,
+        sites, sources["a"].flux, "2020-01-01", "region_constrained", "TEST", nbasis=1,
         region_classes=xr.ones_like(outer), outer_regions=outer, allow_empty_inner_region=True)
     expected = outer + 1
     if not empty_inner:

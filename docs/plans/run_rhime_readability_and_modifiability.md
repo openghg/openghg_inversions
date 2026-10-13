@@ -200,8 +200,9 @@ are normally caller-supplied; packaged basis support maps remain selectable.
 
 The analogous BC case/directory convention remains inventoried in
 `build_sensitivities` and `bc_basis_case` / `bc_basis_directory` options; migrating
-it must not absorb BC scientific changes into this slice. Runtime-flux ownership
-is the next bounded change (#839). Acquisition replay remains deferred to #829.
+it must not absorb BC scientific changes into this slice. Native runtime-flux
+ownership and operator-only reuse are implemented in #839 as described below.
+Acquisition replay remains deferred to #829.
 
 ## Target code shape
 
@@ -219,7 +220,9 @@ read_rhime_ini -> options + winning overrides + recipe extraction
   -> RhimeMergedData.from_options with explicit resolved acquisition values
   -> prepare_observation_errors
   -> filter_observations
-  -> prepare_basis with exact artifact paths and resolved scientific maps
+  -> resolve_runtime_flux once for the current compatible domain/grid context
+  -> select first requested source as weighting_flux
+  -> prepare_basis with runtime_flux, weighting_flux, exact paths and resolved maps
   -> build_sensitivities
   -> assemble_rhime_inputs
   -> RhimeRunSpec from retained prepared sites and resolved model/output choices
@@ -235,6 +238,15 @@ justify wrappers. Observation errors are derived before filtering/aggregation;
 nested recipes establish errors on both domains before filtering/time alignment.
 Preserve supplied errors, retained metadata and borrowed data. Shared preparation
 and indexing utilities are not standard-model-specific policy.
+
+Native prior flux is a procedural local resolved from the retained source
+datasets, separate from observation-aligned `fp_x_flux` / `fp_x_flux_sectoral`.
+Nested recipes resolve each domain after its scientific masking. A selected
+artifact uses `BasisFunctions.reuse_operator(path, flux=runtime_flux)`; full
+`BasisFunctions.load` restores saved retained flux for reconstruction. First-source
+weighting and all-source retention remain distinct. No execution reduction is
+claimed from establishing a single native-flux owner. Acquisition replay remains
+deferred to #829.
 
 `RhimeConfig` directly owns acquisition/preparation choices and composes public
 `SiteOptions`, existing model/output specifications and the existing sampler.

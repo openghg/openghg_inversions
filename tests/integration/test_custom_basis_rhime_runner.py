@@ -73,7 +73,8 @@ def test_custom_basis_runner_replaces_only_basis_stage(
         site_data={site: xr.Dataset({"mf_error": ("time", [1.0]), "mf_repeatability": ("time", [0.0]), "mf_variability": ("time", [0.0])}) for site in config.site_options.sites},
         flux_data={}, site_options=config.site_options,
     )
-    filtered = object()
+    filtered = SimpleNamespace(site_data=merged.site_data,
+        flux_data={"inventory": _basis_functions().flux.to_dataset(name="flux")}, split_by_sectors=False)
     basis = _basis_functions()
     site_data = object()
     prepared = SimpleNamespace(
@@ -114,10 +115,10 @@ def test_custom_basis_runner_replaces_only_basis_stage(
         calls.append("filter")
         return filtered
 
-    def build_project_basis(actual: Any, **kwargs: Any) -> BasisFunctions:
-        assert actual is filtered
+    def build_project_basis(**kwargs: Any) -> BasisFunctions:
+        assert kwargs["site_data"] is filtered.site_data
         assert kwargs["domain"] == config.domain
-        assert kwargs["flux_sources"] == config.flux_sources
+        xr.testing.assert_equal(kwargs["weighting_flux"], filtered.flux_data["inventory"].flux)
         assert kwargs["nbasis"] == config.nbasis
         assert kwargs["project_basis_path"] == tmp_path / "external-basis.nc"
         assert kwargs["max_child_pca_eccentricity"] == 6.5
@@ -242,13 +243,6 @@ def test_project_basis_artifact_bypasses_calculation(
     stored = _basis_functions(artifact_source="external-project")
     artifact_path = tmp_path / "project-basis.nc"
     stored.save(artifact_path)
-    merged = SimpleNamespace(
-        fp_all={
-            ".flux": {"current-inventory": 2.0 * stored.flux},
-            ".split_by_sectors": False,
-        }
-    )
-
     def fail_calculation(actual: Any, **kwargs: Any) -> BasisFunctions:
         """Fail if the cached ingress route tries to calculate a basis."""
         raise AssertionError(f"unexpected basis calculation for {actual!r} with {kwargs!r}")
@@ -260,7 +254,7 @@ def test_project_basis_artifact_bypasses_calculation(
     monkeypatch.setattr(custom_basis_runner, "_guarded_basis", fail_calculation)
 
     loaded = custom_basis_runner.build_project_basis(
-        merged,
+        site_data={}, runtime_flux=2.0 * stored.flux, weighting_flux=stored.flux,
         domain="EUROPE",
         project_basis_path=artifact_path,
     )
@@ -268,7 +262,16 @@ def test_project_basis_artifact_bypasses_calculation(
     assert isinstance(loaded, BasisFunctions)
     assert loaded.basis_artifact_source == "external-project"
     xr.testing.assert_identical(loaded.operator.basis_matrix, stored.operator.basis_matrix)
-    xr.testing.assert_identical(loaded.flux, stored.flux)
+    xr.testing.assert_equal(loaded.flux, 2.0 * stored.flux)
+    xr.testing.assert_equal(BasisFunctions.load(artifact_path).flux, stored.flux)
+    state = xr.ones_like(loaded.operator.basis_matrix.isel(lat=0, lon=0, drop=True))
+    reconstructed = loaded.state_to_flux(state)
+    expected = 2.0 * stored.flux
+    xr.testing.assert_equal(reconstructed, expected.transpose(*reconstructed.dims))
+    response = 5.0 * expected
+    xr.testing.assert_equal(loaded.sensitivity(response), stored.sensitivity(response))
+    xr.testing.assert_equal(loaded.sensitivity(response), 2.0 * stored.sensitivity(5.0 * stored.flux))
+
 
 
 def test_generated_project_basis_uses_guarded_connected_inertial_composition(
@@ -307,15 +310,13 @@ def test_generated_project_basis_uses_guarded_connected_inertial_composition(
 
     def basis_weights(
         site_data: Any,
-        flux_data: Any,
-        emissions_name: list[str],
+        weighting_flux: Any,
         *,
         abs_flux: bool,
     ) -> xr.DataArray:
         """Return deterministic weights at the public custom-basis boundary."""
         assert site_data is merged.site_data
-        assert flux_data is merged.flux_data
-        assert emissions_name == ["inventory"]
+        assert weighting_flux is expected_basis.flux
         assert abs_flux is True
         return weights
 
@@ -370,8 +371,7 @@ def test_generated_project_basis_uses_guarded_connected_inertial_composition(
             "openghg_inversions:project_basis_class_policy": "land_ocean",
             "openghg_inversions:project_basis_weights": ("basis_weights_from_data_abs_flux_normalized"),
         }
-        assert kwargs["flux_data"] is merged.flux_data
-        assert kwargs["split_by_sectors"] is merged.split_by_sectors
+        assert kwargs["flux"] is expected_basis.flux
         assert kwargs["basis_flat"].name == "basis"
         assert kwargs["basis_flat"].dtype == np.dtype(np.int16)
         xr.testing.assert_equal(kwargs["basis_flat"], generated_labels.astype(np.int16).rename("basis"))
@@ -384,9 +384,8 @@ def test_generated_project_basis_uses_guarded_connected_inertial_composition(
     monkeypatch.setattr(custom_basis_runner, "basis_functions_from_flat_basis", retain_basis)
 
     actual = custom_basis_runner.build_project_basis(
-        merged,
+        site_data=merged.site_data, runtime_flux=expected_basis.flux, weighting_flux=expected_basis.flux,
         domain=data_args["domain"],
-        flux_sources=data_args["flux_sources"],
         nbasis=data_args["nbasis"],
         region_classes=country_classes,
         max_child_pca_eccentricity=7.5,
@@ -416,7 +415,8 @@ def test_incompatible_project_basis_failure_remains_owned_by_sensitivity_stage(
         site_data={site: xr.Dataset({"mf_error": ("time", [1.0]), "mf_repeatability": ("time", [0.0]), "mf_variability": ("time", [0.0])}) for site in config.site_options.sites},
         flux_data={}, site_options=config.site_options,
     )
-    filtered = object()
+    filtered = SimpleNamespace(site_data=merged.site_data,
+        flux_data={"inventory": _basis_functions().flux.to_dataset(name="flux")}, split_by_sectors=False)
     incompatible_basis = object()
 
     monkeypatch.setattr(
@@ -435,7 +435,7 @@ def test_incompatible_project_basis_failure_remains_owned_by_sensitivity_stage(
     monkeypatch.setattr(
         custom_basis_runner,
         "build_project_basis",
-        lambda actual, **kwargs: incompatible_basis,
+        lambda **kwargs: incompatible_basis,
     )
 
     def reject_incompatible_basis(actual: Any, actual_basis: Any, **kwargs: Any) -> Any:

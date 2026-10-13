@@ -1,6 +1,6 @@
 """Prepare retained basis operators from exact artifacts or resolved scientific inputs."""
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from pathlib import Path
 from time import time
 from typing import Any, Literal
@@ -13,7 +13,6 @@ from .basis_functions import (
     BASIS_ARTIFACT_SOURCE_ATTR,
     BasisFunctions,
     basis_functions_from_flat_basis,
-    flux_from_data,
 )
 from ._functions import (
     basis_from_weights,
@@ -26,11 +25,10 @@ from ._functions import (
 def prepare_basis(
     *,
     site_data: Mapping[str, xr.Dataset],
-    flux_data: Mapping[str, xr.Dataset],
-    split_by_sectors: bool = False,
+    runtime_flux: xr.DataArray,
+    weighting_flux: xr.DataArray,
     domain: str,
     start_date: str,
-    flux_sources: Sequence[str] | None = None,
     nbasis: int,
     basis_algorithm: str | None = None,
     fix_outer_regions: bool = False,
@@ -65,15 +63,16 @@ def prepare_basis(
     Args:
         site_data: Site datasets with footprints used to construct weights.
             Unused when an artifact or partition is selected.
-        flux_data: Runtime flux datasets keyed by source label. Their current
-            flux replaces any flux stored in a loaded artifact.
-        split_by_sectors: Retain every runtime source separately in mapping
-            order when true; otherwise combine all runtime sources using the
-            ModelScenario sum/time-stacking convention.
+        runtime_flux: Resolved native prior containing all retained sources on
+            their inventory time axis, independent of observation-aligned
+            responses. Replaces any saved prior when an operator is reused.
+            Resolve source combination with
+            :func:`~openghg_inversions.native_flux.resolve_runtime_flux`.
+        weighting_flux: One source flux used for basis-design weights.
+            Standard RHIME callers select the first requested source. Unused
+            when an artifact or partition is selected.
         domain: Domain label for generated-basis metadata.
         start_date: Date attached to a generated partition's singleton time axis.
-        flux_sources: Optional source selection for generation weights; the
-            first selected source is used. None uses the first runtime source.
         nbasis: Requested generated-region count; with fixed outer regions,
             this counts inner regions only.
         basis_algorithm: Generation algorithm: ``"quadtree"``, ``"weighted"``
@@ -113,6 +112,7 @@ def prepare_basis(
     Raises:
         ValueError: If saved input selections conflict, no input or algorithm is
             supplied, or required maps or scientific fitting inputs are invalid.
+        OSError: If an artifact cannot be opened or written.
     """
     if basis_path is not None and basis_partition is not None:
         raise ValueError("Supply either basis_path or basis_partition.")
@@ -123,13 +123,7 @@ def prepare_basis(
 
     if basis_path is not None:
         basis_path = Path(basis_path)
-        basis_functions_object = BasisFunctions.load(basis_path)
-        current_flux = flux_from_data(flux_data, split_by_sectors=split_by_sectors)
-        if "source" in current_flux.dims:
-            basis_functions_object = basis_functions_object.select_sources(
-                [str(source) for source in current_flux.source.values]
-            )
-        basis_functions_object = basis_functions_object.with_flux(current_flux).with_metadata(
+        basis_functions_object = BasisFunctions.reuse_operator(basis_path, flux=runtime_flux).with_metadata(
             {
                 BASIS_ARTIFACT_SOURCE_ATTR: "datatree",
                 BASIS_ARTIFACT_PATH_ATTR: str(basis_path),
@@ -137,8 +131,7 @@ def prepare_basis(
         )
     elif basis_partition is not None:
         basis_functions_object = basis_functions_from_flat_basis(
-            flux_data=flux_data,
-            split_by_sectors=split_by_sectors,
+            flux=runtime_flux,
             basis_flat=basis_partition,
             metadata={BASIS_ARTIFACT_SOURCE_ATTR: "partition"},
         )
@@ -150,11 +143,10 @@ def prepare_basis(
         print("Using fixed outer regions for basis functions.")
         basis_data_array = fixed_outer_regions_basis_from_data(
             site_data,
-            flux_data,
+            weighting_flux,
             start_date,
             basis_algorithm,
             domain,
-            flux_sources,
             nbasis,
             outer_regions=outer_regions,
             landsea_classes=landsea_classes,
@@ -174,8 +166,7 @@ def prepare_basis(
         print(f"Using InTEM regions with {basis_algorithm} to derive basis functions for inner region.")
         print("Using generated in-memory basis artifact.")
         basis_functions_object = basis_functions_from_flat_basis(
-            flux_data=flux_data,
-            split_by_sectors=split_by_sectors,
+            flux=runtime_flux,
             basis_flat=basis_data_array,
             metadata={BASIS_ARTIFACT_SOURCE_ATTR: "generated"},
         )
@@ -198,7 +189,7 @@ def prepare_basis(
                     "contrast_s_diag": contrast_s_diag,
                 }
             )
-        weights = basis_weights_from_data(site_data, flux_data, flux_sources)
+        weights = basis_weights_from_data(site_data, weighting_flux)
         basis_data_array = basis_from_weights(
             weights,
             start_date,
@@ -209,8 +200,7 @@ def prepare_basis(
         )
         print("Using generated in-memory basis artifact.")
         basis_functions_object = basis_functions_from_flat_basis(
-            flux_data=flux_data,
-            split_by_sectors=split_by_sectors,
+            flux=runtime_flux,
             basis_flat=basis_data_array,
             metadata={BASIS_ARTIFACT_SOURCE_ATTR: "generated"},
         )

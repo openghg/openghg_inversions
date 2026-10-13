@@ -2603,7 +2603,7 @@ def test_flux_from_fp_all_rejects_source_only_extra_dimension():
     )
     with_ensemble = reference.expand_dims(ensemble=[0, 1])
 
-    with pytest.raises(ValueError, match="different dimensions"):
+    with pytest.raises(ValueError, match="permuted list"):
         flux_from_fp_all(
             {
                 ".flux": {"a": reference, "b": with_ensemble},

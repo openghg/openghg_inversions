@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from openghg_inversions.native_flux import resolve_runtime_flux
 from openghg_inversions.basis import prepare_basis
 from openghg_inversions.rhime.preparation import resolve_basis_inputs
 
@@ -750,15 +751,15 @@ def run_multisector(
     # 2. Keep the scientific preparation order visible in this recipe.
     merged = prepare_observation_errors(merged, averaging_error=config.averaging_error)
     filtered = filter_observations(merged, filters=config.filters)
+    runtime_flux = resolve_runtime_flux(filtered.flux_data, split_by_sectors=filtered.split_by_sectors)
     with timed("rhime.prepare_inputs.basis_build", basis_algorithm=config.basis_algorithm):
         basis_functions = prepare_basis(
             site_data=filtered.site_data,
-            flux_data=filtered.flux_data,
-            split_by_sectors=filtered.split_by_sectors,
+            runtime_flux=runtime_flux,
+            weighting_flux=filtered.flux_data[config.flux_sources[0]]["flux"],
             **config.select(
                 "domain", "start_date", "basis_algorithm", "nbasis",
             ),
-            flux_sources=config.flux_sources,
             fix_outer_regions=config.fix_basis_outer_regions,
             **basis_inputs,
             output_path=config.basis_output_path,
