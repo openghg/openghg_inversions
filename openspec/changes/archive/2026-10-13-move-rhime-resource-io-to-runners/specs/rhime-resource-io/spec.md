@@ -55,7 +55,7 @@ files SHALL retain the existing time combination and alignment semantics.
 The built-in NESW calculation SHALL use the acquired directional BC contributions
 without reading any BC basis file. Supported historical case/directory requests
 SHALL be translated once at the legacy entry boundary owned by the
-[pending HBMCMC isolation/retirement contract](../../../isolate-and-retire-hbmcmc/specs/hbmcmc-isolation-retirement/spec.md),
+[HBMCMC isolation contract](https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/hbmcmc-isolation-retirement/spec.md),
 after winning overrides and before scientific work. For NESW, a supplied legacy
 `bc_basis_directory` SHALL produce an unused/deprecated-option warning and SHALL
 NOT cause file discovery or a missing-directory error. Disabled BCs SHALL NOT

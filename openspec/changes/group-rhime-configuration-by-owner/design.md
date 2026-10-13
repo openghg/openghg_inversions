@@ -21,13 +21,13 @@ raw overrides before the runner/frontend alias owner outside HBMCMC, then resolv
 groups. Bind inference choices against requested or retained preparation facts
 as specified in the delta. Reuse the established sampler and model owners.
 
-Keep resource conventions with the prerequisite resource-I/O change. Its small
-compatibility amendment lands first; this delta retains that exception when it
+Keep resource conventions with the prerequisite resource-I/O change. Its delivered
+compatibility amendment is preserved by this delta when it
 updates the same public-compatibility requirement. This order avoids undoing
 the basis-export migration while grouping configuration.
 
 The overlapping alias requirement is aligned with the separate
-[HBMCMC isolation/retirement contract](../isolate-and-retire-hbmcmc/proposal.md).
+[HBMCMC isolation/retirement contract](../../specs/hbmcmc-isolation-retirement/spec.md).
 Full and phase-only routes share runner/frontend alias definitions without importing or
 calling HBMCMC; phase-only adapters still select applicable groups before value
 validation/defaults and do not construct a complete request. Historical selection

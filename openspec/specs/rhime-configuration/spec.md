@@ -272,7 +272,11 @@ handoff SHALL retain its authoritative options and no-acquisition behavior.
 
 ### Requirement: Compatible public adapters and scientific choices
 
-Except for the removed `prepare_rhime_inputs` convenience function, obsolete
+Except for the resource-I/O migrations removing `prepare_basis(output_path=...)`
+and `country_directory` in 0.8 and replacing scientific BC case/directory inputs
+with resolved basis data, the legacy-only routing and namespace migration owned
+by the [HBMCMC isolation contract](https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/hbmcmc-isolation-retirement/spec.md),
+the removed `prepare_rhime_inputs` convenience function, obsolete
 modern merged-cache options, former stage adapter, `resolve_rhime_config`,
 transitional old-location imports and revised INI reader contract specified below, supported
 scientific Python and CLI entry points SHALL retain their signatures, shorthand,
@@ -284,14 +288,16 @@ SHALL remain independent of full configuration. Shared choices such as BC use
 and flux-source routing SHALL retain consistent existing meanings across data
 preparation and model construction. Current INI section interpretation, path
 conventions, file vocabulary, scientific calculations and sampling defaults
-SHALL remain unchanged.
+SHALL remain unchanged except for the path and legacy-resource migrations specified by
+[rhime-resource-io](https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/rhime-resource-io/spec.md).
 
 Internal orchestration/setup records and their constructor/helper return shapes
 SHALL NOT be required compatibility contracts. Their in-repository consumers
 SHALL migrate to the unified requested configuration.
 
-Resolution SHALL consume omitted/false `use_tracer` without retaining a config
-field. Effective true SHALL retain early rejection at resolution and relevant
+Runner/frontend resolution SHALL consume omitted/false `use_tracer` without
+retaining a config field. Canonical configuration SHALL accept only canonical
+fields and use generic unsupported-option errors for obsolete options. Effective true SHALL retain early rejection at resolution and relevant
 direct public boundaries, including supplied merged data. Existing legacy-option
 and custom-likelihood conflict precedence SHALL remain unchanged.
 
@@ -388,18 +394,33 @@ with winning overrides, extract their own recipe choices, and construct canonica
 configuration once. Shorthand SHALL remain editable until that construction.
 Shared semantic/site-alignment helpers SHALL remain independent of file syntax.
 
-Historical fixedbasis translation and deprecated alias definitions SHALL be
-owned by a lightweight HBMCMC compatibility module. `RhimeConfig.from_params`
-SHALL invoke alias translation before modern coercion, validation and construction.
-Runners SHALL call that classmethod without repeating alias translation.
-The translator SHALL emit `DeprecationWarning` when it replaces or removes a
-deprecated option name or output-format value; canonical options SHALL pass
-without a deprecation warning. Canonical spellings SHALL win when both spellings
-are supplied. Fixedbasis-specific scientific policy SHALL remain in its separate
-compatibility adapter. The `resolve_rhime_config` wrapper SHALL be removed.
-The deprecated `params_from_config` adapter SHALL preserve its dictionary,
-normalization and override behavior using the same decoder. It SHALL NOT be
-needed by modern scientific runners.
+Historical fixedbasis translation SHALL be owned by HBMCMC entry points.
+Supported RHIME spelling and output-format aliases, including deprecated
+`emissions_*` flux selectors, SHALL be translated at runner/frontend boundaries
+outside HBMCMC after winning overrides. Existing `run_rhime` behavior SHALL
+remain supported on devel and in 0.8, with `DeprecationWarning` for deprecated
+options, until their removal in 0.9. Canonical spelling precedence and the
+separate flux old/new conflict errors SHALL remain unchanged.
+`RhimeConfig.from_params` and canonical normalization SHALL know only canonical
+names: they SHALL NOT import alias definitions, translate aliases, issue alias
+warnings, or provide alias-specific replacement messages. Unsupported names
+SHALL use ordinary unsupported-option validation. Canonical inputs SHALL pass
+without alias warnings. Complete and phase-only frontends SHALL share the runner
+compatibility owner.
+HBMCMC-only resource selectors SHALL be translated by the legacy entry point,
+or rejected with guidance by modern runner boundaries before construction.
+Fixedbasis scientific policy SHALL remain in its separate compatibility adapter.
+The `resolve_rhime_config` wrapper SHALL be removed.
+
+During 0.8, HBMCMC's deprecated `params_from_config` SHALL return a dictionary
+using the modern decoder and apply overrides before normalization. With
+`normalise=False`, it SHALL preserve decoded values and historical names.
+With `normalise=True`, it SHALL translate historical names and resource selections
+into canonical keys and resolve declared filesystem values to absolute `Path`
+objects, preserving file/override origins. This is an explicit return-value
+migration from original path strings and historical selector keys; documentation
+SHALL describe it. The adapter SHALL NOT be re-exported by RHIME or needed by
+modern runners. Its removal belongs to the HBMCMC retirement contract.
 
 #### Scenario: Read recipe-specific or incomplete options
 
@@ -417,16 +438,22 @@ needed by modern scientific runners.
 
 #### Scenario: Construction translates deprecated spellings once
 
-- **WHEN** a runner or direct factory caller supplies a supported deprecated spelling
-- **THEN** `RhimeConfig.from_params` invokes the compatibility translator and resolves
-  the canonical value, emitting a deprecation warning for the changed option
-- **AND** canonical inputs do not emit deprecation warnings
-- **AND** HBMCMC-specific historical behavior remains in the HBMCMC translator
+- **WHEN** a caller supplies a supported deprecated spelling to `run_rhime`
+- **THEN** its frontend preserves the canonical value and established precedence,
+  emitting a deprecation warning before canonical construction
+- **AND** canonical construction receives only canonical names and emits no alias warning
+
+#### Scenario: Direct canonical factory receives an old name
+
+- **WHEN** a caller supplies a deprecated spelling directly to `RhimeConfig.from_params`
+- **THEN** it rejects the unsupported name through ordinary option validation
+- **AND** it neither translates the name nor emits an alias warning
 
 #### Scenario: Dictionary compatibility adapter
 
-- **WHEN** a caller uses `params_from_config` with supported overrides and normalization controls
-- **THEN** the deprecated adapter retains its established dictionary contract
+- **WHEN** a 0.8 caller uses HBMCMC's `params_from_config` with supported overrides and normalization controls
+- **THEN** the deprecated adapter returns raw overridden values when normalization is disabled,
+  or canonical keys and absolute path values when normalization is enabled
 - **AND** modern runners can instead read, combine and resolve without using it
 
 ### Requirement: Configuration is not a historical identity schema
@@ -475,11 +502,14 @@ A labelled partition SHALL remain a valid scientific representation,
 independently of historical artifact policy. Scientific preparation and numerical
 kernels SHALL NOT depend on legacy discovery or naming policy.
 
-`RhimeConfig.from_params` SHALL remain data-free. Transitional deprecated
-scalar/path configuration fields MAY remain for shipped requests and SHALL be
-translated once at their compatibility boundary. Resource loading, exact path
-selection, artifact formats and optional exports follow
-[rhime-resource-io](../rhime-resource-io/spec.md).
+`RhimeConfig.from_params` SHALL remain data-free. Supported deprecated resource
+selectors SHALL be translated once at the legacy entry boundary defined by the
+separate HBMCMC isolation/retirement contract before
+canonical configuration is handed to scientific execution; resolved requests
+SHALL NOT retain historical case/directory discovery fields. The removed
+`country_directory` option SHALL be rejected rather than translated. Resource
+loading, exact paths, packaged defaults, BC inputs and optional exports follow
+[rhime-resource-io](https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/rhime-resource-io/spec.md).
 
 #### Scenario: Resolved basis scientific inputs
 
@@ -491,7 +521,9 @@ selection, artifact formats and optional exports follow
 
 Modern configuration and acquisition SHALL use `flux_store`, `flux_domain`,
 `inner_flux_store` and `inner_flux_domain`. Their `emissions_*` predecessors
-SHALL remain accepted with `DeprecationWarning` until removal in 0.9. Supplying
+SHALL remain accepted at supported runner/acquisition frontends with
+`DeprecationWarning` until removal in 0.9. Canonical configuration SHALL accept
+only the new names and SHALL NOT translate aliases or emit alias warnings. Supplying
 both spellings SHALL raise even if the values agree or are explicitly `None`.
 Canonical configuration exports SHALL contain only the new names. This modern
 compatibility boundary SHALL remain separate from historical HBMCMC translation.
@@ -546,3 +578,46 @@ compatibility boundaries.
 - **WHEN** postprocessing calls `BasisFunctions.load(path)`
 - **THEN** the complete operator and saved flux SHALL be restored
 - **AND** reconstruction SHALL use prior A without acquisition
+
+### Requirement: Declared filesystem types identify path conversion
+
+Canonical configuration SHALL represent filesystem selections using `Path`
+types, including optional paths and explicit collections where supported.
+Frontends SHALL accept external path strings and convert the declared path fields
+with the owning frontend's base directory. Absolute paths SHALL keep their
+selected destination. File-origin values and explicit invocation overrides SHALL
+retain their distinct bases during conversion. Ordinary strings such as domain
+names and scientific selectors SHALL NOT be interpreted as paths.
+
+Path-field identification SHALL use type annotations through a small
+standard-library converter supplied with the owning record's declarations. The
+converter SHALL NOT import concrete configuration owners or inspect unrelated
+configuration records. No second path-name registry or new configuration framework
+dependency SHALL be introduced. Each external value SHALL acquire its base and
+canonical path at one owning boundary; downstream factories, runners and identity
+encoding SHALL forward resolved paths without repeating normalization. Independent
+output configuration SHALL normalize its own external inputs without requiring a
+complete run configuration. Historical selection translation, when applicable
+under the separate legacy contract, SHALL precede canonical construction;
+packaged scientific defaults remain runner-owned. Canonical construction SHALL
+NOT glob or open candidate resource artifacts.
+
+#### Scenario: Typed paths retain their frontend origins
+
+- **WHEN** a saved-file request and invocation overrides supply strings for declared filesystem fields
+- **THEN** conversion produces absolute `Path` values using each value's file or invocation base
+- **AND** non-path strings retain their scientific meaning without path conversion
+- **AND** configuration construction performs no scientific resource loading
+
+#### Scenario: Forward a resolved request
+
+- **WHEN** a configured runner or identity encoder receives canonical configuration
+- **THEN** it uses the resolved paths without another conversion or legacy adaptation
+- **AND** direct canonical construction accepts resolved values, while public
+  external-input factories accept supported path strings
+
+#### Scenario: Construct output configuration independently
+
+- **WHEN** a caller constructs only output configuration from external strings
+- **THEN** its owner converts only its declared filesystem fields using the invocation base
+- **AND** it does not inspect or construct full run configuration or load resources

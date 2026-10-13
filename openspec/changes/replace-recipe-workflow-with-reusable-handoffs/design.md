@@ -110,9 +110,8 @@ canonical file option combined with a deprecated override. Report all unsupporte
 and wrong-phase override keys together before scientific work.
 
 Resource-path interpretation and runner-owned optional basis saving follow
-the [runner resource-I/O change](../move-rhime-resource-io-to-runners/specs/rhime-resource-io/spec.md),
-to be delivered by the separate [#868](https://github.com/openghg/openghg_inversions/issues/868)
-prerequisite. Preserve the [delivered resource guarantees](../../specs/rhime-resource-io/spec.md). Manifest-relative dependency references retain their handoff owner.
+the [delivered resource-I/O contract](../../specs/rhime-resource-io/spec.md)
+from #868. Manifest-relative dependency references retain their handoff owner.
 Reuse `resolve_basis_inputs` and the existing codecs; this plan consumes those
 operations rather than adding another resource or persistence abstraction.
 

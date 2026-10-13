@@ -21,8 +21,8 @@ A design recommendation is not evidence that an API implements it.
 Keep legacy dependencies one-way
 --------------------------------
 
-The active :download:`HBMCMC isolation and retirement contract
-<../../openspec/changes/isolate-and-retire-hbmcmc/specs/hbmcmc-isolation-retirement/spec.md>`
+The delivered :download:`HBMCMC isolation contract
+<../../openspec/specs/hbmcmc-isolation-retirement/spec.md>`
 sets the boundary: HBMCMC may call modern APIs, while production code
 outside HBMCMC must not import, re-export or execute through it. Keep historical
 resource translation inside the legacy entry point. Retained RHIME spelling
@@ -31,8 +31,8 @@ canonical configuration. ``RhimeConfig.from_params`` has no alias vocabulary,
 translation or deprecation warnings. Give retained modern behavior modern owners;
 small duplication inside HBMCMC is acceptable to preserve this direction.
 The separate contract owns the exact compatibility rules and 0.9 removal timing.
-The initial 0.8 implementation is under review in PR 869; complete 0.9 removal
-and durable-spec promotion remain pending. See :doc:`specifications` for delivery
+The 0.8 isolation requirements are promoted in PR 869; complete 0.9 removal
+remains in the active retirement change. See :doc:`specifications` for delivery
 status.
 
 Start with the scientific recipe

@@ -49,7 +49,7 @@ Sync only after implementation and acceptance; the durable resource spec retains
 the existing optional preparation-save contract until then.
 
 Dependency direction, legacy-only routing and complete HBMCMC removal in 0.9
-belong to the separate [isolation/retirement change](../isolate-and-retire-hbmcmc/proposal.md).
+belong to the separate [isolation/retirement change](../../isolate-and-retire-hbmcmc/proposal.md).
 This change consumes that boundary without owning or duplicating its prohibition.
 The 0.8 isolation correction is required before acceptance here; 0.9 deletion is
 tracked separately and does not block the resource-I/O delivery.

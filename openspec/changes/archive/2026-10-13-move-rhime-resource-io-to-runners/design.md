@@ -26,7 +26,7 @@ conventions; superseded inputs must not trigger discovery or validation.
 Keep syntax decoding separate from compatibility interpretation. After applying
 winning overrides, the legacy HBMCMC input adapter resolves supported historical
 case/directory selections once. Legacy routing and modern dependency direction
-are owned by the separate [HBMCMC isolation/retirement change](../isolate-and-retire-hbmcmc/proposal.md).
+are owned by the separate [HBMCMC isolation/retirement change](../../isolate-and-retire-hbmcmc/proposal.md).
 Modern entry adapters receive explicit selections; modern resolved requests and
 numerical functions do not carry discovery rules. Remove `country_directory` in 0.8 and reject it
 early with named replacements, rather than retaining a path-resolution exception.

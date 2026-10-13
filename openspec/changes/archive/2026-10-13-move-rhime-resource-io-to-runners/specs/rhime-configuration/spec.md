@@ -7,7 +7,7 @@
 Except for the resource-I/O migrations removing `prepare_basis(output_path=...)`
 and `country_directory` in 0.8 and replacing scientific BC case/directory inputs
 with resolved basis data, the legacy-only routing and namespace migration owned
-by the [pending HBMCMC isolation/retirement contract](../../../isolate-and-retire-hbmcmc/specs/hbmcmc-isolation-retirement/spec.md),
+by the [HBMCMC isolation contract](https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/hbmcmc-isolation-retirement/spec.md),
 the removed `prepare_rhime_inputs` convenience function, obsolete
 modern merged-cache options, former stage adapter, `resolve_rhime_config`,
 transitional old-location imports and revised INI reader contract specified below, supported

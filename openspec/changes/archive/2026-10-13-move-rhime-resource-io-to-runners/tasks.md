@@ -37,13 +37,13 @@ selected-resource checks already exist; preserve their tests and scientific beha
 
 The initial ownership correction is implemented; approved follow-up review
 checks cover deterministic partition ordering and migration documentation. The separate
-[HBMCMC change](../isolate-and-retire-hbmcmc/tasks.md) owns the legacy entry-point
+[HBMCMC change](../../isolate-and-retire-hbmcmc/tasks.md) owns the legacy entry-point
 fix, dependency enforcement and retirement. Existing BC-loading and basis-export
 work remains subject to its focused regression checks after integration.
 
 ## 2. Completion
 
-- [ ] 2.1 Record merged implementation and acceptance, then sync both deltas and
+- [x] 2.1 Record implementation and acceptance, then sync both deltas and
   archive this change before the grouped-configuration delta is synced. Confirm
   the durable resource spec describes the resulting implemented save boundary.
   As part of sync/archive, update remaining active consumers and the developer
@@ -51,3 +51,7 @@ work remains subject to its focused regression checks after integration.
   references only via the actual archive location. Check links in promoted specs
   and remaining active changes after archival. Requirement links use durable
   capability URLs so copying them does not depend on source-directory depth.
+
+Accepted for merge on PR #869 after green CI at `7260b43d`; all 294 affected
+tests and the full docs build (SLURM 19376573) passed. The maintainer requested
+promotion/archive before the final merge. HBMCMC 0.9 retirement remains open.

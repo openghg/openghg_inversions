@@ -1,8 +1,8 @@
 # Tasks
 
-Implementation and approved review corrections are on PR #869, awaiting acceptance. Complete
-the 0.8 phase alongside the resource-I/O correction; retain the 0.9 phase as open
-work rather than deleting the package in 0.8 or claiming retirement is delivered.
+The 0.8 implementation was accepted for merge on PR #869 after green CI at
+`7260b43d`. Delivered contracts are promoted; 0.9 deletion and final archive
+remain open. Spec promotion precedes the authorized merge by maintainer request.
 
 ## 1. Isolate legacy behavior in 0.8
 
@@ -41,7 +41,7 @@ work rather than deleting the package in 0.8 or claiming retirement is delivered
 
 ## 3. Promote only delivered contracts
 
-- [ ] 3.1 After 0.8 implementation and acceptance, verify the already-aligned
+- [x] 3.1 After 0.8 implementation and acceptance, verify the already-aligned
   grouped delta and active consumers still preserve the dependency boundary,
   then sync only delivered isolation/translation and
   configuration requirements. Rebase the remaining active delta to retain the

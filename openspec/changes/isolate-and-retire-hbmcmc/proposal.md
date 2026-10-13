@@ -2,9 +2,9 @@
 
 ## Why
 
-Modern RHIME currently imports HBMCMC compatibility code, preventing the legacy
+At the start of PR #869, modern RHIME imported HBMCMC compatibility code, preventing the legacy
 subpackage from being retired independently. Review of PR #869 also found that
-the actual legacy entry point bypasses resource translation even though modern
+the actual legacy entry point bypassed resource translation even though modern
 runners perform it.
 
 ## What Changes
@@ -41,7 +41,7 @@ runners perform it.
 ## Impact
 
 Coordinate with [PR #869](https://github.com/openghg/openghg_inversions/pull/869)
-and the active `move-rhime-resource-io-to-runners` change. The latter owns path
+and the delivered resource-I/O capability. The latter owns path
 conversion, explicit resource loading and packaged-map selection; this change
 owns dependency direction and retirement. The grouped-configuration amendment
 must preserve this boundary when its overlapping configuration delta is synced.
@@ -52,8 +52,9 @@ No model equations, sampling defaults, artifact codecs, grouped configuration or
 new handoff formats are introduced. Output formats implemented outside HBMCMC
 are not removed merely because their names or products mention HBMCMC.
 
-The initial 0.8 implementation is on PR #869, with approved review corrections
-in progress. Acceptance and durable-spec promotion remain pending.
-Keep requirements in active changes until their corresponding behavior is
-implemented and accepted; 0.9 deletion is a later release task, not a prerequisite
-for completing the 0.8 resource-I/O implementation.
+The 0.8 implementation is accepted for merge in PR #869 and promoted to
+[rhime-configuration](../../specs/rhime-configuration/spec.md),
+[rhime-resource-io](../../specs/rhime-resource-io/spec.md) and the
+[isolation contract](../../specs/hbmcmc-isolation-retirement/spec.md).
+Only complete 0.9 retirement remains in this change's delta; its deletion and
+final archive tasks remain unchecked.

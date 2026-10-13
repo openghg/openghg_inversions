@@ -93,11 +93,10 @@ resolution and independent phase selection belong to the separate
 coordinated with #866. This change consumes those amendments without duplicating
 their delta.
 
-The [resource-I/O capability](../../specs/rhime-resource-io/spec.md) records the
-delivered resource checks, exact export destinations and optional saving inside
-`prepare_basis`. The separate [runner resource-I/O change](../move-rhime-resource-io-to-runners/proposal.md)
-owns #868's path-resolution and optional-save migration. #867 reorganizes these
-contracts without claiming implementation completion.
+The [resource-I/O capability](../../specs/rhime-resource-io/spec.md) records
+runner-owned path resolution and optional basis exports, selected-resource
+checks and exact destinations delivered by #868. This change consumes those
+contracts without introducing another resource owner.
 
 Merged #854 records delivered [model selection](../../specs/rhime-model-selection/spec.md)
 and [model composition](../../specs/rhime-model-composition/spec.md). This change

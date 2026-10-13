@@ -33,7 +33,7 @@ redesign; no immediate deletion of HBMCMC from the 0.8 implementation.
    HBMCMC discovery is self-contained; separately deprecated basis adapters
    retain their own schedules. Small duplication avoids reverse dependencies.
 3. Leave path conversion, BC loading and packaged-map selection with the
-   [resource-I/O change](../move-rhime-resource-io-to-runners/design.md).
+   [resource-I/O change](../../specs/rhime-resource-io/spec.md).
    Its independent converter accepts owner declarations and a base; it does not
    import configuration owners. This change consumes that behavior rather than
    defining a second converter or resource policy.
@@ -57,24 +57,17 @@ redesign; no immediate deletion of HBMCMC from the 0.8 implementation.
 - Legacy artifact users lose utilities in 0.9 → document supported modern
   replacements and older-release use; do not promise new artifact compatibility.
 
-## Migration Plan
+## Delivery and remaining migration
 
-The initial 0.8 implementation is on PR #869; apply the approved review corrections and
-validate 0.8 isolation together with the resource-I/O correction, including
-migration guidance and a release fragment. Keep complete 0.9 removal as an
-explicit outstanding phase. After 0.8 implementation and acceptance, sync only
-the delivered isolation/translation requirements and configuration amendment;
-leave the 0.9 removal requirement in this active change and rebase its remaining
-delta against the promoted capability. This permits resource-I/O to reference a
-durable isolation contract without keeping the obsolete alias-ownership rule.
-Verify distribution contents and modern execution when 0.9 deletion lands; only
-then sync the remaining requirement and archive this change. Durable specs
-remain untouched during this proposal.
+The 0.8 decisions above are implemented and accepted for merge on PR #869 after
+CI passed at `7260b43d`. Isolation, canonical configuration and resource-I/O
+requirements are promoted to durable capabilities. The resource-I/O change is
+[archived](../archive/2026-10-13-move-rhime-resource-io-to-runners/tasks.md).
+The grouped-configuration change retains its unimplemented phase-only selection
+requirements and consumes the delivered boundary.
 
-The pending configuration delta replaces the old HBMCMC-owned alias requirement.
-The resource-I/O compatibility amendment references this capability for legacy
-routing exceptions; its requirements retain path and resource semantics. The
-active grouped-configuration requirements are reconciled now so implementing
-agents receive consistent instructions. Before sync, verify that alignment still
-holds and none restores the superseded dependency rule. Update active-change links to the delivered
-capability or actual archive location during promotion.
+Only the 0.9 retirement delta remains here. Delete the HBMCMC package and its
+entry points, remove temporary runner spelling/flux aliases, update migration
+notes, and verify distribution contents and modern execution. After that
+implementation is accepted, sync the remaining removal requirement and archive
+this change. Do not mark deletion complete because isolation has shipped.
