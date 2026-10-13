@@ -81,7 +81,9 @@ Files owned by the checkpoint writer SHALL remain under the explicit checkpoint
 destination, and dependency references SHALL NOT authorize writes elsewhere or
 overwriting referenced artifacts.
 A separately requested basis export remains outside checkpoint-writer ownership
-and follows [rhime-resource-io](../../../../specs/rhime-resource-io/spec.md).
+and preserves [rhime-resource-io](../../../../specs/rhime-resource-io/spec.md)'s exact
+destinations; runner ownership follows the separate
+[resource-I/O amendments](../../../move-rhime-resource-io-to-runners/specs/rhime-resource-io/spec.md).
 This ordinary I/O ordering SHALL NOT require rollback, transactions or repeated
 dependency checks before and after execution. Several inference runs SHALL be
 able to reference one completed preparation without mutating it or implicitly copying its large

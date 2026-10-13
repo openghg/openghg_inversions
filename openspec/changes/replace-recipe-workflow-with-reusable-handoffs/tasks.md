@@ -5,8 +5,9 @@ are implementation tasks, all unchecked until their acceptance evidence exists.
 Start with a bounded implementation PR stacked on #841. This planning change
 itself changes no runtime behavior. Follow [design.md](design.md) and the three
 new capability specs and the
-[configuration](../../specs/rhime-configuration/spec.md) and
-[resource-I/O](../../specs/rhime-resource-io/spec.md) capabilities.
+[configuration amendments](../group-rhime-configuration-by-owner/proposal.md) and
+[resource-I/O prerequisite](../move-rhime-resource-io-to-runners/proposal.md).
+Their durable capability specs describe the delivered baselines.
 The four delivery sections below define proposed bounded
 implementation-child scopes for OPE-207; they do not create Linear issues or
 represent one assignment spanning every family.
@@ -60,11 +61,9 @@ with the same selection on #841. Independent review, changed-path Ruff and diff
 checks passed. Keep the task checkboxes open pending their complete acceptance;
 the PR records the bounded implementation and validation details.
 
-- [ ] 1.1 Group the existing resolved acquisition/preparation fields in
-  `RhimeConfig.data: DataConfig`, using `data` as the grouped mapping key and
-  moving fields/defaults rather than copying
-  them into a second schema. Keep model, sampler and output choices with their
-  owners. Verify full and phase-only inputs resolve the same applicable choices
+- [ ] 1.1 Consume the separate [configuration change](../group-rhime-configuration-by-owner/tasks.md)
+  delivering `RhimeConfig.data: DataConfig` and the grouped `data` key. Record
+  its implementation evidence and verify full and phase-only inputs resolve the same applicable choices
   without demanding unrelated sections, touching arrays or mutating caller values.
   Cover omitted/explicit model `use_bc` against enabled/disabled preparation,
   preserved legacy flat routing, and omitted/equivalent/conflicting `bc_freq`

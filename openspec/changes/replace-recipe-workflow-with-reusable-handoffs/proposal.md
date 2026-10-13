@@ -86,14 +86,18 @@ not a completed implementation or required artifact contract.
 
 ### Existing capabilities consumed
 
-The [configuration capability](../../specs/rhime-configuration/spec.md) owns
-grouped `RhimeConfig.data`, option resolution and independent phase selection.
-At the maintainer's request, #867 updates that spec directly and removes this
-change's duplicate configuration delta. The separate
-[resource-I/O capability](../../specs/rhime-resource-io/spec.md) owns resource
-selection, exact export destinations and runner-owned optional saves. Their
-status notes distinguish delivered guarantees from pending #866/#868 work;
-reorganizing those contracts is not an implementation-completion claim.
+The [configuration capability](../../specs/rhime-configuration/spec.md) records
+the delivered flat configuration. Pending grouped `RhimeConfig.data`, option
+resolution and independent phase selection belong to the separate
+[configuration change](../group-rhime-configuration-by-owner/proposal.md),
+coordinated with #866. This change consumes those amendments without duplicating
+their delta.
+
+The [resource-I/O capability](../../specs/rhime-resource-io/spec.md) records the
+delivered resource checks, exact export destinations and optional saving inside
+`prepare_basis`. The separate [runner resource-I/O change](../move-rhime-resource-io-to-runners/proposal.md)
+owns #868's path-resolution and optional-save migration. #867 reorganizes these
+contracts without claiming implementation completion.
 
 Merged #854 records delivered [model selection](../../specs/rhime-model-selection/spec.md)
 and [model composition](../../specs/rhime-model-composition/spec.md). This change
@@ -108,8 +112,9 @@ That change was archived without syncing its requirements; its historical
 contract is not a current capability or an implementation prerequisite.
 
 The three new capabilities live under this active change as proposed deltas.
-The configuration and resource-I/O capabilities explicitly distinguish delivered behavior
-from pending amendments; `openspec/changes/archive/` retains completed or superseded history.
+The durable configuration and resource-I/O capabilities describe delivered behavior;
+their pending amendments remain in the separate active changes linked above.
+`openspec/changes/archive/` retains completed or superseded history.
 This replacement remains active with all implementation tasks unchecked. Its
 deltas SHALL NOT be synced merely because planning is approved.
 
@@ -138,14 +143,14 @@ in `openspec/specs/rhime-configuration/spec.md`, including observation-error
 ordering, in-memory acquisition and modern flux-selector deprecation. The
 archives retain their 11 October historical contents; the superseded workflow
 contract is not revived or promoted. Reconstruction specs remain unchanged and
-this replacement remains the only active change. Its implementation tasks stay
-unchecked.
+this replacement was the only active change at that reconciliation. Its
+implementation tasks stayed unchecked.
 
 The rebase onto `devel` `7269f50f` includes #854's retrospective model-selection
 and model-composition specs. There are now five current capability specs; the
 three new handoff/execution capabilities and configuration amendment remained
-active deltas at that rebase. The 13 October review moves configuration ownership
-to its existing capability as described above. #854 changes documentation ownership, not runtime behavior or
+active deltas at that rebase. The 13 October review separates configuration and
+resource-I/O amendments into their own active changes as described above. #854 changes documentation ownership, not runtime behavior or
 completion of any of this change's 27 tasks. Its two new baselines and the archived
 scientific records remain unchanged. The development contract map now links to
 current specs and the archived superseded proposal at their reconciled locations.

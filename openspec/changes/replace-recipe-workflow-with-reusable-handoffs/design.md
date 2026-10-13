@@ -17,12 +17,12 @@ resolution and operator-only loading and remains under review. Recheck their
 merged revisions before implementation.
 Acquisition replay is deferred to #829 and does not block prepared/sample handoffs.
 
-The [configuration capability](../../specs/rhime-configuration/spec.md) owns
-grouped configuration and independent phase resolution. Its delivery-status
-section distinguishes those pending amendments from the delivered foundations.
-This handoff change consumes that contract without a duplicate configuration
-delta. Its three execution/handoff deltas remain pending, and completed baseline
-tasks do not establish their implementation.
+The [configuration capability](../../specs/rhime-configuration/spec.md) records
+the delivered baseline. The separate [configuration change](../group-rhime-configuration-by-owner/specs/rhime-configuration/spec.md)
+owns grouped configuration and independent phase resolution. This handoff change
+consumes those amendments without a duplicate configuration delta. Its three
+execution/handoff deltas remain pending, and completed baseline tasks do not
+establish their implementation.
 
 Merged #854 supplies current [model-selection](../../specs/rhime-model-selection/spec.md)
 and [model-composition](../../specs/rhime-model-composition/spec.md) baselines.
@@ -110,9 +110,9 @@ canonical file option combined with a deprecated override. Report all unsupporte
 and wrong-phase override keys together before scientific work.
 
 Resource-path interpretation and runner-owned optional basis saving follow
-[rhime-resource-io](../../specs/rhime-resource-io/spec.md), delivered by the separate
-[#868](https://github.com/openghg/openghg_inversions/issues/868) prerequisite where
-marked pending. Manifest-relative dependency references retain their handoff owner.
+the [runner resource-I/O change](../move-rhime-resource-io-to-runners/specs/rhime-resource-io/spec.md),
+to be delivered by the separate [#868](https://github.com/openghg/openghg_inversions/issues/868)
+prerequisite. Preserve the [delivered resource guarantees](../../specs/rhime-resource-io/spec.md). Manifest-relative dependency references retain their handoff owner.
 Reuse `resolve_basis_inputs` and the existing codecs; this plan consumes those
 operations rather than adding another resource or persistence abstraction.
 

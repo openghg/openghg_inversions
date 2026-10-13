@@ -18,10 +18,10 @@ To find the requirements for a behavior you are changing:
    version you are changing. A proposed requirement or a checked planning task
    alone does not establish delivered behavior.
 
-Capability contracts live under ``openspec/specs/``. Some include explicitly
-marked pending amendments; other reviewed contracts remain under
-``openspec/changes/``. Directory location alone does not establish approval or
-delivery. The map identifies both kinds of source.
+Durable contracts under ``openspec/specs/`` describe delivered behavior. Proposed
+requirements and amendments remain under ``openspec/changes/`` until implemented
+and validated, even when their design is approved. Delivery status and review
+history belong in the change records and the map below, not in durable specs.
 
 Current contracts and proposals
 --------------------------------
@@ -51,16 +51,19 @@ The configuration entry was amended on 13 October 2026 during review of PR 867.
    * - Requested configuration and preparation ownership
      - :download:`Resolve RHIME configuration
        <../../openspec/specs/rhime-configuration/spec.md>`
-     - Delivered foundations plus explicitly marked pending grouped/phase
-       amendments in `PR 866 <https://github.com/openghg/openghg_inversions/pull/866>`_.
+     - Delivered flat configuration. Pending :download:`grouped/phase amendments
+       <../../openspec/changes/group-rhime-configuration-by-owner/proposal.md>`
+       are coordinated with `PR 866 <https://github.com/openghg/openghg_inversions/pull/866>`_.
        Current usage: :doc:`/usage/rhime_configuration`.
        Configuration serialization/INI writing remains with `issue 814
        <https://github.com/openghg/openghg_inversions/issues/814>`_.
    * - External resources and basis exports
      - :download:`RHIME resource I/O
        <../../openspec/specs/rhime-resource-io/spec.md>`
-     - Exact destinations and selected-resource checks delivered by PR 840;
-       consistent path resolution and runner-owned optional saves pending in
+     - Delivered exact destinations, selected-resource checks and optional
+       saving inside preparation. The :download:`runner resource-I/O change
+       <../../openspec/changes/move-rhime-resource-io-to-runners/proposal.md>`
+       tracks pending path/save migration in
        `issue 868 <https://github.com/openghg/openghg_inversions/issues/868>`_.
        Manifest references and checkpoint completion stay with the handoff specs.
    * - Retained-state scientific reconstruction
@@ -90,11 +93,11 @@ configuration and reconstruction changes are also archived after reconciliation
 into their current specs. The replacement in PR 802 remains active.
 Neither proposal makes a common checkpoint interface a prerequisite for all
 recipes. Do not silently merge their pending behavior into a delivered baseline.
-The configuration amendments reviewed in PR 867 now live in the existing
-configuration capability with explicit delivery status; PR 802 consumes that
-contract and no longer owns a duplicate configuration delta.
-Runtime resource and export policy has its own resource-I/O capability, with
-delivered guarantees distinguished from the pending issue 868 work.
+PR 867 separates the pending configuration and resource-I/O amendments into
+their own active changes. PR 802 consumes them without duplicate deltas. The
+resource-I/O capability records existing behavior retrospectively, including
+PR 840's exact destinations; only completed amendments are synced into durable
+specs.
 
 Planning records
 -----------------
