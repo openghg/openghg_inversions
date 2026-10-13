@@ -30,6 +30,12 @@ Full execution SHALL sequence those operations in memory without mandatory
 intermediate persistence. Preparation SHALL consistently derive retained labels
 from retained observations and align applicable per-site choices, accepting valid
 nonempty subsets without bypassing their owning input validation.
+Runners SHALL keep acquisition or supplied-data selection visible before
+scientific preparation. Scientific preparation SHALL consume an explicit acquired
+handoff and SHALL NOT retrieve data internally. Acquired data SHALL remain before
+preparation-derived errors, filtering, basis/sensitivity construction and stacking;
+existing `ModelScenario` products such as `fp_x_flux` and BC sensitivities remain
+acquisition products. A combined `DataConfig` SHALL NOT obscure this boundary.
 Direct scientific customization, signatures and numerical returns SHALL retain
 their contracts except for the explicit sampler-default migration below;
 staged/setup APIs and owned CO2 configuration conventions SHALL
@@ -54,6 +60,12 @@ owners without implying additional nested or linked checkpoint support.
 - **WHEN** supported preparation filters or aggregates observations
 - **THEN** required errors have been established before that transformation
 - **AND** supplied custom errors and caller-owned datasets remain unchanged
+
+#### Scenario: Preparation consumes acquired data without retrieval
+
+- **WHEN** a runner supplies acquired merged data to scientific preparation with retrieval disabled
+- **THEN** preparation performs its scientific operations without attempting acquisition
+- **AND** full and saved entry points expose acquisition or supplied-data selection before that same preparation operation
 
 #### Scenario: Full execution without intermediate saves
 - **WHEN** a full route runs with intermediate saves disabled

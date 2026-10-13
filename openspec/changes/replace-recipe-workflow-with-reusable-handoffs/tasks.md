@@ -51,7 +51,7 @@ checks passed. Keep the task checkboxes open pending their complete acceptance;
 the PR records the bounded implementation and validation details.
 
 - [ ] 1.1 Group the existing resolved `RhimeConfig` preparation fields in one
-  `PreparationConfig` at their current owner, moving fields/defaults rather than copying
+  `DataConfig` at their current owner, moving fields/defaults rather than copying
   them into a second schema. Keep model, sampler and output choices with their
   owners. Verify full and phase-only inputs resolve the same applicable choices
   without demanding unrelated sections, touching arrays or mutating caller values.
@@ -76,6 +76,8 @@ the PR records the bounded implementation and validation details.
   lower-level operations that already require a resolved sampler.
 - [ ] 1.3 Consolidate standard scientific calls at their existing owners in the
   visible order observation errors, filtering, basis, sensitivities and assembly.
+  Keep acquisition/supplied-data selection in the runner; verify scientific
+  preparation accepts acquired inputs with retrieval disabled.
   Consume #837's explicit assembly/execution boundaries and the named joint PyMC
   materialization boundary. Verify retained-site/averaging alignment, empty-set
   rejection, borrowed lazy arrays and custom builder/likelihood contracts across
@@ -89,6 +91,8 @@ the PR records the bounded implementation and validation details.
   once-per-domain/grid native-flux resolution; use unequal source fields and an
   independent reconstruction calculation. Record which prerequisite PRs supply
   these behaviors rather than implementing them again here.
+  Verify runner-resolved exact basis exports inside and outside the checkpoint
+  directory, including a relative path that must not acquire a repeated prefix.
 - [ ] 1.5 Validate declared coordinate/output roles even when immediate products
   are disabled. Share the existing variable-role/output-contract owner between
   predictive sampling and postprocessing; remove independent concentration-name
@@ -109,6 +113,9 @@ the PR records the bounded implementation and validation details.
   missing required arrays or changed baked policy fail before inference. Distinguish
   scientific compatibility from descriptive provenance. Record a Git revision
   when available without making it a requirement for execution.
+  Retain scientific output state `x` by default. Check that explicit omission
+  cannot complete an incompatible handoff without supported reconstruction;
+  `_latent` values alone do not satisfy the scientific output role.
 - [ ] 1.8 Implement standard `postprocess` from one sample manifest and current
   output choices. Replayed results use `sampler=None` and plain saved metadata;
   configuration construction is permitted, but replay does not build a model or
@@ -133,6 +140,8 @@ the PR records the bounded implementation and validation details.
   0.8 staged-contract release note with #808, distinguishing preserved numerical,
   product and direct scientific APIs from retired staged envelopes/aliases;
   add no 0.7 staged compatibility adapters.
+  Cover canonical file options versus deprecated overrides, one error naming all
+  unsuitable keys, and the distinct file-relative and invocation-relative path bases.
 - [ ] 1.11 Clear the standard gate with a runnable preparation/two-model/two-product
   example, distinct sample destinations and real prior or likelihood
   calculations checked against an independent calculation or existing regression

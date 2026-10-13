@@ -16,6 +16,12 @@ together; individual records need not be portable self-contained descriptions.
 Remove mandatory transitive authentication, repeated validation of local objects,
 and historical staged replay. This amends the existing implementation plan.
 
+The maintainer clarified the contract during review of #866 on 13 October 2026:
+name the combined acquisition/preparation record `DataConfig`, keep acquisition
+and path policy in runners, and retain scientific output states such as `x` by
+default. This specification amendment is reviewed separately from implementation;
+implementation PRs consume it rather than revise the contract to match their code.
+
 ## Why
 
 Full and saved recipe routes still couple scientific preparation to later model
@@ -76,7 +82,7 @@ not a completed implementation or required artifact contract.
 
 - `rhime-configuration`: [Explicit deltas](specs/rhime-configuration/spec.md)
   amend the [current configuration capability](../../specs/rhime-configuration/spec.md):
-  preparation fields move into one `PreparationConfig` group; complete and
+  preparation fields move into one `DataConfig` group; complete and
   phase-only resolution share owners without requiring unrelated sections.
 
 ### Existing capabilities preserved

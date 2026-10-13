@@ -70,12 +70,14 @@ scientific operation.
 ### 1. Group choices once, then resolve the selected phase
 
 Use one complete requested `RhimeConfig` for full configured execution. Move its
-existing preparation fields/defaults into `PreparationConfig`; do not keep
+existing preparation fields/defaults into `DataConfig`; do not keep
 another authoritative flat copy or parallel default table. Keep `SiteOptions`,
 `RhimeModelSpec`, `RhimeSampler` and `RhimeOutputSpec` as their existing owners.
 One preparation record has a concrete purpose: it can be resolved and consumed
 without constructing a model, sampler or output request. No replacement sampler
 settings class, `ModelChoices` class or generic phase registry is required.
+The record covers acquisition as well as preparation; its name does not merge
+those operations. Keep the `preparation` section as the phase-selection key.
 
 Illustrative pseudocode below describes the intended interfaces, not installed
 API names. Decoded sections are ordinary mappings, not resolved records:
@@ -84,7 +86,7 @@ API names. Decoded sections are ordinary mappings, not resolved records:
 sections = group_legacy_options(read_rhime_ini("run.ini"))
 # {"preparation": {...}, "model": {...}, "sampler": {...}, "output": {...}}
 
-preparation = PreparationConfig.from_params(sections["preparation"])
+preparation = DataConfig.from_params(sections["preparation"])
 config = RhimeConfig(
     preparation=preparation,
     model=resolve_model_options(sections["model"], facts=preparation.requested_facts),
@@ -101,6 +103,14 @@ normalizer first would still reject irrelevant model/output settings. Unknown
 names remain errors; known unrelated groups in a shared file remain inactive.
 Explicit wrong-phase command overrides fail. A future section-preserving INI or
 TOML frontend can supply the same mappings, without being required by this work.
+Use the same alias precedence across full and saved requests, including a
+canonical file option combined with a deprecated override. Report all unsupported
+and wrong-phase override keys together before scientific work.
+
+Runners resolve direct Python/CLI resource and export paths against the invocation
+directory; saved-phase file resources resolve beside their configuration file.
+Forward exact absolute paths thereafter. This distinguishes invocation paths from
+manifest-relative dependency references; see the configuration delta's path rules.
 
 Priors belong in model configuration, independently of preparation choices.
 Prior-derived numerical preparation still depends on those model inputs as
@@ -119,8 +129,8 @@ absence of the key in the raw model mapping, not a prematurely filled model defa
 
 | Choice | Preparation owner | Full and saved model binding |
 | --- | --- | --- |
-| `use_bc` | `PreparationConfig.use_bc` retains the existing default `True` and controls acquiring/constructing BC inputs. | An omitted model choice inherits the resolved preparation choice. Explicit `False` may ignore available BC inputs; explicit `True` requires them. |
-| `bc_freq` | `PreparationConfig.bc_freq` retains the existing default `None` and controls the temporal expansion baked into the inputs. | Omission uses the saved/resolved preparation fact. A repeated equivalent value is a compatibility claim; a conflicting value fails, including when `use_bc=False`. No model default re-expands the data. |
+| `use_bc` | `DataConfig.use_bc` retains the existing default `True` and controls acquiring/constructing BC inputs. | An omitted model choice inherits the resolved preparation choice. Explicit `False` may ignore available BC inputs; explicit `True` requires them. |
+| `bc_freq` | `DataConfig.bc_freq` retains the existing default `None` and controls the temporal expansion baked into the inputs. | Omission uses the saved/resolved preparation fact. A repeated equivalent value is a compatibility claim; a conflicting value fails, including when `use_bc=False`. No model default re-expands the data. |
 
 The legacy flat `use_bc` option resolves once at its preparation owner and also
 supplies the full run's model choice, preserving existing full-run behavior.
@@ -250,6 +260,11 @@ prepared = assemble_inputs(filtered, basis, site_data, ...)
 prepared_manifest = save_preparation(prepared, requested_facts, destination)
 ```
 
+Acquisition or supplied-data selection stays visible in the runner. A shared
+scientific preparation function accepts the acquired handoff and never retrieves
+it internally. The runner also coordinates any separately requested basis export;
+scientific preparation receives its exact resolved destination.
+
 Preparation aligns metadata to retained observations; inference aligns its own
 numeric per-site choices. Validate every supplied value, including dropped-site
 entries, before selecting retained labels. Empty retained sets fail. Preserve
@@ -285,6 +300,10 @@ def sample(prepared_manifest, *, model, sampler="default", output_dir, run_conte
 ```
 
 Validate declared model coordinates/output roles even when no products are requested.
+Default traces retain scientific output states such as `x`, including when they
+are named deterministics derived from `_latent` variables. An explicit selection
+omitting a required state needs a supported reconstruction route or a clear error
+before completing the saved handoff. General reconstruction remains with #850.
 A custom model supporting only `none` is valid; it cannot claim unsupported replay
 products. Product-specific requirements are checked when products are requested.
 Use the model's existing variable roles/output contract as the shared source for
@@ -304,7 +323,7 @@ full request can supply its preparation record; a preparation-only file can reso
 that record independently:
 
 ```python
-preparation = PreparationConfig.from_params(sections["preparation"])
+preparation = DataConfig.from_params(sections["preparation"])
 prepared = standard_stages.prepare(preparation, output_dir="runs/prepared")
 a = standard_stages.sample(prepared, model=model_a, output_dir="runs/a")
 b = standard_stages.sample(prepared, model=model_b, output_dir="runs/b")
@@ -362,6 +381,9 @@ Use a fresh operation destination so sampling cannot silently overwrite a comple
 run or its prepared inputs. Write the final manifest after numerical saves succeed;
 a temporary JSON file and rename are enough. Do not add transaction machinery or
 recursive symlink scans.
+Checkpoint containment applies to checkpoint-owned files. A separately requested
+basis export keeps its exact runner-resolved path, including outside that directory;
+the checkpoint writer does not redirect it or infer permission from a dependency.
 
 The optional `run_config` above is a reference to an existing configuration file.
 If context is supplied only in memory, the caller supplies it again for later

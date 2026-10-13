@@ -76,9 +76,14 @@ NOT add a Zarr rejection or conversion requirement solely for content hashing.
 Saved scientific operations SHALL use a fresh caller-selected destination and
 reject an existing destination before owned writes. Ordinary numerical saves
 SHALL complete before the final manifest is written. The final manifest SHALL be
-the completion marker; a failed save SHALL NOT leave one claiming completion. Writer-owned files SHALL
-remain under the explicit destination, and dependency references SHALL NOT
-authorize writes elsewhere or overwriting referenced artifacts.
+the completion marker; a failed save SHALL NOT leave one claiming completion.
+Files owned by the checkpoint writer SHALL remain under the explicit checkpoint
+destination, and dependency references SHALL NOT authorize writes elsewhere or
+overwriting referenced artifacts.
+A separately requested basis export is a runner-coordinated scientific output,
+not an implicit checkpoint file or dependency write. The runner SHALL resolve and
+pass its exact destination as specified by rhime-configuration; the checkpoint
+writer SHALL NOT relocate it or require it to lie beneath the checkpoint directory.
 This ordinary I/O ordering SHALL NOT require rollback, transactions or repeated
 dependency checks before and after execution. Several inference runs SHALL be
 able to reference one completed preparation without mutating it or implicitly copying its large

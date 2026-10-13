@@ -23,7 +23,7 @@ on other frontends.
 
 The public complete requested configuration SHALL group preparation, model,
 sampler and output choices. `RhimeConfig.preparation` SHALL hold one
-`PreparationConfig` containing the moved acquisition/preparation fields and
+`DataConfig` containing the moved acquisition/preparation fields and
 their defaults; the complete configuration SHALL NOT retain a second authoritative
 flat copy. The model, sampler and output groups SHALL reuse `RhimeModelSpec`,
 `RhimeSampler` and `RhimeOutputSpec`, respectively, rather than introduce duplicate
@@ -31,6 +31,11 @@ settings types. Preparation SHALL resolve independently without constructing a
 model, sampler or output policy. Complete configured runs SHALL resolve their
 applicable groups once before scientific execution and SHALL keep requested
 choices distinct from retained scientific facts.
+
+`DataConfig` names the combined acquisition/preparation choices; the
+`preparation` section selects those choices for the preparation entry point.
+Sharing this record SHALL NOT combine acquisition and scientific preparation
+operations, whose separation is specified by recipe-execution.
 
 The legacy INI frontend SHALL preserve its documented decoding and precedence.
 An adapter SHALL group its flat options into ordinary section mappings without
@@ -123,6 +128,11 @@ configuration SHALL already contain the complete equivalent of external
 shorthand for the selected phase; no scientific phase SHALL be responsible for
 completing those selected choices. Known unrelated groups in a shared file SHALL
 remain inactive; unsupported names and explicit wrong-phase overrides SHALL fail.
+The external boundary SHALL report all unsupported and explicit wrong-phase
+keys together before acquisition, preparation or inference. Supported aliases
+SHALL use the existing translator and the same precedence in full and saved
+routes; translating file and override mappings separately SHALL NOT change which
+effective value wins.
 Date-dependent configuration defaults SHALL use effective overridden dates for a
 full request and recorded preparation dates for saved-input sampling.
 
@@ -160,6 +170,16 @@ owner; this change SHALL NOT require a separate sampler options class.
   likelihood derives a configuration default from that date
 - **THEN** resolution derives the default from the winning start date
 - **AND** the returned configuration needs no downstream default-resolution pass
+
+#### Scenario: Canonical file option and deprecated override
+
+- **WHEN** a file supplies canonical `x_prior` and an override supplies deprecated `xprior`
+- **THEN** the canonical spelling wins in both full and saved routes under the existing alias rule
+
+#### Scenario: Several unsuitable overrides
+
+- **WHEN** an invocation supplies several unsupported or explicit wrong-phase override keys
+- **THEN** one error lists all those keys before scientific work
 
 ### Requirement: Retained execution metadata is distinct from the request
 
@@ -275,7 +295,7 @@ SHALL remain independent of full configuration. Shared choices such as BC use
 and flux-source routing SHALL retain consistent existing meanings across data
 preparation and model construction. Current INI section interpretation, path
 conventions, file vocabulary, scientific calculations and sampling defaults
-SHALL remain unchanged.
+SHALL remain unchanged except for the saved-phase path clarification below.
 
 Established selector and shared-handoff aliases in the current
 [model-selection capability](https://github.com/openghg/openghg_inversions/blob/7269f50f09dc4b618766cb9d69abe260a564eebc/openspec/specs/rhime-model-selection/spec.md)
@@ -330,6 +350,36 @@ and custom-likelihood conflict precedence SHALL remain unchanged.
 - **AND** omitting that argument continues to select the established defaults
 
 ## ADDED Requirements
+
+### Requirement: Runners own resource and export paths
+
+Runner/frontends SHALL resolve external resource and export paths before calling
+scientific operations. Direct Python/CLI paths, including explicit overrides,
+SHALL resolve relative to the invocation working directory. Saved-phase file
+resource paths SHALL resolve relative to the configuration file's directory.
+Absolute paths SHALL retain their selected destination. These rules clarify the
+saved-phase override convention; other established file-frontend conventions
+remain unchanged and SHALL be documented by their frontend.
+
+Scientific preparation and checkpoint writers SHALL receive exact resolved paths
+and SHALL NOT rebase them under a stage directory. The runner SHALL coordinate
+checkpoint destinations and separately requested `basis_output_path` exports,
+preserving the exact basis-export contract. Relative artifact references inside
+saved manifests remain governed by prepared-recipe-handoff, not these invocation
+rules.
+
+#### Scenario: File resource and invocation override
+
+- **WHEN** a saved-phase file at `/configs/run.json` supplies `basis_path="basis.nc"`
+- **THEN** it selects `/configs/basis.nc`
+- **AND** an explicit `basis_path="basis.nc"` invocation override instead selects the file beneath the invocation working directory
+- **AND** scientific preparation receives the selected absolute path without another resolution pass
+
+#### Scenario: Exact basis export with a checkpoint
+
+- **WHEN** a runner is invoked from `/work` with `output_dir="runs/prepared"` and `basis_output_path="runs/prepared/basis.nc"`
+- **THEN** the export is `/work/runs/prepared/basis.nc`, without a repeated directory prefix
+- **AND** a separately selected absolute export outside the checkpoint directory remains an explicit runner-owned output
 
 ### Requirement: Phase-only resolution and authoritative model facts
 
