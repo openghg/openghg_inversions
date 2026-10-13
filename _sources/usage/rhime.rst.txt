@@ -332,7 +332,10 @@ site coordinate:
 ``nmeasure``. The indicator itself is not the CF gathering coordinate, and
 callers do not need to keep a second positional decoder synchronized. Site
 metadata also aligns averaging periods, with exactly one value per site.
-Metadata that is genuinely constant per site may be stored there too. Release
+Metadata that is genuinely constant per site may be stored there too. Nullable
+string metadata such as ``instrument`` preserves missing values separately from
+empty strings in NetCDF and Zarr. Missing averaging periods retain their existing
+normalization: an empty period is treated as absent. Release
 locations that vary within a site, as they do for satellite or aircraft
 observations, are instead arrays aligned with the observations and must not be
 reduced to site scalars. These metadata arrays may be carried alongside the
@@ -973,6 +976,13 @@ metadata read from the footprint files; scripts do not need to pass these
 attributes to ``make_paris_outputs``. A missing footprint model version is
 recorded as an empty attribute; distinct values across sites are separated by
 semicolons.
+
+``InversionOutput`` saves metadata as finite JSON: NumPy Booleans and numbers
+keep their scalar meaning, arrays become lists, and dates, durations and paths
+become strings. Unsupported objects raise an error rather than being stringified;
+metadata conversion does not compute Dask arrays. Loading requires the supported
+artifact version and rejects malformed present JSON metadata. Absent optional
+metadata mappings remain empty.
 
 Modern RHIME preparation, ``InversionOutput`` artifacts, and postprocessing use
 retained ``BasisFunctions`` / ``BasisOperator`` objects as the primary basis

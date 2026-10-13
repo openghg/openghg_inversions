@@ -718,7 +718,10 @@ site coordinate:
 <code class="docutils literal notranslate"><span class="pre">nmeasure</span></code>. The indicator itself is not the CF gathering coordinate, and
 callers do not need to keep a second positional decoder synchronized. Site
 metadata also aligns averaging periods, with exactly one value per site.
-Metadata that is genuinely constant per site may be stored there too. Release
+Metadata that is genuinely constant per site may be stored there too. Nullable
+string metadata such as <code class="docutils literal notranslate"><span class="pre">instrument</span></code> preserves missing values separately from
+empty strings in NetCDF and Zarr. Missing averaging periods retain their existing
+normalization: an empty period is treated as absent. Release
 locations that vary within a site, as they do for satellite or aircraft
 observations, are instead arrays aligned with the observations and must not be
 reduced to site scalars. These metadata arrays may be carried alongside the
@@ -1307,6 +1310,12 @@ metadata read from the footprint files; scripts do not need to pass these
 attributes to <code class="docutils literal notranslate"><span class="pre">make_paris_outputs</span></code>. A missing footprint model version is
 recorded as an empty attribute; distinct values across sites are separated by
 semicolons.</p>
+<p><code class="docutils literal notranslate"><span class="pre">InversionOutput</span></code> saves metadata as finite JSON: NumPy Booleans and numbers
+keep their scalar meaning, arrays become lists, and dates, durations and paths
+become strings. Unsupported objects raise an error rather than being stringified;
+metadata conversion does not compute Dask arrays. Loading requires the supported
+artifact version and rejects malformed present JSON metadata. Absent optional
+metadata mappings remain empty.</p>
 <p>Modern RHIME preparation, <code class="docutils literal notranslate"><span class="pre">InversionOutput</span></code> artifacts, and postprocessing use
 retained <code class="docutils literal notranslate"><span class="pre">BasisFunctions</span></code> / <code class="docutils literal notranslate"><span class="pre">BasisOperator</span></code> objects as the primary basis
 representation. Derived flux, country, PARIS, and legacy-format products record

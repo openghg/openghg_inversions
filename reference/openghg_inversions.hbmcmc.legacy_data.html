@@ -656,6 +656,17 @@ fall back to the first observation time for compatibility.</p>
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.hbmcmc.legacy_data.flux_dict_to_datatree">
+<span class="sig-name descname"><span class="pre">flux_dict_to_datatree</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">flux_dict</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">netcdf_safe_attrs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.hbmcmc.legacy_data.flux_dict_to_datatree" title="Link to this definition">#</a></dt>
+<dd><p>Store source labels separately from backend group paths, in source order.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.9.0)"><em>DataTree</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.hbmcmc.legacy_data.datatree_to_flux_dict">
 <span class="sig-name descname"><span class="pre">datatree_to_flux_dict</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dt</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.hbmcmc.legacy_data.datatree_to_flux_dict" title="Link to this definition">#</a></dt>
 <dd><p>Convert an xarray DataTree to a dict of FluxData objects.</p>
@@ -664,7 +675,7 @@ fall back to the first observation time for compatibility.</p>
 <dd class="field-odd"><p><strong>dt</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.9.0)"><em>DataTree</em></a>) – DataTree whose child nodes are converted to datasets and then to FluxData.</p>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Mapping from node keys (as strings) to FluxData instances.</p>
+<dd class="field-even"><p>Mapping from source labels to FluxData instances, retaining stored order.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>, <a class="reference external" href="https://docs.openghg.org/api/devapi_dataobjects.html#openghg.dataobjects.FluxData" title="(in OpenGHG v0.19.0)"><em>FluxData</em></a>]</p>
@@ -1053,6 +1064,7 @@ modern record’s provenance.</p>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.hbmcmc.legacy_data.make_combined_scenario"><code class="docutils literal notranslate"><span class="pre">make_combined_scenario()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.hbmcmc.legacy_data.fp_all_from_dataset"><code class="docutils literal notranslate"><span class="pre">fp_all_from_dataset()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.hbmcmc.legacy_data.openghg_data_to_dataset"><code class="docutils literal notranslate"><span class="pre">openghg_data_to_dataset()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.hbmcmc.legacy_data.flux_dict_to_datatree"><code class="docutils literal notranslate"><span class="pre">flux_dict_to_datatree()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.hbmcmc.legacy_data.datatree_to_flux_dict"><code class="docutils literal notranslate"><span class="pre">datatree_to_flux_dict()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.hbmcmc.legacy_data.datatree_compression_encoding"><code class="docutils literal notranslate"><span class="pre">datatree_compression_encoding()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.hbmcmc.legacy_data.clear_datatree_encoding"><code class="docutils literal notranslate"><span class="pre">clear_datatree_encoding()</span></code></a></li>
