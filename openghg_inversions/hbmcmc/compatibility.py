@@ -228,7 +228,8 @@ def fixedbasis_params_to_rhime(params: dict[str, Any]) -> dict[str, Any]:
 
     Returns:
         A fresh mapping with canonical names and historical output policy.
-        Values are validated and coerced later by ``RhimeConfig.from_params``.
+        Call ``adapt_resource_params`` next to translate historical resource
+        selections and remaining flux aliases before ``RhimeConfig.from_params``.
         Prior mappings changed for lognormal reparameterisation are copied;
         other values remain borrowed.
 
@@ -270,12 +271,16 @@ def params_from_config(
         end_date: Optional command-line end-date override.
         output_path: Optional command-line output-path override.
         extra_kwargs: Final winning keyword overrides.
-        normalise: Translate aliases, coerce scalars and validate structured
-            values when true. False returns only decoded values and overrides.
+        normalise: Translate aliases and historical resource selections, resolve
+            resource paths against the invocation directory, coerce scalars and
+            validate structured values when true. False returns only decoded
+            values and overrides.
 
     Returns:
-        A fresh option mapping. This adapter does not resolve defaults or site
-        shorthand and does not resolve runner setup.
+        A fresh option mapping. With normalization, keys are canonical and
+        resource paths are resolved ``Path`` values (including selected files
+        for historical basis cases). This adapter does not resolve defaults or
+        site shorthand and does not resolve runner setup.
 
     Raises:
         ValueError: If normalization finds unsupported legacy switches or
@@ -306,6 +311,17 @@ def params_from_config(
     return normalise_rhime_params(adapt_resource_params(params))
 
 
+def _is_basis_datatree_artifact(path: Path) -> bool:
+    """Recognize the historical retained basis artifact schema."""
+    import xarray as xr
+
+    try:
+        with xr.open_datatree(path) as tree:
+            return tree.attrs.get("schema") == "openghg_inversions.flux_weighted_basis"
+    except (OSError, ValueError, KeyError):
+        return False
+
+
 def adapt_resource_params(
     params: Mapping[str, Any],
     *,
@@ -319,7 +335,7 @@ def adapt_resource_params(
     requests contain no historical case/directory fields. Disabled BCs and NESW
     never discover BC files. Removed country directories are rejected outright.
     """
-    from openghg_inversions.basis.compatibility import _basis_artifact_files, _is_basis_datatree_artifact
+    from openghg_inversions._flux_options import normalise_flux_aliases
     from openghg_inversions.config.paths import Paths
     from openghg_inversions.rhime._resources import resolve_resource_paths
     from openghg_inversions.rhime.params import RhimeConfig
@@ -331,7 +347,7 @@ def adapt_resource_params(
     file_base = invocation_dir if base_dir is None else base_dir
     winning = {**params, **(overrides or {})}
     # Preserve each winning value's origin while aliases change option names.
-    translated = translate_rhime_aliases(winning)
+    translated = normalise_flux_aliases(translate_rhime_aliases(winning))
     origins = {
         _ALIASES.get(name, name): invocation_dir if overrides and name in overrides else file_base
         for name in winning
@@ -355,9 +371,12 @@ def adapt_resource_params(
         if any(translated.get(name) is not None for name in
                ("basis_path", "basis_partition_path", "basis_partition_paths")):
             raise ValueError("Use either historical `fp_basis_case` or an exact basis selection, not both.")
-        files = _basis_artifact_files(
-            domain=translated["domain"], basis_case=basis_case, basis_directory=basis_directory,
-        )
+        domain = translated.get("domain")
+        if not isinstance(domain, str) or not domain:
+            raise ValueError("`domain` is required to discover historical basis files.")
+        files = sorted((basis_directory / domain).glob(f"{basis_case}_{domain}*.nc"))
+        if not files:
+            raise FileNotFoundError(f"No basis files match {basis_case!r} for domain {domain!r}.")
         retained = [path for path in files if _is_basis_datatree_artifact(path)]
         if retained:
             if len(retained) != 1:
@@ -379,7 +398,9 @@ def adapt_resource_params(
     if translated.get("use_bc", True) and not is_nesw:
         if translated.get("bc_basis_paths") is not None:
             raise ValueError("Use either historical `bc_basis_case` or exact `bc_basis_paths`, not both.")
-        domain = translated["domain"]
+        domain = translated.get("domain")
+        if not isinstance(domain, str) or not domain:
+            raise ValueError("`domain` is required to discover historical BC basis files.")
         files = tuple(sorted((bc_directory / domain).glob(f"{bc_case}_{domain}*.nc")))
         if not files:
             raise FileNotFoundError(f"No BC basis files match {bc_case!r} for domain {domain!r}.")

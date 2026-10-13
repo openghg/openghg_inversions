@@ -30,6 +30,7 @@ from typing import Any
 import numpy as np
 import xarray as xr
 
+from openghg_inversions.rhime._runner_compat import translate_rhime_aliases
 from openghg_inversions.basis import (
     BasisFunctions,
     basis_functions_from_flat_basis,
@@ -279,7 +280,7 @@ def run_custom_rhime(
     # A built-in algorithm choice is irrelevant to this copied recipe.
     params.pop("basis_algorithm", None)
     params.pop("basis_path", None)
-    config = RhimeConfig.from_params(params, multisector=False)
+    config = RhimeConfig.from_params(translate_rhime_aliases(params), multisector=False)
     validate_output_resources(config.output)
     bc_basis = load_bc_basis(config.bc_basis_paths) if config.use_bc and config.bc_basis_paths is not None else None
 

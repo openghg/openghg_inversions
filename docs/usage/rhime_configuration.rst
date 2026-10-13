@@ -56,8 +56,9 @@ For example, a scalar period broadcasts across the effective requested sites:
    assert config.site_options.sites == ("TAC", "MHD")
    assert config.site_options.averaging_period == ("1h", "1h")
 
-The constructor translates supported deprecated aliases, then applies established
-defaults, validation and site expansion beside the configuration it creates. Pass an
+The constructor accepts canonical option names and applies established defaults,
+validation and site expansion beside the configuration it creates. It does not
+translate deprecated spellings or emit their deprecation warnings. Pass an
 inspected configuration to the matching runner to execute it without resolving
 its options again:
 
@@ -107,18 +108,23 @@ resolution expands the final values together. The resulting ``config`` can be
 passed to a runner without resolving again.
 
 ``RhimeConfig.from_params`` is the single construction entry point; the former
-``resolve_rhime_config`` wrapper has been removed. Modern alias handling emits
-``DeprecationWarning`` when a supported deprecated name or output-format value
-is replaced or removed. For retained RHIME name aliases such as ``xprior`` and
-``outputname``, canonical names take precedence. Modern flux keyword
-deprecations follow the stricter rules below. Canonical inputs emit no warning.
-Modern configuration and runners do not import or call HBMCMC.
+``resolve_rhime_config`` wrapper has been removed. Runner frontends, including
+``run_rhime`` and staged commands, translate supported deprecated names before
+calling this constructor. They emit ``DeprecationWarning`` on devel and in 0.8;
+these aliases are removed in 0.9. For names such as ``xprior`` and ``outputname``,
+canonical names take precedence. Flux keyword deprecations follow the stricter
+rules below. Canonical inputs emit no warning. Configuration construction has no
+alias vocabulary; deprecated names passed directly to ``RhimeConfig.from_params``
+are ordinary unknown options. Modern configuration and runners do not import or
+call HBMCMC.
 
 The deprecated dictionary-returning ``params_from_config`` adapter is available
 only from ``openghg_inversions.hbmcmc.compatibility`` during 0.8; its RHIME
-re-export is removed. It retains overrides and ``normalise`` control, and its
-normalized route translates historical selections after overrides. Modern
-callers use ``read_rhime_ini``, apply overrides, then call
+re-export is removed. ``normalise=False`` returns decoded values plus winning
+overrides. ``normalise=True`` translates aliases and historical resource
+selections after overrides and returns canonical keys and resolved ``Path``
+values. It does not construct configuration defaults or expand site shorthand.
+Modern callers use ``read_rhime_ini``, apply overrides, then call
 ``RhimeConfig.from_params`` as above. Prefer ``x_prior``, ``output_name`` and
 ``flux_sources`` when migrating code or files.
 
@@ -135,13 +141,15 @@ a nested inner domain. Nested preparation uses ``inner_flux_store`` (default:
 outer flux store) and ``inner_flux_domain`` (default: inner footprint domain,
 independent of the outer flux-domain selector).
 
-The modern spellings ``emissions_store``, ``emissions_domain``,
+At runner frontends, the deprecated spellings ``emissions_store``,
+``emissions_domain``,
 ``inner_emissions_store`` and ``inner_emissions_domain`` remain accepted with
 ``DeprecationWarning`` until removal in **0.9**. Supply only one spelling of
 each selector: old and new names together raise ``ValueError``, including
 equal values and explicit ``None``. These modern deprecations are resolved
-separately from historical HBMCMC aliases. Resolved configuration fields and
-canonical option inventories contain only the new names.
+before configuration construction. ``RhimeConfig.from_params`` accepts only
+the ``flux_*`` names, with no translation or deprecation warnings. Resolved
+configuration fields and canonical option inventories contain only the new names.
 
 Basis paths, support maps and compatibility
 -------------------------------------------
@@ -151,7 +159,14 @@ arbitrary filename ending in ``.nc`` or ``.zarr``. Omit it to generate a basis
 with ``basis_algorithm`` and ``nbasis``. Alternatively,
 ``basis_partition_path`` selects an exact file containing a labelled ``basis``
 partition; this valid scientific representation does not require historical
-case/glob selection. ``basis_output_path`` is an optional
+case/glob selection. For multiple labelled partition files, use the nonempty
+``basis_partition_paths`` collection. Files are sorted by path before loading;
+the first sorted file supplies the reference coordinates. Select only one of
+``basis_path``, ``basis_partition_path`` and ``basis_partition_paths``. Nested
+inner preparation has the equivalent mutually exclusive ``inner_basis_path``,
+``inner_basis_partition_path`` and ``inner_basis_partition_paths`` options.
+
+``basis_output_path`` is an optional
 exact destination, including the filename; it is not an output directory or an
 enable flag. Staged preparation preserves this destination too.
 
@@ -215,7 +230,8 @@ Historical ``fp_basis_case`` / ``basis_directory`` discovery, directory-style
 basis outputs, ``emissions_name`` and legacy artifact
 adaptation belong to the compatibility boundary. Deprecated public
 ``make_basis_functions`` and ``load_basis_functions`` adapters live in
-``basis.compatibility`` and invoke canonical modern operations. Migrate a
+``basis.compatibility`` and invoke canonical modern operations. Their independent
+deprecation schedule is unaffected by removing HBMCMC in 0.9. Migrate a
 case/directory pair to an explicit artifact and output destination::
 
    # Before: fp_basis_case="monthly", basis_directory="/data/bases"

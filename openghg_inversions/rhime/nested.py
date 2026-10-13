@@ -16,7 +16,8 @@ from openghg_inversions.basis import prepare_basis
 from openghg_inversions.basis.basis_functions import BASIS_ARTIFACT_PATH_ATTR
 from openghg_inversions.rhime.preparation import resolve_basis_inputs
 from openghg_inversions.rhime._resources import resolve_resource_paths
-from openghg_inversions._flux_options import UNSET, _Unset, normalise_flux_aliases, resolve_deprecated_keyword
+from openghg_inversions.rhime._runner_compat import translate_rhime_aliases
+from openghg_inversions._flux_options import UNSET, _Unset, resolve_deprecated_keyword
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
@@ -1503,7 +1504,7 @@ def run_nested(
         raise ValueError("Non-empty `likelihood_kwargs` require an active `likelihood_builder`.")
     params = read_rhime_ini(config_file) if config_file is not None else {}
     params.update(kwargs)
-    params = normalise_flux_aliases(params)
+    params = translate_rhime_aliases(params)
     if "inner_country_directory" in params:
         raise ValueError("`inner_country_directory` was removed in 0.8; use `inner_landsea_path` "
                          "or `inner_outer_regions_path` for preparation and `country_file` for reporting.")

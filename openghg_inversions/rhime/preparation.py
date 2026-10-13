@@ -407,6 +407,8 @@ def resolve_basis_inputs(config: Any) -> dict[str, Any]:
         config: Resolved :class:`~openghg_inversions.rhime.params.RhimeConfig`.
             Explicit retained artifacts and partition files bypass algorithm
             support defaults; explicitly selected support files are still read.
+            Plural partition paths are sorted before loading; the first file
+            supplies the reference spatial coordinates.
 
     Returns:
         Keyword arguments for :func:`openghg_inversions.basis.prepare_basis`:
@@ -438,7 +440,7 @@ def resolve_basis_inputs(config: Any) -> dict[str, Any]:
             raise ValueError("basis_partition_paths must select at least one file.")
         from openghg_inversions.utils import read_netcdfs
 
-        with read_netcdfs(config.basis_partition_paths) as dataset:
+        with read_netcdfs(sorted(config.basis_partition_paths)) as dataset:
             selected["basis_partition"] = dataset["basis"].load()
     if selected.get("basis_path") is not None and not Path(selected["basis_path"]).exists():
         raise FileNotFoundError(selected["basis_path"])

@@ -178,7 +178,7 @@ def test_legacy_relative_outer_map_resolves_at_compatibility_boundary(tmp_path, 
     )
     xr.testing.assert_equal(historical_partition.squeeze("time", drop=True), modern.flat_basis())
     assert resolve_legacy_outer_path("EUHROB", "intem_region_definition_EUHROB.nc", None).is_file()
-    with pytest.raises(ValueError, match="country_file.*landsea_path.*outer_regions_path"):
+    with pytest.raises(ValueError, match="Unsupported RHIME parameter.*country_directory"):
         RhimeConfig.from_params(
             _params(domain="TEST", basis_algorithm="quadtree", country_directory=tmp_path,
                     outer_regions_path="custom.nc", fix_basis_outer_regions=True),
@@ -329,3 +329,22 @@ def test_full_ini_resources_keep_invocation_directory_convention(tmp_path, monke
     monkeypatch.setattr(standard.RhimeMergedData, "from_options", lambda **kwargs: pytest.fail("acquired"))
     with pytest.raises(BeforeAcquisition):
         standard.run_rhime(config_file=source, basis_output_path="override.nc")
+
+
+def test_plural_partition_paths_use_sorted_coordinate_reference(tmp_path):
+    paths = []
+    for name, date, latitude in [
+        ("a.nc", "2020-01-01", 1.0),
+        ("b.nc", "2020-02-01", 1.000001),
+    ]:
+        path = tmp_path / name
+        xr.Dataset(
+            {"basis": (("time", "lat", "lon"), [[[1]]])},
+            coords={"time": [pd.Timestamp(date)], "lat": [latitude], "lon": [2.0]},
+        ).to_netcdf(path)
+        paths.append(path)
+    config = RhimeConfig.from_params(_params(basis_partition_paths=paths), multisector=False)
+    forward = resolve_basis_inputs(config)["basis_partition"]
+    reverse = resolve_basis_inputs(replace(config, basis_partition_paths=tuple(reversed(paths))))["basis_partition"]
+    xr.testing.assert_identical(forward, reverse)
+    assert forward.lat.item() == 1.0

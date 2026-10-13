@@ -13,6 +13,7 @@ inputs, use :func:`openghg_inversions.rhime.run_rhime_from_prepared_inputs`.
 
 from __future__ import annotations
 
+from openghg_inversions.rhime._runner_compat import translate_rhime_aliases
 from openghg_inversions.basis import prepare_basis
 from openghg_inversions.basis.basis_functions import BASIS_ARTIFACT_PATH_ATTR
 from openghg_inversions.native_flux import resolve_runtime_flux
@@ -76,7 +77,7 @@ def run_custom_rhime(
     params = read_rhime_ini(config_file) if config_file is not None else {}
     params.update(kwargs)
     params["mismatch_model"] = None
-    config = RhimeConfig.from_params(params, multisector=False)
+    config = RhimeConfig.from_params(translate_rhime_aliases(params), multisector=False)
     validate_output_resources(config.output)
 
     # Resolve selected support files before acquiring observations or flux.

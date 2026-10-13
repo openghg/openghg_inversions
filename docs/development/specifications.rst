@@ -30,6 +30,8 @@ The following map was reviewed against ``devel`` revision ``7269f50f`` on
 12 October 2026. It covers RHIME selection, composition, configuration, and
 reconstruction boundaries; it is not a complete package API specification.
 The configuration entry was amended on 13 October 2026 during review of PR 867.
+The resource-I/O and HBMCMC entries were updated the same day for the initial
+0.8 implementation under review in PR 869; their durable specs are not yet promoted.
 
 .. list-table:: Behavioral ownership and delivery status
    :header-rows: 1
@@ -63,7 +65,7 @@ The configuration entry was amended on 13 October 2026 during review of PR 867.
      - Delivered exact destinations, selected-resource checks and optional
        saving inside preparation. The :download:`runner resource-I/O change
        <../../openspec/changes/move-rhime-resource-io-to-runners/proposal.md>`
-       tracks pending path/save migration in
+       tracks the path/save migration implemented under review in PR 869 for
        `issue 868 <https://github.com/openghg/openghg_inversions/issues/868>`_.
        Manifest references and checkpoint completion stay with the handoff specs.
    * - Retained-state scientific reconstruction
@@ -74,10 +76,13 @@ The configuration entry was amended on 13 October 2026 during review of PR 867.
    * - HBMCMC dependency direction and retirement
      - :download:`HBMCMC isolation and retirement proposal
        <../../openspec/changes/isolate-and-retire-hbmcmc/proposal.md>`
-     - Pending review and implementation in
+     - Initial 0.8 isolation implemented and under review in
        `PR 869 <https://github.com/openghg/openghg_inversions/pull/869>`_.
-       Separates 0.8 isolation from complete 0.9 removal. Owns the dependency
-       boundary; path conversion and resource loading stay with resource I/O.
+       Complete 0.9 removal and durable-spec promotion remain pending.
+       Runner frontends own retained deprecated spelling translation; canonical
+       configuration has no alias translation or warnings. This contract owns
+       the dependency boundary; path conversion and resource loading stay with
+       resource I/O.
    * - Saved CO2 affine reconstruction
      - :download:`CO2 affine output reconstruction
        <../../openspec/specs/co2-output-reconstruction/spec.md>`

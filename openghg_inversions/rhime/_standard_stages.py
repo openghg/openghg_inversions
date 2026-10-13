@@ -30,7 +30,7 @@ from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInpu
 from openghg_inversions.inference.sampling import resolve_sampler
 from .specs import RhimeRunSpec, RhimeOutputSpec
 from ._resources import resolve_resource_paths
-from ._aliases import _ALIASES, translate_rhime_aliases
+from ._runner_compat import _ALIASES, translate_rhime_aliases
 from openghg_inversions.serialization import (
     load_trace,
     reset_serialisation_multiindexes,

@@ -106,6 +106,7 @@ def rhime_inv_inputs(
     default_bc_basis_directory: Path,
 ) -> xr.Dataset:
     data_args = dict(mhd_and_tac_ch4_data_args)
+    data_args["flux_store"] = data_args.pop("emissions_store")
     flux_sources = data_args.pop("emissions_name")
     prepared = prepare_inputs(
         **data_args,
@@ -5519,6 +5520,7 @@ def test_cleanup_plan_records_issue_400_decisions() -> None:
 def _rhime_preparation_args(data_args: dict, flux_sources: list[str], bc_basis_directory: Path) -> dict:
     args = data_args.copy()
     args.pop("emissions_name", None)
+    args["flux_store"] = args.pop("emissions_store")
     args.update(
         {
             "output_name": "prep_test",

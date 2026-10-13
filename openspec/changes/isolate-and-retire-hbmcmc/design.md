@@ -25,12 +25,13 @@ redesign; no immediate deletion of HBMCMC from the 0.8 implementation.
    CLI and normalized dictionary route after overrides, before construction.
    Keeping calls in modern runners or placing discovery in `from_params` would
    retain the reverse dependency or violate data-free construction.
-2. Move genuinely modern aliases and validation to modern owners. The existing
-   RHIME alias vocabulary and output-format aliases remain supported under their
-   current contracts; fixedbasis switches and case/directory discovery do not
-   become modern aliases. Remove the RHIME `params_from_config` re-export. Use
-   small duplication in HBMCMC where extraction would couple modern behavior
-   back to legacy policy; do not introduce a shared compatibility framework.
+2. Preserve supported spelling and flux aliases at runner/frontends through 0.8,
+   warning on devel and 0.8 and removing them in 0.9. Canonical configuration
+   knows only canonical names, with ordinary unsupported-name errors and no
+   alias warnings. Keep the compatibility owner outside HBMCMC and remove
+   `rhime._aliases`; do not route translation through `RhimeConfig.from_params`.
+   HBMCMC discovery is self-contained; separately deprecated basis adapters
+   retain their own schedules. Small duplication avoids reverse dependencies.
 3. Leave path conversion, BC loading and packaged-map selection with the
    [resource-I/O change](../move-rhime-resource-io-to-runners/design.md).
    Its independent converter accepts owner declarations and a base; it does not
@@ -58,7 +59,7 @@ redesign; no immediate deletion of HBMCMC from the 0.8 implementation.
 
 ## Migration Plan
 
-Review these artifacts on PR #869 before further code changes. Implement and
+The initial 0.8 implementation is on PR #869; apply the approved review corrections and
 validate 0.8 isolation together with the resource-I/O correction, including
 migration guidance and a release fragment. Keep complete 0.9 removal as an
 explicit outstanding phase. After 0.8 implementation and acceptance, sync only

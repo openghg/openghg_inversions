@@ -138,7 +138,7 @@ completing those selected choices. Known unrelated groups in a shared file SHALL
 remain inactive; unsupported names and explicit wrong-phase overrides SHALL fail.
 The external boundary SHALL report all unsupported and explicit wrong-phase
 keys together before acquisition, preparation or inference. Supported aliases
-SHALL use their modern alias owner and the same precedence in full and saved
+SHALL use their runner/frontend alias owner and the same precedence in full and saved
 routes; translating file and override mappings separately SHALL NOT change which
 effective value wins.
 Date-dependent configuration defaults SHALL use effective overridden dates for a
@@ -267,8 +267,9 @@ adapter SHALL retain `None`-means-default selection. Default settings and scient
 behavior SHALL otherwise remain unchanged. Result fields SHALL use `None` only
 for absence of a live sampler, as specified by the recipe-execution contract.
 
-Resolution SHALL consume omitted/false `use_tracer` without retaining a config
-field. Effective true SHALL retain early rejection at resolution and relevant
+Runner/frontend resolution SHALL consume omitted/false `use_tracer` without
+retaining a config field. Canonical configuration SHALL accept only canonical
+fields and use generic unsupported-option errors for obsolete options. Effective true SHALL retain early rejection at resolution and relevant
 direct public boundaries, including supplied merged data. Existing legacy-option
 and custom-likelihood conflict precedence SHALL remain unchanged.
 
@@ -321,29 +322,33 @@ values or defaults. Shorthand SHALL remain editable until that construction.
 Shared semantic/site-alignment helpers SHALL remain independent of file syntax.
 
 Historical fixedbasis translation SHALL be owned by HBMCMC entry points.
-Supported modern RHIME aliases SHALL have owners outside HBMCMC;
-`RhimeConfig.from_params` SHALL resolve those aliases before modern coercion,
-validation and construction without importing or calling HBMCMC. Complete-request
-runners SHALL call that classmethod without repeating alias translation.
-Phase-only adapters SHALL reuse the same modern alias definitions once at their
-external boundary without constructing an unrelated complete request.
-HBMCMC-only selectors SHALL be translated by the
-legacy entry point before construction, or rejected by modern entry points.
-The translator SHALL emit `DeprecationWarning` when it replaces or removes a
-deprecated option name or output-format value; canonical options SHALL pass
-without a deprecation warning. For the relocated RHIME name/output aliases,
-canonical spellings SHALL retain their existing precedence when both spellings
-are supplied. Separately specified conflict rules, including the error for both
-modern flux-selector spellings, SHALL remain unchanged. Fixedbasis-specific
-scientific policy SHALL remain in its separate
-compatibility adapter. The `resolve_rhime_config` wrapper SHALL be removed.
-During 0.8, the deprecated `params_from_config` adapter inside HBMCMC SHALL
-preserve its dictionary, normalization and override behavior using the modern
-decoder; its normalized route SHALL translate applicable historical selections
-after overrides. It SHALL NOT be re-exported by RHIME or needed by modern runners.
-Its removal with the entire legacy subpackage is governed by the separate
-HBMCMC isolation/retirement capability. The namespace restriction and
-legacy-only routing are explicit exceptions to general adapter compatibility.
+Supported RHIME spelling and output-format aliases, including deprecated
+`emissions_*` flux selectors, SHALL be translated at runner/frontend boundaries
+outside HBMCMC after winning overrides. Existing `run_rhime` behavior SHALL
+remain supported on devel and in 0.8, with `DeprecationWarning` for deprecated
+options, until their removal in 0.9. Canonical spelling precedence and the
+separate flux old/new conflict errors SHALL remain unchanged.
+`RhimeConfig.from_params` and canonical normalization SHALL know only canonical
+names: they SHALL NOT import alias definitions, translate aliases, issue alias
+warnings, or provide alias-specific replacement messages. Unsupported names
+SHALL use ordinary unsupported-option validation. Canonical inputs SHALL pass
+without alias warnings. Complete and phase-only frontends SHALL share the runner
+compatibility owner; phase-only routes SHALL select applicable groups before
+value validation/defaults without constructing an unrelated complete request.
+HBMCMC-only resource selectors SHALL be translated by the legacy entry point,
+or rejected with guidance by modern runner boundaries before construction.
+Fixedbasis scientific policy SHALL remain in its separate compatibility adapter.
+The `resolve_rhime_config` wrapper SHALL be removed.
+
+During 0.8, HBMCMC's deprecated `params_from_config` SHALL return a dictionary
+using the modern decoder and apply overrides before normalization. With
+`normalise=False`, it SHALL preserve decoded values and historical names.
+With `normalise=True`, it SHALL translate historical names and resource selections
+into canonical keys and resolve declared filesystem values to absolute `Path`
+objects, preserving file/override origins. This is an explicit return-value
+migration from original path strings and historical selector keys; documentation
+SHALL describe it. The adapter SHALL NOT be re-exported by RHIME or needed by
+modern runners. Its removal belongs to the HBMCMC retirement contract.
 
 #### Scenario: Read recipe-specific or incomplete options
 
@@ -361,17 +366,22 @@ legacy-only routing are explicit exceptions to general adapter compatibility.
 
 #### Scenario: Construction translates deprecated spellings once
 
-- **WHEN** a runner or direct factory caller supplies a supported deprecated spelling
-- **THEN** `RhimeConfig.from_params` resolves the canonical value through its
-  modern alias owner, emitting a deprecation warning for the changed option
-- **AND** canonical inputs do not emit deprecation warnings
-- **AND** HBMCMC-specific historical behavior remains in the HBMCMC translator
+- **WHEN** a caller supplies a supported deprecated spelling to `run_rhime`
+- **THEN** its frontend preserves the canonical value and established precedence,
+  emitting a deprecation warning before canonical construction
+- **AND** canonical construction receives only canonical names and emits no alias warning
+
+#### Scenario: Direct canonical factory receives an old name
+
+- **WHEN** a caller supplies a deprecated spelling directly to `RhimeConfig.from_params`
+- **THEN** it rejects the unsupported name through ordinary option validation
+- **AND** it neither translates the name nor emits an alias warning
 
 #### Scenario: Phase-only aliases remain independent of HBMCMC
 
 - **WHEN** a saved-phase caller supplies a supported deprecated modern alias
   for an applicable group alongside unrelated groups in a shared file
-- **THEN** its external boundary uses the modern alias owner once with the same
+- **THEN** its external boundary uses the runner/frontend alias owner once with the same
   precedence as a complete request, without importing or calling HBMCMC
 - **AND** it selects applicable groups before validating values or defaults,
   without constructing an unrelated complete request
@@ -379,7 +389,8 @@ legacy-only routing are explicit exceptions to general adapter compatibility.
 #### Scenario: Dictionary compatibility adapter
 
 - **WHEN** a 0.8 caller uses HBMCMC's `params_from_config` with supported overrides and normalization controls
-- **THEN** the deprecated adapter retains its established dictionary contract
+- **THEN** the deprecated adapter returns raw overridden values when normalization is disabled,
+  or canonical keys and absolute path values when normalization is enabled
 - **AND** modern runners can instead read, combine and resolve without using it
 
 ## ADDED Requirements

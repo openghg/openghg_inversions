@@ -13,7 +13,7 @@ runners perform it.
   outside HBMCMC must not import, re-export or execute through HBMCMC.
 - Keep historical fixedbasis policy and resource selection inside the HBMCMC
   input path, after winning overrides and before canonical construction.
-- Give retained modern behavior modern owners, including supported RHIME aliases,
+- Give retained modern behavior modern owners, including supported runner-owned RHIME aliases,
   INI decoding, path conversion and domain-specific packaged preparation maps.
   Small duplication inside HBMCMC is acceptable.
 - **BREAKING (0.8):** Remove modern re-exports of HBMCMC-only adapters and route
@@ -52,7 +52,8 @@ No model equations, sampling defaults, artifact codecs, grouped configuration or
 new handoff formats are introduced. Output formats implemented outside HBMCMC
 are not removed merely because their names or products mention HBMCMC.
 
-This is a pending proposal for review on PR #869, not evidence of implementation.
+The initial 0.8 implementation is on PR #869, with approved review corrections
+in progress. Acceptance and durable-spec promotion remain pending.
 Keep requirements in active changes until their corresponding behavior is
 implemented and accepted; 0.9 deletion is a later release task, not a prerequisite
 for completing the 0.8 resource-I/O implementation.

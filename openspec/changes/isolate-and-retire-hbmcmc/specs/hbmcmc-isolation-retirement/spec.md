@@ -40,10 +40,15 @@ runners SHALL NOT substitute for wiring these legacy entry points.
 Translation SHALL preserve established override precedence, applicable warnings,
 scientific choices, borrowed inputs and output policy, except for explicitly
 specified removals. Canonical requests SHALL contain explicit selections rather
-than historical discovery fields. Modern boundaries SHALL reject HBMCMC-only
+than historical discovery fields. Modern runner boundaries SHALL reject HBMCMC-only
 selectors before scientific work and identify the explicit modern replacements
 or the temporary legacy route. Removed options such as `country_directory`
 SHALL remain errors on both routes, not regain support through HBMCMC.
+
+Historical discovery used by HBMCMC SHALL be self-contained in that package,
+without importing private discovery helpers from `basis.compatibility`. Small
+duplication with independently deprecated basis adapters is permitted. Missing
+domain information required for discovery SHALL produce a clear validation error.
 
 The resource-I/O contract owns BC file loading, NESW's file-free calculation,
 path origins and preparation defaults. HBMCMC translation SHALL supply the
@@ -66,7 +71,7 @@ explicit inputs needed by that contract rather than add downstream discovery.
 
 #### Scenario: Modern caller supplies historical discovery fields
 
-- **WHEN** a modern request supplies `fp_basis_case`, `basis_directory`,
+- **WHEN** a modern runner request supplies `fp_basis_case`, `basis_directory`,
   `bc_basis_case` or `bc_basis_directory`
 - **THEN** it fails before acquisition with migration guidance
 - **AND** no modern adapter calls HBMCMC to interpret those fields
@@ -76,8 +81,10 @@ explicit inputs needed by that contract rather than add downstream discovery.
 Supported modern INI decoding, RHIME aliases, configuration construction, path
 conversion and vendored preparation defaults SHALL remain available outside
 HBMCMC. Moving their ownership SHALL preserve their separately specified
-semantics and deprecation schedules. In particular, modern alias support SHALL
-NOT disappear merely because its implementation previously lived in HBMCMC.
+semantics and deprecation schedules. Runner/frontends SHALL preserve deprecated spelling and flux-selector alias
+support through 0.8, with warnings on devel and 0.8 and removal in 0.9. Canonical
+configuration SHALL contain no alias definitions, translation, alias warnings or
+alias-specific errors; ordinary unknown-option validation handles old names.
 
 HBMCMC-only adapters, including its deprecated dictionary-returning
 `params_from_config`, SHALL be available only through HBMCMC during 0.8; modern
@@ -94,15 +101,16 @@ This requirement does not remove modern legacy-format output codecs or
 
 #### Scenario: Supported modern alias survives relocation
 
-- **WHEN** a modern caller supplies a separately supported deprecated RHIME alias
-- **THEN** a modern owner preserves its warning, precedence and canonical value
+- **WHEN** a runner caller supplies a separately supported deprecated RHIME alias
+- **THEN** the runner frontend preserves its warning, precedence and canonical value
 - **AND** no historical fixedbasis policy or resource discovery is invoked
 
 ### Requirement: HBMCMC is completely removed in 0.9
 
 Version 0.9 SHALL remove the entire `openghg_inversions.hbmcmc` subpackage,
 including the executable wrapper, compatibility adapters and legacy data/basis
-utilities. No import aliases, forwarding shims or entry points SHALL preserve
+utilities within that subpackage. Separately supported `basis.compatibility`
+adapters retain their own schedules and SHALL NOT depend on HBMCMC. No import aliases, forwarding shims or entry points SHALL preserve
 that namespace. Supported modern workflows SHALL continue independently.
 
 Migration guidance SHALL distinguish 0.8 isolation from complete 0.9 removal,

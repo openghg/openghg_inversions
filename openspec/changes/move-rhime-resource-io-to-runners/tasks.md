@@ -7,7 +7,8 @@ selected-resource checks already exist; preserve their tests and scientific beha
 
 - [x] 1.1 Resolve file resource values and explicit invocation overrides at their
   owning boundary; verify selected paths from a different working directory,
-  absolute paths and equivalent full/staged requests.
+  absolute paths and equivalent full/staged requests, plus deterministic sorted
+  loading of explicit outer/inner partition collections.
   Drive conversion from declared path fields, preserving each value's origin;
   supply the converter with the owning record's declarations without imports
   of concrete configuration owners. Convert at one external boundary and forward
@@ -34,8 +35,8 @@ selected-resource checks already exist; preserve their tests and scientific beha
   for the selected domain; cover explicit overrides, missing-domain failures,
   algorithms needing no map and independence from explicit reporting `country_file`.
 
-Tasks 1.1 and 1.3 are reopened by the maintainer's ownership correction;
-previous passing checks do not establish the revised contract. The separate
+The initial ownership correction is implemented; approved follow-up review
+checks cover deterministic partition ordering and migration documentation. The separate
 [HBMCMC change](../isolate-and-retire-hbmcmc/tasks.md) owns the legacy entry-point
 fix, dependency enforcement and retirement. Existing BC-loading and basis-export
 work remains subject to its focused regression checks after integration.

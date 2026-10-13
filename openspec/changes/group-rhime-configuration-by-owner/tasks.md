@@ -8,7 +8,7 @@ tasks; this planning split does not complete configuration or handoff work.
 - [ ] 1.1 Move fields/defaults into `RhimeConfig.data: DataConfig` and migrate
   grouped callers to `data`; verify full/phase-equivalent choices, no duplicate
   defaults, no array access and unchanged caller inputs.
-- [ ] 1.2 Reuse modern alias translation outside HBMCMC after raw overrides and
+- [ ] 1.2 Reuse runner/frontend alias translation outside HBMCMC after raw overrides and
   select applicable groups before resolution; verify canonical/deprecated
   precedence, independent flux-alias conflict rules, and one early error containing
   all unsupported or wrong-phase keys. Verify phase-only resolution imports no

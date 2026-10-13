@@ -12,7 +12,7 @@ from openghg_inversions.hbmcmc.compatibility import translate_rhime_aliases
 
 @pytest.mark.parametrize("multisector", [False, True])
 def test_option_resolution_rejects_tracer_before_required_options(multisector):
-    with pytest.raises(ValueError, match="use_tracer=True.*not supported"):
+    with pytest.raises(ValueError, match="Unsupported RHIME parameter.*use_tracer"):
         RhimeConfig.from_params(params={"use_tracer": True}, multisector=multisector)
 
 
@@ -53,7 +53,9 @@ def test_false_or_omitted_tracer_is_not_forwarded_after_resolution(tracer_option
         **tracer_options,
     }
     original = params.copy()
-    config = RhimeConfig.from_params(params=params, multisector=multisector)
+    from openghg_inversions.rhime._runner_compat import translate_rhime_aliases as runner_options
+
+    config = RhimeConfig.from_params(params=runner_options(params), multisector=multisector)
     assert not hasattr(config, "use_tracer")
     assert params == original
 

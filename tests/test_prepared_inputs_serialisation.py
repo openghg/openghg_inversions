@@ -471,6 +471,7 @@ def prepared_from_real_route(
 ) -> RhimePreparedInputs:
     """Prepare durable inputs through the real RHIME route and test object store."""
     preparation_args = dict(tac_ch4_data_args)
+    preparation_args["flux_store"] = preparation_args.pop("emissions_store")
     flux_sources = preparation_args.pop("emissions_name")
     preparation_args.update(
         {

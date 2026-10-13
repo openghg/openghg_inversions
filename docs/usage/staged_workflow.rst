@@ -35,8 +35,12 @@ read ambient ``CONFIG_FILE``.  ``OUTPUT_DIR`` is the only automatic path
 default, and the effective ``openghg-run`` ``STAGE`` is the default check-stage
 label.
 Relative filesystem values inside an INI or JSON parameter file are resolved
-against that file's directory. Explicit ``--kwargs`` path overrides resolve
-from the invocation working directory; absolute paths keep their destination.
+against that file's directory. This includes ``output_path`` and explicit
+``save_trace`` / ``save_inversion_output`` filenames: staged output destinations
+now follow the same file-relative rule as resource inputs. Ordinary full-run
+INI values remain relative to the invocation directory. Explicit ``--kwargs``
+path overrides resolve from the invocation working directory; absolute paths
+keep their destination.
 Filesystem annotations identify the fields to convert: resolved configuration
 uses ``Path`` values, including tuples of paths, while parameter JSON and stage
 manifests store paths as strings and path collections as JSON arrays. Scientific
@@ -74,8 +78,10 @@ parameter file and pass that path (for example beneath ``SOURCE_DIR`` or
 Legacy fixedbasis-style PARIS INIs contain options such as ``nit``, ``nchain``,
 ``xprior`` and ``mcmc_type``. Fixedbasis policy such as ``nit``, ``nchain`` and
 ``mcmc_type`` belongs to the temporary ``run_hbmcmc`` route in 0.8. Modern name
-aliases such as ``xprior`` remain supported with their existing warning and
-precedence, but prefer ``x_prior`` in new files. Migrate fixedbasis policy and
+aliases such as ``xprior`` remain supported at the staged frontend until 0.9
+with deprecation warnings and their existing precedence; prefer ``x_prior`` in
+new files. Translation happens before ``RhimeConfig.from_params``, which accepts
+canonical names only and emits no alias warnings. Migrate fixedbasis policy and
 resource discovery to canonical RHIME options before using staged commands.
 The entire HBMCMC subpackage and its entry points are removed in 0.9.
 

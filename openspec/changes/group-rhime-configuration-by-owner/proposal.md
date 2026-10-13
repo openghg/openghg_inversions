@@ -17,7 +17,7 @@ than the durable configuration baseline.
   the agreed BC-use, BC-frequency and sampler contracts.
 - Keep path interpretation and optional basis saving with the separate
   [resource-I/O change](../move-rhime-resource-io-to-runners/proposal.md).
-- Share modern alias owners across full and phase-only resolution under the
+- Share runner/frontend alias owners across full and phase-only resolution under the
   separate [HBMCMC isolation/retirement contract](../isolate-and-retire-hbmcmc/proposal.md);
   historical translation remains in HBMCMC without a reverse dependency.
 

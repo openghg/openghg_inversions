@@ -104,3 +104,19 @@ SHALL reject it before scientific work with guidance to use `country_file`,
 - **WHEN** a 0.8 run request supplies `country_directory`
 - **THEN** its entry adapter rejects the option with the operation-specific replacements before acquisition
 - **AND** no downstream compatibility branch interprets that directory
+
+### Requirement: Explicit partition collections have deterministic ordering
+
+Configured runners SHALL accept `basis_partition_paths` and nested
+`inner_basis_partition_paths` as nonempty explicit path collections, mutually
+exclusive with the corresponding singular partition and retained-basis choices.
+Runners SHALL sort resolved paths lexically before calling the existing partition
+loader. The first sorted file SHALL provide its latitude/longitude reference;
+existing combination and alignment semantics SHALL be preserved. Selection SHALL
+perform no globbing. All selected files SHALL be checked before acquisition.
+
+#### Scenario: Reverse a partition collection
+
+- **WHEN** a caller reverses the same selected partition paths
+- **THEN** loading uses the same sorted order and coordinate reference
+- **AND** the prepared partition is unchanged

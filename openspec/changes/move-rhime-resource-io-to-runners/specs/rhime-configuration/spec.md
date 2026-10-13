@@ -27,8 +27,9 @@ Internal orchestration/setup records and their constructor/helper return shapes
 SHALL NOT be required compatibility contracts. Their in-repository consumers
 SHALL migrate to the unified requested configuration.
 
-Resolution SHALL consume omitted/false `use_tracer` without retaining a config
-field. Effective true SHALL retain early rejection at resolution and relevant
+Runner/frontend resolution SHALL consume omitted/false `use_tracer` without
+retaining a config field. Canonical configuration SHALL accept only canonical
+fields and use generic unsupported-option errors for obsolete options. Effective true SHALL retain early rejection at resolution and relevant
 direct public boundaries, including supplied merged data. Existing legacy-option
 and custom-likelihood conflict precedence SHALL remain unchanged.
 

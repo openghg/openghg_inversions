@@ -15,7 +15,6 @@ from dataclasses import MISSING, dataclass, field, fields
 from pathlib import Path
 from typing import Any, ClassVar, cast, get_args, get_type_hints
 
-from openghg_inversions._flux_options import normalise_flux_aliases
 from openghg_inversions.rhime._resources import resolve_resource_paths
 from openghg_inversions.flux_sanitization import FluxNonFiniteCheck
 from openghg_inversions.inversion_data._site_options import SiteOptions
@@ -25,9 +24,6 @@ from openghg_inversions.model_error import normalise_min_error, normalise_min_er
 from openghg_inversions.models._flux import safe_pymc_name
 from openghg_inversions.observation_error import AggregationErrorMode
 from openghg_inversions.inference.sampling import RhimeSampler
-from openghg_inversions.rhime._aliases import (
-    translate_rhime_aliases,
-)
 from openghg_inversions.rhime.specs import (
     DEFAULT_BC_PRIOR,
     DEFAULT_OFFSET_PRIOR,
@@ -54,14 +50,12 @@ class RhimeConfig:
     choices, ``output`` final-product policy and ``sampler`` sampling settings.
     Inference executes only when the sampler receives a constructed model.
 
-    Use :meth:`from_params` for external options; deprecated spellings emit
-    warnings. It owns ordinary configuration containers and borrows opaque
-    numerical values. Modern ``emissions_store``/``emissions_domain`` spellings
-    are removed in 0.9; supplying either with its ``flux_*`` replacement is an
-    error, including equal values. Resolved fields use only ``flux_*`` names.
-    HBMCMC entry points translate historical basis selectors before construction.
+    Use :meth:`from_params` for canonical external options. It owns ordinary
+    configuration containers and borrows opaque numerical values. Runner
+    frontends translate deprecated spellings before construction; this class
+    has no alias vocabulary and emits no alias deprecation warnings.
     Canonical requests retain only exact typed paths; resource loading belongs
-    to runners. ``country_directory`` was removed in 0.8.
+    to runners.
     Direct construction and dataclass replacement expect
     already-resolved values and do not copy them.
     A frozen record does not make contained mappings or the sampler immutable.
@@ -152,8 +146,7 @@ class RhimeConfig:
 
         Args:
             params: Python or decoded file options after winning overrides.
-                Canonical names are preferred; deprecated spellings are
-                translated with ``DeprecationWarning``.
+                Only canonical option names are accepted.
             multisector: Whether to resolve the multisector recipe.
 
         Returns:
@@ -166,7 +159,7 @@ class RhimeConfig:
             ValueError: If options are missing, unsupported, malformed, or
                 incompatible with the selected runner mode.
         """
-        normalized = normalise_rhime_params(translate_rhime_aliases(params))
+        normalized = normalise_rhime_params(params)
         normalized = resolve_resource_paths(normalized, annotations=get_type_hints(cls), base_dir=Path.cwd())
         validate_supported_params(normalized)
         validate_required_params(normalized)
@@ -390,12 +383,8 @@ def resolve_flux_sources(
 
 
 def normalise_rhime_params(params: Mapping[str, Any]) -> dict[str, Any]:
-    """Resolve modern flux spellings, coerce scalars and validate values.
-
-    Historical HBMCMC aliases are translated before this step. Modern flux
-    aliases are resolved here, with warnings and strict old/new conflicts.
-    """
-    normalized = normalise_flux_aliases(params)
+    """Copy canonical options, coerce scalars and validate values."""
+    normalized = dict(params)
     coerce_simple_param_types(normalized)
     validate_rhime_param_types(normalized)
     return normalized
@@ -480,7 +469,7 @@ def validate_multisector_x_prior(x_prior: Mapping[str, Any] | None) -> None:
         return
     raise ValueError(
         "Invalid RHIME config value for `x_prior`: multi-sector source-keyed priors are not "
-        "supported via `xprior`/`x_prior`; use `sector_priors` keyed by sector name, or provide "
+        "supported via `x_prior`; use `sector_priors` keyed by sector name, or provide "
         "a single shared prior dict with top-level `pdf`."
     )
 

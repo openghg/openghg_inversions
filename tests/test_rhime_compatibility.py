@@ -145,3 +145,53 @@ def test_dictionary_removed_country_directory_is_an_error(tmp_path):
     path.write_text('[RUN]\ncountry_directory = "old"\n')
     with pytest.warns(DeprecationWarning), pytest.raises(ValueError, match="country_file.*landsea_path.*outer_regions_path"):
         params_from_config(path)
+
+
+@pytest.mark.parametrize("options", [{"fp_basis_case": "saved"}, {"bc_basis_case": "custom"}])
+def test_historical_discovery_requires_domain(options):
+    from openghg_inversions.hbmcmc.compatibility import adapt_resource_params
+
+    with pytest.warns(DeprecationWarning), pytest.raises(ValueError, match="domain.*required.*discover"):
+        adapt_resource_params(options)
+
+
+@pytest.mark.parametrize("options", [
+    {},
+    {"bc_basis_case": "NESW"},
+    {"bc_basis_case": "custom", "use_bc": False},
+])
+def test_no_discovery_does_not_require_domain(options):
+    from openghg_inversions.hbmcmc.compatibility import adapt_resource_params
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        assert adapt_resource_params(options) == ({"use_bc": False} if "use_bc" in options else {})
+
+
+def test_legacy_adapter_translates_flux_aliases_before_canonical_construction():
+    from openghg_inversions.hbmcmc.compatibility import adapt_resource_params
+
+    with pytest.warns(DeprecationWarning):
+        result = adapt_resource_params({"emissions_store": "store", "emissions_domain": "EUROPE"})
+    assert result == {"flux_store": "store", "flux_domain": "EUROPE"}
+
+
+def test_historical_basis_discovery_does_not_use_basis_compatibility(tmp_path, monkeypatch):
+    from openghg_inversions.basis import compatibility as basis_compatibility
+    from openghg_inversions.hbmcmc.compatibility import adapt_resource_params
+    import xarray as xr
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("HBMCMC must own historical discovery")
+
+    monkeypatch.setattr(basis_compatibility, "_basis_artifact_files", forbidden)
+    monkeypatch.setattr(basis_compatibility, "_is_basis_datatree_artifact", forbidden)
+    directory = tmp_path / "EUROPE"
+    directory.mkdir()
+    path = directory / "saved_EUROPE.nc"
+    xr.Dataset({"basis": ("lat", [1])}).to_netcdf(path)
+    with pytest.warns(DeprecationWarning):
+        result = adapt_resource_params(
+            {"domain": "EUROPE", "fp_basis_case": "saved", "basis_directory": tmp_path}
+        )
+    assert result == {"domain": "EUROPE", "basis_partition_paths": (path,)}

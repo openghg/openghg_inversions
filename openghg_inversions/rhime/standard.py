@@ -38,6 +38,7 @@ from openghg_inversions.observation_error import (
 )
 from openghg_inversions.sigma import SigmaAlignment
 
+from openghg_inversions.rhime._runner_compat import translate_rhime_aliases
 from ._model_building import (
     ForwardModelTerms,
     add_rhime_likelihood,
@@ -551,7 +552,7 @@ def run_standard(
         params.update(kwargs)
         if likelihood_builder is not None and params.get("mismatch_model") is not None:
             raise ValueError("A custom likelihood cannot be combined with a built-in mismatch model.")
-        config = RhimeConfig.from_params(params, multisector=False)
+        config = RhimeConfig.from_params(translate_rhime_aliases(params), multisector=False)
     sampler = resolve_sampler(config.sampler)
     log_timing("rhime.runner_setup", timer_seconds(setup_start), multisector=False)
     if likelihood_builder is None and config.model.likelihood is None:

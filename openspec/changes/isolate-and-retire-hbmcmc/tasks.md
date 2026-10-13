@@ -1,21 +1,24 @@
 # Tasks
 
-Planning only on PR #869: implementation starts after maintainer review. Complete
+Implementation and approved review corrections are on PR #869, awaiting acceptance. Complete
 the 0.8 phase alongside the resource-I/O correction; retain the 0.9 phase as open
 work rather than deleting the package in 0.8 or claiming retirement is delivered.
 
 ## 1. Isolate legacy behavior in 0.8
 
-- [x] 1.1 Give retained RHIME aliases/validation modern owners and remove all
+- [x] 1.1 Give retained RHIME aliases/validation runner/frontend owners and remove all
   production imports/re-exports of HBMCMC outside that package, including the
   RHIME dictionary adapter export and copied examples. Verify modern imports and
   representative configured/output-only execution with HBMCMC unavailable;
-  preserve alias warnings, precedence and the independent flux-alias contract.
+  preserve runner alias warnings, precedence and the independent flux-alias
+  contract; verify canonical configuration knows no aliases or alias warnings.
 - [x] 1.2 Wire historical selection into the actual HBMCMC CLI and normalized
   dictionary route after overrides and before canonical construction. Verify the
   reported NESW options through `run_hbmcmc.main`, file-backed selection,
-  superseded missing inputs, dictionary normalization controls, early removed-
-  option errors, unchanged caller mappings and established output policy.
+  superseded missing inputs, dictionary normalization controls and documented
+  canonical Path returns, self-contained discovery and clear missing-domain
+  errors, early removed-option errors, unchanged caller mappings and established
+  output policy.
 - [x] 1.3 Add the small production import-boundary check and early modern errors
   for HBMCMC-only selectors. Verify absolute/relative import and re-export
   violations fail the check while legacy-entry tests remain allowed; verify
@@ -28,7 +31,8 @@ work rather than deleting the package in 0.8 or claiming retirement is delivered
 ## 2. Remove the package for 0.9
 
 - [ ] 2.1 Delete HBMCMC's wrapper, adapters and legacy utilities plus obsolete
-  entry points and internal consumers. Verify wheel/source distributions omit
+  entry points and internal consumers, and remove temporary runner spelling/flux
+  alias support. Verify wheel/source distributions omit
   the package and no compatibility alias preserves its import path; run the
   import-boundary check and relevant modern workflow regressions.
 - [ ] 2.2 Finalize migration documentation and the 0.9 removal fragment. Verify

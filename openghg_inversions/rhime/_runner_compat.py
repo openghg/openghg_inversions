@@ -1,10 +1,12 @@
-"""Supported modern RHIME spelling aliases and entry validation."""
+"""Deprecated spellings accepted by runner frontends until 0.9."""
 
 from __future__ import annotations
 
 import warnings
 from collections.abc import Mapping
 from typing import Any
+
+from openghg_inversions._flux_options import normalise_flux_aliases
 
 _ALIASES = {
     "outputpath": "output_path",
@@ -101,7 +103,7 @@ def translate_rhime_aliases(params: Mapping[str, Any]) -> dict[str, Any]:
         params: Raw external options after the entrypoint applies overrides.
 
     Returns:
-        A fresh shallow mapping using canonical RHIME names. When both an alias
+        A fresh shallow mapping for the runner to pass to canonical configuration. When both an alias
         and its canonical spelling occur, the canonical value wins. Container
         payloads remain borrowed; this adapter does not resolve configuration.
 
@@ -112,7 +114,7 @@ def translate_rhime_aliases(params: Mapping[str, Any]) -> dict[str, Any]:
     ``outer_region_definition_file`` is a deprecated RHIME spelling rather than
     a fixedbasis scientific switch and is translated at the same boundary.
     """
-    translated = normalise_param_aliases(params)
+    translated = normalise_flux_aliases(normalise_param_aliases(params))
     normalise_output_format_alias(translated)
     return translated
 
