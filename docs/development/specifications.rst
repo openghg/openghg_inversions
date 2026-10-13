@@ -49,7 +49,8 @@ reconstruction boundaries; it is not a complete package API specification.
    * - Requested configuration and preparation ownership
      - :download:`Resolve RHIME configuration
        <../../openspec/specs/rhime-configuration/spec.md>`
-     - Delivered configuration slice; :doc:`/usage/rhime_configuration`.
+     - Delivered configuration slice, now with grouped preparation;
+       :doc:`/usage/rhime_configuration`.
        Export/writer work remains with `issue 814
        <https://github.com/openghg/openghg_inversions/issues/814>`_.
    * - Retained-state scientific reconstruction
@@ -67,9 +68,9 @@ reconstruction boundaries; it is not a complete package API specification.
      - :download:`Reusable handoff proposal
        <../../openspec/changes/replace-recipe-workflow-with-reusable-handoffs/proposal.md>`
        in `PR 802 <https://github.com/openghg/openghg_inversions/pull/802>`_
-     - Approved implementation plan; full phase interfaces remain outstanding.
-       PR 843 implements a sampler/result slice without completing the handoff
-       delivery. Current routes are documented in
+     - Standard prepared/sample interfaces are implemented, including graph-free
+       replay and the two-model/two-output parity example. Multisector and CO2
+       adoption remain outstanding in the active change. Current routes are documented in
        :doc:`/usage/staged_workflow` and the family pages.
 
 The older :download:`workflow configuration proposal

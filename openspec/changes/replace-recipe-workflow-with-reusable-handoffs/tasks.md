@@ -50,7 +50,40 @@ with the same selection on #841. Independent review, changed-path Ruff and diff
 checks passed. Keep the task checkboxes open pending their complete acceptance;
 the PR records the bounded implementation and validation details.
 
-- [ ] 1.1 Group the existing resolved `RhimeConfig` preparation fields in one
+### Standard-route delivery, 13 October 2026
+
+The implementation starts from devel `c59f7992`: #863 integrates #840/#841,
+#843 supplies invocation-local sampler selection, #855 supplies the #808 stage
+I/O cleanup, and #795 supplies production predictive integration. This delivery
+moves preparation configuration to its existing owner, adds standard prepared
+and sampled writers/readers together with CLI/Python callers, and keeps full
+execution in memory through the same scientific preparation and output owners.
+
+`examples/standard_handoffs.py` is the runnable acceptance: one preparation,
+two Normal-prior choices, and basic/inversion outputs from each saved posterior.
+It compares saved/full posterior and product arrays, tests Normal log density
+against SciPy at three states (`rtol=1e-6`, `atol=1e-5` for float32 graph arithmetic),
+and independently reconstructs native flux from the scaling draws. The selected
+operator's historical inventory differs by a factor of nine from the retained
+current inventory. The generated project recipe also has a real Student-t
+log-density check and saved replay. Borrowed Dask graph identity, retained subsets,
+original requested dates and missing likelihood inputs have executable checks.
+
+Validation: 380 science/consumer tests passed; 98 configuration tests passed;
+24 resolved-run, 27 sampler-selection and 33 nested checks passed. The current
+handoff suite passed 37 checks and covers fresh-process replay, reference paths, malformed inputs,
+manifest-last save failures, metadata absence, readiness and independent diagnosis.
+The deferred stage suite passed 35 checks and CO2 contract/workflow coverage
+passed 26 checks. Changed-path Ruff, Python compilation and `git diff --check`
+pass; affected documentation download targets resolve. Full-suite compatibility
+and type environments are not claimed by this bounded delivery and remain in 5.1.
+
+Task 1.4 stays open: the standard example proves operator A/current flux B and
+replay retention; prerequisite runtime-flux tests cover source weighting/order.
+Their combined unequal-multiple-source saved-workflow acceptance remains for
+multisector adoption. No later family delivery or OpenSpec archive is claimed.
+
+- [x] 1.1 Group the existing resolved `RhimeConfig` preparation fields in one
   `PreparationConfig` at their current owner, moving fields/defaults rather than copying
   them into a second schema. Keep model, sampler and output choices with their
   owners. Verify full and phase-only inputs resolve the same applicable choices
@@ -58,7 +91,7 @@ the PR records the bounded implementation and validation details.
   Cover omitted/explicit model `use_bc` against enabled/disabled preparation,
   preserved legacy flat routing, and omitted/equivalent/conflicting `bc_freq`
   claims against the baked temporal policy.
-- [ ] 1.2 Use live `sampler="default"` consistently in new and existing
+- [x] 1.2 Use live `sampler="default"` consistently in new and existing
   default-selecting entry points as a request for a fresh family-default
   sampler on each invocation, without selecting execution defaults from saved
   metadata.
@@ -74,7 +107,7 @@ the PR records the bounded implementation and validation details.
   provide migration errors; update annotations, docstrings, examples and caller
   tests together. Keep `None` as absence on results and object-only arguments on
   lower-level operations that already require a resolved sampler.
-- [ ] 1.3 Consolidate standard scientific calls at their existing owners in the
+- [x] 1.3 Consolidate standard scientific calls at their existing owners in the
   visible order observation errors, filtering, basis, sensitivities and assembly.
   Consume #837's explicit assembly/execution boundaries and the named joint PyMC
   materialization boundary. Verify retained-site/averaging alignment, empty-set
@@ -89,27 +122,27 @@ the PR records the bounded implementation and validation details.
   once-per-domain/grid native-flux resolution; use unequal source fields and an
   independent reconstruction calculation. Record which prerequisite PRs supply
   these behaviors rather than implementing them again here.
-- [ ] 1.5 Validate declared coordinate/output roles even when immediate products
+- [x] 1.5 Validate declared coordinate/output roles even when immediate products
   are disabled. Share the existing variable-role/output-contract owner between
   predictive sampling and postprocessing; remove independent concentration-name
   inference in the sampler. Keep species-dependent mass conversion in
   postprocessing. Verify a valid custom no-product model is accepted, an invalid
   declared role fails with `output_format="none"`, and direct scientific arguments,
   conflict checks and established returns remain usable.
-- [ ] 1.6 Implement standard `prepare` returning one absolute manifest path,
+- [x] 1.6 Implement standard `prepare` returning one absolute manifest path,
   using existing numerical codecs and #808's bounded contract. Omit the obsolete
   filtered checkpoint without adding acquisition persistence. Verify acquisition
   and retained subsets with unequal site options, original requested dates,
   ordinary missing/malformed inputs, save/reopen and relative/shared-cache paths.
   Use JSON records and the numerical formats supported by existing codecs.
   Keep the writer, loader and callers together.
-- [ ] 1.7 Implement standard `sample` from that manifest and current model/sampler
+- [x] 1.7 Implement standard `sample` from that manifest and current model/sampler
   choices. Record bounded actual inference provenance and embedded `OutputContract`.
   Verify two compatible priors/likelihoods reuse unchanged preparation, while
   missing required arrays or changed baked policy fail before inference. Distinguish
   scientific compatibility from descriptive provenance. Record a Git revision
   when available without making it a requirement for execution.
-- [ ] 1.8 Implement standard `postprocess` from one sample manifest and current
+- [x] 1.8 Implement standard `postprocess` from one sample manifest and current
   output choices. Replayed results use `sampler=None` and plain saved metadata;
   configuration construction is permitted, but replay does not build a model or
   run inference. Use retained, referenced or supplied run context without filling
@@ -117,12 +150,12 @@ the PR records the bounded implementation and validation details.
   choices from the same samples, preserving requested window/retained metadata
   and matching live products. Let ordinary loaders report missing/malformed
   files and scientific boundaries reject incompatible roles, labels or units.
-- [ ] 1.9 Preserve standard prior-predictive/readiness catch boundaries and
+- [x] 1.9 Preserve standard prior-predictive/readiness catch boundaries and
   independent diagnosis with its supported inputs. Verify
   fail/pass/unknown, strict exit status, invalid predictive evidence and propagation
   of loading/serialization errors; readiness does not silently perform posterior
   inference or repair missing evidence during replay.
-- [ ] 1.10 Deliver standard one-manifest CLI forms, full/phase-only examples and
+- [x] 1.10 Deliver standard one-manifest CLI forms, full/phase-only examples and
   cookiecutter consumer acceptance with this route. Verify family
   selection, explicit mismatch rejection, once-only override resolution, help and
   destination behavior, and an executable generated scientific recipe. Preserve
@@ -133,7 +166,7 @@ the PR records the bounded implementation and validation details.
   0.8 staged-contract release note with #808, distinguishing preserved numerical,
   product and direct scientific APIs from retired staged envelopes/aliases;
   add no 0.7 staged compatibility adapters.
-- [ ] 1.11 Clear the standard gate with a runnable preparation/two-model/two-product
+- [x] 1.11 Clear the standard gate with a runnable preparation/two-model/two-product
   example, distinct sample destinations and real prior or likelihood
   calculations checked against an independent calculation or existing regression
   reference. Demonstrate equivalent full execution with intermediate saves

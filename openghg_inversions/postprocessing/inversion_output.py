@@ -29,6 +29,7 @@ import pandas as pd
 import xarray as xr
 
 from openghg_inversions.basis.basis_functions import BasisFunctions
+from openghg_inversions.postprocessing.contracts import DEFAULT_VARIABLE_ROLES
 from openghg_inversions.serialization import (
     MULTIINDEX_DIMS_ATTR as _MULTIINDEX_DIMS_ATTR,
     open_datatree_loaded as _open_datatree_loaded,
@@ -250,25 +251,6 @@ def _add_attributes_to_trace_dataset(trace_ds: xr.Dataset, obs_units: str, obs_l
             else:
                 name = str(dv)
             trace_ds[dv].attrs["long_name"] = f"posterior_trace_of_{name}"
-
-
-DEFAULT_VARIABLE_ROLES: dict[str, str] = {
-    "observation": "mf",
-    "observation_error": "mf_error",
-    "observation_prior_factor": "mf_prior_factor",
-    "observation_prior_upper_level_factor": "mf_prior_upper_level_factor",
-    "observation_repeatability": "mf_repeatability",
-    "observation_variability": "mf_variability",
-    "flux_scale": "x",
-    "model_error": "epsilon",
-    "concentration": "y",
-    "baseline": "mu_bc",
-    "boundary": "mu_bc",
-    "offset": "offset",
-    "emissions_sensitivity": "hx",
-    "baseline_sensitivity": "hbc",
-    "minimum_error": "min_error",
-}
 
 
 @dataclass

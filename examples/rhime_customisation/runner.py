@@ -78,9 +78,9 @@ def run_custom_rhime(
     validate_output_resources(config.output)
 
     # Resolve selected support files before acquiring observations or flux.
-    basis_inputs = resolve_basis_inputs(config)
+    basis_inputs = resolve_basis_inputs(config.preparation)
     merged = RhimeMergedData.from_options(
-        **config.select(
+        **config.preparation.select(
             "site_options", "species", "domain", "start_date",
             "end_date",  "flux_sources", "split_by_sectors",
             "bc_store", "obs_store", "footprint_store", "flux_store",
@@ -90,28 +90,28 @@ def run_custom_rhime(
         ),
     )
     # 2. Keep the scientific preparation order visible in this recipe.
-    merged = prepare_observation_errors(merged, averaging_error=config.averaging_error)
-    filtered = filter_observations(merged, filters=config.filters)
+    merged = prepare_observation_errors(merged, averaging_error=config.preparation.averaging_error)
+    filtered = filter_observations(merged, filters=config.preparation.filters)
     runtime_flux = resolve_runtime_flux(
         filtered.flux_data, split_by_sectors=filtered.split_by_sectors,
     )
-    weighting_source = config.flux_sources[0] if config.flux_sources else next(iter(filtered.flux_data))
+    weighting_source = config.preparation.flux_sources[0] if config.preparation.flux_sources else next(iter(filtered.flux_data))
     weighting_flux = filtered.flux_data[weighting_source]["flux"]
     basis_functions = prepare_basis(
         site_data=filtered.site_data,
         runtime_flux=runtime_flux,
         weighting_flux=weighting_flux,
-        **config.select(
+        **config.preparation.select(
             "domain", "start_date", "basis_algorithm", "nbasis",
         ),
-        fix_outer_regions=config.fix_basis_outer_regions,
-        output_path=config.basis_output_path,
+        fix_outer_regions=config.preparation.fix_basis_outer_regions,
+        output_path=config.preparation.basis_output_path,
         **basis_inputs,
     )
     site_data = build_sensitivities(
         filtered,
         basis_functions,
-        **config.select(
+        **config.preparation.select(
             "domain", "flux_sources", "use_bc", "bc_basis_case",
             "bc_basis_directory",
         ),
@@ -121,7 +121,7 @@ def run_custom_rhime(
         filtered,
         basis_functions,
         site_data,
-        **config.select(
+        **config.preparation.select(
             "domain", "start_date", "bc_freq", "min_error",
             "min_error_options", "use_bc",
         ),

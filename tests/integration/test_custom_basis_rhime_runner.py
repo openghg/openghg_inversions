@@ -70,8 +70,8 @@ def test_custom_basis_runner_replaces_only_basis_stage(
     sampler = config.sampler
 
     merged = RhimeMergedData(
-        site_data={site: xr.Dataset({"mf_error": ("time", [1.0]), "mf_repeatability": ("time", [0.0]), "mf_variability": ("time", [0.0])}) for site in config.site_options.sites},
-        flux_data={}, site_options=config.site_options,
+        site_data={site: xr.Dataset({"mf_error": ("time", [1.0]), "mf_repeatability": ("time", [0.0]), "mf_variability": ("time", [0.0])}) for site in config.preparation.site_options.sites},
+        flux_data={}, site_options=config.preparation.site_options,
     )
     filtered = SimpleNamespace(site_data=merged.site_data,
         flux_data={"inventory": _basis_functions().flux.to_dataset(name="flux")}, split_by_sectors=False)
@@ -103,7 +103,7 @@ def test_custom_basis_runner_replaces_only_basis_stage(
         return config
 
     def retrieve(**kwargs: Any) -> Any:
-        assert kwargs["site_options"] is config.site_options
+        assert kwargs["site_options"] is config.preparation.site_options
         assert kwargs["split_by_sectors"] is False
         assert "project_basis_path" not in kwargs
         calls.append("retrieve")
@@ -111,15 +111,15 @@ def test_custom_basis_runner_replaces_only_basis_stage(
 
     def filter_observations(actual: Any, *, filters: Any) -> Any:
         assert actual is merged
-        assert filters is config.filters
+        assert filters is config.preparation.filters
         calls.append("filter")
         return filtered
 
     def build_project_basis(**kwargs: Any) -> BasisFunctions:
         assert kwargs["site_data"] is filtered.site_data
-        assert kwargs["domain"] == config.domain
+        assert kwargs["domain"] == config.preparation.domain
         xr.testing.assert_equal(kwargs["weighting_flux"], filtered.flux_data["inventory"].flux)
-        assert kwargs["nbasis"] == config.nbasis
+        assert kwargs["nbasis"] == config.preparation.nbasis
         assert kwargs["project_basis_path"] == tmp_path / "external-basis.nc"
         assert kwargs["max_child_pca_eccentricity"] == 6.5
         assert kwargs["region_classes"] is None
@@ -129,8 +129,8 @@ def test_custom_basis_runner_replaces_only_basis_stage(
     def build_sensitivities(actual: Any, actual_basis: Any, **kwargs: Any) -> Any:
         assert actual is filtered
         assert actual_basis is basis
-        assert kwargs["domain"] == config.domain
-        assert kwargs["flux_sources"] == config.flux_sources
+        assert kwargs["domain"] == config.preparation.domain
+        assert kwargs["flux_sources"] == config.preparation.flux_sources
         assert kwargs["multisector"] is False
         calls.append("sensitivities")
         return site_data
@@ -139,8 +139,8 @@ def test_custom_basis_runner_replaces_only_basis_stage(
         assert actual is filtered
         assert actual_basis is basis
         assert actual_site_data is site_data
-        assert kwargs["min_error_options"] == config.min_error_options
-        assert kwargs["start_date"] == config.start_date
+        assert kwargs["min_error_options"] == config.preparation.min_error_options
+        assert kwargs["start_date"] == config.preparation.start_date
         calls.append("assemble")
         return prepared
 
@@ -412,8 +412,8 @@ def test_incompatible_project_basis_failure_remains_owned_by_sensitivity_stage(
         multisector=False,
     )
     merged = RhimeMergedData(
-        site_data={site: xr.Dataset({"mf_error": ("time", [1.0]), "mf_repeatability": ("time", [0.0]), "mf_variability": ("time", [0.0])}) for site in config.site_options.sites},
-        flux_data={}, site_options=config.site_options,
+        site_data={site: xr.Dataset({"mf_error": ("time", [1.0]), "mf_repeatability": ("time", [0.0]), "mf_variability": ("time", [0.0])}) for site in config.preparation.site_options.sites},
+        flux_data={}, site_options=config.preparation.site_options,
     )
     filtered = SimpleNamespace(site_data=merged.site_data,
         flux_data={"inventory": _basis_functions().flux.to_dataset(name="flux")}, split_by_sectors=False)

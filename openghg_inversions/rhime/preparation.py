@@ -409,7 +409,7 @@ def resolve_basis_inputs(config: Any) -> dict[str, Any]:
     resources are validated separately by the output owner.
 
     Args:
-        config: Resolved :class:`~openghg_inversions.rhime.params.RhimeConfig`.
+        config: Resolved :class:`~openghg_inversions.rhime.params.PreparationConfig`.
             Explicit retained artifacts and partition files bypass algorithm
             support defaults; explicitly selected support files are still read.
 

@@ -39,8 +39,8 @@ def test_resolved_request_reaches_acquisition_without_resolution(monkeypatch, mu
         pass
 
     def acquire(**kwargs):
-        assert kwargs["site_options"] is config.site_options
-        assert kwargs["flux_sources"] == config.flux_sources
+        assert kwargs["site_options"] is config.preparation.site_options
+        assert kwargs["flux_sources"] == config.preparation.flux_sources
         assert "save_merged_data" not in kwargs
         raise ReachedAcquisition
 
@@ -105,7 +105,7 @@ def test_ini_runner_merges_before_one_resolution_and_alias_translation(monkeypat
         assert len(configs) == 1
         assert kwargs["site_options"].sites == ("TAC", "MHD")
         assert kwargs["site_options"].averaging_period == ("1h", "1h")
-        assert configs[0].output_name == "winning-name"
+        assert configs[0].output.output_name == "winning-name"
         assert "output_name" not in kwargs
         raise ReachedAcquisition
 
@@ -119,7 +119,7 @@ def test_ini_runner_merges_before_one_resolution_and_alias_translation(monkeypat
 def test_supplied_data_reaches_filtering_without_acquisition(monkeypatch, multisector_mode):
     from openghg_inversions.inversion_data import RhimeMergedData
     config = _config(multisector_mode)
-    supplied = from_legacy_fp_all({"TAC": xr.Dataset({"mf_error": ("time", [1.0]), "mf_repeatability": ("time", [0.0]), "mf_variability": ("time", [0.0])}), ".split_by_sectors": multisector_mode}, config.site_options)
+    supplied = from_legacy_fp_all({"TAC": xr.Dataset({"mf_error": ("time", [1.0]), "mf_repeatability": ("time", [0.0]), "mf_variability": ("time", [0.0])}), ".split_by_sectors": multisector_mode}, config.preparation.site_options)
     recipe = multisector if multisector_mode else standard
     runner = recipe.run_rhime_multisector if multisector_mode else recipe.run_rhime
     def forbidden(*args, **kwargs):
@@ -138,7 +138,7 @@ def test_supplied_data_reaches_filtering_without_acquisition(monkeypatch, multis
 @pytest.mark.parametrize("multisector_mode", [False, True])
 def test_supplied_layout_is_checked_before_filtering(monkeypatch, multisector_mode):
     config = _config(multisector_mode)
-    supplied = from_legacy_fp_all({"TAC": xr.Dataset(), ".split_by_sectors": not multisector_mode}, config.site_options)
+    supplied = from_legacy_fp_all({"TAC": xr.Dataset(), ".split_by_sectors": not multisector_mode}, config.preparation.site_options)
     recipe = multisector if multisector_mode else standard
     runner = recipe.run_rhime_multisector if multisector_mode else recipe.run_rhime
     monkeypatch.setattr(recipe, "filter_observations", lambda *a, **kw: pytest.fail("layout not checked"))

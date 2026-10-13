@@ -121,9 +121,6 @@ def validate_model_build_result(
         )
 
     output_format = context.run_spec.output.output_format
-    if output_format == "none":
-        return
-
     result.validate_requested_output(output_format)
 
     available_names = set(result.model.named_vars) | set(context.prepared_inputs.inv_inputs.variables)

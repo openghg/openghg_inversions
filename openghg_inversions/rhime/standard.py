@@ -59,7 +59,7 @@ from .outputs import (
     validate_output_resources,
 )
 from .ini import read_rhime_ini
-from .params import RhimeConfig
+from .params import PreparationConfig, RhimeConfig
 from .preparation import (
     assemble_rhime_inputs,
     build_sensitivities,
@@ -458,6 +458,91 @@ def make_standard_rhime_result(
     return result
 
 
+def prepare_standard(
+    preparation: PreparationConfig, *, merged_data: RhimeMergedData | None = None,
+) -> RhimePreparedInputs:
+    """Prepare standard observations, basis and sensitivities at their scientific owner.
+
+    Args:
+        preparation: Resolved acquisition and preparation choices.
+        merged_data: Borrowed merged data, bypassing acquisition when supplied.
+
+    Returns:
+        Backend-neutral retained inputs with their runtime-flux basis binding.
+    """
+    basis_inputs = resolve_basis_inputs(preparation)
+
+    # 1. Resolve acquisition through the data owner.
+    preparation_start = timer_start()
+    if merged_data is not None:
+        merged_data.validate_for_preparation(
+            **preparation.select("species", "domain", "start_date", "end_date", "split_by_sectors"),
+        )
+        merged = merged_data
+    else:
+        merged = RhimeMergedData.from_options(
+            **preparation.select(
+                "site_options", "species", "domain", "start_date",
+                "end_date",  "flux_sources", "split_by_sectors",
+                "bc_store", "obs_store", "footprint_store", "flux_store",
+                "flux_domain", "fp_model", "fp_species", "calibration_scale",
+                "use_bc", "bc_input",
+                "flux_non_finite_check",
+            ),
+        )
+    log_timing(
+        "rhime.prepare_inputs.merged_data",
+        timer_seconds(preparation_start),
+        sites=len(preparation.site_options.sites),
+        split_by_sectors=preparation.split_by_sectors,
+    )
+    # 2. Keep the scientific preparation order visible in this recipe.
+    merged = prepare_observation_errors(merged, averaging_error=preparation.averaging_error)
+    filtered = filter_observations(merged, filters=preparation.filters)
+    runtime_flux = resolve_runtime_flux(filtered.flux_data, split_by_sectors=filtered.split_by_sectors)
+    with timed("rhime.prepare_inputs.basis_build", basis_algorithm=preparation.basis_algorithm):
+        basis_functions = prepare_basis(
+            site_data=filtered.site_data,
+            runtime_flux=runtime_flux,
+            weighting_flux=filtered.flux_data[preparation.flux_sources[0]]["flux"],
+            **preparation.select(
+                "domain", "start_date", "basis_algorithm", "nbasis",
+            ),
+            fix_outer_regions=preparation.fix_basis_outer_regions,
+            **basis_inputs,
+            output_path=preparation.basis_output_path,
+        )
+    site_data = build_sensitivities(
+        filtered,
+        basis_functions,
+        **preparation.select(
+            "domain", "flux_sources", "use_bc", "bc_basis_case",
+            "bc_basis_directory",
+        ),
+        multisector=False,
+    )
+    prepared = assemble_rhime_inputs(
+        filtered,
+        basis_functions,
+        site_data,
+        **preparation.select(
+            "domain", "start_date", "bc_freq", "min_error",
+            "min_error_options", "use_bc",
+        ),
+    )
+    log_timing(
+        "rhime.prepare_inputs",
+        timer_seconds(preparation_start),
+        multisector=False,
+        nmeasure=prepared.inv_inputs.sizes.get("nmeasure"),
+        sites=len(prepared.sites),
+        regions=prepared.inv_inputs.sizes.get("region"),
+        sources=prepared.inv_inputs.sizes.get("source"),
+        basis_source=prepared.basis_artifact_source,
+    )
+    return prepared
+
+
 def run_standard(
     *,
     config_file: str | Path | None = None,
@@ -540,16 +625,16 @@ def run_standard(
     if config is not None:
         if config_file is not None or kwargs:
             raise ValueError("Pass either resolved `config` or `config_file`/run parameters, not both.")
-        if config.split_by_sectors:
+        if config.preparation.split_by_sectors:
             raise ValueError("`run_rhime` received configuration for a different sector layout.")
-        if likelihood_builder is not None and config.model.likelihood is not None:
-            raise ValueError("A custom likelihood cannot be combined with a built-in mismatch model.")
     else:
         params = read_rhime_ini(config_file) if config_file is not None else {}
         params.update(kwargs)
         if likelihood_builder is not None and params.get("mismatch_model") is not None:
             raise ValueError("A custom likelihood cannot be combined with a built-in mismatch model.")
         config = RhimeConfig.from_params(params, multisector=False)
+    if likelihood_builder is not None and config.model.likelihood is not None:
+        raise ValueError("A custom likelihood cannot be combined with a built-in mismatch model.")
     sampler = resolve_sampler(config.sampler)
     log_timing("rhime.runner_setup", timer_seconds(setup_start), multisector=False)
     if likelihood_builder is None and config.model.likelihood is None:
@@ -557,77 +642,7 @@ def run_standard(
 
     # Read selected scientific resources before expensive data acquisition.
     validate_output_resources(config.output)
-    basis_inputs = resolve_basis_inputs(config)
-
-
-    # 1. Resolve acquisition through the data owner.
-    preparation_start = timer_start()
-    if merged_data is not None:
-        merged_data.validate_for_preparation(
-            **config.select("species", "domain", "start_date", "end_date", "split_by_sectors"),
-        )
-        merged = merged_data
-    else:
-        merged = RhimeMergedData.from_options(
-            **config.select(
-                "site_options", "species", "domain", "start_date",
-                "end_date",  "flux_sources", "split_by_sectors",
-                "bc_store", "obs_store", "footprint_store", "flux_store",
-                "flux_domain", "fp_model", "fp_species", "calibration_scale",
-                "use_bc", "bc_input",
-                "flux_non_finite_check",
-            ),
-        )
-    log_timing(
-        "rhime.prepare_inputs.merged_data",
-        timer_seconds(preparation_start),
-        sites=len(config.site_options.sites),
-        split_by_sectors=config.split_by_sectors,
-    )
-    # 2. Keep the scientific preparation order visible in this recipe.
-    merged = prepare_observation_errors(merged, averaging_error=config.averaging_error)
-    filtered = filter_observations(merged, filters=config.filters)
-    runtime_flux = resolve_runtime_flux(filtered.flux_data, split_by_sectors=filtered.split_by_sectors)
-    with timed("rhime.prepare_inputs.basis_build", basis_algorithm=config.basis_algorithm):
-        basis_functions = prepare_basis(
-            site_data=filtered.site_data,
-            runtime_flux=runtime_flux,
-            weighting_flux=filtered.flux_data[config.flux_sources[0]]["flux"],
-            **config.select(
-                "domain", "start_date", "basis_algorithm", "nbasis",
-            ),
-            fix_outer_regions=config.fix_basis_outer_regions,
-            **basis_inputs,
-            output_path=config.basis_output_path,
-        )
-    site_data = build_sensitivities(
-        filtered,
-        basis_functions,
-        **config.select(
-            "domain", "flux_sources", "use_bc", "bc_basis_case",
-            "bc_basis_directory",
-        ),
-        multisector=False,
-    )
-    prepared = assemble_rhime_inputs(
-        filtered,
-        basis_functions,
-        site_data,
-        **config.select(
-            "domain", "start_date", "bc_freq", "min_error",
-            "min_error_options", "use_bc",
-        ),
-    )
-    log_timing(
-        "rhime.prepare_inputs",
-        timer_seconds(preparation_start),
-        multisector=False,
-        nmeasure=prepared.inv_inputs.sizes.get("nmeasure"),
-        sites=len(prepared.sites),
-        regions=prepared.inv_inputs.sizes.get("region"),
-        sources=prepared.inv_inputs.sizes.get("source"),
-        basis_source=prepared.basis_artifact_source,
-    )
+    prepared = prepare_standard(config.preparation, merged_data=merged_data)
     run_spec = config.retained_run_spec(prepared)
 
     # 3. Cross the explicit numerical/backend boundary, then build the graph.

@@ -285,12 +285,12 @@ def run_custom_rhime(
     # This project selects and loads its scientific class map before acquisition.
     region_classes = None
     if project_basis_path is None:
-        class_path = config.landsea_path or packaged_basis_support_path("landsea", config.domain)
+        class_path = config.preparation.landsea_path or packaged_basis_support_path("landsea", config.preparation.domain)
         region_classes = load_basis_support_map(class_path, "country")
     if project_basis_path is not None and not Path(project_basis_path).exists():
         raise FileNotFoundError(project_basis_path)
     merged = RhimeMergedData.from_options(
-        **config.select(
+        **config.preparation.select(
             "site_options", "species", "domain", "start_date",
             "end_date",  "flux_sources", "split_by_sectors",
             "bc_store", "obs_store", "footprint_store", "flux_store",
@@ -300,19 +300,19 @@ def run_custom_rhime(
         ),
     )
     # 2. Keep the scientific preparation order visible in this recipe.
-    merged = prepare_observation_errors(merged, averaging_error=config.averaging_error)
-    filtered = filter_observations(merged, filters=config.filters)
+    merged = prepare_observation_errors(merged, averaging_error=config.preparation.averaging_error)
+    filtered = filter_observations(merged, filters=config.preparation.filters)
     runtime_flux = resolve_runtime_flux(
         filtered.flux_data, split_by_sectors=filtered.split_by_sectors,
     )
-    weighting_source = config.flux_sources[0] if config.flux_sources else next(iter(filtered.flux_data))
+    weighting_source = config.preparation.flux_sources[0] if config.preparation.flux_sources else next(iter(filtered.flux_data))
     weighting_flux = filtered.flux_data[weighting_source]["flux"]
     # Replace only basis construction; subsequent scientific stages stay visible.
     basis_functions = build_project_basis(
         site_data=filtered.site_data,
         runtime_flux=runtime_flux,
         weighting_flux=weighting_flux,
-        **config.select("domain", "nbasis"),
+        **config.preparation.select("domain", "nbasis"),
         region_classes=region_classes,
         project_basis_path=project_basis_path,
         max_child_pca_eccentricity=max_child_pca_eccentricity,
@@ -320,7 +320,7 @@ def run_custom_rhime(
     site_data = build_sensitivities(
         filtered,
         basis_functions,
-        **config.select(
+        **config.preparation.select(
             "domain", "flux_sources", "use_bc", "bc_basis_case",
             "bc_basis_directory",
         ),
@@ -330,7 +330,7 @@ def run_custom_rhime(
         filtered,
         basis_functions,
         site_data,
-        **config.select(
+        **config.preparation.select(
             "domain", "start_date", "bc_freq", "min_error",
             "min_error_options", "use_bc",
         ),

@@ -90,23 +90,23 @@ canonical load-or-generate operation with exact paths and labelled arrays:
 
    # For a complete run that will produce outputs:
    validate_output_resources(config.output)
-   basis_inputs = resolve_basis_inputs(config)
+   basis_inputs = resolve_basis_inputs(config.preparation)
    # Acquire merged data, prepare errors and filter observations here.
    runtime_flux = resolve_runtime_flux(
        filtered.flux_data, split_by_sectors=filtered.split_by_sectors,
    )
-   weighting_source = config.flux_sources[0] if config.flux_sources else next(iter(filtered.flux_data))
+   weighting_source = config.preparation.flux_sources[0] if config.preparation.flux_sources else next(iter(filtered.flux_data))
    weighting_flux = filtered.flux_data[weighting_source]["flux"]
    basis = prepare_basis(
        site_data=filtered.site_data,
        runtime_flux=runtime_flux,
        weighting_flux=weighting_flux,
-       domain=config.domain,
-       start_date=config.start_date,
-       nbasis=config.nbasis,
-       basis_algorithm=config.basis_algorithm,
-       fix_outer_regions=config.fix_basis_outer_regions,
-       output_path=config.basis_output_path,
+       domain=config.preparation.domain,
+       start_date=config.preparation.start_date,
+       nbasis=config.preparation.nbasis,
+       basis_algorithm=config.preparation.basis_algorithm,
+       fix_outer_regions=config.preparation.fix_basis_outer_regions,
+       output_path=config.preparation.basis_output_path,
        **basis_inputs,
    )
 

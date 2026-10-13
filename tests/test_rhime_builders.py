@@ -40,3 +40,12 @@ def test_complete_model_validation_requires_coord_registry(registered: bool) -> 
     else:
         with pytest.raises(ValueError, match="registered_model"):
             validate_model_build_result(result, context=_sampling_only_context())
+
+
+def test_sampling_only_model_rejects_invalid_declared_role() -> None:
+    """Disabled immediate products do not hide invalid saved scientific roles."""
+    with registered_model() as model:
+        pm.Normal("custom_y")
+    result = RhimeModelBuildResult(model=model, variable_roles={"concentration": "absent"})
+    with pytest.raises(ValueError, match="concentration='absent'"):
+        validate_model_build_result(result, context=_sampling_only_context())

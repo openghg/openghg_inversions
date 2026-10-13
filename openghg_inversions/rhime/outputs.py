@@ -52,6 +52,14 @@ def validate_output_resources(output_spec: RhimeOutputSpec) -> None:
         raise ValueError("country_file must be supplied for country reporting outputs.")
 
 
+def validate_output_filenames(run_spec: RhimeRunSpec) -> None:
+    """Check metadata interpolated into product filenames before writing."""
+    for name, value in (("species", run_spec.model.species), ("domain", run_spec.model.domain),
+                        ("output_name", run_spec.output.output_name), ("start_date", run_spec.start_date)):
+        if not value or value in {".", ".."} or Path(value).name != value:
+            raise ValueError(f"{name} must be a non-empty filename component without directories.")
+
+
 @dataclass
 class RhimeResult:
     """Complete result of a concrete RHIME recipe, including coherent CO2.
@@ -363,6 +371,7 @@ def make_standard_rhime_outputs(
     model_spec = result.model_spec
     if output_spec.output_format == "none":
         return
+    validate_output_filenames(run_spec)
 
     outputs: dict[str, Any] = {}
     output_metadata: dict[str, Any] = {}
@@ -525,6 +534,7 @@ def make_multisector_rhime_outputs(
 
     run_spec = result.run_spec
     model_spec = result.model_spec
+    validate_output_filenames(run_spec)
     with timed("rhime.output.inversion_output_create", output_format=output_spec.output_format):
         inv_out = _make_inversion_output(
             result=result,

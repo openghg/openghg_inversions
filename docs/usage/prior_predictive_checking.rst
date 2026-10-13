@@ -129,7 +129,6 @@ tails:
    openghg-inversions prior-predictive \
      --config "$CONFIG" \
      --model standard \
-     --prepared-inputs "$RUN/prepare/prepared-inputs.nc" \
      --preparation-manifest "$RUN/prepare/prepare-manifest.json" \
      --draws 500 \
      --output-dir "$RUN/prior-predictive" \
@@ -156,7 +155,6 @@ The notebook equivalent runs the same finite-value check:
 
    with as_file(resource) as config:
        stage("prior-predictive", "--config", config, "--model", "standard",
-             "--prepared-inputs", prepared_path,
              "--preparation-manifest", preparation_manifest,
              "--draws", 500, "--output-dir", run / "prior-predictive", "--strict")
    readiness = json.loads((run / "prior-predictive/prior-predictive-readiness.json").read_text())
@@ -383,7 +381,6 @@ scientific preparation, model, or prior settings require a new preparation.
    openghg-inversions sample \
      --config "$CONFIG" \
      --model standard \
-     --prepared-inputs "$RUN/prepare/prepared-inputs.nc" \
      --preparation-manifest "$RUN/prepare/prepare-manifest.json" \
      --output-dir "$RUN/sample"
 
@@ -398,7 +395,6 @@ In the notebook, explicitly reuse the same artifact and manifest:
 
    with as_file(resource) as config:
        stage("sample", "--config", config, "--model", "standard",
-             "--prepared-inputs", prepared_path,
              "--preparation-manifest", preparation_manifest,
              "--output-dir", run / "sample")
    posterior = load_trace(run / "sample/posterior.nc")

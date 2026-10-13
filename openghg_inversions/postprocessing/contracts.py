@@ -12,6 +12,47 @@ _SCHEMA = "openghg_inversions.output_contract"
 _FORMATS = frozenset({"none", "inv_out", "basic", "paris", "legacy"})
 
 
+DEFAULT_VARIABLE_ROLES: dict[str, str] = {
+    "observation": "mf",
+    "observation_error": "mf_error",
+    "observation_prior_factor": "mf_prior_factor",
+    "observation_prior_upper_level_factor": "mf_prior_upper_level_factor",
+    "observation_repeatability": "mf_repeatability",
+    "observation_variability": "mf_variability",
+    "flux_scale": "x",
+    "model_error": "epsilon",
+    "concentration": "y",
+    "baseline": "mu_bc",
+    "boundary": "mu_bc",
+    "offset": "offset",
+    "emissions_sensitivity": "hx",
+    "baseline_sensitivity": "hbc",
+    "minimum_error": "min_error",
+}
+
+
+def resolve_predictive_names(
+    names: list[str], *, available: set[str], variable_roles: Mapping[str, str] | None = None,
+) -> list[str]:
+    """Resolve predictive roles with the same concentration convention as outputs.
+
+    Concrete names remain valid. The historical default concentration name is
+    redirected only when absent and an explicit concentration role is supplied.
+    """
+    roles = dict(variable_roles or {})
+    concentration = DEFAULT_VARIABLE_ROLES["concentration"]
+    if concentration not in available and "concentration" in roles:
+        roles.setdefault(concentration, roles["concentration"])
+    resolved = [roles.get(name, name) for name in names]
+    missing = sorted(set(resolved) - available)
+    if missing:
+        raise ValueError(
+            "RhimeSampler posterior-predictive variables are absent from the model: "
+            f"{missing!r}. Use concrete model names or semantic keys from `variable_roles`."
+        )
+    return list(dict.fromkeys(resolved))
+
+
 @dataclass(frozen=True)
 class OutputContract:
     """Bind scientific roles and a selected state axis to durable model data.

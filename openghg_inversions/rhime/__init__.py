@@ -33,6 +33,8 @@ from .materialization import materialize_pymc_inputs
 from openghg_inversions.hbmcmc.compatibility import params_from_config
 from .ini import read_rhime_ini
 from .params import (
+    PreparationConfig,
+    group_rhime_params,
     RhimeConfig,
     resolve_flux_sources,
 )
@@ -116,6 +118,8 @@ __all__ = [
     "assemble_inputs",
     "with_prepared_sites",
     "RhimeConfig",
+    "PreparationConfig",
+    "group_rhime_params",
     "read_rhime_ini",
     "SectorSpec",
     "AdditiveSigmaSettings",

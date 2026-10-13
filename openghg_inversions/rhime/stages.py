@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 from collections.abc import Mapping
 
 from . import _standard_stages
+from ._standard_stages import prepare, sample, postprocess, prior_predictive, load_preparation, save_preparation, save_samples
 from ._stage_checks import (
     CHECK_SCHEMA_VERSION,
     CONVERGENCE_CHECK_NAME,
@@ -125,6 +126,9 @@ def prepare_rhime_stage(
 ) -> dict[str, Any]:
     """Prepare and persist independently inspectable RHIME inputs."""
 
+    if model == "standard":
+        raise ValueError("Use prepare/sample/postprocess/prior_predictive with one standard manifest.")
+
     if model == "co2":
         from .co2.stages import prepare_co2_stage
 
@@ -148,6 +152,9 @@ def prior_predictive_stage(
     stage: str = "prior-predictive",
 ) -> dict[str, Any]:
     """Build the configured graph and check finite prior-predictive draws."""
+
+    if model == "standard":
+        raise ValueError("Use prepare/sample/postprocess/prior_predictive with one standard manifest.")
 
     if model == "co2":
         from .co2.stages import prior_predictive_co2_stage
@@ -183,10 +190,13 @@ def sample_rhime_stage(
 ) -> dict[str, Any]:
     """Sample prepared inputs without invoking preparation.
 
-    Standard/multisector workflows persist version-2 sample manifests with
+    The deferred multisector workflow persists version-2 sample manifests with
     output bindings. CO2 retains its version-1 manifest and validates any
     supplied affine artifact at its numerical owner.
     """
+
+    if model == "standard":
+        raise ValueError("Use prepare/sample/postprocess/prior_predictive with one standard manifest.")
 
     if model == "co2":
         from .co2.stages import sample_co2_stage
@@ -218,11 +228,14 @@ def postprocess_rhime_stage(
 ) -> RhimeResult:
     """Build products from trusted, matched saved artifacts.
 
-    Standard/multisector version-2 sample manifests and CO2 version-1
-    manifests replay without a graph. Historical standard/multisector
+    Deferred multisector version-2 sample manifests and CO2 version-1
+    manifests replay without a graph. Historical multisector
     version-1 manifests reconstruct their missing output roles. Invalid
     bindings never fall back.
     """
+
+    if model == "standard":
+        raise ValueError("Use prepare/sample/postprocess/prior_predictive with one standard manifest.")
 
     if model == "co2":
         from .co2.stages import postprocess_co2_stage
@@ -247,6 +260,8 @@ def postprocess_rhime_stage(
 
 
 __all__ = [
+    "prepare", "sample", "postprocess", "prior_predictive",
+    "save_preparation", "load_preparation", "save_samples",
     "CHECK_SCHEMA_VERSION",
     "CONVERGENCE_CHECK_NAME",
     "PREPARATION_CHECK_NAME",

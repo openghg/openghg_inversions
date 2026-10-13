@@ -1887,8 +1887,8 @@ def test_assemble_rhime_inputs_preserves_borrowed_site_datasets(
         merged,
         _fake_basis_functions(),
         site_data,
-        domain=setup.domain, start_date=setup.start_date, bc_freq=setup.bc_freq,
-        min_error=setup.min_error, min_error_options=setup.min_error_options, use_bc=setup.use_bc,
+        domain=setup.preparation.domain, start_date=setup.preparation.start_date, bc_freq=setup.preparation.bc_freq,
+        min_error=setup.preparation.min_error, min_error_options=setup.preparation.min_error_options, use_bc=setup.preparation.use_bc,
     )
 
     assert supplied.attrs == {"source": "caller", "footprint_transport_model": "FLEXPART"}
@@ -2957,9 +2957,9 @@ def test_public_rhime_runners_follow_named_stage_order(
         site_data={"TAC": _site_dataset()},
         flux_data={
             source: _fake_basis_functions().flux.to_dataset(name="flux")
-            for source in config.flux_sources
+            for source in config.preparation.flux_sources
         },
-        site_options=config.site_options,
+        site_options=config.preparation.site_options,
         split_by_sectors=multisector,
     )
     merged = external_merged
@@ -2969,9 +2969,9 @@ def test_public_rhime_runners_follow_named_stage_order(
 
     def retrieve(*, site_options: SiteOptions, merged_data=None, **kwargs: Any) -> Any:
         """Record ordinary acquisition or external-data validation."""
-        assert site_options is config.site_options
-        assert kwargs["species"] == config.species
-        assert kwargs["split_by_sectors"] is config.split_by_sectors
+        assert site_options is config.preparation.site_options
+        assert kwargs["species"] == config.preparation.species
+        assert kwargs["split_by_sectors"] is config.preparation.split_by_sectors
         assert merged_data is (external_merged if external_data else None)
         calls.append("retrieve")
         return merged
@@ -2979,15 +2979,15 @@ def test_public_rhime_runners_follow_named_stage_order(
     def filter_observations(actual: Any, *, filters: Any) -> Any:
         """Record public filtering and site alignment."""
         assert actual is merged
-        assert filters is config.filters
+        assert filters is config.preparation.filters
         calls.append("filter")
         return filtered
 
     def build_basis(**kwargs: Any) -> Any:
         """Record basis construction with resolved named values."""
         assert kwargs["site_data"] is filtered.site_data
-        assert kwargs["domain"] == config.domain
-        assert kwargs["basis_algorithm"] == config.basis_algorithm
+        assert kwargs["domain"] == config.preparation.domain
+        assert kwargs["basis_algorithm"] == config.preparation.basis_algorithm
         calls.append("basis")
         return basis
 
@@ -2995,8 +2995,8 @@ def test_public_rhime_runners_follow_named_stage_order(
         """Record public sensitivity construction."""
         assert actual is filtered
         assert actual_basis is basis
-        assert kwargs["domain"] == config.domain
-        assert kwargs["use_bc"] is config.use_bc
+        assert kwargs["domain"] == config.preparation.domain
+        assert kwargs["use_bc"] is config.preparation.use_bc
         assert kwargs["multisector"] is multisector
         calls.append("sensitivities")
         return site_data
@@ -3006,9 +3006,9 @@ def test_public_rhime_runners_follow_named_stage_order(
         assert actual is filtered
         assert actual_basis is basis
         assert actual_site_data is site_data
-        assert kwargs["domain"] == config.domain
-        assert kwargs["start_date"] == config.start_date
-        assert kwargs["min_error_options"] is config.min_error_options
+        assert kwargs["domain"] == config.preparation.domain
+        assert kwargs["start_date"] == config.preparation.start_date
+        assert kwargs["min_error_options"] is config.preparation.min_error_options
         calls.append("assemble")
         return prepared
 
@@ -3173,6 +3173,20 @@ def test_ordinary_runners_reject_custom_likelihood_with_configured_mismatch(
         )
 
 
+@pytest.mark.parametrize("runner", [run_rhime, run_rhime_multisector])
+def test_grouped_likelihood_conflict_fails_before_acquisition(monkeypatch, runner):
+    monkeypatch.setattr(RhimeMergedData, "from_options", lambda **kwargs: pytest.fail("acquisition"))
+    with pytest.raises(ValueError, match="custom likelihood.*built-in mismatch"):
+        runner(
+            preparation=dict(species="ch4", sites=["TAC"], averaging_period="1h", domain="EUROPE",
+                             start_date="2019-01-01", end_date="2019-02-01",
+                             flux_sources=["one", "two"] if runner is run_rhime_multisector else ["one"]),
+            model={"mismatch_model": "fixed_error"},
+            output={"output_name": "conflict", "output_format": "none"},
+            likelihood_builder=example_likelihoods.likelihood_builder,
+        )
+
+
 def test_prepared_complete_model_rejects_orphaned_likelihood_options_before_validation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -3251,6 +3265,9 @@ def test_each_rhime_recipe_keeps_the_scientific_process_visible(recipe: Callable
     """A recipe reader can see every scientific handoff in execution order."""
     source = inspect.getsource(recipe)
     multisector = recipe is run_rhime_multisector
+    if not multisector:
+        source = source.replace("prepare_standard(config.preparation, merged_data=merged_data)",
+                                inspect.getsource(rhime_standard.prepare_standard))
     stages = (
         "RhimeConfig.from_params",
         "RhimeMergedData.from_options",
@@ -3320,33 +3337,33 @@ def test_public_stages_compose_as_complete_external_runner(monkeypatch: pytest.M
         multisector=False,
     )
     merged = rhime_public.RhimeMergedData.from_options(
-        site_options=setup.site_options, species=setup.species, domain=setup.domain,
-        start_date=setup.start_date, end_date=setup.end_date,
-        flux_sources=list(setup.flux_sources), use_bc=setup.use_bc,
+        site_options=setup.preparation.site_options, species=setup.preparation.species, domain=setup.preparation.domain,
+        start_date=setup.preparation.start_date, end_date=setup.preparation.end_date,
+        flux_sources=list(setup.preparation.flux_sources), use_bc=setup.preparation.use_bc,
     )
-    filtered = rhime_public.filter_observations(merged, filters=setup.filters)
+    filtered = rhime_public.filter_observations(merged, filters=setup.preparation.filters)
     from openghg_inversions.native_flux import resolve_runtime_flux
 
     basis_functions = basis_module.prepare_basis(
         site_data=filtered.site_data,
         runtime_flux=resolve_runtime_flux(filtered.flux_data),
-        weighting_flux=filtered.flux_data[setup.flux_sources[0]]["flux"],
-        domain=setup.domain, start_date=setup.start_date,
-        nbasis=setup.nbasis,
+        weighting_flux=filtered.flux_data[setup.preparation.flux_sources[0]]["flux"],
+        domain=setup.preparation.domain, start_date=setup.preparation.start_date,
+        nbasis=setup.preparation.nbasis,
     )
     site_data = rhime_public.build_sensitivities(
         filtered,
         basis_functions,
-        domain=setup.domain, flux_sources=setup.flux_sources, use_bc=setup.use_bc,
-        bc_basis_case=setup.bc_basis_case, bc_basis_directory=setup.bc_basis_directory,
+        domain=setup.preparation.domain, flux_sources=setup.preparation.flux_sources, use_bc=setup.preparation.use_bc,
+        bc_basis_case=setup.preparation.bc_basis_case, bc_basis_directory=setup.preparation.bc_basis_directory,
         multisector=False,
     )
     prepared = rhime_public.assemble_rhime_inputs(
         filtered,
         basis_functions,
         site_data,
-        domain=setup.domain, start_date=setup.start_date, bc_freq=setup.bc_freq,
-        min_error=setup.min_error, min_error_options=setup.min_error_options, use_bc=setup.use_bc,
+        domain=setup.preparation.domain, start_date=setup.preparation.start_date, bc_freq=setup.preparation.bc_freq,
+        min_error=setup.preparation.min_error, min_error_options=setup.preparation.min_error_options, use_bc=setup.preparation.use_bc,
     )
     run_spec = setup.retained_run_spec(prepared)
     model_inputs = rhime_public.materialize_pymc_inputs(
@@ -3885,9 +3902,9 @@ def test_run_rhime_rejects_noncanonical_custom_likelihood_before_sampling(
         })},
         flux_data={
             source: _fake_basis_functions().flux.to_dataset(name="flux")
-            for source in config.flux_sources
+            for source in config.preparation.flux_sources
         },
-        site_options=config.site_options,
+        site_options=config.preparation.site_options,
     )
     monkeypatch.setattr(rhime_standard.RhimeMergedData, "from_options", lambda *args, **kwargs: merged)
     monkeypatch.setattr(rhime_standard, "filter_observations", lambda merged, **kwargs: merged)
@@ -4233,21 +4250,21 @@ def test_rhime_configuration_builds_specs_before_preparation(tmp_path: Path) -> 
         multisector=True,
     )
 
-    assert setup.flux_sources == ("ff-source", "gpp-source", "ter-source", "ocean-source")
-    assert setup.split_by_sectors is True
-    assert setup.site_options.time_resolved == (True,)
-    assert setup.basis_algorithm == "weighted"
-    assert setup.nbasis == 100
-    assert setup.bc_basis_case == "NESW"
-    assert setup.min_error_options == {"by_site": False}
+    assert setup.preparation.flux_sources == ("ff-source", "gpp-source", "ter-source", "ocean-source")
+    assert setup.preparation.split_by_sectors is True
+    assert setup.preparation.site_options.time_resolved == (True,)
+    assert setup.preparation.basis_algorithm == "weighted"
+    assert setup.preparation.nbasis == 100
+    assert setup.preparation.bc_basis_case == "NESW"
+    assert setup.preparation.min_error_options == {"by_site": False}
     for selector in ("inlet", "instrument", "platform", "fp_height"):
-        assert getattr(setup.site_options, selector) == (None,)
-    assert setup.fp_model is None
-    assert setup.calibration_scale is None
+        assert getattr(setup.preparation.site_options, selector) == (None,)
+    assert setup.preparation.fp_model is None
+    assert setup.preparation.calibration_scale is None
     assert not hasattr(setup, "sector_sources")
     assert not hasattr(setup, "sigma_freq")
-    assert setup.site_options.sites == ("TAC",)
-    assert setup.site_options.averaging_period == ("1h",)
+    assert setup.preparation.site_options.sites == ("TAC",)
+    assert setup.preparation.site_options.averaging_period == ("1h",)
     assert setup.output.output_format == "none"
     assert setup.sampler == RhimeSampler(
         draws=7,
@@ -7137,7 +7154,7 @@ def test_rhime_configuration_forwards_satellite_platform_to_preparation() -> Non
         multisector=False,
     )
 
-    assert setup.site_options.platform == ("satellite",)
+    assert setup.preparation.site_options.platform == ("satellite",)
 
 
 @pytest.mark.parametrize(
@@ -9127,7 +9144,9 @@ output_format = "inv_out"
     assert run_spec.output.output_path == str(tmp_path)
     assert run_spec.output.output_name == "direct-name"
     assert run_spec.output.output_format == "none"
-    assert len(normalise_calls) == 1
+    normalized_names = [name for options in normalise_calls for name in options]
+    assert len(normalized_names) == len(set(normalized_names))
+    assert {"species", "x_prior", "draws"}.issubset(normalized_names)
 
 
 @pytest.mark.rhime_contract
@@ -9207,9 +9226,9 @@ def test_satellite_rhime_template_matches_modern_input_schema() -> None:
         params=normalized,
         multisector=False,
     )
-    assert setup.site_options.sites == ("GOSAT-BRAZIL",)
-    assert setup.site_options.platform == ("satellite",)
-    assert setup.site_options.max_level == (3,)
+    assert setup.preparation.site_options.sites == ("GOSAT-BRAZIL",)
+    assert setup.preparation.site_options.platform == ("satellite",)
+    assert setup.preparation.site_options.max_level == (3,)
 
 
 def test_acquisition_keeps_acquired_flux_lazy(monkeypatch):

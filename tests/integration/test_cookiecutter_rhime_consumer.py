@@ -38,11 +38,11 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
                 "mf_repeatability": ("time", [0.0]),
                 "mf_variability": ("time", [0.0]),
             })
-            for site in config.site_options.sites
+            for site in config.preparation.site_options.sites
         },
         flux_data={"inventory": xr.Dataset({"flux": (("lat", "lon"), [[2.]])},
                                            coords={"lat": [50.], "lon": [0.]})},
-        site_options=config.site_options,
+        site_options=config.preparation.site_options,
     )
     filtered = merged
     basis = object()
@@ -73,8 +73,8 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
         return config
 
     def retrieve(**kwargs: Any) -> Any:
-        assert kwargs["site_options"] is config.site_options
-        assert kwargs["species"] == config.species
+        assert kwargs["site_options"] is config.preparation.site_options
+        assert kwargs["species"] == config.preparation.species
         assert kwargs["split_by_sectors"] is False
         assert "merged_data" not in kwargs
         calls.append("retrieve")
@@ -82,15 +82,15 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
 
     def filter_observations(actual: Any, *, filters: Any) -> Any:
         assert actual is merged
-        assert filters is config.filters
+        assert filters is config.preparation.filters
         calls.append("filter")
         return filtered
 
     def build_basis(**kwargs: Any) -> Any:
         assert kwargs["site_data"] is filtered.site_data
-        assert kwargs["weighting_flux"].data is filtered.flux_data[config.flux_sources[0]]["flux"].data
-        xr.testing.assert_equal(kwargs["runtime_flux"], filtered.flux_data[config.flux_sources[0]]["flux"])
-        assert kwargs["domain"] == config.domain
+        assert kwargs["weighting_flux"].data is filtered.flux_data[config.preparation.flux_sources[0]]["flux"].data
+        xr.testing.assert_equal(kwargs["runtime_flux"], filtered.flux_data[config.preparation.flux_sources[0]]["flux"])
+        assert kwargs["domain"] == config.preparation.domain
         calls.append("basis")
         return basis
 
@@ -103,7 +103,7 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
 
     def assemble(actual: Any, actual_basis: Any, actual_site_data: Any, **kwargs: Any) -> Any:
         assert (actual, actual_basis, actual_site_data) == (filtered, basis, site_data)
-        assert kwargs["min_error_options"] == config.min_error_options
+        assert kwargs["min_error_options"] == config.preparation.min_error_options
         calls.append("assemble")
         return prepared
 

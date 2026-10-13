@@ -66,9 +66,9 @@ def test_custom_runner_uses_supported_stages_for_acquisition(
     sampler = config.sampler
 
     merged = RhimeMergedData(
-        site_data={site: xr.Dataset({"mf_error": ("time", [1.0]), "mf_repeatability": ("time", [0.0]), "mf_variability": ("time", [0.0])}) for site in config.site_options.sites},
+        site_data={site: xr.Dataset({"mf_error": ("time", [1.0]), "mf_repeatability": ("time", [0.0]), "mf_variability": ("time", [0.0])}) for site in config.preparation.site_options.sites},
         flux_data={"inventory": xr.Dataset({"flux": (("lat", "lon"), [[2.]])},
-                                           coords={"lat": [50.], "lon": [0.]})}, site_options=config.site_options,
+                                           coords={"lat": [50.], "lon": [0.]})}, site_options=config.preparation.site_options,
     )
     filtered = merged
     basis = object()
@@ -98,12 +98,12 @@ def test_custom_runner_uses_supported_stages_for_acquisition(
     resolved_basis = {"landsea_classes": object(), "outer_regions": None}
 
     def resolve_basis_inputs(actual: RhimeConfig) -> dict[str, Any]:
-        assert actual is config
+        assert actual is config.preparation
         calls.append("basis-inputs")
         return resolved_basis
 
     def retrieve(**kwargs: Any) -> Any:
-        assert kwargs["site_options"] is config.site_options
+        assert kwargs["site_options"] is config.preparation.site_options
         assert kwargs["split_by_sectors"] is False
         assert "project_basis_path" not in kwargs
         calls.append("retrieve")
@@ -111,24 +111,24 @@ def test_custom_runner_uses_supported_stages_for_acquisition(
 
     def filter_observations(actual: Any, *, filters: Any) -> Any:
         assert actual is merged
-        assert filters is config.filters
+        assert filters is config.preparation.filters
         calls.append("filter")
         return filtered
 
     def build_basis(**kwargs: Any) -> Any:
         assert kwargs["site_data"] is filtered.site_data
-        assert kwargs["domain"] == config.domain
-        assert kwargs["nbasis"] == config.nbasis
+        assert kwargs["domain"] == config.preparation.domain
+        assert kwargs["nbasis"] == config.preparation.nbasis
         assert kwargs["landsea_classes"] is resolved_basis["landsea_classes"]
-        assert kwargs["output_path"] == config.basis_output_path
+        assert kwargs["output_path"] == config.preparation.basis_output_path
         calls.append("basis")
         return basis
 
     def build_sensitivities(actual: Any, actual_basis: Any, **kwargs: Any) -> Any:
         assert actual is filtered
         assert actual_basis is basis
-        assert kwargs["domain"] == config.domain
-        assert kwargs["flux_sources"] == config.flux_sources
+        assert kwargs["domain"] == config.preparation.domain
+        assert kwargs["flux_sources"] == config.preparation.flux_sources
         assert kwargs["multisector"] is False
         calls.append("sensitivities")
         return site_data
@@ -137,8 +137,8 @@ def test_custom_runner_uses_supported_stages_for_acquisition(
         assert actual is filtered
         assert actual_basis is basis
         assert actual_site_data is site_data
-        assert kwargs["min_error_options"] == config.min_error_options
-        assert kwargs["start_date"] == config.start_date
+        assert kwargs["min_error_options"] == config.preparation.min_error_options
+        assert kwargs["start_date"] == config.preparation.start_date
         calls.append("assemble")
         return prepared
 

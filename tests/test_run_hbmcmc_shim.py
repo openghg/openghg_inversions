@@ -368,8 +368,8 @@ def test_run_hbmcmc_main_routes_to_run_rhime(monkeypatch: pytest.MonkeyPatch, tm
     )
     assert copied_config.read_text(encoding="utf-8") == expected_config
     config = seen["run_rhime_kwargs"]["config"]
-    assert config.start_date == "2020-01-01"
-    assert config.end_date == "2020-02-01"
+    assert config.preparation.start_date == "2020-01-01"
+    assert config.preparation.end_date == "2020-02-01"
     assert config.output.output_path == str(output_path)
     assert config.sampler.chains == 2
     assert config.sampler.nuts_sampler == "numpyro"

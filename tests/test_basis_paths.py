@@ -84,17 +84,17 @@ def test_missing_selected_resource_fails_before_acquisition(tmp_path, monkeypatc
         elif route == "nested":
             nested.prepare_nested_rhime_inputs(config, inner_domain="6km")
         else:
-            _standard_stages.prepare_rhime_stage(setup=config, model="standard", output_dir=tmp_path / "stage")
-    assert not list(tmp_path.iterdir())
+            _standard_stages.prepare(config.preparation, output_dir=tmp_path / "stage")
+    assert not list(tmp_path.glob("**/prepare-manifest.json"))
 
 
 def test_config_is_data_free_and_maps_are_resolved_at_application_boundary(tmp_path):
     config = RhimeConfig.from_params(_params(domain="MISSING", landsea_path=tmp_path / "missing.nc"),
                                      multisector=False)
     with pytest.raises(FileNotFoundError):
-        resolve_basis_inputs(config)
+        resolve_basis_inputs(config.preparation)
     europe = packaged_basis_support_path("landsea", "EUROPE")
-    resolved = resolve_basis_inputs(replace(config, domain="EUROPE", landsea_path=europe))
+    resolved = resolve_basis_inputs(replace(config.preparation, domain="EUROPE", landsea_path=europe))
     assert resolved["landsea_classes"].ndim == 2
     with pytest.raises(FileNotFoundError, match="MISSING"):
         packaged_basis_support_path("landsea", "MISSING")
@@ -106,7 +106,7 @@ def test_basis_preflight_does_not_require_reporting_resources(output_format, cou
     config = RhimeConfig.from_params(
         _params(output_format=output_format, country_file=country_file), multisector=False,
     )
-    resolve_basis_inputs(config)
+    resolve_basis_inputs(config.preparation)
 
 
 def test_fixed_outer_missing_resolved_map_fails_before_numerical_work(monkeypatch):
@@ -177,6 +177,6 @@ def test_legacy_relative_outer_map_resolves_at_compatibility_boundary(tmp_path, 
                                      multisector=False)
     # A historical directory selects its map only for algorithms which consume it.
     with pytest.warns(DeprecationWarning):
-        resolved = resolve_basis_inputs(config)
+        resolved = resolve_basis_inputs(config.preparation)
     xr.testing.assert_equal(resolved["outer_regions"], to_dense(outer).compute())
     assert outer.data is borrowed_payload

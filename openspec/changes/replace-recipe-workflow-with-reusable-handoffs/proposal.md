@@ -95,7 +95,8 @@ contract is not a current capability or an implementation prerequisite.
 The three new capabilities and configuration amendment live under this active
 change as proposed deltas. Main specs in `openspec/specs/` describe delivered
 behavior; `openspec/changes/archive/` retains completed or superseded history.
-This replacement remains active with all implementation tasks unchecked. Its
+This replacement remains active; implementation progress and evidence are in
+[tasks.md](tasks.md). Its
 deltas SHALL NOT be synced merely because planning is approved.
 
 ## Reconciled lifecycle baseline
@@ -123,8 +124,8 @@ in `openspec/specs/rhime-configuration/spec.md`, including observation-error
 ordering, in-memory acquisition and modern flux-selector deprecation. The
 archives retain their 11 October historical contents; the superseded workflow
 contract is not revived or promoted. Reconstruction specs remain unchanged and
-this replacement remains the only active change. Its implementation tasks stay
-unchecked.
+this replacement remains the only active change. Its remaining implementation tasks stay
+unchecked; see [tasks.md](tasks.md) for delivered standard-route evidence.
 
 The rebase onto `devel` `7269f50f` includes #854's retrospective model-selection
 and model-composition specs. There are now five current capability specs; the

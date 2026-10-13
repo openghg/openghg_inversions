@@ -64,16 +64,16 @@ def _merge_paris_outputs_command(args: argparse.Namespace) -> None:
     merge_paris_outputs(args.input_files, args.output, output_type=output_type)
 
 
-def _add_stage_config_args(parser: argparse.ArgumentParser) -> None:
+def _add_stage_config_args(parser: argparse.ArgumentParser, *, required: bool = True) -> None:
     """Add explicit scientific configuration arguments for staged commands."""
-    source = parser.add_mutually_exclusive_group(required=True)
+    source = parser.add_mutually_exclusive_group(required=required)
     source.add_argument("-c", "--config", help="Explicit RHIME INI or CO2 TOML configuration path")
     source.add_argument("--params-file", help="Explicit JSON file containing RHIME parameter names")
     parser.add_argument(
         "--model",
         choices=("standard", "multisector", "co2"),
-        required=True,
-        help="RHIME model recipe; never inferred from the gas",
+        default="standard",
+        help="RHIME model recipe (default: standard); checked against saved handoffs",
     )
     parser.add_argument("--kwargs", type=json.loads, help="JSON object overriding RHIME parameters")
 
@@ -106,46 +106,105 @@ def _stage_output_dir(args: argparse.Namespace) -> Path:
     return Path(args.output_dir).resolve()
 
 
+def _standard_phase_options(args: argparse.Namespace, *, phase: str) -> dict[str, dict[str, Any]]:
+    """Select active owner mappings before resolving their values."""
+    from openghg_inversions.rhime.params import group_rhime_params
+    from openghg_inversions.rhime.stages import load_stage_params
+
+    params = (load_stage_params(config_file=args.config, params_file=args.params_file)
+              if args.config or args.params_file else {})
+    groups = group_rhime_params(params)
+    from openghg_inversions.hbmcmc.compatibility import translate_rhime_aliases
+
+    overrides = dict(args.kwargs or {})
+    if not set(overrides) & {"preparation", "model", "sampler", "output"}:
+        overrides = translate_rhime_aliases(overrides)
+    # These flat historical preparation names are explicit model compatibility
+    # claims when supplied to a sampling command.
+    claims = {}
+    if phase == "sample" and not set(overrides) & {"preparation", "model", "sampler", "output"}:
+        for name in ("use_bc", "bc_freq", "species", "domain", "flux_sources", "start_date", "end_date", "split_by_sectors"):
+            if name in overrides:
+                claims[name] = overrides.pop(name)
+    updates = group_rhime_params(overrides)
+    updates["model"].update(claims)
+    active = {"prepare": {"preparation"}, "sample": {"model", "sampler"},
+              "postprocess": {"output"}}[phase]
+    inactive = [name for name, values in updates.items() if values and name not in active]
+    if inactive:
+        raise ValueError(f"Overrides for {inactive!r} do not belong to this phase.")
+    for name in active:
+        groups[name].update(updates[name])
+    return groups
+
+
 def _prepare_command(args: argparse.Namespace) -> None:
-    from openghg_inversions.rhime.stages import prepare_rhime_stage
+    from openghg_inversions.rhime.stages import prepare, prepare_rhime_stage
+    from openghg_inversions.rhime.params import PreparationConfig
 
-    manifest = prepare_rhime_stage(
-        setup=_stage_setup(args),
-        model=args.model,
-        output_dir=_stage_output_dir(args),
-    )
-    print(manifest["manifest_path"])
+    if args.model == "standard":
+        choices = _standard_phase_options(args, phase="prepare")
+        manifest = prepare(PreparationConfig.from_params(choices["preparation"]),
+                           output_dir=_stage_output_dir(args))
+        print(manifest)
+    else:
+        manifest = prepare_rhime_stage(setup=_stage_setup(args), model=args.model,
+                                       output_dir=_stage_output_dir(args))
+        print(manifest["manifest_path"])
 
+
+
+def _check_saved_family(args: argparse.Namespace) -> None:
+    """Reject an explicit selector that contradicts a current saved handoff."""
+    manifest = args.sample_manifest if args.command == "postprocess" else args.preparation_manifest
+    record = json.loads(Path(manifest).read_text(encoding="utf-8"))
+    if isinstance(record, dict) and record.get("family") not in (None, args.model):
+        raise ValueError(f"Saved family {record['family']!r} does not match --model {args.model!r}.")
 
 def _prior_predictive_command(args: argparse.Namespace) -> None:
-    from openghg_inversions.rhime.stages import prior_predictive_stage
+    from openghg_inversions.rhime.stages import prior_predictive, prior_predictive_stage
 
-    result = prior_predictive_stage(
-        setup=_stage_setup(args),
-        model=args.model,
-        prepared_inputs=args.prepared_inputs,
-        preparation_manifest=args.preparation_manifest,
-        output_dir=_stage_output_dir(args),
-        check_output=args.check_output,
-        draws=args.draws,
-        stage=args.check_stage,
-    )
+    common = dict(output_dir=_stage_output_dir(args), check_output=args.check_output,
+                  draws=args.draws, stage=args.check_stage)
+    if args.model == "standard":
+        _reject_standard_artifact_args(args)
+        choices = _standard_phase_options(args, phase="sample")
+        result = prior_predictive(args.preparation_manifest, model=choices["model"], **common)
+    else:
+        _check_saved_family(args)
+        result = prior_predictive_stage(setup=_stage_setup(args), model=args.model,
+                                        prepared_inputs=args.prepared_inputs,
+                                        preparation_manifest=args.preparation_manifest, **common)
     print(json.dumps(result, sort_keys=True))
     if args.strict and result["status"] == "fail":
         raise SystemExit(1)
 
 
-def _sample_command(args: argparse.Namespace) -> None:
-    from openghg_inversions.rhime.stages import sample_rhime_stage
+def _reject_standard_artifact_args(args: argparse.Namespace) -> None:
+    if getattr(args, "prepared_inputs", None) or getattr(args, "posterior", None):
+        raise ValueError("Standard saved phases take one manifest; remove --prepared-inputs and --posterior.")
+    if args.command == "postprocess" and args.preparation_manifest:
+        raise ValueError("Standard postprocess takes only --sample-manifest.")
 
-    result = sample_rhime_stage(
-        setup=_stage_setup(args),
-        model=args.model,
-        prepared_inputs=args.prepared_inputs,
-        preparation_manifest=args.preparation_manifest,
-        output_dir=_stage_output_dir(args),
-    )
-    print(result["artifacts"]["posterior"])
+
+def _sample_command(args: argparse.Namespace) -> None:
+    from openghg_inversions.rhime.stages import sample, sample_rhime_stage
+    from openghg_inversions.rhime.params import resolve_sampler_options
+
+    if args.model == "standard":
+        _reject_standard_artifact_args(args)
+        choices = _standard_phase_options(args, phase="sample")
+        result = sample(args.preparation_manifest, model=choices["model"],
+                        sampler=resolve_sampler_options(choices["sampler"]),
+                        output_dir=_stage_output_dir(args))
+        print(result)
+    else:
+        _check_saved_family(args)
+        result = sample_rhime_stage(setup=_stage_setup(args), model=args.model,
+                                   prepared_inputs=args.prepared_inputs,
+                                   preparation_manifest=args.preparation_manifest,
+                                   output_dir=_stage_output_dir(args))
+        print(result["artifacts"]["posterior"])
 
 
 def _diagnose_command(args: argparse.Namespace) -> None:
@@ -168,17 +227,21 @@ def _diagnose_command(args: argparse.Namespace) -> None:
 
 
 def _postprocess_command(args: argparse.Namespace) -> None:
-    from openghg_inversions.rhime.stages import postprocess_rhime_stage
+    from openghg_inversions.rhime.stages import postprocess, postprocess_rhime_stage
+    from openghg_inversions.rhime.specs import RhimeOutputSpec
 
-    postprocess_rhime_stage(
-        setup=_stage_setup(args),
-        model=args.model,
-        prepared_inputs=args.prepared_inputs,
-        preparation_manifest=args.preparation_manifest,
-        sample_manifest=args.sample_manifest,
-        posterior=args.posterior,
-        output_dir=_stage_output_dir(args),
-    )
+    if args.model == "standard":
+        _reject_standard_artifact_args(args)
+        choices = _standard_phase_options(args, phase="postprocess")["output"]
+        choices["output_path"] = str(_stage_output_dir(args))
+        postprocess(args.sample_manifest, output=RhimeOutputSpec.from_params(choices, multisector=False))
+    else:
+        _check_saved_family(args)
+        postprocess_rhime_stage(setup=_stage_setup(args), model=args.model,
+                               prepared_inputs=args.prepared_inputs,
+                               preparation_manifest=args.preparation_manifest,
+                               sample_manifest=args.sample_manifest, posterior=args.posterior,
+                               output_dir=_stage_output_dir(args))
 
 
 def _run_rhime_nested_command(args: argparse.Namespace) -> None:
@@ -239,9 +302,9 @@ def build_parser(*, prog: str = "openghg-inversions") -> argparse.ArgumentParser
     prior_parser = subparsers.add_parser(
         "prior-predictive", help="Validate a configured model with prepared inputs"
     )
-    _add_stage_config_args(prior_parser)
+    _add_stage_config_args(prior_parser, required=False)
     _add_output_dir(prior_parser)
-    prior_parser.add_argument("--prepared-inputs", required=True)
+    prior_parser.add_argument("--prepared-inputs", help="Deferred multisector/CO2 route only")
     prior_parser.add_argument("--preparation-manifest", required=True)
     prior_parser.add_argument("--check-output")
     prior_parser.add_argument("--draws", type=int, default=100)
@@ -250,9 +313,9 @@ def build_parser(*, prog: str = "openghg-inversions") -> argparse.ArgumentParser
     prior_parser.set_defaults(func=_prior_predictive_command)
 
     sample_parser = subparsers.add_parser("sample", help="Sample explicitly supplied RHIME inputs")
-    _add_stage_config_args(sample_parser)
+    _add_stage_config_args(sample_parser, required=False)
     _add_output_dir(sample_parser)
-    sample_parser.add_argument("--prepared-inputs", required=True)
+    sample_parser.add_argument("--prepared-inputs", help="Deferred multisector/CO2 route only")
     sample_parser.add_argument("--preparation-manifest", required=True)
     sample_parser.set_defaults(func=_sample_command)
 
@@ -261,7 +324,7 @@ def build_parser(*, prog: str = "openghg-inversions") -> argparse.ArgumentParser
     diagnose_parser.add_argument("--posterior", required=True)
     diagnose_parser.add_argument(
         "--sample-manifest",
-        help="Authenticate the posterior when a staged sample manifest is available",
+        help="Optional saved sampling context",
     )
     diagnose_parser.add_argument("--check-output")
     diagnose_parser.add_argument("--max-rhat", type=float, default=1.01)
@@ -275,12 +338,12 @@ def build_parser(*, prog: str = "openghg-inversions") -> argparse.ArgumentParser
     postprocess_parser = subparsers.add_parser(
         "postprocess", help="Create configured outputs from a saved posterior"
     )
-    _add_stage_config_args(postprocess_parser)
+    _add_stage_config_args(postprocess_parser, required=False)
     _add_output_dir(postprocess_parser)
-    postprocess_parser.add_argument("--prepared-inputs", required=True)
-    postprocess_parser.add_argument("--preparation-manifest", required=True)
+    postprocess_parser.add_argument("--prepared-inputs", help="Deferred multisector/CO2 route only")
+    postprocess_parser.add_argument("--preparation-manifest", help="Deferred multisector/CO2 route only")
     postprocess_parser.add_argument("--sample-manifest", required=True)
-    postprocess_parser.add_argument("--posterior", required=True)
+    postprocess_parser.add_argument("--posterior", help="Deferred multisector/CO2 route only")
     postprocess_parser.set_defaults(func=_postprocess_command)
 
     run_nested_parser = subparsers.add_parser(

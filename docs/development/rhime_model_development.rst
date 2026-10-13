@@ -37,7 +37,7 @@ The core principles for new RHIME work are:
 * Accept small duplication when it keeps alternative scientific recipes clear.
 * Use dataclasses for concrete scientific concepts or durable handoffs.
 * Normalize configuration at its owning boundary and forward named values
-  explicitly, including an explicit ``config.select("name", ...)`` selection
+  explicitly, including an explicit ``config.preparation.select("name", ...)`` selection
   where useful.
 * Keep helpers close to their scientific owner. Tiny registries can serve
   homogeneous families such as filters without controlling the whole model.
@@ -166,9 +166,10 @@ own constructor and resolution details. The request precedes preparation;
 retained-site execution facts become known later. Frozen records do not imply
 recursive immutability of borrowed arrays or caller-owned containers.
 
-Configuration grouping and reusable handoffs are being reconsidered in
-`PR 802 <https://github.com/openghg/openghg_inversions/pull/802>`_. Check its
-current proposal and implementation status before adopting those interfaces.
+Configuration groups preparation under ``RhimeConfig.preparation``. The standard
+recipe supports reusable preparation and sample manifests; see
+:doc:`/usage/staged_workflow`. The remaining family adoption tasks from
+`PR 802 <https://github.com/openghg/openghg_inversions/pull/802>`_ remain active.
 This guide does not fix private module locations, configuration class layout,
 or future manifest structure. Existing templates and complete option listings
 belong with their recipes and usage references.

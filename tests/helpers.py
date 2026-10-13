@@ -231,32 +231,32 @@ def prepare_inputs(**params):
 
     config = RhimeConfig.from_params({"output_format": "none", **params},
                                      multisector=params.get("split_by_sectors", False))
-    basis_inputs = preparation.resolve_basis_inputs(config)
-    merged = RhimeMergedData.from_options(**config.select(
+    basis_inputs = preparation.resolve_basis_inputs(config.preparation)
+    merged = RhimeMergedData.from_options(**config.preparation.select(
         "site_options", "species", "domain", "start_date", "end_date",
         "flux_sources", "split_by_sectors", "bc_store", "obs_store", "footprint_store",
         "flux_store", "flux_domain", "fp_model", "fp_species", "calibration_scale",
         "use_bc", "bc_input", "flux_non_finite_check",
     ))
-    merged = preparation.prepare_observation_errors(merged, averaging_error=config.averaging_error)
-    filtered = preparation.filter_observations(merged, filters=config.filters)
+    merged = preparation.prepare_observation_errors(merged, averaging_error=config.preparation.averaging_error)
+    filtered = preparation.filter_observations(merged, filters=config.preparation.filters)
     from openghg_inversions.native_flux import resolve_runtime_flux
 
     runtime_flux = resolve_runtime_flux(filtered.flux_data, split_by_sectors=filtered.split_by_sectors)
     basis = prepare_basis(
         site_data=filtered.site_data,
         runtime_flux=runtime_flux,
-        weighting_flux=filtered.flux_data[config.flux_sources[0]]["flux"],
-        **config.select(
+        weighting_flux=filtered.flux_data[config.preparation.flux_sources[0]]["flux"],
+        **config.preparation.select(
             "domain", "start_date", "basis_algorithm", "nbasis",
         ),
-        fix_outer_regions=config.fix_basis_outer_regions,
+        fix_outer_regions=config.preparation.fix_basis_outer_regions,
         **basis_inputs,
-        output_path=config.basis_output_path,
+        output_path=config.preparation.basis_output_path,
     )
-    sites = preparation.build_sensitivities(filtered, basis, **config.select(
+    sites = preparation.build_sensitivities(filtered, basis, **config.preparation.select(
         "domain", "flux_sources", "use_bc", "bc_basis_case", "bc_basis_directory",
-    ), multisector=config.split_by_sectors)
-    return preparation.assemble_rhime_inputs(filtered, basis, sites, **config.select(
+    ), multisector=config.preparation.split_by_sectors)
+    return preparation.assemble_rhime_inputs(filtered, basis, sites, **config.preparation.select(
         "domain", "start_date", "bc_freq", "min_error", "min_error_options", "use_bc",
     ))

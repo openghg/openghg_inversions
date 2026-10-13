@@ -16,9 +16,9 @@ acquisition. Use ``RhimeConfig.from_params`` to inspect the same choices without
 retrieving observations, building a model or sampling.
 The returned ``RhimeConfig`` is the complete requested configuration:
 
-* Acquisition and preparation choices are direct fields, including
+* ``preparation`` is one ``PreparationConfig`` containing
   ``species``, ``domain``, dates, stores, basis, filtering and error settings.
-  ``site_options`` is one public ``SiteOptions`` record containing complete
+  ``preparation.site_options`` is one public ``SiteOptions`` record containing complete
   aligned tuples of requested sites and their selectors.
 * ``model`` is the existing ``RhimeModelSpec`` containing sectors, priors,
   likelihood and other scientific model choices.
@@ -53,8 +53,8 @@ For example, a scalar period broadcasts across the effective requested sites:
        "mismatch_model": "fixed_error",
    }
    config = RhimeConfig.from_params(options, multisector=False)
-   assert config.site_options.sites == ("TAC", "MHD")
-   assert config.site_options.averaging_period == ("1h", "1h")
+   assert config.preparation.site_options.sites == ("TAC", "MHD")
+   assert config.preparation.site_options.averaging_period == ("1h", "1h")
 
 The constructor translates supported deprecated aliases, then applies established
 defaults, validation and site expansion beside the configuration it creates. Pass an
@@ -106,7 +106,10 @@ stays available until that last step: changing sites or averaging periods before
 resolution expands the final values together. The resulting ``config`` can be
 passed to a runner without resolving again.
 
-``RhimeConfig.from_params`` is the single construction entry point; the former
+``RhimeConfig.from_params`` constructs a complete request.
+``PreparationConfig.from_params`` independently resolves preparation choices;
+``group_rhime_params`` separates decoded options before phase-specific resolution.
+The former
 ``resolve_rhime_config`` wrapper has been removed. The constructor calls the
 translator in ``hbmcmc.compatibility`` and emits ``DeprecationWarning`` when a
 deprecated name or output-format value is replaced or removed. For historical HBMCMC aliases, canonical names take precedence. Modern flux
@@ -148,7 +151,7 @@ with ``basis_algorithm`` and ``nbasis``. Alternatively,
 partition; this valid scientific representation does not require historical
 case/glob selection. ``basis_output_path`` is an optional
 exact destination, including the filename; it is not an output directory or an
-enable flag. Staged preparation preserves this destination too.
+enable flag. Standard staged preparation requires this path to be within its fresh destination.
 
 A selected retained artifact supplies its operator and metadata to new
 preparation. The runner resolves current native prior flux once after filtering
@@ -165,7 +168,7 @@ files. ``RhimeConfig.from_params`` resolves options without opening scientific
 data. The application preparation boundary loads selected maps before
 acquisition, then passes labelled ``landsea_classes`` and ``outer_regions``
 arrays to ``prepare_basis``. The single application helper
-``rhime.preparation.resolve_basis_inputs(config)`` resolves these values and
+``rhime.preparation.resolve_basis_inputs(config.preparation)`` resolves these values and
 consumes any supported deprecated path fields once. Modern requests do not
 enter compatibility code. The numerical functions do no file discovery.
 When the selected algorithm needs a packaged support map, the application
@@ -278,12 +281,12 @@ values for an ordinary keyword call:
    from openghg_inversions.rhime import filter_observations, prepare_observation_errors
 
    merged.validate_for_preparation(
-       **config.select("species", "domain", "start_date", "end_date", "split_by_sectors")
+       **config.preparation.select("species", "domain", "start_date", "end_date", "split_by_sectors")
    )
-   merged = prepare_observation_errors(merged, averaging_error=config.averaging_error)
-   filtered = filter_observations(merged, **config.select("filters"))
+   merged = prepare_observation_errors(merged, averaging_error=config.preparation.averaging_error)
+   filtered = filter_observations(merged, **config.preparation.select("filters"))
 
-``config.select(*names)`` returns a fresh dictionary of the named attributes.
+``config.preparation.select(*names)`` returns a fresh dictionary of the named attributes.
 Values are borrowed: mutable mappings and objects are shared with ``config``.
 Selection does not normalize, validate, copy nested values or serialize settings;
 an unknown attribute raises ``AttributeError``. Scientific stages still accept
@@ -306,8 +309,8 @@ remain mutable. Resolution leaves caller options unchanged, and retained-site
 selection leaves the requested configuration unchanged. Configuration
 serialization and an INI writer are deferred to
 `Issue 814 <https://github.com/openghg/openghg_inversions/issues/814>`_.
-Equal resolved scalar/list choices do not guarantee equal historical
-configuration hashes.
+Standard saved sampling checks scientific compatibility with preparation,
+allowing compatible model choices to change without full-configuration equality.
 For persisted workflows, see :doc:`staged_workflow`: version 0.8 does not
 support staged artifacts produced by 0.7; consume them with 0.7 or regenerate
 them with 0.8. Ordinary paths remain relative to the working directory and

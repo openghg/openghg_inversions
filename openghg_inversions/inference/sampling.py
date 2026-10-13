@@ -23,6 +23,7 @@ from pymc.util import get_random_generator  # type: ignore[import-untyped]
 
 from openghg_inversions._timing import log_timing, timer_seconds, timer_start
 from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
+from openghg_inversions.postprocessing.contracts import resolve_predictive_names
 
 NutsSampler = Literal["pymc", "nutpie", "numpyro", "blackjax"]
 
@@ -427,16 +428,9 @@ class RhimeSampler:
                 names = [names]
             prediction_model = kwargs.get("model") or model
             roles = dict(variable_roles or {}) if prediction_model is model else {}
-            if "y" not in prediction_model.named_vars and "concentration" in roles:
-                roles.setdefault("y", roles["concentration"])
-            resolved = [roles.get(name, name) for name in names]
-            missing = sorted(set(resolved) - set(prediction_model.named_vars))
-            if missing:
-                raise ValueError(
-                    "RhimeSampler posterior-predictive variables are absent from the model: "
-                    f"{missing!r}. Use concrete model names or semantic keys from `variable_roles`."
-                )
-            kwargs["var_names"] = list(dict.fromkeys(resolved))
+            kwargs["var_names"] = resolve_predictive_names(
+                list(names), available=set(prediction_model.named_vars), variable_roles=roles,
+            )
         return kwargs
 
     def _extend_predictive(
