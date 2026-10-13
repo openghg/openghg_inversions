@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import numpy as np
-import pytest
+import pymc as pm
 import xarray as xr
 
 from openghg_inversions.rhime.co2 import (
@@ -67,10 +67,9 @@ def test_unsampled_builders_and_correlated_cached_prior(monkeypatch: Any, tmp_pa
         tau_hours=4.0,
         site_amplitude_prior_scale=0.5,
     )
-    with pytest.warns(UserWarning, match="Potentials"):
-        trace = sample_co2_cached_prior_predictive(
-            cached, prepared, draws=2000, random_seed=917,
-        )
+    trace = sample_co2_cached_prior_predictive(
+        cached, prepared, draws=2000, random_seed=917,
+    )
     assert "posterior" not in trace.children
     assert "log_likelihood" not in trace.children
     assert trace.prior_predictive["y"].attrs["units"] == "ppm"
@@ -94,12 +93,13 @@ def test_unsampled_builders_and_correlated_cached_prior(monkeypatch: Any, tmp_pa
     # The cached normalized likelihood is stored as one value per joint
     # observation vector. Its provenance must survive canonical NetCDF replay.
     posterior = xr.DataTree.from_dict({"posterior": trace.prior.to_dataset().isel(draw=slice(0, 2))})
-    posterior = co2_cached_sigma_runner._append_joint_outputs(
+    with cached.model:
+        pm.compute_log_likelihood(posterior)
+        pm.sample_posterior_predictive(posterior, extend_inferencedata=True, random_seed=918)
+    posterior = co2_cached_sigma_runner._annotate_cached_co2_trace(
         posterior,
-        cached_model=cached,
-        observations=inputs["mf"],
-        posterior_predictive=True,
-        random_seed=918,
+        co2_cached_sigma_runner.co2_cached_sigma_build_result(cached, prepared),
+        concentration_units="ppm",
     )
     path = tmp_path / "cached-posterior.nc"
     save_trace(posterior, path)

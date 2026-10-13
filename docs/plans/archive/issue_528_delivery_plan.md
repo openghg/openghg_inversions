@@ -1,11 +1,12 @@
 # Issue 528 Delivery Plan
 
+> **Archive authority clarification (12 October 2026).** This superseded research/design record retains its original dated proposals and status claims. Current [development principles](../../development/rhime_model_development.rst), maintained [scientific explanation](../../usage/shared_scientific_concepts.rst), and reviewed capability specifications have separate roles; this archive does not define current behavior or architecture. See the [planning-record inventory](../README.md).
+
 Date: 2026-08-11
 
 Status: archived as a production delivery sequence on 2026-08-18. The
 [`run_rhime` readability plan](../run_rhime_readability_and_modifiability.md) and
-the [model-family expansion plan](../rhime_model_family_expansion.md) are the
-active production roadmaps. This document remains evidence for the scientific
+the [model-family expansion plan](../rhime_model_family_expansion.md) are historical delivery records, not current policy. This document remains evidence for the scientific
 native-covariance, coherent-reduction, aggregation-error, and linked-channel
 work; its semantic-model and compiler sequence is not being adopted.
 

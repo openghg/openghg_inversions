@@ -55,6 +55,12 @@ Current support
        boundary sensitivity and add global, site, or site-by-period offsets.
      - Channel-labelled boundary sensitivities, priors and activity, plus
        independent global, site, or site-by-period offsets (same-unit channels).
+   * - Prediction
+     - Native PyMC prior/posterior observation draws; fixed-OU recipes expose
+       a joint log likelihood, including the matched cached-sigma recipe.
+     - Native PyMC prior/posterior observation draws; fixed-OU recipes expose
+       a joint log likelihood, preserving cross-channel covariance with the
+       matched cached sampler.
    * - Staged workflow
      - Installed ``--model co2`` stages support ordinary and cached fixed-OU
        replay from a saved coherent prepared-input artifact; see

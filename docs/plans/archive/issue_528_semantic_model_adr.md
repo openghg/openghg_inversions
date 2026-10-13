@@ -1,5 +1,7 @@
 # ADR: A semantic model and coherent reduction boundary for RHIME
 
+> **Archive authority clarification (12 October 2026).** This superseded research/design record retains its original dated proposals and status claims. Current [development principles](../../development/rhime_model_development.rst), maintained [scientific explanation](../../usage/shared_scientific_concepts.rst), and reviewed capability specifications have separate roles; this archive does not define current behavior or architecture. See the [planning-record inventory](../README.md).
+
 - **Status:** Superseded as production architecture on 2026-08-18
 - **Date:** 2026-08-10
 - **Decision issue:** [#528](https://github.com/openghg/openghg_inversions/issues/528)
@@ -17,7 +19,7 @@
 > [`run_rhime` readability and modifiability plan](../run_rhime_readability_and_modifiability.md)
 > and the
 > [model-family expansion plan](../rhime_model_family_expansion.md) are
-> authoritative. Production RHIME uses readable named recipes and concrete
+> historical delivery records, not current policy. Production RHIME uses readable named recipes and concrete
 > model builders rather than the semantic-model/compiler architecture proposed
 > below. This ADR remains a research record and source of scientific concepts,
 > especially native covariance, coherent reduction, labelled state treatment,

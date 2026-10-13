@@ -15,7 +15,7 @@ import numpy as np
 import scipy
 import xarray as xr
 
-from openghg_inversions.array_ops import to_dense
+from openghg_inversions.array_ops import jax_to_numpy, to_dense
 from openghg_inversions.postprocessing.utils import add_suffix, get_parameters, update_attrs
 
 StatsFunction = namedtuple("StatsFunction", ["name", "func", "params"])
@@ -323,4 +323,4 @@ def calculate_stats(ds: xr.Dataset, stats: Sequence[str] = ("mean", "quantiles")
             variable_stats.append(sf.func(samples, **sf_kwargs))
         stats_datasets.append(xr.merge(variable_stats))
 
-    return xr.merge(stats_datasets)
+    return xr.merge(stats_datasets).map(jax_to_numpy)

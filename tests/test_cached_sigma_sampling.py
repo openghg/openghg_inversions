@@ -7,9 +7,11 @@ import pymc as pm
 import pytensor
 import pytensor.tensor as pt
 import pytest
+from pymc.blocking import DictToArrayBijection
+from scipy.stats import multivariate_normal
 
 from openghg_inversions.models.cached_sigma import FixedOuCachedSigmaTarget
-from openghg_inversions.models.fixed_ou import prepare_fixed_ou_low_rank
+from openghg_inversions.models.fixed_ou import FixedOuLowRank, prepare_fixed_ou_low_rank
 from openghg_inversions.inference.cached_sigma import (
     PymcCachedSigmaNutsStep,
     PytensorMarginalQuadraticCache,
@@ -96,6 +98,115 @@ def _nuts_stats() -> list[dict[str, object]]:
             "step_size": 0.1,
         }
     ]
+
+
+def _observed_context(*, observed=True):
+    target = _target()
+    initial_cache = target.refresh([0.4, 0.4])
+    shared = PytensorMarginalQuadraticCache(initial_cache)
+    with pm.Model() as model:
+        state = pm.Normal("state", shape=1)
+        sigma = pm.HalfNormal("sigma_site", sigma=0.75, shape=2)
+        coefficients = pt.exp(state)
+        mean = pm.Deterministic("modelled_mean", target.fixed_contribution + target.design @ coefficients)
+        if observed:
+            pm.CustomDist(
+                "y", mean, sigma, logp=target.prepared.logp, random=target.prepared.random,
+                signature="(n),(s)->(n)", observed=target.observations,
+            )
+        else:
+            pm.Potential("cached_likelihood", shared.log_likelihood(coefficients))
+    point = model.initial_point()
+    point["sigma_site_log__"] = np.log([0.4, 0.4])
+    arguments = dict(
+        model=model, sigma=sigma, states=[state], modelled_mean=mean, target=target,
+        shared_cache=shared, initial_cache=initial_cache, prior_scale=0.75,
+        initial_point=point, rng=np.random.default_rng(769),
+    )
+    return target, shared, model, point, shared.log_likelihood(coefficients), arguments
+
+
+def test_observed_graph_requires_explicit_cached_expression():
+    *_, arguments = _observed_context()
+    with pytest.raises(ValueError, match="explicit cached_state_logp"):
+        make_cached_sigma_compound_step(**arguments)
+
+
+def test_supplied_state_function_matches_public_density_without_covariance_work(monkeypatch):
+    target, shared, model, point, quadratic, arguments = _observed_context()
+    compound = make_cached_sigma_compound_step(**arguments, cached_state_logp=quadratic)
+    state_step = compound.methods[1]
+    exact = model.compile_logp()
+    gradient = model.compile_dlogp(vars=arguments["states"])
+    for state, amplitudes in ((-0.3, [0.2, 0.7]), (0.4, [0.6, 1.2])):
+        point["state"] = np.array([state])
+        point["sigma_site_log__"] = np.log(amplitudes)
+        shared.update(target.refresh(amplitudes))
+        state_step._logp_dlogp_func.set_extra_values(point)
+        actual, actual_gradient = state_step._logp_dlogp_func(DictToArrayBijection.map({"state": point["state"]}))
+        np.testing.assert_allclose(actual, exact(point), atol=1e-10)
+        np.testing.assert_allclose(actual_gradient, gradient(point), atol=1e-10)
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("A cached state transition must not evaluate or factor observation covariance.")
+
+    monkeypatch.setattr(FixedOuLowRank, "evaluate", forbidden)
+    monkeypatch.setattr(np.linalg, "cholesky", forbidden)
+    updated, stats = state_step.step(point)
+    assert np.isfinite(updated["state"]).all()
+    assert stats[0]["tree_size"] > 0
+
+
+def _sample_observed_spawn_chains(*, observed=True):
+    target, shared, model, point, quadratic, arguments = _observed_context(observed=observed)
+    step = make_cached_sigma_compound_step(**arguments, cached_state_logp=quadratic if observed else None)
+    starts = [
+        {"state": np.array([state]), "sigma_site_log__": np.log(amplitudes)}
+        for state, amplitudes in ((-0.2, [0.3, 0.5]), (0.3, [0.6, 0.7]))
+    ]
+    with model:
+        trace = pm.sample(
+            draws=4, tune=4, chains=2, cores=2, mp_ctx="spawn", step=step,
+            initvals=starts, random_seed=769, progressbar=False, compute_convergence_checks=False,
+            idata_kwargs={"log_likelihood": observed},
+        )
+    return target, shared, model, point, trace
+
+
+def test_observed_spawn_chains_preserve_shared_cache_and_generic_joint_density():
+    target, shared, model, point, first = _sample_observed_spawn_chains()
+    *_, second = _sample_observed_spawn_chains()
+    *_, baseline = _sample_observed_spawn_chains(observed=False)
+    for name in ("state", "sigma_site", "modelled_mean"):
+        np.testing.assert_array_equal(first.posterior[name], second.posterior[name])
+        np.testing.assert_allclose(first.posterior[name], baseline.posterior[name], atol=1e-8, rtol=1e-8)
+    assert not np.array_equal(first.posterior.state[0], first.posterior.state[1])
+    assert int(first.sample_stats.cache_refreshes.sum()) > 0
+    shared.update(target.refresh([3.0, 3.0]))
+    exact = model.compile_logp(vars=[model["y"]])
+    times = np.array([0.0, 0.0, 1.0, 2.0])
+    expected_values = np.empty((2, 4))
+    for chain in range(2):
+        for draw in range(4):
+            amplitude = first.posterior.sigma_site.values[chain, draw]
+            covariance = target.prepared.factor @ target.prepared.factor.T + np.diag(target.prepared.diagonal_variance)
+            for site, tau in enumerate([5.0, 7.0]):
+                rows = np.flatnonzero(target.prepared.site_index == site)
+                covariance[np.ix_(rows, rows)] += amplitude[site] ** 2 * np.exp(
+                    -np.abs(times[rows, None] - times[None, rows]) / tau
+                )
+            expected = multivariate_normal.logpdf(
+                target.observations, mean=first.posterior.modelled_mean.values[chain, draw], cov=covariance,
+            )
+            expected_values[chain, draw] = expected
+            point["state"] = first.posterior.state.values[chain, draw]
+            point["sigma_site_log__"] = np.log(amplitude)
+            np.testing.assert_allclose(exact(point), expected, atol=1e-9)
+    assert first.log_likelihood.y.dims == ("chain", "draw")
+    np.testing.assert_allclose(first.log_likelihood.y, expected_values, atol=1e-9)
+    del first["log_likelihood"]
+    pm.compute_log_likelihood(first, model=model, progressbar=False)
+    np.testing.assert_allclose(first.log_likelihood.y, expected_values, atol=1e-9)
 
 
 def test_sigma_step_reuses_passed_initial_cache() -> None:
