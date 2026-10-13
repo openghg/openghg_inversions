@@ -506,6 +506,46 @@ def test_prepared_inputs_datatree_roundtrips_nullable_metadata() -> None:
     assert restored.averaging_period == ("1h", None)
 
 
+@pytest.mark.parametrize("suffix", [".nc", ".zarr"])
+def test_prepared_inputs_disk_roundtrip_preserves_nullable_site_strings(tmp_path: Path, suffix: str) -> None:
+    """Missing site strings remain distinct from deliberately empty strings."""
+    original = _prepared_inputs()
+    sites = ("TAC", "MHD", "BSD")
+    inv_inputs = (
+        original.inv_inputs.reset_index("nmeasure")
+        .isel(nmeasure=[0, 1, 0])
+        .assign_coords(site=("nmeasure", list(sites)))
+        .set_index(nmeasure=["site", "time"])
+    )
+    metadata = _site_metadata(sites, ("1h", None, "2h")).assign(
+        instrument=("site", np.asarray(["picarro", None, ""], dtype=object)),
+        latitude=("site", [50.0, np.nan, 51.0]),
+    ).assign_coords(
+        network=("site", np.asarray(["", "null", None], dtype=object)),
+        contact=xr.Variable((), np.asarray(None, dtype=object)),
+    )
+    metadata.instrument.attrs["description"] = "instrument name"
+    prepared = RhimePreparedInputs(inv_inputs, original.basis_functions, metadata)
+    before = prepared.site_metadata.copy(deep=True)
+    path = tmp_path / f"nullable-metadata{suffix}"
+
+    prepared.save(path)
+    restored = RhimePreparedInputs.load(path)
+
+    xr.testing.assert_identical(restored.site_metadata, before)
+    xr.testing.assert_identical(prepared.site_metadata, before)
+    assert restored.site_metadata.instrument.values.tolist() == ["picarro", None, ""]
+
+
+@pytest.mark.parametrize("encoding, value", [("future", '"x"'), ("json_v1", "false"), ("json_v1", "invalid")])
+def test_nullable_site_strings_reject_invalid_encoding(encoding: str, value: str) -> None:
+    metadata = _site_metadata(("TAC",), ("1h",)).assign(instrument=("site", [value]))
+    metadata.instrument.attrs[prepared_contract._SITE_STRING_ENCODING] = encoding
+
+    with pytest.raises(ValueError, match="site metadata"):
+        prepared_contract._site_metadata_from_serialisation(metadata)
+
+
 def test_prepared_inputs_roundtrip_observation_aligned_release_metadata() -> None:
     """Release locations remain observation arrays rather than site scalars."""
     original = _prepared_inputs()

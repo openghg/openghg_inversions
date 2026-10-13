@@ -168,6 +168,40 @@ def test_default_configuration_round_trips_through_dataset() -> None:
     xr.testing.assert_allclose(restored.apply(rhs), covariance.apply(rhs))
 
 
+@pytest.mark.parametrize("storage", ["netcdf", "zarr"])
+def test_class_label_metadata_roundtrips_through_storage(tmp_path, storage):
+    latitude, longitude = _coordinates()
+    labels = xr.DataArray(
+        [[1, 2], [1, 2], [1, 2]],
+        dims=("lat", "lon"),
+        coords={"lat": latitude, "lon": longitude},
+        name="surface_class",
+        attrs={
+            "flag_values": np.array([1, 2]),
+            "enabled": np.bool_(False),
+            "details": {"reviewed": True, "version": np.int64(2)},
+        },
+    )
+    before = labels.copy(deep=True)
+    covariance = SeparableExponentialCovariance(latitude, longitude, sigma=2.5, class_labels=labels)
+    encoded = covariance.to_dataset()
+    assert encoded.class_label_encoded.attrs == {}
+    path = tmp_path / ("covariance.nc" if storage == "netcdf" else "covariance.zarr")
+    if storage == "netcdf":
+        encoded.to_netcdf(path)
+        opened = xr.open_dataset(path)
+    else:
+        encoded.to_zarr(path)
+        opened = xr.open_zarr(path)
+    with opened as saved:
+        restored = SeparableExponentialCovariance.from_dataset(saved.load())
+    expected = labels.assign_attrs(flag_values=[1, 2], enabled=False)
+    xr.testing.assert_identical(restored.class_labels, expected)
+    assert restored.class_labels.attrs["enabled"] is False
+    xr.testing.assert_identical(labels, before)
+    xr.testing.assert_identical(covariance.class_labels, before)
+
+
 @pytest.mark.parametrize(
     ("bad_rhs", "message"),
     [

@@ -4,6 +4,7 @@ from dataclasses import replace
 import json
 
 import numpy as np
+import pandas as pd
 import pytest
 import xarray as xr
 
@@ -14,10 +15,13 @@ from openghg_inversions.rhime.co2.co2_affine_output import (
 from openghg_inversions.rhime.co2.co2_outputs import (
     _affine_products,
     _basic_product,
+    make_co2_rhime_outputs,
+    make_co2_rhime_result,
     reconstruct_co2_concentrations,
     validate_co2_outputs,
 )
-from openghg_inversions.rhime.specs import RhimeOutputSpec
+from openghg_inversions.rhime.specs import RhimeModelSpec, RhimeOutputSpec, RhimeRunSpec
+from openghg_inversions.serialization import restore_serialisation_multiindexes
 from test_co2_affine_output import _prepared
 
 
@@ -103,6 +107,32 @@ def test_missing_declared_component_fails_instead_of_silently_inventing_zero():
     trace["posterior"] = trace.posterior.to_dataset().drop_vars("bc_custom")
     with pytest.raises(ValueError, match="boundary_concentration"):
         reconstruct_co2_concentrations(trace, prepared)
+
+
+def test_direct_basic_output_roundtrips_observation_multiindex_without_mutating_inputs(tmp_path):
+    prepared, trace = _components_fixture()
+    inputs_before = prepared.inv_inputs.copy(deep=True)
+    trace_before = trace.copy(deep=True)
+    run_spec = RhimeRunSpec(
+        start_date="2020-01-01",
+        end_date="2020-02-01",
+        sites=("MHD",),
+        averaging_period=("1h",),
+        model=RhimeModelSpec(species="co2", domain="EUROPE", sectors=()),
+        output=RhimeOutputSpec(
+            output_format="basic", output_path=str(tmp_path), save_inversion_output=False
+        ),
+    )
+    result = make_co2_rhime_result(prepared=prepared, run_spec=run_spec, sampler=None, idata=trace)
+
+    make_co2_rhime_outputs(result=result, prepared=prepared)
+
+    with xr.open_dataset(result.output_metadata["basic_path"]) as saved:
+        restored = restore_serialisation_multiindexes(saved.load(), strict=True)
+    xr.testing.assert_identical(restored, result.outputs["basic"])
+    assert isinstance(result.outputs["basic"].indexes["nmeasure"], pd.MultiIndex)
+    xr.testing.assert_identical(prepared.inv_inputs, inputs_before)
+    xr.testing.assert_identical(trace, trace_before)
 
 
 def test_unsupported_requests_are_rejected_before_destinations_exist(tmp_path):

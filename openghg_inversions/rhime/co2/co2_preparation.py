@@ -23,6 +23,7 @@ from openghg.util import (  # pyright: ignore[reportPrivateImportUsage, reportAt
     cf_ureg,
 )
 
+from openghg_inversions._serialization_codecs import _copy_json_mapping, _decode_json_mapping
 from openghg_inversions.array_ops import require_unique_index, same_index, validate_covariance_coordinates
 from openghg_inversions.coherent_reduction import CoherentGaussianReduction
 from openghg_inversions.inversion_data import RhimePreparedInputs
@@ -52,14 +53,7 @@ _AGGREGATION_REPRESENTATION_DIMS = {"agg_rank", "nmeasure_cov"}
 
 def _json_mapping(value: Mapping[str, Any]) -> Mapping[str, Any]:
     """Return an immutable JSON-safe copy."""
-    try:
-        encoded = json.dumps(dict(value), sort_keys=True, allow_nan=False)
-    except (TypeError, ValueError) as exc:
-        raise ValueError("CO2 preparation provenance must be JSON-serializable.") from exc
-    decoded = json.loads(encoded)
-    if not isinstance(decoded, dict):  # Mapping always encodes as an object; keep the boundary explicit.
-        raise ValueError("CO2 preparation provenance must encode as a JSON object.")
-    return MappingProxyType(decoded)
+    return MappingProxyType(_copy_json_mapping(value, "CO2 preparation provenance", sort_keys=True))
 
 
 _require_axis = require_unique_index
@@ -429,10 +423,9 @@ class Co2PreparedInputs:
         mode = tree.attrs.get("aggregation_error_mode")
         if mode not in ("dense", "low_rank"):
             raise ValueError(f"Invalid serialized CO2 aggregation_error_mode {mode!r}.")
-        try:
-            provenance = json.loads(str(tree.attrs.get("provenance_json", "{}")))
-        except json.JSONDecodeError as exc:
-            raise ValueError("Serialized CO2 provenance is not valid JSON.") from exc
+        provenance = _decode_json_mapping(
+            tree.attrs.get("provenance_json", "{}"), "Serialized CO2 provenance"
+        )
         prepared = cls(
             RhimePreparedInputs.from_datatree(cast(xr.DataTree, tree["rhime_inputs"])),
             aggregation_error_mode=cast(Co2AggregationErrorMode, mode),

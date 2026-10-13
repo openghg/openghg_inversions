@@ -7655,6 +7655,25 @@ def test_default_model_inversion_output_save_load_roundtrip(tmp_path: Path) -> N
     )
 
 
+def test_legacy_model_error_metadata_uses_writer_likelihood() -> None:
+    """The legacy adapter reads the nested metadata emitted by modern RHIME."""
+    from openghg_inversions.postprocessing.legacy_outputs import _legacy_hbmcmc_attrs
+
+    model_spec, _, run_spec = _minimal_output_specs()
+    prior = {"pdf": "uniform", "lower": 0.1, "upper": 1.0}
+    model_spec = replace(model_spec, likelihood=replace(model_spec.likelihood, sigma_prior=prior))
+    prepared = RhimePreparedInputs(
+        inv_inputs=_minimal_output_inv_inputs(),
+        basis_functions=_fake_basis_functions(),
+        site_metadata=_prepared_site_metadata(),
+    )
+    result = _result_for_outputs(run_spec, _minimal_output_idata(), model_spec=model_spec)
+    rhime_outputs.make_standard_rhime_outputs(result=result, prepared=prepared)
+    attrs = _legacy_hbmcmc_attrs(result.inv_out)
+    assert attrs["Error for each site"] == "False"
+    assert attrs["Model error Prior"] == "pdf,uniform,lower,0.1,upper,1.0"
+
+
 def test_modern_inversion_output_save_load_roundtrip(tmp_path: Path) -> None:
     """Modern output preserves January annual flux metadata for a June run."""
     model_spec, output_spec, _ = _minimal_output_specs()
