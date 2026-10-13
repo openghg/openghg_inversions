@@ -4,7 +4,9 @@
 
 ### Requirement: Compatible public adapters and scientific choices
 
-Except for the resource-I/O migration removing `prepare_basis(output_path=...)`,
+Except for the resource-I/O migrations removing `prepare_basis(output_path=...)`
+and `country_directory` in 0.8 and replacing scientific BC case/directory inputs
+with resolved basis data,
 the removed `prepare_rhime_inputs` convenience function, obsolete
 modern merged-cache options, former stage adapter, `resolve_rhime_config`,
 transitional old-location imports and revised INI reader contract specified below, supported
@@ -17,7 +19,7 @@ SHALL remain independent of full configuration. Shared choices such as BC use
 and flux-source routing SHALL retain consistent existing meanings across data
 preparation and model construction. Current INI section interpretation, path
 conventions, file vocabulary, scientific calculations and sampling defaults
-SHALL remain unchanged except for the path conventions specified by
+SHALL remain unchanged except for the path and legacy-resource migrations specified by
 [rhime-resource-io](https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/rhime-resource-io/spec.md).
 
 Internal orchestration/setup records and their constructor/helper return shapes
@@ -52,3 +54,49 @@ and custom-likelihood conflict precedence SHALL remain unchanged.
 - **THEN** it rejects the option before acquisition or scientific execution
 - **AND** omitted and false options remain accepted with equivalent resolved
   configuration containing no tracer field
+
+### Requirement: Basis preparation receives explicit scientific inputs
+
+Modern preparation SHALL accept an exact retained `basis_path` or resolved
+labelled `basis_partition`, and resolved `landsea_classes` and `outer_regions`.
+A labelled partition SHALL remain a valid scientific representation,
+independently of historical artifact policy. Scientific preparation and numerical
+kernels SHALL NOT depend on legacy discovery or naming policy.
+
+`RhimeConfig.from_params` SHALL remain data-free. Supported deprecated resource
+selectors SHALL be translated once at entry compatibility boundaries before
+canonical configuration is handed to scientific execution; resolved requests
+SHALL NOT retain historical case/directory discovery fields. The removed
+`country_directory` option SHALL be rejected rather than translated. Resource
+loading, exact paths, packaged defaults, BC inputs and optional exports follow
+[rhime-resource-io](https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/rhime-resource-io/spec.md).
+
+#### Scenario: Resolved basis scientific inputs
+
+- **WHEN** preparation receives a selected operator path or labelled partition and its applicable resolved support maps
+- **THEN** it consumes those explicit scientific inputs without historical filename discovery
+- **AND** a labelled in-memory partition remains valid independently of artifact format
+
+## ADDED Requirements
+
+### Requirement: Declared filesystem types identify path conversion
+
+Canonical configuration SHALL represent filesystem selections using `Path`
+types, including optional paths and explicit collections where supported.
+Frontends SHALL accept external path strings and convert the declared path fields
+with the owning frontend's base directory. Absolute paths SHALL keep their
+selected destination. File-origin values and explicit invocation overrides SHALL
+retain their distinct bases during conversion. Ordinary strings such as domain
+names and scientific selectors SHALL NOT be interpreted as paths.
+
+Path-field identification SHALL use type annotations through a small
+standard-library converter, without a second path-name registry or a new
+configuration framework dependency. Historical selection translation SHALL
+precede canonical conversion; packaged scientific defaults remain runner-owned.
+
+#### Scenario: Typed paths retain their frontend origins
+
+- **WHEN** a saved-file request and invocation overrides supply strings for declared filesystem fields
+- **THEN** conversion produces absolute `Path` values using each value's file or invocation base
+- **AND** non-path strings retain their scientific meaning without path conversion
+- **AND** configuration construction performs no scientific resource loading
