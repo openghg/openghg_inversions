@@ -17,6 +17,7 @@ import pymc as pm
 import pytest
 import xarray as xr
 from dask.callbacks import Callback
+from pymc.util import get_state_from_generator
 
 from examples.rhime_customisation import likelihoods as example_likelihoods
 import openghg_inversions.inversion_data.acquisition as acquisition_module
@@ -4638,7 +4639,7 @@ def test_rhime_sampler_runs_pymc_sampling_and_predictive_steps(
         seen["sample_kwargs"] = kwargs
         return raw_trace
 
-    def fake_prior_predictive(draws: int, model: pm.Model) -> xr.DataTree:
+    def fake_prior_predictive(draws: int, model: pm.Model, *, random_seed: Any) -> xr.DataTree:
         seen["prior_predictive"] = {"draws": draws, "model": model}
         return make_trace(
             prior=xr.Dataset(
@@ -4670,7 +4671,8 @@ def test_rhime_sampler_runs_pymc_sampling_and_predictive_steps(
         "openghg_inversions.inference.sampling.pm.sample_posterior_predictive",
         fake_posterior_predictive,
     )
-    model = pm.Model()
+    with pm.Model() as model:
+        pm.Normal("y", observed=0.0)
     sampler = RhimeSampler(
         draws=7,
         burn=1,
@@ -4714,8 +4716,10 @@ def test_rhime_sampler_runs_pymc_sampling_and_predictive_steps(
 
 
 @pytest.mark.rhime_contract
+@pytest.mark.parametrize("prior", [False, 0])
 def test_rhime_sampler_preserves_disabled_log_likelihood(
     monkeypatch: pytest.MonkeyPatch,
+    prior: bool | int,
 ) -> None:
     """The public sampling seam preserves an explicit log-likelihood policy."""
     trace = make_trace(
@@ -4739,7 +4743,7 @@ def test_rhime_sampler_preserves_disabled_log_likelihood(
             "compute_convergence_checks": False,
             "idata_kwargs": {"log_likelihood": False},
         },
-        sample_prior_predictive=False,
+        sample_prior_predictive=prior,
         sample_posterior_predictive=False,
     )
 
@@ -4774,7 +4778,7 @@ def test_rhime_sampler_resets_retained_draws_before_extending_predictive_groups(
         """Return the unsliced sampling trace."""
         return raw_trace
 
-    def fake_prior_predictive(draws: int, model: pm.Model) -> xr.DataTree:
+    def fake_prior_predictive(draws: int, model: pm.Model, *, random_seed: Any) -> xr.DataTree:
         """Build prior groups with zero-based draw labels."""
         predictive_draws["prior"] = np.arange(draws)
         return make_trace(
@@ -4811,7 +4815,9 @@ def test_rhime_sampler_resets_retained_draws_before_extending_predictive_groups(
     )
     sampler = RhimeSampler(draws=2000, burn=1000, tune=0, chains=1)
 
-    result = sampler.sample(pm.Model())
+    with pm.Model() as model:
+        pm.Normal("y", observed=0.0)
+    result = sampler.sample(model)
     inference_data = cast(Any, result)
     trace_dataset = inversion_output_module.convert_idata_to_dataset(result)
 
@@ -4828,39 +4834,93 @@ def test_rhime_sampler_resets_retained_draws_before_extending_predictive_groups(
     np.testing.assert_array_equal(trace_dataset.draw.values, expected_draws)
     assert not trace_dataset.to_array().isnull().any()
     assert inference_data.attrs["burn"] == 1000
-    for group_name in ("posterior", "sample_stats", "log_likelihood"):
+    for group_name in ("posterior", "sample_stats", "log_likelihood", "prior", "prior_predictive", "posterior_predictive"):
         assert inference_data[group_name].attrs["burn"] == 1000
 
 
+@pytest.mark.parametrize(
+    "selection, observed_name, roles",
+    [
+        (("y",), "custom_y", {"concentration": "custom_y"}),
+        (("concentration",), "custom_y", {"concentration": "custom_y"}),
+        (("y", "concentration"), "custom_y", {"concentration": "custom_y"}),
+        (("y",), "y", None),
+        (("concentration",), "y", {"concentration": "y"}),
+        (("y", "concentration"), "y", {"concentration": "y"}),
+        (("y",), "concentration", {"concentration": "concentration"}),
+    ],
+)
 def test_rhime_sampler_resolves_predictive_name_from_custom_model_roles(
     monkeypatch: pytest.MonkeyPatch,
+    selection: tuple[str, ...],
+    observed_name: str,
+    roles: dict[str, str] | None,
 ) -> None:
     """The historical default ``y`` follows the explicit custom concentration role."""
     seen: dict[str, Any] = {}
 
     trace = make_trace(posterior=xr.Dataset())
+    monkeypatch.setattr(inference_sampling.pm, "sample", lambda **kwargs: trace)
 
     def fake_posterior_predictive(trace: Any, **kwargs: Any) -> xr.DataTree:
         seen.update(kwargs)
-        return make_trace(posterior_predictive=xr.Dataset({"custom_y": ("draw", [1.0])}))
+        return make_trace(posterior_predictive=xr.Dataset({observed_name: ("draw", [1.0])}))
 
     monkeypatch.setattr(
         "openghg_inversions.inference.sampling.pm.sample_posterior_predictive",
         fake_posterior_predictive,
     )
     with pm.Model() as model:
-        pm.Normal("custom_y", observed=np.array([1.0]))
+        pm.Normal(observed_name, observed=np.array([1.0]))
 
-    sampler = RhimeSampler(sample_prior_predictive=False)
-    sampler._extend_predictive(
-        trace,
-        model=model,
-        variable_roles={"concentration": "custom_y"},
+    sampler = RhimeSampler(sample_prior_predictive=False, sample_posterior_predictive=selection)
+    result = sampler.sample(
+        model,
+        variable_roles=roles,
     )
 
-    assert seen["var_names"] == ["custom_y"]
+    assert seen["var_names"] == [observed_name]
     assert seen["model"] is model
-    assert "posterior_predictive" in trace.children
+    assert "posterior_predictive" in result.children
+
+
+@pytest.mark.parametrize("names_in_kwargs", [False, True])
+@pytest.mark.parametrize("prediction_has_y", [False, True])
+def test_rhime_sampler_uses_concrete_names_from_alternate_prediction_model(
+    monkeypatch: pytest.MonkeyPatch,
+    names_in_kwargs: bool,
+    prediction_has_y: bool,
+) -> None:
+    """Concrete prediction names take precedence over roles from the sampled model."""
+    seen: dict[str, Any] = {}
+    trace = make_trace(posterior=xr.Dataset())
+    monkeypatch.setattr(inference_sampling.pm, "sample", lambda **kwargs: trace)
+
+    def fake_predictive(trace: xr.DataTree, **kwargs: Any) -> xr.DataTree:
+        seen.update(kwargs)
+        return make_trace(posterior_predictive=xr.Dataset())
+
+    monkeypatch.setattr(inference_sampling.pm, "sample_posterior_predictive", fake_predictive)
+    with pm.Model() as model:
+        pm.Normal("y", observed=0.0)
+    with pm.Model() as prediction_model:
+        pm.Normal("concentration", observed=0.0)
+        if prediction_has_y:
+            pm.Normal("y", observed=0.0)
+    predictive_kwargs: dict[str, Any] = {"model": prediction_model}
+    if names_in_kwargs:
+        predictive_kwargs["var_names"] = ["concentration"]
+    sampler = RhimeSampler(
+        sample_prior_predictive=False,
+        sample_posterior_predictive=True if names_in_kwargs else ("concentration",),
+        posterior_predictive_kwargs=predictive_kwargs,
+    )
+
+    sampler.sample(model, variable_roles={"concentration": "y"})
+
+    assert seen["model"] is prediction_model
+    assert seen["var_names"] == ["concentration"]
+    assert sampler.posterior_predictive_kwargs == predictive_kwargs
 
 
 def test_rhime_sampler_restores_registered_coords_after_predictive_steps(
@@ -4879,7 +4939,7 @@ def test_rhime_sampler_restores_registered_coords_after_predictive_steps(
     def fake_sample(**kwargs: Any) -> xr.DataTree:
         return sampled
 
-    def fake_prior_predictive(draws: int, model: pm.Model) -> xr.DataTree:
+    def fake_prior_predictive(draws: int, model: pm.Model, *, random_seed: Any) -> xr.DataTree:
         return make_trace(prior=xr.Dataset({"x": ("draw", np.ones(draws))}))
 
     def fake_posterior_predictive(trace: Any, **kwargs: Any) -> xr.DataTree:
@@ -4900,7 +4960,8 @@ def test_rhime_sampler_restores_registered_coords_after_predictive_steps(
     )
     monkeypatch.setattr("openghg_inversions.inference.sampling.restore_inferencedata_coords", fake_restore)
 
-    model = pm.Model()
+    with pm.Model() as model:
+        pm.Normal("y", observed=0.0)
     registry = models.CoordRegistry(
         original_coords={"nmeasure": pd.MultiIndex.from_arrays([["TAC"], pd.to_datetime(["2019-01-01"])])}
     )
@@ -4910,6 +4971,164 @@ def test_rhime_sampler_restores_registered_coords_after_predictive_steps(
 
     assert result is calls[0][0]
     assert calls == [(result, registry, ["posterior", "prior", "posterior_predictive"])]
+
+
+@pytest.mark.parametrize("prior", [-1, 1.5, "5", None])
+def test_rhime_sampler_rejects_invalid_prior_counts_before_sampling(
+    monkeypatch: pytest.MonkeyPatch,
+    prior: Any,
+) -> None:
+    def forbidden_sample(**kwargs: Any) -> None:
+        raise AssertionError("An invalid prior count must fail before MCMC")
+
+    monkeypatch.setattr(inference_sampling.pm, "sample", forbidden_sample)
+    sampler = RhimeSampler(sample_prior_predictive=prior, sample_posterior_predictive=False)
+    with pytest.raises(ValueError, match="sample_prior_predictive.*non-negative integer"):
+        sampler.sample(pm.Model())
+
+
+@pytest.mark.parametrize(
+    "selection, predictive_kwargs, roles",
+    [
+        (("missing",), {}, None),
+        (("y",), {"var_names": ["missing"]}, None),
+        (("concentration",), {}, {"concentration": "missing"}),
+        (("concentration",), {}, None),
+        (True, {"var_names": ["missing"]}, {}),
+    ],
+)
+def test_rhime_sampler_rejects_missing_effective_names_before_sampling(
+    monkeypatch: pytest.MonkeyPatch,
+    selection: Any,
+    predictive_kwargs: dict[str, Any],
+    roles: dict[str, str] | None,
+) -> None:
+    def forbidden_sample(**kwargs: Any) -> None:
+        raise AssertionError("An invalid prediction request must fail before MCMC")
+
+    monkeypatch.setattr(inference_sampling.pm, "sample", forbidden_sample)
+    with pm.Model() as model:
+        pm.Normal("y", observed=0.0)
+    sampler = RhimeSampler(
+        sample_prior_predictive=False,
+        sample_posterior_predictive=selection,
+        posterior_predictive_kwargs=predictive_kwargs,
+    )
+    with pytest.raises(ValueError, match="posterior-predictive variables are absent"):
+        sampler.sample(model, variable_roles=roles)
+
+
+@pytest.mark.parametrize(
+    "names, expected", [(["concentration", "custom_y", "mu"], ["custom_y", "mu"]), ("concentration", ["custom_y"])],
+)
+def test_rhime_sampler_predictive_kwargs_override_names_before_role_resolution(
+    monkeypatch: pytest.MonkeyPatch,
+    names: str | list[str],
+    expected: list[str],
+) -> None:
+    seen: dict[str, Any] = {}
+    trace = make_trace(posterior=xr.Dataset())
+    monkeypatch.setattr(inference_sampling.pm, "sample", lambda **kwargs: trace)
+
+    def fake_predictive(trace: xr.DataTree, **kwargs: Any) -> xr.DataTree:
+        seen.update(kwargs)
+        return make_trace(posterior_predictive=xr.Dataset())
+
+    monkeypatch.setattr(inference_sampling.pm, "sample_posterior_predictive", fake_predictive)
+    with pm.Model() as model:
+        mu = pm.Normal("mu")
+        pm.Normal("custom_y", mu=mu, observed=0.0)
+    sampler = RhimeSampler(
+        sample_prior_predictive=False,
+        sample_posterior_predictive=("missing",),
+        posterior_predictive_kwargs={"var_names": names},
+    )
+    sampler.sample(model, variable_roles={"concentration": "custom_y"})
+    assert seen["var_names"] == expected
+    assert sampler.posterior_predictive_kwargs == {"var_names": names}
+
+
+@pytest.mark.parametrize("seed", [769, [769, 770], np.random.default_rng(769), np.random.PCG64(769)])
+def test_rhime_sampler_seeds_native_predictions_without_consuming_input(
+    monkeypatch: pytest.MonkeyPatch,
+    seed: Any,
+) -> None:
+    """Prediction streams repeat independently of prior selection and MCMC RNG work."""
+    trace = make_trace(
+        posterior=xr.Dataset(
+            {"mu": (("chain", "draw"), [[-2.0, -1.0, 0.0], [1.0, 2.0, 3.0]])},
+            coords={"chain": [0, 1], "draw": [0, 1, 2]},
+        )
+    )
+    is_rng = isinstance(seed, np.random.Generator | np.random.BitGenerator)
+    initial_state = repr(get_state_from_generator(seed)) if is_rng else repr(seed)
+
+    def fake_sample(**kwargs: Any) -> xr.DataTree:
+        if isinstance(seed, list):
+            assert kwargs["random_seed"] == seed
+            assert kwargs["random_seed"] is not seed
+        else:
+            assert kwargs["random_seed"] is seed
+        # Match PyMC's copied RNG ownership while consuming its MCMC stream.
+        inference_sampling.get_random_generator(kwargs["random_seed"]).normal(size=100)
+        return trace
+
+    monkeypatch.setattr(inference_sampling.pm, "sample", fake_sample)
+    with pm.Model() as model:
+        mu = pm.Normal("mu")
+        pm.Normal("y", mu=mu, observed=np.zeros(2))
+    results = [
+        RhimeSampler(
+            draws=3, burn=1, chains=2, sample_kwargs={"random_seed": seed},
+            sample_prior_predictive=prior,
+            posterior_predictive_kwargs={"progressbar": False},
+        ).sample(model)
+        for prior in (3, False, 3)
+    ]
+    for result in results[1:]:
+        xr.testing.assert_equal(
+            result.posterior_predictive.to_dataset(), results[0].posterior_predictive.to_dataset(),
+        )
+    xr.testing.assert_equal(results[0].prior.to_dataset(), results[2].prior.to_dataset())
+    xr.testing.assert_equal(
+        results[0].prior_predictive.to_dataset(), results[2].prior_predictive.to_dataset(),
+    )
+    assert results[0].prior_predictive["y"].shape == (1, 3, 2)
+    assert results[0].posterior_predictive["y"].shape == (2, 2, 2)
+    final_state = repr(get_state_from_generator(seed)) if is_rng else repr(seed)
+    assert final_state == initial_state
+
+
+@pytest.mark.parametrize("override", [None, 123, [123, 456], np.random.default_rng(123), np.random.PCG64(123)])
+def test_rhime_sampler_preserves_explicit_predictive_seed_precedence(
+    monkeypatch: pytest.MonkeyPatch,
+    override: Any,
+) -> None:
+    seeds: list[Any] = []
+    trace = make_trace(posterior=xr.Dataset())
+    monkeypatch.setattr(inference_sampling.pm, "sample", lambda **kwargs: trace)
+
+    def fake_predictive(trace: xr.DataTree, *, random_seed: Any, **kwargs: Any) -> xr.DataTree:
+        seeds.append(random_seed)
+        return make_trace(posterior_predictive=xr.Dataset())
+
+    monkeypatch.setattr(inference_sampling.pm, "sample_posterior_predictive", fake_predictive)
+    with pm.Model() as model:
+        pm.Normal("y", observed=0.0)
+    is_rng = isinstance(override, np.random.Generator | np.random.BitGenerator)
+    before = repr(get_state_from_generator(override)) if is_rng else repr(override)
+    for root_seed in (769, 770):
+        RhimeSampler(
+            sample_kwargs={"random_seed": root_seed}, sample_prior_predictive=False,
+            posterior_predictive_kwargs={"random_seed": override},
+        ).sample(model)
+    if override is None or isinstance(override, int):
+        assert seeds == [override, override]
+    else:
+        assert all(isinstance(seed, np.random.Generator) and seed is not override for seed in seeds)
+        np.testing.assert_array_equal(seeds[0].normal(size=10), seeds[1].normal(size=10))
+    after = repr(get_state_from_generator(override)) if is_rng else repr(override)
+    assert after == before
 
 
 def test_params_from_config_maps_legacy_emissions_name(tmp_path: Path) -> None:

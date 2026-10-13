@@ -431,5 +431,7 @@ def _annotate_linked_fixed_ou_trace(
                 rhime_likelihood_scope="joint_observation_vector",
                 rhime_normalized_log_likelihood=1,
             )
+        if group_name in {"prior_predictive", "posterior_predictive"} and "y" in group:
+            group.y.attrs["rhime_predictive_scope"] = "joint_observation_vector"
         trace[group_name] = group
     return trace

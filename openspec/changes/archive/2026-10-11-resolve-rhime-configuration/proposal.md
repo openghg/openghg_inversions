@@ -1,5 +1,15 @@
 # Proposal
 
+> **Closeout reconciliation (11 October 2026):** The historical narrative and
+> checked tasks below describe the delivered #824 configuration slice. The
+> capability spec has been reconciled with merged #825/#826/#830 at `80b0ebf0`,
+> including removal of the preparation convenience wrapper and modern merged-cache
+> route. #832–#841 remain pending; their amended contracts must be carried by
+> active changes when those PRs land, rather than editing this archived record.
+> The [reusable-handoff change](../../replace-recipe-workflow-with-reusable-handoffs/proposal.md)
+> owns proposed grouped configuration and new sampler/replay behavior; its tasks
+> remain unchecked. This archive does not certify those follow-on changes.
+
 ## Why
 
 [Issue #804](https://github.com/openghg/openghg_inversions/issues/804) needs an
@@ -31,20 +41,15 @@ meant to simplify.
   observations. Retain the old public acquisition name as a deprecated wrapper
   with the same signature and return. Preserve `params_from_config` as the
   dictionary-returning INI compatibility adapter.
-- Acquire in-memory data with `RhimeMergedData.from_options` or reuse compatible
-  supplied data. Modern merged-data cache loading/saving and `prepare_rhime_inputs`
-  were removed in #826; acquisition replay is deferred to #829. Historical
-  six-tuple retrieval and codecs remain isolated under `hbmcmc.legacy_data`.
+- Following the approved #815 split, use distinct `RhimeMergedData.from_options`
+  and `.load` factories. Recipes reuse supplied data directly; explicit cache
+  failures raise without fresh acquisition (#806).
 - Add shallow `RhimeConfig.select(*names)` for explicitly selected keyword
   forwarding. Keep scientific components directly callable and remove their
   former positional `data_args` adapters.
-- Prepare observation errors before filtering or aggregation, including both
-  nested domains. Preserve supplied errors, borrowed datasets and footprint
-  metadata. `averaging_error` is preparation policy; `averaging_period` remains
-  an acquisition/resampling selector.
-- Call basis construction directly and combine sensitivity/filter forwarding
-  wrappers with their implementations. Keep shared indexing utilities and
-  normalize minimum-error shorthand at its assembly boundary.
+- Deprecate the acquisition-and-preparation `prepare_rhime_inputs` convenience
+  API while retaining its signature and return through the canonical named
+  stages, including their footprint provenance.
 - Preserve other public scientific input/return contracts and ownership through small
   adapters. Remove requirements to reconstruct original spellings or sparse
   defaults solely to preserve historical staged hashes.

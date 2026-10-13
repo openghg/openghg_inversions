@@ -29,8 +29,8 @@ subsequent OPE-164 implementation:
 
 Issue descriptions contain historical prerequisites. Check current issue state
 and code before reopening completed foundations. The approved
-[OPE-169 design](../../openspec/changes/persist-co2-affine-output-reconstruction/design.md)
-and [reconstruction API design](../../openspec/changes/unify-retained-state-reconstruction/design.md)
+[OPE-169 design](../../openspec/changes/archive/2026-10-11-persist-co2-affine-output-reconstruction/design.md)
+and [reconstruction API design](../../openspec/changes/archive/2026-10-11-unify-retained-state-reconstruction/design.md)
 remain authoritative; this plan does not revise them.
 
 The implementation must follow the existing

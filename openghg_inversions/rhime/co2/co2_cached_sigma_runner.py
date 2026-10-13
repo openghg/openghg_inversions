@@ -7,13 +7,13 @@ and coordinates the compound sampler for site amplitudes and model states.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 import copy
 import json
 from typing import Any, Literal, cast
 
-import numpy as np
 import pymc as pm
+from pymc.initial_point import convert_str_to_rv_dict, make_initial_point_fn  # type: ignore[import-untyped]
 import xarray as xr
 
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
@@ -113,9 +113,39 @@ def _sampler_for_cached_graph(
             "The cached-sigma CO2 recipe constructs its required sigma-then-state "
             "CompoundStep; do not pass sample_kwargs['step']."
         )
-    with cached_model.model:
+    requested = sampler.sample_posterior_predictive
+    if not isinstance(requested, bool):
+        unsupported_names = set(requested) - {"y", "concentration"}
+        if unsupported_names:
+            raise ValueError(
+                "Cached-sigma predictive variables must be y or concentration; "
+                f"got {sorted(unsupported_names)!r}."
+            )
+    unsupported = set(sampler.posterior_predictive_kwargs or {}) - {"random_seed"}
+    if unsupported:
+        raise ValueError(
+            "Cached-sigma prediction supports only random_seed; "
+            f"got {sorted(unsupported)!r}."
+        )
+    model = cached_model.model
+    defaults = convert_str_to_rv_dict(model, cached_model.initial_values)
+
+    def merge_initial_values(overrides: Mapping[str, Any] | None) -> dict[Any, Any]:
+        # Normalize separately so transformed caller keys override physical
+        # recipe defaults for the same RV, regardless of mapping order.
+        return {**defaults, **convert_str_to_rv_dict(model, overrides or {})}
+
+    overrides = sample_kwargs.get("initvals")
+    if isinstance(overrides, Sequence) and not isinstance(overrides, (str, bytes)):
+        sample_kwargs["initvals"] = [merge_initial_values(item) for item in overrides]
+    else:
+        sample_kwargs["initvals"] = merge_initial_values(cast(Mapping[str, Any] | None, overrides))
+    baseline = make_initial_point_fn(
+        model=model, overrides=defaults, return_transformed=True,
+    )(seed=0)
+    with model:
         sample_kwargs["step"] = make_cached_sigma_compound_step(
-            model=cached_model.model,
+            model=model,
             sigma=cached_model.amplitude,
             states=cached_model.states,
             modelled_mean=cached_model.modelled_mean,
@@ -123,142 +153,15 @@ def _sampler_for_cached_graph(
             shared_cache=cached_model.shared_cache,
             initial_cache=cached_model.initial_cache,
             prior_scale=cached_model.site_amplitude_prior_scale,
-            initial_point=cached_model.model.initial_point(),
+            cached_state_logp=cached_model.cached_state_logp,
+            initial_point=baseline,
             sigma_target_accept=sigma_target_accept,
             state_target_accept=state_target_accept,
         )
     sample_kwargs.setdefault("mp_ctx", "spawn")
-    idata_kwargs = dict(sample_kwargs.get("idata_kwargs", {}))
-    idata_kwargs["log_likelihood"] = False
-    sample_kwargs["idata_kwargs"] = idata_kwargs
     configured = copy.copy(sampler)
     configured.sample_kwargs = sample_kwargs
-    # This graph contains a normalized joint Potential, not an observed PyMC
-    # distribution. Exact joint output is attached below from the same target.
-    configured.sample_posterior_predictive = False
     return configured
-
-
-def _posterior_predictive_requested(sampler: RhimeSampler) -> bool:
-    requested = sampler.sample_posterior_predictive
-    if isinstance(requested, bool):
-        return requested
-    return "y" in requested or "concentration" in requested
-
-
-def _predictive_seed(sampler: RhimeSampler) -> Any:
-    predictive_kwargs = dict(sampler.posterior_predictive_kwargs or {})
-    unsupported = set(predictive_kwargs) - {"random_seed"}
-    if unsupported:
-        raise ValueError(
-            "The cached-sigma CO2 joint predictive supports only "
-            f"`random_seed`; got {sorted(unsupported)!r}."
-        )
-    if "random_seed" in predictive_kwargs:
-        return predictive_kwargs["random_seed"]
-    return dict(sampler.sample_kwargs or {}).get("random_seed")
-
-
-def _observation_coords(observations: xr.DataArray) -> dict[str, Any]:
-    output_dim = str(observations.dims[0])
-    coords: dict[str, Any] = {output_dim: observations.coords[output_dim]}
-    for name, coordinate in observations.coords.items():
-        if name != output_dim and coordinate.dims == (output_dim,):
-            coords[str(name)] = coordinate
-    return coords
-
-
-def _append_joint_outputs(
-    trace: xr.DataTree,
-    *,
-    cached_model: Co2CachedSigmaModel,
-    observations: xr.DataArray,
-    posterior_predictive: bool,
-    random_seed: Any,
-    sample_group: str = "posterior",
-) -> xr.DataTree:
-    """Attach exact joint outputs from prior or posterior state draws."""
-    posterior = trace[sample_group].to_dataset()
-    mean = posterior["modelled_concentration"]
-    sigma = posterior[OU_SITE_AMPLITUDE]
-    output_dim = str(observations.dims[0])
-    sigma_dim = next(dim for dim in sigma.dims if dim not in {"chain", "draw"})
-    mean_values = np.asarray(
-        mean.transpose("chain", "draw", output_dim).values,
-        dtype=np.float64,
-    )
-    sigma_values = np.asarray(
-        sigma.transpose("chain", "draw", sigma_dim).values,
-        dtype=np.float64,
-    )
-    chain_count, draw_count = mean_values.shape[:2]
-    log_likelihood = (
-        np.empty((chain_count, draw_count), dtype=np.float64)
-        if sample_group == "posterior"
-        else None
-    )
-    predictive = (
-        np.empty(
-            (chain_count, draw_count, cached_model.target.n_obs),
-            dtype=np.float64,
-        )
-        if posterior_predictive
-        else None
-    )
-    rng = np.random.default_rng(random_seed)
-    for chain in range(chain_count):
-        for draw in range(draw_count):
-            draw_mean = mean_values[chain, draw]
-            draw_sigma = sigma_values[chain, draw]
-            if log_likelihood is not None:
-                log_likelihood[chain, draw] = cached_model.target.log_likelihood_from_mean(
-                    draw_mean,
-                    draw_sigma,
-                )
-            if predictive is not None:
-                predictive[chain, draw] = cached_model.target.random_from_mean(
-                    draw_mean,
-                    draw_sigma,
-                    rng=rng,
-                )
-
-    sample_coords = {
-        "chain": posterior.coords["chain"],
-        "draw": posterior.coords["draw"],
-    }
-    groups: dict[str, xr.Dataset] = {}
-    if log_likelihood is not None:
-        likelihood_data = xr.DataArray(
-            log_likelihood,
-            dims=("chain", "draw"),
-            coords=sample_coords,
-            name="y",
-            attrs={
-                "rhime_likelihood_scope": "joint_observation_vector",
-                "rhime_normalized_log_likelihood": 1,
-            },
-        )
-        groups["log_likelihood"] = likelihood_data.to_dataset()
-    if predictive is not None:
-        predictive_coords = {**sample_coords, **_observation_coords(observations)}
-        predictive_data = xr.DataArray(
-            predictive,
-            dims=("chain", "draw", output_dim),
-            coords=predictive_coords,
-            name="y",
-            attrs={"rhime_predictive_scope": "joint_observation_vector"},
-        )
-        groups[f"{sample_group}_predictive"] = predictive_data.to_dataset()
-    if "observed_data" not in trace.children:
-        groups["observed_data"] = observations.rename("y").to_dataset()
-    for group, dataset in groups.items():
-        trace[group] = dataset
-    burn = trace.attrs.get("burn")
-    for group in groups:
-        node = trace[group]
-        if burn is not None and "draw" in node.dims:
-            node.attrs["burn"] = burn
-    return trace
 
 
 def _annotate_cached_co2_trace(
@@ -280,11 +183,19 @@ def _annotate_cached_co2_trace(
         likelihood = trace["log_likelihood"]["y"]
         likelihood.attrs["rhime_scientific_roles"] = json.dumps(["joint_log_likelihood"])
         likelihood.attrs.pop("units", None)
-    if "posterior_predictive" in trace.children and "y" in trace["posterior_predictive"]:
-        predictive = trace["posterior_predictive"]["y"]
-        predictive.attrs["rhime_scientific_roles"] = json.dumps(["concentration"])
-        if concentration_units is not None:
-            predictive.attrs["units"] = concentration_units
+        likelihood.attrs.update(
+            rhime_likelihood_scope="joint_observation_vector",
+            rhime_normalized_log_likelihood=1,
+        )
+    for name in ("prior_predictive", "posterior_predictive"):
+        if name in trace.children and "y" in trace[name]:
+            predictive = trace[name]["y"]
+            predictive.attrs.update(
+                rhime_scientific_roles=json.dumps(["concentration"]),
+                rhime_predictive_scope="joint_observation_vector",
+            )
+            if concentration_units is not None:
+                predictive.attrs["units"] = concentration_units
     if "observed_data" in trace.children and "y" in trace["observed_data"]:
         observed = trace["observed_data"]["y"]
         observed.attrs["rhime_scientific_roles"] = json.dumps(["observation"])
@@ -456,9 +367,8 @@ def sample_co2_cached_prior_predictive(
 ) -> xr.DataTree:
     """Draw cached CO2 priors and exact correlated observation replicates.
 
-    The cached Potential is used exclusively for the matched posterior sampler.
-    Prior replicates instead use the numerical fixed-OU target with each prior
-    draw's model mean and site amplitudes, retaining the full covariance.
+    Native PyMC prediction uses each draw's model mean and site amplitudes,
+    retaining the full covariance independently of the mutable sampler cache.
 
     Args:
         cached_model: Graph built from the supplied prepared inputs.
@@ -469,27 +379,11 @@ def sample_co2_cached_prior_predictive(
     Returns:
         Annotated prior, prior-predictive, observed-data, and constant groups.
     """
-    # Potentials do not participate in prior draws. Only request the scientific
-    # state and mean variables; joint observation replicates are added below.
-    names = [variable.name for variable in cached_model.model.free_RVs]
-    names.extend(variable.name for variable in cached_model.model.deterministics)
     with cached_model.model:
-        trace = pm.sample_prior_predictive(
-            draws=draws,
-            random_seed=random_seed,
-            var_names=names,
-        )
+        trace = pm.sample_prior_predictive(draws=draws, random_seed=random_seed)
     registry = get_coord_registry(cached_model.model)
     if registry is not None:
         trace = restore_inferencedata_coords(trace, registry)
-    trace = _append_joint_outputs(
-        trace,
-        cached_model=cached_model,
-        observations=prepared_inputs.inv_inputs["mf"],
-        posterior_predictive=True,
-        random_seed=random_seed,
-        sample_group="prior",
-    )
     return _annotate_cached_co2_trace(
         trace,
         co2_cached_sigma_build_result(cached_model, prepared_inputs),
@@ -584,28 +478,7 @@ def run_rhime_co2_cached_sigma(
         sigma_target_accept=sigma_target_accept,
         state_target_accept=state_target_accept,
     )
-    sampling_sampler.sample_prior_predictive = False
     trace = sample_rhime_model(built, sampling_sampler)
-    if requested_sampler.sample_prior_predictive:
-        prior_draws = (
-            trace["posterior"].sizes["draw"]
-            if requested_sampler.sample_prior_predictive is True
-            else int(requested_sampler.sample_prior_predictive)
-        )
-        prior = sample_co2_cached_prior_predictive(
-            cached_model,
-            prepared_inputs,
-            draws=prior_draws,
-            random_seed=dict(requested_sampler.sample_kwargs or {}).get("random_seed"),
-        )
-        trace.update(prior)
-    trace = _append_joint_outputs(
-        trace,
-        cached_model=cached_model,
-        observations=prepared_inputs.inv_inputs["mf"],
-        posterior_predictive=_posterior_predictive_requested(requested_sampler),
-        random_seed=_predictive_seed(requested_sampler),
-    )
     return _annotate_cached_co2_trace(
         trace,
         built,

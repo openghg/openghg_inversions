@@ -289,6 +289,7 @@ def test_cached_joint_draws_with_baseline_emit_paris(tmp_path, native_multiindex
         with built.model:
             trace = pm.sample_prior_predictive(draws=5, random_seed=185)
         trace["posterior"] = trace["prior"].to_dataset().isel(draw=slice(0, 3))
+        pm.compute_log_likelihood(trace, model=built.model, progressbar=False)
         return restore_inferencedata_coords(trace, get_coord_registry(built.model))
 
     monkeypatch.setattr(co2_o2_cached_sigma_runner, "sample_rhime_model", graph_draws)

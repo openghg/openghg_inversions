@@ -59,7 +59,6 @@ def run_rhime_from_prepared_inputs(
     Args:
         prepared_inputs: Validated canonical inversion inputs and retained
             basis functions.
-        run_spec: Resolved model, output, and run settings.
         sampler: Use ``"default"`` to request a fresh ``RhimeSampler()``.
             Explicit ``None`` is invalid; omit the argument to select defaults.
         model_builder: Optional complete-model callable for advanced graphs.

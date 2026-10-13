@@ -25,7 +25,7 @@ import pymc as pm
 import pytensor
 import pytensor.tensor as pt
 from pymc.blocking import PointType, StatsType
-from pymc.model import modelcontext
+from pymc.model import ValueGradFunction, modelcontext
 from pymc.step_methods.compound import BlockedStep, Competence, StepMethodState
 from pymc.step_methods.hmc.quadpotential import QuadPotentialDiagAdapt
 from pymc.step_methods.state import dataclass_state
@@ -391,14 +391,19 @@ class PymcCachedSigmaNutsStep(BlockedStep):
             tune: Number of tuning iterations.
             draws: Number of posterior draws.
         """
-        super().setup_chain(rng, tune, draws)
-        self.nuts_step.setup_chain(self.rng.spawn(1)[0], tune, draws)
+        parent_setup = getattr(super(), "setup_chain", None)
+        if parent_setup is None:  # PyMC 6.0 uses set_rng for per-chain setup.
+            super().set_rng(rng)
+            self.nuts_step.set_rng(self.rng.spawn(1)[0])
+        else:
+            parent_setup(rng, tune, draws)
+            self.nuts_step.setup_chain(self.rng.spawn(1)[0], tune, draws)
 
     def set_rng(self, rng: RandomGenerator) -> None:
         """Reseed this step and its delegated NUTS step.
 
-        This compatibility method preserves the pre-PyMC 6 public API. PyMC 6
-        calls :meth:`setup_chain` directly during sampling.
+        Older PyMC releases call this method during sampling. Newer releases
+        call :meth:`setup_chain` directly and supply tuning and draw counts.
 
         Args:
             rng: Random generator for this chain.
@@ -431,6 +436,7 @@ def make_cached_sigma_compound_step(  # noqa: PLR0913
     shared_cache: PytensorMarginalQuadraticCache,
     initial_cache: MarginalQuadraticCache,
     prior_scale: ArrayLike | float,
+    cached_state_logp: TensorVariable | None = None,
     initial_point: PointType | None = None,
     sigma_target_accept: float = 0.8,
     state_target_accept: float = 0.9,
@@ -442,7 +448,16 @@ def make_cached_sigma_compound_step(  # noqa: PLR0913
     the current state point. It then updates sigma and refreshes the quadratic
     for the value returned by that transition before the following stock NUTS
     step jointly updates ``states``.
+
+    Observed models require an explicit ``cached_state_logp`` expression. The
+    state function combines this quadratic with the model's free-variable
+    priors and transform Jacobians, excluding the observed likelihood. Legacy
+    Potential-only callers may omit the expression. Prepared inputs must stay
+    fixed after construction.
     """
+    if cached_state_logp is None and model.observed_RVs:
+        raise ValueError("Observed models require an explicit cached_state_logp for state NUTS.")
+    point = model.initial_point() if initial_point is None else initial_point
     root_rng = get_random_generator(rng)
     sigma_rng, state_rng = root_rng.spawn(2)
     sigma_step = PymcCachedSigmaNutsStep(
@@ -453,17 +468,36 @@ def make_cached_sigma_compound_step(  # noqa: PLR0913
         modelled_mean=modelled_mean,
         prior_scale=prior_scale,
         target_accept=sigma_target_accept,
-        initial_point=initial_point,
+        initial_point=point,
         model=model,
         rng=sigma_rng,
     )
+    state_function = None
+    if cached_state_logp is not None:
+        state_values = get_value_vars_from_user_vars(list(states), model)
+        quadratic = model.replace_rvs_by_values([cached_state_logp])[0]
+        cost = model.logp(vars=model.free_RVs, jacobian=True) + quadratic
+        state_function = ValueGradFunction(
+            costs=[cost],
+            grad_vars=state_values,
+            extra_vars_and_values={
+                value: point[cast(str, value.name)]
+                for value in model.value_vars
+                if value not in state_values
+            },
+            model=model,
+            initial_point=point,
+            ravel_inputs=True,
+        )
+        state_function.set_extra_values(point)
     with model:
         state_step = pm.NUTS(
             vars=list(states),
             target_accept=state_target_accept,
-            initial_point=initial_point,
+            initial_point=point,
             model=model,
             rng=state_rng,
+            logp_dlogp_func=state_function,
         )
     return pm.CompoundStep([sigma_step, state_step])
 
