@@ -192,14 +192,17 @@ def test_configuration_identity_serialises_slice_inlet_selectors() -> None:
 
 
 @pytest.mark.parametrize("output_format", ["inv_out", "basic", "paris"])
+@pytest.mark.parametrize("export", ["outside-basis.nc", "outside-basis.zarr", "prepare/basis.nc", "prepare/basis.zarr"])
 def test_prepare_is_independent_and_writes_inspectable_contract(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
     output_format: str,
+    export: str,
 ) -> None:
     from openghg_inversions.rhime import _standard_stages as stages
 
+    monkeypatch.chdir(tmp_path)
     prepared = _prepared()
     sentinel = RhimeMergedData(
         site_data={"TAC": xr.Dataset({
@@ -213,7 +216,7 @@ def test_prepare_is_independent_and_writes_inspectable_contract(
     monkeypatch.setattr(stages.RhimeMergedData, "from_options", lambda *args, **kwargs: sentinel)
     monkeypatch.setattr(stages, "filter_observations", lambda *args, **kwargs: sentinel)
     def prepare_selected_basis(**kwargs):
-        assert kwargs["output_path"] == "/outside/basis"
+        assert "output_path" not in kwargs
         return prepared.basis_functions
 
     monkeypatch.setattr(stages, "prepare_basis", prepare_selected_basis)
@@ -223,7 +226,7 @@ def test_prepare_is_independent_and_writes_inspectable_contract(
 
     setup = resolve_stage_setup(
         _params(
-            basis_output_path="/outside/basis",
+            basis_output_path=export,
             output_format=output_format,
             inlet=[slice(3, 10)],
         ),
@@ -232,15 +235,18 @@ def test_prepare_is_independent_and_writes_inspectable_contract(
     manifest = prepare_rhime_stage(
         setup=setup,
         model="standard",
-        output_dir=tmp_path / "prepare",
+        output_dir="prepare",
     )
 
     prepared_path = Path(manifest["artifacts"]["prepared_inputs"])
     assert prepared_path.is_file()
+    assert (tmp_path / export).exists()
+    xr.testing.assert_equal(BasisFunctions.load(tmp_path / export).flux, prepared.basis_functions.flux)
+    assert not (tmp_path / "prepare/prepare").exists()
     assert set(manifest["artifacts"]) == {"prepared_inputs"}
     assert "artifact_identities" not in manifest
     assert not (tmp_path / "prepare" / "merged-data").exists()
-    assert manifest["effective_configuration"]["preparation"]["basis_output_path"] == "/outside/basis"
+    assert manifest["effective_configuration"]["preparation"]["basis_output_path"] == str(tmp_path / export)
     assert Path(manifest["manifest_path"]).is_file()
     persisted_manifest = json.loads(Path(manifest["manifest_path"]).read_text(encoding="utf-8"))
     assert persisted_manifest["effective_configuration"]["preparation"]["inlet"] == [
@@ -979,3 +985,53 @@ def test_configuration_identity_does_not_visit_opaque_output_options():
         with_opaque_output, model="standard"
     )
     assert next(selections) == "UNITED KINGDOM"
+
+
+@pytest.mark.parametrize("use_override", [False, True])
+@pytest.mark.parametrize("absolute", [False, True])
+def test_resource_origins_match_full_requests(tmp_path, monkeypatch, use_override, absolute):
+    from openghg_inversions.rhime._resources import resolve_config_paths
+    from openghg_inversions.rhime._standard_stages import load_stage_params
+    from openghg_inversions.rhime.params import RhimeConfig
+
+    config_dir = tmp_path / "configs"
+    invocation = tmp_path / "invocation"
+    config_dir.mkdir()
+    invocation.mkdir()
+    monkeypatch.chdir(invocation)
+    resources = {
+        "basis_path": "basis.nc", "basis_partition_path": "partition.nc",
+        "landsea_path": "landsea.nc", "outer_regions_path": "outer.nc",
+        "basis_output_path": "runs/prepared/basis.zarr", "country_file": "country.nc",
+    }
+    if absolute:
+        resources = {name: str(tmp_path / value) for name, value in resources.items()}
+    source = config_dir / "run.json"
+    source.write_text(json.dumps(_params(**resources)))
+    loaded = load_stage_params(params_file=source, overrides=resources if use_override else None)
+    base = invocation if use_override else config_dir
+    expected = {name: str(base / value) for name, value in resources.items()}
+    assert {name: loaded[name] for name in resources} == expected
+    full = resolve_config_paths(RhimeConfig.from_params(_params(**expected), multisector=False))
+    staged = resolve_config_paths(RhimeConfig.from_params(loaded, multisector=False))
+    for name, path in expected.items():
+        if name == "country_file":
+            assert full.output.country_file == staged.output.country_file == path
+        else:
+            assert getattr(full, name) == getattr(staged, name) == path
+    assert resources["basis_path"] == (str(tmp_path / "basis.nc") if absolute else "basis.nc")
+
+
+def test_co2_stage_override_paths_use_invocation_directory(tmp_path, monkeypatch):
+    from openghg_inversions.rhime.co2.stages import load_co2_stage_params
+
+    source = tmp_path / "configs" / "co2.json"
+    source.parent.mkdir()
+    source.write_text(json.dumps({"prepared_inputs": {"path": "prepared.nc"},
+                                 "outputs": {"country_file": "country.nc"}}))
+    monkeypatch.chdir(tmp_path)
+    overrides = {"prepared_inputs": {"path": "selected.nc"}}
+    loaded = load_co2_stage_params(params_file=source, overrides=overrides)
+    assert loaded["prepared_inputs"]["path"] == str(tmp_path / "selected.nc")
+    assert loaded["outputs"]["country_file"] == str(source.parent / "country.nc")
+    assert overrides["prepared_inputs"]["path"] == "selected.nc"

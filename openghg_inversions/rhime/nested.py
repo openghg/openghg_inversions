@@ -12,7 +12,9 @@ from __future__ import annotations
 
 from openghg_inversions.native_flux import resolve_runtime_flux
 from openghg_inversions.basis import prepare_basis
+from openghg_inversions.basis.basis_functions import BASIS_ARTIFACT_PATH_ATTR
 from openghg_inversions.rhime.preparation import resolve_basis_inputs
+from openghg_inversions.rhime._resources import resolve_config_paths
 from openghg_inversions._flux_options import UNSET, _Unset, normalise_flux_aliases, resolve_deprecated_keyword
 
 from collections.abc import Mapping, Sequence
@@ -711,8 +713,12 @@ def _prepare_one_domain(
             ),
             fix_outer_regions=config.fix_basis_outer_regions,
             **basis_support_maps,
-            output_path=config.basis_output_path,
             allow_empty_inner_region=allow_empty_inner_region,
+        )
+    if config.basis_output_path is not None:
+        basis_functions.save(config.basis_output_path)
+        basis_functions = basis_functions.with_metadata(
+            {BASIS_ARTIFACT_PATH_ATTR: str(config.basis_output_path)}
         )
     site_data = build_sensitivities(
         merged,
@@ -905,7 +911,7 @@ def prepare_nested_rhime_inputs(
 
     # Outer overlap masking leaves an intentionally empty inner basis region.
     # Allow that fixed label when constructing the outer basis below.
-    outer_config = config
+    outer_config = resolve_config_paths(config)
     inner_domain_name = _inner_domain_name(config.domain, inner_domain)
     inner_config = replace(
         config,
@@ -934,6 +940,7 @@ def prepare_nested_rhime_inputs(
         country_directory=inner_country_directory if inner_country_directory is not None else config.country_directory,
     )
 
+    inner_config = resolve_config_paths(inner_config)
     preparation_start = timer_start()
     support_maps = [resolve_basis_inputs(domain_config) for domain_config in (outer_config, inner_config)]
 
@@ -1493,6 +1500,7 @@ def run_nested(
         raise ValueError("A nested RHIME run requires a built-in or custom likelihood.")
     if config.output.output_format not in ("none", "paris"):
         raise ValueError("`run_rhime_nested` currently requires output_format='none' or 'paris'.")
+    config = resolve_config_paths(config)
     validate_output_resources(config.output)
     prepared = prepare_nested_rhime_inputs(
         config,

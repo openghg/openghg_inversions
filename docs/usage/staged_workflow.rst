@@ -35,7 +35,8 @@ read ambient ``CONFIG_FILE``.  ``OUTPUT_DIR`` is the only automatic path
 default, and the effective ``openghg-run`` ``STAGE`` is the default check-stage
 label.
 Relative filesystem values inside an INI or JSON parameter file are resolved
-against that file's directory, not the process working directory.
+against that file's directory. Explicit ``--kwargs`` path overrides resolve
+from the invocation working directory; absolute paths keep their destination.
 
 ``openghg-run``'s ``EFFECTIVE_CONFIG`` is a stage-specific TOML envelope, not
 an OpenGHG Inversions scientific parameter file, so do not pass it to
@@ -120,9 +121,10 @@ Stage-owned artifacts are written below ``--output-dir`` (or
 ``openghg-run``'s ``OUTPUT_DIR``). An explicitly configured
 ``basis_output_path`` keeps its exact destination; preparation does not replace
 it with a stage directory. Relative configured paths resolve from the INI or
-JSON file as described above. Commands do not depend on the caller's
-working directory and reject pre-existing symlinks beneath a stage output
-directory.
+JSON file as described above; explicit overrides and ``--output-dir`` resolve
+from the invocation working directory. The runner saves the basis separately
+from checkpoint-owned files using the existing basis codec. Commands reject
+pre-existing symlinks beneath a stage output directory.
 
 Preparation resolves selected basis and support resources. Country reporting
 resources are checked by ``postprocess`` before creating its output directory;

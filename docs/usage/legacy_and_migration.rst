@@ -289,8 +289,10 @@ Modern acquisition uses ``RhimeMergedData.from_options`` or direct dataset
 construction. Modern runners resolve native prior flux once with
 ``native_flux.resolve_runtime_flux(merged.flux_data, split_by_sectors=...)``.
 Modern ``prepare_basis`` accepts explicit ``site_data``, resolved ``runtime_flux``
-and singular ``weighting_flux`` arrays, exact ``basis_path`` / ``output_path``
-artifacts, and resolved scientific map arrays. Historical case/glob discovery,
+and singular ``weighting_flux`` arrays, an exact ``basis_path`` input,
+and resolved scientific map arrays. The ``output_path`` argument has been
+removed: call ``basis.save(selected_path)`` on the returned object to export
+it. Configured runners own ``basis_output_path`` and preserve export metadata. Historical case/glob discovery,
 directory-based filename construction, flat-file adaptation and explicit legacy writing are isolated in
 ``basis.compatibility``. See :doc:`rhime_configuration` for the 0.8 modern basis
 artifact default, explicit legacy opt-in, and migration examples. For reusable RHIME runs, save ``RhimePreparedInputs``;

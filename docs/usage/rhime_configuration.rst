@@ -164,7 +164,10 @@ complete saved basis with its saved prior, without acquisition. See the
 files. ``RhimeConfig.from_params`` resolves options without opening scientific
 data. The application preparation boundary loads selected maps before
 acquisition, then passes labelled ``landsea_classes`` and ``outer_regions``
-arrays to ``prepare_basis``. The single application helper
+arrays to ``prepare_basis``. This function returns the scientific basis without
+writing an export and no longer accepts ``output_path``. Runners explicitly
+save it through ``BasisFunctions.save`` when ``basis_output_path`` is requested,
+then retain the selected export path in metadata. The single application helper
 ``rhime.preparation.resolve_basis_inputs(config)`` resolves these values and
 consumes any supported deprecated path fields once. Modern requests do not
 enter compatibility code. The numerical functions do no file discovery.
@@ -311,4 +314,9 @@ configuration hashes.
 For persisted workflows, see :doc:`staged_workflow`: version 0.8 does not
 support staged artifacts produced by 0.7; consume them with 0.7 or regenerate
 them with 0.8. Ordinary paths remain relative to the working directory and
-staged paths retain their configuration-file-relative convention.
+staged file resources retain their configuration-file-relative convention.
+Explicit staged path overrides resolve from the invocation working directory.
+Runners forward absolute resource and export paths downstream; absolute inputs
+keep their destinations. Ordinary full-run INI values retain the invocation
+working directory convention. Historical ``country_directory`` outer-map
+lookup remains with the compatibility adapter.

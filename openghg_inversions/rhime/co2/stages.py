@@ -80,7 +80,7 @@ def load_co2_stage_params(
     params_file: str | Path | None = None,
     overrides: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Load an explicit CO2 configuration and resolve paths beside its source."""
+    """Resolve file resources beside the source and overrides from the invocation."""
     if (config_file is None) == (params_file is None):
         raise ValueError("Pass exactly one of `config_file` or `params_file`.")
     if config_file is not None:
@@ -94,9 +94,10 @@ def load_co2_stage_params(
         if not isinstance(loaded, dict):
             raise ValueError(f"RHIME params file {source_path} must contain one JSON object.")
         params = loaded
+    params = resolve_co2_stage_paths(params, base_dir=source_path.parent)
     if overrides:
-        params.update(overrides)
-    return resolve_co2_stage_paths(params, base_dir=source_path.parent)
+        params.update(resolve_co2_stage_paths(overrides, base_dir=Path.cwd()))
+    return params
 
 
 def resolve_co2_stage_paths(params: Mapping[str, Any], *, base_dir: Path) -> dict[str, Any]:

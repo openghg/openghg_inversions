@@ -13,7 +13,7 @@ return new handoffs when they need to attach variables or metadata and never
 mutate caller-owned datasets. Acquisition reads OpenGHG stores and returns an
 in-memory handoff. Filtering may
 compute when a selected filter cannot operate lazily.  Basis construction may
-read, fit, or write a basis artifact, and sensitivity construction may execute
+read or fit a basis; runners own optional exports. Sensitivity construction may execute
 the basis and boundary-condition algorithms.  Labelled assembly validates the
 durable :class:`~openghg_inversions.inversion_data.RhimePreparedInputs`
 artifact and jointly materializes core payloads before dropping unusable

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from openghg_inversions.native_flux import resolve_runtime_flux
 from openghg_inversions.basis import prepare_basis
+from openghg_inversions.basis.basis_functions import BASIS_ARTIFACT_PATH_ATTR
 from openghg_inversions.rhime.preparation import resolve_basis_inputs
 
 from dataclasses import asdict, fields, replace
@@ -27,6 +28,7 @@ from openghg_inversions._timing import timed
 from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs
 from openghg_inversions.inference.sampling import resolve_sampler
 from .specs import RhimeRunSpec
+from ._resources import resolve_config_paths, resolve_resource_paths
 from openghg_inversions.serialization import (
     load_trace,
     reset_serialisation_multiindexes,
@@ -78,37 +80,12 @@ from ._stage_checks import PREPARATION_CHECK_NAME, _check_result, _check_stage
 
 ModelKind = Literal["standard", "multisector"]
 
-_STAGE_PATH_OPTIONS = frozenset(
-    {
-        "basis_directory",
-        "basis_path",
-        "basis_partition_path",
-        "basis_output_path",
-        "landsea_path",
-        "outer_regions_path",
-        "bc_basis_directory",
-        "country_directory",
-        "country_file",
-    }
-)
 _PREPARATION_IDENTITY_EXCLUDED_OPTIONS = frozenset(
     {
         "basis_output_path",
         "output_name",
     }
 )
-
-
-def _resolve_stage_paths(params: Mapping[str, Any], *, base_dir: Path) -> dict[str, Any]:
-    """Resolve filesystem-valued staged options relative to their config file."""
-    resolved = dict(params)
-    for name in _STAGE_PATH_OPTIONS:
-        value = resolved.get(name)
-        if not isinstance(value, str | Path) or not value:
-            continue
-        path = Path(value).expanduser()
-        resolved[name] = str(path.resolve() if path.is_absolute() else (base_dir / path).resolve())
-    return resolved
 
 
 def load_stage_params(
@@ -120,7 +97,9 @@ def load_stage_params(
     """Load existing RHIME parameters from one explicit source.
 
     ``CONFIG_FILE`` is intentionally not an environment default: an unrelated
-    ambient variable must never select the scientific configuration.
+    ambient variable must never select the scientific configuration. File
+    resources resolve beside the source; explicit overrides resolve from the
+    invocation working directory.
     """
     if (config_file is None) == (params_file is None):
         raise ValueError("Pass exactly one of `config_file` or `params_file`.")
@@ -133,9 +112,10 @@ def load_stage_params(
         if not isinstance(loaded, dict):
             raise ValueError(f"RHIME params file {source_path} must contain one JSON object.")
         params = loaded
+    params = resolve_resource_paths(params, base_dir=source_path.parent)
     if overrides:
-        params.update(overrides)
-    return _resolve_stage_paths(params, base_dir=source_path.parent)
+        params.update(resolve_resource_paths(overrides, base_dir=Path.cwd()))
+    return params
 
 
 def effective_configuration(setup: RhimeConfig, *, model: ModelKind) -> dict[str, Any]:
@@ -165,6 +145,7 @@ def configuration_identity(setup: RhimeConfig, *, model: ModelKind) -> str:
     The resolved encoding supersedes historical raw/default projections;
     existing artifacts with a different configuration identity require preparation.
     """
+    setup = resolve_config_paths(setup)
     site_names = {field.name for field in fields(setup.site_options)}
     preparation = setup.select(*(RHIME_PREPARATION_OPTION_NAMES - site_names))
     preparation.update({name: getattr(setup.site_options, name) for name in site_names})
@@ -198,6 +179,7 @@ def prepare_rhime_stage(
     it is not relocated below ``output_dir``. The stage writes prepared inputs
     and their manifest below ``output_dir`` and returns the manifest mapping.
     """
+    setup = resolve_config_paths(setup)
     multisector = model == "multisector"
     basis_inputs = resolve_basis_inputs(setup)
     destination = _stage_output_directory(output_dir)
@@ -238,7 +220,11 @@ def prepare_rhime_stage(
             ),
             fix_outer_regions=setup.fix_basis_outer_regions,
             **basis_inputs,
-            output_path=setup.basis_output_path,
+        )
+    if setup.basis_output_path is not None:
+        basis.save(setup.basis_output_path)
+        basis = basis.with_metadata(
+            {BASIS_ARTIFACT_PATH_ATTR: str(setup.basis_output_path)}
         )
     site_data = build_sensitivities(
         filtered,
@@ -444,6 +430,7 @@ def postprocess_rhime_stage(
     manifests retain graph reconstruction to recover their missing roles.
     Output settings may change; the sampled scientific configuration may not.
     """
+    setup = resolve_config_paths(setup)
     validate_output_resources(setup.output)
     destination = _stage_output_directory(output_dir)
     configured_output = setup.output

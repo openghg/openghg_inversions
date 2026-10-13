@@ -98,7 +98,7 @@ def test_custom_runner_uses_supported_stages_for_acquisition(
     resolved_basis = {"landsea_classes": object(), "outer_regions": None}
 
     def resolve_basis_inputs(actual: RhimeConfig) -> dict[str, Any]:
-        assert actual is config
+        assert actual == config
         calls.append("basis-inputs")
         return resolved_basis
 
@@ -120,7 +120,7 @@ def test_custom_runner_uses_supported_stages_for_acquisition(
         assert kwargs["domain"] == config.domain
         assert kwargs["nbasis"] == config.nbasis
         assert kwargs["landsea_classes"] is resolved_basis["landsea_classes"]
-        assert kwargs["output_path"] == config.basis_output_path
+        assert "output_path" not in kwargs
         calls.append("basis")
         return basis
 

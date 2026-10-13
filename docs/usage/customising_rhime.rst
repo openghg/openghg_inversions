@@ -84,10 +84,13 @@ canonical load-or-generate operation with exact paths and labelled arrays:
 .. code-block:: python
 
    from openghg_inversions.basis import prepare_basis
+   from openghg_inversions.basis.basis_functions import BASIS_ARTIFACT_PATH_ATTR
+   from openghg_inversions.rhime._resources import resolve_config_paths
    from openghg_inversions.native_flux import resolve_runtime_flux
    from openghg_inversions.rhime.preparation import resolve_basis_inputs
    from openghg_inversions.rhime import validate_output_resources
 
+   config = resolve_config_paths(config)
    # For a complete run that will produce outputs:
    validate_output_resources(config.output)
    basis_inputs = resolve_basis_inputs(config)
@@ -106,13 +109,19 @@ canonical load-or-generate operation with exact paths and labelled arrays:
        nbasis=config.nbasis,
        basis_algorithm=config.basis_algorithm,
        fix_outer_regions=config.fix_basis_outer_regions,
-       output_path=config.basis_output_path,
        **basis_inputs,
    )
+   if config.basis_output_path is not None:
+       basis.save(config.basis_output_path)
+       basis = basis.with_metadata(
+           {BASIS_ARTIFACT_PATH_ATTR: str(config.basis_output_path)}
+       )
 
 A selected ``basis_path`` reuses saved geometry with current merged flux;
 otherwise preparation generates a partition from the filtered observations.
-An ``output_path`` saves the completed retained basis. Sensitivity construction
+The runner optionally saves the returned basis at ``basis_output_path`` and
+attaches export metadata without mutating the prepared basis. ``prepare_basis``
+accepts no export destination and performs no export write. Sensitivity construction
 and input assembly consume the returned ``BasisFunctions``. Historical names,
 case/glob discovery and filename construction end at the compatibility entry
 boundary described in :doc:`rhime_configuration`; these scientific steps receive
