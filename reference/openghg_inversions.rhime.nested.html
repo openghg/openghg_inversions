@@ -645,8 +645,8 @@ overlapping outer response was removed.</p></li>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.nested.NestedRhimeResult.sampler">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">sampler</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="openghg_inversions.inference.sampling.html#openghg_inversions.inference.sampling.RhimeSampler" title="openghg_inversions.inference.sampling.RhimeSampler"><span class="pre">RhimeSampler</span></a></span><a class="headerlink" href="#openghg_inversions.rhime.nested.NestedRhimeResult.sampler" title="Link to this definition">#</a></dt>
-<dd><p>Return the sampler settings used by the run.</p>
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">sampler</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="openghg_inversions.inference.sampling.html#openghg_inversions.inference.sampling.RhimeSampler" title="openghg_inversions.inference.sampling.RhimeSampler"><span class="pre">RhimeSampler</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.15)"><span class="pre">None</span></a></span><a class="headerlink" href="#openghg_inversions.rhime.nested.NestedRhimeResult.sampler" title="Link to this definition">#</a></dt>
+<dd><p>Return the live sampler, or <code class="docutils literal notranslate"><span class="pre">None</span></code> when only recorded results exist.</p>
 </dd></dl>
 
 <dl class="py property">
@@ -948,7 +948,7 @@ products and one shared concentration product.</p>
 <dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">prepared_inputs</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">run_spec</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">sampler</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">sampler</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'default'</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">inner_x_prior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">inner_state_activity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">likelihood_builder</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
@@ -957,7 +957,9 @@ products and one shared concentration product.</p>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.nested.run_rhime_nested_from_prepared_inputs" title="Link to this definition">#</a></dt>
 <dd><p>Build and sample nested RHIME from independently prepared native grids.</p>
-<p>Validate reporting resources before materialization or sampling. Missing
+<p><code class="docutils literal notranslate"><span class="pre">sampler=&quot;default&quot;</span></code> selects a fresh sampler; an explicit <code class="docutils literal notranslate"><span class="pre">None</span></code> or
+unknown string raises <code class="docutils literal notranslate"><span class="pre">TypeError</span></code> before accessing prepared inputs.
+Validate reporting resources before materialization or sampling. Missing
 selected country files raise <code class="docutils literal notranslate"><span class="pre">FileNotFoundError</span></code>; PARIS output without a
 country file raises <code class="docutils literal notranslate"><span class="pre">ValueError</span></code>.</p>
 <dl class="field-list simple">

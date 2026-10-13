@@ -522,6 +522,33 @@
 <p>PyMC inference and predictive draws from an explicit model and variable roles.</p>
 <p>This layer consumes a model; it does not acquire data, select a scientific
 recipe, construct reconstruction bindings, or write products.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.inference.sampling.resolve_sampler">
+<span class="sig-name descname"><span class="pre">resolve_sampler</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sampler</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">default_options</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inference.sampling.resolve_sampler" title="Link to this definition">#</a></dt>
+<dd><p>Resolve a live request into an invocation-owned sampler.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>sampler</strong> (<a class="reference internal" href="#openghg_inversions.inference.sampling.RhimeSampler" title="openghg_inversions.inference.sampling.RhimeSampler"><em>RhimeSampler</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.15)"><em>Literal</em></a><em>[</em><em>'default'</em><em>]</em>) – Configured sampler or <code class="docutils literal notranslate"><span class="pre">&quot;default&quot;</span></code> for fresh recipe defaults.</p></li>
+<li><p><strong>**default_options</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a>) – Recipe-specific defaults used only for <code class="docutils literal notranslate"><span class="pre">&quot;default&quot;</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A fresh sampler with independent option containers. Models, steps, and
+borrowed xarray or Dask values retain their identity.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#TypeError" title="(in Python v3.15)"><strong>TypeError</strong></a> – If the request is neither a sampler nor <code class="docutils literal notranslate"><span class="pre">&quot;default&quot;</span></code>.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If default sampler options override model coordinate registration.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="#openghg_inversions.inference.sampling.RhimeSampler" title="openghg_inversions.inference.sampling.RhimeSampler"><em>RhimeSampler</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.inference.sampling.RhimeSampler">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">RhimeSampler</span></span><span class="sig-paren">(</span>
@@ -553,18 +580,38 @@ recipe, construct reconstruction bindings, or write products.</p>
 <li><p><strong>nuts_sampler</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.15)"><em>Literal</em></a><em>[</em><em>'pymc'</em><em>, </em><em>'nutpie'</em><em>, </em><em>'numpyro'</em><em>, </em><em>'blackjax'</em><em>]</em>) – PyMC NUTS backend name.</p></li>
 <li><p><strong>progressbar</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Whether PyMC progress output should be shown.</p></li>
 <li><p><strong>sample_kwargs</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Extra keyword arguments forwarded to <code class="docutils literal notranslate"><span class="pre">pm.sample</span></code>.
+Nested containers and NumPy option arrays are copied; opaque
+runtime objects and xarray/Dask values are borrowed.
+<code class="docutils literal notranslate"><span class="pre">idata_kwargs.coords</span></code> and <code class="docutils literal notranslate"><span class="pre">dims</span></code> are invalid because model
+registration owns coordinates and dimensions.
 Its <code class="docutils literal notranslate"><span class="pre">random_seed</span></code> also seeds independent prior and posterior
 predictive streams without consuming a caller-owned generator.</p></li>
 <li><p><strong>sample_prior_predictive</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.15)"><em>int</em></a>) – Whether to append prior predictive draws.</p></li>
 <li><p><strong>sample_posterior_predictive</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.15)"><em>tuple</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><em>...</em><em>]</em>) – Whether to append posterior predictive
 draws, or variable names to sample.</p></li>
 <li><p><strong>posterior_predictive_kwargs</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Extra keyword arguments forwarded to
-<code class="docutils literal notranslate"><span class="pre">pm.sample_posterior_predictive</span></code>. Explicit <code class="docutils literal notranslate"><span class="pre">random_seed</span></code> and
-<code class="docutils literal notranslate"><span class="pre">var_names</span></code> override their sampler defaults; <code class="docutils literal notranslate"><span class="pre">random_seed=None</span></code>
-requests unseeded posterior prediction.</p></li>
+<code class="docutils literal notranslate"><span class="pre">pm.sample_posterior_predictive</span></code>, with the same ownership rules
+as <code class="docutils literal notranslate"><span class="pre">sample_kwargs</span></code>. Explicit <code class="docutils literal notranslate"><span class="pre">random_seed</span></code> and <code class="docutils literal notranslate"><span class="pre">var_names</span></code>
+override their sampler defaults; <code class="docutils literal notranslate"><span class="pre">random_seed=None</span></code> requests
+unseeded posterior prediction.</p></li>
 </ul>
 </dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If the NUTS backend is unknown or inference coordinates
+    override model registration.</p>
+</dd>
 </dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.inference.sampling.RhimeSampler.describe">
+<span class="sig-name descname"><span class="pre">describe</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inference.sampling.RhimeSampler.describe" title="Link to this definition">#</a></dt>
+<dd><p>Snapshot the sampling settings used by output metadata.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>, <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.15)">int</a> | <a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>]</p>
+</dd>
+</dl>
+</dd></dl>
+
 <dl class="py method">
 <dt class="sig sig-object py" id="openghg_inversions.inference.sampling.RhimeSampler.sample">
 <span class="sig-name descname"><span class="pre">sample</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">variable_roles</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inference.sampling.RhimeSampler.sample" title="Link to this definition">#</a></dt>
@@ -637,7 +684,9 @@ variable named <code class="docutils literal notranslate"><span class="pre">y</s
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inference.sampling.resolve_sampler"><code class="docutils literal notranslate"><span class="pre">resolve_sampler()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inference.sampling.RhimeSampler"><code class="docutils literal notranslate"><span class="pre">RhimeSampler</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inference.sampling.RhimeSampler.describe"><code class="docutils literal notranslate"><span class="pre">RhimeSampler.describe()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inference.sampling.RhimeSampler.sample"><code class="docutils literal notranslate"><span class="pre">RhimeSampler.sample()</span></code></a></li>
 </ul>
 </li>

@@ -632,6 +632,23 @@ model, output, and sampler specifications:</p>
 <span class="p">)</span>
 </pre></div>
 </div>
+<p>Omit <code class="docutils literal notranslate"><span class="pre">sampler</span></code> or pass <code class="docutils literal notranslate"><span class="pre">sampler=&quot;default&quot;</span></code> to request a fresh default sampler
+without importing <code class="docutils literal notranslate"><span class="pre">RhimeSampler</span></code>. Pass an instance to choose its settings;
+each invocation isolates its mutable option containers and NumPy option arrays.
+Models, steps, and borrowed xarray or Dask objects retain their identity.
+Explicit <code class="docutils literal notranslate"><span class="pre">sampler=None</span></code>
+is rejected: migrate that spelling to <code class="docutils literal notranslate"><span class="pre">&quot;default&quot;</span></code> or omit the argument.
+The same selection rule applies to the nested, CO2 and CO2/O2 direct runners,
+which retain their recipe-specific defaults. Complete configured runs use
+<code class="docutils literal notranslate"><span class="pre">config.sampler</span></code> instead of replacing its settings with defaults.</p>
+<p>Live results retain their invocation’s sampler and a descriptive snapshot in
+<code class="docutils literal notranslate"><span class="pre">result.output_metadata[&quot;sampler&quot;]</span></code>. A result constructed without a sampler,
+including a replay result, has <code class="docutils literal notranslate"><span class="pre">result.sampler</span> <span class="pre">is</span> <span class="pre">None</span></code>. Replay passes the saved
+snapshot to outputs without running inference. It may construct sampler settings
+to describe recorded values; missing or unparseable descriptions remain unavailable
+and do not prevent scientific products. Current defaults do not fill missing
+provenance. <code class="docutils literal notranslate"><span class="pre">None</span></code> denotes absence of a live object, not absence of completed
+inference.</p>
 <p>The prepared object is trusted canonical input: it must already contain the
 observation, error, sensitivity, and optional boundary-condition variables
 required by the selected model. A multisector run requires

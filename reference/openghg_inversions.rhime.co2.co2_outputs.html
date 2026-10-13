@@ -562,7 +562,9 @@ represent coherent affine CO2 reconstruction.</p>
 <dd><p>Join a saved annotated CO2 posterior with its validated preparation.</p>
 <p>Artifact identity checks belong to the stage loader. The adapter borrows
 the trace and scientific inputs without rebuilding a graph or serializing.
-An in-memory runner may additionally retain its existing model build.</p>
+An in-memory runner may additionally retain its existing model build.
+Passing <code class="docutils literal notranslate"><span class="pre">sampler=None</span></code> retains no live sampler; saved-output orchestration
+supplies recorded descriptive values in <code class="docutils literal notranslate"><span class="pre">result.output_metadata[&quot;sampler&quot;]</span></code>.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference internal" href="openghg_inversions.rhime.outputs.html#openghg_inversions.rhime.outputs.RhimeResult" title="openghg_inversions.rhime.outputs.RhimeResult"><em>RhimeResult</em></a></p>

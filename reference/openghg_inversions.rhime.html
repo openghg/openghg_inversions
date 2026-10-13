@@ -1674,8 +1674,8 @@ overlapping outer response was removed.</p></li>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.NestedRhimeResult.sampler">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">sampler</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="openghg_inversions.inference.sampling.html#openghg_inversions.inference.sampling.RhimeSampler" title="openghg_inversions.inference.sampling.RhimeSampler"><span class="pre">RhimeSampler</span></a></span><a class="headerlink" href="#openghg_inversions.rhime.NestedRhimeResult.sampler" title="Link to this definition">#</a></dt>
-<dd><p>Return the sampler settings used by the run.</p>
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">sampler</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="openghg_inversions.inference.sampling.html#openghg_inversions.inference.sampling.RhimeSampler" title="openghg_inversions.inference.sampling.RhimeSampler"><span class="pre">RhimeSampler</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.15)"><span class="pre">None</span></a></span><a class="headerlink" href="#openghg_inversions.rhime.NestedRhimeResult.sampler" title="Link to this definition">#</a></dt>
+<dd><p>Return the live sampler, or <code class="docutils literal notranslate"><span class="pre">None</span></code> when only recorded results exist.</p>
 </dd></dl>
 
 <dl class="py property">
@@ -1886,18 +1886,38 @@ Format and filename-convention values are case-insensitive.</p></li>
 <li><p><strong>nuts_sampler</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.15)"><em>Literal</em></a><em>[</em><em>'pymc'</em><em>, </em><em>'nutpie'</em><em>, </em><em>'numpyro'</em><em>, </em><em>'blackjax'</em><em>]</em>) – PyMC NUTS backend name.</p></li>
 <li><p><strong>progressbar</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Whether PyMC progress output should be shown.</p></li>
 <li><p><strong>sample_kwargs</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Extra keyword arguments forwarded to <code class="docutils literal notranslate"><span class="pre">pm.sample</span></code>.
+Nested containers and NumPy option arrays are copied; opaque
+runtime objects and xarray/Dask values are borrowed.
+<code class="docutils literal notranslate"><span class="pre">idata_kwargs.coords</span></code> and <code class="docutils literal notranslate"><span class="pre">dims</span></code> are invalid because model
+registration owns coordinates and dimensions.
 Its <code class="docutils literal notranslate"><span class="pre">random_seed</span></code> also seeds independent prior and posterior
 predictive streams without consuming a caller-owned generator.</p></li>
 <li><p><strong>sample_prior_predictive</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.15)"><em>int</em></a>) – Whether to append prior predictive draws.</p></li>
 <li><p><strong>sample_posterior_predictive</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.15)"><em>tuple</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><em>...</em><em>]</em>) – Whether to append posterior predictive
 draws, or variable names to sample.</p></li>
 <li><p><strong>posterior_predictive_kwargs</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Extra keyword arguments forwarded to
-<code class="docutils literal notranslate"><span class="pre">pm.sample_posterior_predictive</span></code>. Explicit <code class="docutils literal notranslate"><span class="pre">random_seed</span></code> and
-<code class="docutils literal notranslate"><span class="pre">var_names</span></code> override their sampler defaults; <code class="docutils literal notranslate"><span class="pre">random_seed=None</span></code>
-requests unseeded posterior prediction.</p></li>
+<code class="docutils literal notranslate"><span class="pre">pm.sample_posterior_predictive</span></code>, with the same ownership rules
+as <code class="docutils literal notranslate"><span class="pre">sample_kwargs</span></code>. Explicit <code class="docutils literal notranslate"><span class="pre">random_seed</span></code> and <code class="docutils literal notranslate"><span class="pre">var_names</span></code>
+override their sampler defaults; <code class="docutils literal notranslate"><span class="pre">random_seed=None</span></code> requests
+unseeded posterior prediction.</p></li>
 </ul>
 </dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If the NUTS backend is unknown or inference coordinates
+    override model registration.</p>
+</dd>
 </dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.RhimeSampler.describe">
+<span class="sig-name descname"><span class="pre">describe</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.RhimeSampler.describe" title="Link to this definition">#</a></dt>
+<dd><p>Snapshot the sampling settings used by output metadata.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>, <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.15)">int</a> | <a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>]</p>
+</dd>
+</dl>
+</dd></dl>
+
 <dl class="py method">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.RhimeSampler.sample">
 <span class="sig-name descname"><span class="pre">sample</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">variable_roles</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.RhimeSampler.sample" title="Link to this definition">#</a></dt>
@@ -1970,7 +1990,7 @@ this flag records the prepared data layout.</p></li>
 <dd><em class="sig-param"><span class="n"><span class="pre">basis_functions</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">model</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">inv_out</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">sampler</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">&lt;factory&gt;</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">sampler</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">model_build_result</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">output_contract</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 </dl>
@@ -1993,8 +2013,11 @@ empty dictionary is used by default.</p></li>
 <li><p><strong>basis_functions</strong> (<a class="reference internal" href="openghg_inversions.basis.basis_functions.html#openghg_inversions.basis.basis_functions.FluxWeightedBasis" title="openghg_inversions.basis.basis_functions.FluxWeightedBasis"><em>FluxWeightedBasis</em></a><em> | </em><em>None</em>) – Basis operator and flux retained for postprocessing.</p></li>
 <li><p><strong>model</strong> (<a class="reference external" href="https://www.pymc.io/projects/docs/en/stable/api/model/generated/pymc.model.core.Model.html#pymc.model.core.Model" title="(in PyMC v6.3.2)"><em>Model</em></a><em> | </em><em>None</em>) – Concrete sampled PyMC model, when retained.</p></li>
 <li><p><strong>inv_out</strong> (<a class="reference internal" href="openghg_inversions.postprocessing.inversion_output.html#openghg_inversions.postprocessing.inversion_output.InversionOutput" title="openghg_inversions.postprocessing.inversion_output.InversionOutput"><em>InversionOutput</em></a><em> | </em><em>None</em>) – Modern inversion output, when postprocessing created one.</p></li>
-<li><p><strong>sampler</strong> (<a class="reference internal" href="openghg_inversions.inference.sampling.html#openghg_inversions.inference.sampling.RhimeSampler" title="openghg_inversions.inference.sampling.RhimeSampler"><em>RhimeSampler</em></a>) – Sampling configuration used for the run. A new
-<a class="reference internal" href="#openghg_inversions.rhime.RhimeSampler" title="openghg_inversions.rhime.RhimeSampler"><code class="xref py py-class docutils literal notranslate"><span class="pre">RhimeSampler</span></code></a> is used by default.</p></li>
+<li><p><strong>sampler</strong> (<a class="reference internal" href="openghg_inversions.inference.sampling.html#openghg_inversions.inference.sampling.RhimeSampler" title="openghg_inversions.inference.sampling.RhimeSampler"><em>RhimeSampler</em></a><em> | </em><em>None</em>) – Live sampling configuration, when supplied. Defaults to <code class="docutils literal notranslate"><span class="pre">None</span></code>.
+Results constructed from saved samples need no sampler. Descriptive sampler
+metadata belongs in <code class="docutils literal notranslate"><span class="pre">output_metadata[&quot;sampler&quot;]</span></code> for replay.
+A supplied live sampler inserts or overwrites that entry in the supplied
+dictionary at construction; later sampler changes do not refresh it.</p></li>
 <li><p><strong>model_build_result</strong> (<a class="reference internal" href="openghg_inversions.rhime.builders.html#openghg_inversions.rhime.builders.RhimeModelBuildResult" title="openghg_inversions.rhime.builders.RhimeModelBuildResult"><em>RhimeModelBuildResult</em></a><em> | </em><em>None</em>) – Model, variable-role manifest, and builder metadata,
 when available.</p></li>
 <li><p><strong>output_contract</strong> (<a class="reference internal" href="openghg_inversions.postprocessing.contracts.html#openghg_inversions.postprocessing.contracts.OutputContract" title="openghg_inversions.postprocessing.contracts.OutputContract"><em>OutputContract</em></a><em> | </em><em>None</em>) – Durable scientific roles and reconstruction mapping.
@@ -2934,7 +2957,7 @@ required for preparation.</p>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>prepared</strong> (<a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html#openghg_inversions.inversion_data.prepared_inputs.PreparedInputs" title="openghg_inversions.inversion_data.prepared_inputs.PreparedInputs"><em>PreparedInputs</em></a>) – Retained source-resolved inputs and basis functions.</p></li>
 <li><p><strong>run_spec</strong> (<a class="reference internal" href="openghg_inversions.rhime.specs.html#openghg_inversions.rhime.specs.RhimeRunSpec" title="openghg_inversions.rhime.specs.RhimeRunSpec"><em>RhimeRunSpec</em></a>) – Resolved model, output, and run settings.</p></li>
-<li><p><strong>sampler</strong> (<a class="reference internal" href="openghg_inversions.inference.sampling.html#openghg_inversions.inference.sampling.RhimeSampler" title="openghg_inversions.inference.sampling.RhimeSampler"><em>RhimeSampler</em></a>) – Sampler configuration used for the trace.</p></li>
+<li><p><strong>sampler</strong> (<a class="reference internal" href="openghg_inversions.inference.sampling.html#openghg_inversions.inference.sampling.RhimeSampler" title="openghg_inversions.inference.sampling.RhimeSampler"><em>RhimeSampler</em></a><em> | </em><em>None</em>) – Live sampler used for the trace, or <code class="docutils literal notranslate"><span class="pre">None</span></code> during saved replay.</p></li>
 <li><p><strong>model_build_result</strong> (<a class="reference internal" href="openghg_inversions.rhime.builders.html#openghg_inversions.rhime.builders.RhimeModelBuildResult" title="openghg_inversions.rhime.builders.RhimeModelBuildResult"><em>RhimeModelBuildResult</em></a><em> | </em><em>None</em>) – Concrete graph and roles, when retained in memory.</p></li>
 <li><p><strong>output_contract</strong> (<a class="reference internal" href="openghg_inversions.postprocessing.contracts.html#openghg_inversions.postprocessing.contracts.OutputContract" title="openghg_inversions.postprocessing.contracts.OutputContract"><em>OutputContract</em></a><em> | </em><em>None</em>) – Durable output information for graph-free reconstruction.
 Defaults to the live build result’s contract when supplied.</p></li>
@@ -2999,7 +3022,7 @@ Defaults to the live build result’s contract when supplied.</p></li>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>prepared</strong> (<a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html#openghg_inversions.inversion_data.prepared_inputs.PreparedInputs" title="openghg_inversions.inversion_data.prepared_inputs.PreparedInputs"><em>PreparedInputs</em></a>) – Retained canonical inputs and basis functions.</p></li>
 <li><p><strong>run_spec</strong> (<a class="reference internal" href="openghg_inversions.rhime.specs.html#openghg_inversions.rhime.specs.RhimeRunSpec" title="openghg_inversions.rhime.specs.RhimeRunSpec"><em>RhimeRunSpec</em></a>) – Resolved model, output, and run settings.</p></li>
-<li><p><strong>sampler</strong> (<a class="reference internal" href="openghg_inversions.inference.sampling.html#openghg_inversions.inference.sampling.RhimeSampler" title="openghg_inversions.inference.sampling.RhimeSampler"><em>RhimeSampler</em></a>) – Sampler configuration used for the trace.</p></li>
+<li><p><strong>sampler</strong> (<a class="reference internal" href="openghg_inversions.inference.sampling.html#openghg_inversions.inference.sampling.RhimeSampler" title="openghg_inversions.inference.sampling.RhimeSampler"><em>RhimeSampler</em></a><em> | </em><em>None</em>) – Live sampler used for the trace, or <code class="docutils literal notranslate"><span class="pre">None</span></code> during saved replay.</p></li>
 <li><p><strong>model_build_result</strong> (<a class="reference internal" href="openghg_inversions.rhime.builders.html#openghg_inversions.rhime.builders.RhimeModelBuildResult" title="openghg_inversions.rhime.builders.RhimeModelBuildResult"><em>RhimeModelBuildResult</em></a><em> | </em><em>None</em>) – Concrete graph and roles, when retained in memory.</p></li>
 <li><p><strong>output_contract</strong> (<a class="reference internal" href="openghg_inversions.postprocessing.contracts.html#openghg_inversions.postprocessing.contracts.OutputContract" title="openghg_inversions.postprocessing.contracts.OutputContract"><em>OutputContract</em></a><em> | </em><em>None</em>) – Durable output information for graph-free reconstruction.
 Defaults to the live build result’s contract when supplied.</p></li>
@@ -3532,7 +3555,7 @@ output metadata, and generated outputs.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">fixed_model_mismatch</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">likelihood_builder</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">likelihood_kwargs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">sampler</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">sampler</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'default'</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">no_model_error</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">use_bc</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">bc_prior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
@@ -3568,7 +3591,7 @@ the default additive-sigma likelihood.</p></li>
 <li><p><strong>likelihood_kwargs</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Options passed only to the selected likelihood. For
 the scalar-sigma eigen likelihood, pass an <code class="docutils literal notranslate"><span class="pre">eigenbasis_path</span></code> and
 <code class="docutils literal notranslate"><span class="pre">sigma_prior</span></code>; the cache is loaded before model construction.</p></li>
-<li><p><strong>sampler</strong> (<a class="reference internal" href="openghg_inversions.inference.sampling.html#openghg_inversions.inference.sampling.RhimeSampler" title="openghg_inversions.inference.sampling.RhimeSampler"><em>RhimeSampler</em></a><em> | </em><em>None</em>) – Optional RHIME sampler configuration.</p></li>
+<li><p><strong>sampler</strong> (<a class="reference internal" href="openghg_inversions.inference.sampling.html#openghg_inversions.inference.sampling.RhimeSampler" title="openghg_inversions.inference.sampling.RhimeSampler"><em>RhimeSampler</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.15)"><em>Literal</em></a><em>[</em><em>'default'</em><em>]</em>) – Sampler configuration or <code class="docutils literal notranslate"><span class="pre">&quot;default&quot;</span></code>; explicit <code class="docutils literal notranslate"><span class="pre">None</span></code> is invalid.</p></li>
 <li><p><strong>no_model_error</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – If true, omit inferred additive model error.</p></li>
 <li><p><strong>use_bc</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Whether to include prepared <code class="docutils literal notranslate"><span class="pre">H_bc</span></code> boundary sensitivity.</p></li>
 <li><p><strong>bc_prior</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Optional prior for boundary-condition scaling.</p></li>
@@ -3584,9 +3607,12 @@ and <code class="docutils literal notranslate"><span class="pre">per_site</span>
 manifests.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If model-error options contradict <code class="docutils literal notranslate"><span class="pre">no_model_error</span></code>, or
+<dd class="field-odd"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#TypeError" title="(in Python v3.15)"><strong>TypeError</strong></a> – If the sampler is neither a configuration nor <code class="docutils literal notranslate"><span class="pre">&quot;default&quot;</span></code>.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If model-error options contradict <code class="docutils literal notranslate"><span class="pre">no_model_error</span></code>, or
     prepared inputs are missing, inconsistent, or fail model
-    construction.</p>
+    construction.</p></li>
+</ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.9.0)"><em>DataTree</em></a></p>
@@ -3602,7 +3628,7 @@ manifests.</p>
 <dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">prepared_inputs</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">run_spec</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">sampler</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">sampler</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'default'</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">model_builder</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">likelihood_builder</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">likelihood_kwargs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
@@ -3620,8 +3646,8 @@ materialization or sampling.</p>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>prepared_inputs</strong> (<a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html#openghg_inversions.inversion_data.prepared_inputs.PreparedInputs" title="openghg_inversions.inversion_data.prepared_inputs.PreparedInputs"><em>PreparedInputs</em></a>) – Validated canonical inversion inputs and retained
 basis functions.</p></li>
-<li><p><strong>run_spec</strong> (<a class="reference internal" href="openghg_inversions.rhime.specs.html#openghg_inversions.rhime.specs.RhimeRunSpec" title="openghg_inversions.rhime.specs.RhimeRunSpec"><em>RhimeRunSpec</em></a>) – Resolved model, output, and run settings.</p></li>
-<li><p><strong>sampler</strong> (<a class="reference internal" href="openghg_inversions.inference.sampling.html#openghg_inversions.inference.sampling.RhimeSampler" title="openghg_inversions.inference.sampling.RhimeSampler"><em>RhimeSampler</em></a><em> | </em><em>None</em>) – Optional sampler configuration; defaults to <code class="docutils literal notranslate"><span class="pre">RhimeSampler</span></code>.</p></li>
+<li><p><strong>sampler</strong> (<a class="reference internal" href="openghg_inversions.inference.sampling.html#openghg_inversions.inference.sampling.RhimeSampler" title="openghg_inversions.inference.sampling.RhimeSampler"><em>RhimeSampler</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.15)"><em>Literal</em></a><em>[</em><em>'default'</em><em>]</em>) – Use <code class="docutils literal notranslate"><span class="pre">&quot;default&quot;</span></code> to request a fresh <code class="docutils literal notranslate"><span class="pre">RhimeSampler()</span></code>.
+Explicit <code class="docutils literal notranslate"><span class="pre">None</span></code> is invalid; omit the argument to select defaults.</p></li>
 <li><p><strong>model_builder</strong> (<a class="reference internal" href="openghg_inversions.rhime.builders.html#openghg_inversions.rhime.builders.RhimeModelBuilder" title="openghg_inversions.rhime.builders.RhimeModelBuilder"><em>RhimeModelBuilder</em></a><em> | </em><em>None</em>) – Optional complete-model callable for advanced graphs.</p></li>
 <li><p><strong>likelihood_builder</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Callable" title="(in Python v3.15)"><em>Callable</em></a><em>[</em><em>[</em><em>...</em><em>]</em><em>, </em><em>TensorVariable</em><em>] </em><em>| </em><em>None</em>) – Optional ordinary likelihood callable used with
 the built-in graph.</p></li>
@@ -3635,7 +3661,8 @@ the built-in graph.</p></li>
 <dd class="field-odd"><ul class="simple">
 <li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If layouts, extension points, aggregation error, or output
     settings are inconsistent.</p></li>
-<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#TypeError" title="(in Python v3.15)"><strong>TypeError</strong></a> – If an extension point has an invalid callable contract.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#TypeError" title="(in Python v3.15)"><strong>TypeError</strong></a> – If an extension point has an invalid callable contract, or
+    the sampler is neither a configuration nor <code class="docutils literal notranslate"><span class="pre">&quot;default&quot;</span></code>.</p></li>
 <li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#FileNotFoundError" title="(in Python v3.15)"><strong>FileNotFoundError</strong></a> – If a selected country file is missing or is a directory.</p></li>
 </ul>
 </dd>
@@ -3756,7 +3783,7 @@ products and one shared concentration product.</p>
 <dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">prepared_inputs</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">run_spec</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">sampler</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">sampler</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'default'</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">inner_x_prior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">inner_state_activity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">likelihood_builder</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
@@ -3765,7 +3792,9 @@ products and one shared concentration product.</p>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.run_rhime_nested_from_prepared_inputs" title="Link to this definition">#</a></dt>
 <dd><p>Build and sample nested RHIME from independently prepared native grids.</p>
-<p>Validate reporting resources before materialization or sampling. Missing
+<p><code class="docutils literal notranslate"><span class="pre">sampler=&quot;default&quot;</span></code> selects a fresh sampler; an explicit <code class="docutils literal notranslate"><span class="pre">None</span></code> or
+unknown string raises <code class="docutils literal notranslate"><span class="pre">TypeError</span></code> before accessing prepared inputs.
+Validate reporting resources before materialization or sampling. Missing
 selected country files raise <code class="docutils literal notranslate"><span class="pre">FileNotFoundError</span></code>; PARIS output without a
 country file raises <code class="docutils literal notranslate"><span class="pre">ValueError</span></code>.</p>
 <dl class="field-list simple">
@@ -4354,6 +4383,7 @@ supplied affine artifact separately.</p>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.RhimeSampler"><code class="docutils literal notranslate"><span class="pre">RhimeSampler</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.RhimeSampler.describe"><code class="docutils literal notranslate"><span class="pre">RhimeSampler.describe()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.RhimeSampler.sample"><code class="docutils literal notranslate"><span class="pre">RhimeSampler.sample()</span></code></a></li>
 </ul>
 </li>

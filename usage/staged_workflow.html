@@ -592,8 +592,12 @@ remains beneath the stage output directory. For the same
 reason, staged postprocessing requires safe filename components and both the
 preparation and sample manifests.  The latter binds the posterior to its
 prepared-input digest and scientific configuration.  The sampler settings
-restored into result metadata come from that sample manifest; sampler values
+retained in result metadata come from that sample manifest; sampler values
 in the postprocessing configuration cannot relabel an existing posterior.
+Replay returns <code class="docutils literal notranslate"><span class="pre">result.sampler</span> <span class="pre">is</span> <span class="pre">None</span></code> and forwards descriptive sampler
+metadata without running inference. Existing sampler settings may be
+constructed to describe recorded values. Missing or unparseable descriptions
+remain unavailable, without blocking products or selecting current defaults.
 Modern derived <code class="docutils literal notranslate"><span class="pre">basic</span></code> and PARIS products use every retained posterior
 chain. Derived trace quantities preserve their <code class="docutils literal notranslate"><span class="pre">chain</span></code> and <code class="docutils literal notranslate"><span class="pre">draw</span></code>
 identity until an explicitly requested statistic or covariance combines the
