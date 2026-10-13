@@ -60,7 +60,7 @@ A sparse array can already be computed, and a dense array can still be lazy.
 * An eager sparse payload becomes a dense NumPy-backed DataArray.
 * Sparse Dask chunks are converted by a lazy block operation. The outer Dask
   collection and chunk layout are retained until execution.
-* A Dask array with dense chunks is returned unchanged.
+* A Dask array with dense chunk metadata is returned unchanged.
 
 Consequently, ``compute()`` alone need not produce NumPy data: it can return
 an eager sparse payload. A scalar reduction can be computed and then densified

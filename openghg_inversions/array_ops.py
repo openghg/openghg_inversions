@@ -275,7 +275,7 @@ def align_sparse_lat_lon(
 
 def _sparse_dask_to_dense(da: DaskArray) -> DaskArray:
     """Convert chunks of dask array from sparse to dense."""
-    return da.map_blocks(lambda arr: arr.todense())  # type: ignore
+    return da.map_blocks(lambda arr: arr.todense() if isinstance(arr, SparseArray) else arr)
 
 
 def to_dense(da: xr.DataArray) -> xr.DataArray:
@@ -284,7 +284,8 @@ def to_dense(da: xr.DataArray) -> xr.DataArray:
     For an eager sparse input, this returns an eager NumPy-backed DataArray. For
     a Dask array with sparse chunks, the outer Dask collection and its chunking
     are preserved while a lazy block operation converts each chunk to NumPy when
-    executed. An array whose Dask chunks are already dense is returned unchanged.
+    executed. Already dense chunk payloads under sparse metadata are retained.
+    An array with dense Dask chunk metadata is returned unchanged.
     Coordinates retain their original backends and are not computed.
 
     Args:
