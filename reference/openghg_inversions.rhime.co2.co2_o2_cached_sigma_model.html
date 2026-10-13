@@ -556,7 +556,10 @@ cross-channel entries. <code class="docutils literal notranslate"><span class="p
 with <code class="docutils literal notranslate"><span class="pre">site_amplitude_prior_scale</span></code> in concentration units. Optional positive
 initial amplitudes use the same scalar or species/site mapping convention.
 The returned graph must be sampled with the CO2 sigma-then-state
-CompoundStep, never stock NUTS alone.</p>
+CompoundStep and its explicit cached state function. The observed joint
+Gaussian remains exact independently of that cache. Scientific initial
+values are returned separately for sampling; observations, designs,
+activity masks, and covariance stay fixed after construction.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference internal" href="openghg_inversions.rhime.co2.co2_cached_sigma_model.html#openghg_inversions.rhime.co2.co2_cached_sigma_model.Co2CachedSigmaModel" title="openghg_inversions.rhime.co2.co2_cached_sigma_model.Co2CachedSigmaModel"><em>Co2CachedSigmaModel</em></a></p>

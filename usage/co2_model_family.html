@@ -476,13 +476,20 @@ boundary sensitivity and add global, site, or site-by-period offsets.</p></td>
 <td><p>Channel-labelled boundary sensitivities, priors and activity, plus
 independent global, site, or site-by-period offsets (same-unit channels).</p></td>
 </tr>
-<tr class="row-even"><td><p>Staged workflow</p></td>
+<tr class="row-even"><td><p>Prediction</p></td>
+<td><p>Native PyMC prior/posterior observation draws; fixed-OU recipes expose
+a joint log likelihood, including the matched cached-sigma recipe.</p></td>
+<td><p>Native PyMC prior/posterior observation draws; fixed-OU recipes expose
+a joint log likelihood, preserving cross-channel covariance with the
+matched cached sampler.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Staged workflow</p></td>
 <td><p>Installed <code class="docutils literal notranslate"><span class="pre">--model</span> <span class="pre">co2</span></code> stages support ordinary and cached fixed-OU
 replay from a saved coherent prepared-input artifact; see
 <a class="reference internal" href="#staged-co2-commands">Staged CO₂ commands</a> below.</p></td>
 <td><p>Not supported by the staged CLI.</p></td>
 </tr>
-<tr class="row-odd"><td><p>Outputs and postprocessing</p></td>
+<tr class="row-even"><td><p>Outputs and postprocessing</p></td>
 <td><p>Returns an annotated xarray <code class="docutils literal notranslate"><span class="pre">DataTree</span></code>. Use the documented serialization
 boundary. <a class="reference internal" href="affine_flux_map.html#co2-affine-flux-summaries"><span class="std std-ref">Conditional native-flux and country summaries</span></a> are available from a bound affine artifact;
 staged basic, concentration, conditional native-flux and country products
@@ -491,7 +498,7 @@ are available, with supported PARIS exports.</p></td>
 separate CO2/O2 PARIS concentration products and supported native flux
 products; staged output integration remains future work.</p></td>
 </tr>
-<tr class="row-even"><td><p>Validation and acceptance</p></td>
+<tr class="row-odd"><td><p>Validation and acceptance</p></td>
 <td><p>Coherent preparation, dedicated serialization, model construction,
 configuration resolution, replay, provenance, and cached-sampler
 behavior have automated regression tests, including installed ordinary

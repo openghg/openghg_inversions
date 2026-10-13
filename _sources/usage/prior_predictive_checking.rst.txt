@@ -30,11 +30,11 @@ If ``pollution_events_from_obs=True``, the configured mismatch scale also uses
 the observed concentrations. The resulting simulations are a data-dependent
 conditional check, not a wholly pre-data prior predictive distribution.
 
-This workflow currently supports the staged ``standard`` and ``multisector``
-recipes. This tutorial uses ``standard``. The CO₂ model family does not have a
-staged CLI route; in particular, do not treat PyMC's generic prior-predictive
-sampling as a substitute for a predictive implementation for models whose
-likelihood is represented by a ``Potential``.
+This tutorial uses the staged ``standard`` recipe; the same workflow also
+supports ``multisector``. The :doc:`CO₂ model family <co2_model_family>` has
+a separate staged prepared-input route for CO₂-only models. Both cached-sigma
+CO₂ and linked CO₂/O₂ models expose an observed distribution for native PyMC
+prior and posterior prediction. Linked CO₂/O₂ staging remains unavailable.
 
 Prerequisites
 -------------

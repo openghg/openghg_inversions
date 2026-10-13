@@ -589,7 +589,7 @@ for each configured channel; the default is one offset per site.</p></li>
 PyMC backend is supported. Caller-supplied step or target_accept
 controls are rejected because the runner owns both NUTS steps.
 Joint predictive output supports only random_seed in predictive
-keyword arguments and is drawn from the same numerical target.</p></li>
+keyword arguments and uses the exact observed PyMC distribution.</p></li>
 <li><p><strong>sigma_target_accept</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a>) – Target acceptance probability for the amplitude
 NUTS step, defaulting to 0.8.</p></li>
 <li><p><strong>state_target_accept</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a>) – Target acceptance probability for the affine-state

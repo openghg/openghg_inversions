@@ -571,8 +571,8 @@ evaluations do not refactor the observation covariance.</p>
 <dt class="sig sig-object py" id="openghg_inversions.inference.cached_sigma.PymcCachedSigmaNutsStep.set_rng">
 <span class="sig-name descname"><span class="pre">set_rng</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">rng</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inference.cached_sigma.PymcCachedSigmaNutsStep.set_rng" title="Link to this definition">#</a></dt>
 <dd><p>Reseed this step and its delegated NUTS step.</p>
-<p>This compatibility method preserves the pre-PyMC 6 public API. PyMC 6
-calls <a class="reference internal" href="#openghg_inversions.inference.cached_sigma.PymcCachedSigmaNutsStep.setup_chain" title="openghg_inversions.inference.cached_sigma.PymcCachedSigmaNutsStep.setup_chain"><code class="xref py py-meth docutils literal notranslate"><span class="pre">setup_chain()</span></code></a> directly during sampling.</p>
+<p>Older PyMC releases call this method during sampling. Newer releases
+call <a class="reference internal" href="#openghg_inversions.inference.cached_sigma.PymcCachedSigmaNutsStep.setup_chain" title="openghg_inversions.inference.cached_sigma.PymcCachedSigmaNutsStep.setup_chain"><code class="xref py py-meth docutils literal notranslate"><span class="pre">setup_chain()</span></code></a> directly and supply tuning and draw counts.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><p><strong>rng</strong> (<em>None</em><em> | </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.15)"><em>int</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.15)"><em>Sequence</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.15)"><em>int</em></a><em>] </em><em>| </em><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a><em> | </em><a class="reference external" href="https://numpy.org/doc/stable/reference/random/generator.html#numpy.random.Generator" title="(in NumPy v2.5)"><em>Generator</em></a><em> | </em><a class="reference external" href="https://numpy.org/doc/stable/reference/random/bit_generators/generated/numpy.random.BitGenerator.html#numpy.random.BitGenerator" title="(in NumPy v2.5)"><em>BitGenerator</em></a>) – Random generator for this chain.</p>
@@ -657,6 +657,7 @@ calls <a class="reference internal" href="#openghg_inversions.inference.cached_s
 <dd><em class="sig-param"><span class="n"><span class="pre">shared_cache</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">initial_cache</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">prior_scale</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">cached_state_logp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">initial_point</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">sigma_target_accept</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.8</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">state_target_accept</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.9</span></span></em>,</dd>
@@ -669,6 +670,11 @@ calls <a class="reference internal" href="#openghg_inversions.inference.cached_s
 the current state point. It then updates sigma and refreshes the quadratic
 for the value returned by that transition before the following stock NUTS
 step jointly updates <code class="docutils literal notranslate"><span class="pre">states</span></code>.</p>
+<p>Observed models require an explicit <code class="docutils literal notranslate"><span class="pre">cached_state_logp</span></code> expression. The
+state function combines this quadratic with the model’s free-variable
+priors and transform Jacobians, excluding the observed likelihood. Legacy
+Potential-only callers may omit the expression. Prepared inputs must stay
+fixed after construction.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://www.pymc.io/projects/docs/en/stable/api/generated/pymc.step_methods.CompoundStep.html#pymc.step_methods.CompoundStep" title="(in PyMC v6.3.2)"><em>CompoundStep</em></a></p>

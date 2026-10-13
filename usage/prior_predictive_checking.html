@@ -439,11 +439,11 @@ are correct.</p>
 <p>If <code class="docutils literal notranslate"><span class="pre">pollution_events_from_obs=True</span></code>, the configured mismatch scale also uses
 the observed concentrations. The resulting simulations are a data-dependent
 conditional check, not a wholly pre-data prior predictive distribution.</p>
-<p>This workflow currently supports the staged <code class="docutils literal notranslate"><span class="pre">standard</span></code> and <code class="docutils literal notranslate"><span class="pre">multisector</span></code>
-recipes. This tutorial uses <code class="docutils literal notranslate"><span class="pre">standard</span></code>. The CO₂ model family does not have a
-staged CLI route; in particular, do not treat PyMC’s generic prior-predictive
-sampling as a substitute for a predictive implementation for models whose
-likelihood is represented by a <code class="docutils literal notranslate"><span class="pre">Potential</span></code>.</p>
+<p>This tutorial uses the staged <code class="docutils literal notranslate"><span class="pre">standard</span></code> recipe; the same workflow also
+supports <code class="docutils literal notranslate"><span class="pre">multisector</span></code>. The <a class="reference internal" href="co2_model_family.html"><span class="doc">CO₂ model family</span></a> has
+a separate staged prepared-input route for CO₂-only models. Both cached-sigma
+CO₂ and linked CO₂/O₂ models expose an observed distribution for native PyMC
+prior and posterior prediction. Linked CO₂/O₂ staging remains unavailable.</p>
 <section id="prerequisites">
 <h2>Prerequisites<a class="headerlink" href="#prerequisites" title="Link to this heading">#</a></h2>
 <p>Install the package and populate the companion tutorial store by following

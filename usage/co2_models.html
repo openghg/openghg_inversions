@@ -1425,11 +1425,35 @@ the runner rather than putting a generic <code class="docutils literal notransla
 <code class="docutils literal notranslate"><span class="pre">RhimeSampler.sample_kwargs</span></code>. The state-likelihood quadratic cache and
 fixed-OU generalized eigenbasis are runtime numerical state derived from the
 materialized prepared inputs; they are not external cache artifacts.</p>
-<p>Because the cached graph uses a normalized joint <code class="docutils literal notranslate"><span class="pre">Potential</span></code>, it does not
-invent an independent observed distribution. After sampling, the same exact
-fixed-OU target adds <code class="docutils literal notranslate"><span class="pre">log_likelihood.y</span></code> as one scalar per complete
-observation vector and, when requested, draws complete correlated vectors in
-<code class="docutils literal notranslate"><span class="pre">posterior_predictive.y</span></code>. The variables carry explicit joint-scope metadata.</p>
+<p>The graph exposes one exact observed <code class="docutils literal notranslate"><span class="pre">y</span></code> distribution. Native
+<code class="docutils literal notranslate"><span class="pre">pm.sample_prior_predictive</span></code>, <code class="docutils literal notranslate"><span class="pre">pm.sample_posterior_predictive</span></code> and
+<code class="docutils literal notranslate"><span class="pre">pm.compute_log_likelihood</span></code> therefore use each draw’s complete mean and
+amplitudes without reading the sampler cache. The matched state NUTS step
+uses an explicitly compiled cached quadratic with the same priors and
+transform Jacobians; it does not refactor the observation covariance during
+state trajectories. Prepared observations, covariance, designs and activity
+masks must remain fixed; rebuild the recipe to replace them.</p>
+<p><code class="docutils literal notranslate"><span class="pre">log_likelihood.y</span></code> contains one normalized scalar per <code class="docutils literal notranslate"><span class="pre">(chain,</span> <span class="pre">draw)</span></code> for
+the complete observation vector. Its <code class="docutils literal notranslate"><span class="pre">rhime_likelihood_scope</span></code> is
+<code class="docutils literal notranslate"><span class="pre">joint_observation_vector</span></code>; it is unsuitable for pointwise LOO or WAIC.
+Both predictive groups contain complete correlated observation vectors and
+carry the same joint scope and concentration units. Set
+<code class="docutils literal notranslate"><span class="pre">sample_kwargs={&quot;idata_kwargs&quot;:</span> <span class="pre">{&quot;log_likelihood&quot;:</span> <span class="pre">False}}</span></code> to omit density
+output. Prediction can be disabled independently.</p>
+<p>The shared sampler derives separate prior and posterior prediction streams
+from <code class="docutils literal notranslate"><span class="pre">sample_kwargs[&quot;random_seed&quot;]</span></code>. Toggling prior prediction does not
+change posterior prediction or MCMC. An explicit predictive <code class="docutils literal notranslate"><span class="pre">random_seed</span></code>
+overrides the posterior stream, including <code class="docutils literal notranslate"><span class="pre">None</span></code> for an unseeded draw.
+Cached runners accept posterior names <code class="docutils literal notranslate"><span class="pre">y</span></code> and <code class="docutils literal notranslate"><span class="pre">concentration</span></code> (the same
+observation variable), or a boolean; an empty sequence disables prediction.
+Only <code class="docutils literal notranslate"><span class="pre">random_seed</span></code> is supported in <code class="docutils literal notranslate"><span class="pre">posterior_predictive_kwargs</span></code>.</p>
+<p>The builder returns <code class="docutils literal notranslate"><span class="pre">initial_values</span></code> containing physical amplitude defaults
+and any boundary/offset prior start strategies. The runner merges caller
+<code class="docutils literal notranslate"><span class="pre">sample_kwargs[&quot;initvals&quot;]</span></code> over these defaults, including transformed keys
+and per-chain mappings. For direct low-level sampling, pass this mapping as
+<code class="docutils literal notranslate"><span class="pre">initvals</span></code> and construct the matched step with <code class="docutils literal notranslate"><span class="pre">cached_state_logp</span></code> and an
+initial point resolved from those defaults. The public graph carries no custom
+initial-value metadata, so generic log-likelihood computation works directly.</p>
 <p>This route deliberately supports only independent HalfNormal site-amplitude
 priors and fixed positive OU timescales. Sampled tau and alternative amplitude
 priors are separate extensions. The route is PyMC-only because it constructs
@@ -1496,9 +1520,11 @@ fixed-error linked default remains NumPyro.</p>
 <code class="docutils literal notranslate"><span class="pre">ou_site</span></code> coordinate uses the species/site labels, with <code class="docutils literal notranslate"><span class="pre">ou_species</span></code> and
 <code class="docutils literal notranslate"><span class="pre">ou_station</span></code> coordinates describing each group. Amplitudes retain
 concentration units and <code class="docutils literal notranslate"><span class="pre">ou_tau_hours</span></code> retains hours through serialization.
-The cached runner supplies one normalized joint log likelihood per posterior
-draw and optional correlated joint predictive vectors; these are not
-independent per-observation likelihoods.</p>
+The cached runner uses the same native prediction and cached state sampling
+interface as the CO2 runner described above. It supplies one normalized joint
+log likelihood per posterior draw and optional correlated joint prior and
+posterior predictive vectors, preserving cross-channel aggregation covariance.
+The joint likelihood must not be treated as pointwise observation densities.</p>
 </section>
 </section>
 

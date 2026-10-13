@@ -712,9 +712,8 @@ exactly that many prior draws.</p>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_cached_sigma_runner.sample_co2_cached_prior_predictive" title="Link to this definition">#</a></dt>
 <dd><p>Draw cached CO2 priors and exact correlated observation replicates.</p>
-<p>The cached Potential is used exclusively for the matched posterior sampler.
-Prior replicates instead use the numerical fixed-OU target with each prior
-draw’s model mean and site amplitudes, retaining the full covariance.</p>
+<p>Native PyMC prediction uses each draw’s model mean and site amplitudes,
+retaining the full covariance independently of the mutable sampler cache.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">

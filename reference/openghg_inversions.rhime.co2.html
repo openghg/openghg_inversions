@@ -946,12 +946,17 @@ and does not check that it belongs to the prepared artifact.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">amplitude</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">states</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">modelled_mean</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">cached_state_logp</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">initial_values</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">site_amplitude_prior_scale</span></span></em>,</dd>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.Co2CachedSigmaModel" title="Link to this definition">#</a></dt>
 <dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.15)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
-<p>Concrete graph plus the numerical objects required by its sampler.</p>
+<p>Observed graph, cached state expression, and scientific starting values.</p>
+<p><code class="docutils literal notranslate"><span class="pre">initial_values</span></code> contains untransformed sampling overrides or PyMC
+initialization strategies, lifted from graph metadata. The matched runner
+resolves them separately for construction and each sampling chain.</p>
 <dl class="field-list simple">
 </dl>
 </dd></dl>
@@ -1028,9 +1033,8 @@ omit concentration-unit attributes.</p></li>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.sample_co2_cached_prior_predictive" title="Link to this definition">#</a></dt>
 <dd><p>Draw cached CO2 priors and exact correlated observation replicates.</p>
-<p>The cached Potential is used exclusively for the matched posterior sampler.
-Prior replicates instead use the numerical fixed-OU target with each prior
-draw’s model mean and site amplitudes, retaining the full covariance.</p>
+<p>Native PyMC prediction uses each draw’s model mean and site amplitudes,
+retaining the full covariance independently of the mutable sampler cache.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -1080,12 +1084,13 @@ draw’s model mean and site amplitudes, retaining the full covariance.</p>
 <p>The complete <code class="docutils literal notranslate"><span class="pre">co2_flux_contribution</span></code> is the coherent affine sum of the
 fixed prior contribution and flux sensitivity product. Boundary and offset
 terms are then added to form <code class="docutils literal notranslate"><span class="pre">modelled_concentration</span></code>. The observation
-likelihood is a normalized cached <code class="docutils literal notranslate"><span class="pre">Potential</span></code> over a private
-concatenation of the active flux, boundary, and offset coefficients. These
-states remain separate scientific variables and sampler inputs. The
-returned target owns exact joint likelihood and predictive evaluation
-after sampling; no independent pointwise likelihood is fabricated in the
-graph.</p>
+likelihood is one normalized observed joint Gaussian with exact density
+and random callbacks. A separate cached quadratic over the active flux,
+boundary, and offset coefficients supplies efficient state trajectories.
+These states remain separate scientific variables and sampler inputs.
+The matched runner supplies the returned scientific initial values through
+sampling inputs. Observations, designs, activity masks, and covariance are
+fixed after construction; rebuild the recipe for different inputs.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -1528,7 +1533,10 @@ cross-channel entries. <code class="docutils literal notranslate"><span class="p
 with <code class="docutils literal notranslate"><span class="pre">site_amplitude_prior_scale</span></code> in concentration units. Optional positive
 initial amplitudes use the same scalar or species/site mapping convention.
 The returned graph must be sampled with the CO2 sigma-then-state
-CompoundStep, never stock NUTS alone.</p>
+CompoundStep and its explicit cached state function. The observed joint
+Gaussian remains exact independently of that cache. Scientific initial
+values are returned separately for sampling; observations, designs,
+activity masks, and covariance stay fixed after construction.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference internal" href="openghg_inversions.rhime.co2.co2_cached_sigma_model.html#openghg_inversions.rhime.co2.co2_cached_sigma_model.Co2CachedSigmaModel" title="openghg_inversions.rhime.co2.co2_cached_sigma_model.Co2CachedSigmaModel"><em>Co2CachedSigmaModel</em></a></p>
@@ -2249,7 +2257,7 @@ for each configured channel; the default is one offset per site.</p></li>
 PyMC backend is supported. Caller-supplied step or target_accept
 controls are rejected because the runner owns both NUTS steps.
 Joint predictive output supports only random_seed in predictive
-keyword arguments and is drawn from the same numerical target.</p></li>
+keyword arguments and uses the exact observed PyMC distribution.</p></li>
 <li><p><strong>sigma_target_accept</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a>) – Target acceptance probability for the amplitude
 NUTS step, defaulting to 0.8.</p></li>
 <li><p><strong>state_target_accept</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a>) – Target acceptance probability for the affine-state
