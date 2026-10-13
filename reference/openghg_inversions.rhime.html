@@ -320,10 +320,12 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.affine_flux_map.html">openghg_inversions.basis.affine_flux_map</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.affine_flux_map_io.html">openghg_inversions.basis.affine_flux_map_io</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.basis_functions.html">openghg_inversions.basis.basis_functions</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.compatibility.html">openghg_inversions.basis.compatibility</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.covariance_products.html">openghg_inversions.basis.covariance_products</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.layout.html">openghg_inversions.basis.layout</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.operators.html">openghg_inversions.basis.operators</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.prior_uncertainty.html">openghg_inversions.basis.prior_uncertainty</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.support.html">openghg_inversions.basis.support</a></li>
 </ul>
 </details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.config.html">openghg_inversions.config</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -441,6 +443,7 @@
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.inversion_inputs.html">openghg_inversions.inversion_inputs</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.model_error.html">openghg_inversions.model_error</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.native_covariance.html">openghg_inversions.native_covariance</a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.native_flux.html">openghg_inversions.native_flux</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.observation_error.html">openghg_inversions.observation_error</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.serialization.html">openghg_inversions.serialization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.sigma.html">openghg_inversions.sigma</a></li>
@@ -578,6 +581,10 @@ ownership and output behavior.</p>
 <p>The visible process is resolve → acquire or accept supplied data → observation
 errors → filter → basis → sensitivities → assemble → materialize → build → sample → result →
 requested outputs.</p>
+<p>Selected basis/support files and reporting country files are checked before
+acquisition, including when merged data is supplied. Basis partitions and
+support maps are loaded at that boundary. Saved bases are rebound to current
+flux; <code class="docutils literal notranslate"><span class="pre">basis_output_path</span></code> is an exact retained-artifact destination.</p>
 <p>Without supplied merged data, this runner acquires fresh data. Persisted
 prepared inputs can be reused with
 <a class="reference internal" href="#openghg_inversions.rhime.run_rhime_from_prepared_inputs" title="openghg_inversions.rhime.run_rhime_from_prepared_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.run_rhime_from_prepared_inputs()</span></code></a>.</p>
@@ -660,6 +667,10 @@ errors → filter → basis → sensitivities → assemble → materialize → b
 requested outputs.
 This module keeps source layout validation and sector-aware outputs beside
 that process instead of hiding them behind standard/multisector branching.</p>
+<p>Selected basis/support files and reporting country files are checked before
+acquisition, including when merged data is supplied. Basis partitions and
+support maps are loaded at that boundary. Saved bases are rebound to current
+flux; <code class="docutils literal notranslate"><span class="pre">basis_output_path</span></code> is an exact retained-artifact destination.</p>
 <p>Without supplied merged data, this runner acquires fresh data. Persisted
 prepared inputs can be reused with
 <a class="reference internal" href="#openghg_inversions.rhime.run_rhime_from_prepared_inputs" title="openghg_inversions.rhime.run_rhime_from_prepared_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.run_rhime_from_prepared_inputs()</span></code></a>.</p>
@@ -1207,6 +1218,9 @@ eager, possibly sparse; unselected extensions may remain lazy.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">fp_species</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">calibration_scale</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">use_bc</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">basis_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">basis_partition_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">landsea_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">fp_basis_case</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">basis_directory</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">bc_basis_case</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'NESW'</span></span></em>,</dd>
@@ -1241,6 +1255,11 @@ warnings. It owns ordinary configuration containers and borrows opaque
 numerical values. Modern <code class="docutils literal notranslate"><span class="pre">emissions_store</span></code>/<code class="docutils literal notranslate"><span class="pre">emissions_domain</span></code> spellings
 are removed in 0.9; supplying either with its <code class="docutils literal notranslate"><span class="pre">flux_*</span></code> replacement is an
 error, including equal values. Resolved fields use only <code class="docutils literal notranslate"><span class="pre">flux_*</span></code> names.
+Deprecated <code class="docutils literal notranslate"><span class="pre">fp_basis_case</span></code>, <code class="docutils literal notranslate"><span class="pre">basis_directory</span></code> and <code class="docutils literal notranslate"><span class="pre">country_directory</span></code>
+remain outer request fields for the transition. <code class="docutils literal notranslate"><span class="pre">resolve_basis_inputs</span></code>
+consumes them once before acquisition; numerical code receives exact paths
+and resolved arrays. Prefer <code class="docutils literal notranslate"><span class="pre">basis_path</span></code>/<code class="docutils literal notranslate"><span class="pre">basis_partition_path</span></code>,
+<code class="docutils literal notranslate"><span class="pre">landsea_path</span></code> and <code class="docutils literal notranslate"><span class="pre">outer_regions_path</span></code>.
 Direct construction and dataclass replacement expect
 already-resolved values and do not copy them.
 A frozen record does not make contained mappings or the sampler immutable.
@@ -2805,6 +2824,10 @@ retained outer flux used by basis generation and post-run reconstruction.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">inner_emissions_domain</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">_Unset.TOKEN</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">inner_basis_algorithm</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">inner_nbasis</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">inner_basis_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">inner_basis_partition_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">inner_landsea_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">inner_outer_regions_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">inner_fp_basis_case</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">inner_basis_directory</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">inner_country_directory</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
@@ -2845,14 +2868,18 @@ neither grid uses a saved basis, <code class="docutils literal notranslate"><spa
 total budget split by the square-root sensitivity ratio, with an
 inner share bounded to 35–60 percent. Otherwise the inner count
 defaults to <code class="docutils literal notranslate"><span class="pre">config.nbasis</span></code>.</p></li>
-<li><p><strong>inner_fp_basis_case</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Saved inner basis case; takes precedence over
+<li><p><strong>inner_basis_path</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.15)"><em>Path</em></a><em> | </em><em>None</em>) – Exact retained inner basis artifact path.</p></li>
+<li><p><strong>inner_basis_partition_path</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.15)"><em>Path</em></a><em> | </em><em>None</em>) – Exact labelled inner partition file.</p></li>
+<li><p><strong>inner_landsea_path</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.15)"><em>Path</em></a><em> | </em><em>None</em>) – Exact selected inner land/sea support map.</p></li>
+<li><p><strong>inner_outer_regions_path</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.15)"><em>Path</em></a><em> | </em><em>None</em>) – Exact selected inner fixed-outer support map.</p></li>
+<li><p><strong>inner_fp_basis_case</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Deprecated saved inner basis case; takes precedence over
 an inner basis algorithm.</p></li>
 <li><p><strong>inner_basis_directory</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Saved inner basis directory; defaults to the
 outer request’s directory.</p></li>
 <li><p><strong>inner_country_directory</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Inner country-grid directory; defaults to
 the outer request’s directory.</p></li>
-<li><p><strong>inner_basis_output_path</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Optional destination for a generated inner
-basis. <code class="docutils literal notranslate"><span class="pre">None</span></code> disables saving the inner basis.</p></li>
+<li><p><strong>inner_basis_output_path</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Exact retained-artifact destination for the
+inner basis, whether generated or loaded. <code class="docutils literal notranslate"><span class="pre">None</span></code> disables saving.</p></li>
 <li><p><strong>time_tolerance</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>Timedelta</em><em> | </em><em>None</em>) – Maximum difference for nearest-time inner footprint
 matching. <code class="docutils literal notranslate"><span class="pre">None</span></code> requires exact times; matching never reuses an
 inner footprint for multiple outer rows.</p></li>
@@ -2878,7 +2905,8 @@ combined sensitivities aligned to the retained outer observations.</p>
 artifacts. Automatic budget allocation computes sensitivity sums;
 filtering and basis algorithms may also compute their inputs. The
 returned scientific arrays may remain Dask-backed, and PyMC model
-materialization is a separate boundary.</p>
+materialization is a separate boundary. Reporting resources are not
+required for preparation.</p>
 </dd></dl>
 
 <dl class="py function">
@@ -2935,6 +2963,12 @@ Defaults to the live build result’s contract when supplied.</p></li>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>result</strong> (<a class="reference internal" href="openghg_inversions.rhime.outputs.html#openghg_inversions.rhime.outputs.RhimeResult" title="openghg_inversions.rhime.outputs.RhimeResult"><em>RhimeResult</em></a>) – Sampled multisector result receiving requested products.</p></li>
 <li><p><strong>prepared</strong> (<a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html#openghg_inversions.inversion_data.prepared_inputs.PreparedInputs" title="openghg_inversions.inversion_data.prepared_inputs.PreparedInputs"><em>PreparedInputs</em></a>) – Retained source-resolved inputs and basis functions.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If country reporting is requested without a country file.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#FileNotFoundError" title="(in Python v3.15)"><strong>FileNotFoundError</strong></a> – If a selected country file is missing or is a directory.</p></li>
 </ul>
 </dd>
 </dl>
@@ -2996,6 +3030,33 @@ Defaults to the live build result’s contract when supplied.</p></li>
 <li><p><strong>prepared</strong> (<a class="reference internal" href="openghg_inversions.inversion_data.prepared_inputs.html#openghg_inversions.inversion_data.prepared_inputs.PreparedInputs" title="openghg_inversions.inversion_data.prepared_inputs.PreparedInputs"><em>PreparedInputs</em></a>) – Retained canonical inputs and basis functions.</p></li>
 <li><p><strong>compatibility_output_chain</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.15)"><em>int</em></a><em> | </em><em>None</em>) – Optional zero-based chain index used only
 for <code class="docutils literal notranslate"><span class="pre">run_hbmcmc</span></code> derived-output compatibility.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If country reporting is requested without a country file.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#FileNotFoundError" title="(in Python v3.15)"><strong>FileNotFoundError</strong></a> – If a selected country file is missing or is a directory.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.validate_output_resources">
+<span class="sig-name descname"><span class="pre">validate_output_resources</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">output_spec</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.validate_output_resources" title="Link to this definition">#</a></dt>
+<dd><p>Check country reporting resources without creating products or paths.</p>
+<p>Any explicitly selected <code class="docutils literal notranslate"><span class="pre">country_file</span></code> must be an existing file, even
+when the requested output format does not use it. <code class="docutils literal notranslate"><span class="pre">basic</span></code> and <code class="docutils literal notranslate"><span class="pre">paris</span></code>
+outputs require an explicit country file. This check reads filesystem
+metadata only; it does not open or validate the file contents.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>output_spec</strong> (<a class="reference internal" href="openghg_inversions.rhime.specs.html#openghg_inversions.rhime.specs.RhimeOutputSpec" title="openghg_inversions.rhime.specs.RhimeOutputSpec"><em>RhimeOutputSpec</em></a>) – Resolved output choices. The specification is not mutated.</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#FileNotFoundError" title="(in Python v3.15)"><strong>FileNotFoundError</strong></a> – If the selected country file is missing or is a directory.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If country reporting is requested without a country file.</p></li>
 </ul>
 </dd>
 </dl>
@@ -3394,6 +3455,10 @@ bindings never fall back.</p>
 <p>The visible process is resolve → acquire or accept supplied data → observation
 errors → filter → basis → sensitivities → assemble → materialize → build → sample → result →
 requested outputs.</p>
+<p>Selected basis/support files and reporting country files are checked before
+acquisition, including when merged data is supplied. Basis partitions and
+support maps are loaded at that boundary. Saved bases are rebound to current
+flux; <code class="docutils literal notranslate"><span class="pre">basis_output_path</span></code> is an exact retained-artifact destination.</p>
 <p>Without supplied merged data, this runner acquires fresh data. Persisted
 prepared inputs can be reused with
 <a class="reference internal" href="#openghg_inversions.rhime.run_rhime_from_prepared_inputs" title="openghg_inversions.rhime.run_rhime_from_prepared_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.run_rhime_from_prepared_inputs()</span></code></a>.</p>
@@ -3548,7 +3613,8 @@ manifests.</p>
 <p>This advanced route intentionally starts after retrieval, filtering, basis
 construction, sensitivity construction, and labelled-input assembly. It
 validates the retained scientific layout before crossing the PyMC
-materialization boundary.</p>
+materialization boundary. Selected reporting resources are checked before
+materialization or sampling.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -3570,6 +3636,7 @@ the built-in graph.</p></li>
 <li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If layouts, extension points, aggregation error, or output
     settings are inconsistent.</p></li>
 <li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#TypeError" title="(in Python v3.15)"><strong>TypeError</strong></a> – If an extension point has an invalid callable contract.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#FileNotFoundError" title="(in Python v3.15)"><strong>FileNotFoundError</strong></a> – If a selected country file is missing or is a directory.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -3599,6 +3666,10 @@ errors → filter → basis → sensitivities → assemble → materialize → b
 requested outputs.
 This module keeps source layout validation and sector-aware outputs beside
 that process instead of hiding them behind standard/multisector branching.</p>
+<p>Selected basis/support files and reporting country files are checked before
+acquisition, including when merged data is supplied. Basis partitions and
+support maps are loaded at that boundary. Saved bases are rebound to current
+flux; <code class="docutils literal notranslate"><span class="pre">basis_output_path</span></code> is an exact retained-artifact destination.</p>
 <p>Without supplied merged data, this runner acquires fresh data. Persisted
 prepared inputs can be reused with
 <a class="reference internal" href="#openghg_inversions.rhime.run_rhime_from_prepared_inputs" title="openghg_inversions.rhime.run_rhime_from_prepared_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.run_rhime_from_prepared_inputs()</span></code></a>.</p>
@@ -3694,6 +3765,9 @@ products and one shared concentration product.</p>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.run_rhime_nested_from_prepared_inputs" title="Link to this definition">#</a></dt>
 <dd><p>Build and sample nested RHIME from independently prepared native grids.</p>
+<p>Validate reporting resources before materialization or sampling. Missing
+selected country files raise <code class="docutils literal notranslate"><span class="pre">FileNotFoundError</span></code>; PARIS output without a
+country file raises <code class="docutils literal notranslate"><span class="pre">ValueError</span></code>.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference internal" href="openghg_inversions.rhime.nested.html#openghg_inversions.rhime.nested.NestedRhimeResult" title="openghg_inversions.rhime.nested.NestedRhimeResult"><em>NestedRhimeResult</em></a></p>
@@ -4047,6 +4121,7 @@ supplied affine artifact separately.</p>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="openghg_inversions.rhime.outputs.html">openghg_inversions.rhime.outputs</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.outputs.html#openghg_inversions.rhime.outputs.validate_output_resources"><code class="docutils literal notranslate"><span class="pre">validate_output_resources()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.outputs.html#openghg_inversions.rhime.outputs.RhimeResult"><code class="docutils literal notranslate"><span class="pre">RhimeResult</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.outputs.html#openghg_inversions.rhime.outputs.annotate_likelihood_trace"><code class="docutils literal notranslate"><span class="pre">annotate_likelihood_trace()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.outputs.html#openghg_inversions.rhime.outputs.make_standard_rhime_outputs"><code class="docutils literal notranslate"><span class="pre">make_standard_rhime_outputs()</span></code></a></li>
@@ -4084,6 +4159,7 @@ supplied affine artifact separately.</p>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.preparation.html#openghg_inversions.rhime.preparation.build_sensitivities"><code class="docutils literal notranslate"><span class="pre">build_sensitivities()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.preparation.html#openghg_inversions.rhime.preparation.filter_observations"><code class="docutils literal notranslate"><span class="pre">filter_observations()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.preparation.html#openghg_inversions.rhime.preparation.with_prepared_rhime_sites"><code class="docutils literal notranslate"><span class="pre">with_prepared_rhime_sites()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.preparation.html#openghg_inversions.rhime.preparation.resolve_basis_inputs"><code class="docutils literal notranslate"><span class="pre">resolve_basis_inputs()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="openghg_inversions.rhime.prepared.html">openghg_inversions.rhime.prepared</a><ul>
@@ -4308,6 +4384,7 @@ supplied affine artifact separately.</p>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.make_multisector_rhime_outputs"><code class="docutils literal notranslate"><span class="pre">make_multisector_rhime_outputs()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.make_standard_rhime_result"><code class="docutils literal notranslate"><span class="pre">make_standard_rhime_result()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.make_standard_rhime_outputs"><code class="docutils literal notranslate"><span class="pre">make_standard_rhime_outputs()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.validate_output_resources"><code class="docutils literal notranslate"><span class="pre">validate_output_resources()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.materialize_pymc_inputs"><code class="docutils literal notranslate"><span class="pre">materialize_pymc_inputs()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2_model_input_names"><code class="docutils literal notranslate"><span class="pre">co2_model_input_names()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.multisector_model_input_names"><code class="docutils literal notranslate"><span class="pre">multisector_model_input_names()</span></code></a></li>

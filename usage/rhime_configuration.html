@@ -514,8 +514,8 @@ deprecation warning. The deprecated
 <code class="docutils literal notranslate"><span class="pre">normalise</span></code> control there; modern readers and runners do not depend on that
 adapter. Prefer modern names such as <code class="docutils literal notranslate"><span class="pre">x_prior</span></code>, <code class="docutils literal notranslate"><span class="pre">output_name</span></code> and
 <code class="docutils literal notranslate"><span class="pre">flux_sources</span></code> when migrating code or files.</p>
-<p>Existing option defaults remain unchanged by this separation. Scientific default
-policy and a redesign of the INI sections are separate decisions.</p>
+<p>Basis artifact defaults and the 0.8 transition are described below; a redesign
+of the INI sections remains a separate decision.</p>
 </section>
 <section id="flux-selectors-and-deprecations">
 <h2>Flux selectors and deprecations<a class="headerlink" href="#flux-selectors-and-deprecations" title="Link to this heading">#</a></h2>
@@ -532,13 +532,75 @@ each selector: old and new names together raise <code class="docutils literal no
 equal values and explicit <code class="docutils literal notranslate"><span class="pre">None</span></code>. These modern deprecations are resolved
 separately from historical HBMCMC aliases. Resolved configuration fields and
 canonical option inventories contain only the new names.</p>
-<p><code class="docutils literal notranslate"><span class="pre">basis.make_basis_functions</span></code> now accepts <code class="docutils literal notranslate"><span class="pre">flux_sources</span></code> for source
-weighting. Its shipped <code class="docutils literal notranslate"><span class="pre">emissions_name</span></code> keyword follows the same warning,
-conflict and 0.9 removal policy. The first requested source still determines
-basis weights, all runtime sources remain available, and saved bases retain
-precedence over generation. Newly introduced dataset-native basis helpers use
-<code class="docutils literal notranslate"><span class="pre">flux_sources</span></code> directly. Historical HBMCMC basis and retrieval APIs retain
-their compatibility signatures.</p>
+</section>
+<section id="basis-paths-support-maps-and-compatibility">
+<h2>Basis paths, support maps and compatibility<a class="headerlink" href="#basis-paths-support-maps-and-compatibility" title="Link to this heading">#</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">basis_path</span></code> selects one exact retained <code class="docutils literal notranslate"><span class="pre">BasisFunctions</span></code> artifact, with an
+arbitrary filename ending in <code class="docutils literal notranslate"><span class="pre">.nc</span></code> or <code class="docutils literal notranslate"><span class="pre">.zarr</span></code>. Omit it to generate a basis
+with <code class="docutils literal notranslate"><span class="pre">basis_algorithm</span></code> and <code class="docutils literal notranslate"><span class="pre">nbasis</span></code>. Alternatively,
+<code class="docutils literal notranslate"><span class="pre">basis_partition_path</span></code> selects an exact file containing a labelled <code class="docutils literal notranslate"><span class="pre">basis</span></code>
+partition; this valid scientific representation does not require historical
+case/glob selection. <code class="docutils literal notranslate"><span class="pre">basis_output_path</span></code> is an optional
+exact destination, including the filename; it is not an output directory or an
+enable flag. Staged preparation preserves this destination too.</p>
+<p>A selected retained artifact supplies its operator and metadata to new
+preparation. The runner resolves current native prior flux once after filtering
+and binds it with <code class="docutils literal notranslate"><span class="pre">BasisFunctions.reuse_operator</span></code>; the saved flux payload is
+not read. Generated-basis weights use only the first requested source (or the
+first source mapping entry), while retained flux includes all runtime sources.
+These resolved arrays are local scientific inputs, not configuration fields.
+<code class="docutils literal notranslate"><span class="pre">BasisFunctions.load</span></code> has a separate reconstruction contract: it restores the
+complete saved basis with its saved prior, without acquisition. See the
+<a class="reference internal" href="customising_rhime.html"><span class="doc">modern preparation example</span></a>.</p>
+<p><code class="docutils literal notranslate"><span class="pre">landsea_path</span></code> and <code class="docutils literal notranslate"><span class="pre">outer_regions_path</span></code> select exact scientific support
+files. <code class="docutils literal notranslate"><span class="pre">RhimeConfig.from_params</span></code> resolves options without opening scientific
+data. The application preparation boundary loads selected maps before
+acquisition, then passes labelled <code class="docutils literal notranslate"><span class="pre">landsea_classes</span></code> and <code class="docutils literal notranslate"><span class="pre">outer_regions</span></code>
+arrays to <code class="docutils literal notranslate"><span class="pre">prepare_basis</span></code>. The single application helper
+<code class="docutils literal notranslate"><span class="pre">rhime.preparation.resolve_basis_inputs(config)</span></code> resolves these values and
+consumes any supported deprecated path fields once. Modern requests do not
+enter compatibility code. The numerical functions do no file discovery.
+When the selected algorithm needs a packaged support map, the application
+resolves that domain’s packaged resource. Missing selected files or unavailable
+domain resources raise; another domain is never substituted.</p>
+<p>To select a packaged resource explicitly from Python:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.basis</span><span class="w"> </span><span class="kn">import</span> <span class="n">packaged_basis_support_path</span>
+
+<span class="n">options</span><span class="p">[</span><span class="s2">"landsea_path"</span><span class="p">]</span> <span class="o">=</span> <span class="n">packaged_basis_support_path</span><span class="p">(</span><span class="s2">"landsea"</span><span class="p">,</span> <span class="s2">"EUROPE"</span><span class="p">)</span>
+<span class="n">options</span><span class="p">[</span><span class="s2">"outer_regions_path"</span><span class="p">]</span> <span class="o">=</span> <span class="n">packaged_basis_support_path</span><span class="p">(</span><span class="s2">"outer_regions"</span><span class="p">,</span> <span class="s2">"EUROPE"</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>These resources support basis construction. Country reporting is a separate
+operation: supply <code class="docutils literal notranslate"><span class="pre">country_file</span></code> for <code class="docutils literal notranslate"><span class="pre">basic</span></code> or <code class="docutils literal notranslate"><span class="pre">paris</span></code> country reporting.
+Complete runs call <code class="docutils literal notranslate"><span class="pre">rhime.validate_output_resources(config.output)</span></code> before
+acquisition or inference; output helpers check again before creating products.
+Preparation-only workflows do not require reporting resources. Staged
+postprocessing checks them before creating its output directory. Packaged tutorial
+fixtures remain usable when explicitly selected.</p>
+<p>For devel/0.8, saving a basis uses the retained modern artifact by default.
+For historical callers, <code class="docutils literal notranslate"><span class="pre">basis.compatibility.make_basis_functions</span></code> accepts
+<code class="docutils literal notranslate"><span class="pre">basis_output_format=&quot;legacy&quot;</span></code> as explicit opt-in. This is an adapter option,
+not a canonical <code class="docutils literal notranslate"><span class="pre">RhimeConfig</span></code> field.
+Legacy basis output is deprecated in 0.9; that deprecation does not schedule
+automatic removal in 0.9. This changes basis artifacts, independently of the
+final inversion product’s <code class="docutils literal notranslate"><span class="pre">output_format</span></code>.</p>
+<p>Historical <code class="docutils literal notranslate"><span class="pre">fp_basis_case</span></code> / <code class="docutils literal notranslate"><span class="pre">basis_directory</span></code> discovery, directory-style
+basis outputs, <code class="docutils literal notranslate"><span class="pre">country_directory</span></code>, <code class="docutils literal notranslate"><span class="pre">emissions_name</span></code> and legacy artifact
+adaptation belong to the compatibility boundary. Deprecated public
+<code class="docutils literal notranslate"><span class="pre">make_basis_functions</span></code> and <code class="docutils literal notranslate"><span class="pre">load_basis_functions</span></code> adapters live in
+<code class="docutils literal notranslate"><span class="pre">basis.compatibility</span></code> and invoke canonical modern operations. Migrate a
+case/directory pair to an explicit artifact and output destination:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="c1"># Before: fp_basis_case="monthly", basis_directory="/data/bases"</span>
+<span class="c1">#         basis_output_path="/data/generated" (historical directory)</span>
+<span class="n">options</span><span class="p">[</span><span class="s2">"basis_path"</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"/data/bases/selected-month.nc"</span>
+<span class="n">options</span><span class="p">[</span><span class="s2">"basis_output_path"</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"/data/generated/my-retained-basis.zarr"</span>
+<span class="n">options</span><span class="p">[</span><span class="s2">"landsea_path"</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"/data/maps/classes.nc"</span>
+</pre></div>
+</div>
+<p>The first requested flux source still determines generated-basis weighting;
+all runtime sources are retained. A selected saved basis takes precedence over
+generation. Boundary-condition basis selection still uses <code class="docutils literal notranslate"><span class="pre">bc_basis_case</span></code> /
+<code class="docutils literal notranslate"><span class="pre">bc_basis_directory</span></code>; its discovery migration is separate from this change.</p>
 </section>
 <section id="site-selectors-and-retained-observations">
 <h2>Site selectors and retained observations<a class="headerlink" href="#site-selectors-and-retained-observations" title="Link to this heading">#</a></h2>
@@ -560,7 +622,7 @@ output or sampler settings. The acquisition-and-preparation convenience function
 <code class="docutils literal notranslate"><span class="pre">prepare_rhime_inputs</span></code> has been removed. For a complete inversion, use
 <code class="docutils literal notranslate"><span class="pre">run_rhime</span></code>; for custom preparation, call <code class="docutils literal notranslate"><span class="pre">RhimeMergedData.from_options</span></code> followed by
 <code class="docutils literal notranslate"><span class="pre">prepare_observation_errors</span></code>, <code class="docutils literal notranslate"><span class="pre">filter_observations</span></code>,
-<code class="docutils literal notranslate"><span class="pre">openghg_inversions.basis.make_basis_functions</span></code>,
+<code class="docutils literal notranslate"><span class="pre">openghg_inversions.basis.prepare_basis</span></code>,
 <code class="docutils literal notranslate"><span class="pre">build_sensitivities</span></code> and <code class="docutils literal notranslate"><span class="pre">assemble_rhime_inputs</span></code>. The explicit legacy function
 <code class="docutils literal notranslate"><span class="pre">openghg_inversions.hbmcmc.legacy_data.retrieve_inversion_data</span></code> performs
 fresh surface or column acquisition and returns its established six-tuple of
@@ -681,6 +743,7 @@ staged paths retain their configuration-file-relative convention.</p>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#inspecting-the-resolved-request">Inspecting the resolved request</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#ini-files-and-overrides">INI files and overrides</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#flux-selectors-and-deprecations">Flux selectors and deprecations</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#basis-paths-support-maps-and-compatibility">Basis paths, support maps and compatibility</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#site-selectors-and-retained-observations">Site selectors and retained observations</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#forwarding-resolved-values-in-custom-runners">Forwarding resolved values in custom runners</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#changing-and-persisting-configuration">Changing and persisting configuration</a></li>

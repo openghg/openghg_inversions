@@ -610,18 +610,20 @@ omit it and use one shared ``x_prior``.
 Generated Basis Functions
 -------------------------
 
-RHIME can load saved flux basis functions with ``fp_basis_case`` or generate a
-basis with ``basis_algorithm`` and ``nbasis``. The legacy generated-basis
-choices exposed through RHIME config are still ``"quadtree"`` and
-``"weighted"``.
+RHIME loads a selected retained basis artifact with ``basis_path`` or generates
+a basis with ``basis_algorithm`` and ``nbasis``. ``basis_output_path`` is an
+optional exact ``.nc`` or ``.zarr`` destination. The generated-basis choices
+exposed through RHIME config remain ``"quadtree"`` and ``"weighted"``. See
+:doc:`rhime_configuration` for support maps and migration from historical
+case/directory options.
 
 The lower-level Python basis API also supports ``"region_constrained"`` when a
 caller supplies an already loaded ``region_classes`` ``DataArray``. That path
 keeps generated labels from crossing land/sea, country, inner/outer, or other
 class boundaries, but RHIME config and ``run_hbmcmc.py`` do not yet load
 ``region_classes`` from files. For RHIME runs that need these masks today,
-build and save the basis through the Python basis API, then load it as a saved
-basis case.
+build and save the basis through the Python basis API, then select its exact
+``basis_path``.
 
 As weights-first Python groundwork for issue #452, built on the class
 composition merged in PR #520, the lower-level API can build a
@@ -633,13 +635,17 @@ every distinct outer label receives one target:
 .. code-block:: python
 
    from openghg_inversions.basis import (
-       load_country_region_classes,
-       load_intem_outer_regions,
+       load_basis_support_map,
+       packaged_basis_support_path,
        region_constrained_fixed_outer_basis_from_weights,
    )
 
-   outer_regions = load_intem_outer_regions("EUROPE")
-   region_classes = load_country_region_classes("EUROPE")
+   outer_regions = load_basis_support_map(
+       packaged_basis_support_path("outer_regions", "EUROPE"), "region"
+   )
+   region_classes = load_basis_support_map(
+       packaged_basis_support_path("landsea", "EUROPE"), "country"
+   )
    basis = region_constrained_fixed_outer_basis_from_weights(
        weights,
        start_date="2020-01-01",
@@ -657,18 +663,15 @@ boundary before global relabelling.
 
 ``weights`` must cover the whole fixed-outer grid because the result includes
 the outer states; the general constrained weights-first adapter separately
-supports cropped weights. When neither loaded maps nor path arguments are
-supplied, the adapter loads both packaged fields. When ``outer_regions`` is
-omitted, ``outer_regions_path`` selects a direct NetCDF file; when
-``region_classes`` is omitted, ``country_directory`` selects the country or
-land/sea class-map directory. Already-loaded custom fields are also accepted
-and normalized to the authoritative weights grid. Distinct
-non-null values in a custom country map remain distinct classes. Small float
-storage differences are accepted; incompatible coordinate values, units, or
-CRS definitions are rejected, and null outer cells remain label ``0``. This
-adapter is separate from the legacy
-``fixed_outer_regions_basis_from_data`` weighted route, whose historical output remains
-unchanged, and it is not yet routed through RHIME configuration.
+supports cropped weights. Resolve packaged resources or load caller-selected
+files before invoking the weights-first helper. The resolved fields are
+normalized to the authoritative weights grid. Distinct non-null values in a
+custom country map remain distinct classes. Small float storage differences are
+accepted; incompatible coordinate values, units, or CRS definitions are rejected,
+and null outer cells remain label ``0``. The weights-first helper is not yet
+routed through RHIME configuration. It is separate from
+``fixed_outer_regions_basis_from_data``, which receives site datasets and a
+singular explicit ``weighting_flux`` array.
 
 This groundwork composes a transient class field and still passes one weight
 field to the downstream algorithm. Separate source weights, sensitivities, and

@@ -986,17 +986,19 @@ omit it and use one shared <code class="docutils literal notranslate"><span clas
 </section>
 <section id="generated-basis-functions">
 <h2>Generated Basis Functions<a class="headerlink" href="#generated-basis-functions" title="Link to this heading">#</a></h2>
-<p>RHIME can load saved flux basis functions with <code class="docutils literal notranslate"><span class="pre">fp_basis_case</span></code> or generate a
-basis with <code class="docutils literal notranslate"><span class="pre">basis_algorithm</span></code> and <code class="docutils literal notranslate"><span class="pre">nbasis</span></code>. The legacy generated-basis
-choices exposed through RHIME config are still <code class="docutils literal notranslate"><span class="pre">&quot;quadtree&quot;</span></code> and
-<code class="docutils literal notranslate"><span class="pre">&quot;weighted&quot;</span></code>.</p>
+<p>RHIME loads a selected retained basis artifact with <code class="docutils literal notranslate"><span class="pre">basis_path</span></code> or generates
+a basis with <code class="docutils literal notranslate"><span class="pre">basis_algorithm</span></code> and <code class="docutils literal notranslate"><span class="pre">nbasis</span></code>. <code class="docutils literal notranslate"><span class="pre">basis_output_path</span></code> is an
+optional exact <code class="docutils literal notranslate"><span class="pre">.nc</span></code> or <code class="docutils literal notranslate"><span class="pre">.zarr</span></code> destination. The generated-basis choices
+exposed through RHIME config remain <code class="docutils literal notranslate"><span class="pre">&quot;quadtree&quot;</span></code> and <code class="docutils literal notranslate"><span class="pre">&quot;weighted&quot;</span></code>. See
+<a class="reference internal" href="rhime_configuration.html"><span class="doc">Advanced RHIME configuration</span></a> for support maps and migration from historical
+case/directory options.</p>
 <p>The lower-level Python basis API also supports <code class="docutils literal notranslate"><span class="pre">&quot;region_constrained&quot;</span></code> when a
 caller supplies an already loaded <code class="docutils literal notranslate"><span class="pre">region_classes</span></code> <code class="docutils literal notranslate"><span class="pre">DataArray</span></code>. That path
 keeps generated labels from crossing land/sea, country, inner/outer, or other
 class boundaries, but RHIME config and <code class="docutils literal notranslate"><span class="pre">run_hbmcmc.py</span></code> do not yet load
 <code class="docutils literal notranslate"><span class="pre">region_classes</span></code> from files. For RHIME runs that need these masks today,
-build and save the basis through the Python basis API, then load it as a saved
-basis case.</p>
+build and save the basis through the Python basis API, then select its exact
+<code class="docutils literal notranslate"><span class="pre">basis_path</span></code>.</p>
 <p>As weights-first Python groundwork for issue #452, built on the class
 composition merged in PR #520, the lower-level API can build a
 region-constrained fixed-outer basis from packaged InTEM and raw
@@ -1004,13 +1006,17 @@ country/land-sea class maps. The largest InTEM label defines the bounded inner
 region, <code class="docutils literal notranslate"><span class="pre">nbasis</span></code> is allocated only across the selected inner classes, and
 every distinct outer label receives one target:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.basis</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
-    <span class="n">load_country_region_classes</span><span class="p">,</span>
-    <span class="n">load_intem_outer_regions</span><span class="p">,</span>
+    <span class="n">load_basis_support_map</span><span class="p">,</span>
+    <span class="n">packaged_basis_support_path</span><span class="p">,</span>
     <span class="n">region_constrained_fixed_outer_basis_from_weights</span><span class="p">,</span>
 <span class="p">)</span>
 
-<span class="n">outer_regions</span> <span class="o">=</span> <span class="n">load_intem_outer_regions</span><span class="p">(</span><span class="s2">"EUROPE"</span><span class="p">)</span>
-<span class="n">region_classes</span> <span class="o">=</span> <span class="n">load_country_region_classes</span><span class="p">(</span><span class="s2">"EUROPE"</span><span class="p">)</span>
+<span class="n">outer_regions</span> <span class="o">=</span> <span class="n">load_basis_support_map</span><span class="p">(</span>
+    <span class="n">packaged_basis_support_path</span><span class="p">(</span><span class="s2">"outer_regions"</span><span class="p">,</span> <span class="s2">"EUROPE"</span><span class="p">),</span> <span class="s2">"region"</span>
+<span class="p">)</span>
+<span class="n">region_classes</span> <span class="o">=</span> <span class="n">load_basis_support_map</span><span class="p">(</span>
+    <span class="n">packaged_basis_support_path</span><span class="p">(</span><span class="s2">"landsea"</span><span class="p">,</span> <span class="s2">"EUROPE"</span><span class="p">),</span> <span class="s2">"country"</span>
+<span class="p">)</span>
 <span class="n">basis</span> <span class="o">=</span> <span class="n">region_constrained_fixed_outer_basis_from_weights</span><span class="p">(</span>
     <span class="n">weights</span><span class="p">,</span>
     <span class="n">start_date</span><span class="o">=</span><span class="s2">"2020-01-01"</span><span class="p">,</span>
@@ -1028,18 +1034,15 @@ when an ID is disconnected. Strategy results are validated at the class-local
 boundary before global relabelling.</p>
 <p><code class="docutils literal notranslate"><span class="pre">weights</span></code> must cover the whole fixed-outer grid because the result includes
 the outer states; the general constrained weights-first adapter separately
-supports cropped weights. When neither loaded maps nor path arguments are
-supplied, the adapter loads both packaged fields. When <code class="docutils literal notranslate"><span class="pre">outer_regions</span></code> is
-omitted, <code class="docutils literal notranslate"><span class="pre">outer_regions_path</span></code> selects a direct NetCDF file; when
-<code class="docutils literal notranslate"><span class="pre">region_classes</span></code> is omitted, <code class="docutils literal notranslate"><span class="pre">country_directory</span></code> selects the country or
-land/sea class-map directory. Already-loaded custom fields are also accepted
-and normalized to the authoritative weights grid. Distinct
-non-null values in a custom country map remain distinct classes. Small float
-storage differences are accepted; incompatible coordinate values, units, or
-CRS definitions are rejected, and null outer cells remain label <code class="docutils literal notranslate"><span class="pre">0</span></code>. This
-adapter is separate from the legacy
-<code class="docutils literal notranslate"><span class="pre">fixed_outer_regions_basis_from_data</span></code> weighted route, whose historical output remains
-unchanged, and it is not yet routed through RHIME configuration.</p>
+supports cropped weights. Resolve packaged resources or load caller-selected
+files before invoking the weights-first helper. The resolved fields are
+normalized to the authoritative weights grid. Distinct non-null values in a
+custom country map remain distinct classes. Small float storage differences are
+accepted; incompatible coordinate values, units, or CRS definitions are rejected,
+and null outer cells remain label <code class="docutils literal notranslate"><span class="pre">0</span></code>. The weights-first helper is not yet
+routed through RHIME configuration. It is separate from
+<code class="docutils literal notranslate"><span class="pre">fixed_outer_regions_basis_from_data</span></code>, which receives site datasets and a
+singular explicit <code class="docutils literal notranslate"><span class="pre">weighting_flux</span></code> array.</p>
 <p>This groundwork composes a transient class field and still passes one weight
 field to the downstream algorithm. Separate source weights, sensitivities, and
 <code class="docutils literal notranslate"><span class="pre">basis_group</span></code> metadata remain distinct inputs and are not created by this

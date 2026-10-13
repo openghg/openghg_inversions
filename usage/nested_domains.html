@@ -435,7 +435,12 @@ boundary-condition, model-error, and likelihood components.</p></li>
 <p>The two grids are not RHIME emissions sectors or grouped basis regions. A
 sector separates different flux sources on one spatial layout; a nested domain
 separates two transport grids for the same flux source and must retain two
-independent basis operators. See the <a class="reference internal" href="nested_domain_model_family.html"><span class="doc">family support summary</span></a> before using this guide.</p>
+independent basis operators. Native runtime flux is resolved separately for
+each grid, after the outer scientific mask is applied. Each basis binds its
+current native prior; generation uses the first requested source for design
+weights. Reusing a saved operator does not replace either current prior with
+the artifact’s saved flux. Observation-aligned response arrays remain separate
+inputs to sensitivity construction. See the <a class="reference internal" href="nested_domain_model_family.html"><span class="doc">family support summary</span></a> before using this guide.</p>
 <section id="model-and-state-semantics">
 <h2>Model and state semantics<a class="headerlink" href="#model-and-state-semantics" title="Link to this heading">#</a></h2>
 <p>The outer sensitivity <code class="docutils literal notranslate"><span class="pre">H</span></code> has state dimension <code class="docutils literal notranslate"><span class="pre">region</span></code> and scales with
@@ -485,7 +490,7 @@ RHIME arguments plus the inner-domain options:</p>
     <span class="n">basis_algorithm</span><span class="o">=</span><span class="s2">"weighted"</span><span class="p">,</span>
     <span class="n">nbasis</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span>
     <span class="n">fix_basis_outer_regions</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-    <span class="n">outer_regions_path</span><span class="o">=</span><span class="s2">"intem_region_definition_EUHROB.nc"</span><span class="p">,</span>
+    <span class="n">outer_regions_path</span><span class="o">=</span><span class="s2">"/data/maps/intem_region_definition_EUHROB.nc"</span><span class="p">,</span>
     <span class="c1"># Quadtree is the safe default for a grid without a matching land/sea file.</span>
     <span class="n">inner_basis_algorithm</span><span class="o">=</span><span class="s2">"quadtree"</span><span class="p">,</span>
     <span class="n">inner_nbasis</span><span class="o">=</span><span class="mi">80</span><span class="p">,</span>
@@ -503,10 +508,13 @@ RHIME arguments plus the inner-domain options:</p>
 <p><code class="docutils literal notranslate"><span class="pre">inner_domain</span></code> may instead contain the complete OpenGHG domain name, such as
 <code class="docutils literal notranslate"><span class="pre">&quot;EUROPE-EUHROB&quot;</span></code>. A suffix is prefixed with the outer domain exactly once.
 The outer boundary-condition contribution is retained; an independent inner
-boundary condition is not added. <code class="docutils literal notranslate"><span class="pre">outer_regions_path</span></code> is optional; use the
-bundled <code class="docutils literal notranslate"><span class="pre">intem_region_definition_EUHROB.nc</span></code> for the EUROPE 6 km nest, whose
-metadata marks label 6 as the inner rectangle. Bare filenames are resolved
-against the packaged basis assets. Migrated legacy configs may still use
+boundary condition is not added. <code class="docutils literal notranslate"><span class="pre">outer_regions_path</span></code> selects an exact support
+file. The bundled
+<code class="docutils literal notranslate"><span class="pre">intem_region_definition_EUHROB.nc</span></code> for the EUROPE 6 km nest marks label 6
+as the inner rectangle. To select it explicitly from Python, use
+<code class="docutils literal notranslate"><span class="pre">packaged_basis_support_path(&quot;outer_regions&quot;,</span> <span class="pre">&quot;EUHROB&quot;)</span></code> from
+<code class="docutils literal notranslate"><span class="pre">openghg_inversions.basis</span></code>. Relative paths name caller files; they do not
+implicitly search packaged assets. Migrated legacy configs may still use
 <code class="docutils literal notranslate"><span class="pre">outer_region_definition_file</span></code>; RHIME warns and normalizes it to
 <code class="docutils literal notranslate"><span class="pre">outer_regions_path</span></code>.</p>
 <p>When a store contains fine-grid footprints but only a coarser flux product,
@@ -537,22 +545,22 @@ explicitly when <code class="docutils literal notranslate"><span class="pre">nba
 <section id="use-saved-basis-files">
 <h2>Use saved basis files<a class="headerlink" href="#use-saved-basis-files" title="Link to this heading">#</a></h2>
 <p>Saved outer and inner bases remain separate because each belongs to its own
-native grid. Configure the outer file with <code class="docutils literal notranslate"><span class="pre">fp_basis_case</span></code> and
-<code class="docutils literal notranslate"><span class="pre">basis_directory</span></code>. Configure the inner file independently with
-<code class="docutils literal notranslate"><span class="pre">inner_fp_basis_case</span></code> and <code class="docutils literal notranslate"><span class="pre">inner_basis_directory</span></code>:</p>
+native grid. Configure the exact outer and inner artifacts independently with
+<code class="docutils literal notranslate"><span class="pre">basis_path</span></code> and <code class="docutils literal notranslate"><span class="pre">inner_basis_path</span></code>:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">result</span> <span class="o">=</span> <span class="n">run_rhime_nested</span><span class="p">(</span>
     <span class="n">config_file</span><span class="o">=</span><span class="s2">"nested_rhime.ini"</span><span class="p">,</span>
-    <span class="n">fp_basis_case</span><span class="o">=</span><span class="s2">"outer_basis"</span><span class="p">,</span>
-    <span class="n">basis_directory</span><span class="o">=</span><span class="s2">"/data/basis/outer"</span><span class="p">,</span>
-    <span class="n">inner_fp_basis_case</span><span class="o">=</span><span class="s2">"inner_6km_basis"</span><span class="p">,</span>
-    <span class="n">inner_basis_directory</span><span class="o">=</span><span class="s2">"/data/basis/inner"</span><span class="p">,</span>
+    <span class="n">basis_path</span><span class="o">=</span><span class="s2">"/data/basis/outer.nc"</span><span class="p">,</span>
+    <span class="n">inner_basis_path</span><span class="o">=</span><span class="s2">"/data/basis/inner-6km.zarr"</span><span class="p">,</span>
 <span class="p">)</span>
 </pre></div>
 </div>
 <p>Do not create one basis artifact spanning both grids. When generating a basis
 instead, <code class="docutils literal notranslate"><span class="pre">basis_output_path</span></code> and <code class="docutils literal notranslate"><span class="pre">inner_basis_output_path</span></code> save the outer
-and inner artifacts independently. If no inner basis file or algorithm is
-specified, the inner grid uses the quadtree algorithm.</p>
+and inner artifacts at their exact destinations independently.
+<code class="docutils literal notranslate"><span class="pre">landsea_path</span></code> and <code class="docutils literal notranslate"><span class="pre">inner_landsea_path</span></code> select each grid’s class map when
+weighted generation needs one; support-map selection fails for missing files
+or unsupported domains before acquisition. If no inner basis file or algorithm
+is specified, the inner grid uses the quadtree algorithm.</p>
 <p>The result exposes the ordinary RHIME objects and both native preparations:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">result</span><span class="o">.</span><span class="n">idata</span><span class="o">.</span><span class="n">posterior</span><span class="p">[[</span><span class="s2">"x_outer"</span><span class="p">,</span> <span class="s2">"x_inner"</span><span class="p">]]</span>
 <span class="n">result</span><span class="o">.</span><span class="n">inv_inputs</span><span class="p">[[</span><span class="s2">"H"</span><span class="p">,</span> <span class="s2">"H_inner"</span><span class="p">]]</span>

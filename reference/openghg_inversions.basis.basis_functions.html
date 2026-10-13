@@ -51,7 +51,7 @@
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="openghg_inversions.basis.covariance_products" href="openghg_inversions.basis.covariance_products.html" />
+    <link rel="next" title="openghg_inversions.basis.compatibility" href="openghg_inversions.basis.compatibility.html" />
     <link rel="prev" title="openghg_inversions.basis.affine_flux_map_io" href="openghg_inversions.basis.affine_flux_map_io.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
@@ -320,10 +320,12 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.affine_flux_map.html">openghg_inversions.basis.affine_flux_map</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.affine_flux_map_io.html">openghg_inversions.basis.affine_flux_map_io</a></li>
 <li class="toctree-l3 current active"><a class="current reference internal" href="#">openghg_inversions.basis.basis_functions</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.compatibility.html">openghg_inversions.basis.compatibility</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.covariance_products.html">openghg_inversions.basis.covariance_products</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.layout.html">openghg_inversions.basis.layout</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.operators.html">openghg_inversions.basis.operators</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.prior_uncertainty.html">openghg_inversions.basis.prior_uncertainty</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.support.html">openghg_inversions.basis.support</a></li>
 </ul>
 </details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.config.html">openghg_inversions.config</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -441,6 +443,7 @@
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.inversion_inputs.html">openghg_inversions.inversion_inputs</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.model_error.html">openghg_inversions.model_error</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.native_covariance.html">openghg_inversions.native_covariance</a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.native_flux.html">openghg_inversions.native_flux</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.observation_error.html">openghg_inversions.observation_error</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.serialization.html">openghg_inversions.serialization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.sigma.html">openghg_inversions.sigma</a></li>
@@ -522,7 +525,9 @@ flux field with a basis operator. The operator owns the grid-to-state mapping,
 including region and optional source ordering; the flux remains separate so
 the same object can project sensitivities and reconstruct gridded fluxes.</p>
 <p>NetCDF and Zarr persistence uses a versioned DataTree with separate <code class="docutils literal notranslate"><span class="pre">basis</span></code>
-and <code class="docutils literal notranslate"><span class="pre">flux</span></code> children. Only namespaced OpenGHG Inversions metadata is retained.
+and <code class="docutils literal notranslate"><span class="pre">flux</span></code> children. Only namespaced OpenGHG Inversions metadata is retained,
+encoded in the root <code class="docutils literal notranslate"><span class="pre">basis_metadata_json</span></code> attribute. Legacy raw namespaced
+root attributes remain readable; a present JSON attribute must be valid.
 Loading reconstructs the operator and preserves its grid, state, region, and
 source coordinates. A shared flux may omit the source dimension; when source
 labels are present, they must exactly match the operator’s labels.
@@ -541,23 +546,36 @@ first.</p>
 <dt class="sig sig-object py" id="openghg_inversions.basis.basis_functions.FluxWeightedBasis">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">FluxWeightedBasis</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">operator</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">flux</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">metadata</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">&lt;factory&gt;</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.basis_functions.FluxWeightedBasis" title="Link to this definition">#</a></dt>
 <dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.15)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
-<p>A thin wrapper pairing a BasisOperator with a flux field.</p>
-<p>This class is intentionally lightweight: it stores the operator and the flux, and provides
-constructors that build the appropriate operator from a basis representation.</p>
+<p>Pair a grid-to-state operator with a native prior flux field.</p>
+<p>Flux retains its inventory time axis independently of observation-aligned
+responses passed to <a class="reference internal" href="#openghg_inversions.basis.basis_functions.FluxWeightedBasis.sensitivity" title="openghg_inversions.basis.basis_functions.FluxWeightedBasis.sensitivity"><code class="xref py py-meth docutils literal notranslate"><span class="pre">sensitivity()</span></code></a>. Arrays are borrowed; construction
+preserves lazy flux payloads and does not make independent snapshots.
+Source-specific operators own source order: indexed flux labels must match
+their labels and are reordered accordingly.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Variables<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>operator</strong> (<a class="reference internal" href="openghg_inversions.basis.operators.html#openghg_inversions.basis.operators.BasisOperator" title="openghg_inversions.basis.operators.BasisOperator"><em>openghg_inversions.basis.operators.BasisOperator</em></a>) – Basis operator that owns the state/grid mapping.</p></li>
-<li><p><strong>flux</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>xarray.core.dataarray.DataArray</em></a>) – Representative flux field associated with the basis.</p></li>
-<li><p><strong>metadata</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><em>Any</em><em>]</em>) – Namespaced metadata carried through DataTree serialization.</p></li>
+<li><p><strong>flux</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>xarray.core.dataarray.DataArray</em></a>) – Native prior flux on the operator grid. Callers must supply
+compatible spatial coordinates. May include <code class="docutils literal notranslate"><span class="pre">time</span></code> and <code class="docutils literal notranslate"><span class="pre">source</span></code>.</p></li>
+<li><p><strong>metadata</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><em>Any</em><em>]</em>) – Namespaced metadata carried through DataTree serialization.
+Values may be JSON scalars (including <code class="docutils literal notranslate"><span class="pre">None</span></code> and finite floats),
+nested lists, or dictionaries with string keys. NumPy counterparts
+of supported JSON scalars are normalized to Python scalars and
+tuples to lists when saved.
+Other values and non-string dictionary keys are rejected.</p></li>
 </ul>
 </dd>
 </dl>
 <p class="rubric">Notes</p>
 <ul class="simple">
+<li><p>Namespaced metadata is stored in the <code class="docutils literal notranslate"><span class="pre">basis_metadata_json</span></code> root
+attribute. Both loading routes also accept legacy raw namespaced
+attributes; malformed JSON metadata is rejected when present.</p></li>
 <li><p>A flux with a <cite>source</cite> dimension can still be paired with a <cite>BucketBasisOperator</cite>; in that case
 the same basis is applied to each source when broadcasting occurs in downstream operations.</p></li>
-<li><p>Alignment/broadcasting details are currently delegated to the operator implementations.</p></li>
+<li><p>Spatial alignment and broadcasting are enforced by the operations
+that combine flux, operator geometry, and state.</p></li>
 </ul>
 <dl class="py property">
 <dt class="sig sig-object py" id="openghg_inversions.basis.basis_functions.FluxWeightedBasis.source_labels">
@@ -773,6 +791,9 @@ operator.</p>
 <dt class="sig sig-object py" id="openghg_inversions.basis.basis_functions.FluxWeightedBasis.to_datatree">
 <span class="sig-name descname"><span class="pre">to_datatree</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.basis_functions.FluxWeightedBasis.to_datatree" title="Link to this definition">#</a></dt>
 <dd><p>Serialise to a DataTree with <cite>basis</cite> and <cite>flux</cite> groups.</p>
+<p>Root namespaced metadata is encoded as JSON according to the class’s
+metadata contract, normalizing supported NumPy scalars and tuples.
+Array payloads remain borrowed and lazy.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Returns<span class="colon">:</span></dt>
 <dd class="field-odd"><p><ul class="simple">
@@ -783,6 +804,13 @@ operator.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p>A DataTree with</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#TypeError" title="(in Python v3.15)"><strong>TypeError</strong></a> – If namespaced metadata contains unsupported values or
+    non-string dictionary keys.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If namespaced metadata contains non-finite floats.</p></li>
+</ul>
 </dd>
 </dl>
 </dd></dl>
@@ -802,8 +830,8 @@ operator.</p>
 <dd class="field-odd"><ul class="simple">
 <li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#KeyError" title="(in Python v3.15)"><strong>KeyError</strong></a> – If required groups are missing.</p></li>
 <li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If the schema/version is unsupported, the flux
-    variable is missing, or stored multi-source flux labels do not
-    match the basis operator.</p></li>
+    variable is missing, serialized metadata is invalid, or stored
+    multi-source flux labels do not match the basis operator.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -844,10 +872,18 @@ May contain extra dims (e.g. time, site, source).</p></li>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><p><strong>output_file</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.15)"><em>Path</em></a>) – Path to a <code class="docutils literal notranslate"><span class="pre">.nc</span></code> or <code class="docutils literal notranslate"><span class="pre">.zarr</span></code> artifact. NetCDF is used
-for <code class="docutils literal notranslate"><span class="pre">.nc</span></code> paths and Zarr is used for <code class="docutils literal notranslate"><span class="pre">.zarr</span></code> paths.</p>
+for <code class="docutils literal notranslate"><span class="pre">.nc</span></code> paths and Zarr is used for <code class="docutils literal notranslate"><span class="pre">.zarr</span></code> paths. Suffixes
+are case-insensitive and the requested path is preserved.
+Zarr storage lazily regularizes chunks without changing borrowed
+arrays. Metadata follows the class’s JSON value contract.</p>
 </dd>
 <dt class="field-even">Raises<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If <code class="docutils literal notranslate"><span class="pre">output_file</span></code> does not end with <code class="docutils literal notranslate"><span class="pre">.nc</span></code> or <code class="docutils literal notranslate"><span class="pre">.zarr</span></code>.</p>
+<dd class="field-even"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#TypeError" title="(in Python v3.15)"><strong>TypeError</strong></a> – If retained metadata contains unsupported values or
+    non-string dictionary keys.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If <code class="docutils literal notranslate"><span class="pre">output_file</span></code> does not end with <code class="docutils literal notranslate"><span class="pre">.nc</span></code> or <code class="docutils literal notranslate"><span class="pre">.zarr</span></code>,
+    or retained metadata contains non-finite floats.</p></li>
+</ul>
 </dd>
 </dl>
 </dd></dl>
@@ -856,15 +892,17 @@ for <code class="docutils literal notranslate"><span class="pre">.nc</span></cod
 <dt class="sig sig-object py" id="openghg_inversions.basis.basis_functions.FluxWeightedBasis.load">
 <span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">load</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">file_path</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.basis_functions.FluxWeightedBasis.load" title="Link to this definition">#</a></dt>
 <dd><p>Load a basis object saved with <code class="docutils literal notranslate"><span class="pre">BasisFunctions.save</span></code>.</p>
-<p>The DataTree is loaded while the xarray file context is open, so the
-returned <code class="docutils literal notranslate"><span class="pre">BasisFunctions</span></code> object does not retain references to closed
-file handles.</p>
+<p>Both the operator and saved flux payloads are loaded eagerly while the
+xarray file context is open, so the returned object retains no closed
+file handles. Use <a class="reference internal" href="#openghg_inversions.basis.basis_functions.FluxWeightedBasis.reuse_operator" title="openghg_inversions.basis.basis_functions.FluxWeightedBasis.reuse_operator"><code class="xref py py-meth docutils literal notranslate"><span class="pre">reuse_operator()</span></code></a> to bind a current native prior
+without reading the saved flux payloads.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><p><strong>file_path</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.15)"><em>Path</em></a>) – Path to a <code class="docutils literal notranslate"><span class="pre">BasisFunctions</span></code> DataTree artifact.</p>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>The reconstructed basis object.</p>
+<dd class="field-even"><p>The reconstructed operator paired with its saved native prior,
+preserving the saved state, grid, and source coordinates.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -873,6 +911,47 @@ file handles.</p>
     missing.</p></li>
 <li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If the serialized schema, metadata, labels, or
     operator state is invalid.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Self" title="(in Python v3.15)"><em>Self</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.basis.basis_functions.FluxWeightedBasis.reuse_operator">
+<span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">reuse_operator</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">file_path</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">flux</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.basis_functions.FluxWeightedBasis.reuse_operator" title="Link to this definition">#</a></dt>
+<dd><p>Load a saved operator and bind current native prior flux.</p>
+<p>Only the operator subtree is materialized. Saved flux payloads are not
+read. Runtime sources select and order source-specific partitions;
+missing sources and incompatible grids fail at this binding boundary.
+Use <a class="reference internal" href="#openghg_inversions.basis.basis_functions.FluxWeightedBasis.load" title="openghg_inversions.basis.basis_functions.FluxWeightedBasis.load"><code class="xref py py-meth docutils literal notranslate"><span class="pre">load()</span></code></a> for reconstruction with the saved retained prior.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>file_path</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.15)"><em>Path</em></a>) – Retained <code class="docutils literal notranslate"><span class="pre">.nc</span></code> or <code class="docutils literal notranslate"><span class="pre">.zarr</span></code> basis artifact.</p></li>
+<li><p><strong>flux</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Borrowed current native prior on the operator grid, optionally
+with <code class="docutils literal notranslate"><span class="pre">time</span></code> and <code class="docutils literal notranslate"><span class="pre">source</span></code>. Source labels must be unique
+strings. A source-specific operator must contain each runtime
+source; unused saved sources are omitted. Spatial coordinates
+are matched within
+<a class="reference internal" href="openghg_inversions.array_ops.html#openghg_inversions.array_ops.force_align" title="openghg_inversions.array_ops.force_align"><code class="xref py py-func docutils literal notranslate"><span class="pre">force_align()</span></code></a> tolerances.
+Dask-backed flux payloads remain lazy.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Saved operator and metadata paired with current flux, with
+non-finite flux values replaced by zero. Runtime source order is
+retained without changing the operator’s scientific dimension names.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#OSError" title="(in Python v3.15)"><strong>OSError</strong></a> – If the artifact cannot be opened.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#KeyError" title="(in Python v3.15)"><strong>KeyError</strong></a> – If a required DataTree group or basis variable is missing.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If artifact schema, metadata, or operator is invalid, its flux
+    variable is missing, or current flux source labels or spatial
+    coordinates are incompatible.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -959,40 +1038,35 @@ unweighted basis interpolation.</p></li>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.basis.basis_functions.basis_functions_from_flat_basis">
-<span class="sig-name descname"><span class="pre">basis_functions_from_flat_basis</span></span><span class="sig-paren">(</span>
-
-<dl>
-<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">flux_data</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">split_by_sectors</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">basis_flat</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">metadata</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-</dl>
-
-<span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.basis_functions.basis_functions_from_flat_basis" title="Link to this definition">#</a></dt>
-<dd><p>Attach borrowed runtime flux to shared or source-specific flat labels.</p>
-<p><code class="docutils literal notranslate"><span class="pre">flux_data</span></code> maps source labels to datasets containing <code class="docutils literal notranslate"><span class="pre">flux</span></code>. With
-<code class="docutils literal notranslate"><span class="pre">split_by_sectors=True</span></code>, all sources are retained in mapping order and
-source-specific labels are selected in that same order. Otherwise runtime
-fluxes are combined using the ModelScenario convention. Spatial alignment
-and flat-label validation belong to the retained basis constructors.</p>
+<span class="sig-name descname"><span class="pre">basis_functions_from_flat_basis</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">flux</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">basis_flat</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">metadata</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.basis_functions.basis_functions_from_flat_basis" title="Link to this definition">#</a></dt>
+<dd><p>Attach resolved native flux to shared or source-specific flat labels.</p>
+<p>Source-specific labels are selected in the flux source order. The caller
+owns source combination, native time alignment, and spatial compatibility.
+Constructors validate source labels. Inputs remain borrowed and flux
+payloads may remain lazy; partition geometry is materialized by the operator.
+Prepared basis state coordinates use <code class="docutils literal notranslate"><span class="pre">region</span></code>.</p>
 <dl class="field-list simple">
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference internal" href="#openghg_inversions.basis.basis_functions.FluxWeightedBasis" title="openghg_inversions.basis.basis_functions.FluxWeightedBasis"><em>FluxWeightedBasis</em></a></p>
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>flux</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Resolved native prior on the partition grid, optionally with
+<code class="docutils literal notranslate"><span class="pre">time</span></code> and <code class="docutils literal notranslate"><span class="pre">source</span></code>. Non-finite values are replaced with zero.</p></li>
+<li><p><strong>basis_flat</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a><em>]</em>) – Shared spatial region labels, or source-keyed partitions.
+For source-indexed flux, every runtime source must have a partition;
+extra partitions are omitted and runtime source order is retained.
+A flux without <code class="docutils literal notranslate"><span class="pre">source</span></code> is shared across all supplied partitions.</p></li>
+<li><p><strong>metadata</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Optional namespaced metadata retained with the basis object.</p></li>
+</ul>
 </dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.basis.basis_functions.flux_from_data">
-<span class="sig-name descname"><span class="pre">flux_from_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">flux_data</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">split_by_sectors</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.basis_functions.flux_from_data" title="Link to this definition">#</a></dt>
-<dd><p>Combine or stack all borrowed runtime source fluxes in mapping order.</p>
-<p>Dask-backed payloads remain lazy. Sector-resolved fluxes must share native
-time coordinates; non-sectoral fluxes use the ModelScenario combination.
-Non-finite flux values follow the retained-basis zero-fill policy.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a></p>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Operator paired with the current native prior, ready for projection
+of observation-aligned responses and gridded flux reconstruction.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If source labels are invalid, a runtime source partition is
+    missing, or partition geometry cannot form a valid operator.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="#openghg_inversions.basis.basis_functions.FluxWeightedBasis" title="openghg_inversions.basis.basis_functions.FluxWeightedBasis"><em>FluxWeightedBasis</em></a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -1025,11 +1099,11 @@ Non-finite flux values follow the retained-basis zero-fill policy.</p>
       </div>
     </a>
     <a class="right-next"
-       href="openghg_inversions.basis.covariance_products.html"
+       href="openghg_inversions.basis.compatibility.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">openghg_inversions.basis.covariance_products</p>
+        <p class="prev-next-title">openghg_inversions.basis.compatibility</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -1069,6 +1143,7 @@ Non-finite flux values follow the retained-basis zero-fill policy.</p>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.basis_functions.FluxWeightedBasis.sensitivity"><code class="docutils literal notranslate"><span class="pre">FluxWeightedBasis.sensitivity()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.basis_functions.FluxWeightedBasis.save"><code class="docutils literal notranslate"><span class="pre">FluxWeightedBasis.save()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.basis_functions.FluxWeightedBasis.load"><code class="docutils literal notranslate"><span class="pre">FluxWeightedBasis.load()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.basis_functions.FluxWeightedBasis.reuse_operator"><code class="docutils literal notranslate"><span class="pre">FluxWeightedBasis.reuse_operator()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.basis_functions.FluxWeightedBasis.state_to_native"><code class="docutils literal notranslate"><span class="pre">FluxWeightedBasis.state_to_native()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.basis_functions.FluxWeightedBasis.state_to_flux"><code class="docutils literal notranslate"><span class="pre">FluxWeightedBasis.state_to_flux()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.basis_functions.FluxWeightedBasis.interpolate"><code class="docutils literal notranslate"><span class="pre">FluxWeightedBasis.interpolate()</span></code></a></li>
@@ -1076,7 +1151,6 @@ Non-finite flux values follow the retained-basis zero-fill policy.</p>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.basis_functions.basis_functions_from_flat_basis"><code class="docutils literal notranslate"><span class="pre">basis_functions_from_flat_basis()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.basis_functions.flux_from_data"><code class="docutils literal notranslate"><span class="pre">flux_from_data()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.basis_functions.BasisFunctions"><code class="docutils literal notranslate"><span class="pre">BasisFunctions</span></code></a></li>
 </ul>
   </nav></div>

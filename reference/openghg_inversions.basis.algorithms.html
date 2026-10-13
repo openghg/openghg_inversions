@@ -320,10 +320,12 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.affine_flux_map.html">openghg_inversions.basis.affine_flux_map</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.affine_flux_map_io.html">openghg_inversions.basis.affine_flux_map_io</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.basis_functions.html">openghg_inversions.basis.basis_functions</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.compatibility.html">openghg_inversions.basis.compatibility</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.covariance_products.html">openghg_inversions.basis.covariance_products</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.layout.html">openghg_inversions.basis.layout</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.operators.html">openghg_inversions.basis.operators</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.prior_uncertainty.html">openghg_inversions.basis.prior_uncertainty</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.support.html">openghg_inversions.basis.support</a></li>
 </ul>
 </details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.config.html">openghg_inversions.config</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -441,6 +443,7 @@
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.inversion_inputs.html">openghg_inversions.inversion_inputs</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.model_error.html">openghg_inversions.model_error</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.native_covariance.html">openghg_inversions.native_covariance</a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.native_flux.html">openghg_inversions.native_flux</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.observation_error.html">openghg_inversions.observation_error</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.serialization.html">openghg_inversions.serialization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.sigma.html">openghg_inversions.sigma</a></li>
@@ -550,8 +553,8 @@ acceptance policies, and split steps for composing group-local strategies.</p>
 weights for one class. It recursively splits rectangles along the longer
 axis until each rectangle is below a searched threshold. It is not a
 compatibility implementation of the legacy weighted land/sea pipeline,
-which optimizes the bucket layout before applying the land/sea split. New
-the default region-constrained strategy is
+which optimizes the bucket layout before applying the land/sea split.
+The default region-constrained strategy is
 <a class="reference internal" href="#openghg_inversions.basis.algorithms.GreedySplitStrategy" title="openghg_inversions.basis.algorithms.GreedySplitStrategy"><code class="xref py py-class docutils literal notranslate"><span class="pre">GreedySplitStrategy</span></code></a> composed
 with <a class="reference internal" href="#openghg_inversions.basis.algorithms.AxisParallelSplitStep" title="openghg_inversions.basis.algorithms.AxisParallelSplitStep"><code class="xref py py-class docutils literal notranslate"><span class="pre">AxisParallelSplitStep</span></code></a>
 instead.</p>
@@ -1577,13 +1580,15 @@ residuals are not inputs.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">nregion</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">100</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">tol</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">domain</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'EUROPE'</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">country_directory</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">landsea_indices</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.algorithms.weighted_algorithm" title="Link to this definition">#</a></dt>
-<dd><p>Obtain basis function with nregions (for land-sea split).</p>
+<dd><p>Fit an eager land/sea-separated partition near the requested region count.</p>
+<p>The search may relax <code class="docutils literal notranslate"><span class="pre">tol</span></code> if the requested count cannot be found and
+raises OptimizationError after exhausting its search. Inputs are borrowed;
+this kernel never reads map files or aligns coordinates.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -1597,9 +1602,9 @@ Defaults to 100</p></li>
 <li><p><strong>tol</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.15)"><em>int</em></a>) – Tolerance to find number of basis function regions.
 i.e. optimizes nregions to +/- tol
 Defaults to 1</p></li>
-<li><p><strong>domain</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Domain across which to calculate basis functions.</p></li>
-<li><p><strong>country_directory</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Directory containing land-sea files. If None, will use default files.</p></li>
-<li><p><strong>landsea_indices</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a><em> | </em><em>None</em>) – Optional pre-aligned land/sea mask for <code class="docutils literal notranslate"><span class="pre">grid</span></code>.</p></li>
+<li><p><strong>domain</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Domain label used in shape-error diagnostics; selects no resource.</p></li>
+<li><p><strong>landsea_indices</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a><em> | </em><em>None</em>) – Required dense class array with the same shape and axis order as
+<code class="docutils literal notranslate"><span class="pre">grid</span></code>. No file discovery or coordinate alignment is performed.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>

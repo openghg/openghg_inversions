@@ -519,9 +519,8 @@ high-time-resolution footprints.</p>
     <span class="n">bc_basis_case</span><span class="o">=</span><span class="s2">"NESW"</span><span class="p">,</span>
     <span class="n">bc_basis_directory</span><span class="o">=</span><span class="s2">"/path/to/bc_basis_functions"</span><span class="p">,</span>
     <span class="n">basis_algorithm</span><span class="o">=</span><span class="s2">"weighted"</span><span class="p">,</span>
-    <span class="n">basis_directory</span><span class="o">=</span><span class="s2">"/path/to/basis_functions"</span><span class="p">,</span>
-    <span class="n">country_directory</span><span class="o">=</span><span class="s2">"/path/to/countries"</span><span class="p">,</span>
-    <span class="n">basis_output_path</span><span class="o">=</span><span class="s2">"outputs/satellite_multisector/basis"</span><span class="p">,</span>
+    <span class="n">landsea_path</span><span class="o">=</span><span class="s2">"/path/to/maps/eastasia-landsea.nc"</span><span class="p">,</span>
+    <span class="n">basis_output_path</span><span class="o">=</span><span class="s2">"outputs/satellite_multisector/basis.nc"</span><span class="p">,</span>
     <span class="n">nbasis</span><span class="o">=</span><span class="mi">8</span><span class="p">,</span>
     <span class="n">averaging_error</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
     <span class="n">min_error</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span>
@@ -534,6 +533,11 @@ high-time-resolution footprints.</p>
 <span class="p">)</span>
 </pre></div>
 </div>
+<p><code class="docutils literal notranslate"><span class="pre">landsea_path</span></code> selects the exact class map used for weighted basis
+construction, and <code class="docutils literal notranslate"><span class="pre">basis_output_path</span></code> is the exact retained-artifact destination.
+To reuse a saved basis instead of generating one, select its exact <code class="docutils literal notranslate"><span class="pre">basis_path</span></code>.
+See <a class="reference internal" href="rhime_configuration.html"><span class="doc">Advanced RHIME configuration</span></a> for packaged support-map selection and migration.
+The BC case/directory options above retain their existing compatibility convention.</p>
 <p>Set <code class="docutils literal notranslate"><span class="pre">time_resolved=False</span></code> to request integrated footprints, or <code class="docutils literal notranslate"><span class="pre">None</span></code> to
 leave this metadata unconstrained during the OpenGHG search. For several
 sites, <code class="docutils literal notranslate"><span class="pre">platform</span></code>, <code class="docutils literal notranslate"><span class="pre">max_level</span></code>, and <code class="docutils literal notranslate"><span class="pre">time_resolved</span></code> may be lists aligned

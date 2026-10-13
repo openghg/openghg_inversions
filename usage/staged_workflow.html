@@ -520,10 +520,16 @@ a compact, direct identity for the prepared handoff.</p>
 </section>
 <section id="commands-and-artifacts">
 <h2>Commands and artifacts<a class="headerlink" href="#commands-and-artifacts" title="Link to this heading">#</a></h2>
-<p>All paths are explicit and outputs are written below <code class="docutils literal notranslate"><span class="pre">--output-dir</span></code> (or
-<code class="docutils literal notranslate"><span class="pre">openghg-run</span></code>’s <code class="docutils literal notranslate"><span class="pre">OUTPUT_DIR</span></code>). Commands do not depend on the caller’s
+<p>Stage-owned artifacts are written below <code class="docutils literal notranslate"><span class="pre">--output-dir</span></code> (or
+<code class="docutils literal notranslate"><span class="pre">openghg-run</span></code>’s <code class="docutils literal notranslate"><span class="pre">OUTPUT_DIR</span></code>). An explicitly configured
+<code class="docutils literal notranslate"><span class="pre">basis_output_path</span></code> keeps its exact destination; preparation does not replace
+it with a stage directory. Relative configured paths resolve from the INI or
+JSON file as described above. Commands do not depend on the caller’s
 working directory and reject pre-existing symlinks beneath a stage output
 directory.</p>
+<p>Preparation resolves selected basis and support resources. Country reporting
+resources are checked by <code class="docutils literal notranslate"><span class="pre">postprocess</span></code> before creating its output directory;
+<code class="docutils literal notranslate"><span class="pre">prepare</span></code> and <code class="docutils literal notranslate"><span class="pre">sample</span></code> do not require them.</p>
 <dl class="simple">
 <dt><code class="docutils literal notranslate"><span class="pre">prepare</span></code></dt><dd><p>Retrieves merged data, filters observations, constructs basis and
 sensitivities, assembles canonical inputs, and writes <code class="docutils literal notranslate"><span class="pre">prepared-inputs.nc</span></code>
@@ -531,6 +537,10 @@ and <code class="docutils literal notranslate"><span class="pre">prepare-manifes
 posterior. The NetCDF is a versioned <code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code> artifact and is
 independently inspectable/loadable. Later stages consume this artifact;
 preparation does not write a filtered merged-data snapshot.
+Native runtime flux is resolved once from the filtered source datasets; basis
+design weights use the first requested source. A selected saved basis reuses
+its operator with current runtime flux. The prepared artifact retains that
+bound prior for later reconstruction, which needs no reacquisition.
 For <code class="docutils literal notranslate"><span class="pre">co2</span></code>, preparation validates and copies the configured
 <code class="docutils literal notranslate"><span class="pre">Co2PreparedInputs</span></code> artifact and optional bound affine reconstruction,
 preserving their content identities; it does not acquire observation data.</p>

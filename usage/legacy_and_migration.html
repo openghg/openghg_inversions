@@ -618,7 +618,7 @@ the former <code class="docutils literal notranslate"><span class="pre">prepare_
 <td><p>Backend-neutral prepared observations and sensitivities</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">basis_functions_wrapper</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">make_basis_functions</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">prepare_basis</span></code></p></td>
 <td><p>Call <code class="docutils literal notranslate"><span class="pre">BasisFunctions.sensitivity</span></code> when applying the retained basis;
 complete inversions should normally use <code class="docutils literal notranslate"><span class="pre">run_rhime</span></code></p></td>
 </tr>
@@ -713,9 +713,25 @@ including <code class="docutils literal notranslate"><span class="pre">basis_wei
 now live in <code class="docutils literal notranslate"><span class="pre">openghg_inversions.hbmcmc.legacy_basis</span></code>. The previous canonical
 module paths and exports have been removed.</p>
 <p>Modern acquisition uses <code class="docutils literal notranslate"><span class="pre">RhimeMergedData.from_options</span></code> or direct dataset
-construction. Modern basis functions accept explicit <code class="docutils literal notranslate"><span class="pre">site_data</span></code> and
-<code class="docutils literal notranslate"><span class="pre">flux_data</span></code> datasets. For reusable RHIME runs, save <code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code>;
+construction. Modern runners resolve native prior flux once with
+<code class="docutils literal notranslate"><span class="pre">native_flux.resolve_runtime_flux(merged.flux_data,</span> <span class="pre">split_by_sectors=...)</span></code>.
+Modern <code class="docutils literal notranslate"><span class="pre">prepare_basis</span></code> accepts explicit <code class="docutils literal notranslate"><span class="pre">site_data</span></code>, resolved <code class="docutils literal notranslate"><span class="pre">runtime_flux</span></code>
+and singular <code class="docutils literal notranslate"><span class="pre">weighting_flux</span></code> arrays, exact <code class="docutils literal notranslate"><span class="pre">basis_path</span></code> / <code class="docutils literal notranslate"><span class="pre">output_path</span></code>
+artifacts, and resolved scientific map arrays. Historical case/glob discovery,
+directory-based filename construction, flat-file adaptation and explicit legacy writing are isolated in
+<code class="docutils literal notranslate"><span class="pre">basis.compatibility</span></code>. See <a class="reference internal" href="rhime_configuration.html"><span class="doc">Advanced RHIME configuration</span></a> for the 0.8 modern basis
+artifact default, explicit legacy opt-in, and migration examples. For reusable RHIME runs, save <code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code>;
 legacy merged-data files are a separate explicit utility workflow.</p>
+<p>Dataset and <code class="docutils literal notranslate"><span class="pre">fp_all</span></code> basis adapters resolve native flux once at their
+compatibility boundary. <code class="docutils literal notranslate"><span class="pre">basis_functions_from_flat_basis</span></code> now accepts
+<code class="docutils literal notranslate"><span class="pre">flux=</span></code> rather than source datasets and a combination flag. Weight builders
+accept one <code class="docutils literal notranslate"><span class="pre">weighting_flux</span></code> array rather than a source dictionary and selector.</p>
+<p>For new preparation, <code class="docutils literal notranslate"><span class="pre">BasisFunctions.reuse_operator(path,</span> <span class="pre">flux=runtime_flux)</span></code>
+reuses the saved partition and binds the current prior without reading the saved
+flux payload. <code class="docutils literal notranslate"><span class="pre">prepare_basis(basis_path=...,</span> <span class="pre">...)</span></code> performs that operation.
+For reconstruction, <code class="docutils literal notranslate"><span class="pre">BasisFunctions.load(path)</span></code> restores the complete saved
+basis and its retained flux without acquiring data. Acquisition replay remains
+deferred to #829.</p>
 </section>
 </section>
 
