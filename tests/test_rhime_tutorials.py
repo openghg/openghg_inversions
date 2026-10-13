@@ -63,7 +63,7 @@ def _test_store_overrides(
         "met_model": None,
         "flux_sources": tac_ch4_data_args["emissions_name"],
         "bc_input": "cams",
-        "basis_output_path": str(tmp_path),
+        "basis_output_path": str(tmp_path / "basis.nc"),
         "output_path": str(tmp_path),
     }
 

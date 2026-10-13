@@ -13,7 +13,9 @@ inputs, use :func:`openghg_inversions.rhime.run_rhime_from_prepared_inputs`.
 
 from __future__ import annotations
 
-from openghg_inversions.basis import make_basis_functions
+from openghg_inversions.basis import prepare_basis
+from openghg_inversions.native_flux import resolve_runtime_flux
+from openghg_inversions.rhime.preparation import resolve_basis_inputs
 
 import argparse
 from collections.abc import Sequence
@@ -33,6 +35,7 @@ from openghg_inversions.rhime import (
     prepare_observation_errors,
     make_standard_rhime_result,
     make_standard_rhime_outputs,
+    validate_output_resources,
     materialize_pymc_inputs,
     read_rhime_ini,
     sample_rhime_model,
@@ -72,7 +75,10 @@ def run_custom_rhime(
     params.update(kwargs)
     params["mismatch_model"] = None
     config = RhimeConfig.from_params(params, multisector=False)
+    validate_output_resources(config.output)
 
+    # Resolve selected support files before acquiring observations or flux.
+    basis_inputs = resolve_basis_inputs(config)
     merged = RhimeMergedData.from_options(
         **config.select(
             "site_options", "species", "domain", "start_date",
@@ -86,18 +92,21 @@ def run_custom_rhime(
     # 2. Keep the scientific preparation order visible in this recipe.
     merged = prepare_observation_errors(merged, averaging_error=config.averaging_error)
     filtered = filter_observations(merged, filters=config.filters)
-    basis_functions = make_basis_functions(
+    runtime_flux = resolve_runtime_flux(
+        filtered.flux_data, split_by_sectors=filtered.split_by_sectors,
+    )
+    weighting_source = config.flux_sources[0] if config.flux_sources else next(iter(filtered.flux_data))
+    weighting_flux = filtered.flux_data[weighting_source]["flux"]
+    basis_functions = prepare_basis(
         site_data=filtered.site_data,
-        flux_data=filtered.flux_data,
-        split_by_sectors=filtered.split_by_sectors,
+        runtime_flux=runtime_flux,
+        weighting_flux=weighting_flux,
         **config.select(
-            "species", "domain", "start_date", "basis_algorithm", "nbasis",
-            "fp_basis_case", "basis_directory", "country_directory", "outer_regions_path",
+            "domain", "start_date", "basis_algorithm", "nbasis",
         ),
-        flux_sources=config.flux_sources,
         fix_outer_regions=config.fix_basis_outer_regions,
-        outputname=config.output_name,
         output_path=config.basis_output_path,
+        **basis_inputs,
     )
     site_data = build_sensitivities(
         filtered,

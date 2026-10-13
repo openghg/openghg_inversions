@@ -144,3 +144,22 @@ applied to #813 at those revisions only.
 | `2b80e490` | Python 3.12/3.13 suites and docs-full in `19280761`, exit zero. Eight rendered pages and 1,316 local anchors checked; generated references matched. | Selected-forwarding round; earlier focused groups of 69, 55, 69 and 10 tests overlapped. Rendered inspection covered HTML structure/text, not browser screenshots. |
 | `7c58af3b` | Relevant Python 3.12/3.13 suites and docs-full in `19281228`, exit zero. Eight pages and 940 local links/anchors checked. | Decoder/compatibility separation before the final constructor amendment. |
 | `81405294` | Relevant Python 3.12/3.13 suites and docs-full in `19281458`, exit zero. Focused amendment checks covered 173 consumer and 35 compatibility/shim tests; Ruff, OpenSpec and whitespace passed. Eight pages and 936 local links/anchors checked; generated references matched. | One-constructor amendment, pushed to #813 before splitting into the #815 stack. Rendered inspection covered HTML structure/text, not browser screenshots. |
+
+## Modern flux terminology follow-up
+
+- [x] Canonicalize flux store/domain and nested selectors independently of historical aliases.
+- [x] Warn on old-only keywords, reject simultaneous old/new spellings, and document removal in 0.9.
+- [x] Export canonical configuration names and preserve dataset-domain selection/interpolation.
+- [x] Deprecate the shipped basis `emissions_name` keyword at its actual implementation boundary.
+- [ ] Record final Slurm compatibility/documentation validation on the owning PR.
+
+## Explicit basis inputs follow-up (#838)
+
+- [x] Use exact retained artifact paths/destinations and resolved labelled scientific maps.
+- [x] Keep configuration construction data-free and resolve selected resources before acquisition.
+- [x] Isolate historical discovery, filenames, deprecated arguments and legacy writing in compatibility code.
+- [x] Document modern retained output as the 0.8 default and legacy opt-in, deprecated in 0.9 without automatic removal.
+- [x] Update ordinary/nested/staged/copied-runner guidance and preserve exact staged destinations.
+- [ ] Record independent review and revision-specific broader/Slurm validation on the owning PR.
+- [x] Implement explicit native runtime-flux ownership and operator-only reuse (#839), with complete saved-prior restoration kept separate.
+- [ ] Record independent #839 code, documentation-impact and docstring review plus revision-specific validation on the owning PR.

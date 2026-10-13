@@ -111,8 +111,8 @@ deprecation warning. The deprecated
 adapter. Prefer modern names such as ``x_prior``, ``output_name`` and
 ``flux_sources`` when migrating code or files.
 
-Existing option defaults remain unchanged by this separation. Scientific default
-policy and a redesign of the INI sections are separate decisions.
+Basis artifact defaults and the 0.8 transition are described below; a redesign
+of the INI sections remains a separate decision.
 
 Flux selectors and deprecations
 -------------------------------
@@ -132,13 +132,82 @@ equal values and explicit ``None``. These modern deprecations are resolved
 separately from historical HBMCMC aliases. Resolved configuration fields and
 canonical option inventories contain only the new names.
 
-``basis.make_basis_functions`` now accepts ``flux_sources`` for source
-weighting. Its shipped ``emissions_name`` keyword follows the same warning,
-conflict and 0.9 removal policy. The first requested source still determines
-basis weights, all runtime sources remain available, and saved bases retain
-precedence over generation. Newly introduced dataset-native basis helpers use
-``flux_sources`` directly. Historical HBMCMC basis and retrieval APIs retain
-their compatibility signatures.
+Basis paths, support maps and compatibility
+-------------------------------------------
+
+``basis_path`` selects one exact retained ``BasisFunctions`` artifact, with an
+arbitrary filename ending in ``.nc`` or ``.zarr``. Omit it to generate a basis
+with ``basis_algorithm`` and ``nbasis``. Alternatively,
+``basis_partition_path`` selects an exact file containing a labelled ``basis``
+partition; this valid scientific representation does not require historical
+case/glob selection. ``basis_output_path`` is an optional
+exact destination, including the filename; it is not an output directory or an
+enable flag. Staged preparation preserves this destination too.
+
+A selected retained artifact supplies its operator and metadata to new
+preparation. The runner resolves current native prior flux once after filtering
+and binds it with ``BasisFunctions.reuse_operator``; the saved flux payload is
+not read. Generated-basis weights use only the first requested source (or the
+first source mapping entry), while retained flux includes all runtime sources.
+These resolved arrays are local scientific inputs, not configuration fields.
+``BasisFunctions.load`` has a separate reconstruction contract: it restores the
+complete saved basis with its saved prior, without acquisition. See the
+:doc:`modern preparation example <customising_rhime>`.
+
+``landsea_path`` and ``outer_regions_path`` select exact scientific support
+files. ``RhimeConfig.from_params`` resolves options without opening scientific
+data. The application preparation boundary loads selected maps before
+acquisition, then passes labelled ``landsea_classes`` and ``outer_regions``
+arrays to ``prepare_basis``. The single application helper
+``rhime.preparation.resolve_basis_inputs(config)`` resolves these values and
+consumes any supported deprecated path fields once. Modern requests do not
+enter compatibility code. The numerical functions do no file discovery.
+When the selected algorithm needs a packaged support map, the application
+resolves that domain's packaged resource. Missing selected files or unavailable
+domain resources raise; another domain is never substituted.
+
+To select a packaged resource explicitly from Python:
+
+.. code-block:: python
+
+   from openghg_inversions.basis import packaged_basis_support_path
+
+   options["landsea_path"] = packaged_basis_support_path("landsea", "EUROPE")
+   options["outer_regions_path"] = packaged_basis_support_path("outer_regions", "EUROPE")
+
+These resources support basis construction. Country reporting is a separate
+operation: supply ``country_file`` for ``basic`` or ``paris`` country reporting.
+Complete runs call ``rhime.validate_output_resources(config.output)`` before
+acquisition or inference; output helpers check again before creating products.
+Preparation-only workflows do not require reporting resources. Staged
+postprocessing checks them before creating its output directory. Packaged tutorial
+fixtures remain usable when explicitly selected.
+
+For devel/0.8, saving a basis uses the retained modern artifact by default.
+For historical callers, ``basis.compatibility.make_basis_functions`` accepts
+``basis_output_format="legacy"`` as explicit opt-in. This is an adapter option,
+not a canonical ``RhimeConfig`` field.
+Legacy basis output is deprecated in 0.9; that deprecation does not schedule
+automatic removal in 0.9. This changes basis artifacts, independently of the
+final inversion product's ``output_format``.
+
+Historical ``fp_basis_case`` / ``basis_directory`` discovery, directory-style
+basis outputs, ``country_directory``, ``emissions_name`` and legacy artifact
+adaptation belong to the compatibility boundary. Deprecated public
+``make_basis_functions`` and ``load_basis_functions`` adapters live in
+``basis.compatibility`` and invoke canonical modern operations. Migrate a
+case/directory pair to an explicit artifact and output destination::
+
+   # Before: fp_basis_case="monthly", basis_directory="/data/bases"
+   #         basis_output_path="/data/generated" (historical directory)
+   options["basis_path"] = "/data/bases/selected-month.nc"
+   options["basis_output_path"] = "/data/generated/my-retained-basis.zarr"
+   options["landsea_path"] = "/data/maps/classes.nc"
+
+The first requested flux source still determines generated-basis weighting;
+all runtime sources are retained. A selected saved basis takes precedence over
+generation. Boundary-condition basis selection still uses ``bc_basis_case`` /
+``bc_basis_directory``; its discovery migration is separate from this change.
 
 Site selectors and retained observations
 ----------------------------------------
@@ -163,7 +232,7 @@ output or sampler settings. The acquisition-and-preparation convenience function
 ``prepare_rhime_inputs`` has been removed. For a complete inversion, use
 ``run_rhime``; for custom preparation, call ``RhimeMergedData.from_options`` followed by
 ``prepare_observation_errors``, ``filter_observations``,
-``openghg_inversions.basis.make_basis_functions``,
+``openghg_inversions.basis.prepare_basis``,
 ``build_sensitivities`` and ``assemble_rhime_inputs``. The explicit legacy function
 ``openghg_inversions.hbmcmc.legacy_data.retrieve_inversion_data`` performs
 fresh surface or column acquisition and returns its established six-tuple of

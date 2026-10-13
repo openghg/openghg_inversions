@@ -322,7 +322,7 @@ and custom-likelihood conflict precedence SHALL remain unchanged.
 ### Requirement: Scientific preparation owns its operations
 
 Recipes SHALL derive observation errors before temporal filtering/aggregation,
-call `make_basis_functions` directly with resolved arguments, and use the actual
+call canonical `prepare_basis` directly with resolved arguments, and use the actual
 sensitivity, filtering and assembly implementations. Forwarding wrappers SHALL
 NOT be retained solely for uniform stage names, timing or keyword translation.
 Shared indexing utilities SHALL remain independently reusable. Assembly SHALL
@@ -467,6 +467,56 @@ be added to prepared inputs or the preparation manifest by this change.
 - **THEN** configuration rejects it and directs file reuse to prepared inputs
 - **AND** historical legacy codecs retain their separately documented behavior
 
+### Requirement: Basis preparation receives explicit scientific inputs
+
+Modern preparation SHALL accept an exact retained `basis_path` or resolved
+labelled `basis_partition`, resolved `landsea_classes` and `outer_regions`, and
+an optional exact `output_path`. Configured `basis_partition_path` SHALL load the
+explicit `basis` variable at the application boundary. A labelled partition is
+a valid scientific representation, independently of historical artifact policy.
+
+`RhimeConfig.from_params` SHALL remain data-free. The application boundary
+`resolve_basis_inputs(config)` SHALL check selected artifact paths and resolve
+support maps before acquisition, then pass canonical inputs to `prepare_basis`.
+Packaged basis support maps SHALL remain explicitly selectable. A missing
+selected file or unavailable requested domain resource SHALL fail without
+another-domain substitution or read-side directory creation. Country reporting
+maps SHALL be separate caller-selected inputs; `basic` and `paris` reporting
+SHALL require an explicit `country_file` and check selected files before
+acquisition.
+
+Historical case/glob discovery, filename construction, deprecated arguments,
+legacy schema adaptation and explicit legacy writing SHALL live in
+`basis.compatibility`. Transitional deprecated scalar/path configuration fields
+MAY remain for shipped requests; the application boundary SHALL consume them
+once through compatibility adapters which call modern operations. Canonical
+scientific preparation and numerical kernels SHALL NOT depend on legacy policy.
+
+For devel/0.8, saved bases SHALL default to modern retained artifacts. Legacy
+basis output SHALL remain explicit opt-in through the compatibility adapter.
+Its 0.9 deprecation SHALL NOT imply automatic removal in 0.9. Staged preparation
+SHALL preserve a caller-selected exact `basis_output_path`. BC case/directory
+migration and acquisition replay (#829) SHALL remain outside this bounded change.
+
+#### Scenario: Arbitrary retained artifact destination
+
+- **WHEN** preparation selects an arbitrary exact `.nc` or `.zarr` input or output
+- **THEN** no filename parsing or glob discovery is required
+- **AND** staged preparation preserves the caller's exact destination
+
+#### Scenario: Selected support map is unavailable
+
+- **WHEN** a selected path is missing or the requested domain lacks a packaged map
+- **THEN** preparation fails before acquisition or weight computation
+- **AND** it neither substitutes another domain nor creates a read directory
+
+#### Scenario: Historical basis entry boundary
+
+- **WHEN** supported deprecated basis arguments are supplied
+- **THEN** a compatibility adapter warns and translates them once
+- **AND** canonical preparation receives exact paths or labelled arrays
+- **AND** explicit legacy writing preserves partitions and scientific results
+
 ### Requirement: Modern flux selectors have their own deprecation boundary
 
 Modern configuration and acquisition SHALL use `flux_store`, `flux_domain`,
@@ -497,3 +547,32 @@ interfaces SHALL use canonical names directly without forwarding wrappers.
 - **WHEN** a caller selects a different `flux_domain`
 - **THEN** the requested flux dataset uses that domain and footprint retrieval
   retains its own domain and existing interpolation behavior
+
+### Requirement: Native runtime flux has an explicit preparation owner
+
+Each compatible domain/grid preparation context SHALL resolve native
+`runtime_flux` once from its retained source datasets, after scientific masking
+where applicable. Runners SHALL pass this labelled array and a singular
+`weighting_flux` to canonical basis preparation. Weighting SHALL use the first
+requested source or the first mapping entry; retained flux SHALL include all
+runtime sources. Configuration SHALL NOT retain these numerical arrays. Native
+prior flux SHALL remain distinct from observation-aligned `fp_x_flux` and
+`fp_x_flux_sectoral`. Existing source alignment and signed-flux semantics SHALL
+be preserved. Historical dataset and `fp_all` translation SHALL end at named
+compatibility boundaries.
+
+#### Scenario: Current prior binds a reused operator
+
+- **GIVEN** a retained basis saved with prior A and acquired current prior B
+- **WHEN** new preparation selects that artifact
+- **THEN** `BasisFunctions.reuse_operator(path, flux=runtime_flux)` SHALL load and
+  validate the operator without eagerly reading the saved flux payload
+- **AND** source-specific operators SHALL follow the current ordered sources
+- **AND** sensitivities and reconstructed flux SHALL use current prior B
+
+#### Scenario: Reconstruction restores the retained prior
+
+- **GIVEN** a retained basis saved with prior A
+- **WHEN** postprocessing calls `BasisFunctions.load(path)`
+- **THEN** the complete operator and saved flux SHALL be restored
+- **AND** reconstruction SHALL use prior A without acquisition

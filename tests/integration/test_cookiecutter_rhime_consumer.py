@@ -40,7 +40,8 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
             })
             for site in config.site_options.sites
         },
-        flux_data={},
+        flux_data={"inventory": xr.Dataset({"flux": (("lat", "lon"), [[2.]])},
+                                           coords={"lat": [50.], "lon": [0.]})},
         site_options=config.site_options,
     )
     filtered = merged
@@ -87,8 +88,9 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
 
     def build_basis(**kwargs: Any) -> Any:
         assert kwargs["site_data"] is filtered.site_data
+        assert kwargs["weighting_flux"].data is filtered.flux_data[config.flux_sources[0]]["flux"].data
+        xr.testing.assert_equal(kwargs["runtime_flux"], filtered.flux_data[config.flux_sources[0]]["flux"])
         assert kwargs["domain"] == config.domain
-        assert kwargs["flux_sources"] == config.flux_sources
         calls.append("basis")
         return basis
 
@@ -147,7 +149,7 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
     monkeypatch.setattr(rhime_runner.RhimeConfig, "from_params", classmethod(resolve))
     monkeypatch.setattr(rhime_runner.RhimeMergedData, "from_options", retrieve)
     monkeypatch.setattr(rhime_runner, "filter_observations", filter_observations)
-    monkeypatch.setattr(rhime_runner, "make_basis_functions", build_basis)
+    monkeypatch.setattr(rhime_runner, "prepare_basis", build_basis)
     monkeypatch.setattr(rhime_runner, "build_sensitivities", build_sensitivities)
     monkeypatch.setattr(rhime_runner, "assemble_rhime_inputs", assemble)
     monkeypatch.setattr(

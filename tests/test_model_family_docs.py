@@ -165,8 +165,8 @@ def test_nested_reader_path_exposes_transport_grid_boundary() -> None:
     assert "grouped basis regions" in guide
     assert "mu_outer" in guide
     assert "inner_x_prior" in guide
-    assert "inner_fp_basis_case" in guide
-    assert "inner_basis_directory" in guide
+    assert "``basis_path``" in guide
+    assert "``inner_basis_path``" in guide
     assert "inner_basis_output_path" in guide
     assert guide.count('mismatch_model="pollution_event"') == 2
     assert "outer_overlap_masked=True" in guide

@@ -128,10 +128,10 @@ adopted names for this revision; other established names are retained.
 | `retrieve_inversion_data` (rename public `data_processing_surface_notracer`) | Fresh acquisition and merge, covering surface and column data. | Existing shorthand arguments -> existing six-tuple of merged data and retained metadata lists. Includes existing observation-error construction and optional merged saving; no reload, basis construction or inference. |
 | `_retrieve_inversion_data_from_options` (rename private canonical body) | Fresh acquisition with resolved selectors. | Complete site-options record plus explicit non-site arguments -> same six-tuple. No second shorthand expansion. |
 | `data_processing_surface_notracer` (deprecated compatibility wrapper) | Preserve existing public calls/imports. | Same established signature, shorthand, six-tuple return and errors; issue `DeprecationWarning` naming `retrieve_inversion_data`, then delegate to the same body. No duplicate acquisition implementation. |
-| `RhimeMergedData.from_options` / `.load` (#815 split) | Distinct fresh-acquisition and strict-cache factories. | Resolved selectors and explicit acquisition or cache arguments -> `RhimeMergedData`. Fresh acquisition retains optional saving; loading requires caller selectors and validates layout/time-resolution with no fallback. Recipes reuse supplied compatible data before selecting a factory. |
-| `RhimeMergedData` (keep) | Acquired/reloaded numerical handoff. | Merged scientific datasets plus authoritative retained site options. Borrowed, potentially lazy arrays; no hidden materialization. |
-| `prepare_rhime_inputs` (deprecate; retain adapter) | Acquisition-and-preparation convenience entry point. | Preserves applicable arguments and `RhimePreparedInputs` return, warns with the explicit loading/preparation replacements, and delegates to the same named scientific stages. Resolves applicable shorthand without a complete model/output/sampler request. |
-| `filter_rhime_observations`, `build_rhime_basis`, `build_rhime_sensitivities`, `assemble_rhime_inputs` (keep) | Named scientific stages in the ordinary recipe. | Borrowed numerical handoffs and explicit resolved values -> filtered data, basis, sensitivities and assembled inputs. Named keyword options with required scientific identity/source inputs; remove the former positional `data_args` adapter. No phase-config class, reparsing or generic request context threaded through scientific components. |
+| `RhimeMergedData.from_options` | Fresh in-memory acquisition with resolved selectors. | Returns borrowed scientific datasets and aligned retained options; no observation-error preparation or modern cache I/O. |
+| `RhimeMergedData` (keep) | Acquired in-memory numerical handoff. | Borrowed, potentially lazy datasets, retained site options and selected provenance. Selected provenance is not persisted in prepared inputs or their manifest. |
+| `prepare_rhime_inputs` (removed in #826) | Obsolete acquisition-and-preparation adapter. | Use the visible scientific operations or prepared-input persistence; no replacement forwarding adapter. |
+| Preparation operations | Scientific work in ordinary recipes. | Derive observation errors, filter observations, call `prepare_basis`, build sensitivities and assemble inputs using explicit resolved values. Keep meaningful contracts, not forwarding signatures. |
 | `RhimePreparedInputs` (keep) | Labelled prepared model-input handoff. | Numerical inputs, basis and retained metadata; independent of full requested configuration. |
 | `RhimeRunSpec` (keep) | Execution description. | Constructed after ordinary preparation from requested dates, retained sites/periods, prepared layout and resolved model/output choices. No acquisition options or sampler execution. |
 | `RhimeRunnerSetup` / `make_rhime_runner_setup` / `resolve_rhime_options` (remove) | Redundant internal setup bundle and its constructors. | Migrate ordinary, nested, staged, shim and example consumers to `RhimeConfig.from_params`; construct retained run descriptions only after preparation. Do not retain a renamed bundle or compatibility projection. |
@@ -365,3 +365,59 @@ preserve scientific output checks. Run relevant broader coverage before handoff.
 The previous locked Python 3.12/3.13 and documentation passes validate the old
 implementation only. They do not establish conformance to this revised design.
 Track the remaining reconciliation in [tasks.md](tasks.md).
+
+### Explicit basis paths and isolated compatibility (#838)
+
+The application preparation owner calls `resolve_basis_inputs(config)` before
+acquisition. It checks exact retained paths, loads `basis_partition_path` when
+selected, and resolves labelled scientific support maps. Configuration
+construction remains data-free. Modern `prepare_basis` then reads the selected
+retained operator or generates a partition, binds current merged flux, and
+optionally saves to an exact destination. Numerical construction receives map
+arrays and has no directory/glob or deprecated-option policy.
+
+Transitional scalar/path fields for shipped requests remain on the outer
+configuration. The application resolver dispatches to `basis.compatibility`
+only when these legacy fields are supplied. That module alone owns historical
+case/glob discovery, filenames, flat-artifact adaptation and opt-in legacy
+writing; adapters call canonical operations. The valid labelled partition
+representation remains available to modern callers.
+
+Modern retained basis output is the devel/0.8 default, superseding #360's
+temporary legacy default. Legacy output remains explicit adapter opt-in and is
+deprecated in 0.9 without automatic removal. Staged preparation preserves exact
+caller destinations. Packaged basis support maps remain selectable; absent
+domain maps fail without fallback. Country reporting requires caller-selected
+files, separate from basis support resources. BC case/directory migration is
+inventoried but deferred; acquisition replay remains #829.
+
+### Native runtime-flux ownership (#839)
+
+After filtering (and domain-specific scientific masking for nested runs), each
+procedural recipe resolves `runtime_flux` once with
+`native_flux.resolve_runtime_flux`. It selects one `weighting_flux` from the
+first requested source, or first mapping entry. These are local scientific
+arrays, not configuration fields. `prepare_basis` receives both arrays and site
+datasets; constructors consume resolved native flux, not legacy dictionaries.
+Retained flux includes all runtime sources. Observation-aligned `fp_x_flux` and
+`fp_x_flux_sectoral` stay separate inputs to sensitivity construction.
+
+`BasisFunctions.reuse_operator(path, flux=runtime_flux)` validates the retained
+artifact and loads only its operator subtree, selecting source-specific
+operators in current source order before binding current flux. It does not read
+the discarded saved-flux payload. `BasisFunctions.load` restores a complete
+retained basis, including saved flux, for reconstruction without acquisition.
+Compatibility adapters resolve dictionaries once and call canonical operations.
+The existing alignment, signed-flux and first-source weighting policies remain
+unchanged. Single ownership makes no execution-saving claim.
+
+### Modern flux terminology and compatibility
+
+`flux_store`/`flux_domain` and `inner_flux_store`/`inner_flux_domain` are canonical.
+Old `emissions_*` keywords warn until removal in 0.9; simultaneous old/new
+spellings are errors even for equal values. Exports use only canonical names.
+This boundary is independent of historical HBMCMC translation. The source flux
+dataset domain defaults to its corresponding footprint domain; it is not an
+alias for the nested inner domain. `make_basis_functions` retains its shipped
+`emissions_name` keyword with the same deprecation to `flux_sources`; unshipped
+helpers use the new name directly. No translating forwarding wrapper is added.

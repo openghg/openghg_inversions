@@ -347,7 +347,7 @@ def test_partial_gathered_state_restores_full_multiindex() -> None:
     )
     model = _build(prepared, state_activity=activity)
     with model:
-        trace = pm.sample_prior_predictive(draws=2, random_seed=42)
+        trace = pm.sample_prior_predictive(draws=2, random_seed=42, var_names=["flux_scaling"])
     registry = get_coord_registry(model)
     assert registry is not None
     restored = restore_inferencedata_coords(trace, registry)

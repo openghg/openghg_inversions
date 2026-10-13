@@ -16,8 +16,9 @@ W(x) = mean_o(fp_o(x)) * mean_t(flux_t(x))
 ```
 
 where `o` ranges over the footprints passed to the basis builder and `t` ranges
-over flux times. The implementation is `basis_weights_from_fp_all(...)`, which
-adapts legacy `fp_all` inputs into a two-dimensional field before calling
+over flux times. The modern implementation is `basis_weights_from_data(...)`,
+which receives explicit site datasets and a singular `weighting_flux` array
+from the first requested source (or first source mapping entry) before calling
 weight-first helpers such as `quadtree_basis_from_weights`,
 `bucket_basis_from_weights`, or `region_constrained_basis_from_weights`.
 
@@ -25,6 +26,15 @@ This default remains the only production-routed weight builder for now. Direct
 caller-supplied two-dimensional weights are acceptable at the lower-level Python
 algorithm boundary, and `paired_abs_response_weights(...)` is available as a
 pure lower-level helper, but neither route is a public config promise.
+
+The #838 path/map boundary resolves exact artifacts and support maps outside
+numerical preparation; historical `basis_weights_from_fp_all` remains an
+explicit compatibility adapter. #452 can extend weights-first preparation here
+without reintroducing case/glob or country-directory discovery. #454's grouped
+country semantics remain a separate scientific decision. #839 resolves the
+all-source native `runtime_flux` once beside preparation and passes it directly
+to retained basis construction; it does not change the first-source design
+weight or substitute observation-aligned `fp_x_flux` for native prior flux.
 
 ## Design Rules
 
@@ -104,14 +114,14 @@ state-vector and validation semantics are clearer.
 
 The minimal implementation seam is the weight-first helper layer:
 
-1. Add pure weight-builder functions next to `basis_weights_from_fp_all(...)`.
+1. Add pure weight-builder functions next to `basis_weights_from_data(...)`.
    `paired_abs_response_weights(...)` is the first example.
-2. Keep `basis_weights_from_fp_all(...)` as the default adapter for existing
+2. Keep `basis_weights_from_data(...)` as the default builder for existing
    public behavior.
 3. Add an internal `basis_weights` or weight-builder dispatch point in
-   `make_basis_functions(...)` only for generated bases, then call
+   `prepare_basis(...)` only for generated bases, then call
    `*_basis_from_weights(...)`.
-4. Leave loaded `fp_basis_case` behavior unchanged.
+4. Keep loaded `basis_path` partition selection separate from weight builders.
 5. Do not add `.ini`, `run_hbmcmc.py`, or RHIME config routing until the pure
    builder and retained-observation tests are in place.
 
@@ -139,7 +149,7 @@ The pure-helper slice should keep validation focused on construction semantics:
 The first routing implementation task should then:
 
 - keep `paired_abs_response_weights(...)` as the only non-default builder;
-- add a `make_basis_functions(...)` or `prepare_rhime_inputs(...)` test covering
+- add a `prepare_basis(...)` or `assemble_rhime_inputs(...)` test covering
   the OGI-041 retained-observation filtering path;
 - add metadata assertions for `weight_kind` and retained site/time counts when
   generated basis metadata routing exists.

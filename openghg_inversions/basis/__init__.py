@@ -24,14 +24,16 @@ from ._functions import (
     basis_weights_from_data,
     bucket_basis_from_weights,
     fixed_outer_regions_basis_from_data,
-    load_country_region_classes,
-    load_intem_outer_regions,
     paired_abs_response_weights,
     quadtree_basis_from_weights,
     region_constrained_basis_from_weights,
     region_constrained_fixed_outer_basis_from_weights,
 )
-from ._wrapper import (
+from .support import packaged_basis_support_path, load_basis_support_map, load_basis_partition
+from ._wrapper import prepare_basis
+from .compatibility import (
+    load_country_region_classes,
+    load_intem_outer_regions,
     load_basis_functions,
     make_basis_functions,
 )
@@ -75,6 +77,10 @@ __all__ = [
     "RetainedProjection",
     "RetainedProjectionStrategy",
     "make_basis_functions",
+    "prepare_basis",
+    "packaged_basis_support_path",
+    "load_basis_support_map",
+    "load_basis_partition",
     "save_affine_flux_map",
     "paired_abs_response_weights",
     "project_basis_prior_stdev",
