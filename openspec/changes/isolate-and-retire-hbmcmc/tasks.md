@@ -37,8 +37,9 @@ work rather than deleting the package in 0.8 or claiming retirement is delivered
 
 ## 3. Promote only delivered contracts
 
-- [ ] 3.1 After 0.8 implementation and acceptance, reconcile the grouped delta
-  and active consumers, then sync only delivered isolation/translation and
+- [ ] 3.1 After 0.8 implementation and acceptance, verify the already-aligned
+  grouped delta and active consumers still preserve the dependency boundary,
+  then sync only delivered isolation/translation and
   configuration requirements. Rebase the remaining active delta to retain the
   pending 0.9 removal. Verify the durable alias contract and resource-I/O links
   express the accepted boundary without claiming deletion is delivered.

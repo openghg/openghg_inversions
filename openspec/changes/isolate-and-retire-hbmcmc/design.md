@@ -6,8 +6,9 @@ See [proposal.md](proposal.md). At PR #869 revision `e41e2838`, RHIME runners,
 configuration and public exports import `hbmcmc.compatibility`. Conversely,
 `run_hbmcmc.main` calls `fixedbasis_params_to_rhime` and then the canonical
 constructor without resource translation; historical BC selectors can fail as
-unsupported parameters. The delivered configuration spec and the active grouped
-amendment still explicitly assign shared alias translation to HBMCMC.
+unsupported parameters. The delivered configuration spec still assigns shared
+alias translation to HBMCMC; the active grouped amendment is now aligned with
+this pending correction while retaining its phase-only resolution requirements.
 
 ## Goals / Non-Goals
 
@@ -50,8 +51,8 @@ redesign; no immediate deletion of HBMCMC from the 0.8 implementation.
   conflict-precedence tests while adding early errors for legacy-only selectors.
 - Tests exercise helpers but miss the CLI → reproduce the reported NESW request
   through `run_hbmcmc.main` with acquisition mocked at its owning boundary.
-- A later configuration delta restores HBMCMC ownership → reconcile the grouped
-  delta before sync and verify promoted requirements and active consumers.
+- A later configuration delta restores HBMCMC ownership → keep the already-aligned
+  grouped delta consistent during implementation and verify it again before sync.
 - Legacy artifact users lose utilities in 0.9 → document supported modern
   replacements and older-release use; do not promise new artifact compatibility.
 
@@ -71,7 +72,8 @@ remain untouched during this proposal.
 
 The pending configuration delta replaces the old HBMCMC-owned alias requirement.
 The resource-I/O compatibility amendment references this capability for legacy
-routing exceptions; its requirements retain path and resource semantics. Before
-sync, reconcile overlapping grouped-configuration requirements so none restores
-the superseded dependency rule. Update active-change links to the delivered
+routing exceptions; its requirements retain path and resource semantics. The
+active grouped-configuration requirements are reconciled now so implementing
+agents receive consistent instructions. Before sync, verify that alignment still
+holds and none restores the superseded dependency rule. Update active-change links to the delivered
 capability or actual archive location during promotion.

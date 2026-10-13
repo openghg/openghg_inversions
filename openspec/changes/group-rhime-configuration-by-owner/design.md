@@ -17,7 +17,7 @@ handoff codec. Acquisition and preparation remain distinct operations.
 Move fields/defaults into `DataConfig` and expose `config.data`; do not keep a
 second flat copy or an alias for the unshipped `preparation` group. Runners select
 named acquisition arguments and preparation arguments explicitly. Apply winning
-raw overrides before the existing alias owner, then resolve only applicable
+raw overrides before the modern alias owner outside HBMCMC, then resolve only applicable
 groups. Bind inference choices against requested or retained preparation facts
 as specified in the delta. Reuse the established sampler and model owners.
 
@@ -25,6 +25,14 @@ Keep resource conventions with the prerequisite resource-I/O change. Its small
 compatibility amendment lands first; this delta retains that exception when it
 updates the same public-compatibility requirement. This order avoids undoing
 the basis-export migration while grouping configuration.
+
+The overlapping alias requirement is aligned with the separate
+[HBMCMC isolation/retirement contract](../isolate-and-retire-hbmcmc/proposal.md).
+Full and phase-only routes share modern alias definitions without importing or
+calling HBMCMC; phase-only adapters still select applicable groups before value
+validation/defaults and do not construct a complete request. Historical selection
+stays in the legacy entry path. Preserve this alignment during implementation
+and later promotion rather than deferring reconciliation until sync.
 
 ## Risks / Trade-offs
 
