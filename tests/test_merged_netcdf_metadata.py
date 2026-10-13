@@ -11,6 +11,7 @@ from openghg.dataobjects import BoundaryConditionsData, FluxData
 from openghg_inversions.hbmcmc.legacy_data import (
     _save_merged_data,
     datatree_to_fp_all,
+    datatree_to_flux_dict,
     fp_all_to_datatree,
     load_merged_data,
     openghg_data_to_dataset,
@@ -51,6 +52,65 @@ def test_existing_dotted_marker_remains_supported(flag):
     tree.attrs[".split_by_sectors"] = flag
 
     assert datatree_to_fp_all(tree)[".split_by_sectors"] is flag
+
+
+@pytest.mark.parametrize("suffix", ["nc", "zarr", "zarr.zip"])
+def test_merged_flux_labels_and_numpy_wrapper_metadata_roundtrip(tmp_path, suffix):
+    """Source labels are data, and wrapper NumPy metadata has one JSON meaning."""
+    sources = ["z", "a/b", "a", "source_0", "../nested"]
+    wrappers = {
+        source: FluxData(
+            data=xr.Dataset({"flux": ("time", [float(index)])}),
+            metadata={
+                "data_type": "flux",
+                "source": source,
+                "enabled": np.bool_(False),
+                "count": np.int64(index),
+                "values": np.array([1.0, 2.0]),
+            },
+        )
+        for index, source in enumerate(sources)
+    }
+    boundary = BoundaryConditionsData(
+        data=xr.Dataset({f"vmr_{side}": ("time", [1.0]) for side in "nesw"}),
+        metadata={"enabled": np.bool_(True), "count": np.int64(2)},
+    )
+    fp_all = {"TAC": xr.Dataset({"mf": ("time", [1.0])}), ".flux": wrappers, ".bc": boundary}
+
+    _save_merged_data(fp_all, tmp_path, merged_data_name=f"labels.{suffix}")
+    restored = load_merged_data(tmp_path, merged_data_name=f"labels.{suffix}")
+
+    assert list(restored[".flux"]) == sources
+    for index, source in enumerate(sources):
+        actual = restored[".flux"][source]
+        xr.testing.assert_identical(actual.data, wrappers[source].data)
+        assert actual.metadata == {
+            "data_type": "flux", "source": source, "enabled": False,
+            "count": index, "values": [1.0, 2.0],
+        }
+        assert isinstance(wrappers[source].metadata["enabled"], np.bool_)
+        assert isinstance(wrappers[source].metadata["values"], np.ndarray)
+        assert "openghg_metadata" not in wrappers[source].data.attrs
+    assert restored[".bc"].metadata == {"enabled": True, "count": 2}
+
+
+def test_legacy_flux_group_names_remain_supported():
+    flux = FluxData(data=xr.Dataset({"flux": ("time", [1.0])}), metadata={"data_type": "flux"})
+    tree = xr.DataTree.from_dict({"inventory": openghg_data_to_dataset(flux)})
+
+    restored = datatree_to_flux_dict(tree)
+
+    assert list(restored) == ["inventory"]
+    xr.testing.assert_identical(restored["inventory"].data, flux.data)
+
+
+@pytest.mark.parametrize("labels", ['["a", "a"]', '["a"]', "invalid", '[0]'])
+def test_legacy_flux_labels_reject_malformed_mapping(labels):
+    tree = xr.DataTree()
+    tree.attrs["flux_source_labels_json"] = labels
+
+    with pytest.raises(ValueError, match="flux source labels"):
+        datatree_to_flux_dict(tree)
 
 
 def test_merged_saves_preserve_borrowed_flux_and_boundary_metadata(tmp_path):

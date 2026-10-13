@@ -9,6 +9,7 @@ retrieval or model construction.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Sequence
 from dataclasses import dataclass
 from numbers import Integral
@@ -35,6 +36,7 @@ from openghg_inversions.serialization import (
 RHIME_PREPARED_INPUTS_SCHEMA = "openghg_inversions.rhime_prepared_inputs"
 RHIME_PREPARED_INPUTS_SCHEMA_VERSION = 1
 _SITE_AVERAGING_PERIOD = "averaging_period"
+_SITE_STRING_ENCODING = "_rhime_nullable_string_encoding"
 
 __all__ = [
     "PreparedInputs",
@@ -436,8 +438,21 @@ def _normalize_site_metadata(ds: xr.Dataset) -> xr.Dataset:
 
 
 def _site_metadata_for_serialisation(ds: xr.Dataset) -> xr.Dataset:
-    """Encode missing periods with the reserved empty-string storage sentinel."""
-    result = ds.copy()
+    """Encode nullable strings explicitly, retaining the legacy period sentinel."""
+    result = ds.copy(deep=False)
+    for name, variable in ds.variables.items():
+        if _SITE_STRING_ENCODING in variable.attrs:
+            raise ValueError(f"Site metadata {name!r} uses reserved attribute {_SITE_STRING_ENCODING!r}.")
+        if name == _SITE_AVERAGING_PERIOD or variable.dtype.kind != "O":
+            continue
+        values = variable.to_numpy()
+        missing = pd.isna(values)
+        if missing.any() and all(isinstance(value, str) for value in values[~missing]):
+            encoded = np.asarray(
+                [json.dumps(None if absent else str(value)) for value, absent in zip(values.flat, missing.flat)]
+            ).reshape(values.shape)
+            result[name] = variable.copy(data=encoded)
+            result[name].attrs[_SITE_STRING_ENCODING] = "json_v1"
     result[_SITE_AVERAGING_PERIOD] = ds[_SITE_AVERAGING_PERIOD].copy(
         data=np.asarray(["" if value is None else str(value) for value in ds[_SITE_AVERAGING_PERIOD].values])
     )
@@ -445,8 +460,21 @@ def _site_metadata_for_serialisation(ds: xr.Dataset) -> xr.Dataset:
 
 
 def _site_metadata_from_serialisation(ds: xr.Dataset) -> xr.Dataset:
-    """Restore missing averaging periods from their storage representation."""
-    result = ds.copy()
+    """Restore nullable strings and legacy missing averaging periods."""
+    result = ds.copy(deep=False)
+    for name, variable in ds.variables.items():
+        if _SITE_STRING_ENCODING not in variable.attrs:
+            continue
+        if variable.attrs[_SITE_STRING_ENCODING] != "json_v1":
+            raise ValueError(f"Unsupported nullable string encoding for site metadata {name!r}.")
+        try:
+            values = [json.loads(value) for value in variable.to_numpy().flat]
+        except (TypeError, ValueError) as error:
+            raise ValueError(f"Invalid nullable string encoding for site metadata {name!r}.") from error
+        if any(value is not None and not isinstance(value, str) for value in values):
+            raise ValueError(f"Nullable site metadata {name!r} must contain strings or null.")
+        result[name] = variable.copy(data=np.asarray(values, dtype=object).reshape(variable.shape))
+        del result[name].attrs[_SITE_STRING_ENCODING]
     result[_SITE_AVERAGING_PERIOD] = ds[_SITE_AVERAGING_PERIOD].copy(
         data=np.asarray(
             [None if str(value) == "" else str(value) for value in ds[_SITE_AVERAGING_PERIOD].values],

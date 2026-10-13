@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-import json
 from typing import Any
+
+
+from openghg_inversions._serialization_codecs import _copy_json_mapping
 
 
 _SCHEMA = "openghg_inversions.output_contract"
@@ -52,10 +54,7 @@ class OutputContract:
             raise ValueError("OutputContract.supported_output_formats must include 'none'.")
         if not isinstance(self.metadata, Mapping):
             raise ValueError("OutputContract.metadata must be a JSON-compatible mapping.")
-        try:
-            metadata = json.loads(json.dumps(dict(self.metadata), allow_nan=False))
-        except (TypeError, ValueError) as exc:
-            raise ValueError("OutputContract.metadata must be finite JSON-compatible data.") from exc
+        metadata = _copy_json_mapping(self.metadata, "OutputContract.metadata")
         if not isinstance(self.state_dimension_mapping, Mapping):
             raise ValueError("OutputContract.state_dimension_mapping must be a mapping.")
         dimensions = dict(self.state_dimension_mapping)

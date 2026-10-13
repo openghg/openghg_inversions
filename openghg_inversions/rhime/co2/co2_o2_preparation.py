@@ -27,6 +27,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+from openghg_inversions._serialization_codecs import _copy_json_mapping, _decode_json_mapping
 from openghg_inversions.array_ops import concat_gather_data_arrays, select_gathered_data_array, to_dense
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.observation_error import (
@@ -210,12 +211,7 @@ class Co2O2PreparedInputs:
             if set(indexes) != compressed or len(indexes) != len(compressed):
                 raise ValueError(f"Declared MultiIndexes do not match CF coordinates in node {name!r}.")
             datasets[name] = decode_cf_multiindexes(dataset, indexes) if indexes else dataset
-        try:
-            provenance = json.loads(tree.attrs["provenance_json"])
-        except (KeyError, TypeError, json.JSONDecodeError) as exc:
-            raise ValueError("Serialized CO2/O2 provenance must be a JSON object.") from exc
-        if not isinstance(provenance, dict):
-            raise ValueError("Serialized CO2/O2 provenance must be a JSON object.")
+        provenance = _decode_json_mapping(tree.attrs.get("provenance_json"), "Serialized CO2/O2 provenance")
         prior_data = datasets["retained_prior"]
         prior = CorrelatedLognormalPrior(
             _stored_array(prior_data, "arithmetic_mean"),
@@ -853,10 +849,7 @@ def prepare_co2_o2_inputs(
     """
     if not co2_units.strip() or not o2_units.strip():
         raise ValueError("CO2 and O2 channel units must be non-empty.")
-    try:
-        prepared_provenance = json.loads(json.dumps(dict(provenance or {}), allow_nan=False))
-    except (TypeError, ValueError) as exc:
-        raise ValueError("CO2/O2 provenance must be JSON serializable.") from exc
+    prepared_provenance = _copy_json_mapping(provenance or {}, "CO2/O2 provenance")
 
     boundary_sensitivity = dict(boundary_sensitivity or {})
     if set(boundary_sensitivity) - {"co2", "o2"}:

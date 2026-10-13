@@ -22,6 +22,7 @@ from openghg.dataobjects import BoundaryConditionsData, FluxData
 from openghg.dataobjects._basedata import _BaseData
 from openghg.util import timestamp_now
 
+from openghg_inversions._serialization_codecs import _json_value
 from openghg_inversions.flux_sanitization import FluxNonFiniteCheck
 from openghg_inversions.inversion_data._provenance import (
     InputProvenance, MergedDataProvenance, selected_provenance,
@@ -34,6 +35,7 @@ from openghg_inversions.utils import _flux_period_is_missing, datatree_ncdf_enco
 
 OutputFormat = Literal["netcdf", "zarr", "zarr.zip"]  # for internal type hints
 _OBSOLETE_FP_ALL_METADATA = frozenset({".scales", ".species", ".units"})
+_FLUX_SOURCE_LABELS = "flux_source_labels_json"
 
 
 def _make_merged_data_name(species: str, start_date: str, output_name: str) -> str:
@@ -492,10 +494,11 @@ def openghg_data_to_dataset(openghg_data: _BaseData, netcdf_safe_attrs: bool = F
     """
     ds = openghg_data.data.copy(deep=False)
 
+    metadata = _json_value(openghg_data.metadata)
     if netcdf_safe_attrs:
-        ds.attrs["openghg_metadata"] = json.dumps(openghg_data.metadata)
+        ds.attrs["openghg_metadata"] = json.dumps(metadata)
     else:
-        ds.attrs["openghg_metadata"] = openghg_data.metadata
+        ds.attrs["openghg_metadata"] = metadata
     return ds
 
 
@@ -527,8 +530,15 @@ def dataset_to_bc_data(ds: xr.Dataset) -> BoundaryConditionsData:
 
 
 def flux_dict_to_datatree(flux_dict: dict[str, FluxData], netcdf_safe_attrs: bool = False) -> xr.DataTree:
-    dt_dict = {k: openghg_data_to_dataset(v, netcdf_safe_attrs) for k, v in flux_dict.items()}
-    return xr.DataTree.from_dict(dt_dict)
+    """Store source labels separately from backend group paths, in source order."""
+    if not all(isinstance(source, str) for source in flux_dict):
+        raise ValueError("Flux source labels must be strings.")
+    dt = xr.DataTree.from_dict({
+        f"source_{index}": openghg_data_to_dataset(value, netcdf_safe_attrs)
+        for index, value in enumerate(flux_dict.values())
+    })
+    dt.attrs[_FLUX_SOURCE_LABELS] = json.dumps(list(flux_dict))
+    return dt
 
 
 def datatree_to_flux_dict(dt: xr.DataTree) -> dict[str, FluxData]:
@@ -538,8 +548,24 @@ def datatree_to_flux_dict(dt: xr.DataTree) -> dict[str, FluxData]:
         dt: DataTree whose child nodes are converted to datasets and then to FluxData.
 
     Returns:
-        Mapping from node keys (as strings) to FluxData instances.
+        Mapping from source labels to FluxData instances, retaining stored order.
     """
+    if _FLUX_SOURCE_LABELS in dt.attrs:
+        try:
+            sources = json.loads(dt.attrs[_FLUX_SOURCE_LABELS])
+        except (TypeError, ValueError) as error:
+            raise ValueError("Invalid serialized flux source labels.") from error
+        if (
+            not isinstance(sources, list)
+            or not all(isinstance(source, str) for source in sources)
+            or len(set(sources)) != len(sources)
+            or set(dt.children) != {f"source_{index}" for index in range(len(sources))}
+        ):
+            raise ValueError("Serialized flux source labels must uniquely identify every child group.")
+        return {
+            source: dataset_to_flux_data(dt[f"source_{index}"].to_dataset())
+            for index, source in enumerate(sources)
+        }
     return {str(k): dataset_to_flux_data(v.to_dataset()) for k, v in dt.items()}
 
 

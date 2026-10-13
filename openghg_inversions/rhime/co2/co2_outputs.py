@@ -26,7 +26,7 @@ from openghg_inversions.rhime.outputs import (
 )
 from openghg_inversions.rhime.sampling import RhimeSampler
 from openghg_inversions.rhime.specs import RhimeOutputSpec, RhimeRunSpec
-from openghg_inversions.serialization import save_datatree
+from openghg_inversions.serialization import reset_serialisation_multiindexes, save_datatree
 from openghg_inversions.utils import write_netcdf_preserving_bounds_attrs
 
 from .co2_affine_output import BoundCo2AffineFluxMap
@@ -435,9 +435,8 @@ def make_co2_rhime_outputs(
                 output_name=f"{result.output_spec.output_name}_{name}",
                 start_date=result.run_spec.start_date,
             )
-            # save_datatree owns the MultiIndex encoding needed by basic outputs.
             if name == "basic":
-                save_datatree(xr.DataTree(product), path)
+                save_datatree(xr.DataTree(reset_serialisation_multiindexes(product)), path)
             else:
                 write_netcdf_preserving_bounds_attrs(product, path)
             result.output_metadata[f"{name}_path"] = str(path)
