@@ -1,15 +1,12 @@
 # Configuration amendments
 
-These pending deltas modify the delivered configuration capability; they are not
-part of the current main spec until implementation and sync.
-
 ## MODIFIED Requirements
 
 ### Requirement: Complete format-neutral requested configuration
 
 Standard and multisector configured runs SHALL construct one inspectable,
 complete resolved requested-run configuration before acquisition or scientific
-preparation. It SHALL expose named preparation, model, output and sampling
+preparation. It SHALL expose named data, model, output and sampling
 choices with established configuration-only defaults and aliases resolved. It
 SHALL contain no raw site shorthand, acquired/prepared scientific handoff or
 retained-run description. File-specific parsing and interpretation SHALL belong
@@ -21,9 +18,9 @@ SHALL yield equivalent resolved choices. INI SHALL remain the current file
 frontend without requiring another format or imposing its document structure
 on other frontends.
 
-The public complete requested configuration SHALL group preparation, model,
-sampler and output choices. `RhimeConfig.preparation` SHALL hold one
-`PreparationConfig` containing the moved acquisition/preparation fields and
+The public complete requested configuration SHALL group data, model,
+sampler and output choices. `RhimeConfig.data` SHALL hold one
+`DataConfig` containing the moved acquisition/preparation fields and
 their defaults; the complete configuration SHALL NOT retain a second authoritative
 flat copy. The model, sampler and output groups SHALL reuse `RhimeModelSpec`,
 `RhimeSampler` and `RhimeOutputSpec`, respectively, rather than introduce duplicate
@@ -31,6 +28,14 @@ settings types. Preparation SHALL resolve independently without constructing a
 model, sampler or output policy. Complete configured runs SHALL resolve their
 applicable groups once before scientific execution and SHALL keep requested
 choices distinct from retained scientific facts.
+
+`DataConfig` names the combined acquisition/preparation choices. Grouped input
+mappings SHALL use the key `data`, matching `RhimeConfig.data`; the proposed
+`preparation` field/key SHALL NOT remain as a compatibility alias. Runners SHALL
+explicitly select each operation's named arguments from this record. Scientific
+preparation SHALL receive the acquired handoff and its selected preparation
+arguments. Sharing the record SHALL NOT combine acquisition and preparation
+operations, whose separation is specified by the recipe-execution contract.
 
 The legacy INI frontend SHALL preserve its documented decoding and precedence.
 An adapter SHALL group its flat options into ordinary section mappings without
@@ -42,7 +47,7 @@ defaults SHALL have concrete owners rather than independent duplicate schemas.
 
 - **WHEN** a caller resolves a complete request and inspects requested store,
   basis, filter and date options
-- **THEN** those choices are available in the returned configuration's preparation group
+- **THEN** those choices are available in the returned configuration's `data` group
 - **AND** accessing them does not require data acquisition or an execution run description
 
 #### Scenario: Construct and execute one resolved request
@@ -71,12 +76,12 @@ defaults SHALL have concrete owners rather than independent duplicate schemas.
 
 #### Scenario: Inspect a grouped complete request
 - **WHEN** a caller resolves a complete supported request
-- **THEN** preparation choices are available through `config.preparation`, with
+- **THEN** acquisition/preparation choices are available through `config.data`, with
   model, sampler and output choices available through their respective groups
 - **AND** each choice and default has one authoritative owner
 
 #### Scenario: Resolve preparation alone
-- **WHEN** a caller supplies valid preparation choices without model, sampler or
+- **WHEN** a caller supplies a valid `data` mapping without model, sampler or
   output choices
 - **THEN** preparation resolution succeeds without constructing those other groups
   or requiring their inputs
@@ -86,10 +91,12 @@ defaults SHALL have concrete owners rather than independent duplicate schemas.
 - **THEN** its decoded options and winning values retain their established meaning
 - **AND** the grouped representation is an ordinary mapping suitable for the same
   group resolvers as a Python request
+- **AND** acquisition/preparation options use the `data` key without changing the
+  existing INI section syntax
 
 ### Requirement: Explicit shallow selection for scientific keyword calls
 
-`RhimeConfig.select(*names)` SHALL return a new dictionary containing the
+`RhimeConfig.select(*names)` and `DataConfig.select(*names)` SHALL return a new dictionary containing the
 explicitly named attributes. Selected values SHALL remain borrowed, including
 mutable containers and opaque objects. Selection SHALL NOT copy nested values,
 resolve defaults, inspect consumer signatures, execute scientific work or define
@@ -107,6 +114,12 @@ when composing several stages.
 - **AND** changing the selection dictionary does not change the configuration
 - **AND** mutable values inside the dictionary retain their existing identity
 
+#### Scenario: Select acquisition and preparation arguments separately
+
+- **WHEN** a runner selects store/site/date arguments and filter/basis/error arguments from `config.data`
+- **THEN** acquisition receives its named selectors and returns the acquired handoff
+- **AND** preparation receives that handoff and its own named arguments, without retrieving data or receiving export destinations
+
 #### Scenario: Selection does not resolve overrides
 
 - **WHEN** a caller needs to change raw options that affect shorthand or dependent defaults
@@ -123,6 +136,11 @@ configuration SHALL already contain the complete equivalent of external
 shorthand for the selected phase; no scientific phase SHALL be responsible for
 completing those selected choices. Known unrelated groups in a shared file SHALL
 remain inactive; unsupported names and explicit wrong-phase overrides SHALL fail.
+The external boundary SHALL report all unsupported and explicit wrong-phase
+keys together before acquisition, preparation or inference. Supported aliases
+SHALL use the existing translator and the same precedence in full and saved
+routes; translating file and override mappings separately SHALL NOT change which
+effective value wins.
 Date-dependent configuration defaults SHALL use effective overridden dates for a
 full request and recorded preparation dates for saved-input sampling.
 
@@ -160,6 +178,16 @@ owner; this change SHALL NOT require a separate sampler options class.
   likelihood derives a configuration default from that date
 - **THEN** resolution derives the default from the winning start date
 - **AND** the returned configuration needs no downstream default-resolution pass
+
+#### Scenario: Canonical file option and deprecated override
+
+- **WHEN** a file supplies canonical `x_prior` and an override supplies deprecated `xprior`
+- **THEN** the canonical spelling wins in both full and saved routes under the existing alias rule
+
+#### Scenario: Several unsuitable overrides
+
+- **WHEN** an invocation supplies several unsupported or explicit wrong-phase override keys
+- **THEN** one error lists all those keys before scientific work
 
 ### Requirement: Retained execution metadata is distinct from the request
 
@@ -200,6 +228,76 @@ share their owners with complete requests.
   model, output and sampler arguments
 - **THEN** execution retains the established prepared-input API and alignment
   behavior without requiring the complete requested-run configuration
+
+### Requirement: Compatible public adapters and scientific choices
+
+Except for the explicit sampler-default migration, the prerequisite #868 removal
+of `prepare_basis(output_path=...)`, removed `prepare_rhime_inputs` convenience function, obsolete
+modern merged-cache options, former stage adapter, `resolve_rhime_config`,
+transitional old-location imports and revised INI reader contract specified below, supported
+scientific Python and CLI entry points SHALL retain their signatures, shorthand,
+override behavior and return contracts through adapters to the same semantic
+resolution or shared applicable site translation. Direct preparation/retrieval
+APIs SHALL resolve only applicable choices without requiring likelihood, final
+output or sampling settings. Independent builders and prepared-input runners
+SHALL remain independent of full configuration. Shared choices such as BC use
+and flux-source routing SHALL retain consistent existing meanings across data
+preparation and model construction. Current INI section interpretation, path
+conventions, file vocabulary, scientific calculations and sampling defaults
+SHALL remain unchanged except for the path conventions specified by
+[rhime-resource-io](https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/rhime-resource-io/spec.md).
+
+Established selector and shared-handoff aliases in the current
+[model-selection capability](https://github.com/openghg/openghg_inversions/blob/7269f50f09dc4b618766cb9d69abe260a564eebc/openspec/specs/rhime-model-selection/spec.md)
+SHALL remain supported for their documented compatibility period. The removed
+transitional imports above do not include those public aliases.
+
+Internal orchestration/setup records and their constructor/helper return shapes
+SHALL NOT be required compatibility contracts. Their in-repository consumers
+SHALL migrate to the unified requested configuration.
+
+Default-selecting live APIs SHALL accept `"default"` or a supplied sampler, with
+omission equivalent to `"default"`. Existing explicit `None` calls SHALL fail with
+guidance to omit the optional argument or pass `"default"`; no compatibility
+adapter SHALL retain `None`-means-default selection. Default settings and scientific
+behavior SHALL otherwise remain unchanged. Result fields SHALL use `None` only
+for absence of a live sampler, as specified by the recipe-execution contract.
+
+Resolution SHALL consume omitted/false `use_tracer` without retaining a config
+field. Effective true SHALL retain early rejection at resolution and relevant
+direct public boundaries, including supplied merged data. Existing legacy-option
+and custom-likelihood conflict precedence SHALL remain unchanged.
+
+#### Scenario: Existing Python shorthand
+
+- **WHEN** standard, multisector or direct public preparation/retrieval callers
+  supply supported scalar options instead of expanded sequences
+- **THEN** the adapter establishes the same applicable canonical choices before
+  scientific work and preserves the established return contract
+- **AND** internal canonical calls do not repeat that translation
+
+#### Scenario: Boundary conditions are disabled consistently
+
+- **WHEN** effective configuration sets `use_bc=False`
+- **THEN** acquisition/preparation and built-in model construction use the same
+  disabled BC choice with existing scientific behavior
+- **AND** neither phase infers an independent conflicting default
+
+#### Scenario: Preserve unsupported tracer rejection
+
+- **WHEN** a configured run, direct public preparation call or mapping-based
+  retrieval supplies effective `use_tracer=True` after supported overrides,
+  including with supplied merged data
+- **THEN** it rejects the option before acquisition, reload or scientific execution
+- **AND** omitted and false options remain accepted with equivalent resolved
+  configuration containing no tracer field
+
+#### Scenario: Migrate an explicit null sampler
+
+- **WHEN** a caller passes `sampler=None` to an existing live entry point
+- **THEN** it fails before inference with guidance to omit the optional argument
+  or pass `"default"`
+- **AND** omitting that argument continues to select the established defaults
 
 ### Requirement: INI decoding is independent of semantic construction
 
@@ -260,74 +358,6 @@ needed by modern scientific runners.
 - **WHEN** a caller uses `params_from_config` with supported overrides and normalization controls
 - **THEN** the deprecated adapter retains its established dictionary contract
 - **AND** modern runners can instead read, combine and resolve without using it
-
-### Requirement: Compatible public adapters and scientific choices
-
-Except for the explicit sampler-default migration, removed `prepare_rhime_inputs` convenience function, obsolete
-modern merged-cache options, former stage adapter, `resolve_rhime_config`,
-transitional old-location imports and revised INI reader contract specified below, supported
-scientific Python and CLI entry points SHALL retain their signatures, shorthand,
-override behavior and return contracts through adapters to the same semantic
-resolution or shared applicable site translation. Direct preparation/retrieval
-APIs SHALL resolve only applicable choices without requiring likelihood, final
-output or sampling settings. Independent builders and prepared-input runners
-SHALL remain independent of full configuration. Shared choices such as BC use
-and flux-source routing SHALL retain consistent existing meanings across data
-preparation and model construction. Current INI section interpretation, path
-conventions, file vocabulary, scientific calculations and sampling defaults
-SHALL remain unchanged.
-
-Established selector and shared-handoff aliases in the current
-[model-selection capability](https://github.com/openghg/openghg_inversions/blob/7269f50f09dc4b618766cb9d69abe260a564eebc/openspec/specs/rhime-model-selection/spec.md)
-SHALL remain supported for their documented compatibility period. The removed
-transitional imports above do not include those public aliases.
-
-Internal orchestration/setup records and their constructor/helper return shapes
-SHALL NOT be required compatibility contracts. Their in-repository consumers
-SHALL migrate to the unified requested configuration.
-
-Default-selecting live APIs SHALL accept `"default"` or a supplied sampler, with
-omission equivalent to `"default"`. Existing explicit `None` calls SHALL fail with
-guidance to omit the optional argument or pass `"default"`; no compatibility
-adapter SHALL retain `None`-means-default selection. Default settings and scientific
-behavior SHALL otherwise remain unchanged. Result fields SHALL use `None` only
-for absence of a live sampler, as specified by recipe-execution.
-
-Resolution SHALL consume omitted/false `use_tracer` without retaining a config
-field. Effective true SHALL retain early rejection at resolution and relevant
-direct public boundaries, including supplied merged data. Existing legacy-option
-and custom-likelihood conflict precedence SHALL remain unchanged.
-
-#### Scenario: Existing Python shorthand
-
-- **WHEN** standard, multisector or direct public preparation/retrieval callers
-  supply supported scalar options instead of expanded sequences
-- **THEN** the adapter establishes the same applicable canonical choices before
-  scientific work and preserves the established return contract
-- **AND** internal canonical calls do not repeat that translation
-
-#### Scenario: Boundary conditions are disabled consistently
-
-- **WHEN** effective configuration sets `use_bc=False`
-- **THEN** acquisition/preparation and built-in model construction use the same
-  disabled BC choice with existing scientific behavior
-- **AND** neither phase infers an independent conflicting default
-
-#### Scenario: Preserve unsupported tracer rejection
-
-- **WHEN** a configured run, direct public preparation call or mapping-based
-  retrieval supplies effective `use_tracer=True` after supported overrides,
-  including with supplied merged data
-- **THEN** it rejects the option before acquisition, reload or scientific execution
-- **AND** omitted and false options remain accepted with equivalent resolved
-  configuration containing no tracer field
-
-#### Scenario: Migrate an explicit null sampler
-
-- **WHEN** a caller passes `sampler=None` to an existing live entry point
-- **THEN** it fails before inference with guidance to omit the optional argument
-  or pass `"default"`
-- **AND** omitting that argument continues to select the established defaults
 
 ## ADDED Requirements
 
@@ -407,7 +437,7 @@ changing CO2's family-specific defaults.
 #### Scenario: Unrelated shared-file value
 - **WHEN** a preparation command reads a shared file containing an invalid sampler
   value alongside valid preparation choices
-- **THEN** preparation selects and validates its own group without resolving or
+- **THEN** the preparation entry point selects and validates the `data` group without resolving or
   validating that inactive sampler value
 
 #### Scenario: Conflicting saved-input claim

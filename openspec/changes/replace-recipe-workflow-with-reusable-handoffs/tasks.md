@@ -4,7 +4,11 @@ The maintainer approved this plan for implementation on 11 October 2026. These
 are implementation tasks, all unchecked until their acceptance evidence exists.
 Start with a bounded implementation PR stacked on #841. This planning change
 itself changes no runtime behavior. Follow [design.md](design.md) and the three
-new capability specs and configuration amendment. The four delivery sections below define proposed bounded
+new capability specs and the
+[configuration amendments](../group-rhime-configuration-by-owner/proposal.md) and
+[resource-I/O prerequisite](../move-rhime-resource-io-to-runners/proposal.md).
+Their durable capability specs describe the delivered baselines.
+The four delivery sections below define proposed bounded
 implementation-child scopes for OPE-207; they do not create Linear issues or
 represent one assignment spanning every family.
 
@@ -35,6 +39,13 @@ the initial ordinary/cached CO2 staged delivery; the CO2 sections below adopt th
 replacement handoffs rather than reopening that completed scope. Linked CO2/O2
 adoption remains in OPE-165, retaining its completed numerical persistence.
 
+The 13 October review adds one bounded prerequisite before #866:
+[#868](https://github.com/openghg/openghg_inversions/issues/868) resolves resource
+paths at the runner/frontend boundary and moves optional basis saving from
+`prepare_basis` into runners. Consume that delivery, including its caller/API
+migration, without reimplementing it here. #840's exact basis destinations are
+already an acceptance baseline; the rebasing in #866 is a regression against it.
+
 ## 1. Complete standard preparation-to-products route
 
 Implementation started in [#843](https://github.com/openghg/openghg_inversions/pull/843),
@@ -50,10 +61,9 @@ with the same selection on #841. Independent review, changed-path Ruff and diff
 checks passed. Keep the task checkboxes open pending their complete acceptance;
 the PR records the bounded implementation and validation details.
 
-- [ ] 1.1 Group the existing resolved `RhimeConfig` preparation fields in one
-  `PreparationConfig` at their current owner, moving fields/defaults rather than copying
-  them into a second schema. Keep model, sampler and output choices with their
-  owners. Verify full and phase-only inputs resolve the same applicable choices
+- [ ] 1.1 Consume the separate [configuration change](../group-rhime-configuration-by-owner/tasks.md)
+  delivering `RhimeConfig.data: DataConfig` and the grouped `data` key. Record
+  its implementation evidence and verify full and phase-only inputs resolve the same applicable choices
   without demanding unrelated sections, touching arrays or mutating caller values.
   Cover omitted/explicit model `use_bc` against enabled/disabled preparation,
   preserved legacy flat routing, and omitted/equivalent/conflicting `bc_freq`
@@ -76,6 +86,9 @@ the PR records the bounded implementation and validation details.
   lower-level operations that already require a resolved sampler.
 - [ ] 1.3 Consolidate standard scientific calls at their existing owners in the
   visible order observation errors, filtering, basis, sensitivities and assembly.
+  Keep acquisition/supplied-data selection in the runner, explicitly selecting
+  each operation's named arguments from `config.data`; verify scientific
+  preparation accepts acquired inputs with retrieval disabled and no export writes.
   Consume #837's explicit assembly/execution boundaries and the named joint PyMC
   materialization boundary. Verify retained-site/averaging alignment, empty-set
   rejection, borrowed lazy arrays and custom builder/likelihood contracts across
@@ -89,6 +102,9 @@ the PR records the bounded implementation and validation details.
   once-per-domain/grid native-flux resolution; use unequal source fields and an
   independent reconstruction calculation. Record which prerequisite PRs supply
   these behaviors rather than implementing them again here.
+  Consume #868's runner-owned optional basis save and resource-path resolution;
+  verify the new routes preserve the existing exact-export behavior rather than
+  introducing checkpoint-directory rebasing.
 - [ ] 1.5 Validate declared coordinate/output roles even when immediate products
   are disabled. Share the existing variable-role/output-contract owner between
   predictive sampling and postprocessing; remove independent concentration-name
@@ -109,6 +125,9 @@ the PR records the bounded implementation and validation details.
   missing required arrays or changed baked policy fail before inference. Distinguish
   scientific compatibility from descriptive provenance. Record a Git revision
   when available without making it a requirement for execution.
+  Retain scientific output state `x` by default. Check that explicit omission
+  cannot complete an incompatible handoff without supported reconstruction;
+  `_latent` values alone do not satisfy the scientific output role.
 - [ ] 1.8 Implement standard `postprocess` from one sample manifest and current
   output choices. Replayed results use `sampler=None` and plain saved metadata;
   configuration construction is permitted, but replay does not build a model or
@@ -133,6 +152,8 @@ the PR records the bounded implementation and validation details.
   0.8 staged-contract release note with #808, distinguishing preserved numerical,
   product and direct scientific APIs from retired staged envelopes/aliases;
   add no 0.7 staged compatibility adapters.
+  Cover canonical file options versus deprecated overrides, one error naming all
+  unsuitable keys, and the distinct file-relative and invocation-relative path bases.
 - [ ] 1.11 Clear the standard gate with a runnable preparation/two-model/two-product
   example, distinct sample destinations and real prior or likelihood
   calculations checked against an independent calculation or existing regression
@@ -222,7 +243,7 @@ the PR records the bounded implementation and validation details.
 
 ## 5. Integrated acceptance and completion
 
-- [ ] 5.1 Reconcile all four family deliveries against the three new capability specs and configuration amendment
+- [ ] 5.1 Reconcile all four family deliveries against the three new capability specs and the configuration/resource-I/O capabilities
   while preserving the current model-selection and model-composition baselines;
   record merged PRs, commands/results and justified numerical tolerances. Run
   relevant broader scientific, configuration, CLI, staged/replay, builder and output
@@ -236,3 +257,6 @@ the PR records the bounded implementation and validation details.
   these capabilities and archiving this completed change. Planning merge alone
   does not complete OPE-207; do not archive the superseded proposal as successfully
   implemented or count linked OPE-165 work as delivered by this change.
+  Update remaining consumers and the developer contract map to the delivered
+  capabilities when archiving; use the actual archive location for historical
+  references. Verify links in promoted specs and remaining active changes.

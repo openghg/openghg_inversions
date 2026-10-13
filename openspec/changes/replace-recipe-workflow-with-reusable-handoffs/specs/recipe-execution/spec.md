@@ -9,7 +9,9 @@ Saved preparation and inference follow [prepared-recipe-handoff](../prepared-rec
 and [sampled-recipe-handoff](../sampled-recipe-handoff/spec.md), respectively.
 
 Configuration ownership and phase resolution follow the
-[rhime-configuration amendments](../rhime-configuration/spec.md).
+[rhime-configuration capability](https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/rhime-configuration/spec.md).
+External resource paths and optional basis exports follow
+[rhime-resource-io](https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/rhime-resource-io/spec.md).
 
 Existing public selection and aliases follow the current
 [model-selection capability](https://github.com/openghg/openghg_inversions/blob/7269f50f09dc4b618766cb9d69abe260a564eebc/openspec/specs/rhime-model-selection/spec.md).
@@ -30,8 +32,18 @@ Full execution SHALL sequence those operations in memory without mandatory
 intermediate persistence. Preparation SHALL consistently derive retained labels
 from retained observations and align applicable per-site choices, accepting valid
 nonempty subsets without bypassing their owning input validation.
+Runners SHALL keep acquisition or supplied-data selection visible before
+scientific preparation and explicitly select each operation's named arguments
+from `config.data`. Scientific preparation SHALL consume an explicit acquired
+handoff and SHALL NOT retrieve data internally. Acquired data SHALL remain before
+preparation-derived errors, filtering, basis/sensitivity construction and stacking;
+existing `ModelScenario` products such as `fp_x_flux` and BC sensitivities remain
+acquisition products. A combined `DataConfig` SHALL NOT obscure this boundary.
+Runners SHALL consume the resource-I/O contract's save and resource-resolution
+boundary supplied by #868.
 Direct scientific customization, signatures and numerical returns SHALL retain
-their contracts except for the explicit sampler-default migration below;
+their contracts except for the explicit sampler-default migration below and
+#868's removal of the basis-preparation export argument;
 staged/setup APIs and owned CO2 configuration conventions SHALL
 follow the declared reset instead of requiring compatibility aliases.
 The existing selector forwarding, full-run CLI model choices and established
@@ -55,6 +67,13 @@ owners without implying additional nested or linked checkpoint support.
 - **THEN** required errors have been established before that transformation
 - **AND** supplied custom errors and caller-owned datasets remain unchanged
 
+#### Scenario: Preparation consumes acquired data without retrieval
+
+- **WHEN** a runner supplies acquired merged data to scientific preparation with retrieval disabled
+- **THEN** preparation performs its scientific operations without attempting acquisition
+- **AND** full and saved entry points expose acquisition or supplied-data selection before that same preparation operation
+- **AND** optional basis export is a separate runner call after the scientific result is returned
+
 #### Scenario: Full execution without intermediate saves
 - **WHEN** a full route runs with intermediate saves disabled
 - **THEN** it completes through in-memory scientific handoffs and produces
@@ -72,7 +91,7 @@ owners without implying additional nested or linked checkpoint support.
 - **WHEN** a caller uses supported likelihood or complete-model customization,
   or a family supports only prepared construction and its own inference
 - **THEN** its explicit scientific arguments, conflict rules and return contract,
-  subject to the declared sampler-default migration,
+  subject to the declared sampler-default and prerequisite basis-export migrations,
   remain available without requiring acquisition, MCMC staging or saved replay
 
 ### Requirement: Existing sampler API and invocation isolation
