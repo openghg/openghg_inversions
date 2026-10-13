@@ -68,7 +68,7 @@ Before committing time to posterior sampling, use the staged
 :doc:`prior-predictive checking tutorial <prior_predictive_checking>` to inspect
 what these priors and the observation model imply on the concentration scale.
 That workflow prepares the same scientific inputs once, checks prior
-predictions, and then passes the authenticated prepared artifact to posterior
+predictions, and then passes the saved prepared artifact to posterior
 sampling.
 
 Run it

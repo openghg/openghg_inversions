@@ -573,7 +573,7 @@ their affine reconstruction binding remains valid.</p>
 <p>Pass both <code class="docutils literal notranslate"><span class="pre">canonical_inputs</span></code> and <code class="docutils literal notranslate"><span class="pre">reduction</span></code> to call the public
 preparation boundary directly. Otherwise copy <code class="docutils literal notranslate"><span class="pre">prepared_inputs.path</span></code>
 from the configuration after validation. Existing handoffs and their
-optional bound affine artifacts retain exact byte identities. Invalid
+optional bound affine artifacts are copied without re-encoding. Invalid
 science or output requests fail before creating the destination.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
@@ -632,7 +632,7 @@ science or output requests fail before creating the destination.</p>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.stages.postprocess_co2_stage" title="Link to this definition">#</a></dt>
-<dd><p>Authenticate version-1 CO2 artifacts and create role-selected common products.</p>
+<dd><p>Load version-1 CO2 artifacts and create role-selected common products.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference internal" href="openghg_inversions.rhime.outputs.html#openghg_inversions.rhime.outputs.RhimeResult" title="openghg_inversions.rhime.outputs.RhimeResult"><em>RhimeResult</em></a></p>

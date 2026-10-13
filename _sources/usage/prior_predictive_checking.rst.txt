@@ -387,7 +387,7 @@ scientific preparation, model, or prior settings require a new preparation.
      --preparation-manifest "$RUN/prepare/prepare-manifest.json" \
      --output-dir "$RUN/sample"
 
-This rebuilds the same configured model from the authenticated prepared data,
+This rebuilds the same configured model from the saved prepared data,
 runs the configured sampler, and writes ``posterior.nc`` and
 ``sample-manifest.json``. It reuses the data artifact, not the in-memory PyMC
 graph from the prior-predictive process.
