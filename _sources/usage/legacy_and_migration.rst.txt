@@ -6,12 +6,82 @@ The direct ``fixedbasisMCMC`` and ``inferpymc`` implementation was removed in
 0.8 after its remaining known active user agreed to migrate. The 0.7.x release
 line is the last line containing that implementation and the
 ``--legacy-fixedbasis`` option. The ``openghg_inversions.hbmcmc`` namespace
-hosts the transitional ``run_hbmcmc`` wrapper and explicit legacy data
-utilities until 0.9.
+hosts the transitional ``run_hbmcmc`` wrapper and explicit legacy data/basis
+utilities during 0.8. The complete subpackage is scheduled for removal in 0.9,
+including its imports, adapters and executable entry points.
 
 This page is for users with fixedbasis-style Python calls, INI files, batch
 scripts, or HBMCMC outputs. For a new inversion, start with the
 :doc:`model recipe chooser <model_recipes>` and :doc:`RHIME guide <rhime>`.
+
+0.8 resource migration
+-----------------------
+
+Resource selection now ends at the runner boundary. Update existing calls and
+configuration as follows:
+
+* Remove ``output_path`` from ``prepare_basis``. Save its returned object with
+  ``basis.save(selected_path)``, or set the configured runner's
+  ``basis_output_path`` to an exact artifact filename. Checkpoint files and this
+  optional export have separate destinations.
+* Remove ``country_directory`` from run configuration. Use ``country_file`` for
+  reporting, ``landsea_path`` for preparation land/sea classes, and
+  ``outer_regions_path`` for fixed outer regions. Required preparation maps
+  default to vendored files for the exact requested domain; explicit paths win.
+  Missing explicit files or required domain defaults fail before acquisition.
+  Country reporting requires an explicit file, independently of these defaults.
+* Select file-backed BC bases using ``bc_basis_paths``, for example
+  ``("/data/bc/january.nc", "/data/bc/february.nc")``. Runners load these files
+  before acquisition and preserve their time combination and alignment.
+  Custom scientific sensitivity calls receive the loaded ``bc_basis`` dataset.
+  NESW uses acquired directional contributions and ``bc_basis=None``; it needs
+  no file. On the HBMCMC route, an old ``bc_basis_directory`` with NESW is
+  unused and warns, even if that directory does not exist. Disabled BCs load no BC resources.
+* Modern runners reject ``fp_basis_case``, ``basis_directory``, ``bc_basis_case``
+  and ``bc_basis_directory``. Replace them with exact basis/BC selections, or use
+  the temporary HBMCMC CLI or normalized dictionary adapter during 0.8. Only that
+  legacy route translates historical selections after winning overrides.
+  Scientific functions receive explicit selections and never discover files.
+* Replace the removed RHIME ``params_from_config`` re-export with
+  ``read_rhime_ini``, apply overrides, then call ``RhimeConfig.from_params``.
+  The dictionary adapter remains only in ``hbmcmc.compatibility`` during 0.8.
+  Runner frontends, including direct ``run_rhime`` calls, retain supported
+  aliases through 0.8 with deprecation warnings. ``RhimeConfig.from_params``
+  accepts canonical names only and has no alias translation or warnings.
+  Modern output formats and explicit save paths remain.
+* Use invocation-relative paths for Python/CLI calls and explicit overrides.
+  Saved-phase INI/JSON resource values are relative to their configuration
+  file. Staged ``output_path`` and explicit ``save_trace`` /
+  ``save_inversion_output`` filenames now follow this same rule; full-run INI
+  values retain their invocation-directory convention.
+  Absolute paths keep their destinations. Frontends convert declared ``Path``
+  fields, including path collections, without treating scientific strings as
+  paths or loading scientific data during configuration construction.
+
+See :doc:`rhime_configuration` for complete resource selection examples and
+:doc:`staged_workflow` for the separate 0.7-to-0.8 staged artifact migration.
+
+Planned 0.9 deprecations and removals
+-------------------------------------
+
+**Deprecations:** historical directory/name basis output conventions and legacy
+basis output are scheduled for deprecation in 0.9. Explicit legacy output has no
+automatic removal date; a deprecation version is not a removal commitment.
+
+**Removals:** ``emissions_store``, ``emissions_domain``,
+``inner_emissions_store`` and ``inner_emissions_domain`` are already deprecated
+and scheduled for removal in 0.9. Replace them with their ``flux_*`` spellings.
+The entire ``openghg_inversions.hbmcmc`` subpackage is removed in 0.9: its
+wrapper, compatibility adapters and legacy data/basis utilities will have no
+forwarding imports or executable shims. Use RHIME runners, ``RhimeMergedData``
+for in-memory acquisition, ``RhimePreparedInputs`` for saved preparation, and
+``BasisFunctions`` for retained basis artifacts where applicable. For legacy-only
+utilities or unsupported historical artifacts, keep a compatible older release;
+this migration does not add readers for those artifacts. Modern
+``output_format="legacy"`` and ``save_inversion_output`` remain independently
+supported and are not removed with the package.
+Established public RHIME imports and CLI aliases retained *through* the 0.9
+compatibility cycle are not promised to disappear at the start of 0.9.
 
 Chain handling in ``run_hbmcmc.py``
 -----------------------------------
@@ -84,8 +154,11 @@ legacy tuple or sampler dictionary. Its principal attributes are ``idata``
 Parameter mapping
 -----------------
 
-Use canonical RHIME names in new Python and configuration files. The wrapper
-continues to translate the common old names.
+Use canonical RHIME names in new Python and configuration files. HBMCMC
+translates the fixedbasis vocabulary; RHIME runner frontends retain supported
+spelling aliases until 0.9, warning on devel and in 0.8. Direct
+``RhimeConfig.from_params`` calls require the canonical names below. They neither
+translate aliases nor emit alias deprecation warnings.
 
 .. list-table:: Fixedbasis-to-RHIME names
    :header-rows: 1
@@ -130,6 +203,24 @@ continues to translate the common old names.
    * - ``hbmcmc`` or ``hbmcmc_postprocessing``
      - ``legacy``
      - Modern HBMCMC-compatible NetCDF output
+   * - ``emissions_store`` / ``emissions_domain``
+     - ``flux_store`` / ``flux_domain``
+     - Also rename the corresponding ``inner_`` options; do not supply both spellings
+   * - ``outer_region_definition_file``
+     - ``outer_regions_path``
+     - Exact preparation map file
+   * - ``fp_basis_case`` + ``basis_directory``
+     - ``basis_path``, ``basis_partition_path`` or ``basis_partition_paths``
+     - Select the retained artifact or exact labelled partition file(s); remove both discovery options
+   * - ``bc_basis_case="NESW"`` + ``bc_basis_directory``
+     - Omit both options
+     - NESW is built in and needs no BC basis files
+   * - Other ``bc_basis_case`` + ``bc_basis_directory``
+     - ``bc_basis_paths``
+     - Select the exact BC basis files, including the months needed by the run
+   * - ``country_directory``
+     - Explicit map file paths
+     - ``country_file`` for reporting; ``landsea_path`` / ``outer_regions_path`` for preparation
    * - ``calculate_min_error``
      - ``min_error``
      - Use ``"residual"`` or ``"percentile"``
@@ -141,6 +232,72 @@ The wrapper retains the historical output filename convention. Direct
 ``run_rhime`` calls use the RHIME filename convention unless explicitly
 configured otherwise.
 
+Migrating an old configuration
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+For example, an old fixedbasis INI might contain::
+
+   [RUN]
+   nit = 5000
+   nchain = 4
+   emissions_name = ["total-ukghg-edgar7"]
+   emissions_store = "user"
+   emissions_domain = "EUROPE"
+   outputpath = "outputs"
+   outputname = "ch4_TAC"
+   output_format = "hbmcmc"
+   fp_basis_case = "monthly"
+   basis_directory = "/data/bases"
+   bc_basis_case = "NESW"
+   bc_basis_directory = "/data/bc"
+
+Replace that section with canonical options, retaining the rest of the run's
+species, site, dates, priors, ``burn`` and other scientific settings::
+
+   [RUN]
+   draws = 5000
+   chains = 4
+   flux_sources = ["total-ukghg-edgar7"]
+   flux_store = "user"
+   flux_domain = "EUROPE"
+   output_path = "outputs"
+   output_name = "ch4_TAC"
+   output_format = "legacy"
+   basis_partition_paths = ["/data/bases/monthly/EUROPE/january.nc",
+                            "/data/bases/monthly/EUROPE/february.nc"]
+
+The selected partition filenames are examples: inspect your old case directory
+and select the files actually needed. Use ``basis_path`` instead for one retained
+``BasisFunctions`` artifact, or ``basis_partition_path`` for one labelled
+partition file. These three selections are mutually exclusive. The plural
+collection must be nonempty and is sorted by path before loading; the first
+sorted file supplies reference coordinates. Nested runs have the same choices
+with the ``inner_`` prefix. No NESW directory is required.
+
+If the old run used ``country_directory``, remove it and set ``country_file``
+to the reporting file. Set ``landsea_path`` or ``outer_regions_path`` separately
+if overriding the packaged preparation maps. A reporting map never selects a
+preparation map. When moving this INI to staged execution, check relative output
+and resource destinations: ``outputs`` and an explicit ``save_trace`` filename
+resolve beside the INI there, but from the working directory in a full run.
+Explicit path overrides remain relative to the invocation directory.
+
+Check scientific settings independently of renaming. In particular, moving from
+the HBMCMC wrapper to a RHIME runner can change output filename and chain-summary
+policy described above; renaming parameters alone does not reproduce that policy.
+
+The temporary dictionary adapter is available from
+``openghg_inversions.hbmcmc.compatibility``. With ``normalise=False``,
+``params_from_config`` returns raw decoded options plus winning overrides. With
+``normalise=True``, it translates aliases and historical selections and returns
+canonical keys and resolved ``Path`` values, including selected resource files.
+It does not construct configuration defaults or expand site shorthand. Direct
+callers of ``fixedbasis_params_to_rhime`` must additionally call
+``adapt_resource_params`` before ``RhimeConfig.from_params``; the first function
+alone does not finish resource translation. These adapters are removed with
+HBMCMC in 0.9. For canonical INIs, use ``read_rhime_ini`` and apply overrides
+before constructing ``RhimeConfig``.
+
 Legacy-format output
 --------------------
 
@@ -148,10 +305,11 @@ Legacy-format output
 RHIME. It creates the HBMCMC-compatible NetCDF product from the modern
 ``InversionOutput``; it does not invoke ``fixedbasisMCMC`` or ``inferpymc``.
 The deprecated output names ``hbmcmc`` and ``hbmcmc_postprocessing`` remain
-aliases for ``legacy`` with ``DeprecationWarning``. ``RhimeConfig.from_params``
-calls the translator in ``hbmcmc.compatibility`` before modern normalization,
-after file options and Python overrides have been combined. It warns when a
-deprecated spelling is replaced or removed; canonical inputs remain quiet.
+aliases for ``legacy`` at runner frontends until 0.9, with
+``DeprecationWarning`` on devel and in 0.8. Runners translate after combining
+file options and Python overrides. ``RhimeConfig.from_params`` and direct output
+configuration factories require ``legacy``; they do not translate these aliases
+or issue their deprecation warnings.
 Prefer ``legacy`` in new configurations. The former ``resolve_rhime_config``
 wrapper is removed; use the classmethod directly.
 
@@ -205,8 +363,8 @@ implementation types and the low-level ``convert_to_list`` helper live in
 ``inversion_data._site_options``; their former ``acquisition`` and
 ``get_data.convert_to_list`` import aliases are removed.
 
-Import legacy option translators from ``hbmcmc.compatibility`` instead of
-``rhime.params`` or ``hbmcmc.run_hbmcmc``. Import ``read_rhime_ini`` from
+During 0.8, legacy callers import their option translators and dictionary adapter
+from ``hbmcmc.compatibility``. Modern callers do not use this package. Import ``read_rhime_ini`` from
 ``rhime.ini`` or the public ``rhime`` package instead of ``rhime.params``.
 
 Legacy merged-data metadata
@@ -289,11 +447,16 @@ Modern acquisition uses ``RhimeMergedData.from_options`` or direct dataset
 construction. Modern runners resolve native prior flux once with
 ``native_flux.resolve_runtime_flux(merged.flux_data, split_by_sectors=...)``.
 Modern ``prepare_basis`` accepts explicit ``site_data``, resolved ``runtime_flux``
-and singular ``weighting_flux`` arrays, exact ``basis_path`` / ``output_path``
-artifacts, and resolved scientific map arrays. Historical case/glob discovery,
-directory-based filename construction, flat-file adaptation and explicit legacy writing are isolated in
-``basis.compatibility``. See :doc:`rhime_configuration` for the 0.8 modern basis
-artifact default, explicit legacy opt-in, and migration examples. For reusable RHIME runs, save ``RhimePreparedInputs``;
+and singular ``weighting_flux`` arrays, an exact ``basis_path`` input,
+and resolved scientific map arrays. The ``output_path`` argument has been
+removed: call ``basis.save(selected_path)`` on the returned object to export
+it. Configured runners own ``basis_output_path`` and preserve export metadata.
+Historical run selectors end at the HBMCMC input compatibility boundary.
+Flat-file adaptation and explicit legacy writing remain in
+``basis.compatibility`` under their own deprecation schedule; removing HBMCMC
+does not remove these adapters. See :doc:`rhime_configuration` for the 0.8
+modern basis artifact default, explicit legacy opt-in, and migration examples. For reusable
+RHIME runs, save ``RhimePreparedInputs``;
 legacy merged-data files are a separate explicit utility workflow.
 
 Dataset and ``fp_all`` basis adapters resolve native flux once at their

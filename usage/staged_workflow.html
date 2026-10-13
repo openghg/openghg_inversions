@@ -448,7 +448,35 @@ read ambient <code class="docutils literal notranslate"><span class="pre">CONFIG
 default, and the effective <code class="docutils literal notranslate"><span class="pre">openghg-run</span></code> <code class="docutils literal notranslate"><span class="pre">STAGE</span></code> is the default check-stage
 label.
 Relative filesystem values inside an INI or JSON parameter file are resolved
-against that file’s directory, not the process working directory.</p>
+against that file’s directory. This includes <code class="docutils literal notranslate"><span class="pre">output_path</span></code> and explicit
+<code class="docutils literal notranslate"><span class="pre">save_trace</span></code> / <code class="docutils literal notranslate"><span class="pre">save_inversion_output</span></code> filenames: staged output destinations
+now follow the same file-relative rule as resource inputs. Ordinary full-run
+INI values remain relative to the invocation directory. Explicit <code class="docutils literal notranslate"><span class="pre">--kwargs</span></code>
+path overrides resolve from the invocation working directory; absolute paths
+keep their destination.
+Filesystem annotations identify the fields to convert: resolved configuration
+uses <code class="docutils literal notranslate"><span class="pre">Path</span></code> values, including tuples of paths, while parameter JSON and stage
+manifests store paths as strings and path collections as JSON arrays. Scientific
+strings such as domain names are unchanged; configuration construction does not
+load scientific resources. Each owner converts its declared fields once; later
+configured execution and identity encoding forward canonical paths.</p>
+<p>For file-backed boundary conditions, specify exact files, for example
+<code class="docutils literal notranslate"><span class="pre">&quot;bc_basis_paths&quot;:</span> <span class="pre">[&quot;bc/january.nc&quot;,</span> <span class="pre">&quot;bc/february.nc&quot;]</span></code> in the parameter JSON.
+<code class="docutils literal notranslate"><span class="pre">prepare</span></code> loads all selected files before acquisition and passes their labelled
+data to sensitivity construction, preserving time combination and alignment.
+Missing or unreadable selected files fail before acquisition. Omit
+<code class="docutils literal notranslate"><span class="pre">bc_basis_paths</span></code> for NESW: it uses acquired directional contributions without
+reading a BC basis file. Disabled BCs load no BC basis resources. Staged commands
+reject historical <code class="docutils literal notranslate"><span class="pre">fp_basis_case</span></code>, <code class="docutils literal notranslate"><span class="pre">basis_directory</span></code>, <code class="docutils literal notranslate"><span class="pre">bc_basis_case</span></code> and
+<code class="docutils literal notranslate"><span class="pre">bc_basis_directory</span></code> options. Use explicit modern paths. During 0.8, only the
+HBMCMC entry route translates those historical selectors after winning overrides;
+on that route, an NESW directory warns that it is unused without any lookup.</p>
+<p><code class="docutils literal notranslate"><span class="pre">country_directory</span></code> is removed in 0.8. Use <code class="docutils literal notranslate"><span class="pre">country_file</span></code> for reporting,
+<code class="docutils literal notranslate"><span class="pre">landsea_path</span></code> for preparation land/sea classes, or <code class="docutils literal notranslate"><span class="pre">outer_regions_path</span></code> for
+fixed outer regions. Required preparation maps default to packaged files for the
+exact requested domain; explicit paths win and missing resources fail without
+fallback. Reporting country files remain explicit and independent of these
+preparation defaults. See <a class="reference internal" href="legacy_and_migration.html"><span class="doc">Migrate from HBMCMC to RHIME</span></a> for the migration schedule.</p>
 <p><code class="docutils literal notranslate"><span class="pre">openghg-run</span></code>’s <code class="docutils literal notranslate"><span class="pre">EFFECTIVE_CONFIG</span></code> is a stage-specific TOML envelope, not
 an OpenGHG Inversions scientific parameter file, so do not pass it to
 <code class="docutils literal notranslate"><span class="pre">--params-file</span></code>. It remains orchestration provenance. A no-INI campaign
@@ -456,10 +484,14 @@ should explicitly copy or provide a canonical OpenGHG Inversions JSON
 parameter file and pass that path (for example beneath <code class="docutils literal notranslate"><span class="pre">SOURCE_DIR</span></code> or
 <code class="docutils literal notranslate"><span class="pre">RUN_ROOT/scripts</span></code>).</p>
 <p>Legacy fixedbasis-style PARIS INIs contain options such as <code class="docutils literal notranslate"><span class="pre">nit</span></code>, <code class="docutils literal notranslate"><span class="pre">nchain</span></code>,
-<code class="docutils literal notranslate"><span class="pre">xprior</span></code> and <code class="docutils literal notranslate"><span class="pre">mcmc_type</span></code>.  Their translation remains owned by the existing
-<code class="docutils literal notranslate"><span class="pre">run_hbmcmc</span></code> compatibility path.  Do not copy those aliases into a staged
-JSON file; use canonical RHIME names or first migrate the configuration through
-that existing compatibility boundary.</p>
+<code class="docutils literal notranslate"><span class="pre">xprior</span></code> and <code class="docutils literal notranslate"><span class="pre">mcmc_type</span></code>. Fixedbasis policy such as <code class="docutils literal notranslate"><span class="pre">nit</span></code>, <code class="docutils literal notranslate"><span class="pre">nchain</span></code> and
+<code class="docutils literal notranslate"><span class="pre">mcmc_type</span></code> belongs to the temporary <code class="docutils literal notranslate"><span class="pre">run_hbmcmc</span></code> route in 0.8. Modern name
+aliases such as <code class="docutils literal notranslate"><span class="pre">xprior</span></code> remain supported at the staged frontend until 0.9
+with deprecation warnings and their existing precedence; prefer <code class="docutils literal notranslate"><span class="pre">x_prior</span></code> in
+new files. Translation happens before <code class="docutils literal notranslate"><span class="pre">RhimeConfig.from_params</span></code>, which accepts
+canonical names only and emits no alias warnings. Migrate fixedbasis policy and
+resource discovery to canonical RHIME options before using staged commands.
+The entire HBMCMC subpackage and its entry points are removed in 0.9.</p>
 <p>For <code class="docutils literal notranslate"><span class="pre">--model</span> <span class="pre">co2</span></code>, pass <code class="docutils literal notranslate"><span class="pre">--config</span> <span class="pre">co2.toml</span></code> using the CO2-family TOML
 vocabulary, or a <code class="docutils literal notranslate"><span class="pre">--params-file</span></code> JSON object with the same nested structure.
 The CO2 resolver validates the recipe; the optional <code class="docutils literal notranslate"><span class="pre">[outputs]</span></code> table selects
@@ -526,10 +558,12 @@ provide their replacement context routing.</p>
 <code class="docutils literal notranslate"><span class="pre">openghg-run</span></code>’s <code class="docutils literal notranslate"><span class="pre">OUTPUT_DIR</span></code>). An explicitly configured
 <code class="docutils literal notranslate"><span class="pre">basis_output_path</span></code> keeps its exact destination; preparation does not replace
 it with a stage directory. Relative configured paths resolve from the INI or
-JSON file as described above. Commands do not depend on the caller’s
-working directory and reject pre-existing symlinks beneath a stage output
-directory.</p>
-<p>Preparation resolves selected basis and support resources. Country reporting
+JSON file as described above; explicit overrides and <code class="docutils literal notranslate"><span class="pre">--output-dir</span></code> resolve
+from the invocation working directory. The runner saves the basis separately
+from checkpoint-owned files using the existing basis codec. Commands reject
+pre-existing symlinks beneath a stage output directory.</p>
+<p>Preparation resolves selected basis, BC basis and support resources before
+acquisition. Country reporting
 resources are checked by <code class="docutils literal notranslate"><span class="pre">postprocess</span></code> before creating its output directory;
 <code class="docutils literal notranslate"><span class="pre">prepare</span></code> and <code class="docutils literal notranslate"><span class="pre">sample</span></code> do not require them.</p>
 <dl class="simple">

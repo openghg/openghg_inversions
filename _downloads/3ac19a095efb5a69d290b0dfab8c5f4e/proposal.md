@@ -16,7 +16,10 @@ than the durable configuration baseline.
 - Bind saved-phase model choices to authoritative prepared facts while preserving
   the agreed BC-use, BC-frequency and sampler contracts.
 - Keep path interpretation and optional basis saving with the separate
-  [resource-I/O change](../move-rhime-resource-io-to-runners/proposal.md).
+  [resource-I/O change](../../specs/rhime-resource-io/spec.md).
+- Share runner/frontend alias owners across full and phase-only resolution under the
+  separate [HBMCMC isolation/retirement contract](../../specs/hbmcmc-isolation-retirement/spec.md);
+  historical translation remains in HBMCMC without a reverse dependency.
 
 ## Capabilities
 

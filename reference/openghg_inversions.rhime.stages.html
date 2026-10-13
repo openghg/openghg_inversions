@@ -565,7 +565,10 @@ authenticating the posterior file.</p>
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.stages.load_stage_params" title="Link to this definition">#</a></dt>
 <dd><p>Load existing RHIME parameters from one explicit source.</p>
 <p><code class="docutils literal notranslate"><span class="pre">CONFIG_FILE</span></code> is intentionally not an environment default: an unrelated
-ambient variable must never select the scientific configuration.</p>
+ambient variable must never select the scientific configuration. Relative
+file resource paths resolve beside the configuration file; explicit overrides
+resolve from the invocation working directory. Absolute paths retain their
+destinations.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>, <a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a>]</p>

@@ -398,6 +398,21 @@ compatibility periods, and artifact guarantees belong to their scoped
 capability specifications and usage references. See <a class="reference internal" href="specifications.html"><span class="doc">Development guidance and behavioral specifications</span></a> for
 those sources and how to establish their review and delivery status.
 A design recommendation is not evidence that an API implements it.</p>
+<section id="keep-legacy-dependencies-one-way">
+<h2>Keep legacy dependencies one-way<a class="headerlink" href="#keep-legacy-dependencies-one-way" title="Link to this heading">#</a></h2>
+<p>The delivered <a class="reference download internal" download="" href="../_downloads/2b40e8f781ee62206dd844c68db3e2e7/spec.md"><code class="xref download docutils literal notranslate"><span class="pre">HBMCMC</span> <span class="pre">isolation</span> <span class="pre">contract</span></code></a>
+sets the boundary: HBMCMC may call modern APIs, while production code
+outside HBMCMC must not import, re-export or execute through it. Keep historical
+resource translation inside the legacy entry point. Retained RHIME spelling
+aliases belong to runner frontends, which translate and warn before constructing
+canonical configuration. <code class="docutils literal notranslate"><span class="pre">RhimeConfig.from_params</span></code> has no alias vocabulary,
+translation or deprecation warnings. Give retained modern behavior modern owners;
+small duplication inside HBMCMC is acceptable to preserve this direction.
+The separate contract owns the exact compatibility rules and 0.9 removal timing.
+The 0.8 isolation requirements are promoted in PR 869; complete 0.9 removal
+remains in the active retirement change. See <a class="reference internal" href="specifications.html"><span class="doc">Development guidance and behavioral specifications</span></a> for delivery
+status.</p>
+</section>
 <section id="start-with-the-scientific-recipe">
 <h2>Start with the scientific recipe<a class="headerlink" href="#start-with-the-scientific-recipe" title="Link to this heading">#</a></h2>
 <p>Read a recipe as a <strong>scientific pipeline with optional checkpoints</strong>: acquire,
@@ -627,6 +642,7 @@ work in the owning issue rather than treating a historical plan as completion.</
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#keep-legacy-dependencies-one-way">Keep legacy dependencies one-way</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#start-with-the-scientific-recipe">Start with the scientific recipe</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#choose-the-smallest-useful-extension">Choose the smallest useful extension</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#compose-scientific-concepts-directly">Compose scientific concepts directly</a></li>

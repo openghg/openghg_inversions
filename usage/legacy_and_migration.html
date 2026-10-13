@@ -419,11 +419,78 @@ The direct <code class="docutils literal notranslate"><span class="pre">fixedbas
 0.8 after its remaining known active user agreed to migrate. The 0.7.x release
 line is the last line containing that implementation and the
 <code class="docutils literal notranslate"><span class="pre">--legacy-fixedbasis</span></code> option. The <code class="docutils literal notranslate"><span class="pre">openghg_inversions.hbmcmc</span></code> namespace
-hosts the transitional <code class="docutils literal notranslate"><span class="pre">run_hbmcmc</span></code> wrapper and explicit legacy data
-utilities until 0.9.</p>
+hosts the transitional <code class="docutils literal notranslate"><span class="pre">run_hbmcmc</span></code> wrapper and explicit legacy data/basis
+utilities during 0.8. The complete subpackage is scheduled for removal in 0.9,
+including its imports, adapters and executable entry points.</p>
 <p>This page is for users with fixedbasis-style Python calls, INI files, batch
 scripts, or HBMCMC outputs. For a new inversion, start with the
 <a class="reference internal" href="model_recipes.html"><span class="doc">model recipe chooser</span></a> and <a class="reference internal" href="rhime.html"><span class="doc">RHIME guide</span></a>.</p>
+<section id="resource-migration">
+<h2>0.8 resource migration<a class="headerlink" href="#resource-migration" title="Link to this heading">#</a></h2>
+<p>Resource selection now ends at the runner boundary. Update existing calls and
+configuration as follows:</p>
+<ul class="simple">
+<li><p>Remove <code class="docutils literal notranslate"><span class="pre">output_path</span></code> from <code class="docutils literal notranslate"><span class="pre">prepare_basis</span></code>. Save its returned object with
+<code class="docutils literal notranslate"><span class="pre">basis.save(selected_path)</span></code>, or set the configured runner’s
+<code class="docutils literal notranslate"><span class="pre">basis_output_path</span></code> to an exact artifact filename. Checkpoint files and this
+optional export have separate destinations.</p></li>
+<li><p>Remove <code class="docutils literal notranslate"><span class="pre">country_directory</span></code> from run configuration. Use <code class="docutils literal notranslate"><span class="pre">country_file</span></code> for
+reporting, <code class="docutils literal notranslate"><span class="pre">landsea_path</span></code> for preparation land/sea classes, and
+<code class="docutils literal notranslate"><span class="pre">outer_regions_path</span></code> for fixed outer regions. Required preparation maps
+default to vendored files for the exact requested domain; explicit paths win.
+Missing explicit files or required domain defaults fail before acquisition.
+Country reporting requires an explicit file, independently of these defaults.</p></li>
+<li><p>Select file-backed BC bases using <code class="docutils literal notranslate"><span class="pre">bc_basis_paths</span></code>, for example
+<code class="docutils literal notranslate"><span class="pre">(&quot;/data/bc/january.nc&quot;,</span> <span class="pre">&quot;/data/bc/february.nc&quot;)</span></code>. Runners load these files
+before acquisition and preserve their time combination and alignment.
+Custom scientific sensitivity calls receive the loaded <code class="docutils literal notranslate"><span class="pre">bc_basis</span></code> dataset.
+NESW uses acquired directional contributions and <code class="docutils literal notranslate"><span class="pre">bc_basis=None</span></code>; it needs
+no file. On the HBMCMC route, an old <code class="docutils literal notranslate"><span class="pre">bc_basis_directory</span></code> with NESW is
+unused and warns, even if that directory does not exist. Disabled BCs load no BC resources.</p></li>
+<li><p>Modern runners reject <code class="docutils literal notranslate"><span class="pre">fp_basis_case</span></code>, <code class="docutils literal notranslate"><span class="pre">basis_directory</span></code>, <code class="docutils literal notranslate"><span class="pre">bc_basis_case</span></code>
+and <code class="docutils literal notranslate"><span class="pre">bc_basis_directory</span></code>. Replace them with exact basis/BC selections, or use
+the temporary HBMCMC CLI or normalized dictionary adapter during 0.8. Only that
+legacy route translates historical selections after winning overrides.
+Scientific functions receive explicit selections and never discover files.</p></li>
+<li><p>Replace the removed RHIME <code class="docutils literal notranslate"><span class="pre">params_from_config</span></code> re-export with
+<code class="docutils literal notranslate"><span class="pre">read_rhime_ini</span></code>, apply overrides, then call <code class="docutils literal notranslate"><span class="pre">RhimeConfig.from_params</span></code>.
+The dictionary adapter remains only in <code class="docutils literal notranslate"><span class="pre">hbmcmc.compatibility</span></code> during 0.8.
+Runner frontends, including direct <code class="docutils literal notranslate"><span class="pre">run_rhime</span></code> calls, retain supported
+aliases through 0.8 with deprecation warnings. <code class="docutils literal notranslate"><span class="pre">RhimeConfig.from_params</span></code>
+accepts canonical names only and has no alias translation or warnings.
+Modern output formats and explicit save paths remain.</p></li>
+<li><p>Use invocation-relative paths for Python/CLI calls and explicit overrides.
+Saved-phase INI/JSON resource values are relative to their configuration
+file. Staged <code class="docutils literal notranslate"><span class="pre">output_path</span></code> and explicit <code class="docutils literal notranslate"><span class="pre">save_trace</span></code> /
+<code class="docutils literal notranslate"><span class="pre">save_inversion_output</span></code> filenames now follow this same rule; full-run INI
+values retain their invocation-directory convention.
+Absolute paths keep their destinations. Frontends convert declared <code class="docutils literal notranslate"><span class="pre">Path</span></code>
+fields, including path collections, without treating scientific strings as
+paths or loading scientific data during configuration construction.</p></li>
+</ul>
+<p>See <a class="reference internal" href="rhime_configuration.html"><span class="doc">Advanced RHIME configuration</span></a> for complete resource selection examples and
+<a class="reference internal" href="staged_workflow.html"><span class="doc">Staged RHIME workflows</span></a> for the separate 0.7-to-0.8 staged artifact migration.</p>
+</section>
+<section id="planned-0-9-deprecations-and-removals">
+<h2>Planned 0.9 deprecations and removals<a class="headerlink" href="#planned-0-9-deprecations-and-removals" title="Link to this heading">#</a></h2>
+<p><strong>Deprecations:</strong> historical directory/name basis output conventions and legacy
+basis output are scheduled for deprecation in 0.9. Explicit legacy output has no
+automatic removal date; a deprecation version is not a removal commitment.</p>
+<p><strong>Removals:</strong> <code class="docutils literal notranslate"><span class="pre">emissions_store</span></code>, <code class="docutils literal notranslate"><span class="pre">emissions_domain</span></code>,
+<code class="docutils literal notranslate"><span class="pre">inner_emissions_store</span></code> and <code class="docutils literal notranslate"><span class="pre">inner_emissions_domain</span></code> are already deprecated
+and scheduled for removal in 0.9. Replace them with their <code class="docutils literal notranslate"><span class="pre">flux_*</span></code> spellings.
+The entire <code class="docutils literal notranslate"><span class="pre">openghg_inversions.hbmcmc</span></code> subpackage is removed in 0.9: its
+wrapper, compatibility adapters and legacy data/basis utilities will have no
+forwarding imports or executable shims. Use RHIME runners, <code class="docutils literal notranslate"><span class="pre">RhimeMergedData</span></code>
+for in-memory acquisition, <code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code> for saved preparation, and
+<code class="docutils literal notranslate"><span class="pre">BasisFunctions</span></code> for retained basis artifacts where applicable. For legacy-only
+utilities or unsupported historical artifacts, keep a compatible older release;
+this migration does not add readers for those artifacts. Modern
+<code class="docutils literal notranslate"><span class="pre">output_format=&quot;legacy&quot;</span></code> and <code class="docutils literal notranslate"><span class="pre">save_inversion_output</span></code> remain independently
+supported and are not removed with the package.
+Established public RHIME imports and CLI aliases retained <em>through</em> the 0.9
+compatibility cycle are not promised to disappear at the start of 0.9.</p>
+</section>
 <section id="chain-handling-in-run-hbmcmc-py">
 <h2>Chain handling in <code class="docutils literal notranslate"><span class="pre">run_hbmcmc.py</span></code><a class="headerlink" href="#chain-handling-in-run-hbmcmc-py" title="Link to this heading">#</a></h2>
 <p>The compatibility wrapper uses chain 0 for derived products by default,
@@ -491,8 +558,11 @@ legacy tuple or sampler dictionary. Its principal attributes are <code class="do
 </section>
 <section id="parameter-mapping">
 <h2>Parameter mapping<a class="headerlink" href="#parameter-mapping" title="Link to this heading">#</a></h2>
-<p>Use canonical RHIME names in new Python and configuration files. The wrapper
-continues to translate the common old names.</p>
+<p>Use canonical RHIME names in new Python and configuration files. HBMCMC
+translates the fixedbasis vocabulary; RHIME runner frontends retain supported
+spelling aliases until 0.9, warning on devel and in 0.8. Direct
+<code class="docutils literal notranslate"><span class="pre">RhimeConfig.from_params</span></code> calls require the canonical names below. They neither
+translate aliases nor emit alias deprecation warnings.</p>
 <div class="pst-scrollable-table-container"><table class="table" id="id1">
 <caption><span class="caption-text">Fixedbasis-to-RHIME names</span><a class="headerlink" href="#id1" title="Link to this table">#</a></caption>
 <colgroup>
@@ -555,6 +625,30 @@ continues to translate the common old names.</p>
 <td><p><code class="docutils literal notranslate"><span class="pre">legacy</span></code></p></td>
 <td><p>Modern HBMCMC-compatible NetCDF output</p></td>
 </tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">emissions_store</span></code> / <code class="docutils literal notranslate"><span class="pre">emissions_domain</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">flux_store</span></code> / <code class="docutils literal notranslate"><span class="pre">flux_domain</span></code></p></td>
+<td><p>Also rename the corresponding <code class="docutils literal notranslate"><span class="pre">inner_</span></code> options; do not supply both spellings</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">outer_region_definition_file</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">outer_regions_path</span></code></p></td>
+<td><p>Exact preparation map file</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">fp_basis_case</span></code> + <code class="docutils literal notranslate"><span class="pre">basis_directory</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">basis_path</span></code>, <code class="docutils literal notranslate"><span class="pre">basis_partition_path</span></code> or <code class="docutils literal notranslate"><span class="pre">basis_partition_paths</span></code></p></td>
+<td><p>Select the retained artifact or exact labelled partition file(s); remove both discovery options</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">bc_basis_case=&quot;NESW&quot;</span></code> + <code class="docutils literal notranslate"><span class="pre">bc_basis_directory</span></code></p></td>
+<td><p>Omit both options</p></td>
+<td><p>NESW is built in and needs no BC basis files</p></td>
+</tr>
+<tr class="row-even"><td><p>Other <code class="docutils literal notranslate"><span class="pre">bc_basis_case</span></code> + <code class="docutils literal notranslate"><span class="pre">bc_basis_directory</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">bc_basis_paths</span></code></p></td>
+<td><p>Select the exact BC basis files, including the months needed by the run</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">country_directory</span></code></p></td>
+<td><p>Explicit map file paths</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">country_file</span></code> for reporting; <code class="docutils literal notranslate"><span class="pre">landsea_path</span></code> / <code class="docutils literal notranslate"><span class="pre">outer_regions_path</span></code> for preparation</p></td>
+</tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">calculate_min_error</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">min_error</span></code></p></td>
 <td><p>Use <code class="docutils literal notranslate"><span class="pre">&quot;residual&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;percentile&quot;</span></code></p></td>
@@ -569,6 +663,68 @@ continues to translate the common old names.</p>
 <p>The wrapper retains the historical output filename convention. Direct
 <code class="docutils literal notranslate"><span class="pre">run_rhime</span></code> calls use the RHIME filename convention unless explicitly
 configured otherwise.</p>
+<section id="migrating-an-old-configuration">
+<h3>Migrating an old configuration<a class="headerlink" href="#migrating-an-old-configuration" title="Link to this heading">#</a></h3>
+<p>For example, an old fixedbasis INI might contain:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">[</span><span class="n">RUN</span><span class="p">]</span>
+<span class="n">nit</span> <span class="o">=</span> <span class="mi">5000</span>
+<span class="n">nchain</span> <span class="o">=</span> <span class="mi">4</span>
+<span class="n">emissions_name</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"total-ukghg-edgar7"</span><span class="p">]</span>
+<span class="n">emissions_store</span> <span class="o">=</span> <span class="s2">"user"</span>
+<span class="n">emissions_domain</span> <span class="o">=</span> <span class="s2">"EUROPE"</span>
+<span class="n">outputpath</span> <span class="o">=</span> <span class="s2">"outputs"</span>
+<span class="n">outputname</span> <span class="o">=</span> <span class="s2">"ch4_TAC"</span>
+<span class="n">output_format</span> <span class="o">=</span> <span class="s2">"hbmcmc"</span>
+<span class="n">fp_basis_case</span> <span class="o">=</span> <span class="s2">"monthly"</span>
+<span class="n">basis_directory</span> <span class="o">=</span> <span class="s2">"/data/bases"</span>
+<span class="n">bc_basis_case</span> <span class="o">=</span> <span class="s2">"NESW"</span>
+<span class="n">bc_basis_directory</span> <span class="o">=</span> <span class="s2">"/data/bc"</span>
+</pre></div>
+</div>
+<p>Replace that section with canonical options, retaining the rest of the run’s
+species, site, dates, priors, <code class="docutils literal notranslate"><span class="pre">burn</span></code> and other scientific settings:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">[</span><span class="n">RUN</span><span class="p">]</span>
+<span class="n">draws</span> <span class="o">=</span> <span class="mi">5000</span>
+<span class="n">chains</span> <span class="o">=</span> <span class="mi">4</span>
+<span class="n">flux_sources</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"total-ukghg-edgar7"</span><span class="p">]</span>
+<span class="n">flux_store</span> <span class="o">=</span> <span class="s2">"user"</span>
+<span class="n">flux_domain</span> <span class="o">=</span> <span class="s2">"EUROPE"</span>
+<span class="n">output_path</span> <span class="o">=</span> <span class="s2">"outputs"</span>
+<span class="n">output_name</span> <span class="o">=</span> <span class="s2">"ch4_TAC"</span>
+<span class="n">output_format</span> <span class="o">=</span> <span class="s2">"legacy"</span>
+<span class="n">basis_partition_paths</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"/data/bases/monthly/EUROPE/january.nc"</span><span class="p">,</span>
+                         <span class="s2">"/data/bases/monthly/EUROPE/february.nc"</span><span class="p">]</span>
+</pre></div>
+</div>
+<p>The selected partition filenames are examples: inspect your old case directory
+and select the files actually needed. Use <code class="docutils literal notranslate"><span class="pre">basis_path</span></code> instead for one retained
+<code class="docutils literal notranslate"><span class="pre">BasisFunctions</span></code> artifact, or <code class="docutils literal notranslate"><span class="pre">basis_partition_path</span></code> for one labelled
+partition file. These three selections are mutually exclusive. The plural
+collection must be nonempty and is sorted by path before loading; the first
+sorted file supplies reference coordinates. Nested runs have the same choices
+with the <code class="docutils literal notranslate"><span class="pre">inner_</span></code> prefix. No NESW directory is required.</p>
+<p>If the old run used <code class="docutils literal notranslate"><span class="pre">country_directory</span></code>, remove it and set <code class="docutils literal notranslate"><span class="pre">country_file</span></code>
+to the reporting file. Set <code class="docutils literal notranslate"><span class="pre">landsea_path</span></code> or <code class="docutils literal notranslate"><span class="pre">outer_regions_path</span></code> separately
+if overriding the packaged preparation maps. A reporting map never selects a
+preparation map. When moving this INI to staged execution, check relative output
+and resource destinations: <code class="docutils literal notranslate"><span class="pre">outputs</span></code> and an explicit <code class="docutils literal notranslate"><span class="pre">save_trace</span></code> filename
+resolve beside the INI there, but from the working directory in a full run.
+Explicit path overrides remain relative to the invocation directory.</p>
+<p>Check scientific settings independently of renaming. In particular, moving from
+the HBMCMC wrapper to a RHIME runner can change output filename and chain-summary
+policy described above; renaming parameters alone does not reproduce that policy.</p>
+<p>The temporary dictionary adapter is available from
+<code class="docutils literal notranslate"><span class="pre">openghg_inversions.hbmcmc.compatibility</span></code>. With <code class="docutils literal notranslate"><span class="pre">normalise=False</span></code>,
+<code class="docutils literal notranslate"><span class="pre">params_from_config</span></code> returns raw decoded options plus winning overrides. With
+<code class="docutils literal notranslate"><span class="pre">normalise=True</span></code>, it translates aliases and historical selections and returns
+canonical keys and resolved <code class="docutils literal notranslate"><span class="pre">Path</span></code> values, including selected resource files.
+It does not construct configuration defaults or expand site shorthand. Direct
+callers of <code class="docutils literal notranslate"><span class="pre">fixedbasis_params_to_rhime</span></code> must additionally call
+<code class="docutils literal notranslate"><span class="pre">adapt_resource_params</span></code> before <code class="docutils literal notranslate"><span class="pre">RhimeConfig.from_params</span></code>; the first function
+alone does not finish resource translation. These adapters are removed with
+HBMCMC in 0.9. For canonical INIs, use <code class="docutils literal notranslate"><span class="pre">read_rhime_ini</span></code> and apply overrides
+before constructing <code class="docutils literal notranslate"><span class="pre">RhimeConfig</span></code>.</p>
+</section>
 </section>
 <section id="legacy-format-output">
 <h2>Legacy-format output<a class="headerlink" href="#legacy-format-output" title="Link to this heading">#</a></h2>
@@ -576,10 +732,11 @@ configured otherwise.</p>
 RHIME. It creates the HBMCMC-compatible NetCDF product from the modern
 <code class="docutils literal notranslate"><span class="pre">InversionOutput</span></code>; it does not invoke <code class="docutils literal notranslate"><span class="pre">fixedbasisMCMC</span></code> or <code class="docutils literal notranslate"><span class="pre">inferpymc</span></code>.
 The deprecated output names <code class="docutils literal notranslate"><span class="pre">hbmcmc</span></code> and <code class="docutils literal notranslate"><span class="pre">hbmcmc_postprocessing</span></code> remain
-aliases for <code class="docutils literal notranslate"><span class="pre">legacy</span></code> with <code class="docutils literal notranslate"><span class="pre">DeprecationWarning</span></code>. <code class="docutils literal notranslate"><span class="pre">RhimeConfig.from_params</span></code>
-calls the translator in <code class="docutils literal notranslate"><span class="pre">hbmcmc.compatibility</span></code> before modern normalization,
-after file options and Python overrides have been combined. It warns when a
-deprecated spelling is replaced or removed; canonical inputs remain quiet.
+aliases for <code class="docutils literal notranslate"><span class="pre">legacy</span></code> at runner frontends until 0.9, with
+<code class="docutils literal notranslate"><span class="pre">DeprecationWarning</span></code> on devel and in 0.8. Runners translate after combining
+file options and Python overrides. <code class="docutils literal notranslate"><span class="pre">RhimeConfig.from_params</span></code> and direct output
+configuration factories require <code class="docutils literal notranslate"><span class="pre">legacy</span></code>; they do not translate these aliases
+or issue their deprecation warnings.
 Prefer <code class="docutils literal notranslate"><span class="pre">legacy</span></code> in new configurations. The former <code class="docutils literal notranslate"><span class="pre">resolve_rhime_config</span></code>
 wrapper is removed; use the classmethod directly.</p>
 <p>The compatibility product uses variables such as <code class="docutils literal notranslate"><span class="pre">Yobs</span></code>, <code class="docutils literal notranslate"><span class="pre">Yerror</span></code>,
@@ -641,8 +798,8 @@ Import <code class="docutils literal notranslate"><span class="pre">SiteOptions<
 implementation types and the low-level <code class="docutils literal notranslate"><span class="pre">convert_to_list</span></code> helper live in
 <code class="docutils literal notranslate"><span class="pre">inversion_data._site_options</span></code>; their former <code class="docutils literal notranslate"><span class="pre">acquisition</span></code> and
 <code class="docutils literal notranslate"><span class="pre">get_data.convert_to_list</span></code> import aliases are removed.</p>
-<p>Import legacy option translators from <code class="docutils literal notranslate"><span class="pre">hbmcmc.compatibility</span></code> instead of
-<code class="docutils literal notranslate"><span class="pre">rhime.params</span></code> or <code class="docutils literal notranslate"><span class="pre">hbmcmc.run_hbmcmc</span></code>. Import <code class="docutils literal notranslate"><span class="pre">read_rhime_ini</span></code> from
+<p>During 0.8, legacy callers import their option translators and dictionary adapter
+from <code class="docutils literal notranslate"><span class="pre">hbmcmc.compatibility</span></code>. Modern callers do not use this package. Import <code class="docutils literal notranslate"><span class="pre">read_rhime_ini</span></code> from
 <code class="docutils literal notranslate"><span class="pre">rhime.ini</span></code> or the public <code class="docutils literal notranslate"><span class="pre">rhime</span></code> package instead of <code class="docutils literal notranslate"><span class="pre">rhime.params</span></code>.</p>
 </section>
 <section id="legacy-merged-data-metadata">
@@ -716,11 +873,16 @@ module paths and exports have been removed.</p>
 construction. Modern runners resolve native prior flux once with
 <code class="docutils literal notranslate"><span class="pre">native_flux.resolve_runtime_flux(merged.flux_data,</span> <span class="pre">split_by_sectors=...)</span></code>.
 Modern <code class="docutils literal notranslate"><span class="pre">prepare_basis</span></code> accepts explicit <code class="docutils literal notranslate"><span class="pre">site_data</span></code>, resolved <code class="docutils literal notranslate"><span class="pre">runtime_flux</span></code>
-and singular <code class="docutils literal notranslate"><span class="pre">weighting_flux</span></code> arrays, exact <code class="docutils literal notranslate"><span class="pre">basis_path</span></code> / <code class="docutils literal notranslate"><span class="pre">output_path</span></code>
-artifacts, and resolved scientific map arrays. Historical case/glob discovery,
-directory-based filename construction, flat-file adaptation and explicit legacy writing are isolated in
-<code class="docutils literal notranslate"><span class="pre">basis.compatibility</span></code>. See <a class="reference internal" href="rhime_configuration.html"><span class="doc">Advanced RHIME configuration</span></a> for the 0.8 modern basis
-artifact default, explicit legacy opt-in, and migration examples. For reusable RHIME runs, save <code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code>;
+and singular <code class="docutils literal notranslate"><span class="pre">weighting_flux</span></code> arrays, an exact <code class="docutils literal notranslate"><span class="pre">basis_path</span></code> input,
+and resolved scientific map arrays. The <code class="docutils literal notranslate"><span class="pre">output_path</span></code> argument has been
+removed: call <code class="docutils literal notranslate"><span class="pre">basis.save(selected_path)</span></code> on the returned object to export
+it. Configured runners own <code class="docutils literal notranslate"><span class="pre">basis_output_path</span></code> and preserve export metadata.
+Historical run selectors end at the HBMCMC input compatibility boundary.
+Flat-file adaptation and explicit legacy writing remain in
+<code class="docutils literal notranslate"><span class="pre">basis.compatibility</span></code> under their own deprecation schedule; removing HBMCMC
+does not remove these adapters. See <a class="reference internal" href="rhime_configuration.html"><span class="doc">Advanced RHIME configuration</span></a> for the 0.8
+modern basis artifact default, explicit legacy opt-in, and migration examples. For reusable
+RHIME runs, save <code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code>;
 legacy merged-data files are a separate explicit utility workflow.</p>
 <p>Dataset and <code class="docutils literal notranslate"><span class="pre">fp_all</span></code> basis adapters resolve native flux once at their
 compatibility boundary. <code class="docutils literal notranslate"><span class="pre">basis_functions_from_flat_basis</span></code> now accepts
@@ -782,13 +944,18 @@ deferred to #829.</p>
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#resource-migration">0.8 resource migration</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#planned-0-9-deprecations-and-removals">Planned 0.9 deprecations and removals</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#chain-handling-in-run-hbmcmc-py">Chain handling in <code class="docutils literal notranslate"><span class="pre">run_hbmcmc.py</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#choose-a-migration-route">Choose a migration route</a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#existing-ini-and-batch-workflows">Existing INI and batch workflows</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#python-workflows">Python workflows</a></li>
 </ul>
 </li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#parameter-mapping">Parameter mapping</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#parameter-mapping">Parameter mapping</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#migrating-an-old-configuration">Migrating an old configuration</a></li>
+</ul>
+</li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#legacy-format-output">Legacy-format output</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#removed-python-helper-apis">Removed Python helper APIs</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#legacy-merged-data-metadata">Legacy merged-data metadata</a></li>

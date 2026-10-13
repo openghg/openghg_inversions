@@ -609,6 +609,22 @@ label validation. A missing <code class="docutils literal notranslate"><span cla
 </dl>
 </dd></dl>
 
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.basis.support.load_bc_basis">
+<span class="sig-name descname"><span class="pre">load_bc_basis</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">paths</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.support.load_bc_basis" title="Link to this definition">#</a></dt>
+<dd><p>Eagerly load every explicitly selected BC basis file before acquisition.</p>
+<p>Files are sorted by path and concatenated along time, with latitude and
+longitude reindexed to the first file within the existing 1e-5 tolerance.
+The returned dataset is independent of closed files. Missing or unreadable
+files propagate their read error; an empty selection raises ValueError.
+NESW and disabled BCs do not need this loader.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
 </section>
 
 
@@ -662,6 +678,7 @@ label validation. A missing <code class="docutils literal notranslate"><span cla
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.support.load_basis_support_map"><code class="docutils literal notranslate"><span class="pre">load_basis_support_map()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.support.resolve_basis_support_maps"><code class="docutils literal notranslate"><span class="pre">resolve_basis_support_maps()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.support.load_basis_partition"><code class="docutils literal notranslate"><span class="pre">load_basis_partition()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.support.load_bc_basis"><code class="docutils literal notranslate"><span class="pre">load_bc_basis()</span></code></a></li>
 </ul>
   </nav></div>
 

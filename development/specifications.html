@@ -409,7 +409,9 @@ history belong in the change records and the map below, not in durable specs.</p
 <p>The following map was reviewed against <code class="docutils literal notranslate"><span class="pre">devel</span></code> revision <code class="docutils literal notranslate"><span class="pre">7269f50f</span></code> on
 12 October 2026. It covers RHIME selection, composition, configuration, and
 reconstruction boundaries; it is not a complete package API specification.
-The configuration entry was amended on 13 October 2026 during review of PR 867.</p>
+The configuration entry was amended on 13 October 2026 during review of PR 867.
+The resource-I/O and HBMCMC entries were updated the same day for the accepted
+0.8 implementation and durable-spec promotion in PR 869.</p>
 <div class="pst-scrollable-table-container"><table class="table" id="id1">
 <caption><span class="caption-text">Behavioral ownership and delivery status</span><a class="headerlink" href="#id1" title="Link to this table">#</a></caption>
 <colgroup>
@@ -443,10 +445,9 @@ Configuration serialization/INI writing remains with <a class="reference externa
 </tr>
 <tr class="row-odd"><td><p>External resources and basis exports</p></td>
 <td><p><a class="reference download internal" download="" href="../_downloads/c23f3e251e80eaeb7631265c50ed7dd4/spec.md"><code class="xref download docutils literal notranslate"><span class="pre">RHIME</span> <span class="pre">resource</span> <span class="pre">I/O</span></code></a></p></td>
-<td><p>Delivered exact destinations, selected-resource checks and optional
-saving inside preparation. The <a class="reference download internal" download="" href="../_downloads/068776f2c1949c5612c1184983b6f7b6/proposal.md"><code class="xref download docutils literal notranslate"><span class="pre">runner</span> <span class="pre">resource-I/O</span> <span class="pre">change</span></code></a>
-tracks pending path/save migration in
-<a class="reference external" href="https://github.com/openghg/openghg_inversions/issues/868">issue 868</a>.
+<td><p>Delivered runner-owned path resolution, selected-resource checks, BC
+loading and optional basis exports, preserving exact destinations.
+Delivery history: <a class="reference download internal" download="" href="../_downloads/94412af9803623ced2d59221b022469d/tasks.md"><code class="xref download docutils literal notranslate"><span class="pre">resource-I/O</span> <span class="pre">archive</span></code></a>.
 Manifest references and checkpoint completion stay with the handoff specs.</p></td>
 </tr>
 <tr class="row-even"><td><p>Retained-state scientific reconstruction</p></td>
@@ -454,13 +455,21 @@ Manifest references and checkpoint completion stay with the handoff specs.</p></
 <td><p>Delivered scientific capability; implemented routes and limitations in
 <a class="reference internal" href="../usage/retained_state_reconstruction.html"><span class="doc">Linear retained-state reconstruction</span></a>.</p></td>
 </tr>
-<tr class="row-odd"><td><p>Saved CO2 affine reconstruction</p></td>
+<tr class="row-odd"><td><p>HBMCMC dependency direction and retirement</p></td>
+<td><p><a class="reference download internal" download="" href="../_downloads/2b40e8f781ee62206dd844c68db3e2e7/spec.md"><code class="xref download docutils literal notranslate"><span class="pre">HBMCMC</span> <span class="pre">isolation</span> <span class="pre">contract</span></code></a></p></td>
+<td><p>Delivered 0.8 dependency boundary and legacy-only resource translation.
+Runner frontends own deprecated spellings; canonical configuration has
+no alias translation or warnings. Complete 0.9 removal remains in the
+<a class="reference download internal" download="" href="../_downloads/bbbda2e55f9fe2571a0cf8e4094d3b58/proposal.md"><code class="xref download docutils literal notranslate"><span class="pre">active</span> <span class="pre">retirement</span> <span class="pre">change</span></code></a>.
+Path conversion and resource loading stay with resource I/O.</p></td>
+</tr>
+<tr class="row-even"><td><p>Saved CO2 affine reconstruction</p></td>
 <td><p><a class="reference download internal" download="" href="../_downloads/525d7a9c43da31f3dadebe4556ff140f/spec.md"><code class="xref download docutils literal notranslate"><span class="pre">CO2</span> <span class="pre">affine</span> <span class="pre">output</span> <span class="pre">reconstruction</span></code></a></p></td>
 <td><p>Delivered scientific capability retaining its owner-consent requirement;
 <a class="reference internal" href="../usage/affine_flux_map.html"><span class="doc">Affine native-flux reconstruction</span></a> and <a class="reference internal" href="../usage/co2_model_family.html"><span class="doc">CO₂ model family</span></a> describe
 current support and conditional uncertainty.</p></td>
 </tr>
-<tr class="row-even"><td><p>Reusable recipe execution and prepared/sample handoffs</p></td>
+<tr class="row-odd"><td><p>Reusable recipe execution and prepared/sample handoffs</p></td>
 <td><p><a class="reference download internal" download="" href="../_downloads/b76571a82a11a34cd12aee762bba8061/proposal.md"><code class="xref download docutils literal notranslate"><span class="pre">Reusable</span> <span class="pre">handoff</span> <span class="pre">proposal</span></code></a>
 in <a class="reference external" href="https://github.com/openghg/openghg_inversions/pull/802">PR 802</a></p></td>
 <td><p>Approved implementation plan; full phase interfaces remain outstanding.
@@ -477,11 +486,10 @@ configuration and reconstruction changes are also archived after reconciliation
 into their current specs. The replacement in PR 802 remains active.
 Neither proposal makes a common checkpoint interface a prerequisite for all
 recipes. Do not silently merge their pending behavior into a delivered baseline.
-PR 867 separates the pending configuration and resource-I/O amendments into
-their own active changes. PR 802 consumes them without duplicate deltas. The
-resource-I/O capability records existing behavior retrospectively, including
-PR 840’s exact destinations; only completed amendments are synced into durable
-specs.</p>
+PR 867 separated the configuration and resource-I/O amendments into
+separate changes. Resource I/O is now promoted and archived; grouped
+configuration remains active. PR 802 consumes those owners without duplicate
+deltas. The durable resource contract preserves PR 840’s exact destinations.</p>
 </section>
 <section id="planning-records">
 <h2>Planning records<a class="headerlink" href="#planning-records" title="Link to this heading">#</a></h2>

@@ -530,7 +530,7 @@ return new handoffs when they need to attach variables or metadata and never
 mutate caller-owned datasets. Acquisition reads OpenGHG stores and returns an
 in-memory handoff. Filtering may
 compute when a selected filter cannot operate lazily.  Basis construction may
-read, fit, or write a basis artifact, and sensitivity construction may execute
+read or fit a basis; runners own optional exports. Sensitivity construction may execute
 the basis and boundary-condition algorithms.  Labelled assembly validates the
 durable <a class="reference internal" href="openghg_inversions.inversion_data.html#openghg_inversions.inversion_data.RhimePreparedInputs" title="openghg_inversions.inversion_data.RhimePreparedInputs"><code class="xref py py-class docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code></a>
 artifact and jointly materializes core payloads before dropping unusable
@@ -724,30 +724,26 @@ Error diagnostics and zero replacement may compute derived arrays.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">merged</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">basis_functions</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">domain</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">flux_sources</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">use_bc</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">bc_basis_case</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'NESW'</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">bc_basis_directory</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">bc_basis</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">multisector</span></span></em>,</dd>
 </dl>
 
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.preparation.build_sensitivities" title="Link to this definition">#</a></dt>
 <dd><p>Construct labelled flux and optional boundary-condition sensitivities.</p>
 <p>The stage creates per-site dataset copies, computes the basis projection,
-and may load boundary-condition basis data.  <code class="docutils literal notranslate"><span class="pre">merged</span></code> and
+using preloaded boundary-condition basis data. <code class="docutils literal notranslate"><span class="pre">merged</span></code> and
 <code class="docutils literal notranslate"><span class="pre">basis_functions</span></code> remain borrowed.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>merged</strong> (<a class="reference internal" href="openghg_inversions.inversion_data.acquisition.html#openghg_inversions.inversion_data.acquisition.MergedData" title="openghg_inversions.inversion_data.acquisition.MergedData"><em>MergedData</em></a>) – Filtered observations and footprints with aligned site options.</p></li>
 <li><p><strong>basis_functions</strong> (<a class="reference internal" href="openghg_inversions.basis.basis_functions.html#openghg_inversions.basis.basis_functions.FluxWeightedBasis" title="openghg_inversions.basis.basis_functions.FluxWeightedBasis"><em>FluxWeightedBasis</em></a>) – Retained basis and fluxes to project onto observations.</p></li>
-<li><p><strong>domain</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Domain used for boundary-condition basis lookup.</p></li>
 <li><p><strong>flux_sources</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.15)"><em>Sequence</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>]</em>) – Source names used to align the flux sensitivities.</p></li>
 <li><p><strong>use_bc</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Whether to construct boundary-condition sensitivities.</p></li>
-<li><p><strong>bc_basis_case</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Boundary-condition basis case used when <code class="docutils literal notranslate"><span class="pre">use_bc</span></code> is
-true.</p></li>
-<li><p><strong>bc_basis_directory</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.15)"><em>Path</em></a><em> | </em><em>None</em>) – Optional directory containing that basis case.</p></li>
+<li><p><strong>bc_basis</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.9.0)"><em>Dataset</em></a><em> | </em><em>None</em>) – Loaded boundary basis; None uses acquired NESW directional
+contributions without a basis file. Ignored when BCs are disabled.</p></li>
 <li><p><strong>multisector</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Whether to retain separate source sensitivities instead
 of the standard single-source layout.</p></li>
 </ul>
@@ -816,15 +812,18 @@ removal is needed.</p>
 <span class="sig-name descname"><span class="pre">resolve_basis_inputs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.preparation.resolve_basis_inputs" title="Link to this definition">#</a></dt>
 <dd><p>Resolve exact scientific inputs before acquisition.</p>
 <p>Configuration resolution itself stays data-free. This application boundary
-reads selected maps and partitions, checks retained paths, and consumes
-deprecated case/directory choices once. Numerical preparation receives only
+reads selected maps and partitions and checks retained paths. Entry
+adapters have already translated deprecated case/directory selections.
+Numerical preparation receives only
 the resulting exact artifact path and borrowed labelled arrays. Reporting
 resources are validated separately by the output owner.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><p><strong>config</strong> (<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a>) – Resolved <a class="reference internal" href="openghg_inversions.rhime.params.html#openghg_inversions.rhime.params.RhimeConfig" title="openghg_inversions.rhime.params.RhimeConfig"><code class="xref py py-class docutils literal notranslate"><span class="pre">RhimeConfig</span></code></a>.
 Explicit retained artifacts and partition files bypass algorithm
-support defaults; explicitly selected support files are still read.</p>
+support defaults; explicitly selected support files are still read.
+Plural partition paths are sorted before loading; the first file
+supplies the reference spatial coordinates.</p>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>an optional exact <code class="docutils literal notranslate"><span class="pre">basis_path</span></code> or eager <code class="docutils literal notranslate"><span class="pre">basis_partition</span></code>, plus
@@ -836,14 +835,10 @@ here and loaded later by basis preparation. The request is not mutated.</p>
 </dd>
 <dt class="field-even">Raises<span class="colon">:</span></dt>
 <dd class="field-even"><ul class="simple">
-<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If modern and historical selections conflict or both saved
-    input forms are supplied.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If mutually exclusive saved input forms are supplied.</p></li>
 <li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#FileNotFoundError" title="(in Python v3.15)"><strong>FileNotFoundError</strong></a> – If a selected artifact or resource is missing.</p></li>
 <li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#KeyError" title="(in Python v3.15)"><strong>KeyError</strong></a> – If a map or partition lacks its required variable.</p></li>
 </ul>
-</dd>
-<dt class="field-odd">Warns<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>DeprecationWarning</strong> – When historical case/directory options are consumed.</p>
 </dd>
 </dl>
 </dd></dl>

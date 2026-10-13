@@ -577,7 +577,8 @@ a fixedbasis scientific switch and is translated at the same boundary.</p>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>A fresh mapping with canonical names and historical output policy.
-Values are validated and coerced later by <code class="docutils literal notranslate"><span class="pre">RhimeConfig.from_params</span></code>.
+Call <code class="docutils literal notranslate"><span class="pre">adapt_resource_params</span></code> next to translate historical resource
+selections and remaining flux aliases before <code class="docutils literal notranslate"><span class="pre">RhimeConfig.from_params</span></code>.
 Prior mappings changed for lognormal reparameterisation are copied;
 other values remain borrowed.</p>
 </dd>
@@ -615,13 +616,17 @@ other values remain borrowed.</p>
 <li><p><strong>end_date</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Optional command-line end-date override.</p></li>
 <li><p><strong>output_path</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Optional command-line output-path override.</p></li>
 <li><p><strong>extra_kwargs</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Final winning keyword overrides.</p></li>
-<li><p><strong>normalise</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Translate aliases, coerce scalars and validate structured
-values when true. False returns only decoded values and overrides.</p></li>
+<li><p><strong>normalise</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Translate aliases and historical resource selections, resolve
+resource paths against the invocation directory, coerce scalars and
+validate structured values when true. False returns only decoded
+values and overrides.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>A fresh option mapping. This adapter does not resolve defaults or site
-shorthand and does not resolve runner setup.</p>
+<dd class="field-even"><p>A fresh option mapping. With normalization, keys are canonical and
+resource paths are resolved <code class="docutils literal notranslate"><span class="pre">Path</span></code> values (including selected files
+for historical basis cases). This adapter does not resolve defaults or
+site shorthand and does not resolve runner setup.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If normalization finds unsupported legacy switches or
@@ -633,6 +638,21 @@ shorthand and does not resolve runner setup.</p>
 </dl>
 <p>Emits <code class="docutils literal notranslate"><span class="pre">DeprecationWarning</span></code>. Use <code class="docutils literal notranslate"><span class="pre">read_rhime_ini</span></code> for decoded values,
 apply overrides, then call <code class="docutils literal notranslate"><span class="pre">RhimeConfig.from_params</span></code>.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.hbmcmc.compatibility.adapt_resource_params">
+<span class="sig-name descname"><span class="pre">adapt_resource_params</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">params</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">base_dir</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">overrides</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.hbmcmc.compatibility.adapt_resource_params" title="Link to this definition">#</a></dt>
+<dd><p>Translate winning historical resource selections before configuration.</p>
+<p>File values use <code class="docutils literal notranslate"><span class="pre">base_dir</span></code>; explicit overrides use the invocation directory.
+Discovery selects exact paths without loading scientific arrays. Canonical
+requests contain no historical case/directory fields. Disabled BCs and NESW
+never discover BC files. Removed country directories are rejected outright.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>, <a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a>]</p>
+</dd>
+</dl>
 </dd></dl>
 
 </section>
@@ -689,6 +709,7 @@ apply overrides, then call <code class="docutils literal notranslate"><span clas
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.hbmcmc.compatibility.translate_rhime_aliases"><code class="docutils literal notranslate"><span class="pre">translate_rhime_aliases()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.hbmcmc.compatibility.fixedbasis_params_to_rhime"><code class="docutils literal notranslate"><span class="pre">fixedbasis_params_to_rhime()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.hbmcmc.compatibility.params_from_config"><code class="docutils literal notranslate"><span class="pre">params_from_config()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.hbmcmc.compatibility.adapt_resource_params"><code class="docutils literal notranslate"><span class="pre">adapt_resource_params()</span></code></a></li>
 </ul>
   </nav></div>
 

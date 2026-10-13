@@ -467,8 +467,9 @@ applies when constructing or directly invoking <code class="docutils literal not
 <span class="k">assert</span> <span class="n">config</span><span class="o">.</span><span class="n">site_options</span><span class="o">.</span><span class="n">averaging_period</span> <span class="o">==</span> <span class="p">(</span><span class="s2">"1h"</span><span class="p">,</span> <span class="s2">"1h"</span><span class="p">)</span>
 </pre></div>
 </div>
-<p>The constructor translates supported deprecated aliases, then applies established
-defaults, validation and site expansion beside the configuration it creates. Pass an
+<p>The constructor accepts canonical option names and applies established defaults,
+validation and site expansion beside the configuration it creates. It does not
+translate deprecated spellings or emit their deprecation warnings. Pass an
 inspected configuration to the matching runner to execute it without resolving
 its options again:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="n">run_rhime</span>
@@ -510,14 +511,23 @@ stays available until that last step: changing sites or averaging periods before
 resolution expands the final values together. The resulting <code class="docutils literal notranslate"><span class="pre">config</span></code> can be
 passed to a runner without resolving again.</p>
 <p><code class="docutils literal notranslate"><span class="pre">RhimeConfig.from_params</span></code> is the single construction entry point; the former
-<code class="docutils literal notranslate"><span class="pre">resolve_rhime_config</span></code> wrapper has been removed. The constructor calls the
-translator in <code class="docutils literal notranslate"><span class="pre">hbmcmc.compatibility</span></code> and emits <code class="docutils literal notranslate"><span class="pre">DeprecationWarning</span></code> when a
-deprecated name or output-format value is replaced or removed. For historical HBMCMC aliases, canonical names take precedence. Modern flux
-keyword deprecations follow the stricter rules below. Canonical inputs emit no
-deprecation warning. The deprecated
-<code class="docutils literal notranslate"><span class="pre">params_from_config</span></code> adapter retains its dictionary return, overrides and
-<code class="docutils literal notranslate"><span class="pre">normalise</span></code> control there; modern readers and runners do not depend on that
-adapter. Prefer modern names such as <code class="docutils literal notranslate"><span class="pre">x_prior</span></code>, <code class="docutils literal notranslate"><span class="pre">output_name</span></code> and
+<code class="docutils literal notranslate"><span class="pre">resolve_rhime_config</span></code> wrapper has been removed. Runner frontends, including
+<code class="docutils literal notranslate"><span class="pre">run_rhime</span></code> and staged commands, translate supported deprecated names before
+calling this constructor. They emit <code class="docutils literal notranslate"><span class="pre">DeprecationWarning</span></code> on devel and in 0.8;
+these aliases are removed in 0.9. For names such as <code class="docutils literal notranslate"><span class="pre">xprior</span></code> and <code class="docutils literal notranslate"><span class="pre">outputname</span></code>,
+canonical names take precedence. Flux keyword deprecations follow the stricter
+rules below. Canonical inputs emit no warning. Configuration construction has no
+alias vocabulary; deprecated names passed directly to <code class="docutils literal notranslate"><span class="pre">RhimeConfig.from_params</span></code>
+are ordinary unknown options. Modern configuration and runners do not import or
+call HBMCMC.</p>
+<p>The deprecated dictionary-returning <code class="docutils literal notranslate"><span class="pre">params_from_config</span></code> adapter is available
+only from <code class="docutils literal notranslate"><span class="pre">openghg_inversions.hbmcmc.compatibility</span></code> during 0.8; its RHIME
+re-export is removed. <code class="docutils literal notranslate"><span class="pre">normalise=False</span></code> returns decoded values plus winning
+overrides. <code class="docutils literal notranslate"><span class="pre">normalise=True</span></code> translates aliases and historical resource
+selections after overrides and returns canonical keys and resolved <code class="docutils literal notranslate"><span class="pre">Path</span></code>
+values. It does not construct configuration defaults or expand site shorthand.
+Modern callers use <code class="docutils literal notranslate"><span class="pre">read_rhime_ini</span></code>, apply overrides, then call
+<code class="docutils literal notranslate"><span class="pre">RhimeConfig.from_params</span></code> as above. Prefer <code class="docutils literal notranslate"><span class="pre">x_prior</span></code>, <code class="docutils literal notranslate"><span class="pre">output_name</span></code> and
 <code class="docutils literal notranslate"><span class="pre">flux_sources</span></code> when migrating code or files.</p>
 <p>Basis artifact defaults and the 0.8 transition are described below; a redesign
 of the INI sections remains a separate decision.</p>
@@ -530,13 +540,15 @@ footprint <code class="docutils literal notranslate"><span class="pre">domain</s
 a nested inner domain. Nested preparation uses <code class="docutils literal notranslate"><span class="pre">inner_flux_store</span></code> (default:
 outer flux store) and <code class="docutils literal notranslate"><span class="pre">inner_flux_domain</span></code> (default: inner footprint domain,
 independent of the outer flux-domain selector).</p>
-<p>The modern spellings <code class="docutils literal notranslate"><span class="pre">emissions_store</span></code>, <code class="docutils literal notranslate"><span class="pre">emissions_domain</span></code>,
+<p>At runner frontends, the deprecated spellings <code class="docutils literal notranslate"><span class="pre">emissions_store</span></code>,
+<code class="docutils literal notranslate"><span class="pre">emissions_domain</span></code>,
 <code class="docutils literal notranslate"><span class="pre">inner_emissions_store</span></code> and <code class="docutils literal notranslate"><span class="pre">inner_emissions_domain</span></code> remain accepted with
 <code class="docutils literal notranslate"><span class="pre">DeprecationWarning</span></code> until removal in <strong>0.9</strong>. Supply only one spelling of
 each selector: old and new names together raise <code class="docutils literal notranslate"><span class="pre">ValueError</span></code>, including
 equal values and explicit <code class="docutils literal notranslate"><span class="pre">None</span></code>. These modern deprecations are resolved
-separately from historical HBMCMC aliases. Resolved configuration fields and
-canonical option inventories contain only the new names.</p>
+before configuration construction. <code class="docutils literal notranslate"><span class="pre">RhimeConfig.from_params</span></code> accepts only
+the <code class="docutils literal notranslate"><span class="pre">flux_*</span></code> names, with no translation or deprecation warnings. Resolved
+configuration fields and canonical option inventories contain only the new names.</p>
 </section>
 <section id="basis-paths-support-maps-and-compatibility">
 <h2>Basis paths, support maps and compatibility<a class="headerlink" href="#basis-paths-support-maps-and-compatibility" title="Link to this heading">#</a></h2>
@@ -545,7 +557,13 @@ arbitrary filename ending in <code class="docutils literal notranslate"><span cl
 with <code class="docutils literal notranslate"><span class="pre">basis_algorithm</span></code> and <code class="docutils literal notranslate"><span class="pre">nbasis</span></code>. Alternatively,
 <code class="docutils literal notranslate"><span class="pre">basis_partition_path</span></code> selects an exact file containing a labelled <code class="docutils literal notranslate"><span class="pre">basis</span></code>
 partition; this valid scientific representation does not require historical
-case/glob selection. <code class="docutils literal notranslate"><span class="pre">basis_output_path</span></code> is an optional
+case/glob selection. For multiple labelled partition files, use the nonempty
+<code class="docutils literal notranslate"><span class="pre">basis_partition_paths</span></code> collection. Files are sorted by path before loading;
+the first sorted file supplies the reference coordinates. Select only one of
+<code class="docutils literal notranslate"><span class="pre">basis_path</span></code>, <code class="docutils literal notranslate"><span class="pre">basis_partition_path</span></code> and <code class="docutils literal notranslate"><span class="pre">basis_partition_paths</span></code>. Nested
+inner preparation has the equivalent mutually exclusive <code class="docutils literal notranslate"><span class="pre">inner_basis_path</span></code>,
+<code class="docutils literal notranslate"><span class="pre">inner_basis_partition_path</span></code> and <code class="docutils literal notranslate"><span class="pre">inner_basis_partition_paths</span></code> options.</p>
+<p><code class="docutils literal notranslate"><span class="pre">basis_output_path</span></code> is an optional
 exact destination, including the filename; it is not an output directory or an
 enable flag. Staged preparation preserves this destination too.</p>
 <p>A selected retained artifact supplies its operator and metadata to new
@@ -561,13 +579,22 @@ complete saved basis with its saved prior, without acquisition. See the
 files. <code class="docutils literal notranslate"><span class="pre">RhimeConfig.from_params</span></code> resolves options without opening scientific
 data. The application preparation boundary loads selected maps before
 acquisition, then passes labelled <code class="docutils literal notranslate"><span class="pre">landsea_classes</span></code> and <code class="docutils literal notranslate"><span class="pre">outer_regions</span></code>
-arrays to <code class="docutils literal notranslate"><span class="pre">prepare_basis</span></code>. The single application helper
-<code class="docutils literal notranslate"><span class="pre">rhime.preparation.resolve_basis_inputs(config)</span></code> resolves these values and
-consumes any supported deprecated path fields once. Modern requests do not
-enter compatibility code. The numerical functions do no file discovery.
+arrays to <code class="docutils literal notranslate"><span class="pre">prepare_basis</span></code>. This function returns the scientific basis without
+writing an export and no longer accepts <code class="docutils literal notranslate"><span class="pre">output_path</span></code>. Runners explicitly
+save it through <code class="docutils literal notranslate"><span class="pre">BasisFunctions.save</span></code> when <code class="docutils literal notranslate"><span class="pre">basis_output_path</span></code> is requested,
+then retain the selected export path in metadata. The application helper
+<code class="docutils literal notranslate"><span class="pre">rhime.preparation.resolve_basis_inputs(config)</span></code> loads these scientific inputs.
+Historical case/directory selections are accepted only by the temporary HBMCMC
+entry points in 0.8, which translate winning selections before calling modern
+APIs. Modern runners reject <code class="docutils literal notranslate"><span class="pre">fp_basis_case</span></code>, <code class="docutils literal notranslate"><span class="pre">basis_directory</span></code>,
+<code class="docutils literal notranslate"><span class="pre">bc_basis_case</span></code> and <code class="docutils literal notranslate"><span class="pre">bc_basis_directory</span></code> before acquisition; resolved requests
+contain explicit selections. The numerical functions do no file discovery.
 When the selected algorithm needs a packaged support map, the application
-resolves that domain’s packaged resource. Missing selected files or unavailable
-domain resources raise; another domain is never substituted.</p>
+resolves omitted support paths to that exact domain’s packaged resources.
+Explicit paths take precedence; missing files do not fall back to defaults.
+Unavailable domain resources raise before acquisition, without substituting
+another domain or creating directories. Algorithms that do not need a map
+do not require its packaged resource.</p>
 <p>To select a packaged resource explicitly from Python:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.basis</span><span class="w"> </span><span class="kn">import</span> <span class="n">packaged_basis_support_path</span>
 
@@ -590,10 +617,11 @@ Legacy basis output is deprecated in 0.9; that deprecation does not schedule
 automatic removal in 0.9. This changes basis artifacts, independently of the
 final inversion product’s <code class="docutils literal notranslate"><span class="pre">output_format</span></code>.</p>
 <p>Historical <code class="docutils literal notranslate"><span class="pre">fp_basis_case</span></code> / <code class="docutils literal notranslate"><span class="pre">basis_directory</span></code> discovery, directory-style
-basis outputs, <code class="docutils literal notranslate"><span class="pre">country_directory</span></code>, <code class="docutils literal notranslate"><span class="pre">emissions_name</span></code> and legacy artifact
+basis outputs, <code class="docutils literal notranslate"><span class="pre">emissions_name</span></code> and legacy artifact
 adaptation belong to the compatibility boundary. Deprecated public
 <code class="docutils literal notranslate"><span class="pre">make_basis_functions</span></code> and <code class="docutils literal notranslate"><span class="pre">load_basis_functions</span></code> adapters live in
-<code class="docutils literal notranslate"><span class="pre">basis.compatibility</span></code> and invoke canonical modern operations. Migrate a
+<code class="docutils literal notranslate"><span class="pre">basis.compatibility</span></code> and invoke canonical modern operations. Their independent
+deprecation schedule is unaffected by removing HBMCMC in 0.9. Migrate a
 case/directory pair to an explicit artifact and output destination:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="c1"># Before: fp_basis_case="monthly", basis_directory="/data/bases"</span>
 <span class="c1">#         basis_output_path="/data/generated" (historical directory)</span>
@@ -604,8 +632,25 @@ case/directory pair to an explicit artifact and output destination:</p>
 </div>
 <p>The first requested flux source still determines generated-basis weighting;
 all runtime sources are retained. A selected saved basis takes precedence over
-generation. Boundary-condition basis selection still uses <code class="docutils literal notranslate"><span class="pre">bc_basis_case</span></code> /
-<code class="docutils literal notranslate"><span class="pre">bc_basis_directory</span></code>; its discovery migration is separate from this change.</p>
+generation.</p>
+<p>For file-backed boundary conditions, select exact files with
+<code class="docutils literal notranslate"><span class="pre">bc_basis_paths=(&quot;/data/bc/january.nc&quot;,</span> <span class="pre">&quot;/data/bc/february.nc&quot;)</span></code> (a one-file
+collection is also supported). The runner loads every selected file before
+acquisition and passes a labelled <code class="docutils literal notranslate"><span class="pre">bc_basis</span></code> dataset to sensitivity
+construction, preserving time combination and alignment. Missing or unreadable
+selected files fail before acquisition. Scientific sensitivity functions accept
+resolved data, not <code class="docutils literal notranslate"><span class="pre">bc_basis_case</span></code> or <code class="docutils literal notranslate"><span class="pre">bc_basis_directory</span></code> discovery options.</p>
+<p>The default NESW calculation uses acquired directional boundary contributions
+and needs no basis file. Leave <code class="docutils literal notranslate"><span class="pre">bc_basis_paths</span></code> unset for NESW; scientific
+calls use <code class="docutils literal notranslate"><span class="pre">bc_basis=None</span></code>. On the HBMCMC route only, a legacy
+<code class="docutils literal notranslate"><span class="pre">bc_basis_directory</span></code> supplied with NESW warns that it is unused and deprecated;
+it triggers neither discovery nor a missing-directory error. <code class="docutils literal notranslate"><span class="pre">use_bc=False</span></code>
+skips BC resource loading.</p>
+<p><code class="docutils literal notranslate"><span class="pre">country_directory</span></code> is removed from run configuration in 0.8 and is rejected
+before acquisition. Replace it with <code class="docutils literal notranslate"><span class="pre">country_file</span></code> for reporting,
+<code class="docutils literal notranslate"><span class="pre">landsea_path</span></code> for land/sea classes, or <code class="docutils literal notranslate"><span class="pre">outer_regions_path</span></code> for fixed outer
+regions. Reporting maps remain explicit: <code class="docutils literal notranslate"><span class="pre">domain</span></code> never selects a reporting
+<code class="docutils literal notranslate"><span class="pre">country_file</span></code>. See <a class="reference internal" href="legacy_and_migration.html"><span class="doc">Migrate from HBMCMC to RHIME</span></a> for the migration schedule.</p>
 </section>
 <section id="site-selectors-and-retained-observations">
 <h2>Site selectors and retained observations<a class="headerlink" href="#site-selectors-and-retained-observations" title="Link to this heading">#</a></h2>
@@ -674,8 +719,8 @@ Selection does not normalize, validate, copy nested values or serialize settings
 an unknown attribute raises <code class="docutils literal notranslate"><span class="pre">AttributeError</span></code>. Scientific stages still accept
 named keyword arguments and can be called without configuration. Their former
 positional <code class="docutils literal notranslate"><span class="pre">data_args</span></code> mappings have been removed. Supply the required basis
-identity/source arguments, sensitivity domain/source arguments, and assembly
-domain/start date by keyword; the API reference lists each function’s signature.</p>
+identity/source arguments, sensitivity source arguments and resolved BC basis,
+and assembly domain/start date by keyword; the API reference lists each function’s signature.</p>
 </section>
 <section id="changing-and-persisting-configuration">
 <h2>Changing and persisting configuration<a class="headerlink" href="#changing-and-persisting-configuration" title="Link to this heading">#</a></h2>
@@ -694,7 +739,20 @@ configuration hashes.
 For persisted workflows, see <a class="reference internal" href="staged_workflow.html"><span class="doc">Staged RHIME workflows</span></a>: version 0.8 does not
 support staged artifacts produced by 0.7; consume them with 0.7 or regenerate
 them with 0.8. Ordinary paths remain relative to the working directory and
-staged paths retain their configuration-file-relative convention.</p>
+staged file resources retain their configuration-file-relative convention.
+Explicit staged path overrides resolve from the invocation working directory.
+Runners forward absolute resource and export paths downstream; absolute inputs
+keep their destinations. Ordinary full-run INI values retain the invocation
+working directory convention. Filesystem fields are declared as <code class="docutils literal notranslate"><span class="pre">Path</span></code> types,
+including optional paths and collections such as <code class="docutils literal notranslate"><span class="pre">bc_basis_paths</span></code>. Frontends
+accept path strings and convert only these annotated fields; domain names and
+scientific selectors remain ordinary strings. Each configuration owner supplies
+its own field annotations to the independent converter. External-input factories
+resolve paths once without loading resources; configured runners and identity
+encoding forward canonical values. Direct dataclass construction expects resolved
+values. <code class="docutils literal notranslate"><span class="pre">RhimeOutputSpec.from_params</span></code> accepts external output options on its
+own, without constructing a full run. Explicit <code class="docutils literal notranslate"><span class="pre">save_trace</span></code> and
+<code class="docutils literal notranslate"><span class="pre">save_inversion_output</span></code> paths remain supported alongside their Boolean switches.</p>
 </section>
 </section>
 

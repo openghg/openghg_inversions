@@ -552,11 +552,8 @@ defaults; scientific callable signatures do not define the external schema.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">basis_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">basis_partition_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">landsea_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">fp_basis_case</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">basis_directory</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">bc_basis_case</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'NESW'</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">bc_basis_directory</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">country_directory</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">basis_partition_paths</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">bc_basis_paths</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">outer_regions_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">bc_input</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">basis_algorithm</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'weighted'</span></span></em>,</dd>
@@ -581,16 +578,12 @@ defaults; scientific callable signatures do not define the external schema.</p>
 holds complete requested selectors; <code class="docutils literal notranslate"><span class="pre">model</span></code> holds scientific recipe
 choices, <code class="docutils literal notranslate"><span class="pre">output</span></code> final-product policy and <code class="docutils literal notranslate"><span class="pre">sampler</span></code> sampling settings.
 Inference executes only when the sampler receives a constructed model.</p>
-<p>Use <a class="reference internal" href="#openghg_inversions.rhime.params.RhimeConfig.from_params" title="openghg_inversions.rhime.params.RhimeConfig.from_params"><code class="xref py py-meth docutils literal notranslate"><span class="pre">from_params()</span></code></a> for external options; deprecated spellings emit
-warnings. It owns ordinary configuration containers and borrows opaque
-numerical values. Modern <code class="docutils literal notranslate"><span class="pre">emissions_store</span></code>/<code class="docutils literal notranslate"><span class="pre">emissions_domain</span></code> spellings
-are removed in 0.9; supplying either with its <code class="docutils literal notranslate"><span class="pre">flux_*</span></code> replacement is an
-error, including equal values. Resolved fields use only <code class="docutils literal notranslate"><span class="pre">flux_*</span></code> names.
-Deprecated <code class="docutils literal notranslate"><span class="pre">fp_basis_case</span></code>, <code class="docutils literal notranslate"><span class="pre">basis_directory</span></code> and <code class="docutils literal notranslate"><span class="pre">country_directory</span></code>
-remain outer request fields for the transition. <code class="docutils literal notranslate"><span class="pre">resolve_basis_inputs</span></code>
-consumes them once before acquisition; numerical code receives exact paths
-and resolved arrays. Prefer <code class="docutils literal notranslate"><span class="pre">basis_path</span></code>/<code class="docutils literal notranslate"><span class="pre">basis_partition_path</span></code>,
-<code class="docutils literal notranslate"><span class="pre">landsea_path</span></code> and <code class="docutils literal notranslate"><span class="pre">outer_regions_path</span></code>.
+<p>Use <a class="reference internal" href="#openghg_inversions.rhime.params.RhimeConfig.from_params" title="openghg_inversions.rhime.params.RhimeConfig.from_params"><code class="xref py py-meth docutils literal notranslate"><span class="pre">from_params()</span></code></a> for canonical external options. It owns ordinary
+configuration containers and borrows opaque numerical values. Runner
+frontends translate deprecated spellings before construction; this class
+has no alias vocabulary and emits no alias deprecation warnings.
+Canonical requests retain only exact typed paths; resource loading belongs
+to runners.
 Direct construction and dataclass replacement expect
 already-resolved values and do not copy them.
 A frozen record does not make contained mappings or the sampler immutable.
@@ -637,12 +630,14 @@ neither replaces the required site shorthand or ordinary request values.</p>
 <dt class="sig sig-object py" id="openghg_inversions.rhime.params.RhimeConfig.from_params">
 <span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">from_params</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">params</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">multisector</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.params.RhimeConfig.from_params" title="Link to this definition">#</a></dt>
 <dd><p>Resolve external options into the complete requested run.</p>
+<p>Relative filesystem paths resolve from the invocation working directory;
+already resolved absolute paths pass through unchanged. File frontends
+must supply paths resolved against their own documented file base.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>params</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>]</em>) – Python or decoded file options after winning overrides.
-Canonical names are preferred; deprecated spellings are
-translated with <code class="docutils literal notranslate"><span class="pre">DeprecationWarning</span></code>.</p></li>
+Only canonical option names are accepted.</p></li>
 <li><p><strong>multisector</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Whether to resolve the multisector recipe.</p></li>
 </ul>
 </dd>
@@ -739,9 +734,7 @@ and averaging periods. Its numerical arrays remain borrowed.</p>
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.params.normalise_rhime_params">
 <span class="sig-name descname"><span class="pre">normalise_rhime_params</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">params</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.params.normalise_rhime_params" title="Link to this definition">#</a></dt>
-<dd><p>Resolve modern flux spellings, coerce scalars and validate values.</p>
-<p>Historical HBMCMC aliases are translated before this step. Modern flux
-aliases are resolved here, with warnings and strict old/new conflicts.</p>
+<dd><p>Copy canonical options, coerce scalars and validate values.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>, <a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a>]</p>
