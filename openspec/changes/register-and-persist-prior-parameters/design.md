@@ -135,8 +135,9 @@ borrowed caller arrays in place.
 
 Full, prepared-input and saved standard routes already meet at `build_standard`
 in #866. Keep that shared flow and correct the lower-level prior helpers rather
-than add a saved-route registration pass. Let complete custom builders continue
-to own their own numerical boundary.
+than add a saved-route registration pass. If the complete custom-builder hook
+remains supported, those builders own their own numerical boundary; this change
+does not require preserving that hook during #866's simplification.
 
 ## Risks / Trade-offs
 

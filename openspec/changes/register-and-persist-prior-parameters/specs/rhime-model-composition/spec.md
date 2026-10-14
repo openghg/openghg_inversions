@@ -211,8 +211,8 @@ model-construction and recording path.
 
 #### Scenario: Sample, save and reload lazy labelled prior inputs
 
-- **WHEN** a real registered model with Dask-backed labelled prior parameters
-  is sampled, saved and reloaded
+- **WHEN** a real registered model with Dask-backed labelled array-valued prior
+  parameters is sampled, saved and reloaded
 - **THEN** reloaded `constant_data` retains the numerical parameter values,
   scientific indexes and applicable auxiliary coordinates
 - **AND** model metadata associates the saved values with the prior's
