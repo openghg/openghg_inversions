@@ -7,6 +7,7 @@ from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Any, ClassVar, Literal, cast, get_args, get_type_hints
 
+from openghg_inversions.rhime._model_records import ModelRecord
 from openghg_inversions.inversion_inputs import DatetimeLike
 from openghg_inversions.rhime._resources import resolve_resource_paths
 from openghg_inversions.models.priors import PriorArgs
@@ -277,28 +278,7 @@ class RhimeModelSpec:
         prior mappings are never traversed or materialized here. Omitting
         ``priors`` omits prior parameter values from the record.
         """
-        priors = priors or {}
-        likelihood = None
-        if self.likelihood is not None:
-            kind = next(name for name, (cls, _) in _LIKELIHOOD_RECORDS.items() if isinstance(self.likelihood, cls))
-            options = {name: getattr(self.likelihood, name) for name in _LIKELIHOOD_RECORDS[kind][1]
-                       if name != "sigma_prior"}
-            if "sigma_prior" in _LIKELIHOOD_RECORDS[kind][1]:
-                options["sigma_prior"] = priors.get("sigma")
-            if isinstance(options.get("power"), Mapping):
-                options["power"] = priors.get("power")
-            likelihood = {"kind": kind, "options": options}
-        return {
-            **{name: getattr(self, name) for name in _MODEL_RECORD_FIELDS
-               if name not in {"bc_prior", "offset_prior"}},
-            "bc_prior": priors.get("bc"),
-            "offset_prior": priors.get("offset_latent"),
-            "sectors": [{"name": sector.name, "flux_source": sector.flux_source,
-                         "x_prior": priors.get("x" if len(self.sectors) == 1 and "x" in priors else f"x_{sector.variable_suffix}"),
-                         "variable_suffix": sector.variable_suffix}
-                        for sector in self.sectors],
-            "likelihood": likelihood,
-        }
+        return ModelRecord.from_runtime(self, priors=dict(priors or {})).model_dump(mode="json")
 
     @classmethod
     def from_record(cls, record: Any, *, trace: Any = None) -> RhimeModelSpec:
@@ -313,51 +293,11 @@ class RhimeModelSpec:
             ValueError: If the record is incomplete, names an unknown likelihood,
                 or references a missing registered prior array.
         """
-        expected = set(_MODEL_RECORD_FIELDS) | {"sectors", "likelihood"}
-        if not isinstance(record, Mapping) or set(record) != expected:
-            missing = sorted(expected - set(record)) if isinstance(record, Mapping) else sorted(expected)
-            raise ValueError(f"Saved model record must contain exactly {sorted(expected)}; missing {missing}.")
-        def resolve(value: Any) -> Any:
-            if isinstance(value, Mapping):
-                if set(value) == {"data"}:
-                    name = value["data"]
-                    if trace is None or "constant_data" not in trace or name not in trace["constant_data"]:
-                        raise ValueError(f"Missing registered prior data {name!r}.")
-                    return trace["constant_data"][name]
-                return {key: resolve(item) for key, item in value.items()}
-            if isinstance(value, list):
-                return [resolve(item) for item in value]
-            return value
-
-        values = resolve(record)
-        likelihood = values["likelihood"]
-        try:
-            if likelihood is not None:
-                settings_type, option_names = _LIKELIHOOD_RECORDS[likelihood["kind"]]
-                if set(likelihood["options"]) != set(option_names):
-                    raise ValueError(
-                        f"Saved {likelihood['kind']!r} likelihood options must be {sorted(option_names)}."
-                    )
-                values["likelihood"] = settings_type(**likelihood["options"])
-            values["sectors"] = tuple(SectorSpec(**sector) for sector in values["sectors"])
-            return cls(**values)
-        except (KeyError, TypeError) as exc:
-            raise ValueError(f"Saved model record is invalid: {exc}") from exc
+        return ModelRecord.model_validate(record).to_runtime(trace=trace)
 
 
-_MODEL_RECORD_FIELDS = (
-    "species", "domain", "use_bc", "add_offset", "aggregation_error_mode",
-    "bc_prior", "offset_prior", "offset_args",
-)
-_LIKELIHOOD_RECORDS: dict[str, tuple[type, tuple[str, ...]]] = {
-    "fixed_error": (FixedErrorSettings, ()),
-    "additive_sigma": (AdditiveSigmaSettings, (
-        "sigma_prior", "sigma_freq", "sigma_per_site", "sigma_freq_anchor", "use_minimum_error_floor",
-    )),
-    "pollution_event": (PollutionEventSettings, (
-        "sigma_prior", "sigma_freq", "sigma_per_site", "sigma_freq_anchor", "pollution_events_from_obs", "power",
-    )),
-}
+# Kept for the field-coverage check; the wire schema is the single field list.
+_MODEL_RECORD_FIELDS = tuple(name for name in ModelRecord.model_fields if name not in {"sectors", "likelihood"})
 
 
 @dataclass(frozen=True)

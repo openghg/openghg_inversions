@@ -19,6 +19,7 @@ from typing import Any, Literal, Self, cast
 import pandas as pd
 import numpy as np
 import xarray as xr
+from xarray_validate import DataArraySchema, DatasetSchema
 from openghg.util import (  # pyright: ignore[reportPrivateImportUsage, reportAttributeAccessIssue]
     cf_ureg,
 )
@@ -49,6 +50,17 @@ _AGGREGATION_PAYLOAD_NAMES = (
     DIAGONAL_RESIDUAL_VARIANCE,
 )
 _AGGREGATION_REPRESENTATION_DIMS = {"agg_rank", "nmeasure_cov"}
+# This schema checks metadata only: no array coercion or payload execution.
+_CO2_DATASET_SCHEMA = DatasetSchema(
+    data_vars={
+        "H": DataArraySchema(dtype=np.floating, dims=("nmeasure", None)),
+        "alpha_prior_mean": DataArraySchema(dtype=np.floating, dims=(None,)),
+        "alpha_prior_covariance": DataArraySchema(dtype=np.floating, dims=(None, None)),
+        "fixed_prior_contribution": DataArraySchema(dtype=np.floating, dims=("nmeasure",)),
+        "mf": DataArraySchema(dtype=np.floating, dims=("nmeasure",)),
+        "mf_error": DataArraySchema(dtype=np.floating, dims=("nmeasure",)),
+    },
+)
 
 
 def _json_mapping(value: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -167,25 +179,14 @@ def _require_equivalent_units(actual: Any, expected: str, *, name: str) -> None:
 
 def _validate_co2_dataset(inputs: xr.Dataset) -> None:
     """Validate the scientific layout owned by the CO2 artifact."""
-    required = (
-        "H",
-        "alpha_prior_mean",
-        "alpha_prior_covariance",
-        "fixed_prior_contribution",
-        "mf",
-        "mf_error",
-    )
-    missing = [name for name in required if name not in inputs]
-    if missing:
-        raise ValueError(f"CO2 prepared inputs are missing required variable(s): {missing!r}.")
+    # "lazy" collects errors; it is independent of Dask's execution model.
+    validation = _CO2_DATASET_SCHEMA.validate(inputs, mode="lazy")
+    if validation is not None and validation.has_errors:
+        raise ValueError(f"CO2 prepared inputs: {validation.get_error_summary()}")
 
     observations = inputs["mf"]
-    if observations.dims != ("nmeasure",):
-        raise ValueError("CO2 observations must have dimensions ('nmeasure',).")
     observation_index = _require_axis(observations, "nmeasure", name="CO2 observations")
     sensitivity = inputs["H"]
-    if sensitivity.ndim != 2 or sensitivity.dims[0] != "nmeasure":
-        raise ValueError("CO2 H must be observation-by-state with nmeasure first.")
     state_dim = str(sensitivity.dims[1])
     state_index = _require_axis(sensitivity, state_dim, name="CO2 H")
     _require_same_axis(sensitivity, "nmeasure", observation_index, name="CO2 H")
@@ -203,8 +204,6 @@ def _validate_co2_dataset(inputs: xr.Dataset) -> None:
     )
     for name in ("fixed_prior_contribution", "mf_error"):
         value = inputs[name]
-        if value.dims != ("nmeasure",):
-            raise ValueError(f"CO2 {name} must have dimensions ('nmeasure',).")
         _require_same_axis(value, "nmeasure", observation_index, name=f"CO2 {name}")
 
     concentration_units = observations.attrs.get("units")

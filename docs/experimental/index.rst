@@ -32,3 +32,4 @@ without restoring the obsolete historical loader, sampler, or output system.
 
    ramsden2022
    ramsden2022_validation
+   metadata_schemas
