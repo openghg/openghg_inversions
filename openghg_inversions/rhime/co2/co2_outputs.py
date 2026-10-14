@@ -26,7 +26,7 @@ from openghg_inversions.rhime.outputs import (
 )
 from openghg_inversions.rhime.sampling import RhimeSampler
 from openghg_inversions.rhime.specs import RhimeOutputSpec, RhimeRunSpec
-from openghg_inversions.serialization import save_datatree
+from openghg_inversions.serialization import reset_serialisation_multiindexes, save_datatree
 from openghg_inversions.utils import write_netcdf_preserving_bounds_attrs
 
 from .co2_affine_output import BoundCo2AffineFluxMap
@@ -111,8 +111,8 @@ def make_co2_rhime_result(
 ) -> RhimeResult:
     """Join a saved annotated CO2 posterior with its validated preparation.
 
-    Artifact identity checks belong to the stage loader. The adapter borrows
-    the trace and scientific inputs without rebuilding a graph or serializing.
+    The caller supplies the matched trace and preparation. The adapter borrows
+    those scientific inputs without rebuilding a graph or serializing.
     An in-memory runner may additionally retain its existing model build.
     Passing ``sampler=None`` retains no live sampler; saved-output orchestration
     supplies recorded descriptive values in ``result.output_metadata["sampler"]``.
@@ -435,9 +435,8 @@ def make_co2_rhime_outputs(
                 output_name=f"{result.output_spec.output_name}_{name}",
                 start_date=result.run_spec.start_date,
             )
-            # save_datatree owns the MultiIndex encoding needed by basic outputs.
             if name == "basic":
-                save_datatree(xr.DataTree(product), path)
+                save_datatree(xr.DataTree(reset_serialisation_multiindexes(product)), path)
             else:
                 write_netcdf_preserving_bounds_attrs(product, path)
             result.output_metadata[f"{name}_path"] = str(path)

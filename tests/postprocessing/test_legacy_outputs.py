@@ -427,3 +427,12 @@ def test_make_legacy_hbmcmc_output_falls_back_to_inv_inputs_for_sensitivities(
     assert output["bctrace"].dtype == np.dtype("float32")
     assert output["YaprioriBC"].dtype == np.dtype("float32")
     assert "YaprioriBC" in output
+
+
+def test_legacy_metadata_allows_custom_likelihood_without_settings() -> None:
+    """Custom likelihoods without built-in sigma settings retain legacy defaults."""
+    inv_out = _legacy_inv_out(model_data=False)
+    inv_out.model_metadata["likelihood"] = None
+    attrs = legacy_outputs._legacy_hbmcmc_attrs(inv_out)
+    assert attrs["Error for each site"] == "Unavailable"
+    assert "Model error Prior" not in attrs

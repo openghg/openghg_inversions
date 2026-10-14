@@ -290,6 +290,7 @@ def main(argv: list[str] | None = None) -> None:
             rhime_params["mismatch_model"] = "pollution_event"
 
     with timed("run_hbmcmc.validation"):
+        rhime_params = compatibility.adapt_resource_params(rhime_params)
         resolved_config = RhimeConfig.from_params(rhime_params, multisector=False)
 
     _validate_country_file(rhime_params)
@@ -303,7 +304,6 @@ def main(argv: list[str] | None = None) -> None:
             stacklevel=2,
         )
 
-    # TODO(#423): Validate BC and saved fp-basis files, including glob matches and readability.
     with timed("run_hbmcmc.config_copy"):
         _copy_config_file(config_file, param=param, **command_line_args)
 

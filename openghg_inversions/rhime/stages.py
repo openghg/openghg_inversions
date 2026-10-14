@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
 from collections.abc import Mapping
 
+from openghg_inversions.rhime._runner_compat import translate_rhime_aliases
 from . import _standard_stages
 from ._standard_stages import prepare, sample, postprocess, prior_predictive, load_preparation, save_preparation, save_samples
 from ._stage_checks import (
@@ -37,7 +38,10 @@ def load_stage_params(
     """Load existing RHIME parameters from one explicit source.
 
     ``CONFIG_FILE`` is intentionally not an environment default: an unrelated
-    ambient variable must never select the scientific configuration.
+    ambient variable must never select the scientific configuration. Relative
+    file resource paths resolve beside the configuration file; explicit overrides
+    resolve from the invocation working directory. Absolute paths retain their
+    destinations.
     """
 
     if model == "co2":
@@ -73,7 +77,7 @@ def resolve_stage_setup(params: Mapping[str, Any], *, model: ModelKind) -> Rhime
         return resolve_co2_stage_setup(params=params)
     if model not in ("standard", "multisector"):
         raise ValueError(f"Unsupported staged model {model!r}.")
-    return RhimeConfig.from_params(params, multisector=model == "multisector")
+    return RhimeConfig.from_params(translate_rhime_aliases(params), multisector=model == "multisector")
 
 
 def effective_configuration(setup: RhimeConfig | Co2StageSetup, *, model: ModelKind) -> dict[str, Any]:

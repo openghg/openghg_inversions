@@ -9,7 +9,6 @@ import pytest
 import xarray as xr
 
 from openghg_inversions.native_flux import resolve_runtime_flux
-from openghg_inversions.array_ops import to_dense
 from openghg_inversions.basis import BasisFunctions, prepare_basis
 from openghg_inversions.basis.compatibility import make_basis_functions
 from openghg_inversions.basis.support import packaged_basis_support_path
@@ -25,7 +24,9 @@ def test_exact_arbitrary_artifacts_reuse_operator_with_current_flux(tmp_path, su
     partition = xr.ones_like(sources["a"].flux.isel(time=0, drop=True), dtype=int)
     path = tmp_path / f"unstructured-name{suffix}"
     saved = prepare_basis(site_data=sites, runtime_flux=resolve_runtime_flux(sources), weighting_flux=sources["a"].flux, domain="TEST", start_date="2020-01-01",
-                          nbasis=1, basis_partition=partition, output_path=path)
+                          nbasis=1, basis_partition=partition)
+    assert not path.exists()
+    saved.save(path)
     assert path.exists()
     restored = BasisFunctions.load(path)
     current = {source: dataset.assign(flux=dataset.flux * -3) for source, dataset in sources.items()}
@@ -64,7 +65,7 @@ def test_modern_default_and_explicit_legacy_output_have_equal_science(tmp_path):
             xr.testing.assert_equal(combined.sel(time=pd.Timestamp("2020-01-01"), drop=True), legacy.flat_basis())
 
 
-@pytest.mark.parametrize("route", ["standard", "staged", "nested"])
+@pytest.mark.parametrize("route", ["standard", "multisector", "staged", "nested"])
 @pytest.mark.parametrize("options", [
     {"basis_path": "absent/arbitrary.nc"},
     {"basis_partition_path": "absent/partition.nc"},
@@ -73,18 +74,23 @@ def test_modern_default_and_explicit_legacy_output_have_equal_science(tmp_path):
     {"domain": "NO-PACKAGED-RESOURCE", "basis_algorithm": "weighted"},
 ])
 def test_missing_selected_resource_fails_before_acquisition(tmp_path, monkeypatch, options, route):
-    from openghg_inversions.rhime import standard, nested, _standard_stages
+    from openghg_inversions.rhime import standard, multisector, nested, _standard_stages
 
     monkeypatch.chdir(tmp_path)
-    config = RhimeConfig.from_params(_params(**options), multisector=False)
+    params = _params(**options)
+    if route == "multisector":
+        params["flux_sources"] = ["a", "b"]
+    config = RhimeConfig.from_params(params, multisector=route == "multisector")
     monkeypatch.setattr(standard.RhimeMergedData, "from_options", lambda **kwargs: pytest.fail("acquired"))
     with pytest.raises(FileNotFoundError):
         if route == "standard":
             standard.run_rhime(config=config)
+        elif route == "multisector":
+            multisector.run_rhime_multisector(config=config)
         elif route == "nested":
             nested.prepare_nested_rhime_inputs(config, inner_domain="6km")
         else:
-            _standard_stages.prepare(config.preparation, output_dir=tmp_path / "stage")
+            _standard_stages.prepare(config.data, output_dir=tmp_path / "stage")
     assert not list(tmp_path.glob("**/prepare-manifest.json"))
 
 
@@ -92,9 +98,9 @@ def test_config_is_data_free_and_maps_are_resolved_at_application_boundary(tmp_p
     config = RhimeConfig.from_params(_params(domain="MISSING", landsea_path=tmp_path / "missing.nc"),
                                      multisector=False)
     with pytest.raises(FileNotFoundError):
-        resolve_basis_inputs(config.preparation)
+        resolve_basis_inputs(config.data)
     europe = packaged_basis_support_path("landsea", "EUROPE")
-    resolved = resolve_basis_inputs(replace(config.preparation, domain="EUROPE", landsea_path=europe))
+    resolved = resolve_basis_inputs(replace(config.data, domain="EUROPE", landsea_path=europe))
     assert resolved["landsea_classes"].ndim == 2
     with pytest.raises(FileNotFoundError, match="MISSING"):
         packaged_basis_support_path("landsea", "MISSING")
@@ -106,7 +112,7 @@ def test_basis_preflight_does_not_require_reporting_resources(output_format, cou
     config = RhimeConfig.from_params(
         _params(output_format=output_format, country_file=country_file), multisector=False,
     )
-    resolve_basis_inputs(config.preparation)
+    resolve_basis_inputs(config.data)
 
 
 def test_fixed_outer_missing_resolved_map_fails_before_numerical_work(monkeypatch):
@@ -172,11 +178,187 @@ def test_legacy_relative_outer_map_resolves_at_compatibility_boundary(tmp_path, 
     )
     xr.testing.assert_equal(historical_partition.squeeze("time", drop=True), modern.flat_basis())
     assert resolve_legacy_outer_path("EUHROB", "intem_region_definition_EUHROB.nc", None).is_file()
-    config = RhimeConfig.from_params(_params(domain="TEST", basis_algorithm="quadtree", country_directory=tmp_path,
-                                            outer_regions_path="custom.nc", fix_basis_outer_regions=True),
-                                     multisector=False)
-    # A historical directory selects its map only for algorithms which consume it.
-    with pytest.warns(DeprecationWarning):
-        resolved = resolve_basis_inputs(config.preparation)
-    xr.testing.assert_equal(resolved["outer_regions"], to_dense(outer).compute())
+    with pytest.raises(ValueError, match="Unsupported RHIME parameter.*country_directory"):
+        RhimeConfig.from_params(
+            _params(domain="TEST", basis_algorithm="quadtree", country_directory=tmp_path,
+                    outer_regions_path="custom.nc", fix_basis_outer_regions=True),
+            multisector=False,
+        )
     assert outer.data is borrowed_payload
+
+
+@pytest.mark.parametrize("suffix", [".nc", ".zarr", None])
+@pytest.mark.parametrize("selection", ["generated", "partition", "reused"])
+@pytest.mark.parametrize("route", ["standard", "multisector", "staged", "nested", "example"])
+def test_runners_export_returned_basis_without_mutating_inputs(tmp_path, monkeypatch, suffix, selection, route):
+    from importlib import import_module
+
+    from openghg_inversions.inversion_data import RhimeMergedData, SiteOptions
+
+    module = import_module(
+        "examples.rhime_customisation.runner" if route == "example"
+        else f"openghg_inversions.rhime.{'_standard_stages' if route == 'staged' else route}"
+    )
+    monkeypatch.chdir(tmp_path)
+    sites, sources = _inputs()
+    partition = xr.ones_like(sources["a"].flux.isel(time=0, drop=True), dtype=int)
+    options = _params(
+        sites=["A", "B"], averaging_period="1h", flux_sources=list(sources),
+        basis_algorithm="quadtree", nbasis=4, output_format="none",
+        basis_output_path=f"runs/prepared/basis{suffix}" if suffix else None,
+    )
+    if route != "multisector":
+        sources = {"a": sources["a"]}
+        options["flux_sources"] = ["a"]
+    if selection == "partition":
+        partition.rename("basis").to_netcdf("partition.nc")
+        options["basis_partition_path"] = "partition.nc"
+    elif selection == "reused":
+        BasisFunctions.from_flat_basis(partition, resolve_runtime_flux(sources) * 3).save("input.nc")
+        options["basis_path"] = "input.nc"
+    merged = RhimeMergedData(
+        site_data=sites, flux_data=sources,
+        site_options=SiteOptions.from_inputs(sites=("A", "B"), averaging_period="1h"),
+        split_by_sectors=route == "multisector",
+    )
+    if route != "staged":
+        (tmp_path / "runs/prepared").mkdir(parents=True)
+    borrowed = sources["a"].flux.data
+    monkeypatch.setattr(module.RhimeMergedData, "from_options", lambda **kwargs: merged)
+    monkeypatch.setattr(module, "prepare_observation_errors", lambda data, **kwargs: data)
+    monkeypatch.setattr(module, "filter_observations", lambda data, **kwargs: data)
+    captured = []
+    original_prepare = module.prepare_basis
+
+    def prepare(**kwargs):
+        assert "output_path" not in kwargs
+        if selection == "reused":
+            assert Path(kwargs["basis_path"]) == tmp_path / "input.nc"
+        result = original_prepare(**kwargs)
+        captured.append(result)
+        assert not list((tmp_path / "runs/prepared").glob("basis*"))
+        return result
+
+    class AfterBasis(Exception):
+        pass
+
+    def sensitivities(data, basis, **kwargs):
+        captured.append(basis)
+        raise AfterBasis
+
+    monkeypatch.setattr(module, "prepare_basis", prepare)
+    monkeypatch.setattr(module, "build_sensitivities", sensitivities)
+    if route == "standard":
+        # Standard preparation is scientific-only; its runner exports the
+        # completed basis before selecting model inputs.
+        from dataclasses import replace
+        from tests.test_staged_workflow import _prepared
+        monkeypatch.setattr(module, "build_sensitivities", lambda *args, **kwargs: {})
+        monkeypatch.setattr(module, "assemble_rhime_inputs",
+                            lambda merged, basis, sites, **kwargs: replace(_prepared(), basis_functions=basis))
+        def after_preparation(self, prepared):
+            captured.append(prepared.basis_functions)
+            raise AfterBasis
+        monkeypatch.setattr(RhimeConfig, "retained_run_spec", after_preparation)
+    config = RhimeConfig.from_params(options, multisector=route == "multisector")
+    with pytest.raises(AfterBasis):
+        if route == "staged":
+            module.prepare_rhime_stage(setup=config, model="standard", output_dir="runs/prepared")
+        elif route == "nested":
+            module._prepare_one_domain(merged, config, basis_support_maps=resolve_basis_inputs(config.data))
+        elif route == "example":
+            module.run_custom_rhime(**options)
+        elif route == "multisector":
+            module.run_rhime_multisector(config=config)
+        else:
+            module.run_rhime(config=config)
+    assert sources["a"].flux.data is borrowed
+    assert config.data.basis_output_path == (tmp_path / options["basis_output_path"] if suffix else None)
+    if suffix is None:
+        if route == "standard":
+            assert captured[0].operator is captured[1].operator
+            assert captured[0].flux.data is captured[1].flux.data
+        else:
+            assert captured[0] is captured[1]
+        assert not list((tmp_path / "runs/prepared").glob("basis*"))
+        return
+    exported = tmp_path / options["basis_output_path"]
+    assert exported.exists()
+    assert not (tmp_path / "runs/prepared/runs").exists()
+    assert captured[1].basis_artifact_path == str(exported)
+    assert captured[0].basis_artifact_path != str(exported)
+    restored = BasisFunctions.load(exported)
+    xr.testing.assert_equal(restored.flat_basis(), captured[0].flat_basis())
+    xr.testing.assert_equal(restored.flux, resolve_runtime_flux(sources, split_by_sectors=route == "multisector"))
+
+
+def test_nested_resolves_both_domain_paths_before_acquisition(tmp_path, monkeypatch):
+    from openghg_inversions.rhime import nested
+
+    monkeypatch.chdir(tmp_path)
+    config = RhimeConfig.from_params(_params(basis_path="outer.nc", basis_output_path="outer-out.nc"),
+                                     multisector=False)
+    captured = []
+
+    class BeforeAcquisition(Exception):
+        pass
+
+    def resources(selected):
+        captured.append(selected)
+        if len(captured) == 2:
+            raise BeforeAcquisition
+        return {}
+
+    monkeypatch.setattr(nested, "resolve_basis_inputs", resources)
+    monkeypatch.setattr(nested.RhimeMergedData, "from_options", lambda **kwargs: pytest.fail("acquired"))
+    with pytest.raises(BeforeAcquisition):
+        nested.prepare_nested_rhime_inputs(config, inner_domain="6km", inner_basis_path="inner.nc",
+                                           inner_basis_output_path="inner-out.zarr")
+    assert captured[0].basis_path == tmp_path / "outer.nc"
+    assert captured[0].basis_output_path == tmp_path / "outer-out.nc"
+    assert captured[1].basis_path == tmp_path / "inner.nc"
+    assert captured[1].basis_output_path == tmp_path / "inner-out.zarr"
+    assert config.data.basis_path == tmp_path / "outer.nc"
+    assert not list(tmp_path.iterdir())
+
+
+def test_full_ini_resources_keep_invocation_directory_convention(tmp_path, monkeypatch):
+    from openghg_inversions.rhime import standard
+
+    source = tmp_path / "configs" / "run.ini"
+    source.parent.mkdir()
+    options = _params(basis_path="input.nc", basis_output_path="selected.nc")
+    source.write_text("[RHIME]\n" + "\n".join(f"{name} = {value!r}" for name, value in options.items()))
+    monkeypatch.chdir(tmp_path)
+
+    class BeforeAcquisition(Exception):
+        pass
+
+    def resources(config):
+        assert config.basis_path == tmp_path / "input.nc"
+        assert config.basis_output_path == tmp_path / "override.nc"
+        raise BeforeAcquisition
+
+    monkeypatch.setattr(standard, "resolve_basis_inputs", resources)
+    monkeypatch.setattr(standard.RhimeMergedData, "from_options", lambda **kwargs: pytest.fail("acquired"))
+    with pytest.raises(BeforeAcquisition):
+        standard.run_rhime(config_file=source, basis_output_path="override.nc")
+
+
+def test_plural_partition_paths_use_sorted_coordinate_reference(tmp_path):
+    paths = []
+    for name, date, latitude in [
+        ("a.nc", "2020-01-01", 1.0),
+        ("b.nc", "2020-02-01", 1.000001),
+    ]:
+        path = tmp_path / name
+        xr.Dataset(
+            {"basis": (("time", "lat", "lon"), [[[1]]])},
+            coords={"time": [pd.Timestamp(date)], "lat": [latitude], "lon": [2.0]},
+        ).to_netcdf(path)
+        paths.append(path)
+    config = RhimeConfig.from_params(_params(basis_partition_paths=paths), multisector=False)
+    forward = resolve_basis_inputs(config.data)["basis_partition"]
+    reverse = resolve_basis_inputs(replace(config.data, basis_partition_paths=tuple(reversed(paths))))["basis_partition"]
+    xr.testing.assert_identical(forward, reverse)
+    assert forward.lat.item() == 1.0

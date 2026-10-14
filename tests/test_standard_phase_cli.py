@@ -11,7 +11,7 @@ from openghg_inversions.rhime import stages
 
 def test_sample_cli_accepts_one_manifest_and_ignores_inactive_values(tmp_path, monkeypatch, capsys):
     choices = tmp_path / "choices.json"
-    choices.write_text(json.dumps({"preparation": {"sites": 42}, "model": {"use_bc": False},
+    choices.write_text(json.dumps({"data": {"sites": 42}, "model": {"use_bc": False},
                                    "sampler": {"draws": 7}, "output": {"output_format": "invalid"}}))
     calls = []
 
@@ -71,3 +71,79 @@ def test_saved_family_mismatch_fails_before_config_resolution(tmp_path):
     with pytest.raises(ValueError, match="does not match"):
         main(["sample", "--model", "co2", "--preparation-manifest", str(manifest),
               "--output-dir", str(tmp_path / "sample")])
+
+
+def test_phase_alias_overrides_preserve_canonical_file_precedence(tmp_path, monkeypatch):
+    choices = tmp_path / "choices.json"
+    choices.write_text(json.dumps({"x_prior": {"pdf": "normal", "sigma": 0.1}}))
+    calls = []
+    monkeypatch.setattr(stages, "sample", lambda manifest, **kwargs: calls.append(kwargs))
+    with pytest.warns(DeprecationWarning, match="Ignoring"):
+        main(["sample", "--params-file", str(choices), "--preparation-manifest", "prepared.json",
+              "--output-dir", str(tmp_path / "samples"),
+              "--kwargs", '{"xprior":{"pdf":"normal","sigma":0.5}}'])
+    assert calls[0]["model"]["x_prior"]["sigma"] == 0.1
+
+
+def test_phase_reports_all_unsuitable_override_keys(tmp_path):
+    with pytest.raises(ValueError) as caught:
+        main(["sample", "--preparation-manifest", "missing.json", "--output-dir", str(tmp_path),
+              "--kwargs", '{"filters":"daily_median","unknown":1,"outputname":"wrong"}'])
+    for name in ("filters", "unknown", "outputname"):
+        assert name in str(caught.value)
+
+
+def test_phase_paths_keep_file_and_invocation_origins(tmp_path, monkeypatch):
+    from argparse import Namespace
+    from openghg_inversions.cli import _standard_phase_options
+
+    config_dir = tmp_path / "config"
+    invocation = tmp_path / "invocation"
+    config_dir.mkdir()
+    invocation.mkdir()
+    choices = config_dir / "choices.json"
+    choices.write_text(json.dumps({"data": {"basis_path": "operator.nc", "basis_output_path": "old.nc"},
+                                   "sampler": {"draws": "invalid"}}))
+    monkeypatch.chdir(invocation)
+    args = Namespace(config=None, params_file=str(choices), kwargs={"basis_output_path": "../exports/basis.nc"})
+    result = _standard_phase_options(args, phase="prepare")
+    assert result["data"]["basis_path"] == config_dir / "operator.nc"
+    assert result["data"]["basis_output_path"] == tmp_path / "exports/basis.nc"
+    assert result["sampler"] == {}
+
+
+def test_phase_aliases_do_not_import_hbmcmc(tmp_path, monkeypatch):
+    import builtins
+    from argparse import Namespace
+    from openghg_inversions.cli import _standard_phase_options
+
+    original_import = builtins.__import__
+    def guarded_import(name, *args, **kwargs):
+        assert "hbmcmc" not in name
+        return original_import(name, *args, **kwargs)
+    monkeypatch.setattr(builtins, "__import__", guarded_import)
+    args = Namespace(config=None, params_file=None, kwargs={"xprior": {"pdf": "normal", "sigma": 0.2}})
+    with pytest.warns(DeprecationWarning):
+        result = _standard_phase_options(args, phase="sample")
+    assert result["model"]["x_prior"]["sigma"] == 0.2
+
+
+def test_flat_saved_model_claims_are_not_discarded(tmp_path):
+    from argparse import Namespace
+    from openghg_inversions.cli import _standard_phase_options
+
+    path = tmp_path / "choices.json"
+    claims = {"use_bc": False, "bc_freq": "monthly", "mismatch_model": "fixed_error"}
+    path.write_text(json.dumps(claims))
+    args = Namespace(config=None, params_file=str(path), kwargs=None)
+    flat = _standard_phase_options(args, phase="sample")
+    path.write_text(json.dumps({"model": claims}))
+    assert flat == _standard_phase_options(args, phase="sample")
+    assert flat["model"] == claims
+
+
+def test_prior_readiness_rejects_explicit_sampler_overrides(tmp_path):
+    with pytest.raises(ValueError) as caught:
+        main(["prior-predictive", "--preparation-manifest", "missing.json", "--output-dir", str(tmp_path),
+              "--kwargs", '{"tune":99,"nuts_sampler":"numpyro"}'])
+    assert "tune" in str(caught.value) and "nuts_sampler" in str(caught.value)

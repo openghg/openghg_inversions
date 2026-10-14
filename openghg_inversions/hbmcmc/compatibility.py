@@ -9,7 +9,7 @@ from __future__ import annotations
 import warnings
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, get_type_hints
 
 _ALIASES = {
     "outputpath": "output_path",
@@ -30,6 +30,11 @@ _OUTPUT_FORMAT_ALIASES = {
 def normalise_param_aliases(params: Mapping[str, Any]) -> dict[str, Any]:
     """Normalize legacy config spellings to modern snake-case names."""
     normalized = dict(params)
+    if "country_directory" in normalized:
+        raise ValueError(
+            "`country_directory` was removed in 0.8; use `country_file` for reporting, "
+            "`landsea_path` for land/sea classes, or `outer_regions_path` for outer regions."
+        )
     for old, new in _ALIASES.items():
         if old not in normalized:
             continue
@@ -223,7 +228,8 @@ def fixedbasis_params_to_rhime(params: dict[str, Any]) -> dict[str, Any]:
 
     Returns:
         A fresh mapping with canonical names and historical output policy.
-        Values are validated and coerced later by ``RhimeConfig.from_params``.
+        Call ``adapt_resource_params`` next to translate historical resource
+        selections and remaining flux aliases before ``RhimeConfig.from_params``.
         Prior mappings changed for lognormal reparameterisation are copied;
         other values remain borrowed.
 
@@ -265,12 +271,16 @@ def params_from_config(
         end_date: Optional command-line end-date override.
         output_path: Optional command-line output-path override.
         extra_kwargs: Final winning keyword overrides.
-        normalise: Translate aliases, coerce scalars and validate structured
-            values when true. False returns only decoded values and overrides.
+        normalise: Translate aliases and historical resource selections, resolve
+            resource paths against the invocation directory, coerce scalars and
+            validate structured values when true. False returns only decoded
+            values and overrides.
 
     Returns:
-        A fresh option mapping. This adapter does not resolve defaults or site
-        shorthand and does not resolve runner setup.
+        A fresh option mapping. With normalization, keys are canonical and
+        resource paths are resolved ``Path`` values (including selected files
+        for historical basis cases). This adapter does not resolve defaults or
+        site shorthand and does not resolve runner setup.
 
     Raises:
         ValueError: If normalization finds unsupported legacy switches or
@@ -298,4 +308,108 @@ def params_from_config(
 
     from openghg_inversions.rhime.params import normalise_rhime_params
 
-    return normalise_rhime_params(translate_rhime_aliases(params))
+    return normalise_rhime_params(adapt_resource_params(params))
+
+
+def _is_basis_datatree_artifact(path: Path) -> bool:
+    """Recognize the historical retained basis artifact schema."""
+    import xarray as xr
+
+    try:
+        with xr.open_datatree(path) as tree:
+            return tree.attrs.get("schema") == "openghg_inversions.flux_weighted_basis"
+    except (OSError, ValueError, KeyError):
+        return False
+
+
+def adapt_resource_params(
+    params: Mapping[str, Any],
+    *,
+    base_dir: Path | None = None,
+    overrides: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Translate winning historical resource selections before configuration.
+
+    File values use ``base_dir``; explicit overrides use the invocation directory.
+    Discovery selects exact paths without loading scientific arrays. Canonical
+    requests contain no historical case/directory fields. Disabled BCs and NESW
+    never discover BC files. Removed country directories are rejected outright.
+    """
+    from openghg_inversions._flux_options import normalise_flux_aliases
+    from openghg_inversions.config.paths import Paths
+    from openghg_inversions.rhime._resources import resolve_resource_paths
+    from openghg_inversions.rhime.params import DataConfig
+    from openghg_inversions.rhime.specs import RhimeOutputSpec
+
+    annotations = get_type_hints(DataConfig) | get_type_hints(RhimeOutputSpec)
+
+    invocation_dir = Path.cwd()
+    file_base = invocation_dir if base_dir is None else base_dir
+    winning = {**params, **(overrides or {})}
+    # Preserve each winning value's origin while aliases change option names.
+    translated = normalise_flux_aliases(translate_rhime_aliases(winning))
+    origins = {
+        _ALIASES.get(name, name): invocation_dir if overrides and name in overrides else file_base
+        for name in winning
+        if name not in _ALIASES or _ALIASES[name] not in winning
+    }
+
+    def directory(name: str, default: Path) -> Path:
+        value = translated.pop(name, None)
+        path = default if value is None else Path(value).expanduser()
+        return path if path.is_absolute() else (origins.get(name, file_base) / path).resolve()
+
+    historical_basis = "fp_basis_case" in translated or "basis_directory" in translated
+    basis_case = translated.pop("fp_basis_case", None)
+    basis_directory = directory("basis_directory", Paths.openghginv / "basis_functions")
+    if historical_basis:
+        warnings.warn(
+            "`fp_basis_case` and `basis_directory` are deprecated; use exact `basis_path` "
+            "or `basis_partition_path` selections.", DeprecationWarning, stacklevel=2,
+        )
+    if basis_case is not None:
+        if any(translated.get(name) is not None for name in
+               ("basis_path", "basis_partition_path", "basis_partition_paths")):
+            raise ValueError("Use either historical `fp_basis_case` or an exact basis selection, not both.")
+        domain = translated.get("domain")
+        if not isinstance(domain, str) or not domain:
+            raise ValueError("`domain` is required to discover historical basis files.")
+        files = sorted((basis_directory / domain).glob(f"{basis_case}_{domain}*.nc"))
+        if not files:
+            raise FileNotFoundError(f"No basis files match {basis_case!r} for domain {domain!r}.")
+        retained = [path for path in files if _is_basis_datatree_artifact(path)]
+        if retained:
+            if len(retained) != 1:
+                raise ValueError("Historical basis case matched multiple retained artifacts; use `basis_path`.")
+            translated["basis_path"] = retained[0]
+        else:
+            translated["basis_partition_paths"] = tuple(files)
+
+    historical_bc = "bc_basis_case" in translated or "bc_basis_directory" in translated
+    bc_case = translated.pop("bc_basis_case", "NESW")
+    is_nesw = isinstance(bc_case, str) and bc_case.lower() == "nesw"
+    bc_directory = directory("bc_basis_directory", Paths.openghginv / "bc_basis_functions")
+    if historical_bc:
+        warnings.warn(
+            "`bc_basis_case` and `bc_basis_directory` are deprecated; use exact `bc_basis_paths`."
+            + (" The directory is unused for NESW." if is_nesw else ""),
+            DeprecationWarning, stacklevel=2,
+        )
+    if translated.get("use_bc", True) and not is_nesw:
+        if translated.get("bc_basis_paths") is not None:
+            raise ValueError("Use either historical `bc_basis_case` or exact `bc_basis_paths`, not both.")
+        domain = translated.get("domain")
+        if not isinstance(domain, str) or not domain:
+            raise ValueError("`domain` is required to discover historical BC basis files.")
+        files = tuple(sorted((bc_directory / domain).glob(f"{bc_case}_{domain}*.nc")))
+        if not files:
+            raise FileNotFoundError(f"No BC basis files match {bc_case!r} for domain {domain!r}.")
+        translated["bc_basis_paths"] = files
+
+    file_options = {name: value for name, value in translated.items()
+                    if origins.get(name, file_base) == file_base}
+    invocation_options = {name: value for name, value in translated.items() if name not in file_options}
+    return (
+        resolve_resource_paths(file_options, annotations=annotations, base_dir=file_base)
+        | resolve_resource_paths(invocation_options, annotations=annotations, base_dir=invocation_dir)
+    )

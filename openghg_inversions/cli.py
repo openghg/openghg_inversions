@@ -108,43 +108,77 @@ def _stage_output_dir(args: argparse.Namespace) -> Path:
 
 def _standard_phase_options(args: argparse.Namespace, *, phase: str) -> dict[str, dict[str, Any]]:
     """Select active owner mappings before resolving their values."""
-    from openghg_inversions.rhime.params import group_rhime_params
-    from openghg_inversions.rhime.stages import load_stage_params
+    from collections.abc import Mapping
+    from typing import get_type_hints
 
-    params = (load_stage_params(config_file=args.config, params_file=args.params_file)
-              if args.config or args.params_file else {})
-    groups = group_rhime_params(params)
-    from openghg_inversions.hbmcmc.compatibility import translate_rhime_aliases
+    from openghg_inversions.rhime._resources import resolve_resource_paths
+    from openghg_inversions.rhime._runner_compat import _ALIASES, translate_rhime_aliases
+    from openghg_inversions.rhime.ini import read_rhime_ini
+    from openghg_inversions.rhime.params import DataConfig, rhime_option_groups
+    from openghg_inversions.rhime.specs import RhimeOutputSpec
 
-    overrides = dict(args.kwargs or {})
-    if not set(overrides) & {"preparation", "model", "sampler", "output"}:
-        overrides = translate_rhime_aliases(overrides)
-    # These flat historical preparation names are explicit model compatibility
-    # claims when supplied to a sampling command.
-    claims = {}
-    if phase == "sample" and not set(overrides) & {"preparation", "model", "sampler", "output"}:
-        for name in ("use_bc", "bc_freq", "species", "domain", "flux_sources", "start_date", "end_date", "split_by_sectors"):
-            if name in overrides:
-                claims[name] = overrides.pop(name)
-    updates = group_rhime_params(overrides)
-    updates["model"].update(claims)
-    active = {"prepare": {"preparation"}, "sample": {"model", "sampler"},
-              "postprocess": {"output"}}[phase]
-    inactive = [name for name, values in updates.items() if values and name not in active]
-    if inactive:
-        raise ValueError(f"Overrides for {inactive!r} do not belong to this phase.")
-    for name in active:
-        groups[name].update(updates[name])
-    return groups
+    owners = rhime_option_groups()
+    active = {"prepare": {"data"}, "sample": {"model", "sampler"},
+              "prior": {"model"}, "postprocess": {"output"}}[phase]
+    claims = {"use_bc", "bc_freq", "species", "domain", "flux_sources", "start_date", "end_date", "split_by_sectors"}
+    aliases = _ALIASES | {"emissions_store": "flux_store", "emissions_domain": "flux_domain"}
+    source = Path(args.config or args.params_file).resolve() if args.config or args.params_file else None
+    params = (read_rhime_ini(source) if args.config else json.loads(source.read_text())) if source else {}
+    groups: dict[str, dict[str, Any]] = {group: {} for group in owners}
+    override_names: dict[str, set[str]] = {group: set() for group in owners}
+    unsuitable = []
+    # Classify names only: inactive shared-file values must not be resolved.
+    for values, is_override in ((params, False), (args.kwargs or {}, True)):
+        if not isinstance(values, Mapping):
+            raise ValueError("RHIME parameters must be a mapping.")
+        for key, value in values.items():
+            entries = value.items() if key in owners and isinstance(value, Mapping) else [(key, value)]
+            if key in owners and not isinstance(value, Mapping):
+                raise ValueError(f"`{key}` must be a mapping.")
+            for name, item in entries:
+                canonical = aliases.get(name, name)
+                owner = key if key in owners else next(
+                    (group for group, names in owners.items() if canonical in names), None
+                )
+                if name == "use_tracer" and key not in owners:
+                    owner = "data"
+                if phase in {"sample", "prior"} and key not in owners and canonical in claims:
+                    owner = "model"
+                known = owner is not None and (canonical in owners[owner] or name == "use_tracer")
+                if not known or (is_override and owner not in active):
+                    unsuitable.append(f"{key}.{name}" if key in owners else name)
+                    continue
+                groups[owner][name] = item
+                if is_override:
+                    override_names[owner].add(name)
+    if unsuitable:
+        raise ValueError(f"Unsupported options or overrides that do not belong to this phase: {sorted(unsuitable)!r}")
+    annotations = get_type_hints(DataConfig) | get_type_hints(RhimeOutputSpec)
+    result = {group: {} for group in owners}
+    for group in active:
+        winning = groups[group]
+        translated = translate_rhime_aliases(winning)
+        invocation_names = {
+            aliases.get(name, name) for name in override_names[group]
+            if name not in aliases or aliases[name] not in winning
+        }
+        result[group] = resolve_resource_paths(
+            {name: value for name, value in translated.items() if name not in invocation_names},
+            annotations=annotations, base_dir=source.parent if source else Path.cwd(),
+        ) | resolve_resource_paths(
+            {name: value for name, value in translated.items() if name in invocation_names},
+            annotations=annotations, base_dir=Path.cwd(),
+        )
+    return result
 
 
 def _prepare_command(args: argparse.Namespace) -> None:
     from openghg_inversions.rhime.stages import prepare, prepare_rhime_stage
-    from openghg_inversions.rhime.params import PreparationConfig
+    from openghg_inversions.rhime.params import DataConfig
 
     if args.model == "standard":
         choices = _standard_phase_options(args, phase="prepare")
-        manifest = prepare(PreparationConfig.from_params(choices["preparation"]),
+        manifest = prepare(DataConfig.from_params(choices["data"]),
                            output_dir=_stage_output_dir(args))
         print(manifest)
     else:
@@ -168,7 +202,7 @@ def _prior_predictive_command(args: argparse.Namespace) -> None:
                   draws=args.draws, stage=args.check_stage)
     if args.model == "standard":
         _reject_standard_artifact_args(args)
-        choices = _standard_phase_options(args, phase="sample")
+        choices = _standard_phase_options(args, phase="prior")
         result = prior_predictive(args.preparation_manifest, model=choices["model"], **common)
     else:
         _check_saved_family(args)

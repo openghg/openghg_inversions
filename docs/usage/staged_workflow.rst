@@ -29,11 +29,48 @@ the recorded model meaning, output contract, inference metadata, prepared inputs
 and samples without building a graph or running inference. Its returned
 ``RhimeResult`` has ``sampler=None``. Missing descriptive metadata stays
 unavailable. Output naming, destination and supported formats can change;
-scientific choices cannot relabel saved samples.
+scientific choices cannot relabel saved samples. Default sampling retains
+scientific ``x``, including when it is a deterministic transform of ``x_latent``.
+Explicit trace selections missing required output state are rejected before a
+completed sample handoff or product is written.
 
 A selected saved basis supplies its operator while new preparation binds current
 native flux. Saved preparation and replay retain that flux and do not reacquire
 it. Species-dependent mass conversion belongs to postprocessing.
+
+Relative filesystem values inside an INI or JSON parameter file are resolved
+against that file's directory. This includes ``output_path`` and explicit
+``save_trace`` / ``save_inversion_output`` filenames: staged output destinations
+now follow the same file-relative rule as resource inputs. Ordinary full-run
+INI values remain relative to the invocation directory. Explicit ``--kwargs``
+path overrides resolve from the invocation working directory; absolute paths
+keep their destination.
+Filesystem annotations identify the fields to convert: resolved configuration
+uses ``Path`` values, including tuples of paths, while parameter JSON and stage
+manifests store paths as strings and path collections as JSON arrays. Scientific
+strings such as domain names are unchanged; configuration construction does not
+load scientific resources. Each owner converts its declared fields once; later
+configured execution and identity encoding forward canonical paths.
+
+For file-backed boundary conditions, specify exact files, for example
+``"bc_basis_paths": ["bc/january.nc", "bc/february.nc"]`` in the parameter JSON.
+``prepare`` loads all selected files before acquisition and passes their labelled
+data to sensitivity construction, preserving time combination and alignment.
+Missing or unreadable selected files fail before acquisition. Omit
+``bc_basis_paths`` for NESW: it uses acquired directional contributions without
+reading a BC basis file. Disabled BCs load no BC basis resources. Staged commands
+reject historical ``fp_basis_case``, ``basis_directory``, ``bc_basis_case`` and
+``bc_basis_directory`` options. Use explicit modern paths. During 0.8, only the
+HBMCMC entry route translates those historical selectors after winning overrides;
+on that route, an NESW directory warns that it is unused without any lookup.
+
+
+``country_directory`` is removed in 0.8. Use ``country_file`` for reporting,
+``landsea_path`` for preparation land/sea classes, or ``outer_regions_path`` for
+fixed outer regions. Required preparation maps default to packaged files for the
+exact requested domain; explicit paths win and missing resources fail without
+fallback. Reporting country files remain explicit and independent of these
+preparation defaults. See :doc:`legacy_and_migration` for the migration schedule.
 
 Keep each manifest and its referenced files available for later phases. References
 resolve relative to the declaring manifest; absolute shared-cache references are
@@ -42,12 +79,23 @@ files use existing codecs, and manifests use JSON without mandatory content
 hashes or full-configuration equality gates. Missing or malformed files fail at
 loading; incompatible scientific inputs fail at their owning operation.
 
-Preparation and sample saves need fresh destinations. Numerical files are saved first and the
-manifest is written last as the completion marker. A failed save can leave
-partial files but no completed manifest. Postprocessing uses the same product
-writer as full execution; in-memory products require no destination. Standard staged ``basis_output_path``
-must be within the preparation destination; use full execution for a separately
-located basis export.
+Preparation and sample saves need fresh destinations. Numerical files are saved
+first and the manifest is written last as the completion marker. A failed save
+can leave partial files but no completed manifest. Postprocessing uses the same
+product writer as full execution; in-memory products require no destination.
+``basis_output_path`` is an exact destination and may be outside the checkpoint
+directory. It is resolved at the frontend and forwarded unchanged to the runner's
+optional basis export.
+
+Legacy fixedbasis-style PARIS INIs contain options such as ``nit``, ``nchain``,
+``xprior`` and ``mcmc_type``. Fixedbasis policy such as ``nit``, ``nchain`` and
+``mcmc_type`` belongs to the temporary ``run_hbmcmc`` route in 0.8. Modern name
+aliases such as ``xprior`` remain supported at the staged frontend until 0.9
+with deprecation warnings and their existing precedence; prefer ``x_prior`` in
+new files. Translation happens before ``RhimeConfig.from_params``, which accepts
+canonical names only and emits no alias warnings. Migrate fixedbasis policy and
+resource discovery to canonical RHIME options before using staged commands.
+The entire HBMCMC subpackage and its entry points are removed in 0.9.
 
 Configuration and CLI
 ---------------------
@@ -55,9 +103,11 @@ Configuration and CLI
 Preparation accepts ``--config run.ini`` or ``--params-file choices.json``.
 Sampling and postprocessing optionally accept either source; a shared full
 configuration contributes only the active phase's choices. JSON can contain
-flat options or ``preparation``, ``model``, ``sampler`` and ``output`` mappings.
+flat options or ``data``, ``model``, ``sampler`` and ``output`` mappings.
 Unknown names remain errors, while known inactive values are not resolved.
-Explicit ``--kwargs`` overrides for another phase are errors. Relative input
+Explicit ``--kwargs`` overrides for another phase and unsupported names are
+reported together in one error. Raw file options and overrides are combined
+before alias translation; a canonical spelling wins over its deprecated alias. Relative input
 paths resolve from the configuration file. ``CONFIG_FILE`` is not an automatic
 source; ``OUTPUT_DIR`` is an optional destination default.
 
@@ -91,10 +141,10 @@ Python callers can use the same handoffs:
 
 .. code-block:: python
 
-   from openghg_inversions.rhime import PreparationConfig, RhimeOutputSpec
+   from openghg_inversions.rhime import DataConfig, RhimeOutputSpec
    from openghg_inversions.rhime.stages import prepare, sample, postprocess
 
-   preparation = PreparationConfig.from_params(preparation_options)
+   preparation = DataConfig.from_params(preparation_options)
    prepared_manifest = prepare(preparation, output_dir="run/prepare")
    sample_manifest = sample(
        prepared_manifest,

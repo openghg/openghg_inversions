@@ -4,15 +4,14 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field, replace
-from datetime import date, datetime, time, timedelta
 import json
 from pathlib import Path
 from typing import Any
 
-import numpy as np
 import pymc as pm
 import xarray as xr
 
+from openghg_inversions._serialization_codecs import _json_value
 from openghg_inversions._timing import timed
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.inversion_data import RhimePreparedInputs
@@ -149,36 +148,7 @@ def _structured_metadata(value: Any) -> Any:
         strings, Python and NumPy dates/times become ISO strings, and timedeltas
         become strings.
     """
-    if isinstance(value, xr.DataArray):
-        materialized = value.compute()
-        return {
-            "dims": [str(dim) for dim in materialized.dims],
-            "coords": {
-                str(dim): _structured_metadata(materialized.coords[dim].to_numpy())
-                for dim in materialized.dims
-                if dim in materialized.coords
-            },
-            "values": _structured_metadata(materialized.to_numpy()),
-        }
-    if isinstance(value, np.datetime64 | np.timedelta64):
-        return str(value)
-    if isinstance(value, datetime | date | time):
-        return value.isoformat()
-    if isinstance(value, timedelta):
-        return str(value)
-    if isinstance(value, Path):
-        return str(value)
-    if isinstance(value, np.ndarray):
-        if value.ndim == 0:
-            return _structured_metadata(value[()])
-        return [_structured_metadata(item) for item in value]
-    if isinstance(value, np.generic):
-        return value.item()
-    if isinstance(value, Mapping):
-        return {str(key): _structured_metadata(item) for key, item in value.items()}
-    if isinstance(value, tuple | list):
-        return [_structured_metadata(item) for item in value]
-    return value
+    return _json_value(value, materialize_dataarrays=True)
 
 
 def _resolve_output_path(

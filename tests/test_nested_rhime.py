@@ -498,7 +498,7 @@ def test_nested_preparation_uses_native_inner_domain_and_safe_basis_default(
         retrieval_args.append(kwargs)
         return merged
 
-    def fake_prepare(domain_merged, *, config, allow_empty_inner_region=False, basis_support_maps=None):
+    def fake_prepare(domain_merged, *, config, allow_empty_inner_region=False, basis_support_maps=None, bc_basis=None):
         assert domain_merged.sites == ("TAC",)
         preparation_configs.append(config)
         return prepared
@@ -531,18 +531,19 @@ def test_nested_preparation_uses_native_inner_domain_and_safe_basis_default(
     assert inner_args["flux_store"] == "inner-flux"
     assert inner_args["flux_domain"] == "EUROPE"
     assert inner_args["use_bc"] is False
-    assert preparation_configs[1].preparation.basis_algorithm == "quadtree"
-    assert preparation_configs[1].model.domain == preparation_configs[1].preparation.domain == "EUROPE-6km"
-    assert preparation_configs[1].model.use_bc is preparation_configs[1].preparation.use_bc is False
+    assert preparation_configs[1].data.basis_algorithm == "quadtree"
+    assert preparation_configs[1].model.domain == preparation_configs[1].data.domain == "EUROPE-6km"
+    assert preparation_configs[1].model.use_bc is preparation_configs[1].data.use_bc is False
     assert preparation_configs[1].output.output_name == "nested-test_inner"
-    assert preparation_configs[1].preparation.nbasis == 40
-    assert preparation_configs[1].preparation.fp_basis_case is None
-    assert preparation_configs[1].preparation.basis_output_path is None
-    assert preparation_configs[0].preparation.basis_algorithm == "weighted"
-    assert preparation_configs[1].preparation.basis_algorithm == "quadtree"
+    assert preparation_configs[1].data.nbasis == 40
+    assert preparation_configs[1].data.basis_path is None
+    assert preparation_configs[1].data.basis_partition_paths is None
+    assert preparation_configs[1].data.basis_output_path is None
+    assert preparation_configs[0].data.basis_algorithm == "weighted"
+    assert preparation_configs[1].data.basis_algorithm == "quadtree"
     assert nested.outer_overlap_mask_policy.startswith("outer_footprint_and_flux_zeroed")
 
-    assert setup.preparation.nbasis == 100
+    assert setup.data.nbasis == 100
 
 
 def test_nested_automatic_basis_budget_uses_bounded_sensitivity_share() -> None:
@@ -611,7 +612,7 @@ def test_nested_preparation_routes_automatic_basis_budget(monkeypatch) -> None:
         )
         return from_legacy_fp_all(fp_all={"TAC": dataset}, site_options=_site_options())
 
-    def fake_prepare(domain_merged, *, config, allow_empty_inner_region=False, basis_support_maps=None):
+    def fake_prepare(domain_merged, *, config, allow_empty_inner_region=False, basis_support_maps=None, bc_basis=None):
         preparation_configs.append(config)
         return prepared
 
@@ -627,10 +628,10 @@ def test_nested_preparation_routes_automatic_basis_budget(monkeypatch) -> None:
 
     nested_module.prepare_nested_rhime_inputs(setup, inner_domain="6km")
 
-    assert preparation_configs[0].preparation.nbasis == 40
-    assert preparation_configs[1].preparation.nbasis == 60
+    assert preparation_configs[0].data.nbasis == 40
+    assert preparation_configs[1].data.nbasis == 60
 
-    assert setup.preparation.nbasis == 100
+    assert setup.data.nbasis == 100
 
 
 def test_legacy_outer_region_definition_name_normalizes_to_modern_path() -> None:
@@ -657,7 +658,7 @@ def test_outer_regions_path_routes_through_modern_rhime_setup() -> None:
         multisector=False,
     )
 
-    assert setup.preparation.outer_regions_path == "/data/EUHROB.nc"
+    assert setup.data.outer_regions_path == Path("/data/EUHROB.nc")
 
 
 def test_domain_variable_roles_strips_tag_and_keeps_shared_roles() -> None:

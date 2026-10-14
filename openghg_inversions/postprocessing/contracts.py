@@ -4,8 +4,13 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-import json
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    import xarray as xr
+
+
+from openghg_inversions._serialization_codecs import _copy_json_mapping
 
 
 _SCHEMA = "openghg_inversions.output_contract"
@@ -93,10 +98,7 @@ class OutputContract:
             raise ValueError("OutputContract.supported_output_formats must include 'none'.")
         if not isinstance(self.metadata, Mapping):
             raise ValueError("OutputContract.metadata must be a JSON-compatible mapping.")
-        try:
-            metadata = json.loads(json.dumps(dict(self.metadata), allow_nan=False))
-        except (TypeError, ValueError) as exc:
-            raise ValueError("OutputContract.metadata must be finite JSON-compatible data.") from exc
+        metadata = _copy_json_mapping(self.metadata, "OutputContract.metadata")
         if not isinstance(self.state_dimension_mapping, Mapping):
             raise ValueError("OutputContract.state_dimension_mapping must be a mapping.")
         dimensions = dict(self.state_dimension_mapping)
@@ -120,6 +122,24 @@ class OutputContract:
                 f"Declared formats: {list(self.supported_output_formats)!r}. Use output_format='none' or "
                 "select a model that explicitly supports the requested RHIME output contract."
             )
+
+    def validate_trace(self, trace: xr.DataTree) -> None:
+        """Require saved reconstruction states without materializing trace arrays.
+
+        Predictive evidence is optional. A contract advertising products must
+        retain its declared flux and boundary scales in the posterior, even
+        when the current invocation does not request products.
+        """
+        if set(self.supported_output_formats) == {"none"}:
+            return
+        posterior = trace.children.get("posterior")
+        available = set(posterior.data_vars) if posterior is not None else set()
+        missing = {
+            role: name for role, name in self.variable_roles.items()
+            if role.split(":", 1)[0] in {"flux_scale", "baseline_scale"} and name not in available
+        }
+        if missing:
+            raise ValueError(f"Trace is missing output-contract reconstruction state(s): {missing!r}.")
 
     def to_dict(self) -> dict[str, Any]:
         """Return a versioned JSON value with no numerical payload or callable."""

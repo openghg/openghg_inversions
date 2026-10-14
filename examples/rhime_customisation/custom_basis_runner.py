@@ -30,6 +30,7 @@ from typing import Any
 import numpy as np
 import xarray as xr
 
+from openghg_inversions.rhime._runner_compat import translate_rhime_aliases
 from openghg_inversions.basis import (
     BasisFunctions,
     basis_functions_from_flat_basis,
@@ -48,6 +49,7 @@ from openghg_inversions.basis.algorithms import (
 )
 from openghg_inversions.inversion_data import RhimeMergedData
 from openghg_inversions.native_flux import resolve_runtime_flux
+from openghg_inversions.basis.support import load_bc_basis
 from openghg_inversions.rhime import (
     RhimeConfig,
     RhimeResult,
@@ -277,20 +279,20 @@ def run_custom_rhime(
     # The project basis stage owns its algorithm and optional saved artifact.
     # A built-in algorithm choice is irrelevant to this copied recipe.
     params.pop("basis_algorithm", None)
-    params.pop("fp_basis_case", None)
     params.pop("basis_path", None)
-    config = RhimeConfig.from_params(params, multisector=False)
+    config = RhimeConfig.from_params(translate_rhime_aliases(params), multisector=False)
     validate_output_resources(config.output)
+    bc_basis = load_bc_basis(config.data.bc_basis_paths) if config.data.use_bc and config.data.bc_basis_paths is not None else None
 
     # This project selects and loads its scientific class map before acquisition.
     region_classes = None
     if project_basis_path is None:
-        class_path = config.preparation.landsea_path or packaged_basis_support_path("landsea", config.preparation.domain)
+        class_path = config.data.landsea_path or packaged_basis_support_path("landsea", config.data.domain)
         region_classes = load_basis_support_map(class_path, "country")
     if project_basis_path is not None and not Path(project_basis_path).exists():
         raise FileNotFoundError(project_basis_path)
     merged = RhimeMergedData.from_options(
-        **config.preparation.select(
+        **config.data.select(
             "site_options", "species", "domain", "start_date",
             "end_date",  "flux_sources", "split_by_sectors",
             "bc_store", "obs_store", "footprint_store", "flux_store",
@@ -300,19 +302,19 @@ def run_custom_rhime(
         ),
     )
     # 2. Keep the scientific preparation order visible in this recipe.
-    merged = prepare_observation_errors(merged, averaging_error=config.preparation.averaging_error)
-    filtered = filter_observations(merged, filters=config.preparation.filters)
+    merged = prepare_observation_errors(merged, averaging_error=config.data.averaging_error)
+    filtered = filter_observations(merged, filters=config.data.filters)
     runtime_flux = resolve_runtime_flux(
         filtered.flux_data, split_by_sectors=filtered.split_by_sectors,
     )
-    weighting_source = config.preparation.flux_sources[0] if config.preparation.flux_sources else next(iter(filtered.flux_data))
+    weighting_source = config.data.flux_sources[0] if config.data.flux_sources else next(iter(filtered.flux_data))
     weighting_flux = filtered.flux_data[weighting_source]["flux"]
     # Replace only basis construction; subsequent scientific stages stay visible.
     basis_functions = build_project_basis(
         site_data=filtered.site_data,
         runtime_flux=runtime_flux,
         weighting_flux=weighting_flux,
-        **config.preparation.select("domain", "nbasis"),
+        **config.data.select("domain", "nbasis"),
         region_classes=region_classes,
         project_basis_path=project_basis_path,
         max_child_pca_eccentricity=max_child_pca_eccentricity,
@@ -320,17 +322,17 @@ def run_custom_rhime(
     site_data = build_sensitivities(
         filtered,
         basis_functions,
-        **config.preparation.select(
-            "domain", "flux_sources", "use_bc", "bc_basis_case",
-            "bc_basis_directory",
+        **config.data.select(
+            "flux_sources", "use_bc",
         ),
+        bc_basis=bc_basis,
         multisector=False,
     )
     prepared = assemble_rhime_inputs(
         filtered,
         basis_functions,
         site_data,
-        **config.preparation.select(
+        **config.data.select(
             "domain", "start_date", "bc_freq", "min_error",
             "min_error_options", "use_bc",
         ),

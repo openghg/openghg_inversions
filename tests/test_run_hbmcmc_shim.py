@@ -368,9 +368,9 @@ def test_run_hbmcmc_main_routes_to_run_rhime(monkeypatch: pytest.MonkeyPatch, tm
     )
     assert copied_config.read_text(encoding="utf-8") == expected_config
     config = seen["run_rhime_kwargs"]["config"]
-    assert config.preparation.start_date == "2020-01-01"
-    assert config.preparation.end_date == "2020-02-01"
-    assert config.output.output_path == str(output_path)
+    assert config.data.start_date == "2020-01-01"
+    assert config.data.end_date == "2020-02-01"
+    assert config.output.output_path == output_path
     assert config.sampler.chains == 2
     assert config.sampler.nuts_sampler == "numpyro"
     assert config.output.output_format == "legacy"
@@ -623,3 +623,81 @@ def test_unused_sigma_prior_is_validated_before_config_copy(monkeypatch, tmp_pat
     monkeypatch.setattr(run_hbmcmc, "run_rhime", unexpected)
     with pytest.raises(ValueError, match="sigma_prior.*mapping/dict"):
         run_hbmcmc.main(["-c", str(config_file)])
+
+
+@pytest.mark.parametrize("selection", ["nesw", "file", "override", "disabled"])
+def test_legacy_bc_selection_reaches_real_cli_acquisition(monkeypatch, tmp_path, selection):
+    """The CLI translates only winning BC selectors before modern construction."""
+    import json
+
+    config_file = tmp_path / "legacy.ini"
+    _fixedbasis_config(config_file)
+    resource_dir = tmp_path / "basis"
+    case = "NESW" if selection == "nesw" else "missing"
+    if selection == "file":
+        case = "custom"
+        domain_dir = resource_dir / "EUROPE"
+        domain_dir.mkdir(parents=True)
+        xr.Dataset({"marker": ("time", [7.0])}, coords={
+            "time": [np.datetime64("2019-01-01")], "lat": [50.0], "lon": [0.0],
+        }).to_netcdf(domain_dir / "custom_EUROPE_2019.nc")
+    with config_file.open("a") as stream:
+        stream.write(f'\n[INPUT.BASIS]\nbc_basis_case = "{case}"\nbc_basis_directory = "{resource_dir}"\n')
+    overrides = {"basis_algorithm": "quadtree"}
+    if selection == "override":
+        with config_file.open("a") as stream:
+            stream.write(f'fp_basis_case = "missing"\nbasis_directory = "{resource_dir}"\n')
+        domain_dir = resource_dir / "EUROPE"
+        domain_dir.mkdir(parents=True)
+        xr.Dataset({"basis": (("lat", "lon", "time"), [[[1]]])}, coords={
+            "time": [np.datetime64("2019-01-01")], "lat": [50.0], "lon": [0.0],
+        }).to_netcdf(domain_dir / "replacement_EUROPE_2019.nc")
+        overrides.update(bc_basis_case="NESW", fp_basis_case="replacement")
+    if selection == "disabled":
+        overrides["use_bc"] = False
+    loaded = []
+    actual_loader = rhime_standard.load_bc_basis
+
+    def record_load(paths):
+        data = actual_loader(paths)
+        loaded.append(data)
+        return data
+
+    class ReachedAcquisition(Exception):
+        pass
+
+    def acquisition(**kwargs):
+        assert len(loaded) == (1 if selection == "file" else 0)
+        if loaded:
+            assert loaded[0].marker.item() == 7.0
+        raise ReachedAcquisition
+
+    original_glob = Path.glob
+
+    def no_glob(path, pattern):
+        if selection == "override" and pattern == "replacement_EUROPE*.nc":
+            return original_glob(path, pattern)
+        pytest.fail("Only the winning fp basis may be discovered; NESW and disabled BCs need no files")
+
+    monkeypatch.setattr(rhime_standard, "load_bc_basis", record_load)
+    monkeypatch.setattr(rhime_standard.RhimeMergedData, "from_options", acquisition)
+    monkeypatch.setattr(run_hbmcmc, "_copy_config_file", lambda *args, **kwargs: None)
+    if selection != "file":
+        monkeypatch.setattr(Path, "glob", no_glob)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        with pytest.raises(ReachedAcquisition):
+            run_hbmcmc.main(["-c", str(config_file), "--all-chains", "--kwargs", json.dumps(overrides)])
+    if selection in ("nesw", "override"):
+        assert any("directory is unused for NESW" in str(w.message) for w in caught)
+    if selection in ("nesw", "disabled"):
+        assert not resource_dir.exists()
+
+
+def test_legacy_cli_rejects_removed_country_directory_before_execution(monkeypatch, tmp_path):
+    config_file = tmp_path / "legacy.ini"
+    _fixedbasis_config(config_file)
+    monkeypatch.setattr(run_hbmcmc, "run_rhime", lambda **kwargs: pytest.fail("must reject before execution"))
+    monkeypatch.setattr(run_hbmcmc, "_copy_config_file", lambda *args, **kwargs: pytest.fail("must reject before writes"))
+    with pytest.raises(ValueError, match="country_directory.*removed in 0.8"):
+        run_hbmcmc.main(["-c", str(config_file), "--kwargs", '{"country_directory": "old"}'])

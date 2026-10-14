@@ -26,11 +26,19 @@ def test_cookiecutter_project_runs_real_student_t_recipe(tmp_path):
     assert result.idata["posterior"].sizes["draw"] == 10
 
     # Low-level saves also preserve a directly customized scientific recipe.
-    from openghg_inversions.rhime import stages, PreparationConfig, RhimeOutputSpec
+    from openghg_inversions.rhime import stages, DataConfig, RhimeOutputSpec
     from openghg_inversions.rhime.standard import prepare_standard
-    preparation = PreparationConfig.from_params(options)
-    prepared = prepare_standard(preparation, merged_data=merged)
-    manifest = stages.save_preparation(prepared, preparation=preparation, output_dir=tmp_path / "custom-prepared")
+    preparation = DataConfig.from_params(options)
+    from openghg_inversions.rhime.preparation import resolve_basis_inputs
+    prepared = prepare_standard(
+        merged, basis_inputs=resolve_basis_inputs(preparation),
+        **preparation.select(
+            "domain", "start_date", "flux_sources", "averaging_error", "filters",
+            "basis_algorithm", "nbasis", "fix_basis_outer_regions", "use_bc", "bc_freq",
+            "min_error", "min_error_options",
+        ),
+    )
+    manifest = stages.save_preparation(prepared, data=preparation, output_dir=tmp_path / "custom-prepared")
     samples = stages.save_samples(
         manifest, result.idata, output_contract=result.output_contract, model=result.model_spec,
         actual_inference=result.output_metadata["sampler"], build_and_sample_seconds=0.,
@@ -48,7 +56,7 @@ def test_saved_preparation_retains_subset_and_borrows_lazy_inputs(tmp_path):
 
     from examples.standard_handoffs import synthetic_inputs
     from openghg_inversions.inversion_data import SiteOptions
-    from openghg_inversions.rhime.params import PreparationConfig
+    from openghg_inversions.rhime.params import DataConfig
     from openghg_inversions.rhime.stages import prepare, load_preparation
 
     merged, options, *_ = synthetic_inputs(tmp_path)
@@ -57,7 +65,7 @@ def test_saved_preparation_retains_subset_and_borrows_lazy_inputs(tmp_path):
     selectors = SiteOptions.from_inputs(sites=["MHD", "TAC"], averaging_period=["3h", "1h"])
     merged = replace(merged, site_options=selectors,
                      site_data={"MHD": borrowed.isel(time=slice(0, 0)), "TAC": borrowed})
-    configuration = PreparationConfig.from_params({**options, "sites": ["MHD", "TAC"],
+    configuration = DataConfig.from_params({**options, "sites": ["MHD", "TAC"],
                                                    "averaging_period": ["3h", "1h"]})
     manifest = prepare(configuration, merged_data=merged, output_dir=tmp_path / "prepared")
     reopened, context = load_preparation(manifest)
@@ -75,15 +83,104 @@ def test_saved_model_missing_likelihood_input_fails_before_inference(tmp_path, m
     import pytest
     from examples.standard_handoffs import synthetic_inputs
     from openghg_inversions.rhime import _standard_stages as stages
-    from openghg_inversions.rhime.params import PreparationConfig
+    from openghg_inversions.rhime.params import DataConfig
     from openghg_inversions.rhime.standard import prepare_standard
 
     merged, options, *_ = synthetic_inputs(tmp_path)
-    preparation = PreparationConfig.from_params(options)
-    prepared = prepare_standard(preparation, merged_data=merged)
+    preparation = DataConfig.from_params(options)
+    from openghg_inversions.rhime.preparation import resolve_basis_inputs
+    prepared = prepare_standard(
+        merged, basis_inputs=resolve_basis_inputs(preparation),
+        **preparation.select(
+            "domain", "start_date", "flux_sources", "averaging_error", "filters",
+            "basis_algorithm", "nbasis", "fix_basis_outer_regions", "use_bc", "bc_freq",
+            "min_error", "min_error_options",
+        ),
+    )
     prepared = replace(prepared, inv_inputs=prepared.inv_inputs.drop_vars("min_error"))
-    manifest = stages.save_preparation(prepared, preparation=preparation, output_dir=tmp_path / "prepared")
+    manifest = stages.save_preparation(prepared, data=preparation, output_dir=tmp_path / "prepared")
     monkeypatch.setattr(stages, "sample_rhime_model", lambda *args, **kwargs: pytest.fail("inference"))
     with pytest.raises(ValueError, match="Selected built-in likelihood.*min_error"):
         stages.sample(manifest, model={"mismatch_model": "pollution_event"}, output_dir=tmp_path / "samples")
     assert not (tmp_path / "samples").exists()
+
+
+def test_default_log_normal_state_is_retained_and_explicit_omission_is_rejected(tmp_path):
+    import pytest
+    from examples.standard_handoffs import synthetic_inputs
+    from openghg_inversions.rhime import stages, DataConfig, RhimeSampler
+
+    merged, options, *_ = synthetic_inputs(tmp_path)
+    manifest = stages.prepare(DataConfig.from_params(options), merged_data=merged,
+                              output_dir=tmp_path / "prepared")
+    # Default reparameterised prior exposes scientific x separately from x_latent.
+    sampler = RhimeSampler(draws=10, tune=10, chains=1, sample_kwargs={"random_seed": 42})
+    sampled = stages.sample(manifest, model={"mismatch_model": "fixed_error"},
+                            sampler=sampler, output_dir=tmp_path / "samples")
+    from openghg_inversions.rhime import RhimeOutputSpec
+    result = stages.postprocess(sampled, output=RhimeOutputSpec(output_format="inv_out", save_inversion_output=False))
+    assert "x" in result.idata["posterior"]
+    assert "x_latent" in result.idata["posterior"]
+    omitted = RhimeSampler(draws=10, tune=10, chains=1,
+                           sample_kwargs={"random_seed": 42, "var_names": ["x_latent", "mu"]},
+                           sample_prior_predictive=False, sample_posterior_predictive=False)
+    with pytest.raises(ValueError, match="x"):
+        stages.sample(manifest, model={"mismatch_model": "fixed_error"}, sampler=omitted,
+                      output_dir=tmp_path / "omitted")
+    assert not (tmp_path / "omitted" / "sample-manifest.json").exists()
+
+
+def test_multiple_native_sources_are_retained_once_and_replayed_without_original_operator(tmp_path, monkeypatch):
+    import numpy as np
+    import xarray as xr
+    from openghg_inversions.rhime import standard, stages, RhimeOutputSpec
+
+    resolve = standard.resolve_runtime_flux
+    prepare_basis = standard.prepare_basis
+    resolutions = []
+    weights = []
+    def resolve_once(sources, **kwargs):
+        resolutions.append(tuple(sources))
+        return resolve(sources, **kwargs)
+    def check_first_weight(**kwargs):
+        weights.append(kwargs["weighting_flux"])
+        return prepare_basis(**kwargs)
+    monkeypatch.setattr(standard, "resolve_runtime_flux", resolve_once)
+    monkeypatch.setattr(standard, "prepare_basis", check_first_weight)
+    run_example(tmp_path, multiple_sources=True)
+    # One shared preparation plus the two independent full-execution references.
+    assert resolutions == [("inventory", "supplemental")] * 3
+    assert len(weights) == 3
+    for weight in weights:
+        np.testing.assert_array_equal(weight, [[1., 2.], [3., 4.]])
+    # Scientific callers may change source order without changing the sum;
+    # only the first requested source supplies basis-design weighting.
+    from dataclasses import replace
+    from examples.standard_handoffs import synthetic_inputs
+    from openghg_inversions.rhime import DataConfig
+    from openghg_inversions.rhime.preparation import resolve_basis_inputs
+    merged, options, *_ = synthetic_inputs(tmp_path / "reverse", multiple_sources=True)
+    merged = replace(merged, flux_data=dict(reversed(tuple(merged.flux_data.items()))))
+    data = DataConfig.from_params(options)
+    def forbidden(*args, **kwargs):
+        raise AssertionError("scientific preparation performed acquisition or export")
+    from openghg_inversions.basis import BasisFunctions
+    monkeypatch.setattr(standard.RhimeMergedData, "from_options", forbidden)
+    monkeypatch.setattr(BasisFunctions, "save", forbidden)
+    prepared = standard.prepare_standard(
+        merged, basis_inputs=resolve_basis_inputs(data),
+        **{**data.select("domain", "start_date", "flux_sources", "averaging_error", "filters",
+                        "basis_algorithm", "nbasis", "fix_basis_outer_regions", "use_bc", "bc_freq",
+                        "min_error", "min_error_options"),
+           "flux_sources": ("supplemental", "inventory")},
+    )
+    assert resolutions[-1] == ("supplemental", "inventory")
+    np.testing.assert_array_equal(weights[-1], [[.3, 1.2], [2.1, .4]])
+    np.testing.assert_allclose(prepared.basis_functions.flux, [[1.3, 3.2], [5.1, 4.4]])
+    (tmp_path / "operator.nc").unlink()
+    result = stages.postprocess(tmp_path / "sample-1/sample-manifest.json",
+                                output=RhimeOutputSpec(output_format="inv_out", save_inversion_output=False))
+    expected = xr.DataArray([[1.3, 3.2], [5.1, 4.4]], dims=("lat", "lon"),
+                            coords={"lat": [50., 51.], "lon": [-2., -1.]})
+    xr.testing.assert_allclose(result.basis_functions.flux, expected)
+    assert len(resolutions) == 4  # replay did not resolve native flux again

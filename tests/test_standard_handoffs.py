@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import subprocess
 import sys
 
@@ -21,7 +20,7 @@ from tests.test_staged_workflow import _params, _prepared
 
 def _saved(tmp_path):
     config = RhimeConfig.from_params(_params(), multisector=False)
-    preparation = stages.save_preparation(_prepared(), preparation=config.preparation, output_dir=tmp_path / "prepared")
+    preparation = stages.save_preparation(_prepared(), data=config.data, output_dir=tmp_path / "prepared")
     posterior = make_trace(posterior=xr.Dataset(
         {"x": (("chain", "draw", "region"), [[[1.0], [2.0]], [[10.0], [20.0]]])},
         coords={"chain": [0, 1], "draw": [0, 1], "region": [0]},
@@ -54,12 +53,12 @@ def test_fresh_destinations_and_manifest_last(tmp_path, monkeypatch):
     preparation, _ = _saved(tmp_path)
     config = RhimeConfig.from_params(_params(), multisector=False)
     with pytest.raises(FileExistsError):
-        stages.save_preparation(_prepared(), preparation=config.preparation, output_dir=preparation.parent)
+        stages.save_preparation(_prepared(), data=config.data, output_dir=preparation.parent)
     def fail(*args, **kwargs):
         raise OSError("disk full")
     monkeypatch.setattr(stages.RhimePreparedInputs, "save", fail)
     with pytest.raises(OSError, match="disk full"):
-        stages.save_preparation(_prepared(), preparation=config.preparation, output_dir=tmp_path / "failed")
+        stages.save_preparation(_prepared(), data=config.data, output_dir=tmp_path / "failed")
     assert not (tmp_path / "failed" / "prepare-manifest.json").exists()
 
 
@@ -190,30 +189,29 @@ def test_saved_model_cannot_redefine_preparation_facts(tmp_path, name):
 
 def test_grouped_resource_paths_resolve_beside_source(tmp_path):
     config = tmp_path / "request.json"
-    config.write_text(json.dumps({"preparation": {"basis_path": "basis.nc"},
+    config.write_text(json.dumps({"data": {"basis_path": "basis.nc"},
                                   "output": {"country_file": "country.nc"}}))
     loaded = stages.load_stage_params(params_file=config)
-    assert loaded["preparation"]["basis_path"] == str(tmp_path / "basis.nc")
-    assert loaded["output"]["country_file"] == str(tmp_path / "country.nc")
+    assert loaded["data"]["basis_path"] == tmp_path / "basis.nc"
+    assert loaded["output"]["country_file"] == tmp_path / "country.nc"
 
 
-def test_prepare_reserves_destination_for_explicit_basis_save(tmp_path, monkeypatch):
+@pytest.mark.parametrize("export", ["outside.nc", "outside.zarr", "prepared/basis.nc", "prepared/basis.zarr"])
+def test_prepare_preserves_exact_basis_export(tmp_path, monkeypatch, export):
     from dataclasses import replace
     from openghg_inversions.rhime import standard
-    config = RhimeConfig.from_params(_params(), multisector=False).preparation
+    config = RhimeConfig.from_params(_params(), multisector=False).data
     destination = tmp_path / "prepared"
-    config = replace(config, basis_output_path=destination / "basis.nc")
-    def scientific_prepare(preparation, **kwargs):
-        Path(preparation.basis_output_path).write_text("selected basis")
-        return _prepared()
-    monkeypatch.setattr(standard, "prepare_standard", scientific_prepare)
+    target = tmp_path / export
+    config = replace(config, basis_output_path=target)
+    monkeypatch.setattr(stages.RhimeMergedData, "from_options", lambda **kwargs: object())
+    monkeypatch.setattr(stages, "resolve_basis_inputs", lambda data: {})
+    monkeypatch.setattr(standard, "prepare_standard", lambda *args, **kwargs: _prepared())
     manifest = stages.prepare(config, output_dir=destination)
     assert manifest.is_file()
-    assert (destination / "basis.nc").read_text() == "selected basis"
-    with pytest.raises(ValueError, match="beneath"):
-        stages.prepare(replace(config, basis_output_path=tmp_path / "outside.nc"),
-                       output_dir=tmp_path / "different")
-    assert not (tmp_path / "outside.nc").exists()
+    assert target.exists()
+    loaded, _ = stages.load_preparation(manifest)
+    assert loaded.basis_artifact_path == str(target)
 
 
 @pytest.mark.parametrize("evidence,status", [("finite", "pass"), ("nonfinite", "fail"), ("missing", "fail")])
@@ -269,7 +267,7 @@ def test_failed_sample_save_leaves_no_completed_manifest(tmp_path, monkeypatch):
     monkeypatch.setattr(stages, "save_trace", fail)
     with pytest.raises(OSError, match="disk full"):
         stages.save_samples(
-            preparation, make_trace(posterior=xr.Dataset()), model=stages._saved_model(record["model"]),
+            preparation, make_trace(posterior=xr.Dataset({"x": (("chain", "draw", "region"), [[[1.]]])})), model=stages._saved_model(record["model"]),
             output_contract=OutputContract.from_dict(record["output_contract"]), actual_inference={},
             build_and_sample_seconds=0., output_dir=tmp_path / "failed",
         )
@@ -295,3 +293,53 @@ def test_independent_diagnosis_accepts_current_sample_manifest(tmp_path, monkeyp
                                  output_dir=tmp_path / "diagnosis")
     assert check["status"] in {"unknown", "fail"}
     assert check["measured_values"]["draws_per_chain"] == 2
+
+
+def test_explicit_latent_only_trace_cannot_complete_handoff_or_replay(tmp_path):
+    from openghg_inversions.serialization import save_trace
+    preparation, sampled = _saved(tmp_path)
+    record = json.loads(sampled.read_text())
+    trace = make_trace(posterior=xr.Dataset({"x_latent": (("chain", "draw", "region"), [[[1.]]])}))
+    with pytest.raises(ValueError, match="reconstruction state.*x"):
+        stages.save_samples(
+            preparation, trace, model=stages._saved_model(record["model"]),
+            output_contract=OutputContract.from_dict(record["output_contract"]), actual_inference={},
+            build_and_sample_seconds=0., output_dir=tmp_path / "incomplete",
+        )
+    assert not (tmp_path / "incomplete").exists()
+    save_trace(trace, sampled.parent / record["posterior"])
+    with pytest.raises(ValueError, match="reconstruction state.*x"):
+        stages.postprocess(sampled, output=RhimeOutputSpec(output_format="none"))
+
+
+@pytest.mark.parametrize("grouped_override", [False, True])
+@pytest.mark.parametrize("canonical_file", [False, True])
+def test_grouped_loader_merges_raw_aliases_before_translation(tmp_path, monkeypatch, grouped_override, canonical_file):
+    config_dir = tmp_path / "config"
+    invocation = tmp_path / "invocation"
+    config_dir.mkdir()
+    invocation.mkdir()
+    source = config_dir / "choices.json"
+    source.write_text(json.dumps({"output": {
+        "output_path" if canonical_file else "outputpath": "file-products",
+    }, "data": {"basis_path": "basis.nc"}}))
+    overrides = {"outputpath": "override-products"}
+    if grouped_override:
+        overrides = {"output": overrides}
+    monkeypatch.chdir(invocation)
+    with pytest.warns(DeprecationWarning, match="Ignoring" if canonical_file else "deprecated"):
+        loaded = stages.load_stage_params(params_file=source, overrides=overrides)
+    expected = config_dir / "file-products" if canonical_file else invocation / "override-products"
+    assert loaded["output"]["output_path"] == expected
+    assert loaded["data"]["basis_path"] == config_dir / "basis.nc"
+
+
+def test_grouped_loader_flat_canonical_override_wins_file_alias(tmp_path, monkeypatch):
+    invocation = tmp_path / "invocation"
+    invocation.mkdir()
+    source = tmp_path / "choices.json"
+    source.write_text(json.dumps({"output": {"outputpath": "file-products"}}))
+    monkeypatch.chdir(invocation)
+    with pytest.warns(DeprecationWarning, match="Ignoring"):
+        loaded = stages.load_stage_params(params_file=source, overrides={"output_path": "products"})
+    assert loaded["output"]["output_path"] == invocation / "products"

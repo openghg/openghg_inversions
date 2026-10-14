@@ -18,9 +18,10 @@ To find the requirements for a behavior you are changing:
    version you are changing. A proposed requirement or a checked planning task
    alone does not establish delivered behavior.
 
-Capability baselines live under ``openspec/specs/``. Some reviewed contracts
-remain under ``openspec/changes/``; directory location alone does not establish
-approval or delivery. The map identifies both kinds of source.
+Durable contracts under ``openspec/specs/`` describe delivered behavior. Proposed
+requirements and amendments remain under ``openspec/changes/`` until implemented
+and validated, even when their design is approved. Delivery status and review
+history belong in the change records and the map below, not in durable specs.
 
 Current contracts and proposals
 --------------------------------
@@ -28,6 +29,9 @@ Current contracts and proposals
 The following map was reviewed against ``devel`` revision ``7269f50f`` on
 12 October 2026. It covers RHIME selection, composition, configuration, and
 reconstruction boundaries; it is not a complete package API specification.
+The configuration entry was amended on 13 October 2026 during review of PR 867.
+The resource-I/O and HBMCMC entries were updated the same day for the accepted
+0.8 implementation and durable-spec promotion in PR 869.
 
 .. list-table:: Behavioral ownership and delivery status
    :header-rows: 1
@@ -49,15 +53,34 @@ reconstruction boundaries; it is not a complete package API specification.
    * - Requested configuration and preparation ownership
      - :download:`Resolve RHIME configuration
        <../../openspec/specs/rhime-configuration/spec.md>`
-     - Delivered configuration slice, now with grouped preparation;
-       :doc:`/usage/rhime_configuration`.
-       Export/writer work remains with `issue 814
+     - Delivered baseline with :download:`grouped/phase amendments
+       <../../openspec/changes/group-rhime-configuration-by-owner/proposal.md>`
+       implemented in `PR 866 <https://github.com/openghg/openghg_inversions/pull/866>`_.
+       Current usage: :doc:`/usage/rhime_configuration`.
+       Configuration serialization/INI writing remains with `issue 814
        <https://github.com/openghg/openghg_inversions/issues/814>`_.
+   * - External resources and basis exports
+     - :download:`RHIME resource I/O
+       <../../openspec/specs/rhime-resource-io/spec.md>`
+     - Delivered runner-owned path resolution, selected-resource checks, BC
+       loading and optional basis exports, preserving exact destinations.
+       Delivery history: :download:`resource-I/O archive
+       <../../openspec/changes/archive/2026-10-13-move-rhime-resource-io-to-runners/tasks.md>`.
+       Manifest references and checkpoint completion stay with the handoff specs.
    * - Retained-state scientific reconstruction
      - :download:`Retained-state reconstruction
        <../../openspec/specs/retained-state-reconstruction/spec.md>`
      - Delivered scientific capability; implemented routes and limitations in
        :doc:`/usage/retained_state_reconstruction`.
+   * - HBMCMC dependency direction and retirement
+     - :download:`HBMCMC isolation contract
+       <../../openspec/specs/hbmcmc-isolation-retirement/spec.md>`
+     - Delivered 0.8 dependency boundary and legacy-only resource translation.
+       Runner frontends own deprecated spellings; canonical configuration has
+       no alias translation or warnings. Complete 0.9 removal remains in the
+       :download:`active retirement change
+       <../../openspec/changes/isolate-and-retire-hbmcmc/proposal.md>`.
+       Path conversion and resource loading stay with resource I/O.
    * - Saved CO2 affine reconstruction
      - :download:`CO2 affine output reconstruction
        <../../openspec/specs/co2-output-reconstruction/spec.md>`
@@ -80,6 +103,10 @@ configuration and reconstruction changes are also archived after reconciliation
 into their current specs. The replacement in PR 802 remains active.
 Neither proposal makes a common checkpoint interface a prerequisite for all
 recipes. Do not silently merge their pending behavior into a delivered baseline.
+PR 867 separated the configuration and resource-I/O amendments into
+separate changes. Resource I/O is now promoted and archived; grouped
+configuration remains active. PR 802 consumes those owners without duplicate
+deltas. The durable resource contract preserves PR 840's exact destinations.
 
 Planning records
 -----------------

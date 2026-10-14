@@ -8,7 +8,9 @@ orchestrator or scheduler.
 from __future__ import annotations
 
 from openghg_inversions.native_flux import resolve_runtime_flux
+from openghg_inversions.basis.support import load_bc_basis
 from openghg_inversions.basis import prepare_basis
+from openghg_inversions.basis.basis_functions import BASIS_ARTIFACT_PATH_ATTR
 from openghg_inversions.rhime.preparation import resolve_basis_inputs
 
 from dataclasses import asdict, fields, replace
@@ -16,7 +18,7 @@ from hashlib import sha256
 import json
 from numbers import Integral
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, Literal, cast, get_type_hints
 from collections.abc import Mapping
 
 import numpy as np
@@ -27,6 +29,8 @@ from openghg_inversions._timing import timed, timer_start, timer_seconds
 from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs
 from openghg_inversions.inference.sampling import RhimeSampler, resolve_sampler
 from .specs import RhimeRunSpec
+from ._resources import resolve_resource_paths
+from ._runner_compat import _ALIASES, translate_rhime_aliases
 from openghg_inversions.serialization import (
     load_trace,
     reset_serialisation_multiindexes,
@@ -46,7 +50,7 @@ from .outputs import (
     validate_output_filenames,
 )
 from .ini import read_rhime_ini
-from .params import RHIME_PREPARATION_OPTION_NAMES, RhimeConfig, PreparationConfig, resolve_model_options, resolve_flux_sources
+from .params import RHIME_PREPARATION_OPTION_NAMES, RhimeConfig, DataConfig, resolve_model_options, resolve_flux_sources
 from .specs import RhimeModelSpec, RhimeOutputSpec, SectorSpec, PollutionEventSettings, AdditiveSigmaSettings, FixedErrorSettings
 from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.inversion_data import SiteOptions
@@ -82,40 +86,12 @@ from ._stage_checks import PREPARATION_CHECK_NAME, _check_result, _check_stage
 
 ModelKind = Literal["standard", "multisector"]
 
-_STAGE_PATH_OPTIONS = frozenset(
-    {
-        "basis_directory",
-        "basis_path",
-        "basis_partition_path",
-        "basis_output_path",
-        "landsea_path",
-        "outer_regions_path",
-        "bc_basis_directory",
-        "country_directory",
-        "country_file",
-    }
-)
 _PREPARATION_IDENTITY_EXCLUDED_OPTIONS = frozenset(
     {
         "basis_output_path",
         "output_name",
     }
 )
-
-
-def _resolve_stage_paths(params: Mapping[str, Any], *, base_dir: Path) -> dict[str, Any]:
-    """Resolve filesystem-valued staged options relative to their config file."""
-    resolved = dict(params)
-    for group in ("preparation", "output"):
-        if isinstance(resolved.get(group), Mapping):
-            resolved[group] = _resolve_stage_paths(resolved[group], base_dir=base_dir)
-    for name in _STAGE_PATH_OPTIONS:
-        value = resolved.get(name)
-        if not isinstance(value, str | Path) or not value:
-            continue
-        path = Path(value).expanduser()
-        resolved[name] = str(path.resolve() if path.is_absolute() else (base_dir / path).resolve())
-    return resolved
 
 
 def load_stage_params(
@@ -127,7 +103,9 @@ def load_stage_params(
     """Load existing RHIME parameters from one explicit source.
 
     ``CONFIG_FILE`` is intentionally not an environment default: an unrelated
-    ambient variable must never select the scientific configuration.
+    ambient variable must never select the scientific configuration. File
+    resources resolve beside the source; explicit overrides resolve from the
+    invocation working directory.
     """
     if (config_file is None) == (params_file is None):
         raise ValueError("Pass exactly one of `config_file` or `params_file`.")
@@ -140,9 +118,55 @@ def load_stage_params(
         if not isinstance(loaded, dict):
             raise ValueError(f"RHIME params file {source_path} must contain one JSON object.")
         params = loaded
-    if overrides:
-        params.update(overrides)
-    return _resolve_stage_paths(params, base_dir=source_path.parent)
+    annotations = get_type_hints(DataConfig) | get_type_hints(RhimeOutputSpec)
+
+    def resolve(values: Mapping[str, Any], updates: Mapping[str, Any]) -> dict[str, Any]:
+        winning = {**values, **updates}
+        translated = translate_rhime_aliases(winning)
+        invocation_names = {
+            _ALIASES.get(name, name) for name in updates
+            if name not in _ALIASES or _ALIASES[name] not in winning
+        }
+        return resolve_resource_paths(
+            {name: value for name, value in translated.items() if name not in invocation_names},
+            annotations=annotations, base_dir=source_path.parent,
+        ) | resolve_resource_paths(
+            {name: value for name, value in translated.items() if name in invocation_names},
+            annotations=annotations, base_dir=Path.cwd(),
+        )
+
+    from .params import rhime_option_groups
+
+    updates = dict(overrides or {})
+    owners = rhime_option_groups()
+    if (params.keys() | updates.keys()) & owners.keys():
+        aliases = _ALIASES | {"emissions_store": "flux_store", "emissions_domain": "flux_domain"}
+
+        def group_raw(values: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
+            grouped: dict[str, dict[str, Any]] = {}
+            unsupported = []
+            for name, value in values.items():
+                if name in owners:
+                    if not isinstance(value, Mapping):
+                        raise ValueError(f"`{name}` must be a mapping.")
+                    grouped.setdefault(name, {}).update(value)
+                    continue
+                canonical = aliases.get(name, name)
+                owner = next((group for group, names in owners.items() if canonical in names), None)
+                if name == "use_tracer":
+                    owner = "data"
+                if owner is None:
+                    unsupported.append(name)
+                else:
+                    grouped.setdefault(owner, {})[name] = value
+            if unsupported:
+                raise ValueError(f"Unsupported RHIME parameter(s): {sorted(unsupported)!r}")
+            return grouped
+
+        grouped_params, grouped_updates = group_raw(params), group_raw(updates)
+        return {group: resolve(grouped_params.get(group, {}), grouped_updates.get(group, {}))
+                for group in grouped_params.keys() | grouped_updates.keys()}
+    return resolve(params, updates)
 
 
 def effective_configuration(setup: RhimeConfig, *, model: ModelKind) -> dict[str, Any]:
@@ -151,12 +175,12 @@ def effective_configuration(setup: RhimeConfig, *, model: ModelKind) -> dict[str
     This is a staged artifact representation, not a configuration export API.
     No pre-preparation run description or raw shorthand is reconstructed.
     """
-    site_names = {field.name for field in fields(setup.preparation.site_options)}
+    site_names = {field.name for field in fields(setup.data.site_options)}
     preparation = {
-        name: getattr(setup.preparation, name)
+        name: getattr(setup.data, name)
         for name in RHIME_PREPARATION_OPTION_NAMES if name not in site_names
     }
-    preparation.update({name: getattr(setup.preparation.site_options, name) for name in site_names})
+    preparation.update({name: getattr(setup.data.site_options, name) for name in site_names})
     return {
         "model": model,
         "model_spec": asdict(setup.model),
@@ -172,9 +196,9 @@ def configuration_identity(setup: RhimeConfig, *, model: ModelKind) -> str:
     The resolved encoding supersedes historical raw/default projections;
     existing artifacts with a different configuration identity require preparation.
     """
-    site_names = {field.name for field in fields(setup.preparation.site_options)}
-    preparation = setup.preparation.select(*(RHIME_PREPARATION_OPTION_NAMES - site_names))
-    preparation.update({name: getattr(setup.preparation.site_options, name) for name in site_names})
+    site_names = {field.name for field in fields(setup.data.site_options)}
+    preparation = setup.data.select(*(RHIME_PREPARATION_OPTION_NAMES - site_names))
+    preparation.update({name: getattr(setup.data.site_options, name) for name in site_names})
     identity_configuration = {
         "model": model,
         "preparation": {
@@ -201,21 +225,22 @@ def prepare_rhime_stage(
 
     Selected basis and support files are resolved before acquisition. Reporting
     resources are checked only when outputs are requested at postprocessing.
-    ``setup.preparation.basis_output_path`` remains an exact caller-selected destination;
+    ``setup.data.basis_output_path`` remains an exact caller-selected destination;
     it is not relocated below ``output_dir``. The stage writes prepared inputs
     and their manifest below ``output_dir`` and returns the manifest mapping.
     """
     multisector = model == "multisector"
-    basis_inputs = resolve_basis_inputs(setup.preparation)
+    basis_inputs = resolve_basis_inputs(setup.data)
+    bc_basis = load_bc_basis(setup.data.bc_basis_paths) if setup.data.use_bc and setup.data.bc_basis_paths is not None else None
     destination = _stage_output_directory(output_dir)
 
     with timed(
         "rhime.prepare_inputs.merged_data",
-        sites=len(setup.preparation.site_options.sites),
-        split_by_sectors=setup.preparation.split_by_sectors,
+        sites=len(setup.data.site_options.sites),
+        split_by_sectors=setup.data.split_by_sectors,
     ):
         merged = RhimeMergedData.from_options(
-            **setup.preparation.select(
+            **setup.data.select(
                 "site_options", "species", "domain", "start_date",
                 "end_date",  "flux_sources", "split_by_sectors",
                 "bc_store", "obs_store", "footprint_store", "flux_store",
@@ -224,54 +249,58 @@ def prepare_rhime_stage(
                 "flux_non_finite_check",
             ),
         )
-    merged = prepare_observation_errors(merged, averaging_error=setup.preparation.averaging_error)
-    filtered = filter_observations(merged, filters=setup.preparation.filters)
+    merged = prepare_observation_errors(merged, averaging_error=setup.data.averaging_error)
+    filtered = filter_observations(merged, filters=setup.data.filters)
     retained_sites = {str(site).upper() for site in filtered.sites}
-    missing_sites = [site for site in setup.preparation.site_options.sites if str(site).upper() not in retained_sites]
+    missing_sites = [site for site in setup.data.site_options.sites if str(site).upper() not in retained_sites]
     if missing_sites:
         raise ValueError(
             "RHIME preparation could not produce required site input(s) "
-            f"{missing_sites!r} for species {setup.preparation.species!r} and period "
-            f"{setup.preparation.start_date} to {setup.preparation.end_date}."
+            f"{missing_sites!r} for species {setup.data.species!r} and period "
+            f"{setup.data.start_date} to {setup.data.end_date}."
         )
     runtime_flux = resolve_runtime_flux(filtered.flux_data, split_by_sectors=filtered.split_by_sectors)
-    with timed("rhime.prepare_inputs.basis_build", basis_algorithm=setup.preparation.basis_algorithm):
+    with timed("rhime.prepare_inputs.basis_build", basis_algorithm=setup.data.basis_algorithm):
         basis = prepare_basis(
             site_data=filtered.site_data,
             runtime_flux=runtime_flux,
-            weighting_flux=filtered.flux_data[setup.preparation.flux_sources[0]]["flux"],
-            **setup.preparation.select(
+            weighting_flux=filtered.flux_data[setup.data.flux_sources[0]]["flux"],
+            **setup.data.select(
                 "domain", "start_date", "basis_algorithm", "nbasis",
             ),
-            fix_outer_regions=setup.preparation.fix_basis_outer_regions,
+            fix_outer_regions=setup.data.fix_basis_outer_regions,
             **basis_inputs,
-            output_path=setup.preparation.basis_output_path,
+        )
+    if setup.data.basis_output_path is not None:
+        basis.save(setup.data.basis_output_path)
+        basis = basis.with_metadata(
+            {BASIS_ARTIFACT_PATH_ATTR: str(setup.data.basis_output_path)}
         )
     site_data = build_sensitivities(
         filtered,
         basis,
-        **setup.preparation.select(
-            "domain", "flux_sources", "use_bc", "bc_basis_case",
-            "bc_basis_directory",
+        **setup.data.select(
+            "flux_sources", "use_bc",
         ),
+        bc_basis=bc_basis,
         multisector=multisector,
     )
     prepared = assemble_rhime_inputs(
         filtered,
         basis,
         site_data,
-        **setup.preparation.select(
+        **setup.data.select(
             "domain", "start_date", "bc_freq", "min_error",
             "min_error_options", "use_bc",
         ),
     )
     prepared_sites = {str(site).upper() for site in prepared.sites}
-    missing_sites = [site for site in setup.preparation.site_options.sites if str(site).upper() not in prepared_sites]
+    missing_sites = [site for site in setup.data.site_options.sites if str(site).upper() not in prepared_sites]
     if missing_sites:
         raise ValueError(
             "RHIME preparation could not produce required site input(s) "
-            f"{missing_sites!r} for species {setup.preparation.species!r} and period "
-            f"{setup.preparation.start_date} to {setup.preparation.end_date}."
+            f"{missing_sites!r} for species {setup.data.species!r} and period "
+            f"{setup.data.start_date} to {setup.data.end_date}."
         )
     prepared_path = _output_path(destination, None, "prepared-inputs.nc")
     prepared.save(prepared_path)
@@ -457,7 +486,7 @@ def postprocess_rhime_stage(
     _filename_component("output_name", configured_output.output_name)
     _filename_component("species", setup.model.species)
     _filename_component("domain", setup.model.domain)
-    _filename_component("start_date", setup.preparation.start_date)
+    _filename_component("start_date", setup.data.start_date)
     prepared, run_spec = _load_prepared(
         prepared_inputs,
         setup=setup,
@@ -589,34 +618,37 @@ def _save_record(destination: Path, *, stage: str, **contents: Any) -> Path:
 
 
 def save_preparation(
-    prepared: RhimePreparedInputs, *, preparation: PreparationConfig, output_dir: str | Path,
+    prepared: RhimePreparedInputs, *, data: DataConfig, output_dir: str | Path,
 ) -> Path:
     """Save numerical preparation, then return its completed absolute manifest.
 
     The destination must be new. Keep both the manifest and its referenced
     numerical file available for later sampling and output replay.
+    ``data`` describes the request that produced ``prepared``; retained sites
+    and arrays come from ``prepared``. Saving materializes numerical payloads
+    through their existing codec without mutating the borrowed inputs.
     """
-    if preparation.split_by_sectors:
+    if data.split_by_sectors:
         raise ValueError("Standard handoffs require standard preparation.")
     destination = Path(output_dir).resolve()
     destination.mkdir(parents=True, exist_ok=False)
-    return _write_preparation(prepared, preparation=preparation, destination=destination)
+    return _write_preparation(prepared, data=data, destination=destination)
 
 
 def _write_preparation(
-    prepared: RhimePreparedInputs, *, preparation: PreparationConfig, destination: Path,
+    prepared: RhimePreparedInputs, *, data: DataConfig, destination: Path,
 ) -> Path:
     prepared.save(destination / "prepared-inputs.nc")
     return _save_record(
         destination, stage="prepare", prepared_inputs="prepared-inputs.nc",
-        context=preparation.select(*_CONTEXT_FIELDS),
+        context=data.select(*_CONTEXT_FIELDS),
         preparation_provenance={
-            **preparation.select(
+            **data.select(
                 "averaging_error", "min_error", "min_error_options", "filters",
                 "basis_path", "basis_partition_path", "basis_algorithm", "nbasis",
                 "fix_basis_outer_regions",
             ),
-            "requested_site_options": asdict(preparation.site_options),
+            "requested_site_options": asdict(data.site_options),
             "basis_artifact_source": prepared.basis_artifact_source,
         },
     )
@@ -646,25 +678,55 @@ def load_preparation(manifest: str | Path) -> tuple[RhimePreparedInputs, dict[st
 
 
 def prepare(
-    preparation: PreparationConfig, *, output_dir: str | Path, merged_data: RhimeMergedData | None = None,
+    data: DataConfig, *, output_dir: str | Path, merged_data: RhimeMergedData | None = None,
 ) -> Path:
     """Prepare standard scientific inputs once and save a reusable manifest.
 
     Model, sampler and output choices are not needed. Observation, inventory,
     basis and baked error or BC-period changes require a new preparation.
+    ``merged_data`` bypasses acquisition when supplied. Resource loading,
+    acquisition and any exact ``data.basis_output_path`` export belong to this
+    runner. ``output_dir`` must be new; the returned absolute manifest is written
+    after the numerical inputs and is the completion marker.
     """
     from .standard import prepare_standard
 
-    if preparation.split_by_sectors:
+    if data.split_by_sectors:
         raise ValueError("Standard handoffs require standard preparation.")
     destination = Path(output_dir).resolve()
-    if preparation.basis_output_path is not None:
-        preparation = replace(preparation, basis_output_path=_output_path(
-            destination, preparation.basis_output_path, "basis.nc",
-        ))
+    if destination.exists():
+        raise FileExistsError(f"Preparation destination already exists: {destination}")
+    basis_inputs = resolve_basis_inputs(data)
+    bc_basis = load_bc_basis(data.bc_basis_paths) if data.use_bc and data.bc_basis_paths is not None else None
     destination.mkdir(parents=True, exist_ok=False)
-    prepared = prepare_standard(preparation, merged_data=merged_data)
-    return _write_preparation(prepared, preparation=preparation, destination=destination)
+    if merged_data is not None:
+        merged_data.validate_for_preparation(
+            **data.select("species", "domain", "start_date", "end_date", "split_by_sectors"),
+        )
+        merged = merged_data
+    else:
+        merged = RhimeMergedData.from_options(
+            **data.select(
+                "site_options", "species", "domain", "start_date", "end_date", "flux_sources",
+                "split_by_sectors", "bc_store", "obs_store", "footprint_store", "flux_store",
+                "flux_domain", "fp_model", "fp_species", "calibration_scale", "use_bc", "bc_input",
+                "flux_non_finite_check",
+            ),
+        )
+    prepared = prepare_standard(
+        merged, basis_inputs=basis_inputs, bc_basis=bc_basis,
+        **data.select(
+            "domain", "start_date", "flux_sources", "averaging_error", "filters",
+            "basis_algorithm", "nbasis", "fix_basis_outer_regions", "use_bc", "bc_freq",
+            "min_error", "min_error_options",
+        ),
+    )
+    if data.basis_output_path is not None:
+        prepared.basis_functions.save(data.basis_output_path)
+        prepared = replace(prepared, basis_functions=prepared.basis_functions.with_metadata(
+            {BASIS_ARTIFACT_PATH_ATTR: str(data.basis_output_path)}
+        ))
+    return _write_preparation(prepared, data=data, destination=destination)
 
 
 def _run_spec(prepared: RhimePreparedInputs, context: Mapping[str, Any], model: RhimeModelSpec,
@@ -756,7 +818,12 @@ def save_samples(
 
     Several sample records may reference the same preparation. The completed
     manifest is written last; failed numerical saves leave no completed record.
+    The output contract must be satisfied by the posterior, including retained
+    scientific scales. Missing required states raise before creating the
+    destination. ``actual_inference`` describes the completed invocation;
+    it does not select future sampling defaults.
     """
+    output_contract.validate_trace(posterior)
     destination = Path(output_dir).resolve()
     destination.mkdir(parents=True, exist_ok=False)
     save_trace(posterior, destination / "posterior.nc")
@@ -776,12 +843,16 @@ def sample(
 
     Scientific components validate required inputs before inference. Prepared
     BC policy and acquisition facts cannot be replaced by model choices.
+    ``model`` contains canonical decoded choices, bound to the saved preparation.
+    Omitted or ``"default"`` sampling selects a fresh sampler; explicit ``None``
+    is rejected. A supplied sampler is copied for this invocation. The output
+    directory must be new; return its absolute completed sample-manifest path.
     """
     sampler = resolve_sampler(sampler)
     if Path(output_dir).exists():
         raise FileExistsError(f"Sample destination already exists: {output_dir}")
     prepared, context = load_preparation(preparation_manifest)
-    model_spec = resolve_model_options(model, preparation=PreparationConfig(
+    model_spec = resolve_model_options(model, preparation=DataConfig(
         site_options=SiteOptions.from_inputs(sites=tuple(prepared.sites), averaging_period=tuple(prepared.averaging_period)),
         **context,
     ))
@@ -816,9 +887,11 @@ def postprocess(sample_manifest: str | Path, *, output: RhimeOutputSpec) -> Rhim
         raise ValueError("Sample model flux sources conflict with its preparation.")
     if model.use_bc and not context["use_bc"]:
         raise ValueError("Sample model requires BC inputs absent from its preparation.")
+    posterior = load_trace(_reference(path, record["posterior"]))
+    output_contract.validate_trace(posterior)
     result = make_standard_rhime_result(
         prepared=prepared, run_spec=_run_spec(prepared, context, model, output), sampler=None,
-        output_contract=output_contract, idata=load_trace(_reference(path, record["posterior"])),
+        output_contract=output_contract, idata=posterior,
         build_and_sample_seconds=record["build_and_sample_seconds"],
     )
     result.output_metadata["sampler"] = record.get("actual_inference")
@@ -851,7 +924,7 @@ def prior_predictive(
     if isinstance(draws, bool) or not isinstance(draws, Integral) or draws <= 0:
         raise ValueError("Prior-predictive draws must be a positive integer.")
     prepared, context = load_preparation(preparation_manifest)
-    model_spec = resolve_model_options(model, preparation=PreparationConfig(
+    model_spec = resolve_model_options(model, preparation=DataConfig(
         site_options=SiteOptions.from_inputs(sites=tuple(prepared.sites), averaging_period=tuple(prepared.averaging_period)),
         **context,
     ))

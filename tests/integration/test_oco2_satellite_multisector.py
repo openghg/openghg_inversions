@@ -75,7 +75,7 @@ def real_oco2_prepared_inputs(tmp_path_factory: pytest.TempPathFactory) -> Rhime
         bc_store=str(_DATA_STORE),
         obs_store=str(_DATA_STORE),
         footprint_store=str(_FOOTPRINT_STORE),
-        emissions_store=str(_DATA_STORE),
+        flux_store=str(_DATA_STORE),
         fp_height=["column"],
         fp_species="co2",
         time_resolved=[True],

@@ -1,15 +1,12 @@
 # Configuration amendments
 
-These pending deltas modify the delivered configuration capability; they are not
-part of the current main spec until implementation and sync.
-
 ## MODIFIED Requirements
 
 ### Requirement: Complete format-neutral requested configuration
 
 Standard and multisector configured runs SHALL construct one inspectable,
 complete resolved requested-run configuration before acquisition or scientific
-preparation. It SHALL expose named preparation, model, output and sampling
+preparation. It SHALL expose named data, model, output and sampling
 choices with established configuration-only defaults and aliases resolved. It
 SHALL contain no raw site shorthand, acquired/prepared scientific handoff or
 retained-run description. File-specific parsing and interpretation SHALL belong
@@ -21,9 +18,9 @@ SHALL yield equivalent resolved choices. INI SHALL remain the current file
 frontend without requiring another format or imposing its document structure
 on other frontends.
 
-The public complete requested configuration SHALL group preparation, model,
-sampler and output choices. `RhimeConfig.preparation` SHALL hold one
-`PreparationConfig` containing the moved acquisition/preparation fields and
+The public complete requested configuration SHALL group data, model,
+sampler and output choices. `RhimeConfig.data` SHALL hold one
+`DataConfig` containing the moved acquisition/preparation fields and
 their defaults; the complete configuration SHALL NOT retain a second authoritative
 flat copy. The model, sampler and output groups SHALL reuse `RhimeModelSpec`,
 `RhimeSampler` and `RhimeOutputSpec`, respectively, rather than introduce duplicate
@@ -31,6 +28,14 @@ settings types. Preparation SHALL resolve independently without constructing a
 model, sampler or output policy. Complete configured runs SHALL resolve their
 applicable groups once before scientific execution and SHALL keep requested
 choices distinct from retained scientific facts.
+
+`DataConfig` names the combined acquisition/preparation choices. Grouped input
+mappings SHALL use the key `data`, matching `RhimeConfig.data`; the proposed
+`preparation` field/key SHALL NOT remain as a compatibility alias. Runners SHALL
+explicitly select each operation's named arguments from this record. Scientific
+preparation SHALL receive the acquired handoff and its selected preparation
+arguments. Sharing the record SHALL NOT combine acquisition and preparation
+operations, whose separation is specified by the recipe-execution contract.
 
 The legacy INI frontend SHALL preserve its documented decoding and precedence.
 An adapter SHALL group its flat options into ordinary section mappings without
@@ -42,7 +47,7 @@ defaults SHALL have concrete owners rather than independent duplicate schemas.
 
 - **WHEN** a caller resolves a complete request and inspects requested store,
   basis, filter and date options
-- **THEN** those choices are available in the returned configuration's preparation group
+- **THEN** those choices are available in the returned configuration's `data` group
 - **AND** accessing them does not require data acquisition or an execution run description
 
 #### Scenario: Construct and execute one resolved request
@@ -71,12 +76,12 @@ defaults SHALL have concrete owners rather than independent duplicate schemas.
 
 #### Scenario: Inspect a grouped complete request
 - **WHEN** a caller resolves a complete supported request
-- **THEN** preparation choices are available through `config.preparation`, with
+- **THEN** acquisition/preparation choices are available through `config.data`, with
   model, sampler and output choices available through their respective groups
 - **AND** each choice and default has one authoritative owner
 
 #### Scenario: Resolve preparation alone
-- **WHEN** a caller supplies valid preparation choices without model, sampler or
+- **WHEN** a caller supplies a valid `data` mapping without model, sampler or
   output choices
 - **THEN** preparation resolution succeeds without constructing those other groups
   or requiring their inputs
@@ -86,10 +91,12 @@ defaults SHALL have concrete owners rather than independent duplicate schemas.
 - **THEN** its decoded options and winning values retain their established meaning
 - **AND** the grouped representation is an ordinary mapping suitable for the same
   group resolvers as a Python request
+- **AND** acquisition/preparation options use the `data` key without changing the
+  existing INI section syntax
 
 ### Requirement: Explicit shallow selection for scientific keyword calls
 
-`RhimeConfig.select(*names)` SHALL return a new dictionary containing the
+`RhimeConfig.select(*names)` and `DataConfig.select(*names)` SHALL return a new dictionary containing the
 explicitly named attributes. Selected values SHALL remain borrowed, including
 mutable containers and opaque objects. Selection SHALL NOT copy nested values,
 resolve defaults, inspect consumer signatures, execute scientific work or define
@@ -107,6 +114,12 @@ when composing several stages.
 - **AND** changing the selection dictionary does not change the configuration
 - **AND** mutable values inside the dictionary retain their existing identity
 
+#### Scenario: Select acquisition and preparation arguments separately
+
+- **WHEN** a runner selects store/site/date arguments and filter/basis/error arguments from `config.data`
+- **THEN** acquisition receives its named selectors and returns the acquired handoff
+- **AND** preparation receives that handoff and its own named arguments, without retrieving data or receiving export destinations
+
 #### Scenario: Selection does not resolve overrides
 
 - **WHEN** a caller needs to change raw options that affect shorthand or dependent defaults
@@ -123,6 +136,11 @@ configuration SHALL already contain the complete equivalent of external
 shorthand for the selected phase; no scientific phase SHALL be responsible for
 completing those selected choices. Known unrelated groups in a shared file SHALL
 remain inactive; unsupported names and explicit wrong-phase overrides SHALL fail.
+The external boundary SHALL report all unsupported and explicit wrong-phase
+keys together before acquisition, preparation or inference. Supported aliases
+SHALL use their runner/frontend alias owner and the same precedence in full and saved
+routes; translating file and override mappings separately SHALL NOT change which
+effective value wins.
 Date-dependent configuration defaults SHALL use effective overridden dates for a
 full request and recorded preparation dates for saved-input sampling.
 
@@ -160,6 +178,16 @@ owner; this change SHALL NOT require a separate sampler options class.
   likelihood derives a configuration default from that date
 - **THEN** resolution derives the default from the winning start date
 - **AND** the returned configuration needs no downstream default-resolution pass
+
+#### Scenario: Canonical file option and deprecated override
+
+- **WHEN** a file supplies canonical `x_prior` and an override supplies deprecated `xprior`
+- **THEN** the canonical spelling wins in both full and saved routes under the existing alias rule
+
+#### Scenario: Several unsuitable overrides
+
+- **WHEN** an invocation supplies several unsupported or explicit wrong-phase override keys
+- **THEN** one error lists all those keys before scientific work
 
 ### Requirement: Retained execution metadata is distinct from the request
 
@@ -201,69 +229,14 @@ share their owners with complete requests.
 - **THEN** execution retains the established prepared-input API and alignment
   behavior without requiring the complete requested-run configuration
 
-### Requirement: INI decoding is independent of semantic construction
-
-`read_rhime_ini(path)` SHALL return a dictionary of decoded file options. It
-SHALL own INI syntax, section flattening and value decoding, and preserve the
-existing first-occurrence rule for repeated bare keys. It SHALL NOT require
-complete run settings, select a model type, accept overrides, translate legacy
-names or resolve defaults/site shorthand. No new file format or section schema
-is introduced by this change.
-
-Standard, multisector, nested and custom runners SHALL combine decoded options
-with winning overrides, extract their own recipe choices, and construct canonical
-configuration once. A legacy grouping adapter SHALL arrange the decoded flat
-options by their existing owners; complete and phase-only resolution SHALL reuse
-those owners. Phase-only resolution SHALL select its groups before validating
-values or defaults. Shorthand SHALL remain editable until that construction.
-Shared semantic/site-alignment helpers SHALL remain independent of file syntax.
-
-Historical fixedbasis translation and deprecated alias definitions SHALL be
-owned by a lightweight HBMCMC compatibility module. `RhimeConfig.from_params`
-SHALL invoke alias translation before modern coercion, validation and construction.
-Complete-request runners SHALL call that classmethod without repeating alias
-translation. Phase-only adapters SHALL reuse the same alias definitions once at
-their external boundary without constructing an unrelated complete request.
-The translator SHALL emit `DeprecationWarning` when it replaces or removes a
-deprecated option name or output-format value; canonical options SHALL pass
-without a deprecation warning. Canonical spellings SHALL win when both spellings
-are supplied. Fixedbasis-specific scientific policy SHALL remain in its separate
-compatibility adapter. The `resolve_rhime_config` wrapper SHALL be removed.
-The deprecated `params_from_config` adapter SHALL preserve its dictionary,
-normalization and override behavior using the same decoder. It SHALL NOT be
-needed by modern scientific runners.
-
-#### Scenario: Read recipe-specific or incomplete options
-
-- **WHEN** a caller reads an INI file with incomplete ordinary settings or
-  project-specific choices
-- **THEN** the reader returns decoded values without trying to construct a run
-- **AND** the recipe can remove its own options and apply overrides before
-  validating the remaining canonical request
-
-#### Scenario: Override shorthand after reading
-
-- **WHEN** a caller reads site shorthand and changes the requested sites or periods
-- **THEN** semantic construction expands only the winning values
-- **AND** the reader performs no premature expansion or date-dependent resolution
-
-#### Scenario: Construction translates deprecated spellings once
-
-- **WHEN** a runner or direct factory caller supplies a supported deprecated spelling
-- **THEN** `RhimeConfig.from_params` invokes the compatibility translator and resolves
-  the canonical value, emitting a deprecation warning for the changed option
-- **AND** canonical inputs do not emit deprecation warnings
-- **AND** HBMCMC-specific historical behavior remains in the HBMCMC translator
-
-#### Scenario: Dictionary compatibility adapter
-
-- **WHEN** a caller uses `params_from_config` with supported overrides and normalization controls
-- **THEN** the deprecated adapter retains its established dictionary contract
-- **AND** modern runners can instead read, combine and resolve without using it
-
 ### Requirement: Compatible public adapters and scientific choices
 
-Except for the explicit sampler-default migration, removed `prepare_rhime_inputs` convenience function, obsolete
+Except for the explicit sampler-default migration, the prerequisite #868 resource-I/O
+migrations removing `prepare_basis(output_path=...)` and `country_directory` in 0.8
+and replacing scientific BC case/directory inputs with resolved basis data,
+the legacy-only routing and namespace migration owned by the
+[HBMCMC isolation contract](https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/hbmcmc-isolation-retirement/spec.md),
+removed `prepare_rhime_inputs` convenience function, obsolete
 modern merged-cache options, former stage adapter, `resolve_rhime_config`,
 transitional old-location imports and revised INI reader contract specified below, supported
 scientific Python and CLI entry points SHALL retain their signatures, shorthand,
@@ -275,7 +248,8 @@ SHALL remain independent of full configuration. Shared choices such as BC use
 and flux-source routing SHALL retain consistent existing meanings across data
 preparation and model construction. Current INI section interpretation, path
 conventions, file vocabulary, scientific calculations and sampling defaults
-SHALL remain unchanged.
+SHALL remain unchanged except for the path and legacy-resource migrations specified by
+[rhime-resource-io](https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/rhime-resource-io/spec.md).
 
 Established selector and shared-handoff aliases in the current
 [model-selection capability](https://github.com/openghg/openghg_inversions/blob/7269f50f09dc4b618766cb9d69abe260a564eebc/openspec/specs/rhime-model-selection/spec.md)
@@ -291,10 +265,11 @@ omission equivalent to `"default"`. Existing explicit `None` calls SHALL fail wi
 guidance to omit the optional argument or pass `"default"`; no compatibility
 adapter SHALL retain `None`-means-default selection. Default settings and scientific
 behavior SHALL otherwise remain unchanged. Result fields SHALL use `None` only
-for absence of a live sampler, as specified by recipe-execution.
+for absence of a live sampler, as specified by the recipe-execution contract.
 
-Resolution SHALL consume omitted/false `use_tracer` without retaining a config
-field. Effective true SHALL retain early rejection at resolution and relevant
+Runner/frontend resolution SHALL consume omitted/false `use_tracer` without
+retaining a config field. Canonical configuration SHALL accept only canonical
+fields and use generic unsupported-option errors for obsolete options. Effective true SHALL retain early rejection at resolution and relevant
 direct public boundaries, including supplied merged data. Existing legacy-option
 and custom-likelihood conflict precedence SHALL remain unchanged.
 
@@ -328,6 +303,95 @@ and custom-likelihood conflict precedence SHALL remain unchanged.
 - **THEN** it fails before inference with guidance to omit the optional argument
   or pass `"default"`
 - **AND** omitting that argument continues to select the established defaults
+
+### Requirement: INI decoding is independent of semantic construction
+
+`read_rhime_ini(path)` SHALL return a dictionary of decoded file options. It
+SHALL own INI syntax, section flattening and value decoding, and preserve the
+existing first-occurrence rule for repeated bare keys. It SHALL NOT require
+complete run settings, select a model type, accept overrides, translate legacy
+names or resolve defaults/site shorthand. No new file format or section schema
+is introduced by this change.
+
+Standard, multisector, nested and custom runners SHALL combine decoded options
+with winning overrides, extract their own recipe choices, and construct canonical
+configuration once. A legacy grouping adapter SHALL arrange the decoded flat
+options by their existing owners; complete and phase-only resolution SHALL reuse
+those owners. Phase-only resolution SHALL select its groups before validating
+values or defaults. Shorthand SHALL remain editable until that construction.
+Shared semantic/site-alignment helpers SHALL remain independent of file syntax.
+
+Historical fixedbasis translation SHALL be owned by HBMCMC entry points.
+Supported RHIME spelling and output-format aliases, including deprecated
+`emissions_*` flux selectors, SHALL be translated at runner/frontend boundaries
+outside HBMCMC after winning overrides. Existing `run_rhime` behavior SHALL
+remain supported on devel and in 0.8, with `DeprecationWarning` for deprecated
+options, until their removal in 0.9. Canonical spelling precedence and the
+separate flux old/new conflict errors SHALL remain unchanged.
+`RhimeConfig.from_params` and canonical normalization SHALL know only canonical
+names: they SHALL NOT import alias definitions, translate aliases, issue alias
+warnings, or provide alias-specific replacement messages. Unsupported names
+SHALL use ordinary unsupported-option validation. Canonical inputs SHALL pass
+without alias warnings. Complete and phase-only frontends SHALL share the runner
+compatibility owner; phase-only routes SHALL select applicable groups before
+value validation/defaults without constructing an unrelated complete request.
+HBMCMC-only resource selectors SHALL be translated by the legacy entry point,
+or rejected with guidance by modern runner boundaries before construction.
+Fixedbasis scientific policy SHALL remain in its separate compatibility adapter.
+The `resolve_rhime_config` wrapper SHALL be removed.
+
+During 0.8, HBMCMC's deprecated `params_from_config` SHALL return a dictionary
+using the modern decoder and apply overrides before normalization. With
+`normalise=False`, it SHALL preserve decoded values and historical names.
+With `normalise=True`, it SHALL translate historical names and resource selections
+into canonical keys and resolve declared filesystem values to absolute `Path`
+objects, preserving file/override origins. This is an explicit return-value
+migration from original path strings and historical selector keys; documentation
+SHALL describe it. The adapter SHALL NOT be re-exported by RHIME or needed by
+modern runners. Its removal belongs to the HBMCMC retirement contract.
+
+#### Scenario: Read recipe-specific or incomplete options
+
+- **WHEN** a caller reads an INI file with incomplete ordinary settings or
+  project-specific choices
+- **THEN** the reader returns decoded values without trying to construct a run
+- **AND** the recipe can remove its own options and apply overrides before
+  validating the remaining canonical request
+
+#### Scenario: Override shorthand after reading
+
+- **WHEN** a caller reads site shorthand and changes the requested sites or periods
+- **THEN** semantic construction expands only the winning values
+- **AND** the reader performs no premature expansion or date-dependent resolution
+
+#### Scenario: Construction translates deprecated spellings once
+
+- **WHEN** a caller supplies a supported deprecated spelling to `run_rhime`
+- **THEN** its frontend preserves the canonical value and established precedence,
+  emitting a deprecation warning before canonical construction
+- **AND** canonical construction receives only canonical names and emits no alias warning
+
+#### Scenario: Direct canonical factory receives an old name
+
+- **WHEN** a caller supplies a deprecated spelling directly to `RhimeConfig.from_params`
+- **THEN** it rejects the unsupported name through ordinary option validation
+- **AND** it neither translates the name nor emits an alias warning
+
+#### Scenario: Phase-only aliases remain independent of HBMCMC
+
+- **WHEN** a saved-phase caller supplies a supported deprecated modern alias
+  for an applicable group alongside unrelated groups in a shared file
+- **THEN** its external boundary uses the runner/frontend alias owner once with the same
+  precedence as a complete request, without importing or calling HBMCMC
+- **AND** it selects applicable groups before validating values or defaults,
+  without constructing an unrelated complete request
+
+#### Scenario: Dictionary compatibility adapter
+
+- **WHEN** a 0.8 caller uses HBMCMC's `params_from_config` with supported overrides and normalization controls
+- **THEN** the deprecated adapter returns raw overridden values when normalization is disabled,
+  or canonical keys and absolute path values when normalization is enabled
+- **AND** modern runners can instead read, combine and resolve without using it
 
 ## ADDED Requirements
 
@@ -407,7 +471,7 @@ changing CO2's family-specific defaults.
 #### Scenario: Unrelated shared-file value
 - **WHEN** a preparation command reads a shared file containing an invalid sampler
   value alongside valid preparation choices
-- **THEN** preparation selects and validates its own group without resolving or
+- **THEN** the preparation entry point selects and validates the `data` group without resolving or
   validating that inactive sampler value
 
 #### Scenario: Conflicting saved-input claim

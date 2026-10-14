@@ -13,11 +13,11 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import MISSING, dataclass, field, fields, replace
 from pathlib import Path
-from typing import Any, get_args
+from typing import Any, get_args, get_type_hints
 
 import pandas as pd
 
-from openghg_inversions._flux_options import normalise_flux_aliases
+from openghg_inversions.rhime._resources import resolve_resource_paths
 from openghg_inversions.flux_sanitization import FluxNonFiniteCheck
 from openghg_inversions.inversion_data._site_options import SiteOptions
 from openghg_inversions.model_error import MinErrorConfig
@@ -26,9 +26,6 @@ from openghg_inversions.model_error import normalise_min_error, normalise_min_er
 from openghg_inversions.models._flux import safe_pymc_name
 from openghg_inversions.observation_error import AggregationErrorMode
 from openghg_inversions.inference.sampling import RhimeSampler
-from openghg_inversions.hbmcmc.compatibility import (
-    translate_rhime_aliases,
-)
 from openghg_inversions.rhime.specs import (
     DEFAULT_BC_PRIOR,
     DEFAULT_OFFSET_PRIOR,
@@ -47,7 +44,7 @@ from openghg_inversions.rhime.specs import (
 
 
 @dataclass(frozen=True, kw_only=True)
-class PreparationConfig:
+class DataConfig:
     """Resolved acquisition and preparation choices, independent of inference.
 
     External options enter through ``from_params``. Ordinary option containers
@@ -71,15 +68,12 @@ class PreparationConfig:
     fp_species: str | None = None
     calibration_scale: str | None = None
     use_bc: bool = True
-    basis_path: str | Path | None = None
-    basis_partition_path: str | Path | None = None
-    landsea_path: str | Path | None = None
-    fp_basis_case: str | None = None
-    basis_directory: str | Path | None = None
-    bc_basis_case: str = "NESW"
-    bc_basis_directory: str | Path | None = None
-    country_directory: str | Path | None = None
-    outer_regions_path: str | Path | None = None
+    basis_path: Path | None = None
+    basis_partition_path: Path | None = None
+    landsea_path: Path | None = None
+    basis_partition_paths: tuple[Path, ...] | None = None
+    bc_basis_paths: tuple[Path, ...] | None = None
+    outer_regions_path: Path | None = None
     bc_input: str | None = None
     basis_algorithm: str | None = "weighted"
     nbasis: int = 100
@@ -87,7 +81,7 @@ class PreparationConfig:
     fix_basis_outer_regions: bool = False
     averaging_error: bool = True
     bc_freq: str | None = None
-    basis_output_path: str | Path | None = None
+    basis_output_path: Path | None = None
     min_error: MinErrorConfig = 0.0
     min_error_options: dict[str, bool] = field(default_factory=lambda: normalise_min_error_options(None))
     flux_non_finite_check: FluxNonFiniteCheck = "lazy"
@@ -110,13 +104,14 @@ class PreparationConfig:
         ) | frozenset(SiteOptions.REQUIRED_INPUT_NAMES)
 
     @classmethod
-    def from_params(cls, params: Mapping[str, Any], *, multisector: bool = False) -> PreparationConfig:
+    def from_params(cls, params: Mapping[str, Any], *, multisector: bool = False) -> DataConfig:
         """Resolve preparation-only options without constructing other groups.
 
-        Unknown or wrong-phase names fail. Select the preparation mapping from
+        Unknown or wrong-phase names fail. Select the data mapping from
         ``group_rhime_params`` first when consuming a shared configuration file.
         """
-        remaining = normalise_rhime_params(translate_rhime_aliases(params))
+        remaining = normalise_rhime_params(params)
+        remaining = resolve_resource_paths(remaining, annotations=get_type_hints(cls), base_dir=Path.cwd())
         unsupported = sorted(set(remaining) - cls.option_names())
         if unsupported:
             raise ValueError(f"Unsupported preparation parameter(s): {unsupported!r}")
@@ -135,7 +130,7 @@ class PreparationConfig:
         basis_algorithm = remaining.get("basis_algorithm", cls.basis_algorithm)
         allowed = ("quadtree", "weighted", "region_constrained")
         if (remaining.get("basis_path") is None and remaining.get("basis_partition_path") is None
-                and remaining.get("fp_basis_case") is None and basis_algorithm not in allowed):
+                and remaining.get("basis_partition_paths") is None and basis_algorithm not in allowed):
             raise ValueError(f"`basis_algorithm` must be one of {allowed!r}; got {basis_algorithm!r}.")
         _bc_frequency_policy(remaining.get("bc_freq", cls.bc_freq))
         remaining["sites"] = as_list(remaining["sites"])
@@ -157,7 +152,7 @@ class PreparationConfig:
 class RhimeConfig:
     """Complete requested configuration with one authoritative owner per group."""
 
-    preparation: PreparationConfig
+    data: DataConfig
     model: RhimeModelSpec
     output: RhimeOutputSpec
     sampler: RhimeSampler
@@ -165,17 +160,17 @@ class RhimeConfig:
     @classmethod
     def preparation_option_names(cls) -> frozenset[str]:
         """External preparation options declared by their owner."""
-        return PreparationConfig.option_names()
+        return DataConfig.option_names()
 
     @classmethod
     def required_option_names(cls) -> frozenset[str]:
         """Required complete-request values."""
-        return PreparationConfig.required_option_names() | {"output_name"}
+        return DataConfig.required_option_names() | {"output_name"}
 
     @classmethod
     def supported_option_names(cls) -> frozenset[str]:
         """Combine external choices declared by concrete owners."""
-        return (PreparationConfig.option_names() | frozenset(RhimeModelSpec.CONFIG_OPTION_NAMES)
+        return (DataConfig.option_names() | frozenset(RhimeModelSpec.CONFIG_OPTION_NAMES)
                 | LIKELIHOOD_OPTION_NAMES | RhimeOutputSpec.option_names()
                 | frozenset(RhimeSampler.CONFIG_OPTION_NAMES))
 
@@ -192,16 +187,16 @@ class RhimeConfig:
         # Preserve routing errors before the recipe's source-count check.
         sector_sources = sections["model"].get("sector_sources")
         if multisector and isinstance(sector_sources, Mapping):
-            source_names = as_list(sections["preparation"].get("flux_sources")) or []
+            source_names = as_list(sections["data"].get("flux_sources")) or []
             if len(source_names) < 2:
                 _validate_sector_source_mapping(source_names, normalise_sector_sources(sector_sources) or {})
-        preparation = PreparationConfig.from_params(sections["preparation"], multisector=multisector)
+        preparation = DataConfig.from_params(sections["data"], multisector=multisector)
         model = resolve_model_options(sections["model"], preparation=preparation)
         # Multisector source routing owns the retained source order.
         if multisector and sections["model"].get("sector_sources") is not None:
             preparation = replace(preparation, flux_sources=tuple(s.flux_source for s in model.sectors))
         return cls(
-            preparation=preparation, model=model,
+            data=preparation, model=model,
             sampler=resolve_sampler_options(sections["sampler"]),
             output=RhimeOutputSpec.from_params(sections["output"], multisector=multisector),
         )
@@ -213,45 +208,48 @@ class RhimeConfig:
     def retained_run_spec(self, prepared: RhimePreparedInputs) -> RhimeRunSpec:
         """Compose retained sites with requested dates and resolved choices."""
         return RhimeRunSpec(
-            start_date=self.preparation.start_date, end_date=self.preparation.end_date,
+            start_date=self.data.start_date, end_date=self.data.end_date,
             sites=tuple(prepared.sites), averaging_period=tuple(prepared.averaging_period),
             model=self.model, output=self.output,
-            split_by_sectors=self.preparation.split_by_sectors,
+            split_by_sectors=self.data.split_by_sectors,
         )
 
 
-RHIME_PREPARATION_OPTION_NAMES = PreparationConfig.option_names()
+RHIME_PREPARATION_OPTION_NAMES = DataConfig.option_names()
 
 
-def group_rhime_params(params: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
-    """Group legacy flat options without validating inactive values or defaults.
-
-    Already grouped mappings are accepted as well. Names are checked even for
-    inactive groups; each selected resolver owns its value validation.
-    """
-    owners = {
-        "preparation": PreparationConfig.option_names(),
+def rhime_option_groups() -> dict[str, frozenset[str]]:
+    """Expose canonical option names from their existing concrete owners."""
+    return {
+        "data": DataConfig.option_names(),
         "model": frozenset(RhimeModelSpec.CONFIG_OPTION_NAMES) | LIKELIHOOD_OPTION_NAMES
                  | {"use_bc", "bc_freq", "species", "domain", "flux_sources", "start_date", "end_date", "split_by_sectors"},
         "sampler": frozenset(RhimeSampler.CONFIG_OPTION_NAMES),
         "output": RhimeOutputSpec.option_names(),
     }
+
+
+def group_rhime_params(params: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
+    """Group canonical flat options without validating inactive values or defaults.
+
+    Already grouped mappings are accepted as well. Names are checked even for
+    inactive groups; each selected resolver owns its value validation.
+    """
+    owners = rhime_option_groups()
     if set(params) & owners.keys():
-        unknown = sorted(set(params) - owners.keys())
-        if unknown:
-            raise ValueError(f"Unsupported grouped RHIME parameter(s): {unknown!r}")
+        unknown = list(set(params) - owners.keys())
         result = {}
         for group, names in owners.items():
             values = params.get(group, {})
             if not isinstance(values, Mapping):
                 raise ValueError(f"`{group}` must be a mapping.")
-            values = normalise_flux_aliases(translate_rhime_aliases(values))
-            unknown = sorted(set(values) - names)
-            if unknown:
-                raise ValueError(f"Unsupported {group} parameter(s): {unknown!r}")
+            values = dict(values)
+            unknown.extend(f"{group}.{name}" for name in set(values) - names)
             result[group] = values
+        if unknown:
+            raise ValueError(f"Unsupported grouped RHIME parameter(s): {sorted(unknown)!r}")
         return result
-    normalized = normalise_flux_aliases(translate_rhime_aliases(params))
+    normalized = dict(params)
     validate_supported_params(normalized)
     result = {group: {} for group in owners}
     for name, value in normalized.items():
@@ -264,7 +262,7 @@ def group_rhime_params(params: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
 
 def resolve_sampler_options(params: Mapping[str, Any]) -> RhimeSampler:
     """Resolve only sampler choices using the existing sampler's defaults."""
-    remaining = normalise_rhime_params(translate_rhime_aliases(params))
+    remaining = normalise_rhime_params(params)
     unknown = sorted(set(remaining) - set(RhimeSampler.CONFIG_OPTION_NAMES))
     if unknown:
         raise ValueError(f"Unsupported sampler parameter(s): {unknown!r}")
@@ -290,13 +288,13 @@ def _bc_frequency_policy(value: str | None) -> str | pd.Timedelta | None:
         raise ValueError(f"Invalid `bc_freq`: {value!r}.") from exc
 
 
-def resolve_model_options(params: Mapping[str, Any], *, preparation: PreparationConfig) -> RhimeModelSpec:
+def resolve_model_options(params: Mapping[str, Any], *, preparation: DataConfig) -> RhimeModelSpec:
     """Bind raw model choices to authoritative preparation facts.
 
     Omitted BC use inherits preparation. Explicit BC use requires prepared BC
     inputs; repeated temporal or source facts must agree with preparation.
     """
-    remaining = normalise_rhime_params(translate_rhime_aliases(params))
+    remaining = normalise_rhime_params(params)
     facts = ("species", "domain", "flux_sources", "start_date", "end_date", "split_by_sectors", "bc_freq")
     unknown = sorted(set(remaining) - set(RhimeModelSpec.CONFIG_OPTION_NAMES)
                      - LIKELIHOOD_OPTION_NAMES - set(facts) - {"use_bc"})
@@ -397,12 +395,8 @@ def resolve_flux_sources(
 
 
 def normalise_rhime_params(params: Mapping[str, Any]) -> dict[str, Any]:
-    """Resolve modern flux spellings, coerce scalars and validate values.
-
-    Historical HBMCMC aliases are translated before this step. Modern flux
-    aliases are resolved here, with warnings and strict old/new conflicts.
-    """
-    normalized = normalise_flux_aliases(params)
+    """Copy canonical options, coerce scalars and validate values."""
+    normalized = dict(params)
     coerce_simple_param_types(normalized)
     validate_rhime_param_types(normalized)
     return normalized

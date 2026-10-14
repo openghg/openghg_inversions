@@ -17,13 +17,12 @@ resolution and operator-only loading and remains under review. Recheck their
 merged revisions before implementation.
 Acquisition replay is deferred to #829 and does not block prepared/sample handoffs.
 
-The [current configuration capability](../../specs/rhime-configuration/spec.md)
-describes the landed flat preparation fields and complete requested configuration.
-This proposal deliberately replaces those two constraints with grouped ownership
-and independently resolved phases through an explicit
-[configuration delta](specs/rhime-configuration/spec.md). Completed baseline
-tasks do not establish implementation of this amendment. Only reconciled delivered
-capabilities are synced; the four deltas in this change remain pending.
+The [configuration capability](../../specs/rhime-configuration/spec.md) records
+the delivered baseline. The separate [configuration change](../group-rhime-configuration-by-owner/specs/rhime-configuration/spec.md)
+owns grouped configuration and independent phase resolution. This handoff change
+consumes those amendments without a duplicate configuration delta. Its three
+execution/handoff deltas remain pending, and completed baseline tasks do not
+establish their implementation.
 
 Merged #854 supplies current [model-selection](../../specs/rhime-model-selection/spec.md)
 and [model-composition](../../specs/rhime-model-composition/spec.md) baselines.
@@ -70,24 +69,29 @@ scientific operation.
 ### 1. Group choices once, then resolve the selected phase
 
 Use one complete requested `RhimeConfig` for full configured execution. Move its
-existing preparation fields/defaults into `PreparationConfig`; do not keep
-another authoritative flat copy or parallel default table. Keep `SiteOptions`,
+existing acquisition/preparation fields/defaults into `RhimeConfig.data: DataConfig`;
+do not keep another authoritative flat copy or parallel default table. Keep `SiteOptions`,
 `RhimeModelSpec`, `RhimeSampler` and `RhimeOutputSpec` as their existing owners.
-One preparation record has a concrete purpose: it can be resolved and consumed
+One data record has a concrete purpose: it can be resolved and consumed
 without constructing a model, sampler or output request. No replacement sampler
 settings class, `ModelChoices` class or generic phase registry is required.
+The record covers acquisition as well as preparation. Use `data` for both the
+complete configuration field and the grouped mapping key. The runner explicitly
+selects acquisition arguments and preparation arguments from that record;
+sharing it does not combine the operations. The proposed `preparation` field/key
+has not shipped and needs no compatibility alias.
 
 Illustrative pseudocode below describes the intended interfaces, not installed
 API names. Decoded sections are ordinary mappings, not resolved records:
 
 ```python
 sections = group_legacy_options(read_rhime_ini("run.ini"))
-# {"preparation": {...}, "model": {...}, "sampler": {...}, "output": {...}}
+# {"data": {...}, "model": {...}, "sampler": {...}, "output": {...}}
 
-preparation = PreparationConfig.from_params(sections["preparation"])
+data = DataConfig.from_params(sections["data"])
 config = RhimeConfig(
-    preparation=preparation,
-    model=resolve_model_options(sections["model"], facts=preparation.requested_facts),
+    data=data,
+    model=resolve_model_options(sections["model"], facts=data.requested_facts),
     sampler=resolve_sampler_options(sections.get("sampler", {})),
     output=RhimeOutputSpec.from_params(sections.get("output", {})),
 )
@@ -101,6 +105,15 @@ normalizer first would still reject irrelevant model/output settings. Unknown
 names remain errors; known unrelated groups in a shared file remain inactive.
 Explicit wrong-phase command overrides fail. A future section-preserving INI or
 TOML frontend can supply the same mappings, without being required by this work.
+Use the same alias precedence across full and saved requests, including a
+canonical file option combined with a deprecated override. Report all unsupported
+and wrong-phase override keys together before scientific work.
+
+Resource-path interpretation and runner-owned optional basis saving follow
+the [delivered resource-I/O contract](../../specs/rhime-resource-io/spec.md)
+from #868. Manifest-relative dependency references retain their handoff owner.
+Reuse `resolve_basis_inputs` and the existing codecs; this plan consumes those
+operations rather than adding another resource or persistence abstraction.
 
 Priors belong in model configuration, independently of preparation choices.
 Prior-derived numerical preparation still depends on those model inputs as
@@ -119,8 +132,8 @@ absence of the key in the raw model mapping, not a prematurely filled model defa
 
 | Choice | Preparation owner | Full and saved model binding |
 | --- | --- | --- |
-| `use_bc` | `PreparationConfig.use_bc` retains the existing default `True` and controls acquiring/constructing BC inputs. | An omitted model choice inherits the resolved preparation choice. Explicit `False` may ignore available BC inputs; explicit `True` requires them. |
-| `bc_freq` | `PreparationConfig.bc_freq` retains the existing default `None` and controls the temporal expansion baked into the inputs. | Omission uses the saved/resolved preparation fact. A repeated equivalent value is a compatibility claim; a conflicting value fails, including when `use_bc=False`. No model default re-expands the data. |
+| `use_bc` | `DataConfig.use_bc` retains the existing default `True` and controls acquiring/constructing BC inputs. | An omitted model choice inherits the resolved preparation choice. Explicit `False` may ignore available BC inputs; explicit `True` requires them. |
+| `bc_freq` | `DataConfig.bc_freq` retains the existing default `None` and controls the temporal expansion baked into the inputs. | Omission uses the saved/resolved preparation fact. A repeated equivalent value is a compatibility claim; a conflicting value fails, including when `use_bc=False`. No model default re-expands the data. |
 
 The legacy flat `use_bc` option resolves once at its preparation owner and also
 supplies the full run's model choice, preserving existing full-run behavior.
@@ -231,8 +244,9 @@ configuration may still be appropriate because that object requests future work.
 Both full and saved routes call the same scientific owners. Small repeated
 orchestration is preferable to a forwarding wrapper introduced only to give every
 family identical stage names. The following sketch consumes #834/#837/#838/#839;
-its helper names must be reconciled with those deliveries rather than implemented
-again here:
+its helper names must be reconciled with those deliveries and #868 rather than
+implemented again here. Acquisition and preparation receive separate explicit
+selections from `config.data`; resource paths/maps have already been resolved:
 
 ```python
 merged = acquire(explicit_acquisition_options)
@@ -246,9 +260,18 @@ basis = prepare_basis(
 )
 site_data = build_sensitivities(filtered, basis, ...)
 prepared = assemble_inputs(filtered, basis, site_data, ...)
+# Optional export is a runner operation using the scientific result.
+if basis_output_path is not None:
+    basis.save(basis_output_path)
 # Only saved preparation adds this file boundary.
 prepared_manifest = save_preparation(prepared, requested_facts, destination)
 ```
+
+Acquisition or supplied-data selection stays visible in the runner. A shared
+scientific preparation function accepts the acquired handoff and never retrieves
+it internally. Optional basis saving follows the resource-I/O contract. When the
+scientific calls are grouped in a preparation function, the runner obtains the
+basis from its returned prepared handoff and uses the existing save codec.
 
 Preparation aligns metadata to retained observations; inference aligns its own
 numeric per-site choices. Validate every supplied value, including dropped-site
@@ -285,6 +308,10 @@ def sample(prepared_manifest, *, model, sampler="default", output_dir, run_conte
 ```
 
 Validate declared model coordinates/output roles even when no products are requested.
+Default traces retain scientific output states such as `x`, including when they
+are named deterministics derived from `_latent` variables. An explicit selection
+omitting a required state needs a supported reconstruction route or a clear error
+before completing the saved handoff. General reconstruction remains with #850.
 A custom model supporting only `none` is valid; it cannot claim unsupported replay
 products. Product-specific requirements are checked when products are requested.
 Use the model's existing variable roles/output contract as the shared source for
@@ -300,12 +327,12 @@ referenced alongside those records or supplied explicitly; neither every file
 nor every stage record must be self-contained. Use the configuration from the
 completed run when interpreting its samples. Current output choices select
 products and destinations, and cannot redefine the sampled science. A configured
-full request can supply its preparation record; a preparation-only file can resolve
-that record independently:
+full request can supply its data record; a preparation-only invocation can resolve
+the same `data` mapping independently:
 
 ```python
-preparation = PreparationConfig.from_params(sections["preparation"])
-prepared = standard_stages.prepare(preparation, output_dir="runs/prepared")
+data = DataConfig.from_params(sections["data"])
+prepared = standard_stages.prepare(data, output_dir="runs/prepared")
 a = standard_stages.sample(prepared, model=model_a, output_dir="runs/a")
 b = standard_stages.sample(prepared, model=model_b, output_dir="runs/b")
 result = standard_stages.postprocess(
@@ -362,6 +389,9 @@ Use a fresh operation destination so sampling cannot silently overwrite a comple
 run or its prepared inputs. Write the final manifest after numerical saves succeed;
 a temporary JSON file and rename are enough. Do not add transaction machinery or
 recursive symlink scans.
+Checkpoint containment applies to checkpoint-owned files. Separately requested
+basis exports follow the resource-I/O contract; this handoff design does not
+introduce a new export restriction.
 
 The optional `run_config` above is a reference to an existing configuration file.
 If context is supplied only in memory, the caller supplies it again for later
@@ -477,7 +507,11 @@ CO2 adoption. Review the standard working route before family expansion;
 multisector and ordinary CO2 can then proceed independently, with cached adoption
 following the ordinary handoff conventions. Each slice includes writer, reader,
 callers, CLI/examples, documentation and validation. Do not split out a speculative
-persistence framework or preliminary cleanup project as a prerequisite.
+persistence framework or preliminary cleanup project as a prerequisite. The
+concrete exception agreed during review is #868: land resource-path resolution
+and runner-owned optional basis saves before #866, then consume those existing
+operations in the new handoff routes. Its implementation includes affected callers
+and API documentation; it does not implement the grouped configuration or handoffs.
 
 #808 coordinates removal of representation-sensitive gates and the corresponding
 consumer fixes within these implementation slices. #838/#839

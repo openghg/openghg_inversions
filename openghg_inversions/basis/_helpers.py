@@ -1,57 +1,45 @@
 """Boundary-condition sensitivity helpers."""
 
-from ._functions import basis_boundary_conditions
+import xarray as xr
 
 
-def bc_sensitivity(
-    fp_and_data: dict, domain: str, basis_case: str, bc_basis_directory: str | None = None
-) -> dict:
-    """Add boundary conditions sensitivity matrix `H_bc` to each site xr.Dataframe in fp_and_data.
+def bc_sensitivity(fp_and_data: dict, bc_basis: xr.Dataset | None = None) -> dict:
+    """Return site datasets with boundary-condition sensitivity ``H_bc`` added.
 
     Args:
-        fp_and_data: dict containing xr.Datasets output by `ModelScenario.footprints_data_merge`
-            keyed by site code.
-        domain: inversion domain. For instance "EUROPE"
-        basis_case: BC basis case to read in. Examples of basis cases are "NESW","stratgrad".
-        bc_basis_directory: bc_basis_directory can be specified if files are not in the default
-            directory. Must point to a directory which contains subfolders organized
-            by domain. (optional)
+        fp_and_data: Site datasets containing acquired directional ``bc_n``,
+            ``bc_e``, ``bc_s`` and ``bc_w`` contributions. Dot-prefixed metadata
+            entries are retained unchanged.
+        bc_basis: Resolved labelled basis with ``bc_basis_<direction>`` variables
+            and a ``region`` dimension. A singleton time applies to every
+            observation; multiple times align by their labels. None uses the
+            acquired NESW contributions directly, without resource I/O.
 
     Returns:
-        dict of xr.Datasets in same format as fp_and_data with `H_bc` sensitivity matrix added.
-
+        New mapping and site datasets, sharing input storage where possible,
+        with ``H_bc`` indexed by ``bc_region``. Inputs remain unchanged and
+        lazy arrays remain lazy.
     """
-    sites = [key for key in list(fp_and_data.keys()) if key[0] != "."]
+    result = dict(fp_and_data)
+    if bc_basis is not None:
+        if bc_basis.sizes.get("time") == 1:
+            bc_basis = bc_basis.squeeze("time")
+        elif "time" in bc_basis.dims:
+            bc_basis = bc_basis.sortby("time")
+        bc_basis = bc_basis.rename({dv: str(dv).replace("basis_", "") for dv in bc_basis.data_vars})
 
-    if basis_case.lower() == "nesw":
-        for site in sites:
-            ds = fp_and_data[site]
-            bc_ds = ds[[f"bc_{d}" for d in "nesw"]].rename({f"bc_{d}": d for d in "nesw"})
-            sensitivity = bc_ds.sum(["lat", "lon", "height"]).to_dataarray(dim="bc_region")
-            fp_and_data[site]["H_bc"] = sensitivity
-
-        return fp_and_data
-
-    basis_func = basis_boundary_conditions(
-        domain=domain, basis_case=basis_case, bc_basis_directory=bc_basis_directory
-    )
-
-    # drop time if there is only one value
-    if basis_func.sizes.get("time", -1) == 1:
-        basis_func = basis_func.squeeze("time")
-    else:
-        basis_func = basis_func.sortby("time")
-
-    # align basis data var names with baseline sensitivity data var names from ModelScenario
-    bc_basis = basis_func.rename({dv: str(dv).replace("basis_", "") for dv in basis_func.data_vars})
-
-    for site in sites:
-        ds = fp_and_data[site]
+    for site, ds in fp_and_data.items():
+        if site.startswith("."):
+            continue
         bc_ds = ds[[f"bc_{d}" for d in "nesw"]]
-        sensitivity = (
-            (bc_ds * bc_basis).sum(["lat", "lon", "height"]).to_dataarray(dim="__newdim__").sum("__newdim__")
-        )
-        sensitivity = sensitivity.rename(region="bc_region")
-        fp_and_data[site]["H_bc"] = sensitivity
-
-    return fp_and_data
+        if bc_basis is None:
+            bc_ds = bc_ds.rename({f"bc_{d}": d for d in "nesw"})
+            sensitivity = bc_ds.sum(["lat", "lon", "height"]).to_dataarray(dim="bc_region")
+        else:
+            sensitivity = (
+                (bc_ds * bc_basis).sum(["lat", "lon", "height"])
+                .to_dataarray(dim="__newdim__").sum("__newdim__")
+                .rename(region="bc_region")
+            )
+        result[site] = ds.assign(H_bc=sensitivity)
+    return result

@@ -11,16 +11,20 @@ built, and combines only the two observation-aligned sensitivity matrices.
 from __future__ import annotations
 
 from openghg_inversions.native_flux import resolve_runtime_flux
+from openghg_inversions.basis.support import load_bc_basis
 from openghg_inversions.basis import prepare_basis
+from openghg_inversions.basis.basis_functions import BASIS_ARTIFACT_PATH_ATTR
 from openghg_inversions.rhime.preparation import resolve_basis_inputs
-from openghg_inversions._flux_options import UNSET, _Unset, normalise_flux_aliases, resolve_deprecated_keyword
+from openghg_inversions.rhime._resources import resolve_resource_paths
+from openghg_inversions.rhime._runner_compat import translate_rhime_aliases
+from openghg_inversions._flux_options import UNSET, _Unset, resolve_deprecated_keyword
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 import hashlib
 from numbers import Integral
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, Literal, cast, get_type_hints
 
 from dask import compute as dask_compute
 import numpy as np
@@ -52,7 +56,7 @@ from .builders import (
 from .materialization import materialize_pymc_inputs
 from .outputs import RhimeResult, _make_inversion_output, validate_output_resources
 from .ini import read_rhime_ini
-from .params import RhimeConfig
+from .params import DataConfig, RhimeConfig
 from .preparation import (
     assemble_rhime_inputs,
     build_sensitivities,
@@ -698,35 +702,41 @@ def _prepare_one_domain(
     *,
     allow_empty_inner_region: bool = False,
     basis_support_maps: Mapping[str, Any],
+    bc_basis: xr.Dataset | None = None,
 ) -> RhimePreparedInputs:
     """Run one domain's scientific stages from already-resolved choices."""
     runtime_flux = resolve_runtime_flux(merged.flux_data, split_by_sectors=merged.split_by_sectors)
-    with timed("rhime.prepare_inputs.basis_build", basis_algorithm=config.preparation.basis_algorithm):
+    with timed("rhime.prepare_inputs.basis_build", basis_algorithm=config.data.basis_algorithm):
         basis_functions = prepare_basis(
             site_data=merged.site_data,
             runtime_flux=runtime_flux,
-            weighting_flux=merged.flux_data[config.preparation.flux_sources[0]]["flux"],
-            **config.preparation.select(
+            weighting_flux=merged.flux_data[config.data.flux_sources[0]]["flux"],
+            **config.data.select(
                 "domain", "start_date", "basis_algorithm", "nbasis",
             ),
-            fix_outer_regions=config.preparation.fix_basis_outer_regions,
+            fix_outer_regions=config.data.fix_basis_outer_regions,
             **basis_support_maps,
-            output_path=config.preparation.basis_output_path,
             allow_empty_inner_region=allow_empty_inner_region,
+        )
+    if config.data.basis_output_path is not None:
+        basis_functions.save(config.data.basis_output_path)
+        basis_functions = basis_functions.with_metadata(
+            {BASIS_ARTIFACT_PATH_ATTR: str(config.data.basis_output_path)}
         )
     site_data = build_sensitivities(
         merged,
         basis_functions,
-        **config.preparation.select(
-            "domain", "flux_sources", "use_bc", "bc_basis_case", "bc_basis_directory",
+        **config.data.select(
+            "flux_sources", "use_bc",
         ),
+        bc_basis=bc_basis,
         multisector=False,
     )
     return assemble_rhime_inputs(
         merged,
         basis_functions,
         site_data,
-        **config.preparation.select(
+        **config.data.select(
             "domain", "start_date", "bc_freq", "min_error",
             "min_error_options", "use_bc",
         ),
@@ -819,6 +829,7 @@ def prepare_nested_rhime_inputs(
     inner_nbasis: int | None = None,
     inner_basis_path: str | Path | None = None,
     inner_basis_partition_path: str | Path | None = None,
+    inner_basis_partition_paths: tuple[Path, ...] | None = None,
     inner_landsea_path: str | Path | None = None,
     inner_outer_regions_path: str | Path | None = None,
     inner_fp_basis_case: str | None = None,
@@ -855,20 +866,21 @@ def prepare_nested_rhime_inputs(
         inner_basis_algorithm: Inner basis algorithm; defaults to ``quadtree``
             when no saved inner basis is selected.
         inner_nbasis: Explicit inner basis-region count. When omitted and
-            neither grid uses a saved basis, ``config.preparation.nbasis`` is a shared
+            neither grid uses a saved basis, ``config.data.nbasis`` is a shared
             total budget split by the square-root sensitivity ratio, with an
             inner share bounded to 35--60 percent. Otherwise the inner count
-            defaults to ``config.preparation.nbasis``.
+            defaults to ``config.data.nbasis``.
         inner_basis_path: Exact retained inner basis artifact path.
         inner_basis_partition_path: Exact labelled inner partition file.
+        inner_basis_partition_paths: Explicit collection of labelled inner partition files.
         inner_landsea_path: Exact selected inner land/sea support map.
         inner_outer_regions_path: Exact selected inner fixed-outer support map.
-        inner_fp_basis_case: Deprecated saved inner basis case; takes precedence over
-            an inner basis algorithm.
-        inner_basis_directory: Saved inner basis directory; defaults to the
-            outer request's directory.
-        inner_country_directory: Inner country-grid directory; defaults to
-            the outer request's directory.
+        inner_fp_basis_case: Unsupported historical selector; use inner_basis_path
+            or inner_basis_partition_path instead.
+        inner_basis_directory: Unsupported historical directory; select an exact
+            inner basis path instead.
+        inner_country_directory: Removed in 0.8; use inner_landsea_path or
+            inner_outer_regions_path for preparation, country_file for reporting.
         inner_basis_output_path: Exact retained-artifact destination for the
             inner basis, whether generated or loaded. ``None`` disables saving.
         time_tolerance: Maximum difference for nearest-time inner footprint
@@ -894,58 +906,69 @@ def prepare_nested_rhime_inputs(
         materialization is a separate boundary. Reporting resources are not
         required for preparation.
     """
+    if inner_country_directory is not None:
+        raise ValueError("`inner_country_directory` was removed in 0.8; use `inner_landsea_path` "
+                         "or `inner_outer_regions_path` for preparation and `country_file` for reporting.")
     inner_flux_store = cast(str | None, resolve_deprecated_keyword(
         "inner_emissions_store", "inner_flux_store", inner_emissions_store, inner_flux_store
     ))
     inner_flux_domain = cast(str | None, resolve_deprecated_keyword(
         "inner_emissions_domain", "inner_flux_domain", inner_emissions_domain, inner_flux_domain
     ))
-    if config.preparation.split_by_sectors or len(config.model.sectors) != 1:
+    if config.data.split_by_sectors or len(config.model.sectors) != 1:
         raise ValueError("Nested RHIME preparation currently requires a standard one-source request.")
 
     # Outer overlap masking leaves an intentionally empty inner basis region.
     # Allow that fixed label when constructing the outer basis below.
     outer_config = config
-    inner_domain_name = _inner_domain_name(config.preparation.domain, inner_domain)
+    inner_domain_name = _inner_domain_name(config.data.domain, inner_domain)
+    inner_basis_options = {
+        "domain": inner_domain_name,
+        "basis_path": inner_basis_path,
+        "basis_partition_path": inner_basis_partition_path,
+        "basis_partition_paths": inner_basis_partition_paths,
+        "landsea_path": inner_landsea_path,
+        "outer_regions_path": inner_outer_regions_path,
+        "basis_output_path": inner_basis_output_path,
+    }
+    if inner_fp_basis_case is not None or inner_basis_directory is not None:
+        raise ValueError(
+            "Historical inner basis selectors are not supported by modern RHIME; "
+            "use `inner_basis_path`, `inner_basis_partition_path` or `inner_basis_partition_paths`."
+        )
+    inner_basis_options = resolve_resource_paths(
+        inner_basis_options, annotations=get_type_hints(DataConfig), base_dir=Path.cwd(),
+    )
     inner_config = replace(
         config,
         model=replace(config.model, domain=inner_domain_name, use_bc=False),
         output=replace(config.output, output_name=f"{config.output.output_name}_inner"),
-        preparation=replace(
-            config.preparation,
-            domain=inner_domain_name,
-            footprint_store=inner_footprint_store or config.preparation.footprint_store,
-            flux_store=inner_flux_store or config.preparation.flux_store,
+        data=replace(
+            config.data,
+            **inner_basis_options,
+            footprint_store=inner_footprint_store or config.data.footprint_store,
+            flux_store=inner_flux_store or config.data.flux_store,
             flux_domain=inner_flux_domain,
             use_bc=False,
             bc_input=None,
-            basis_algorithm=(
-                inner_basis_algorithm if inner_basis_algorithm is not None
-                else (None if inner_fp_basis_case is not None else "quadtree")
-            ),
-            basis_path=inner_basis_path,
-            basis_partition_path=inner_basis_partition_path,
-            landsea_path=inner_landsea_path,
-            outer_regions_path=inner_outer_regions_path,
-            fp_basis_case=inner_fp_basis_case,
-            basis_output_path=inner_basis_output_path,
+            basis_algorithm=inner_basis_algorithm if inner_basis_algorithm is not None else "quadtree",
+            bc_basis_paths=None,
             fix_basis_outer_regions=False,
-            nbasis=inner_nbasis if inner_nbasis is not None else config.preparation.nbasis,
-            basis_directory=inner_basis_directory if inner_basis_directory is not None else config.preparation.basis_directory,
-            country_directory=inner_country_directory if inner_country_directory is not None else config.preparation.country_directory,
+            nbasis=inner_nbasis if inner_nbasis is not None else config.data.nbasis,
         ),
     )
 
     preparation_start = timer_start()
-    support_maps = [resolve_basis_inputs(domain_config.preparation) for domain_config in (outer_config, inner_config)]
+    support_maps = [resolve_basis_inputs(domain_config.data) for domain_config in (outer_config, inner_config)]
+    bc_basis = load_bc_basis(outer_config.data.bc_basis_paths) if outer_config.data.use_bc and outer_config.data.bc_basis_paths is not None else None
 
     with timed(
         "rhime.prepare_inputs.merged_data",
-        sites=len(outer_config.preparation.site_options.sites),
-        split_by_sectors=outer_config.preparation.split_by_sectors,
+        sites=len(outer_config.data.site_options.sites),
+        split_by_sectors=outer_config.data.split_by_sectors,
     ):
         outer_merged = RhimeMergedData.from_options(
-            **outer_config.preparation.select(
+            **outer_config.data.select(
                 "site_options", "species", "domain", "start_date",
                 "end_date",  "flux_sources", "split_by_sectors",
                 "bc_store", "obs_store", "footprint_store", "flux_store",
@@ -956,11 +979,11 @@ def prepare_nested_rhime_inputs(
         )
     with timed(
         "rhime.prepare_inputs.merged_data",
-        sites=len(inner_config.preparation.site_options.sites),
-        split_by_sectors=inner_config.preparation.split_by_sectors,
+        sites=len(inner_config.data.site_options.sites),
+        split_by_sectors=inner_config.data.split_by_sectors,
     ):
         inner_merged = RhimeMergedData.from_options(
-            **inner_config.preparation.select(
+            **inner_config.data.select(
                 "site_options", "species", "domain", "start_date",
                 "end_date",  "flux_sources", "split_by_sectors",
                 "bc_store", "obs_store", "footprint_store", "flux_store",
@@ -969,10 +992,10 @@ def prepare_nested_rhime_inputs(
                 "flux_non_finite_check",
             ),
         )
-    outer_merged = prepare_observation_errors(outer_merged, averaging_error=outer_config.preparation.averaging_error)
-    inner_merged = prepare_observation_errors(inner_merged, averaging_error=inner_config.preparation.averaging_error)
+    outer_merged = prepare_observation_errors(outer_merged, averaging_error=outer_config.data.averaging_error)
+    inner_merged = prepare_observation_errors(inner_merged, averaging_error=inner_config.data.averaging_error)
     outer_merged, inner_merged = _retain_common_sites(outer_merged, inner_merged)
-    outer_filtered = filter_observations(outer_merged, filters=outer_config.preparation.filters)
+    outer_filtered = filter_observations(outer_merged, filters=outer_config.data.filters)
     outer_filtered, inner_merged = _retain_common_sites(outer_filtered, inner_merged)
     inner_filtered = align_inner_merged_to_outer_observations(
         outer_filtered,
@@ -983,26 +1006,27 @@ def prepare_nested_rhime_inputs(
 
     if (
         inner_nbasis is None
-        and outer_config.preparation.basis_partition_path is None
-        and outer_config.preparation.basis_path is None
-        and outer_config.preparation.fp_basis_case is None
-        and inner_config.preparation.basis_partition_path is None
-        and inner_config.preparation.basis_path is None
-        and inner_config.preparation.fp_basis_case is None
+        and outer_config.data.basis_partition_path is None
+        and outer_config.data.basis_path is None
+        and outer_config.data.basis_partition_paths is None
+        and inner_config.data.basis_partition_path is None
+        and inner_config.data.basis_path is None
+        and inner_config.data.basis_partition_paths is None
     ):
         outer_nbasis, allocated_inner_nbasis = _allocate_nested_nbasis(
             masked_outer,
             inner_filtered,
-            total_nbasis=outer_config.preparation.nbasis,
+            total_nbasis=outer_config.data.nbasis,
         )
-        outer_config = replace(outer_config, preparation=replace(outer_config.preparation, nbasis=outer_nbasis))
-        inner_config = replace(inner_config, preparation=replace(inner_config.preparation, nbasis=allocated_inner_nbasis))
+        outer_config = replace(outer_config, data=replace(outer_config.data, nbasis=outer_nbasis))
+        inner_config = replace(inner_config, data=replace(inner_config.data, nbasis=allocated_inner_nbasis))
 
     outer_prepared = _prepare_one_domain(
         masked_outer,
         config=outer_config,
         allow_empty_inner_region=True,
         basis_support_maps=support_maps[0],
+        bc_basis=bc_basis,
     )
     inner_prepared = _prepare_one_domain(
         inner_filtered,
@@ -1443,6 +1467,7 @@ _NESTED_PARAMETER_NAMES = frozenset(
         "inner_nbasis",
         "inner_basis_path",
         "inner_basis_partition_path",
+        "inner_basis_partition_paths",
         "inner_landsea_path",
         "inner_outer_regions_path",
         "inner_fp_basis_case",
@@ -1478,7 +1503,15 @@ def run_nested(
         raise ValueError("Non-empty `likelihood_kwargs` require an active `likelihood_builder`.")
     params = read_rhime_ini(config_file) if config_file is not None else {}
     params.update(kwargs)
-    params = normalise_flux_aliases(params)
+    params = translate_rhime_aliases(params)
+    if "inner_country_directory" in params:
+        raise ValueError("`inner_country_directory` was removed in 0.8; use `inner_landsea_path` "
+                         "or `inner_outer_regions_path` for preparation and `country_file` for reporting.")
+    if {"inner_fp_basis_case", "inner_basis_directory"} & params.keys():
+        raise ValueError(
+            "Historical inner basis selectors are not supported by modern RHIME; "
+            "use `inner_basis_path`, `inner_basis_partition_path` or `inner_basis_partition_paths`."
+        )
     nested_options = {name: params.pop(name) for name in tuple(params) if name in _NESTED_PARAMETER_NAMES}
     inner_domain = nested_options.pop("inner_domain", None)
     if inner_domain is None:

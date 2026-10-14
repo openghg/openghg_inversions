@@ -76,6 +76,16 @@ configuration defaults. Keeping the run configuration alongside or referencing
 it SHALL be permitted; records SHALL NOT depend on a runtime dataclass layout
 or duplicate the whole configuration at each stage. Saved scientific output meaning
 SHALL be validated independently of whether products are requested during sampling.
+Default trace retention SHALL include the scientific quantities needed by the
+declared output contract, including standard flux scales `x`. Existing named
+deterministic expressions SHALL remain available as those scientific quantities;
+internal `_latent` variables alone SHALL NOT substitute for their output roles.
+Explicit trace selection that omits a required quantity SHALL fail before a
+completed sample manifest or product is written, unless an implemented supported
+reconstruction route can recover it from retained inputs. The scientific output
+owner SHALL validate these prerequisites against the numerical data. General
+deterministic reconstruction and compact-storage policy remain with the issues
+indexed by [#850](https://github.com/openghg/openghg_inversions/issues/850).
 The record SHALL NOT require a separate output-binding
 sidecar or persistence of live models, samplers or steps. Ordinary saves,
 manifest-last completion and dependencies SHALL follow the prepared-recipe-handoff
@@ -96,6 +106,13 @@ transitive authentication or rehashing dependencies before and after inference.
 - **THEN** the sample record references it through an ordinary relative or explicit absolute path
 - **AND** sampling does not implicitly copy large prepared dependencies or make
   the sample directory independently self-contained
+
+#### Scenario: Retain scientific state for output replay
+
+- **WHEN** the standard model constructs `x` as a deterministic transform of `x_latent`
+- **THEN** default sampling retains `x` for postprocessing
+- **AND** an explicit trace selection keeping only `x_latent` and `mu` is rejected before completing a handoff that requires `x`, unless supported reconstruction exists
+- **AND** replay cannot write an apparently valid inversion output with an absent flux-scale role
 
 ### Requirement: Replay uses existing scientific validation
 

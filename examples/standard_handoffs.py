@@ -17,13 +17,13 @@ from scipy.stats import norm
 from openghg_inversions.basis import BasisFunctions
 from openghg_inversions.inversion_data import RhimeMergedData, SiteOptions
 from openghg_inversions.rhime import stages as handoffs
-from openghg_inversions.rhime.params import PreparationConfig, RhimeConfig
+from openghg_inversions.rhime.params import DataConfig, RhimeConfig
 from openghg_inversions.rhime.sampling import RhimeSampler
 from openghg_inversions.rhime.specs import RhimeOutputSpec
 from openghg_inversions.rhime.standard import run_standard
 
 
-def synthetic_inputs(destination: Path) -> tuple:
+def synthetic_inputs(destination: Path, *, multiple_sources: bool = False) -> tuple:
     """Create a small supplied-merged case and its explicit scientific resources."""
     destination.mkdir(parents=True, exist_ok=True)
     grid = {"lat": [50., 51.], "lon": [-2., -1.]}
@@ -46,7 +46,13 @@ def synthetic_inputs(destination: Path) -> tuple:
         coords={**grid, "time": dates},
     ).chunk()
     site.mf.attrs["units"] = "ppm"
-    merged = RhimeMergedData(site_data={"TAC": site}, flux_data={"inventory": flux.to_dataset(name="flux")},
+    sources = {"inventory": flux.to_dataset(name="flux")}
+    if multiple_sources:
+        supplemental = flux.copy(data=np.array([[.3, 1.2], [2.1, .4]]))
+        sources["supplemental"] = supplemental.to_dataset(name="flux")
+        flux = flux + supplemental
+        flux.attrs["units"] = "mol m-2 s-1"
+    merged = RhimeMergedData(site_data={"TAC": site}, flux_data=sources,
                              site_options=SiteOptions.from_inputs(sites=["TAC"], averaging_period="1h"))
     preparation_options = dict(species="ch4", sites=["TAC"], averaging_period="1h", domain="EUROPE",
                                start_date="2019-01-01", end_date="2019-02-01", flux_sources=["inventory"],
@@ -54,12 +60,14 @@ def synthetic_inputs(destination: Path) -> tuple:
     return merged, preparation_options, country_path, flux, h, y
 
 
-def run_example(destination: Path) -> None:
+def run_example(destination: Path, *, multiple_sources: bool = False) -> None:
     """Run the saved/full comparison and independent normal-density check."""
-    merged, preparation_options, country_path, flux, h, y = synthetic_inputs(destination)
+    merged, preparation_options, country_path, flux, h, y = synthetic_inputs(
+        destination, multiple_sources=multiple_sources,
+    )
     site = merged.site_data["TAC"]
     original = site.copy(deep=True)
-    preparation = PreparationConfig.from_params(preparation_options)
+    preparation = DataConfig.from_params(preparation_options)
     manifest = handoffs.prepare(preparation, output_dir=destination / "prepared", merged_data=merged)
     preparation_bytes = manifest.read_bytes()
     prepared, _ = handoffs.load_preparation(manifest)

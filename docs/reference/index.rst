@@ -56,7 +56,28 @@ retained execution metadata and compatibility helpers.
    openghg_inversions.rhime.RhimeConfig
    openghg_inversions.rhime.RhimeConfig.from_params
    openghg_inversions.rhime.RhimeConfig.select
+   openghg_inversions.rhime.DataConfig
+   openghg_inversions.rhime.DataConfig.from_params
+   openghg_inversions.rhime.DataConfig.select
    openghg_inversions.inversion_data.SiteOptions
+
+Reuse standard preparation and samples
+--------------------------------------
+
+These standard-route operations share the full runner's scientific preparation
+and output owners. See the :doc:`saved-phase guide </usage/staged_workflow>` for
+manifest lifetime, compatible model changes and graph-free product replay.
+
+.. autosummary::
+   :nosignatures:
+
+   openghg_inversions.rhime.stages.prepare
+   openghg_inversions.rhime.stages.save_preparation
+   openghg_inversions.rhime.stages.load_preparation
+   openghg_inversions.rhime.stages.sample
+   openghg_inversions.rhime.stages.save_samples
+   openghg_inversions.rhime.stages.postprocess
+   openghg_inversions.rhime.stages.prior_predictive
 
 Run specifications and results
 ------------------------------

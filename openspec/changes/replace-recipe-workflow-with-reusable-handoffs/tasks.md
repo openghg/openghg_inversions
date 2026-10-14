@@ -4,7 +4,11 @@ The maintainer approved this plan for implementation on 11 October 2026. These
 are implementation tasks, all unchecked until their acceptance evidence exists.
 Start with a bounded implementation PR stacked on #841. This planning change
 itself changes no runtime behavior. Follow [design.md](design.md) and the three
-new capability specs and configuration amendment. The four delivery sections below define proposed bounded
+new capability specs and the
+[configuration amendments](../group-rhime-configuration-by-owner/proposal.md) and
+[resource-I/O prerequisite](../../specs/rhime-resource-io/spec.md).
+Their durable capability specs describe the delivered baselines.
+The four delivery sections below define proposed bounded
 implementation-child scopes for OPE-207; they do not create Linear issues or
 represent one assignment spanning every family.
 
@@ -35,6 +39,13 @@ the initial ordinary/cached CO2 staged delivery; the CO2 sections below adopt th
 replacement handoffs rather than reopening that completed scope. Linked CO2/O2
 adoption remains in OPE-165, retaining its completed numerical persistence.
 
+The 13 October review adds one bounded prerequisite before #866:
+[#868](https://github.com/openghg/openghg_inversions/issues/868) resolves resource
+paths at the runner/frontend boundary and moves optional basis saving from
+`prepare_basis` into runners. Consume that delivery, including its caller/API
+migration, without reimplementing it here. #840's exact basis destinations are
+already an acceptance baseline; the rebasing in #866 is a regression against it.
+
 ## 1. Complete standard preparation-to-products route
 
 Implementation started in [#843](https://github.com/openghg/openghg_inversions/pull/843),
@@ -50,43 +61,54 @@ with the same selection on #841. Independent review, changed-path Ruff and diff
 checks passed. Keep the task checkboxes open pending their complete acceptance;
 the PR records the bounded implementation and validation details.
 
-### Standard-route delivery, 13 October 2026
+### Standard-route integration evidence, 14 October 2026
 
-The implementation starts from devel `c59f7992`: #863 integrates #840/#841,
-#843 supplies invocation-local sampler selection, #855 supplies the #808 stage
-I/O cleanup, and #795 supplies production predictive integration. This delivery
-moves preparation configuration to its existing owner, adds standard prepared
-and sampled writers/readers together with CLI/Python callers, and keeps full
-execution in memory through the same scientific preparation and output owners.
+PR #866 integrates devel `52a6b12c`, including merged #869's resource I/O,
+canonical-only configuration and HBMCMC isolation. #863 delivered #840/#841's
+operator/current-flux contracts, #843 supplied invocation-local samplers, #855
+supplied stage-I/O cleanup, and #795 supplied predictive integration. The separate
+configuration change owns the implemented `DataConfig` / `RhimeConfig.data` /
+`data` grouping; its sync/archive remains pending merged delivery.
 
-`examples/standard_handoffs.py` is the runnable acceptance: one preparation,
-two Normal-prior choices, and basic/inversion outputs from each saved posterior.
-It compares saved/full posterior and product arrays, tests Normal log density
-against SciPy at three states (`rtol=1e-6`, `atol=1e-5` for float32 graph arithmetic),
-and independently reconstructs native flux from the scaling draws. The selected
-operator's historical inventory differs by a factor of nine from the retained
-current inventory. The generated project recipe also has a real Student-t
-log-density check and saved replay. Borrowed Dask graph identity, retained subsets,
-original requested dates and missing likelihood inputs have executable checks.
+The runnable `examples/standard_handoffs.py` prepares once, samples two Normal
+prior choices, and makes basic and inversion outputs from each saved posterior.
+`tests/test_standard_handoff_parity.py` compares those results with two full
+in-memory runs and checks Normal density against SciPy (`rtol=1e-6`, `atol=1e-5`
+for float32 graph arithmetic). The generated recipe supplies an independent
+Student-t density check and saved replay. Default log-normal sampling retains
+both `x` and `x_latent`; explicitly selecting only `x_latent` and `mu` fails
+before a completed sample manifest.
 
-Validation: 380 science/consumer tests passed; 98 configuration tests passed;
-24 resolved-run, 27 sampler-selection and 33 nested checks passed. The current
-handoff suite passed 37 checks and covers fresh-process replay, reference paths, malformed inputs,
-manifest-last save failures, metadata absence, readiness and independent diagnosis.
-The deferred stage suite passed 35 checks and CO2 contract/workflow coverage
-passed 26 checks. Changed-path Ruff, Python compilation and `git diff --check`
-pass; affected documentation download targets resolve. Full-suite compatibility
-and type environments are not claimed by this bounded delivery and remain in 5.1.
+The unequal-source acceptance supplies inventory fields `[[1,2],[3,4]]` and
+`[[.3,1.2],[2.1,.4]]`. It independently reconstructs flux from scaling draws and
+their sum, checks first-source basis weighting separately, reverses source order,
+and verifies one native-flux resolution per preparation. The saved operator has
+a different historical prior. Deleting that operator and forbidding acquisition
+and basis export during direct scientific preparation/replay still passes.
+This exercises supplied standard merged data; it does not expand configured
+source-count support or claim multisector handoff adoption.
 
-Task 1.4 stays open: the standard example proves operator A/current flux B and
-replay retention; prerequisite runtime-flux tests cover source weighting/order.
-Their combined unequal-multiple-source saved-workflow acceptance remains for
-multisector adoption. No later family delivery or OpenSpec archive is claimed.
+Validation after integration:
 
-- [x] 1.1 Group the existing resolved `RhimeConfig` preparation fields in one
-  `PreparationConfig` at their current owner, moving fields/defaults rather than copying
-  them into a second schema. Keep model, sampler and output choices with their
-  owners. Verify full and phase-only inputs resolve the same applicable choices
+- Configuration, HBMCMC shim and full-run tests: 480 passed.
+- Scientific parity, basis/resource paths, resolved runs, generated/custom recipe
+  consumers: 159 passed.
+- Handoffs, deferred stages and CO2 staged outputs: 98 passed; output contracts:
+  9 passed.
+- CLI and nested consumers: 44 passed initially; amended CLI regressions also
+  cover flat saved-model claims and rejected unused prior-readiness sampler overrides.
+- Additional resource, sampler, replay, HBMCMC boundary and builder coverage:
+  142 checks passed (three focused reruns after migrating one stale test and
+  selecting a writable compiler cache).
+- Changed-path Ruff and both active changes' strict OpenSpec validation pass.
+
+No multisector/CO2 adoption, final integrated-family gate, or spec promotion is
+claimed by this standard delivery. CI verifies the pushed integration's full
+suite, supported Python versions, typing and documentation.
+
+- [x] 1.1 Consume the separate [configuration change](../group-rhime-configuration-by-owner/tasks.md)
+  delivering `RhimeConfig.data: DataConfig` and the grouped `data` key. Record
+  its implementation evidence and verify full and phase-only inputs resolve the same applicable choices
   without demanding unrelated sections, touching arrays or mutating caller values.
   Cover omitted/explicit model `use_bc` against enabled/disabled preparation,
   preserved legacy flat routing, and omitted/equivalent/conflicting `bc_freq`
@@ -109,19 +131,25 @@ multisector adoption. No later family delivery or OpenSpec archive is claimed.
   lower-level operations that already require a resolved sampler.
 - [x] 1.3 Consolidate standard scientific calls at their existing owners in the
   visible order observation errors, filtering, basis, sensitivities and assembly.
+  Keep acquisition/supplied-data selection in the runner, explicitly selecting
+  each operation's named arguments from `config.data`; verify scientific
+  preparation accepts acquired inputs with retrieval disabled and no export writes.
   Consume #837's explicit assembly/execution boundaries and the named joint PyMC
   materialization boundary. Verify retained-site/averaging alignment, empty-set
   rejection, borrowed lazy arrays and custom builder/likelihood contracts across
   full, supplied-merged/prepared and saved routes; remove forwarding-only wrappers.
   Preserve the current model-composition seam and registered-coordinate owner;
   do not broaden the canonical custom-likelihood contract through role handling.
-- [ ] 1.4 Consume #838/#839's explicit basis and runtime-flux contracts. Verify a
+- [x] 1.4 Consume #838/#839's explicit basis and runtime-flux contracts. Verify a
   selected operator A binds current acquired native flux B, saving retains B and
   replay restores B without acquisition or the original inventory paths. Cover
   first-source weighting separately from all-source retention, source order and
   once-per-domain/grid native-flux resolution; use unequal source fields and an
   independent reconstruction calculation. Record which prerequisite PRs supply
   these behaviors rather than implementing them again here.
+  Consume #868's runner-owned optional basis save and resource-path resolution;
+  verify the new routes preserve the existing exact-export behavior rather than
+  introducing checkpoint-directory rebasing.
 - [x] 1.5 Validate declared coordinate/output roles even when immediate products
   are disabled. Share the existing variable-role/output-contract owner between
   predictive sampling and postprocessing; remove independent concentration-name
@@ -142,6 +170,9 @@ multisector adoption. No later family delivery or OpenSpec archive is claimed.
   missing required arrays or changed baked policy fail before inference. Distinguish
   scientific compatibility from descriptive provenance. Record a Git revision
   when available without making it a requirement for execution.
+  Retain scientific output state `x` by default. Check that explicit omission
+  cannot complete an incompatible handoff without supported reconstruction;
+  `_latent` values alone do not satisfy the scientific output role.
 - [x] 1.8 Implement standard `postprocess` from one sample manifest and current
   output choices. Replayed results use `sampler=None` and plain saved metadata;
   configuration construction is permitted, but replay does not build a model or
@@ -166,6 +197,8 @@ multisector adoption. No later family delivery or OpenSpec archive is claimed.
   0.8 staged-contract release note with #808, distinguishing preserved numerical,
   product and direct scientific APIs from retired staged envelopes/aliases;
   add no 0.7 staged compatibility adapters.
+  Cover canonical file options versus deprecated overrides, one error naming all
+  unsuitable keys, and the distinct file-relative and invocation-relative path bases.
 - [x] 1.11 Clear the standard gate with a runnable preparation/two-model/two-product
   example, distinct sample destinations and real prior or likelihood
   calculations checked against an independent calculation or existing regression
@@ -255,7 +288,7 @@ multisector adoption. No later family delivery or OpenSpec archive is claimed.
 
 ## 5. Integrated acceptance and completion
 
-- [ ] 5.1 Reconcile all four family deliveries against the three new capability specs and configuration amendment
+- [ ] 5.1 Reconcile all four family deliveries against the three new capability specs and the configuration/resource-I/O capabilities
   while preserving the current model-selection and model-composition baselines;
   record merged PRs, commands/results and justified numerical tolerances. Run
   relevant broader scientific, configuration, CLI, staged/replay, builder and output
@@ -269,3 +302,6 @@ multisector adoption. No later family delivery or OpenSpec archive is claimed.
   these capabilities and archiving this completed change. Planning merge alone
   does not complete OPE-207; do not archive the superseded proposal as successfully
   implemented or count linked OPE-165 work as delivered by this change.
+  Update remaining consumers and the developer contract map to the delivered
+  capabilities when archiving; use the actual archive location for historical
+  references. Verify links in promoted specs and remaining active changes.

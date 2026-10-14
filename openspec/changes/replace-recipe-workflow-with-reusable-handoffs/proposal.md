@@ -16,6 +16,18 @@ together; individual records need not be portable self-contained descriptions.
 Remove mandatory transitive authentication, repeated validation of local objects,
 and historical staged replay. This amends the existing implementation plan.
 
+The maintainer clarified the contract during review of #866 on 13 October 2026:
+name the combined acquisition/preparation record `RhimeConfig.data: DataConfig`
+and its grouped mapping `data`, keep acquisition and path policy in runners,
+move optional basis saving out of scientific preparation, and retain states such as `x` by
+default. This specification amendment is reviewed separately from implementation;
+implementation PRs consume it rather than revise the contract to match their code.
+
+Deliver [#868](https://github.com/openghg/openghg_inversions/issues/868)'s bounded
+resource-resolution and runner-owned basis-export work before #866. Exact export
+destinations are already guaranteed by #840 and now owned by the resource-I/O spec;
+the duplicated-directory behavior in #866 is a regression, not a new requirement.
+
 ## Why
 
 Full and saved recipe routes still couple scientific preparation to later model
@@ -30,8 +42,8 @@ not a completed implementation or required artifact contract.
 - Keep one readable scientific sequence per family. Full execution calls science
   in memory; optional `save_preparation`/`save_samples` write numerical artifacts
   and the complete manifest last. Saving introduces no publisher or workflow engine.
-- Give complete `RhimeConfig` requests a preparation record alongside the existing
-  model, sampler and output owners. Move existing preparation fields/defaults
+- Give complete `RhimeConfig` requests one `data: DataConfig` record alongside the
+  existing model, sampler and output owners. Move acquisition/preparation fields/defaults
   rather than duplicating them. Group legacy INI options into ordinary mappings;
   resolve each saved phase independently and bind model choices to prepared facts.
   Standard/multisector omitted model BC use inherits the preparation choice;
@@ -72,14 +84,19 @@ not a completed implementation or required artifact contract.
 - `sampled-recipe-handoff`: Saved inference, associated run context and current
   output policy producing new products without model reconstruction or sampling.
 
-### Modified Capabilities
+### Existing capabilities consumed
 
-- `rhime-configuration`: [Explicit deltas](specs/rhime-configuration/spec.md)
-  amend the [current configuration capability](../../specs/rhime-configuration/spec.md):
-  preparation fields move into one `PreparationConfig` group; complete and
-  phase-only resolution share owners without requiring unrelated sections.
+The [configuration capability](../../specs/rhime-configuration/spec.md) records
+the delivered flat configuration. Pending grouped `RhimeConfig.data`, option
+resolution and independent phase selection belong to the separate
+[configuration change](../group-rhime-configuration-by-owner/proposal.md),
+coordinated with #866. This change consumes those amendments without duplicating
+their delta.
 
-### Existing capabilities preserved
+The [resource-I/O capability](../../specs/rhime-resource-io/spec.md) records
+runner-owned path resolution and optional basis exports, selected-resource
+checks and exact destinations delivered by #868. This change consumes those
+contracts without introducing another resource owner.
 
 Merged #854 records delivered [model selection](../../specs/rhime-model-selection/spec.md)
 and [model composition](../../specs/rhime-model-composition/spec.md). This change
@@ -88,15 +105,16 @@ registered coordinates and custom-likelihood contracts keep their existing owner
 New saved-phase interfaces and role validation are the deltas described here,
 not evidence that those proposed interfaces have already shipped.
 
-The three new capabilities and configuration amendment replace [the archived superseded proposal](../archive/2026-10-11-unify-recipe-workflow-configuration/proposal.md).
+The three new capabilities, together with the configuration capability they
+consume, replace [the archived superseded proposal](../archive/2026-10-11-unify-recipe-workflow-configuration/proposal.md).
 That change was archived without syncing its requirements; its historical
 contract is not a current capability or an implementation prerequisite.
 
-The three new capabilities and configuration amendment live under this active
-change as proposed deltas. Main specs in `openspec/specs/` describe delivered
-behavior; `openspec/changes/archive/` retains completed or superseded history.
-This replacement remains active; implementation progress and evidence are in
-[tasks.md](tasks.md). Its
+The three new capabilities live under this active change as proposed deltas.
+The durable configuration and resource-I/O capabilities describe delivered behavior;
+their pending amendments remain in the separate active changes linked above.
+`openspec/changes/archive/` retains completed or superseded history.
+This replacement remains active; implementation evidence is recorded in [tasks.md](tasks.md). Its
 deltas SHALL NOT be synced merely because planning is approved.
 
 ## Reconciled lifecycle baseline
@@ -124,13 +142,14 @@ in `openspec/specs/rhime-configuration/spec.md`, including observation-error
 ordering, in-memory acquisition and modern flux-selector deprecation. The
 archives retain their 11 October historical contents; the superseded workflow
 contract is not revived or promoted. Reconstruction specs remain unchanged and
-this replacement remains the only active change. Its remaining implementation tasks stay
-unchecked; see [tasks.md](tasks.md) for delivered standard-route evidence.
+this replacement was the only active change at that reconciliation. Its
+implementation tasks stayed unchecked.
 
 The rebase onto `devel` `7269f50f` includes #854's retrospective model-selection
 and model-composition specs. There are now five current capability specs; the
-three new handoff/execution capabilities and configuration amendment remain
-active deltas. #854 changes documentation ownership, not runtime behavior or
+three new handoff/execution capabilities and configuration amendment remained
+active deltas at that rebase. The 13 October review separates configuration and
+resource-I/O amendments into their own active changes as described above. #854 changes documentation ownership, not runtime behavior or
 completion of any of this change's 27 tasks. Its two new baselines and the archived
 scientific records remain unchanged. The development contract map now links to
 current specs and the archived superseded proposal at their reconciled locations.
@@ -142,10 +161,16 @@ still request defaults, but explicit `None` must become `"default"` or be omitte
 at live entry points. `None` consistently denotes absence on results; replay uses
 saved provenance. No `None`-means-default compatibility adapter is retained.
 
-Planning only: [design.md](design.md) gives the concrete API sketches, metadata
+The separate #868 prerequisite removes `prepare_basis(output_path=...)` and moves
+the optional save into runners using the returned basis and its existing codec.
+This change consumes that boundary; it does not deliver the prerequisite or
+redefine #840's exact-destination guarantee.
+
+[design.md](design.md) gives the concrete API sketches, metadata
 inventory, scientific order and saving semantics; [tasks.md](tasks.md) defines four
-implementation delivery phases and their acceptance gates. All implementation
-checkboxes remain unchecked. No runtime code, new file format or dependency ships.
+implementation delivery phases and their acceptance gates. PR #866 implements
+the standard route and records validation in the tasks; later family adoption
+and final promotion remain outstanding.
 
 Reuse merged #773/#774, #822–#826, #830, #832 and #834–#837.
 #840 implements #838's explicit basis
