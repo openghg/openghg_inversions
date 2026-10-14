@@ -313,9 +313,9 @@ def _make_inversion_output(
         ),
         metadata=_structured_metadata(builder_metadata),
     )
-    model_metadata = result.model_spec.to_record(
-        priors=prior_records(result.model) if result.model is not None else trace_prior_records(result.idata),
-    )
+    constructed_priors = prior_records(result.model) if result.model is not None else trace_prior_records(result.idata)
+    model_metadata = result.model_spec.to_record(priors=constructed_priors)
+    model_metadata["constructed_priors"] = constructed_priors
     if model_metadata["likelihood"] is not None:
         model_metadata["likelihood"] = model_metadata["likelihood"]["options"]
     # Keep existing in-memory activity provenance; saved phases reject these
@@ -324,6 +324,10 @@ def _make_inversion_output(
         policy = getattr(result.model_spec, name)
         model_metadata[name] = None if policy is None else asdict(policy)
     for sector, record in zip(result.model_spec.sectors, model_metadata["sectors"], strict=True):
+        role = "flux_scale" if len(result.model_spec.sectors) == 1 else f"flux_scale:{sector.name}"
+        variable = contract.variable_roles.get(role)
+        if variable is not None and variable in constructed_priors:
+            record["x_prior"] = constructed_priors[variable]
         record["state_activity"] = None if sector.state_activity is None else asdict(sector.state_activity)
     return make_inversion_output(
         prepared=prepared,

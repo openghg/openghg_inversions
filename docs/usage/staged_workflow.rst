@@ -47,7 +47,10 @@ Numerical scalars are retained inline in model metadata. Array-valued parameters
 are registered as model data and saved in the trace's ``constant_data`` group,
 with their scientific dimensions and coordinates; metadata references those
 arrays rather than embedding numerical arrays in JSON. Disabled components
-contribute no prior metadata or references.
+contribute no prior metadata or references. Modern inversion outputs retain all
+used priors in ``model_metadata["constructed_priors"]``, keyed by their concrete
+model variable names. Sector associations use the output contract's variable
+roles, including separate outer and inner state variables in nested outputs.
 
 Related lazy prior inputs, including supported zero-dimensional numerical
 inputs and auxiliary coordinates, are materialized together with selected model

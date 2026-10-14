@@ -141,3 +141,17 @@ def test_plain_model_positional_singletons_preserve_broadcasting():
         trace = pm.sample_prior_predictive(draws=1, random_seed=42)
     assert trace.prior["x"].shape == (1, 1, 2, 3)
     assert model["x_prior_sigma"].get_value().shape == (2, 1)
+
+
+@pytest.mark.parametrize("model_context", [registered_model, pm.Model])
+def test_named_prior_dimensions_validate_length_without_indexes(model_context):
+    with model_context(coords={"site": ["a", "b"]}) as model:
+        with pytest.raises(ValueError, match="incompatible 'site' length"):
+            parse_prior("wrong", {"pdf": "normal", "mu": xr.DataArray([1.], dims="site"),
+                                  "sigma": 1.}, dims="site")
+        assert "wrong_prior_mu" not in model
+        state = parse_prior("x", {"pdf": "normal", "mu": xr.DataArray([1., 2.], dims="site"),
+                                  "sigma": 1.}, dims="site")
+        trace = pm.sample_prior_predictive(draws=1, random_seed=42)
+    assert trace.prior[state.name].sizes["site"] == 2
+    np.testing.assert_array_equal(trace.constant_data["x_prior_mu"], [1., 2.])

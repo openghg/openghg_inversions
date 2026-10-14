@@ -190,14 +190,15 @@ def parse_prior(
                     parameter_dims.append(dim)
                 value = xr.DataArray(value, dims=parameter_dims, coords=coords)
         if isinstance(value, xr.DataArray):
-            if registry is not None:
-                for dim in value.dims:
-                    if dim in registry.original_coords and dim in value.indexes:
-                        index = value.indexes[dim]
-                        canonical = registry.original_coords[dim]
-                        if not index.is_unique or len(index) != len(canonical) or not index.isin(canonical).all():
-                            raise ValueError(f"Prior parameter {key!r} labels must match {dim!r} exactly.")
-                        value = value.sel({dim: canonical})
+            for dim in value.dims:
+                canonical = registry.original_coords.get(dim) if registry is not None else model.coords.get(dim)
+                if canonical is not None and value.sizes[dim] != len(canonical):
+                    raise ValueError(f"Prior parameter {key!r} has incompatible {dim!r} length.")
+                if registry is not None and canonical is not None and dim in value.indexes:
+                    index = value.indexes[dim]
+                    if not index.is_unique or not index.isin(canonical).all():
+                        raise ValueError(f"Prior parameter {key!r} labels must match {dim!r} exactly.")
+                    value = value.sel({dim: canonical})
             value = to_dense(value)
         params[key] = value
 
