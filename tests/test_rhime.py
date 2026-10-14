@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import json
 import subprocess
 import sys
 from dataclasses import replace
@@ -7669,7 +7670,9 @@ def test_legacy_model_error_metadata_uses_writer_likelihood() -> None:
         basis_functions=_fake_basis_functions(),
         site_metadata=_prepared_site_metadata(),
     )
-    result = _result_for_outputs(run_spec, _minimal_output_idata(), model_spec=model_spec)
+    idata = _minimal_output_idata()
+    idata.attrs["rhime_priors"] = json.dumps({"sigma": prior})
+    result = _result_for_outputs(run_spec, idata, model_spec=model_spec)
     result = rhime_outputs.make_standard_rhime_outputs(result=result, prepared=prepared)
     attrs = _legacy_hbmcmc_attrs(result.inv_out)
     assert attrs["Error for each site"] == "False"

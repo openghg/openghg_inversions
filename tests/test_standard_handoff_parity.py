@@ -7,6 +7,61 @@ def test_one_preparation_two_models_two_outputs_match_full_execution(tmp_path):
     run_example(tmp_path)
 
 
+def test_lazy_array_prior_uses_same_full_prepared_and_saved_construction(tmp_path):
+    from dataclasses import replace
+    import json
+    import dask
+    import dask.array as da
+    import numpy as np
+    import xarray as xr
+
+    from examples.standard_handoffs import synthetic_inputs
+    from openghg_inversions.inference.sampling import RhimeSampler
+    from openghg_inversions.models.priors import trace_prior_records
+    from openghg_inversions.rhime import DataConfig, RhimeConfig, RhimeOutputSpec, run_standard, stages
+    from openghg_inversions.rhime.standard import build_standard
+    from openghg_inversions.rhime.params import retained_run_spec, resolve_model_options
+
+    merged, options, *_ = synthetic_inputs(tmp_path)
+    preparation = stages.prepare(DataConfig.from_params(options), merged_data=merged,
+                                 output_dir=tmp_path / "prepared")
+    calls = []
+
+    @dask.delayed
+    def mean():
+        calls.append(1)
+        return np.array([1.2])
+
+    prepared, data = stages.load_preparation(preparation)
+    state = prepared.inv_inputs["H"]["state"]
+    mu = xr.DataArray(da.from_delayed(mean(), shape=(1,), dtype=float), dims="state", coords=state.coords)
+    prior = {"pdf": "normal", "mu": mu, "sigma": .3}
+    sampler = RhimeSampler(draws=4, tune=4, chains=1, sample_prior_predictive=False,
+                           sample_posterior_predictive=False, sample_kwargs={"cores": 1, "random_seed": 42})
+    config = RhimeConfig.from_params({**options, "x_prior": prior, "mismatch_model": "fixed_error", "output_format": "none",
+                                     "output_name": "array-prior"}, multisector=False)
+    full = run_standard(config=replace(config, sampler=sampler), merged_data=merged)
+    assert calls == [1]
+    manifest = stages.sample(preparation, model={"x_prior": prior, "mismatch_model": "fixed_error"},
+                             sampler=sampler, output_dir=tmp_path / "samples")
+    assert calls == [1, 1]
+    metadata = json.loads(manifest.read_text())["model"]["sectors"][0]["x_prior"]
+    assert metadata == {"pdf": "normal", "mu": {"data": "x_prior_mu"}, "sigma": .3}
+    replay = stages.postprocess(manifest, output=RhimeOutputSpec(output_format="inv_out", save_inversion_output=False))
+    assert calls == [1, 1]
+    np.testing.assert_allclose(replay.idata["constant_data"]["x_prior_mu"], [1.2])
+    assert trace_prior_records(full.idata) == trace_prior_records(replay.idata)
+
+    prepared, data = stages.load_preparation(preparation)
+    model = resolve_model_options({"x_prior": prior, "mismatch_model": "fixed_error"}, preparation=data)
+    built = build_standard(prepared, retained_run_spec(data, prepared, model=model,
+                           output=RhimeOutputSpec(output_format="none")))
+    assert calls == [1, 1, 1]
+    for x in (.7, 1., 1.4):
+        np.testing.assert_allclose(full.model.compile_logp()({"x": np.array([x])}),
+                                   built.model.compile_logp()({"x": np.array([x])}), rtol=1e-6)
+
+
 def test_cookiecutter_project_runs_real_student_t_recipe(tmp_path):
     import numpy as np
     from scipy.stats import norm, t

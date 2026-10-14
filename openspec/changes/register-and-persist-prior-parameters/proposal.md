@@ -48,16 +48,16 @@ this amendment without duplicating it.
 
 ## Impact
 
-Implementation will affect shared prior/state alignment helpers, their direct
+Implementation affects shared prior/state alignment helpers, their direct
 callers, model-record encoding/decoding and the existing trace persistence path.
 No new registry, serializer framework or dependency is needed. Coordinate issue
 #856, general model resizing, `Interpolated` registration/persistence and
 additional saved state-activity support remain outside this change. This scope
 does not remove existing runtime handling of `Interpolated` priors.
 
-This initial PR contains planning artifacts only, stacked on
-`codex/standard-reusable-handoffs` at `7dad0b05`. The maintainer will review the
-spec before implementation is added to the same PR. Runtime checks, maintained
-usage documentation and `newsfragments/872.bugfix.md` belong to that later
-implementation. Durable specs remain unchanged until delivery is validated;
-planning approval does not establish implemented behavior.
+The initial spec-only push was reviewed before implementation was authorized
+in the same PR. The change remains stacked on `codex/standard-reusable-handoffs`
+at `7dad0b05`, with runtime checks, maintained usage documentation and
+`newsfragments/872.bugfix.md` delivered together. Durable specs remain unchanged
+until delivery is validated; planning approval does not establish implemented
+behavior.

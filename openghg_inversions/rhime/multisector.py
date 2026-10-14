@@ -288,6 +288,13 @@ def _prepare_multisector_flux_components(
             active=resolved_activity.active.rename(rename_state),
             fixed_value=resolved_activity.fixed_value.rename(rename_state),
         )
+        prior = {
+            key: _namespace_sector_state_coords(
+                value, variable_suffix=sector.variable_suffix,
+                namespace_state_dim=gathered_layout,
+            ) if isinstance(value, xr.DataArray) and value.ndim else value
+            for key, value in prior.items()
+        }
         components.append((sector, backend_prepared, prior, backend_activity))
     return tuple(components)
 

@@ -16,8 +16,8 @@ columns, and retains the full-state mapping. ``resolve_state_activity``
 combines that mapping with a policy to produce the canonical
 ``ResolvedStateActivity``;
 ``active_prior_args`` then aligns and subsets state-valued prior parameters.
-Finite checks, exact-zero reductions, and state-vector alignment are explicit
-eager-compute boundaries for lazy or Dask-backed inputs during model building.
+Sensitivity checks and exact-zero reductions are explicit eager boundaries.
+Prior alignment preserves laziness until the owning PyMC construction boundary.
 """
 
 from __future__ import annotations
@@ -499,35 +499,23 @@ def resolve_state_activity(
 def active_prior_args(
     prior_args: dict[str, Any],
     activity: ResolvedStateActivity,
+    *,
+    select_active: bool = True,
 ) -> dict[str, Any]:
-    """Return prior arguments sliced to active states in canonical order.
+    """Align borrowed full-state prior parameters without computing their values.
 
-    Scalar parameters are retained. One-dimensional NumPy state parameters are
-    interpreted in canonical order and must describe the full state vector.
-    Labelled xarray parameters are first aligned by the canonical state
-    coordinate and then subset, allowing input label order to differ safely.
-    Array-backed parameters are materialized at this model-building boundary.
-    The support arrays of an ``Interpolated`` prior are preserved rather than
-    interpreted as state-valued parameters.
-
-    Args:
-        prior_args: PyMC prior specification.
-        activity: Resolved activity contract in canonical state order.
-
-    Returns:
-        A copy of ``prior_args`` containing scalar or active-state parameters.
-
-    Raises:
-        ValueError: If an array-valued distribution parameter is not scalar or
-            full-state one-dimensional data.
+    Scalars broadcast unchanged. Labelled and positional vectors use canonical
+    full-state order; ``select_active=False`` retains that full vector for model
+    data registration before graph-level active-state selection.
     """
-    result: dict[str, Any] = {}
-    active_indices = activity.active_indices
-    canonical_coord = activity.active.coords[activity.state_dim]
-    pdf = str(prior_args.get("pdf", "")).lower()
+    from pytensor.graph.basic import Variable
 
+    result: dict[str, Any] = {}
+    state_dim = activity.state_dim
+    canonical_coord = activity.active.coords[state_dim]
+    pdf = str(prior_args.get("pdf", "")).lower()
     for name, value in prior_args.items():
-        if name in {"pdf", "reparameterise"}:
+        if name in {"pdf", "reparameterise"} or isinstance(value, Variable):
             result[name] = value
             continue
         if pdf == "interpolated" and name in {"x_points", "pdf_points"}:
@@ -537,38 +525,29 @@ def active_prior_args(
             continue
         if isinstance(value, xr.DataArray):
             if value.ndim == 0:
-                scalar = value.compute().item()
-                scalar_array = np.asarray(scalar)
-                if np.issubdtype(scalar_array.dtype, np.number):
-                    _require_finite(scalar_array, name=f"Prior parameter {name!r}")
-                result[name] = scalar
+                result[name] = value
                 continue
-            aligned = _align_state_value(
-                value,
-                sensitivity=xr.DataArray(
-                    np.empty(activity.n_state),
-                    dims=(activity.state_dim,),
-                    coords={activity.state_dim: canonical_coord},
-                ).expand_dims(nmeasure=[0]),
-                state_dim=activity.state_dim,
-                name=f"prior parameter {name!r}",
-                dtype=None,
+            if value.dims != (state_dim,) or state_dim not in value.coords:
+                raise ValueError(f"Prior parameter {name!r} must be labelled only by {state_dim!r}.")
+            _require_same_state_labels(
+                value, canonical_index=canonical_coord.to_index(), state_dim=state_dim,
+                name=f"Prior parameter {name!r}",
             )
-            aligned_values = _materialize_1d(aligned, name=f"Prior parameter {name!r}")
-            _require_finite(aligned_values, name=f"Prior parameter {name!r}")
-            result[name] = aligned_values[active_indices]
-            continue
-
-        array = np.asarray(value)
-        if array.ndim == 0:
-            result[name] = value
-        elif array.ndim == 1 and array.size == activity.n_state:
-            _require_finite(array, name=f"Prior parameter {name!r}")
-            result[name] = array[active_indices]
+            aligned = value.sel({state_dim: canonical_coord})
         else:
-            raise ValueError(
-                f"Prior parameter {name!r} must be scalar or a one-dimensional full-state "
-                f"array of length {activity.n_state}; found shape {array.shape!r}."
-            )
-
+            # Dask arrays expose ndim/shape without coercion or computation.
+            value = value if hasattr(value, "ndim") else np.asarray(value)
+            if value.ndim == 0:
+                result[name] = value
+                continue
+            if value.ndim != 1 or value.shape[0] != activity.n_state:
+                raise ValueError(
+                    f"Prior parameter {name!r} must be scalar or a one-dimensional full-state "
+                    f"array of length {activity.n_state}; found shape {value.shape!r}."
+                )
+            aligned = xr.DataArray(value, dims=(state_dim,), coords={state_dim: canonical_coord})
+        from dask import is_dask_collection
+        if not is_dask_collection(aligned):
+            _require_finite(aligned.to_numpy(), name=f"Prior parameter {name!r}")
+        result[name] = aligned.isel({state_dim: activity.active_indices}) if select_active else aligned
     return result

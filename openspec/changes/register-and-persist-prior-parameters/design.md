@@ -173,5 +173,17 @@ does not require preserving that hook during #866's simplification.
    durable specs only with validated delivery; no compatibility reader for #866's
    unshipped lossy model-record representation is required.
 
-The initial push contains no implementation or runnable tests. Implementation
-tasks are intentionally deferred until the spec has been reviewed.
+The initial push contained only the spec for maintainer review. That review is
+complete and implementation is authorized; `tasks.md` tracks delivery and
+validation in the same stacked PR.
+
+## Implementation clarification pending
+
+Coordinated model/prior materialization must happen before data-dependent
+zero-sensitivity pruning if those inputs share a lazy dependency. Disabled BC
+and offset components can be omitted before that boundary. An enabled state
+prior can prove unnecessary only after its sensitivity is evaluated. Confirm
+whether such enabled priors may materialize jointly before pruning; otherwise,
+preserving both one execution of shared dependencies and zero execution of a
+subsequently unused prior needs additional execution-state management. No such
+management or exception to the contract has been implemented pending review.
