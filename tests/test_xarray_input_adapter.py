@@ -829,7 +829,10 @@ def test_adapter_output_executes_through_prepared_runner_without_openghg(
         output=RhimeOutputSpec(output_format="none", save_inversion_output=False),
     )
 
-    monkeypatch.setattr(RhimeSampler, "sample", lambda self, model, **kwargs: make_trace())
+    sampled = make_trace(posterior=xr.Dataset({
+        "x": (("chain", "draw", "region"), np.ones((1, 1, prepared.inv_inputs.sizes["region"]))),
+    }, coords={"region": prepared.inv_inputs.region}))
+    monkeypatch.setattr(RhimeSampler, "sample", lambda self, model, **kwargs: sampled)
 
     result = run_rhime_from_prepared_inputs(prepared_inputs=prepared, run_spec=run_spec)
 

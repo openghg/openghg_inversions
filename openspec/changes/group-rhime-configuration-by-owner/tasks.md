@@ -43,3 +43,7 @@ The handoff change's standard acceptance compares saved results with full
 execution and independent density/native-flux calculations. Task 2.2 remains
 open until merged delivery and explicit promotion/archive; unrelated family
 handoff tasks remain unchecked.
+
+Full standard/multisector grouped aliases now use the same frontend translator;
+canonical grouped constructors still reject aliases without warnings. The final
+configuration/phase/compatibility/HBMCMC-boundary selection passed 172 tests.

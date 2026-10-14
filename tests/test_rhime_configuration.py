@@ -802,7 +802,8 @@ def test_canonical_configuration_rejects_aliases_without_warnings(name):
 
 
 @pytest.mark.parametrize("runner", [rhime.run_rhime, rhime.run_rhime_multisector])
-def test_runner_translates_before_canonical_configuration(monkeypatch, runner):
+@pytest.mark.parametrize("grouped", [False, True])
+def test_runner_translates_before_canonical_configuration(monkeypatch, runner, grouped):
     """Compatibility warnings belong to the runner, before config construction."""
     import warnings
 
@@ -822,8 +823,19 @@ def test_runner_translates_before_canonical_configuration(monkeypatch, runner):
     params = _request(emissions_store="archive", outputname="old", xprior={"pdf": "normal", "mu": 1, "sigma": 1})
     if runner is rhime.run_rhime_multisector:
         params["flux_sources"] = ["anthro", "natural"]
+    if grouped:
+        canonical = rhime_params.group_rhime_params({
+            name: value for name, value in params.items()
+            if name not in {"emissions_store", "outputname", "xprior"}
+        })
+        canonical["data"]["emissions_store"] = params["emissions_store"]
+        canonical["model"]["xprior"] = params["xprior"]
+        canonical["output"]["outputname"] = params["outputname"]
+        params = canonical
+    before = deepcopy(params)
     with pytest.warns(DeprecationWarning), pytest.raises(ConfigReached):
         runner(**params)
+    assert params == before
     assert seen[0].data.flux_store == "archive"
     assert seen[0].model.sectors[0].x_prior["mu"] == 1
 
@@ -872,3 +884,14 @@ def test_data_resolver_rejects_alias_without_translation():
         warnings.simplefilter("error", DeprecationWarning)
         with pytest.raises(ValueError, match="emissions_name"):
             rhime_params.DataConfig.from_params({**options, "emissions_name": ["old"]})
+
+
+def test_canonical_grouped_configuration_rejects_aliases_without_warnings():
+    import warnings
+
+    params = rhime_params.group_rhime_params(_request())
+    params["model"]["xprior"] = {"pdf": "normal", "mu": 1, "sigma": 1}
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", DeprecationWarning)
+        with pytest.raises(ValueError, match="model.xprior"):
+            rhime_params.RhimeConfig.from_params(params, multisector=False)

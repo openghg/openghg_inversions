@@ -54,7 +54,7 @@ The core principles for new RHIME work are:
 * Accept small duplication when it keeps alternative scientific recipes clear.
 * Use dataclasses for concrete scientific concepts or durable handoffs.
 * Normalize configuration at its owning boundary and forward named values
-  explicitly, including an explicit ``config.preparation.select("name", ...)`` selection
+  explicitly, including an explicit ``config.data.select("name", ...)`` selection
   where useful.
 * Keep helpers close to their scientific owner. Tiny registries can serve
   homogeneous families such as filters without controlling the whole model.

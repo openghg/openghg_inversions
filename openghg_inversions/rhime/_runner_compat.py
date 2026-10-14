@@ -100,7 +100,7 @@ def translate_rhime_aliases(params: Mapping[str, Any]) -> dict[str, Any]:
     """Translate deprecated request spellings before canonical construction.
 
     Args:
-        params: Raw external options after the entrypoint applies overrides.
+        params: Flat or grouped external options after the entrypoint applies overrides.
 
     Returns:
         A fresh shallow mapping for the runner to pass to canonical configuration. When both an alias
@@ -114,7 +114,12 @@ def translate_rhime_aliases(params: Mapping[str, Any]) -> dict[str, Any]:
     ``outer_region_definition_file`` is a deprecated RHIME spelling rather than
     a fixedbasis scientific switch and is translated at the same boundary.
     """
+    from .params import rhime_option_groups
+
     translated = normalise_flux_aliases(normalise_param_aliases(params))
+    for group in rhime_option_groups():
+        if isinstance(translated.get(group), Mapping):
+            translated[group] = translate_rhime_aliases(translated[group])
     normalise_output_format_alias(translated)
     return translated
 

@@ -111,7 +111,7 @@ def test_standard_tutorial_runs_to_persisted_output(
     monkeypatch.setattr(
         RhimeSampler,
         "sample",
-        lambda self, model, **kwargs: _deterministic_trace(model, ("x", "mu")),
+        lambda self, model, **kwargs: _deterministic_trace(model, ("x", "mu", "bc")),
     )
     result = run(
         config_file=_STANDARD_CONFIG,
@@ -138,7 +138,7 @@ def test_multisector_tutorial_runs_to_sector_diagnostics(
     monkeypatch.setattr(
         RhimeSampler,
         "sample",
-        lambda self, model, **kwargs: _deterministic_trace(model, ("x_ff", "x_ocean")),
+        lambda self, model, **kwargs: _deterministic_trace(model, ("x_ff", "x_ocean", "bc")),
     )
     overrides = _test_store_overrides(tac_ch4_data_args, tmp_path)
     overrides.update(

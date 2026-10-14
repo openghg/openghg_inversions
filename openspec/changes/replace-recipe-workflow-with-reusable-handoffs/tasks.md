@@ -100,6 +100,9 @@ Validation after integration:
 - Additional resource, sampler, replay, HBMCMC boundary and builder coverage:
   142 checks passed (three focused reruns after migrating one stale test and
   selecting a writable compiler cache).
+- Grouped full-run alias/canonical-boundary and phase compatibility coverage:
+  172 passed. Prepared serialization, tutorials and xarray adapters: 134 passed
+  after updating their mocked posteriors to satisfy the retained-state contract.
 - Changed-path Ruff and both active changes' strict OpenSpec validation pass.
 
 No multisector/CO2 adoption, final integrated-family gate, or spec promotion is

@@ -358,6 +358,11 @@ former positional ``data_args`` mappings with named arguments or an explicit
 ``**config.data.select("name", ...)`` selection. See :doc:`rhime_configuration` for
 selection ownership and the acquisition-to-preparation sequence. Use
 ``SiteOptions.from_inputs`` to normalize and align the complete selector record.
+Acquisition/preparation fields formerly on ``RhimeConfig`` now belong to
+``config.data: DataConfig``; output fields belong to ``config.output``. Grouped
+parameter mappings use ``data``. The unshipped ``preparation`` field/key is not
+a compatibility alias. Runners acquire data separately and pass that handoff to
+scientific preparation with its selected named arguments.
 Import ``SiteOptions`` from ``openghg_inversions.inversion_data``. Selector
 implementation types and the low-level ``convert_to_list`` helper live in
 ``inversion_data._site_options``; their former ``acquisition`` and

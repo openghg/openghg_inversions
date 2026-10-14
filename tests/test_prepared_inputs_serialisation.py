@@ -645,7 +645,10 @@ def test_real_prepared_inputs_save_load_and_run_without_repreparation(
         model=model_spec,
         output=RhimeOutputSpec(output_format="none", save_inversion_output=False),
     )
-    sampled = make_trace()
+    sampled = make_trace(posterior=xr.Dataset({
+        "x": (("chain", "draw", "region"), np.ones((1, 1, loaded.inv_inputs.sizes["region"]))),
+        "bc": (("chain", "draw", "bc_region"), np.ones((1, 1, loaded.inv_inputs.sizes["bc_region"]))),
+    }, coords={"region": loaded.inv_inputs.region, "bc_region": loaded.inv_inputs.bc_region}))
     observed: dict[str, object] = {}
     original_builder = rhime_standard.build_standard_rhime_model
 
