@@ -48,10 +48,25 @@ def load_stage_params(
     """Load existing RHIME parameters from one explicit source.
 
     ``CONFIG_FILE`` is intentionally not an environment default: an unrelated
-    ambient variable must never select the scientific configuration. Relative
-    file resource paths resolve beside the configuration file; explicit overrides
-    resolve from the invocation working directory. Absolute paths retain their
-    destinations.
+    ambient variable must never select the scientific configuration. Standard
+    and multisector file resource paths and explicit overrides resolve from the
+    invocation working directory. The retained CO2 loader resolves file resource
+    paths beside the configuration file and overrides from the invocation working
+    directory. Absolute paths retain their destinations.
+
+    Args:
+        config_file: Explicit configuration file; pass exactly one source.
+        params_file: Explicit JSON parameter file; pass exactly one source.
+        overrides: Invocation options applied over file values.
+        model: Family whose parameter loader is used; defaults to standard.
+
+    Returns:
+        Standard/multisector options grouped by data, model, sampler and output
+        owner, or the retained CO2 family's parameter mapping.
+
+    Raises:
+        ValueError: If neither or both sources are supplied, or the source options
+            are invalid for the selected loader.
     """
 
     if model == "co2":
@@ -112,7 +127,7 @@ def effective_configuration(setup: RhimeConfig | Co2StageSetup, *, model: ModelK
 
         return effective_co2_configuration(setup=cast("Co2StageSetup", setup))
     _reject_standard(model, "effective_configuration", "load_preparation")
-    return _multisector_stages.effective_configuration(setup=cast(RhimeConfig, setup), model="multisector")
+    return _multisector_stages.effective_configuration(setup=cast(RhimeConfig, setup))
 
 
 def configuration_identity(setup: RhimeConfig | Co2StageSetup, *, model: ModelKind) -> str:
@@ -128,7 +143,7 @@ def configuration_identity(setup: RhimeConfig | Co2StageSetup, *, model: ModelKi
 
         return co2_configuration_identity(setup=cast("Co2StageSetup", setup))
     _reject_standard(model, "configuration_identity", "load_preparation")
-    return _multisector_stages.configuration_identity(setup=cast(RhimeConfig, setup), model="multisector")
+    return _multisector_stages.configuration_identity(setup=cast(RhimeConfig, setup))
 
 
 def prepare_rhime_stage(
@@ -159,7 +174,6 @@ def prepare_rhime_stage(
         return prepare_co2_stage(setup=cast("Co2StageSetup", setup), output_dir=output_dir)
     return _multisector_stages.prepare_rhime_stage(
         setup=cast(RhimeConfig, setup),
-        model="multisector",
         output_dir=output_dir,
     )
 
@@ -211,7 +225,6 @@ def prior_predictive_stage(
         )
     return _multisector_stages.prior_predictive_stage(
         setup=cast(RhimeConfig, setup),
-        model="multisector",
         prepared_inputs=prepared_inputs,
         output_dir=output_dir,
         check_output=check_output,
@@ -261,7 +274,6 @@ def sample_rhime_stage(
         )
     return _multisector_stages.sample_rhime_stage(
         setup=cast(RhimeConfig, setup),
-        model="multisector",
         prepared_inputs=prepared_inputs,
         output_dir=output_dir,
         preparation_manifest=preparation_manifest,
@@ -316,7 +328,6 @@ def postprocess_rhime_stage(
         )
     return _multisector_stages.postprocess_rhime_stage(
         setup=cast(RhimeConfig, setup),
-        model="multisector",
         prepared_inputs=prepared_inputs,
         posterior=posterior,
         output_dir=output_dir,

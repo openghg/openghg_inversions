@@ -15,7 +15,7 @@ from dataclasses import asdict, replace
 from hashlib import sha256
 import json
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 from collections.abc import Mapping
 
 
@@ -65,8 +65,6 @@ from ._stage_authentication import (
 from ._stage_checks import _check_draws, _check_stage, prior_predictive_check
 
 
-ModelKind = Literal["multisector"]
-
 _PREPARATION_IDENTITY_EXCLUDED_OPTIONS = frozenset(
     {
         "basis_output_path",
@@ -75,14 +73,14 @@ _PREPARATION_IDENTITY_EXCLUDED_OPTIONS = frozenset(
 )
 
 
-def effective_configuration(setup: RhimeConfig, *, model: ModelKind) -> dict[str, Any]:
+def effective_configuration(setup: RhimeConfig) -> dict[str, Any]:
     """Project resolved choices into this workflow's manifest vocabulary.
 
     This is a staged artifact representation, not a configuration export API.
     No pre-preparation run description or raw shorthand is reconstructed.
     """
     return {
-        "model": model,
+        "model": "multisector",
         "model_spec": asdict(setup.model),
         "output": asdict(setup.output),
         "sampler": {name: getattr(setup.sampler, name) for name in setup.sampler.__slots__},
@@ -90,14 +88,14 @@ def effective_configuration(setup: RhimeConfig, *, model: ModelKind) -> dict[str
     }
 
 
-def configuration_identity(setup: RhimeConfig, *, model: ModelKind) -> str:
+def configuration_identity(setup: RhimeConfig) -> str:
     """Hash resolved preparation and scientific model choices.
 
     The resolved encoding supersedes historical raw/default projections;
     existing artifacts with a different configuration identity require preparation.
     """
     identity_configuration = {
-        "model": model,
+        "model": "multisector",
         "preparation": {
             name: value for name, value in setup.data.to_params().items()
             if name not in _PREPARATION_IDENTITY_EXCLUDED_OPTIONS
@@ -115,7 +113,6 @@ def configuration_identity(setup: RhimeConfig, *, model: ModelKind) -> str:
 def prepare_rhime_stage(
     *,
     setup: RhimeConfig,
-    model: ModelKind,
     output_dir: str | Path,
 ) -> dict[str, Any]:
     """Prepare and persist independently inspectable RHIME inputs.
@@ -179,9 +176,9 @@ def prepare_rhime_stage(
         "schema_version": 1,
         "producer": "openghg_inversions",
         "stage": "prepare",
-        "configuration_identity": configuration_identity(setup, model=model),
-        "requested_configuration": effective_configuration(setup, model=model),
-        "effective_configuration": effective_configuration(setup, model=model),
+        "configuration_identity": configuration_identity(setup),
+        "requested_configuration": effective_configuration(setup),
+        "effective_configuration": effective_configuration(setup),
         "artifacts": {
             "prepared_inputs": _artifact_path(prepared_path),
         },
@@ -195,12 +192,11 @@ def _load_prepared(
     path: str | Path,
     *,
     setup: RhimeConfig,
-    model: ModelKind,
     preparation_manifest: str | Path,
 ) -> tuple[RhimePreparedInputs, RhimeRunSpec]:
     prepared_path = Path(path).resolve()
     _, manifest = _load_stage_manifest(preparation_manifest, stage="prepare")
-    expected = configuration_identity(setup, model=model)
+    expected = configuration_identity(setup)
     if manifest.get("configuration_identity") != expected:
         raise ValueError(
             "Prepared inputs do not match the effective RHIME configuration: "
@@ -219,7 +215,6 @@ def _build_prepared_model(prepared: RhimePreparedInputs, run_spec: RhimeRunSpec)
 def prior_predictive_stage(
     *,
     setup: RhimeConfig,
-    model: ModelKind,
     prepared_inputs: str | Path,
     output_dir: str | Path,
     check_output: str | Path | None = None,
@@ -234,7 +229,6 @@ def prior_predictive_stage(
     prepared, run_spec = _load_prepared(
         prepared_inputs,
         setup=setup,
-        model=model,
         preparation_manifest=preparation_manifest,
     )
     return prior_predictive_check(
@@ -246,7 +240,6 @@ def prior_predictive_stage(
 def sample_rhime_stage(
     *,
     setup: RhimeConfig,
-    model: ModelKind,
     prepared_inputs: str | Path,
     output_dir: str | Path,
     preparation_manifest: str | Path,
@@ -261,7 +254,6 @@ def sample_rhime_stage(
     prepared, run_spec = _load_prepared(
         prepared_inputs,
         setup=setup,
-        model=model,
         preparation_manifest=preparation_manifest,
     )
     built = _build_prepared_model(prepared, run_spec)
@@ -280,8 +272,8 @@ def sample_rhime_stage(
         "schema_version": 2,
         "producer": "openghg_inversions",
         "stage": "sample",
-        "configuration_identity": configuration_identity(setup, model=model),
-        "effective_configuration": effective_configuration(setup, model=model),
+        "configuration_identity": configuration_identity(setup),
+        "effective_configuration": effective_configuration(setup),
         "artifacts": {
             "posterior": _artifact_path(trace_path),
             "prepared_inputs": _artifact_path(Path(prepared_inputs)),
@@ -296,7 +288,6 @@ def sample_rhime_stage(
 def postprocess_rhime_stage(
     *,
     setup: RhimeConfig,
-    model: ModelKind,
     prepared_inputs: str | Path,
     posterior: str | Path,
     output_dir: str | Path,
@@ -316,13 +307,12 @@ def postprocess_rhime_stage(
     prepared, run_spec = _load_prepared(
         prepared_inputs,
         setup=setup,
-        model=model,
         preparation_manifest=preparation_manifest,
     )
     posterior_path = Path(posterior).resolve()
     sample_contract = _load_sample_manifest(
         sample_manifest,
-        configuration_identity=configuration_identity(setup, model=model),
+        configuration_identity=configuration_identity(setup),
     )
     sampler_metadata = _sampler_metadata_from_sample_manifest(sample_contract)
     output_spec = replace(
@@ -365,14 +355,14 @@ def postprocess_rhime_stage(
             raise ValueError(
                 f"Postprocessing artifact {name!r} at {path!r} escaped stage output directory {destination}."
             ) from None
-    effective = effective_configuration(resolved, model=model)
+    effective = effective_configuration(resolved)
     recorded = sample_contract.get("effective_configuration")
     effective["sampler"] = recorded.get("sampler") if isinstance(recorded, Mapping) else None
     manifest = {
         "schema_version": 1,
         "producer": "openghg_inversions",
         "stage": "postprocess",
-        "configuration_identity": configuration_identity(resolved, model=model),
+        "configuration_identity": configuration_identity(resolved),
         "effective_configuration": effective,
         "artifacts": {name: _artifact_path(Path(path)) for name, path in artifacts.items()},
     }

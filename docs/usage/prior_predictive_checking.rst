@@ -356,10 +356,13 @@ Revise and repeat
 -----------------
 
 If the simulations are implausible, change the relevant prior or model option
-in the configuration and repeat both ``prepare`` and ``prior-predictive`` in a
-new output directory. Prior settings are part of the preparation manifest's
-configuration identity, so a manifest from the previous configuration is
-intentionally rejected. Record why each change is scientifically justified;
+in the configuration and rerun ``prior-predictive`` with the same preparation
+manifest when the revised model is compatible with the prepared inputs.
+Standard preparation supports compatible graph-time prior and likelihood changes;
+it does not require full-configuration equality. Repeat ``prepare`` when changing
+acquired data, filtering or averaging, basis or sensitivities, or another baked
+preparation policy. See :doc:`staged_workflow` for compatibility details.
+Record why each change is scientifically justified;
 repeatedly tuning a prior only to mimic the observed series turns the exercise
 into data-dependent model fitting.
 
@@ -373,8 +376,9 @@ The packaged tutorial configuration uses only 50 tuning and 50 retained draws,
 two chains, and disabled convergence checks. Those settings demonstrate the
 workflow but are not adequate for scientific interpretation. Increase the
 sampler settings and enable convergence checks for a scientific run.
-Sampler-only changes do not invalidate the prepared artifact; changes to the
-scientific preparation, model, or prior settings require a new preparation.
+Sampler-only changes and compatible graph-time model or prior changes reuse the
+prepared artifact. Changes to acquired data, filtering or averaging, basis or
+sensitivities, or other baked preparation policies require new preparation.
 
 .. code-block:: bash
 

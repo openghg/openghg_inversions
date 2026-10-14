@@ -24,7 +24,7 @@ from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.serialization import load_trace, save_trace
 from openghg_inversions.models.priors import trace_prior_records
 
-from ._stage_artifacts import write_json as _write_json
+from ._stage_artifacts import _output_path, write_json as _write_json
 from ._stage_checks import _check_draws, _check_stage, prior_predictive_check
 from .builders import RhimeLikelihoodBuilder, callable_metadata
 from .outputs import (
@@ -88,6 +88,19 @@ def _require_standard(data: DataConfig) -> None:
         raise ValueError("Standard handoffs require `split_by_sectors=False`; use the multisector stages.")
 
 
+def _check_checkpoint_targets(
+    destination: Path, *, stage: str, payload: str, referenced: tuple[Path, ...] = (),
+) -> None:
+    """Check only concrete writes for containment and aliases to dependencies."""
+    protected = list(referenced)
+    for name in (payload, f".{stage}-manifest.tmp", f"{stage}-manifest.json"):
+        target = _output_path(destination, None, name)
+        if any(target == path or (target.exists() and path.exists() and target.samefile(path))
+               for path in protected):
+            raise ValueError(f"Checkpoint target {target} would overwrite another checkpoint artifact.")
+        protected.append(target)
+
+
 def save_preparation(prepared: RhimePreparedInputs, *, data: DataConfig, output_dir: str | Path) -> Path:
     """Save prepared inputs and the data choices that produced them.
 
@@ -105,7 +118,8 @@ def save_preparation(prepared: RhimePreparedInputs, *, data: DataConfig, output_
         Absolute path of the completed preparation manifest.
 
     Raises:
-        ValueError: If ``data`` selects sector-split preparation.
+        ValueError: If ``data`` selects sector-split preparation or a checkpoint
+            write target escapes its directory or aliases another checkpoint file.
     """
     _require_standard(data)
     destination = Path(output_dir).resolve()
@@ -115,6 +129,7 @@ def save_preparation(prepared: RhimePreparedInputs, *, data: DataConfig, output_
 
 def _write_preparation(prepared: RhimePreparedInputs, *, data: DataConfig, destination: Path) -> Path:
     """Write prepared inputs, then the manifest that marks the preparation complete."""
+    _check_checkpoint_targets(destination, stage="prepare", payload="prepared-inputs.nc")
     (destination / "prepare-manifest.json").unlink(missing_ok=True)
     prepared.save(destination / "prepared-inputs.nc")
     return _save_record(
@@ -192,8 +207,10 @@ def save_samples(
 ) -> Path:
     """Save samples and their scientific meaning beside a saved preparation.
 
-    Several sample records may reference the same preparation. The manifest is
-    written last, so a failed save leaves no completed record.
+    Several sample records may reference the same preparation. After preflight
+    checks succeed, the old completion marker is removed before payload writes.
+    The new manifest is written last, so a payload-write failure leaves no
+    completed sample manifest; preflight failures preserve an existing record.
 
     Args:
         preparation_manifest: Preparation the samples were drawn from.
@@ -210,7 +227,8 @@ def save_samples(
 
     Raises:
         ValueError: If the posterior lacks a required state or the model choices
-            cannot be recorded. Both are checked before anything is written.
+            cannot be recorded, or a checkpoint write target escapes its directory
+            or aliases another checkpoint file or dependency. These checks precede writes.
     """
     output_contract.validate_trace(posterior)
     if (model.state_activity is not None or model.bc_state_activity is not None
@@ -220,12 +238,17 @@ def save_samples(
             "or `SectorSpec.state_activity`; run these models in memory."
         )
     model_record = model.to_record(priors=trace_prior_records(posterior))
+    preparation_path, preparation = _read_record(preparation_manifest, stage="prepare")
     destination = Path(output_dir).resolve()
+    _check_checkpoint_targets(
+        destination, stage="sample", payload="posterior.nc",
+        referenced=(preparation_path, _reference(preparation_path, "prepared_inputs", preparation["prepared_inputs"])),
+    )
     destination.mkdir(parents=True, exist_ok=True)
     (destination / "sample-manifest.json").unlink(missing_ok=True)
     save_trace(posterior, destination / "posterior.nc")
     return _save_record(
-        destination, stage="sample", preparation=str(Path(preparation_manifest).resolve()),
+        destination, stage="sample", preparation=str(preparation_path),
         posterior="posterior.nc", output_contract=output_contract.to_dict(),
         model=model_record, inference_kind="mcmc", actual_inference=dict(actual_inference),
         build_and_sample_seconds=build_and_sample_seconds, provenance=installed_ogi_provenance(),

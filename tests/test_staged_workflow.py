@@ -457,7 +457,6 @@ def test_preparation_uses_ordinary_prepared_input_loader(
         stages._load_prepared(
             supplied_path,
             setup=setup,
-            model="multisector",
             preparation_manifest=preparation["manifest_path"],
         )
 
@@ -754,7 +753,7 @@ def _saved_multisector_binding(tmp_path: Path) -> dict[str, Any]:
     stages._write_json(sample_manifest, {
         "producer": "openghg_inversions", "schema_version": 2, "stage": "sample",
         "configuration_identity": identity,
-        "effective_configuration": stages.effective_configuration(setup, model="multisector"),
+        "effective_configuration": stages.effective_configuration(setup),
         "artifacts": {"output_binding": binding_path.name},
     })
     return {"setup": setup, "model": "multisector", "prepared_inputs": prepared_path,

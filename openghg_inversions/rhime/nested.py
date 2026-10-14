@@ -725,7 +725,7 @@ def _inner_domain_name(outer_domain: str, inner_domain: str) -> str:
 
 def _prepare_one_domain(
     merged: RhimeMergedData | _NestedDomainData,
-    config: RhimeConfig,
+    data: DataConfig,
     *,
     allow_empty_inner_region: bool = False,
     basis_support_maps: Mapping[str, Any],
@@ -733,23 +733,23 @@ def _prepare_one_domain(
 ) -> RhimePreparedInputs:
     """Run one domain's scientific stages from already-resolved choices."""
     runtime_flux = resolve_runtime_flux(merged.flux_data, split_by_sectors=False)
-    with timed("rhime.prepare_inputs.basis_build", basis_algorithm=config.data.basis_algorithm):
+    with timed("rhime.prepare_inputs.basis_build", basis_algorithm=data.basis_algorithm):
         basis_functions = prepare_basis(
             site_data=merged.site_data,
             runtime_flux=runtime_flux,
-            weighting_flux=merged.flux_data[config.data.flux_sources[0]]["flux"],
-            **config.data.select(
+            weighting_flux=merged.flux_data[data.flux_sources[0]]["flux"],
+            **data.select(
                 "domain", "start_date", "basis_algorithm", "nbasis",
             ),
-            fix_outer_regions=config.data.fix_basis_outer_regions,
+            fix_outer_regions=data.fix_basis_outer_regions,
             **basis_support_maps,
             allow_empty_inner_region=allow_empty_inner_region,
         )
-    basis_functions = export_basis(basis_functions, config.data.basis_output_path)
+    basis_functions = export_basis(basis_functions, data.basis_output_path)
     site_data = build_sensitivities(
         merged.site_data,
         basis_functions,
-        **config.data.select(
+        **data.select(
             "flux_sources", "use_bc",
         ),
         bc_basis=bc_basis,
@@ -759,7 +759,7 @@ def _prepare_one_domain(
         site_data,
         basis_functions,
         site_options=merged.site_options,
-        **config.data.select(
+        **data.select(
             "domain", "start_date", "bc_freq", "min_error",
             "min_error_options", "use_bc",
         ),
@@ -943,7 +943,7 @@ def prepare_nested_rhime_inputs(
 
     # Outer overlap masking leaves an intentionally empty inner basis region.
     # Allow that fixed label when constructing the outer basis below.
-    outer_config = config
+    outer_config = config.data
     inner_domain_name = _inner_domain_name(config.data.domain, inner_domain)
     inner_basis_options = {
         "domain": inner_domain_name,
@@ -963,44 +963,39 @@ def prepare_nested_rhime_inputs(
         inner_basis_options, annotations=get_type_hints(DataConfig), base_dir=Path.cwd(),
     )
     inner_config = replace(
-        config,
-        model=replace(config.model, domain=inner_domain_name, use_bc=False),
-        output=replace(config.output, output_name=f"{config.output.output_name}_inner"),
-        data=replace(
-            config.data,
-            **inner_basis_options,
-            footprint_store=inner_footprint_store or config.data.footprint_store,
-            flux_store=inner_flux_store or config.data.flux_store,
-            flux_domain=inner_flux_domain,
-            use_bc=False,
-            bc_input=None,
-            basis_algorithm=inner_basis_algorithm if inner_basis_algorithm is not None else "quadtree",
-            bc_basis_paths=None,
-            fix_basis_outer_regions=False,
-            nbasis=inner_nbasis if inner_nbasis is not None else config.data.nbasis,
-        ),
+        config.data,
+        **inner_basis_options,
+        footprint_store=inner_footprint_store or config.data.footprint_store,
+        flux_store=inner_flux_store or config.data.flux_store,
+        flux_domain=inner_flux_domain,
+        use_bc=False,
+        bc_input=None,
+        basis_algorithm=inner_basis_algorithm if inner_basis_algorithm is not None else "quadtree",
+        bc_basis_paths=None,
+        fix_basis_outer_regions=False,
+        nbasis=inner_nbasis if inner_nbasis is not None else config.data.nbasis,
     )
 
     preparation_start = timer_start()
-    support_maps = [resolve_basis_inputs(domain_config.data) for domain_config in (outer_config, inner_config)]
-    bc_basis = load_bc_basis(outer_config.data.bc_basis_paths) if outer_config.data.use_bc and outer_config.data.bc_basis_paths is not None else None
+    support_maps = [resolve_basis_inputs(domain_config) for domain_config in (outer_config, inner_config)]
+    bc_basis = load_bc_basis(outer_config.bc_basis_paths) if outer_config.use_bc and outer_config.bc_basis_paths is not None else None
 
-    outer_acquired = acquire_merged_data(outer_config.data)
-    inner_acquired = acquire_merged_data(inner_config.data)
+    outer_acquired = acquire_merged_data(outer_config)
+    inner_acquired = acquire_merged_data(inner_config)
     # Acquisition records stop here; errors, filtering and masking belong to preparation.
     outer_data = _NestedDomainData(outer_acquired.site_data, outer_acquired.flux_data, outer_acquired.site_options)
     inner_data = _NestedDomainData(inner_acquired.site_data, inner_acquired.flux_data, inner_acquired.site_options)
     outer_data = outer_data.with_site_data(
-        prepare_observation_errors(outer_data.site_data, averaging_error=outer_config.data.averaging_error),
+        prepare_observation_errors(outer_data.site_data, averaging_error=outer_config.averaging_error),
         context="Observation error preparation",
     )
     inner_data = inner_data.with_site_data(
-        prepare_observation_errors(inner_data.site_data, averaging_error=inner_config.data.averaging_error),
+        prepare_observation_errors(inner_data.site_data, averaging_error=inner_config.averaging_error),
         context="Observation error preparation",
     )
     outer_data, inner_data = _retain_common_sites(outer_data, inner_data)
     outer_site_data, _ = filter_observations(
-        outer_data.site_data, outer_data.site_options, filters=outer_config.data.filters,
+        outer_data.site_data, outer_data.site_options, filters=outer_config.filters,
     )
     outer_filtered = outer_data.with_site_data(outer_site_data, context="Observation filtering")
     outer_filtered, inner_data = _retain_common_sites(outer_filtered, inner_data)
@@ -1013,31 +1008,31 @@ def prepare_nested_rhime_inputs(
 
     if (
         inner_nbasis is None
-        and outer_config.data.basis_partition_path is None
-        and outer_config.data.basis_path is None
-        and outer_config.data.basis_partition_paths is None
-        and inner_config.data.basis_partition_path is None
-        and inner_config.data.basis_path is None
-        and inner_config.data.basis_partition_paths is None
+        and outer_config.basis_partition_path is None
+        and outer_config.basis_path is None
+        and outer_config.basis_partition_paths is None
+        and inner_config.basis_partition_path is None
+        and inner_config.basis_path is None
+        and inner_config.basis_partition_paths is None
     ):
         outer_nbasis, allocated_inner_nbasis = _allocate_nested_nbasis(
             masked_outer,
             inner_filtered,
-            total_nbasis=outer_config.data.nbasis,
+            total_nbasis=outer_config.nbasis,
         )
-        outer_config = replace(outer_config, data=replace(outer_config.data, nbasis=outer_nbasis))
-        inner_config = replace(inner_config, data=replace(inner_config.data, nbasis=allocated_inner_nbasis))
+        outer_config = replace(outer_config, nbasis=outer_nbasis)
+        inner_config = replace(inner_config, nbasis=allocated_inner_nbasis)
 
     outer_prepared = _prepare_one_domain(
         masked_outer,
-        config=outer_config,
+        data=outer_config,
         allow_empty_inner_region=True,
         basis_support_maps=support_maps[0],
         bc_basis=bc_basis,
     )
     inner_prepared = _prepare_one_domain(
         inner_filtered,
-        config=inner_config,
+        data=inner_config,
         basis_support_maps=support_maps[1],
     )
     prepared = combine_nested_rhime_inputs(

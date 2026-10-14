@@ -268,7 +268,7 @@ def test_runners_export_returned_basis_without_mutating_inputs(tmp_path, monkeyp
         if route == "staged":
             _standard_stages.prepare(config.data, output_dir="runs/prepared")
         elif route == "nested":
-            module._prepare_one_domain(merged, config, basis_support_maps=resolve_basis_inputs(config.data))
+            module._prepare_one_domain(merged, config.data, basis_support_maps=resolve_basis_inputs(config.data))
         elif route == "example":
             module.run_custom_rhime(**options)
         elif route == "multisector":

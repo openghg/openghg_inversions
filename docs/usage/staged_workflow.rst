@@ -120,8 +120,10 @@ loading; incompatible scientific inputs fail at their owning operation.
 Callers choose checkpoint locations and own collision avoidance and run isolation.
 A simple layout is ``run/prepare``, ``run/sample`` and ``run/products``; explicit
 locations are supported, including existing directories. Numerical files are saved
-first and the manifest is written last as the completion marker. A failed save
-can leave partial files but no completed manifest. Postprocessing uses the same
+first and the manifest is written last as the completion marker. A failed payload save
+can leave partial files but no completed manifest. Checkpoint-owned payload and
+manifest targets must stay within the chosen destination and must not alias
+referenced preparation artifacts. Postprocessing uses the same
 product writer and overwrite behaviour as full execution; in-memory products
 require no destination. Normal filesystem errors propagate.
 ``basis_output_path`` is an exact destination and may be outside the checkpoint

@@ -495,16 +495,16 @@ def test_nested_preparation_uses_native_inner_domain_and_safe_basis_default(
             "output_format": output_format,
         }, multisector=False)
     retrieval_args: list[dict[str, object]] = []
-    preparation_configs: list[rhime_params.RhimeConfig] = []
+    preparation_configs: list[rhime_params.DataConfig] = []
 
     def fake_retrieve(**kwargs):
         assert kwargs["split_by_sectors"] is False
         retrieval_args.append(kwargs)
         return merged
 
-    def fake_prepare(domain_merged, *, config, allow_empty_inner_region=False, basis_support_maps=None, bc_basis=None):
+    def fake_prepare(domain_merged, *, data, allow_empty_inner_region=False, basis_support_maps=None, bc_basis=None):
         assert domain_merged.sites == ("TAC",)
-        preparation_configs.append(config)
+        preparation_configs.append(data)
         return prepared
 
     monkeypatch.setattr(nested_module.RhimeMergedData, "from_options", fake_retrieve)
@@ -537,16 +537,15 @@ def test_nested_preparation_uses_native_inner_domain_and_safe_basis_default(
     assert inner_args["flux_store"] == "inner-flux"
     assert inner_args["flux_domain"] == "EUROPE"
     assert inner_args["use_bc"] is False
-    assert preparation_configs[1].data.basis_algorithm == "quadtree"
-    assert preparation_configs[1].model.domain == preparation_configs[1].data.domain == "EUROPE-6km"
-    assert preparation_configs[1].model.use_bc is preparation_configs[1].data.use_bc is False
-    assert preparation_configs[1].output.output_name == "nested-test_inner"
-    assert preparation_configs[1].data.nbasis == 40
-    assert preparation_configs[1].data.basis_path is None
-    assert preparation_configs[1].data.basis_partition_paths is None
-    assert preparation_configs[1].data.basis_output_path is None
-    assert preparation_configs[0].data.basis_algorithm == "weighted"
-    assert preparation_configs[1].data.basis_algorithm == "quadtree"
+    assert preparation_configs[1].basis_algorithm == "quadtree"
+    assert preparation_configs[1].domain == "EUROPE-6km"
+    assert preparation_configs[1].use_bc is False
+    assert preparation_configs[1].nbasis == 40
+    assert preparation_configs[1].basis_path is None
+    assert preparation_configs[1].basis_partition_paths is None
+    assert preparation_configs[1].basis_output_path is None
+    assert preparation_configs[0].basis_algorithm == "weighted"
+    assert preparation_configs[1].basis_algorithm == "quadtree"
     assert nested.outer_overlap_mask_policy.startswith("outer_footprint_and_flux_zeroed")
 
     assert setup.data.nbasis == 100
@@ -607,7 +606,7 @@ def test_nested_preparation_routes_automatic_basis_budget(monkeypatch) -> None:
             "nbasis": 100,
             "output_format": "none",
         }, multisector=False)
-    preparation_configs: list[rhime_params.RhimeConfig] = []
+    preparation_configs: list[rhime_params.DataConfig] = []
 
     def fake_retrieve(**kwargs):
         assert kwargs["split_by_sectors"] is False
@@ -618,8 +617,8 @@ def test_nested_preparation_routes_automatic_basis_budget(monkeypatch) -> None:
         )
         return from_legacy_fp_all(fp_all={"TAC": dataset}, site_options=_site_options())
 
-    def fake_prepare(domain_merged, *, config, allow_empty_inner_region=False, basis_support_maps=None, bc_basis=None):
-        preparation_configs.append(config)
+    def fake_prepare(domain_merged, *, data, allow_empty_inner_region=False, basis_support_maps=None, bc_basis=None):
+        preparation_configs.append(data)
         return prepared
 
     monkeypatch.setattr(nested_module.RhimeMergedData, "from_options", fake_retrieve)
@@ -636,8 +635,8 @@ def test_nested_preparation_routes_automatic_basis_budget(monkeypatch) -> None:
 
     nested_module.prepare_nested_rhime_inputs(setup, inner_domain="6km")
 
-    assert preparation_configs[0].data.nbasis == 40
-    assert preparation_configs[1].data.nbasis == 60
+    assert preparation_configs[0].nbasis == 40
+    assert preparation_configs[1].nbasis == 60
 
     assert setup.data.nbasis == 100
 

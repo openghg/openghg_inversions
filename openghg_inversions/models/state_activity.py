@@ -502,11 +502,30 @@ def active_prior_args(
     *,
     select_active: bool = True,
 ) -> dict[str, Any]:
-    """Align borrowed full-state prior parameters without computing their values.
+    """Align prior parameters to canonical state order and optionally select active states.
 
-    Scalars broadcast unchanged. Labelled and positional vectors use canonical
-    full-state order; ``select_active=False`` retains that full vector for model
-    data registration before graph-level active-state selection.
+    Scalar parameters broadcast without state selection; symbolic parameters
+    pass through unchanged. Labelled state
+    vectors are aligned by their state coordinate; positional vectors must use
+    canonical full-state order. Lazy state arrays remain lazy. Interpolated-prior
+    support arrays are instead materialized, checked for finite values and kept
+    intact because they describe a distribution rather than individual states.
+
+    Args:
+        prior_args: PyMC prior specification with scalar or full-state parameters.
+        activity: Resolved state activity and canonical state labels.
+        select_active: Select only active states, by default. Set to ``False``
+            to retain full-state arrays for model-data registration before
+            graph-level active-state selection.
+
+    Returns:
+        A new prior mapping with scalar parameters, borrowed symbolic values,
+        and state arrays aligned and optionally sliced to the active states.
+
+    Raises:
+        ValueError: If state arrays have incompatible dimensions or labels,
+            positional vectors have the wrong length, or eager state vectors
+            or Interpolated support arrays contain nonfinite entries.
     """
     from pytensor.graph.basic import Variable
 

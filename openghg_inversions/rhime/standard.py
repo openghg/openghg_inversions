@@ -485,7 +485,8 @@ def make_standard_rhime_result(
         model_build_result: Concrete graph and roles, when retained in memory.
         output_contract: Durable output information for graph-free reconstruction.
             Defaults to the live build result's contract when supplied.
-        idata: Sampled posterior and predictive groups.
+        idata: Borrowed posterior and predictive groups. Trace metadata is
+            annotated in place when ``likelihood_builder`` is supplied.
         build_and_sample_seconds: Combined graph-build and sampling duration.
         likelihood_builder: Optional likelihood callable used for provenance.
         likelihood_kwargs: Serializable options owned by the likelihood.
@@ -495,9 +496,6 @@ def make_standard_rhime_result(
 
     Returns:
         Standard-run result ready for requested output construction.
-
-    Raises:
-        ValueError: If the trace lacks a state required by the output contract.
     """
     output_metadata: dict[str, Any] = {
         "build_and_sample_seconds": build_and_sample_seconds,
@@ -505,7 +503,17 @@ def make_standard_rhime_result(
     }
     if provenance is not None:
         output_metadata["provenance"] = dict(provenance)
-    result = RhimeResult(
+    if likelihood_builder is not None:
+        identity = callable_metadata(likelihood_builder)
+        output_metadata["likelihood_builder"] = identity
+        annotate_likelihood_trace(
+            idata,
+            builder_identity=identity,
+            likelihood_kwargs=likelihood_kwargs,
+        )
+    if likelihood_kwargs is not None:
+        output_metadata["likelihood_kwargs"] = likelihood_kwargs
+    return RhimeResult(
         run_spec=run_spec,
         model_spec=run_spec.model,
         output_spec=run_spec.output,
@@ -518,17 +526,6 @@ def make_standard_rhime_result(
         output_contract=output_contract,
         output_metadata=output_metadata,
     )
-    if likelihood_builder is not None:
-        identity = callable_metadata(likelihood_builder)
-        result.output_metadata["likelihood_builder"] = identity
-        annotate_likelihood_trace(
-            result.idata,
-            builder_identity=identity,
-            likelihood_kwargs=likelihood_kwargs,
-        )
-    if likelihood_kwargs is not None:
-        result.output_metadata["likelihood_kwargs"] = likelihood_kwargs
-    return result
 
 
 def prepare_standard(

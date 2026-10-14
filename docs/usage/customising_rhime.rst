@@ -55,8 +55,8 @@ then re-enters the visible recipe at observation-error preparation::
    )
 
 The supplied ``RhimeMergedData`` and its xarray or Dask arrays remain borrowed.
-Filtering returns a replacement handoff when it changes observations; basis
-construction and labelled assembly consume that result without mutating the
+Filtering returns retained per-site datasets and aligned ``SiteOptions``; basis
+construction and labelled assembly consume those values without mutating the
 external object.
 
 Before preparation, ``RhimeMergedData.validate_for_preparation`` checks known
@@ -91,7 +91,10 @@ labelled arrays:
    from openghg_inversions.basis.support import load_bc_basis
    from openghg_inversions.basis.basis_functions import BASIS_ARTIFACT_PATH_ATTR
    from openghg_inversions.native_flux import resolve_runtime_flux
-   from openghg_inversions.rhime.preparation import resolve_basis_inputs
+   from openghg_inversions.rhime.preparation import (
+       acquire_merged_data, filter_observations, prepare_observation_errors,
+       resolve_basis_inputs,
+   )
    from openghg_inversions.rhime import validate_output_resources
 
    # config was constructed from external options with RhimeConfig.from_params.
@@ -102,14 +105,20 @@ labelled arrays:
        load_bc_basis(config.data.bc_basis_paths)
        if config.data.use_bc and config.data.bc_basis_paths is not None else None
    )
-   # Acquire merged data, prepare errors and filter observations here.
-   runtime_flux = resolve_runtime_flux(
-       filtered.flux_data, split_by_sectors=filtered.split_by_sectors,
+   merged = acquire_merged_data(config.data)
+   with_errors = prepare_observation_errors(
+       merged.site_data, averaging_error=config.data.averaging_error,
    )
-   weighting_source = config.data.flux_sources[0] if config.data.flux_sources else next(iter(filtered.flux_data))
-   weighting_flux = filtered.flux_data[weighting_source]["flux"]
+   filtered, site_options = filter_observations(
+       with_errors, merged.site_options, filters=config.data.filters,
+   )
+   runtime_flux = resolve_runtime_flux(
+       merged.flux_data, split_by_sectors=merged.split_by_sectors,
+   )
+   weighting_source = config.data.flux_sources[0] if config.data.flux_sources else next(iter(merged.flux_data))
+   weighting_flux = merged.flux_data[weighting_source]["flux"]
    basis = prepare_basis(
-       site_data=filtered.site_data,
+       site_data=filtered,
        runtime_flux=runtime_flux,
        weighting_flux=weighting_flux,
        domain=config.data.domain,

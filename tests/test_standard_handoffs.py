@@ -428,3 +428,70 @@ def test_failed_acquisition_leaves_destination_free_for_retry(tmp_path, monkeypa
     monkeypatch.setattr(stages.RhimeMergedData, "from_options", lambda **kwargs: object())
     monkeypatch.setattr(standard, "prepare_standard", lambda *args, **kwargs: _prepared())
     assert stages.prepare(config, output_dir=tmp_path / "prepared").is_file()
+
+
+@pytest.mark.parametrize(("stage", "filename"), [
+    ("prepare", "prepared-inputs.nc"),
+    ("prepare", ".prepare-manifest.tmp"),
+    ("prepare", "prepare-manifest.json"),
+    ("sample", "posterior.nc"),
+    ("sample", ".sample-manifest.tmp"),
+    ("sample", "sample-manifest.json"),
+])
+def test_checkpoint_write_targets_cannot_redirect_into_preparation(tmp_path, stage, filename):
+    preparation, sampled = _saved(tmp_path)
+    prepared, data = stages.load_preparation(preparation)
+    result = stages.postprocess(sampled, output=RhimeOutputSpec(output_format="none"))
+    victim = preparation.parent / "prepared-inputs.nc"
+    original = victim.read_bytes()
+    destination = tmp_path / f"unsafe-{stage}"
+    destination.mkdir()
+    (destination / filename).symlink_to(victim)
+
+    with pytest.raises(ValueError, match="must be beneath"):
+        if stage == "prepare":
+            stages.save_preparation(prepared, data=data, output_dir=destination)
+        else:
+            stages.save_samples(
+                preparation, result.idata, model=result.model_spec,
+                output_contract=result.output_contract, actual_inference={},
+                build_and_sample_seconds=0., output_dir=destination,
+            )
+    assert victim.read_bytes() == original
+    xr.testing.assert_identical(stages.load_preparation(preparation)[0].inv_inputs, prepared.inv_inputs)
+
+
+@pytest.mark.parametrize("target_name", ["posterior.nc", ".sample-manifest.tmp"])
+@pytest.mark.parametrize("link_kind", ["symlink", "hardlink"])
+def test_sample_targets_cannot_alias_a_colocated_preparation(tmp_path, target_name, link_kind):
+    preparation, sampled = _saved(tmp_path)
+    result = stages.postprocess(sampled, output=RhimeOutputSpec(output_format="none"))
+    payload = preparation.parent / "prepared-inputs.nc"
+    original = payload.read_bytes()
+    target = preparation.parent / target_name
+    if link_kind == "symlink":
+        target.symlink_to(payload)
+    else:
+        target.hardlink_to(payload)
+    with pytest.raises(ValueError, match="overwrite another checkpoint artifact"):
+        stages.save_samples(
+            preparation, result.idata, model=result.model_spec,
+            output_contract=result.output_contract, actual_inference={},
+            build_and_sample_seconds=0., output_dir=preparation.parent,
+        )
+    assert payload.read_bytes() == original
+    assert not (preparation.parent / "sample-manifest.json").exists()
+
+
+def test_colocated_checkpoints_ignore_unrelated_symlinks(tmp_path):
+    preparation, sampled = _saved(tmp_path)
+    result = stages.postprocess(sampled, output=RhimeOutputSpec(output_format="none"))
+    before, data = stages.load_preparation(preparation)
+    (preparation.parent / "unrelated-link").symlink_to(tmp_path / "absent")
+    stages.save_preparation(before, data=data, output_dir=preparation.parent)
+    stages.save_samples(
+        preparation, result.idata, model=result.model_spec,
+        output_contract=result.output_contract, actual_inference={},
+        build_and_sample_seconds=0., output_dir=preparation.parent,
+    )
+    xr.testing.assert_identical(stages.load_preparation(preparation)[0].inv_inputs, before.inv_inputs)
