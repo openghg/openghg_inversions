@@ -269,6 +269,97 @@ class RhimeModelSpec:
     bc_state_activity: StateActivity | None = field(default=None, kw_only=True)
     state_activity: StateActivity | None = field(default=None, kw_only=True)
 
+    def to_record(self) -> dict[str, Any]:
+        """Describe these choices for a saved sample record.
+
+        Prior arrays already in memory keep their values; Dask-backed arrays are
+        described by dimensions and shape without computing their payload.
+
+        Returns:
+            A JSON-compatible mapping decoded by :meth:`from_record`.
+
+        Raises:
+            ValueError: If a state-activity policy is set; saved records cannot
+                represent it, so use the in-memory route.
+        """
+        if (self.state_activity is not None or self.bc_state_activity is not None
+                or any(sector.state_activity is not None for sector in self.sectors)):
+            raise ValueError(
+                "Saved sample records cannot represent `state_activity`, `bc_state_activity` "
+                "or `SectorSpec.state_activity`; run these models in memory."
+            )
+        likelihood = None
+        if self.likelihood is not None:
+            kind = next(name for name, (cls, _) in _LIKELIHOOD_RECORDS.items() if isinstance(self.likelihood, cls))
+            options = {name: getattr(self.likelihood, name) for name in _LIKELIHOOD_RECORDS[kind][1]}
+            likelihood = {"kind": kind, "options": options}
+        return _describe_arrays({
+            **{name: getattr(self, name) for name in _MODEL_RECORD_FIELDS},
+            "sectors": [{"name": sector.name, "flux_source": sector.flux_source,
+                         "x_prior": sector.x_prior, "variable_suffix": sector.variable_suffix}
+                        for sector in self.sectors],
+            "likelihood": likelihood,
+        })
+
+    @classmethod
+    def from_record(cls, record: Any) -> RhimeModelSpec:
+        """Decode :meth:`to_record` output without executing saved callables.
+
+        Raises:
+            ValueError: If the record is incomplete or names an unknown likelihood.
+        """
+        expected = set(_MODEL_RECORD_FIELDS) | {"sectors", "likelihood"}
+        if not isinstance(record, Mapping) or set(record) != expected:
+            missing = sorted(expected - set(record)) if isinstance(record, Mapping) else sorted(expected)
+            raise ValueError(f"Saved model record must contain exactly {sorted(expected)}; missing {missing}.")
+        values = dict(record)
+        likelihood = values["likelihood"]
+        try:
+            if likelihood is not None:
+                settings_type, option_names = _LIKELIHOOD_RECORDS[likelihood["kind"]]
+                if set(likelihood["options"]) != set(option_names):
+                    raise ValueError(
+                        f"Saved {likelihood['kind']!r} likelihood options must be {sorted(option_names)}."
+                    )
+                values["likelihood"] = settings_type(**likelihood["options"])
+            values["sectors"] = tuple(SectorSpec(**sector) for sector in values["sectors"])
+            return cls(**values)
+        except (KeyError, TypeError) as exc:
+            raise ValueError(f"Saved model record is invalid: {exc}") from exc
+
+
+_MODEL_RECORD_FIELDS = (
+    "species", "domain", "use_bc", "add_offset", "aggregation_error_mode",
+    "bc_prior", "offset_prior", "offset_args",
+)
+_LIKELIHOOD_RECORDS: dict[str, tuple[type, tuple[str, ...]]] = {
+    "fixed_error": (FixedErrorSettings, ()),
+    "additive_sigma": (AdditiveSigmaSettings, (
+        "sigma_prior", "sigma_freq", "sigma_per_site", "sigma_freq_anchor", "use_minimum_error_floor",
+    )),
+    "pollution_event": (PollutionEventSettings, (
+        "sigma_prior", "sigma_freq", "sigma_per_site", "sigma_freq_anchor", "pollution_events_from_obs", "power",
+    )),
+}
+
+
+def _describe_arrays(value: Any) -> Any:
+    """Replace prior arrays with JSON descriptions, never computing a lazy payload."""
+    import dask
+    import xarray as xr
+
+    from openghg_inversions._serialization_codecs import _json_value
+
+    if isinstance(value, xr.DataArray):
+        if dask.is_dask_collection(value):
+            return {"dims": [str(dim) for dim in value.dims], "shape": list(value.shape), "lazy": True}
+        return _json_value(value, materialize_dataarrays=True)
+    if isinstance(value, Mapping):
+        return {key: _describe_arrays(item) for key, item in value.items()}
+    if isinstance(value, list | tuple):
+        return [_describe_arrays(item) for item in value]
+    return value
+
 @dataclass(frozen=True)
 class RhimeOutputSpec:
     """Output settings for a RHIME run.

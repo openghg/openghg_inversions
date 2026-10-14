@@ -294,10 +294,12 @@ aligned values and checks their structural alignment. For example:
 Direct retrieval APIs retain their scalar shorthand without requiring model,
 output or sampler settings. The acquisition-and-preparation convenience function
 ``prepare_rhime_inputs`` has been removed. For a complete inversion, use
-``run_rhime``; for custom preparation, call ``RhimeMergedData.from_options`` followed by
-``prepare_observation_errors``, ``filter_observations``,
-``openghg_inversions.basis.prepare_basis``,
-``build_sensitivities`` and ``assemble_rhime_inputs``. The explicit legacy function
+``run_rhime``; for custom preparation, call ``acquire_merged_data`` (or
+``RhimeMergedData.from_options``) followed by ``prepare_observation_errors``,
+``filter_observations``, ``openghg_inversions.basis.prepare_basis``,
+``build_sensitivities`` and ``assemble_rhime_inputs``. These steps take the
+acquired per-site datasets and ``SiteOptions`` and return new mappings; the
+acquired ``MergedData`` never carries derived errors or filtered data. The explicit legacy function
 ``openghg_inversions.hbmcmc.legacy_data.retrieve_inversion_data`` performs
 fresh surface or column acquisition and returns its established six-tuple of
 merged data and retained metadata lists. The former
@@ -338,8 +340,10 @@ values for an ordinary keyword call:
    merged.validate_for_preparation(
        **config.data.select("species", "domain", "start_date", "end_date", "split_by_sectors")
    )
-   merged = prepare_observation_errors(merged, averaging_error=config.data.averaging_error)
-   filtered = filter_observations(merged, **config.data.select("filters"))
+   with_errors = prepare_observation_errors(merged.site_data, averaging_error=config.data.averaging_error)
+   filtered, site_options = filter_observations(
+       with_errors, merged.site_options, **config.data.select("filters")
+   )
 
 ``config.data.select(*names)`` returns a fresh dictionary of the named attributes.
 Values are borrowed: mutable mappings and objects are shared with ``config``.

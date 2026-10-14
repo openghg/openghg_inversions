@@ -197,7 +197,8 @@ def test_runners_export_returned_basis_without_mutating_inputs(tmp_path, monkeyp
 
     module = import_module(
         "examples.rhime_customisation.runner" if route == "example"
-        else f"openghg_inversions.rhime.{'_standard_stages' if route == 'staged' else route}"
+        # The staged handoff prepares through the standard runner's steps.
+        else f"openghg_inversions.rhime.{'standard' if route == 'staged' else route}"
     )
     monkeypatch.chdir(tmp_path)
     sites, sources = _inputs()
@@ -226,7 +227,7 @@ def test_runners_export_returned_basis_without_mutating_inputs(tmp_path, monkeyp
     borrowed = sources["a"].flux.data
     monkeypatch.setattr(module.RhimeMergedData, "from_options", lambda **kwargs: merged)
     monkeypatch.setattr(module, "prepare_observation_errors", lambda data, **kwargs: data)
-    monkeypatch.setattr(module, "filter_observations", lambda data, **kwargs: data)
+    monkeypatch.setattr(module, "filter_observations", lambda data, site_options, **kwargs: (data, site_options))
     captured = []
     original_prepare = module.prepare_basis
 
@@ -248,22 +249,24 @@ def test_runners_export_returned_basis_without_mutating_inputs(tmp_path, monkeyp
 
     monkeypatch.setattr(module, "prepare_basis", prepare)
     monkeypatch.setattr(module, "build_sensitivities", sensitivities)
-    if route == "standard":
-        # Standard preparation is scientific-only; its runner exports the
-        # completed basis before selecting model inputs.
+    if route in {"standard", "staged"}:
+        # Standard preparation is scientific-only; its runner and staged
+        # handoff export the completed basis before using the prepared inputs.
         from dataclasses import replace
+        from openghg_inversions.rhime import _standard_stages
         from tests.test_staged_workflow import _prepared
         monkeypatch.setattr(module, "build_sensitivities", lambda *args, **kwargs: {})
         monkeypatch.setattr(module, "assemble_rhime_inputs",
-                            lambda merged, basis, sites, **kwargs: replace(_prepared(), basis_functions=basis))
-        def after_preparation(self, prepared):
-            captured.append(prepared.basis_functions)
+                            lambda site_data, basis, **kwargs: replace(_prepared(), basis_functions=basis))
+        def after_preparation(*args, **kwargs):
+            captured.append(args[-1].basis_functions)  # the prepared inputs
             raise AfterBasis
         monkeypatch.setattr(RhimeConfig, "retained_run_spec", after_preparation)
+        monkeypatch.setattr(_standard_stages, "_write_preparation", after_preparation)
     config = RhimeConfig.from_params(options, multisector=route == "multisector")
     with pytest.raises(AfterBasis):
         if route == "staged":
-            module.prepare_rhime_stage(setup=config, model="standard", output_dir="runs/prepared")
+            _standard_stages.prepare(config.data, output_dir="runs/prepared")
         elif route == "nested":
             module._prepare_one_domain(merged, config, basis_support_maps=resolve_basis_inputs(config.data))
         elif route == "example":
@@ -275,7 +278,7 @@ def test_runners_export_returned_basis_without_mutating_inputs(tmp_path, monkeyp
     assert sources["a"].flux.data is borrowed
     assert config.data.basis_output_path == (tmp_path / options["basis_output_path"] if suffix else None)
     if suffix is None:
-        if route == "standard":
+        if route in {"standard", "staged"}:
             assert captured[0].operator is captured[1].operator
             assert captured[0].flux.data is captured[1].flux.data
         else:

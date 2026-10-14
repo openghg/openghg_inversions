@@ -125,6 +125,11 @@ value and its unchanged version-1 schema live in
    openghg_inversions.inversion_data.MergedData.validate_for_preparation
    openghg_inversions.inversion_data.MergedData.with_site_data
    openghg_inversions.rhime.preparation.resolve_basis_inputs
+   openghg_inversions.rhime.preparation.acquire_merged_data
+   openghg_inversions.rhime.preparation.export_basis
+   openghg_inversions.rhime.standard.build_standard
+   openghg_inversions.rhime.requests.load_rhime_params
+   openghg_inversions.rhime.params.retained_run_spec
    openghg_inversions.rhime.filter_observations
    openghg_inversions.rhime.prepare_observation_errors
    openghg_inversions.rhime.build_sensitivities

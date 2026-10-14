@@ -56,7 +56,7 @@ def test_bc_resource_loading_precedes_acquisition(tmp_path, monkeypatch, route, 
         if route in ("staged", "nested"):
             config = RhimeConfig.from_params(options, multisector=False)
             if route == "staged":
-                module.prepare_rhime_stage(setup=config, model="standard", output_dir="stage")
+                module.prepare(config.data, output_dir="stage")
             else:
                 module.prepare_nested_rhime_inputs(config, inner_domain="6km")
         elif route == "multisector":
@@ -125,7 +125,8 @@ def test_modern_routes_reject_historical_resource_selectors_before_acquisition(m
     monkeypatch.setattr("openghg_inversions.inversion_data.RhimeMergedData.from_options", unexpected_acquisition)
     with pytest.raises(ValueError, match="Historical resource selectors.*HBMCMC"):
         if route == "staged":
-            module.resolve_stage_setup(options, model="standard")
+            # The standard prepare phase loads its request through the single loader.
+            module.load_rhime_params(overrides=options, phase_groups={"data"})
         elif route == "nested":
             module.run_nested(**options, inner_domain="inner")
         elif route == "multisector":

@@ -68,11 +68,12 @@ later priors and sampling choices do not determine acquisition compatibility.
 Missing historical facts remain unknown and are not filled from the new
 request. Validation neither selects observations nor executes lazy arrays.
 
-When a custom preparation step retains or replaces site datasets, use
-``merged.with_site_data(site_data)``. The mapping order sets
-the retained site order; the owner selects matching ``SiteOptions`` and input
-provenance together. It returns new metadata while borrowing the numerical
-arrays. The caller owns any files backing supplied datasets.
+Preparation steps pass per-site datasets between them, not ``MergedData``:
+``MergedData`` holds acquired data only. When a custom step drops sites, keep
+the selectors aligned with ``site_options.retain_sites(tuple(site_data), context=...)``,
+as ``filter_observations`` does, and pass the retained ``SiteOptions`` to
+``assemble_inputs``. Numerical arrays stay borrowed; the caller owns any files
+backing supplied datasets.
 
 Follow the modern preparation spine
 ------------------------------------

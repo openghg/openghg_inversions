@@ -44,7 +44,8 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
                                            coords={"lat": [50.], "lon": [0.]})},
         site_options=config.data.site_options,
     )
-    filtered = merged
+    filtered = {"MHD": merged.site_data["MHD"]}
+    filtered_options = object()
     basis = object()
     site_data = object()
     prepared = SimpleNamespace(
@@ -64,9 +65,10 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
 
     def resolve(cls, params: dict[str, Any], *, multisector: bool) -> Any:
         assert params == {
-            "species": "ch4",
-            "output_format": "inv_out",
-            "mismatch_model": None,
+            "data": {"species": "ch4"},
+            "model": {"mismatch_model": None},
+            "sampler": {},
+            "output": {"output_format": "inv_out"},
         }
         assert multisector is False
         calls.append("resolve")
@@ -80,16 +82,17 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
         calls.append("retrieve")
         return merged
 
-    def filter_observations(actual: Any, *, filters: Any) -> Any:
-        assert actual is merged
+    def filter_observations(actual: Any, site_options: Any, *, filters: Any) -> Any:
+        assert actual.keys() == merged.site_data.keys()
+        assert site_options is merged.site_options
         assert filters is config.data.filters
         calls.append("filter")
-        return filtered
+        return filtered, filtered_options
 
     def build_basis(**kwargs: Any) -> Any:
-        assert kwargs["site_data"] is filtered.site_data
-        assert kwargs["weighting_flux"].data is filtered.flux_data[config.data.flux_sources[0]]["flux"].data
-        xr.testing.assert_equal(kwargs["runtime_flux"], filtered.flux_data[config.data.flux_sources[0]]["flux"])
+        assert kwargs["site_data"] is filtered
+        assert kwargs["weighting_flux"].data is merged.flux_data[config.data.flux_sources[0]]["flux"].data
+        xr.testing.assert_equal(kwargs["runtime_flux"], merged.flux_data[config.data.flux_sources[0]]["flux"])
         assert kwargs["domain"] == config.data.domain
         calls.append("basis")
         return basis
@@ -101,8 +104,9 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
         calls.append("sensitivities")
         return site_data
 
-    def assemble(actual: Any, actual_basis: Any, actual_site_data: Any, **kwargs: Any) -> Any:
-        assert (actual, actual_basis, actual_site_data) == (filtered, basis, site_data)
+    def assemble(actual: Any, actual_basis: Any, **kwargs: Any) -> Any:
+        assert (actual, actual_basis) == (site_data, basis)
+        assert kwargs["site_options"] is filtered_options
         assert kwargs["min_error_options"] == config.data.min_error_options
         calls.append("assemble")
         return prepared
@@ -120,10 +124,12 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
             "prepared": prepared,
             "model_inputs": model_inputs,
             "run_spec": config.retained_run_spec(prepared),
+            "model_builder": None,
             "likelihood_builder": likelihoods.likelihood_builder,
             "likelihood_kwargs": None,
             "preserve_legacy_likelihood": False,
             "legacy_unused_sigma_settings": None,
+            "legacy_minimum_error_floor": False,
         }
         calls.append("build")
         return build_result
@@ -143,8 +149,9 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
         return expected
 
     def make_outputs(**kwargs: Any) -> None:
-        assert kwargs == {"result": expected, "prepared": prepared}
+        assert kwargs == {"result": expected, "prepared": prepared, "compatibility_output_chain": None}
         calls.append("output")
+        return kwargs["result"]
 
     monkeypatch.setattr(rhime_runner.RhimeConfig, "from_params", classmethod(resolve))
     monkeypatch.setattr(rhime_runner.RhimeMergedData, "from_options", retrieve)

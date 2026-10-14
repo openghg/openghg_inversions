@@ -20,8 +20,11 @@ coordinates and labels, scientific source/state layout, units, retained basis
 and flux. Consumers SHALL derive these retained facts from the numerical
 artifacts rather than require duplicate arrays or labels in the manifest.
 Requested preparation choices SHALL remain distinguishable from retained facts.
-The manifest need not embed a whole configuration or every fact needed by later
-operations. It SHALL NOT depend on a runtime dataclass layout or imply that later
+The manifest SHALL record the data choices that produced the preparation in their
+external option form, and loading it SHALL return the same `DataConfig` type the
+full runner passes to model resolution, validated by its owner. A saved-route-only
+facts mapping, or a configuration reconstructed with defaults, SHALL NOT replace it.
+It SHALL NOT depend on a runtime dataclass layout or imply that later
 model, sampler or output choices were already executed or fixed by preparation.
 
 #### Scenario: Preparation with a retained subset

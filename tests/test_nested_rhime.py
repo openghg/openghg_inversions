@@ -504,7 +504,9 @@ def test_nested_preparation_uses_native_inner_domain_and_safe_basis_default(
         return prepared
 
     monkeypatch.setattr(nested_module.RhimeMergedData, "from_options", fake_retrieve)
-    monkeypatch.setattr(nested_module, "filter_observations", lambda value, **kwargs: value)
+    monkeypatch.setattr(
+        nested_module, "filter_observations", lambda value, site_options, **kwargs: (value, site_options),
+    )
     monkeypatch.setattr(
         nested_module,
         "align_inner_merged_to_outer_observations",
@@ -617,7 +619,9 @@ def test_nested_preparation_routes_automatic_basis_budget(monkeypatch) -> None:
         return prepared
 
     monkeypatch.setattr(nested_module.RhimeMergedData, "from_options", fake_retrieve)
-    monkeypatch.setattr(nested_module, "filter_observations", lambda value, **kwargs: value)
+    monkeypatch.setattr(
+        nested_module, "filter_observations", lambda value, site_options, **kwargs: (value, site_options),
+    )
     monkeypatch.setattr(
         nested_module,
         "align_inner_merged_to_outer_observations",

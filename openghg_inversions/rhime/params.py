@@ -147,6 +147,37 @@ class DataConfig:
         """Return named direct attributes in a new dictionary, borrowing values."""
         return {name: getattr(self, name) for name in names}
 
+    def to_params(self) -> dict[str, Any]:
+        """Return these choices as external options that :meth:`from_params` reads back.
+
+        Site selectors are flattened to their option names; values are borrowed.
+        """
+        site_names = {f.name for f in fields(SiteOptions)}
+        params = {name: getattr(self, name) for name in self.option_names() - site_names}
+        params.update({name: getattr(self.site_options, name) for name in site_names})
+        return params
+
+
+def retained_run_spec(
+    data: DataConfig, prepared: RhimePreparedInputs, *, model: RhimeModelSpec, output: RhimeOutputSpec,
+) -> RhimeRunSpec:
+    """Compose the sites retained by preparation with the requested dates and choices.
+
+    Args:
+        data: Data choices that produced ``prepared``.
+        prepared: Prepared inputs whose retained sites and averaging periods are recorded.
+        model: Resolved model choices.
+        output: Requested output choices.
+
+    Returns:
+        The run specification used by model construction, results and products.
+    """
+    return RhimeRunSpec(
+        start_date=data.start_date, end_date=data.end_date,
+        sites=tuple(prepared.sites), averaging_period=tuple(prepared.averaging_period),
+        model=model, output=output, split_by_sectors=data.split_by_sectors,
+    )
+
 
 @dataclass(frozen=True, kw_only=True)
 class RhimeConfig:
@@ -156,11 +187,6 @@ class RhimeConfig:
     model: RhimeModelSpec
     output: RhimeOutputSpec
     sampler: RhimeSampler
-
-    @classmethod
-    def preparation_option_names(cls) -> frozenset[str]:
-        """External preparation options declared by their owner."""
-        return DataConfig.option_names()
 
     @classmethod
     def supported_option_names(cls) -> frozenset[str]:
@@ -201,24 +227,24 @@ class RhimeConfig:
         return {name: getattr(self, name) for name in names}
 
     def retained_run_spec(self, prepared: RhimePreparedInputs) -> RhimeRunSpec:
-        """Compose retained sites with requested dates and resolved choices."""
-        return RhimeRunSpec(
-            start_date=self.data.start_date, end_date=self.data.end_date,
-            sites=tuple(prepared.sites), averaging_period=tuple(prepared.averaging_period),
-            model=self.model, output=self.output,
-            split_by_sectors=self.data.split_by_sectors,
-        )
+        """Compose retained sites with this request; see :func:`retained_run_spec`."""
+        return retained_run_spec(self.data, prepared, model=self.model, output=self.output)
 
 
 RHIME_PREPARATION_OPTION_NAMES = DataConfig.option_names()
+
+
+# Data facts a model request may repeat; each must agree with the preparation.
+REQUEST_CLAIM_NAMES = (
+    "species", "domain", "flux_sources", "start_date", "end_date", "split_by_sectors", "bc_freq", "use_bc",
+)
 
 
 def rhime_option_groups() -> dict[str, frozenset[str]]:
     """Expose canonical option names from their existing concrete owners."""
     return {
         "data": DataConfig.option_names(),
-        "model": frozenset(RhimeModelSpec.CONFIG_OPTION_NAMES) | LIKELIHOOD_OPTION_NAMES
-                 | {"use_bc", "bc_freq", "species", "domain", "flux_sources", "start_date", "end_date", "split_by_sectors"},
+        "model": frozenset(RhimeModelSpec.CONFIG_OPTION_NAMES) | LIKELIHOOD_OPTION_NAMES | set(REQUEST_CLAIM_NAMES),
         "sampler": frozenset(RhimeSampler.CONFIG_OPTION_NAMES),
         "output": RhimeOutputSpec.option_names(),
     }
@@ -290,7 +316,7 @@ def resolve_model_options(params: Mapping[str, Any], *, preparation: DataConfig)
     inputs; repeated temporal or source facts must agree with preparation.
     """
     remaining = normalise_rhime_params(params)
-    facts = ("species", "domain", "flux_sources", "start_date", "end_date", "split_by_sectors", "bc_freq")
+    facts = tuple(name for name in REQUEST_CLAIM_NAMES if name != "use_bc")
     unknown = sorted(set(remaining) - set(RhimeModelSpec.CONFIG_OPTION_NAMES)
                      - LIKELIHOOD_OPTION_NAMES - set(facts) - {"use_bc"})
     if unknown:

@@ -45,18 +45,17 @@ def test_error_preparation_preserves_selector_order_over_mapping_order(error_kin
     )
 
     if error_kind == "derived":
-        prepared = prepare_observation_errors(merged)
+        prepared = prepare_observation_errors(merged.site_data)
     else:
         with Callback(pretask=lambda *args: pytest.fail("supplied errors were computed")):
-            prepared = prepare_observation_errors(merged)
+            prepared = prepare_observation_errors(merged.site_data)
 
-    assert prepared.sites == ("TAC", "MHD")
-    assert prepared.averaging_period == ("1h", "2h")
     if error_kind == "complete":
-        assert prepared is merged
-    else:
-        assert tuple(prepared.site_data) == ("TAC", "MHD")
-    gathered = make_inv_inputs(prepared.site_data, sites=list(prepared.sites))
+        assert all(prepared[site] is merged.site_data[site] for site in prepared)
+    prepared, site_options = filter_observations(prepared, merged.site_options)
+    assert tuple(prepared) == site_options.sites == ("TAC", "MHD")
+    assert site_options.averaging_period == ("1h", "2h")
+    gathered = make_inv_inputs(prepared, sites=list(site_options.sites))
     np.testing.assert_array_equal(gathered.site, ["TAC", "TAC", "MHD", "MHD"])
     np.testing.assert_array_equal(gathered.site_names, ["TAC", "MHD"])
     # The first selected site remains the reference for drop-first offsets.
@@ -71,11 +70,11 @@ def test_error_preparation_preserves_selector_order_over_mapping_order(error_kin
             np.testing.assert_array_equal(gathered[name], np.zeros(4))
     for site, dataset in site_data.items():
         xr.testing.assert_identical(dataset, originals[site])
-        assert prepared.site_data[site].mf.data is dataset.mf.data
+        assert prepared[site].mf.data is dataset.mf.data
         if error_kind != "derived":
-            assert prepared.site_data[site].mf_error.data is dataset.mf_error.data
+            assert prepared[site].mf_error.data is dataset.mf_error.data
         if lazy:
-            assert isinstance(prepared.site_data[site].mf_error.data, da.Array)
+            assert isinstance(prepared[site].mf_error.data, da.Array)
     assert tuple(merged.site_data) == ("MHD", "TAC")
     assert merged.sites == ("TAC", "MHD")
 
@@ -95,17 +94,15 @@ def test_quadrature_precedes_daily_median_and_preserves_borrowed_metadata(lazy):
         dataset = dataset.chunk(time=1)
     original = dataset.copy(deep=True)
     merged = _merged(dataset)
-    prepared = prepare_observation_errors(merged)
-    filtered = filter_observations(prepared, filters="daily_median")
+    prepared = prepare_observation_errors(merged.site_data)
+    filtered = filter_observations(prepared, merged.site_options, filters="daily_median")[0]
     # median(sqrt(r**2 + v**2)) != sqrt(median(r)**2 + median(v)**2).
-    assert filtered.site_data["TAC"].mf_error.item() == pytest.approx(np.sqrt(82.0))
+    assert filtered["TAC"].mf_error.item() == pytest.approx(np.sqrt(82.0))
     assert np.sqrt(np.median(dataset.mf_repeatability.values) ** 2 + np.median(dataset.mf_variability.values) ** 2) == 5.0
     xr.testing.assert_identical(dataset, original)
-    assert prepared.site_data["TAC"].mf.data is dataset.mf.data
-    assert prepared.site_data["TAC"].attrs == dataset.attrs
-    assert prepared.site_data["TAC"].mf_error.attrs == {"long_name": "methane_error", "units": "1e-9"}
-    assert prepared.site_options == merged.site_options
-    assert prepared.provenance == merged.provenance
+    assert prepared["TAC"].mf.data is dataset.mf.data
+    assert prepared["TAC"].attrs == dataset.attrs
+    assert prepared["TAC"].mf_error.attrs == {"long_name": "methane_error", "units": "1e-9"}
 
 
 def test_zero_error_fallback_uses_acquired_population_before_daytime_selection():
@@ -117,11 +114,12 @@ def test_zero_error_fallback_uses_acquired_population_before_daytime_selection()
         },
         coords={"time": pd.to_datetime(["2020-01-01T00:00", "2020-01-01T12:00", "2020-01-01T13:00"])},
     ).chunk(time=1)
-    filtered = filter_observations(prepare_observation_errors(_merged(dataset)), filters="daytime")
-    np.testing.assert_allclose(filtered.site_data["TAC"].mf_error, [np.std([100.0, 0.0, 10.0]), 2.0])
+    merged = _merged(dataset)
+    filtered = filter_observations(prepare_observation_errors(merged.site_data), merged.site_options, filters="daytime")[0]
+    np.testing.assert_allclose(filtered["TAC"].mf_error, [np.std([100.0, 0.0, 10.0]), 2.0])
     assert "mf_error" not in dataset
     assert "mf_variability" not in dataset
-    np.testing.assert_array_equal(filtered.site_data["TAC"].time, dataset.time[1:])
+    np.testing.assert_array_equal(filtered["TAC"].time, dataset.time[1:])
 
 
 def test_custom_error_is_preserved_without_computing_or_requiring_components():
@@ -131,19 +129,19 @@ def test_custom_error_is_preserved_without_computing_or_requiring_components():
     )
     merged = _merged(dataset)
     with Callback(pretask=lambda *args: pytest.fail("custom error was computed")):
-        prepared = prepare_observation_errors(merged)
-        assert prepared.site_data["TAC"].mf_error.data is dataset.mf_error.data
+        prepared = prepare_observation_errors(merged.site_data)
+        assert prepared["TAC"].mf_error.data is dataset.mf_error.data
     assert dataset.mf_error.attrs == {"source": "custom"}
 
 
 @pytest.mark.parametrize("averaging_error", [False, True])
 def test_variability_only_and_missing_components_remain_supported(averaging_error):
     dataset = xr.Dataset({"mf": ("time", [10.0, 20.0]), "mf_variability": ("time", [2.0, 3.0])})
-    prepared = prepare_observation_errors(_merged(dataset), averaging_error=averaging_error)
-    np.testing.assert_array_equal(prepared.site_data["TAC"].mf_error, [2.0, 3.0])
-    np.testing.assert_array_equal(prepared.site_data["TAC"].mf_repeatability, [0.0, 0.0])
+    prepared = prepare_observation_errors(_merged(dataset).site_data, averaging_error=averaging_error)
+    np.testing.assert_array_equal(prepared["TAC"].mf_error, [2.0, 3.0])
+    np.testing.assert_array_equal(prepared["TAC"].mf_repeatability, [0.0, 0.0])
     with pytest.raises(ValueError, match="missing both"):
-        prepare_observation_errors(_merged(dataset.drop_vars("mf_variability")))
+        prepare_observation_errors(_merged(dataset.drop_vars("mf_variability")).site_data)
 
 
 def test_nested_domains_prepare_errors_before_outer_aggregation_and_inner_alignment(monkeypatch):
@@ -200,8 +198,8 @@ def test_custom_error_with_missing_diagnostics_reaches_gathered_assembly(compone
     if component:
         dataset[component] = ("time", [2.0, 3.0])
     original = dataset.copy(deep=True)
-    prepared = prepare_observation_errors(_merged(dataset))
-    gathered = make_inv_inputs(prepared.site_data, sites=["TAC"])
+    prepared = prepare_observation_errors(_merged(dataset).site_data)
+    gathered = make_inv_inputs(prepared, sites=["TAC"])
     np.testing.assert_array_equal(gathered.mf_error, [7.0, 8.0])
     assert gathered.mf_error.attrs == {"source": "custom", "units": "ppb"}
     for name in ("mf_repeatability", "mf_variability"):

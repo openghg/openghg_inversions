@@ -24,6 +24,25 @@ _OUTPUT_FORMAT_ALIASES = {
 }
 
 
+# Deprecated spellings recognised when classifying request names by owner.
+REQUEST_ALIASES = {**_ALIASES, "emissions_store": "flux_store", "emissions_domain": "flux_domain"}
+
+_REMOVED_OPTIONS = {
+    "calculate_min_error": "`calculate_min_error` is not supported by RHIME runners; use `min_error`.",
+    "reparameterise_log_normal": (
+        "`reparameterise_log_normal` is not supported by RHIME runners; "
+        "set `reparameterise` in the relevant prior dictionary if needed."
+    ),
+    "mcmc_type": "`mcmc_type` is not supported by RHIME runners; use `nuts_sampler` if needed.",
+}
+
+
+def migration_errors(names: Iterable[str]) -> list[str]:
+    """Explain every removed option among ``names`` at frontend validation boundaries."""
+    names = set(names)
+    return resource_migration_errors(names) + [message for name, message in _REMOVED_OPTIONS.items() if name in names]
+
+
 def resource_migration_errors(names: Iterable[str]) -> list[str]:
     """Explain removed resource selectors at frontend validation boundaries."""
     names = set(names)
@@ -75,15 +94,9 @@ def normalise_param_aliases(params: Mapping[str, Any]) -> dict[str, Any]:
             stacklevel=3,
         )
 
-    if "calculate_min_error" in normalized:
-        raise ValueError("`calculate_min_error` is not supported by RHIME runners; use `min_error`.")
-    if "reparameterise_log_normal" in normalized:
-        raise ValueError(
-            "`reparameterise_log_normal` is not supported by RHIME runners; "
-            "set `reparameterise` in the relevant prior dictionary if needed."
-        )
-    if "mcmc_type" in normalized:
-        raise ValueError("`mcmc_type` is not supported by RHIME runners; use `nuts_sampler` if needed.")
+    for name, message in _REMOVED_OPTIONS.items():
+        if name in normalized:
+            raise ValueError(message)
 
     return normalized
 

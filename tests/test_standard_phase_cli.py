@@ -37,7 +37,7 @@ def test_postprocess_cli_needs_only_sample_and_output_choices(tmp_path, monkeypa
 
 
 def test_phase_cli_rejects_explicit_wrong_phase_override(tmp_path):
-    with pytest.raises(ValueError, match="do not belong"):
+    with pytest.raises(ValueError, match="for this phase"):
         main(["sample", "--preparation-manifest", "missing.json", "--output-dir", str(tmp_path / "sample"),
               "--kwargs", '{"filters":"daily_median"}'])
 
@@ -169,3 +169,15 @@ def test_phase_preserves_resource_migration_guidance_in_aggregate_error(grouped)
     assert str(full.value) in message
     for replacement in ("country_file", "landsea_path", "outer_regions_path", "bc_basis_paths", "HBMCMC"):
         assert replacement in message
+
+
+def test_phase_errors_explain_every_removed_option():
+    from argparse import Namespace
+    from openghg_inversions.cli import _standard_phase_options
+
+    args = Namespace(config=None, params_file=None,
+                     kwargs={"mcmc_type": "nuts", "calculate_min_error": True, "reparameterise_log_normal": True})
+    with pytest.raises(ValueError) as caught:
+        _standard_phase_options(args, phase="sample")
+    for replacement in ("nuts_sampler", "`min_error`", "reparameterise"):
+        assert replacement in str(caught.value)

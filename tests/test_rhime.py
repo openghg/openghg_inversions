@@ -1884,9 +1884,9 @@ def test_assemble_rhime_inputs_preserves_borrowed_site_datasets(
         multisector=False,
     )
     prepared = rhime_public.assemble_rhime_inputs(
-        merged,
-        _fake_basis_functions(),
         site_data,
+        _fake_basis_functions(),
+        site_options=merged.site_options,
         domain=setup.data.domain, start_date=setup.data.start_date, bc_freq=setup.data.bc_freq,
         min_error=setup.data.min_error, min_error_options=setup.data.min_error_options, use_bc=setup.data.use_bc,
     )
@@ -1946,10 +1946,10 @@ def test_prepared_replay_computes_selected_error_only_at_pymc_boundary(
         return build_result
 
     monkeypatch.setattr(rhime_prepared, "select_aggregation_error_mode", select_without_computing)
-    monkeypatch.setattr(rhime_prepared, "build_standard_rhime_model_result", build)
+    monkeypatch.setattr(rhime_standard, "build_standard_rhime_model_result", build)
     monkeypatch.setattr(rhime_prepared, "sample_rhime_model", lambda *args, **kwargs: _minimal_output_idata())
     monkeypatch.setattr(rhime_prepared, "make_standard_rhime_result", lambda **kwargs: expected)
-    monkeypatch.setattr(rhime_prepared, "make_standard_rhime_outputs", lambda **kwargs: None)
+    monkeypatch.setattr(rhime_prepared, "make_standard_rhime_outputs", lambda **kwargs: kwargs["result"])
 
     result = run_rhime_from_prepared_inputs(prepared_inputs=prepared, run_spec=run_spec)
 
@@ -2834,10 +2834,13 @@ def test_run_rhime_from_prepared_inputs_routes_without_preparation(
         assert kwargs["result"] is expected_result
         assert kwargs["prepared"] is replay_context["prepared"]
         stage_calls.append("outputs")
+        return kwargs["result"]
 
-    monkeypatch.setattr(rhime_prepared, "materialize_pymc_inputs", materialize)
+    # The standard branch builds through the shared ``standard.build_standard``.
+    build_module = rhime_standard if sector_count == 1 else rhime_prepared
+    monkeypatch.setattr(build_module, "materialize_pymc_inputs", materialize)
     monkeypatch.setattr(
-        rhime_prepared,
+        build_module,
         "build_standard_rhime_model_result" if sector_count == 1 else "build_multisector_rhime_model_result",
         build,
     )
@@ -2963,7 +2966,7 @@ def test_public_rhime_runners_follow_named_stage_order(
         split_by_sectors=multisector,
     )
     merged = external_merged
-    filtered = merged
+    filtered = merged.site_data
     basis = cast(Any, object())
     site_data = cast(Any, object())
 
@@ -2976,16 +2979,17 @@ def test_public_rhime_runners_follow_named_stage_order(
         calls.append("retrieve")
         return merged
 
-    def filter_observations(actual: Any, *, filters: Any) -> Any:
+    def filter_observations(actual: Any, site_options: Any, *, filters: Any) -> Any:
         """Record public filtering and site alignment."""
-        assert actual is merged
+        assert set(actual) == set(merged.site_data)
+        assert site_options is merged.site_options
         assert filters is config.data.filters
         calls.append("filter")
-        return filtered
+        return filtered, site_options
 
     def build_basis(**kwargs: Any) -> Any:
         """Record basis construction with resolved named values."""
-        assert kwargs["site_data"] is filtered.site_data
+        assert kwargs["site_data"] is filtered
         assert kwargs["domain"] == config.data.domain
         assert kwargs["basis_algorithm"] == config.data.basis_algorithm
         calls.append("basis")
@@ -3001,11 +3005,11 @@ def test_public_rhime_runners_follow_named_stage_order(
         calls.append("sensitivities")
         return site_data
 
-    def assemble(actual: Any, actual_basis: Any, actual_site_data: Any, **kwargs: Any) -> Any:
+    def assemble(actual: Any, actual_basis: Any, *, site_options: Any, **kwargs: Any) -> Any:
         """Record public labelled-input assembly."""
-        assert actual is filtered
+        assert actual is site_data
         assert actual_basis is basis
-        assert actual_site_data is site_data
+        assert site_options is merged.site_options
         assert kwargs["domain"] == config.data.domain
         assert kwargs["start_date"] == config.data.start_date
         assert kwargs["min_error_options"] is config.data.min_error_options
@@ -3061,8 +3065,10 @@ def test_public_rhime_runners_follow_named_stage_order(
 
     def outputs(**kwargs: Any) -> None:
         """Record the recipe-specific public output stage."""
+        assert kwargs.pop("compatibility_output_chain", None) is None
         assert kwargs == {"result": expected, "prepared": prepared}
         calls.append("outputs")
+        return expected
 
     monkeypatch.setattr(recipe_module.RhimeConfig, "from_params", staticmethod(resolve))
     monkeypatch.setattr(recipe_module.RhimeMergedData, "from_options", retrieve)
@@ -3143,7 +3149,7 @@ def test_ordinary_runners_reject_orphaned_likelihood_options_before_config(
     recipe_module = rhime_multisector if runner is run_rhime_multisector else rhime_standard
     monkeypatch.setattr(
         recipe_module,
-        "read_rhime_ini",
+        "read_rhime_ini" if runner is run_rhime_multisector else "load_rhime_params",
         lambda *args, **kwargs: pytest.fail("orphaned options must fail before configuration"),
     )
 
@@ -3260,32 +3266,6 @@ def test_rhime_package_does_not_reexport_cross_owner_components() -> None:
     assert cross_owner_names.isdisjoint(vars(rhime_public))
 
 
-@pytest.mark.parametrize("recipe", [run_rhime, run_rhime_multisector])
-def test_each_rhime_recipe_keeps_the_scientific_process_visible(recipe: Callable[..., Any]) -> None:
-    """A recipe reader can see every scientific handoff in execution order."""
-    source = inspect.getsource(recipe)
-    multisector = recipe is run_rhime_multisector
-    if not multisector:
-        source = source.replace("prepared = prepare_standard(",
-                                inspect.getsource(rhime_standard.prepare_standard) + "\nprepared = prepare_standard(")
-    stages = (
-        "RhimeConfig.from_params",
-        "RhimeMergedData.from_options",
-        "filter_observations",
-        "prepare_basis",
-        "build_sensitivities",
-        "assemble_rhime_inputs",
-        "retained_run_spec",
-        "materialize_pymc_inputs",
-        "build_multisector_rhime_model_result" if multisector else "build_standard_rhime_model_result",
-        "sample_rhime_model",
-        "make_multisector_rhime_result" if multisector else "make_standard_rhime_result",
-        "make_multisector_rhime_outputs" if multisector else "make_standard_rhime_outputs",
-    )
-    positions = [source.index(stage) for stage in stages]
-    assert positions == sorted(positions)
-
-
 def test_public_stages_compose_as_complete_external_runner(monkeypatch: pytest.MonkeyPatch) -> None:
     """Real public handoffs compose a full runner without private glue or manifests."""
     site_options = SiteOptions.from_inputs(
@@ -3341,13 +3321,15 @@ def test_public_stages_compose_as_complete_external_runner(monkeypatch: pytest.M
         start_date=setup.data.start_date, end_date=setup.data.end_date,
         flux_sources=list(setup.data.flux_sources), use_bc=setup.data.use_bc,
     )
-    filtered = rhime_public.filter_observations(merged, filters=setup.data.filters)
+    filtered, site_options = rhime_public.filter_observations(
+        merged.site_data, merged.site_options, filters=setup.data.filters,
+    )
     from openghg_inversions.native_flux import resolve_runtime_flux
 
     basis_functions = basis_module.prepare_basis(
-        site_data=filtered.site_data,
-        runtime_flux=resolve_runtime_flux(filtered.flux_data),
-        weighting_flux=filtered.flux_data[setup.data.flux_sources[0]]["flux"],
+        site_data=filtered,
+        runtime_flux=resolve_runtime_flux(merged.flux_data),
+        weighting_flux=merged.flux_data[setup.data.flux_sources[0]]["flux"],
         domain=setup.data.domain, start_date=setup.data.start_date,
         nbasis=setup.data.nbasis,
     )
@@ -3358,9 +3340,9 @@ def test_public_stages_compose_as_complete_external_runner(monkeypatch: pytest.M
         multisector=False,
     )
     prepared = rhime_public.assemble_rhime_inputs(
-        filtered,
-        basis_functions,
         site_data,
+        basis_functions,
+        site_options=site_options,
         domain=setup.data.domain, start_date=setup.data.start_date, bc_freq=setup.data.bc_freq,
         min_error=setup.data.min_error, min_error_options=setup.data.min_error_options, use_bc=setup.data.use_bc,
     )
@@ -3908,7 +3890,7 @@ def test_run_rhime_rejects_noncanonical_custom_likelihood_before_sampling(
         site_options=config.data.site_options,
     )
     monkeypatch.setattr(rhime_standard.RhimeMergedData, "from_options", lambda *args, **kwargs: merged)
-    monkeypatch.setattr(rhime_standard, "filter_observations", lambda merged, **kwargs: merged)
+    monkeypatch.setattr(rhime_standard, "filter_observations", lambda data, options, **kwargs: (data, options))
     monkeypatch.setattr(rhime_standard, "prepare_basis", lambda *args, **kwargs: prepared.basis_functions)
     monkeypatch.setattr(rhime_standard, "build_sensitivities", lambda *args, **kwargs: object())
     monkeypatch.setattr(rhime_standard, "assemble_rhime_inputs", lambda *args, **kwargs: prepared)
@@ -5846,7 +5828,7 @@ def test_multisector_sensitivity_sources_fail_before_site_gathering() -> None:
         match="Site 'TAC'.*missing source\\(s\\): \\['ocean-inventory'\\]",
     ):
         rhime_preparation.build_sensitivities(
-            merged=merged,
+            site_data=merged.site_data,
             basis_functions=cast(BasisFunctions, MissingSourceBasis()),
             multisector=True,
             flux_sources=["ff-inventory", "ocean-inventory"],
@@ -5889,7 +5871,7 @@ def test_multisector_site_preparation_keeps_gathered_source_state() -> None:
     )
 
     prepared = rhime_preparation.build_sensitivities(
-        merged=merged,
+        site_data=merged.site_data,
         basis_functions=cast(BasisFunctions, GatheredBasis()),
         multisector=True,
         flux_sources=["ff-inventory", "ocean-inventory"],
@@ -5933,7 +5915,10 @@ def test_rhime_preparation_uses_platform_for_sites_retained_after_filtering(
         return merged
 
     monkeypatch.setattr(RhimeMergedData, "from_options", retrieve)
-    monkeypatch.setattr(rhime_preparation, "filter_observations", lambda *args, **kwargs: filtered_merged)
+    monkeypatch.setattr(
+        rhime_preparation, "filter_observations",
+        lambda *args, **kwargs: (filtered_merged.site_data, filtered_merged.site_options),
+    )
     monkeypatch.setattr(preparation_helpers, "prepare_basis", lambda **kwargs: _fake_basis_functions())
     monkeypatch.setattr(
         rhime_preparation,
@@ -6236,14 +6221,14 @@ def test_apply_filters_drops_complete_site_option_record() -> None:
     }
 
     merged = from_legacy_fp_all(fp_data, site_options)
-    filtered = rhime_preparation.filter_observations(merged, filters=None)
+    filtered, retained = rhime_preparation.filter_observations(merged.site_data, merged.site_options, filters=None)
 
-    assert set(filtered.site_data) == {"TAC", "RGL"}
-    assert filtered.site_options == site_options.select_indices([0, 2])
+    assert set(filtered) == {"TAC", "RGL"}
+    assert retained == site_options.select_indices([0, 2])
 
 
 def test_filtering_preserves_shared_merged_data_when_dropping_sites() -> None:
-    """Filtering keeps active shared inputs while removing an empty site."""
+    """Filtering removes an empty site without touching the acquired merged data."""
     flux = {"inventory": xr.Dataset({"flux": ("time", [1.])})}
     merged = from_legacy_fp_all(
         fp_all={
@@ -6255,11 +6240,12 @@ def test_filtering_preserves_shared_merged_data_when_dropping_sites() -> None:
         site_options=_site_options(["TAC", "MHD"], averaging_period=["1H", "1H"]),
     )
 
-    filtered = rhime_preparation.filter_observations(merged=merged, filters=None)
+    filtered, retained = rhime_preparation.filter_observations(merged.site_data, merged.site_options, filters=None)
 
-    assert filtered.sites == ("MHD",)
-    assert filtered.flux_data["inventory"] is merged.flux_data["inventory"]
-    assert to_legacy_fp_all(filtered)[".split_by_sectors"] is False
+    assert tuple(filtered) == retained.sites == ("MHD",)
+    assert merged.sites == ("TAC", "MHD")
+    assert merged.flux_data["inventory"] is flux["inventory"]
+    assert to_legacy_fp_all(merged)[".split_by_sectors"] is False
 
 
 @pytest.mark.parametrize(
@@ -7335,7 +7321,7 @@ def test_make_standard_outputs_attach_products_to_result() -> None:
     )
 
     bundle = _result_for_outputs(run_spec, _minimal_output_idata(), model_spec=model_spec)
-    rhime_outputs.make_standard_rhime_outputs(result=bundle, prepared=prepared)
+    bundle = rhime_outputs.make_standard_rhime_outputs(result=bundle, prepared=prepared)
 
     assert isinstance(bundle.inv_out, InversionOutput)
     xr.testing.assert_identical(bundle.inv_out.inv_inputs.release_lat, inv_inputs.release_lat)
@@ -7380,7 +7366,7 @@ def test_standard_postprocessing_failure_precedes_output_writes(
     )
 
     with pytest.raises(ValueError, match="invalid PARIS options"):
-        rhime_outputs.make_standard_rhime_outputs(result=result, prepared=prepared)
+        result = rhime_outputs.make_standard_rhime_outputs(result=result, prepared=prepared)
     assert not any(tmp_path.iterdir())
 
 
@@ -7403,7 +7389,7 @@ def test_output_bundle_serializes_state_activity_spec() -> None:
     )
 
     bundle = _result_for_outputs(run_spec, _minimal_output_idata(), model_spec=model_spec)
-    rhime_outputs.make_standard_rhime_outputs(result=bundle, prepared=prepared)
+    bundle = rhime_outputs.make_standard_rhime_outputs(result=bundle, prepared=prepared)
 
     assert bundle.inv_out is not None
     policy = bundle.inv_out.model_metadata["sectors"][0]["state_activity"]
@@ -7648,7 +7634,7 @@ def test_default_model_inversion_output_save_load_roundtrip(tmp_path: Path) -> N
     idata.attrs["burn"] = 1000
     cast(Any, idata).posterior.attrs["burn"] = 1000
     bundle = _result_for_outputs(run_spec, idata, model_spec=model_spec)
-    rhime_outputs.make_standard_rhime_outputs(result=bundle, prepared=prepared)
+    bundle = rhime_outputs.make_standard_rhime_outputs(result=bundle, prepared=prepared)
     assert bundle.inv_out is not None
 
     output_file = tmp_path / "default_model_inv_out.nc"
@@ -7684,7 +7670,7 @@ def test_legacy_model_error_metadata_uses_writer_likelihood() -> None:
         site_metadata=_prepared_site_metadata(),
     )
     result = _result_for_outputs(run_spec, _minimal_output_idata(), model_spec=model_spec)
-    rhime_outputs.make_standard_rhime_outputs(result=result, prepared=prepared)
+    result = rhime_outputs.make_standard_rhime_outputs(result=result, prepared=prepared)
     attrs = _legacy_hbmcmc_attrs(result.inv_out)
     assert attrs["Error for each site"] == "False"
     assert attrs["Model error Prior"] == "pdf,uniform,lower,0.1,upper,1.0"
@@ -7735,7 +7721,7 @@ def test_modern_inversion_output_save_load_roundtrip(tmp_path: Path) -> None:
     idata.attrs["burn"] = 1000
     cast(Any, idata).posterior.attrs["burn"] = 1000
     bundle = _result_for_outputs(run_spec, idata, model_spec=model_spec)
-    rhime_outputs.make_standard_rhime_outputs(result=bundle, prepared=prepared)
+    bundle = rhime_outputs.make_standard_rhime_outputs(result=bundle, prepared=prepared)
     assert bundle.inv_out is not None
 
     output_file = tmp_path / "modern_inv_out.nc"
@@ -7786,7 +7772,7 @@ def test_modern_inversion_output_restores_bytes_multiindex_metadata() -> None:
         site_metadata=_prepared_site_metadata(),
     )
     bundle = _result_for_outputs(run_spec, _minimal_output_idata(), model_spec=model_spec)
-    rhime_outputs.make_standard_rhime_outputs(result=bundle, prepared=prepared)
+    bundle = rhime_outputs.make_standard_rhime_outputs(result=bundle, prepared=prepared)
     assert bundle.inv_out is not None
 
     dt = bundle.inv_out.to_datatree()
@@ -7831,7 +7817,7 @@ def test_modern_inversion_output_roundtrips_trace_multiindex() -> None:
         make_trace(posterior=posterior, posterior_predictive=posterior_predictive),
         model_spec=model_spec,
     )
-    rhime_outputs.make_standard_rhime_outputs(result=bundle, prepared=prepared)
+    bundle = rhime_outputs.make_standard_rhime_outputs(result=bundle, prepared=prepared)
     assert bundle.inv_out is not None
 
     reloaded = InversionOutput.from_datatree(bundle.inv_out.to_datatree())
@@ -7862,7 +7848,7 @@ def test_modern_inversion_output_ignores_malformed_multiindex_metadata(raw_multi
         site_metadata=_prepared_site_metadata(),
     )
     bundle = _result_for_outputs(run_spec, _minimal_output_idata(), model_spec=model_spec)
-    rhime_outputs.make_standard_rhime_outputs(result=bundle, prepared=prepared)
+    bundle = rhime_outputs.make_standard_rhime_outputs(result=bundle, prepared=prepared)
     assert bundle.inv_out is not None
 
     dt = bundle.inv_out.to_datatree()
@@ -7900,7 +7886,7 @@ def test_modern_inversion_output_supports_flux_outputs() -> None:
         ),
         model_spec=model_spec,
     )
-    rhime_outputs.make_standard_rhime_outputs(result=bundle, prepared=prepared)
+    bundle = rhime_outputs.make_standard_rhime_outputs(result=bundle, prepared=prepared)
     assert bundle.inv_out is not None
 
     modern_flux = make_flux_outputs(
@@ -8062,7 +8048,7 @@ def test_observation_inputs_for_outputs_stay_dataset_based() -> None:
         site_metadata=_prepared_site_metadata(),
     )
     bundle = _result_for_outputs(run_spec, _minimal_output_idata(), model_spec=model_spec)
-    rhime_outputs.make_standard_rhime_outputs(result=bundle, prepared=prepared)
+    bundle = rhime_outputs.make_standard_rhime_outputs(result=bundle, prepared=prepared)
     assert bundle.inv_out is not None
 
     obs_inputs = observation_inputs_for_outputs(bundle.inv_out)
@@ -8489,7 +8475,7 @@ def test_standard_basic_output_uses_modern_postprocessing_without_legacy_adapter
         model_spec=model_spec,
         country_file=str(europe_country_file),
     )
-    rhime_outputs.make_standard_rhime_outputs(result=bundle, prepared=prepared)
+    bundle = rhime_outputs.make_standard_rhime_outputs(result=bundle, prepared=prepared)
 
     assert isinstance(bundle.inv_out, InversionOutput)
     assert captured["inv_out"] is bundle.inv_out
@@ -8531,7 +8517,7 @@ def test_run_hbmcmc_chain_selection_does_not_truncate_archived_trace(
 
     monkeypatch.setattr("openghg_inversions.postprocessing.make_outputs.basic_output", fake_basic_output)
 
-    rhime_outputs.make_standard_rhime_outputs(
+    bundle = rhime_outputs.make_standard_rhime_outputs(
         result=bundle,
         prepared=prepared,
         compatibility_output_chain=0,
@@ -8583,7 +8569,7 @@ def test_standard_paris_output_uses_modern_postprocessing_without_legacy_adapter
         model_spec=model_spec,
         country_file=str(europe_country_file),
     )
-    rhime_outputs.make_standard_rhime_outputs(result=bundle, prepared=prepared)
+    bundle = rhime_outputs.make_standard_rhime_outputs(result=bundle, prepared=prepared)
 
     assert isinstance(bundle.inv_out, InversionOutput)
     assert captured["inv_out"] is bundle.inv_out
@@ -8634,7 +8620,7 @@ def test_standard_latest_paris_output_writes_index_as_unlimited_dimension(
     bundle = _result_for_outputs(
         run_spec, _minimal_output_idata(), model_spec=model_spec, country_file=str(europe_country_file),
     )
-    rhime_outputs.make_standard_rhime_outputs(result=bundle, prepared=prepared)
+    bundle = rhime_outputs.make_standard_rhime_outputs(result=bundle, prepared=prepared)
 
     with xr.open_dataset(bundle.output_metadata["paris_concentration_path"]) as saved_concentration:
         assert saved_concentration.encoding["unlimited_dims"] == {"index"}
@@ -8689,7 +8675,7 @@ def test_standard_legacy_output_uses_modern_inversion_output(
         model_spec=model_spec,
         country_file=str(europe_country_file),
     )
-    rhime_outputs.make_standard_rhime_outputs(result=bundle, prepared=prepared)
+    bundle = rhime_outputs.make_standard_rhime_outputs(result=bundle, prepared=prepared)
 
     assert isinstance(bundle.inv_out, InversionOutput)
     assert bundle.output_metadata["postprocessing_input_contract"] == "modern_inversion_output"
@@ -9055,9 +9041,9 @@ output_format = "inv_out"
     basis = cast(Any, object())
     site_data = cast(Any, object())
 
-    def fake_assemble(actual_merged: Any, actual_basis: Any, actual_site_data: Any, **kwargs: Any) -> RhimePreparedInputs:
+    def fake_assemble(actual_site_data: Any, actual_basis: Any, *, site_options: Any, **kwargs: Any) -> RhimePreparedInputs:
         """Capture resolved named assembly arguments and return minimal inputs."""
-        assert actual_merged is filtered
+        assert site_options is filtered.site_options
         assert actual_basis is basis
         assert actual_site_data is site_data
         seen["assembly"] = kwargs
@@ -9089,7 +9075,7 @@ output_format = "inv_out"
     monkeypatch.setattr(rhime_standard.RhimeMergedData, "from_options",
         fake_load,
     )
-    monkeypatch.setattr(rhime_standard, "filter_observations", lambda value, **kwargs: filtered)
+    monkeypatch.setattr(rhime_standard, "filter_observations", lambda value, options, **kwargs: (filtered.site_data, options))
     monkeypatch.setattr(rhime_standard, "resolve_basis_inputs", lambda config: {"landsea_classes": xr.DataArray([[1]], dims=("lat", "lon"))})
     monkeypatch.setattr(rhime_standard, "prepare_basis", fake_basis)
     monkeypatch.setattr(
@@ -9107,7 +9093,7 @@ output_format = "inv_out"
     monkeypatch.setattr(rhime_standard, "build_standard_rhime_model_result", fake_build)
     monkeypatch.setattr(rhime_standard, "sample_rhime_model", lambda *args, **kwargs: idata)
     monkeypatch.setattr(rhime_standard, "make_standard_rhime_result", fake_result)
-    monkeypatch.setattr(rhime_standard, "make_standard_rhime_outputs", lambda **kwargs: None)
+    monkeypatch.setattr(rhime_standard, "make_standard_rhime_outputs", lambda **kwargs: kwargs["result"])
 
     main(
         [

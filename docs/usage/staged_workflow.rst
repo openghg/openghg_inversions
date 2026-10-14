@@ -2,22 +2,30 @@ Staged RHIME workflows
 ======================
 
 The standard recipe can prepare once, sample compatible models into separate
-locations, and produce different outputs from saved samples. Full execution
-uses the same scientific operations in memory and needs no intermediate saves.
+locations, and produce different outputs from saved samples. ``run_standard``
+and the saved phases call the same step functions (``acquire_merged_data``,
+``prepare_standard``, ``export_basis``, ``build_standard``,
+``sample_rhime_model``, ``make_standard_rhime_result`` and
+``make_standard_rhime_outputs``) in the same order. A saved phase only adds
+loading its input checkpoint before those calls and saving its output after
+them; full execution needs no intermediate saves.
 
 Standard saved phases
 ---------------------
 
 ``prepare`` returns one absolute path to ``prepare-manifest.json``. It references
-prepared numerical inputs and retains the original requested window and baked
-preparation policy. Retained sites and their averaging periods come from the
+prepared numerical inputs and records the ``DataConfig`` that produced them in
+its external option form; ``load_preparation`` returns the prepared inputs and
+that ``DataConfig``, validated exactly as a full-run request is. Retained sites and their averaging periods come from the
 numerical artifact, including when acquisition or filtering drops a site.
 Observation errors are established before filtering, then basis construction,
 sensitivities and assembly run in scientific order. No filtered checkpoint is
 written.
 
 ``sample`` takes that manifest and current model and sampler choices, returning
-one absolute path to ``sample-manifest.json``. Compatible graph-time priors and
+one absolute path to ``sample-manifest.json``. A Python ``likelihood_builder``
+(with ``likelihood_kwargs``) may replace the built-in likelihood, as in
+``run_standard``. Compatible graph-time priors and
 likelihoods reuse the preparation. Required BC and minimum-error arrays must be
 available. Omitted model ``use_bc`` inherits the preparation choice; explicit
 ``False`` may ignore available BC inputs. A repeated ``bc_freq`` must agree with

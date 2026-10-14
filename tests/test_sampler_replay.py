@@ -6,7 +6,7 @@ import json
 import pytest
 import xarray as xr
 
-from openghg_inversions.rhime import _standard_stages as stages
+from openghg_inversions.rhime import _standard_stages as stages, standard
 from openghg_inversions.rhime.outputs import RhimeResult, _make_inversion_output
 from openghg_inversions.rhime.sampling import RhimeSampler
 from openghg_inversions.rhime.specs import RhimeModelSpec, RhimeOutputSpec, RhimeRunSpec
@@ -40,7 +40,7 @@ def test_saved_sampler_metadata_matches_live_output_despite_current_defaults(tmp
     path.write_text(json.dumps(manifest))
     with monkeypatch.context() as patch:
         patch.setattr(RhimeSampler, "sample", _forbidden)
-        patch.setattr(stages, "_build_prepared_model", _forbidden)
+        patch.setattr(standard, "build_standard", _forbidden)
         replay = stages.postprocess(path, output=RhimeOutputSpec(output_path=str(output_dir)))
     live = replace(replay, sampler=sampler, output_metadata={})
     assert live.sampler is sampler
@@ -69,7 +69,7 @@ def test_unavailable_sampler_description_does_not_block_products(tmp_path, monke
         manifest["actual_inference"] = recorded
     path.write_text(json.dumps(manifest))
     monkeypatch.setattr(RhimeSampler, "sample", _forbidden)
-    monkeypatch.setattr(stages, "_build_prepared_model", _forbidden)
+    monkeypatch.setattr(standard, "build_standard", _forbidden)
     replay = stages.postprocess(path, output=RhimeOutputSpec(output_path=str(output_dir)))
     assert replay.sampler is None
     assert replay.inv_out.output_metadata["sampler"] == recorded
@@ -83,6 +83,6 @@ def test_partial_sampler_description_does_not_invent_defaults(tmp_path, monkeypa
     manifest["actual_inference"] = {"draws": 17, "burn": 2}
     path.write_text(json.dumps(manifest))
     monkeypatch.setattr(RhimeSampler, "sample", _forbidden)
-    monkeypatch.setattr(stages, "_build_prepared_model", _forbidden)
+    monkeypatch.setattr(standard, "build_standard", _forbidden)
     replay = stages.postprocess(path, output=RhimeOutputSpec(output_path=str(output_dir)))
     assert replay.inv_out.output_metadata["sampler"] == {"draws": 17, "burn": 2}

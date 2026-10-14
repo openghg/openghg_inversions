@@ -27,18 +27,8 @@ def test_cookiecutter_project_runs_real_student_t_recipe(tmp_path):
 
     # Low-level saves also preserve a directly customized scientific recipe.
     from openghg_inversions.rhime import stages, DataConfig, RhimeOutputSpec
-    from openghg_inversions.rhime.standard import prepare_standard
-    preparation = DataConfig.from_params(options)
-    from openghg_inversions.rhime.preparation import resolve_basis_inputs
-    prepared = prepare_standard(
-        merged, basis_inputs=resolve_basis_inputs(preparation),
-        **preparation.select(
-            "domain", "start_date", "flux_sources", "averaging_error", "filters",
-            "basis_algorithm", "nbasis", "fix_basis_outer_regions", "use_bc", "bc_freq",
-            "min_error", "min_error_options",
-        ),
-    )
-    manifest = stages.save_preparation(prepared, data=preparation, output_dir=tmp_path / "custom-prepared")
+    manifest = stages.prepare(DataConfig.from_params(options), merged_data=merged,
+                              output_dir=tmp_path / "custom-prepared")
     samples = stages.save_samples(
         manifest, result.idata, output_contract=result.output_contract, model=result.model_spec,
         actual_inference=result.output_metadata["sampler"], build_and_sample_seconds=0.,
@@ -68,10 +58,11 @@ def test_saved_preparation_retains_subset_and_borrows_lazy_inputs(tmp_path):
     configuration = DataConfig.from_params({**options, "sites": ["MHD", "TAC"],
                                                    "averaging_period": ["3h", "1h"]})
     manifest = prepare(configuration, merged_data=merged, output_dir=tmp_path / "prepared")
-    reopened, context = load_preparation(manifest)
+    reopened, data = load_preparation(manifest)
     assert reopened.sites == ("TAC",)
     assert reopened.averaging_period == ("1h",)
-    assert context["start_date"] == "2019-01-01" and context["end_date"] == "2019-02-01"
+    assert data.start_date == "2019-01-01" and data.end_date == "2019-02-01"
+    assert data.site_options.sites == ("MHD", "TAC")  # the request, not the retained sites
     assert merged.sites == ("MHD", "TAC")
     assert borrowed.fp_x_flux.data is graph and isinstance(graph, da.Array)
     assert "mf_error" not in borrowed
@@ -84,21 +75,12 @@ def test_saved_model_missing_likelihood_input_fails_before_inference(tmp_path, m
     from examples.standard_handoffs import synthetic_inputs
     from openghg_inversions.rhime import _standard_stages as stages
     from openghg_inversions.rhime.params import DataConfig
-    from openghg_inversions.rhime.standard import prepare_standard
 
     merged, options, *_ = synthetic_inputs(tmp_path)
-    preparation = DataConfig.from_params(options)
-    from openghg_inversions.rhime.preparation import resolve_basis_inputs
-    prepared = prepare_standard(
-        merged, basis_inputs=resolve_basis_inputs(preparation),
-        **preparation.select(
-            "domain", "start_date", "flux_sources", "averaging_error", "filters",
-            "basis_algorithm", "nbasis", "fix_basis_outer_regions", "use_bc", "bc_freq",
-            "min_error", "min_error_options",
-        ),
-    )
+    complete = stages.prepare(DataConfig.from_params(options), merged_data=merged, output_dir=tmp_path / "complete")
+    prepared, data = stages.load_preparation(complete)
     prepared = replace(prepared, inv_inputs=prepared.inv_inputs.drop_vars("min_error"))
-    manifest = stages.save_preparation(prepared, data=preparation, output_dir=tmp_path / "prepared")
+    manifest = stages.save_preparation(prepared, data=data, output_dir=tmp_path / "prepared")
     monkeypatch.setattr(stages, "sample_rhime_model", lambda *args, **kwargs: pytest.fail("inference"))
     with pytest.raises(ValueError, match="Selected built-in likelihood.*min_error"):
         stages.sample(manifest, model={"mismatch_model": "pollution_event"}, output_dir=tmp_path / "samples")
@@ -221,3 +203,24 @@ def test_scientific_offset_is_required_but_predictive_samples_are_optional(tmp_p
     save_trace(replay.idata, sampled.parent / record["posterior"])
     with pytest.raises(ValueError, match="reconstruction state.*offset"):
         stages.postprocess(sampled, output=output)
+
+
+def test_custom_likelihood_saved_sampling_matches_full_route(tmp_path):
+    import numpy as np
+    from examples.rhime_cookiecutter.my_inversion.likelihoods import likelihood_builder
+    from examples.standard_handoffs import synthetic_inputs
+    from openghg_inversions.rhime import DataConfig, RhimeConfig, RhimeOutputSpec, RhimeSampler, run_standard, stages
+
+    merged, options, *_ = synthetic_inputs(tmp_path)
+    prior = {"x_prior": {"pdf": "normal", "mu": 1., "sigma": .2}}
+    sampler = RhimeSampler(draws=10, tune=10, chains=1, sample_kwargs={"random_seed": 42})
+    manifest = stages.prepare(DataConfig.from_params(options), merged_data=merged, output_dir=tmp_path / "prepared")
+    sampled = stages.sample(manifest, model=prior, sampler=sampler, output_dir=tmp_path / "samples",
+                            likelihood_builder=likelihood_builder)
+    replay = stages.postprocess(sampled, output=RhimeOutputSpec(output_format="none"))
+    config = RhimeConfig.from_params({**options, **prior, "mismatch_model": None, "draws": 10, "tune": 10,
+                                      "chains": 1, "sample_kwargs": {"random_seed": 42},
+                                      "output_name": "rhime", "output_format": "none"}, multisector=False)
+    full = run_standard(config=config, merged_data=merged, likelihood_builder=likelihood_builder)
+    np.testing.assert_allclose(replay.idata["posterior"]["x"], full.idata["posterior"]["x"])
+    assert "rhime_likelihood_builder" in replay.idata.attrs

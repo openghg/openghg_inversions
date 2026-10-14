@@ -28,8 +28,12 @@ preparation foundations do not establish completion of the phase APIs or handoff
 
 Equivalent supported full, prepared-input and staged routes SHALL reuse their
 family's scientific preparation, construction, inference and product operations.
-Full execution SHALL sequence those operations in memory without mandatory
-intermediate persistence. Preparation SHALL consistently derive retained labels
+They SHALL call the same step functions in the same order, passing the same kinds
+of objects between them; a saved entry point SHALL differ from the full runner only
+by loading its input checkpoint before those calls and saving its output checkpoint
+after them. Small repeated orchestration means repeated calls, not repeated
+function bodies. Full execution SHALL sequence those operations in memory without
+mandatory intermediate persistence. Preparation SHALL consistently derive retained labels
 from retained observations and align applicable per-site choices, accepting valid
 nonempty subsets without bypassing their owning input validation.
 Runners SHALL keep acquisition or supplied-data selection visible before
@@ -39,11 +43,18 @@ handoff and SHALL NOT retrieve data internally. Acquired data SHALL remain befor
 preparation-derived errors, filtering, basis/sensitivity construction and stacking;
 existing `ModelScenario` products such as `fp_x_flux` and BC sensitivities remain
 acquisition products. A combined `DataConfig` SHALL NOT obscure this boundary.
+`MergedData` SHALL hold acquired data only: it SHALL NOT carry, and SHALL NOT be
+serialized with, preparation-derived values such as derived observation errors or
+filtered observations. Scientific preparation SHALL accept `MergedData` and return
+prepared inputs; its internal steps SHALL pass per-site datasets and the aligned
+`SiteOptions` between plain functions. A new type per step is not required, and
+intermediate preparation states need not be serializable.
 Runners SHALL consume the resource-I/O contract's save and resource-resolution
 boundary supplied by #868.
 Direct scientific customization, signatures and numerical returns SHALL retain
-their contracts except for the explicit sampler-default migration below and
-#868's removal of the basis-preparation export argument;
+their contracts except for the explicit sampler-default migration below,
+#868's removal of the basis-preparation export argument, and the preparation
+steps' change from `MergedData` to per-site datasets and `SiteOptions`;
 staged/setup APIs and owned CO2 configuration conventions SHALL
 follow the declared reset instead of requiring compatibility aliases.
 The existing selector forwarding, full-run CLI model choices and established
@@ -73,6 +84,19 @@ owners without implying additional nested or linked checkpoint support.
 - **THEN** preparation performs its scientific operations without attempting acquisition
 - **AND** full and saved entry points expose acquisition or supplied-data selection before that same preparation operation
 - **AND** optional basis export is a separate runner call after the scientific result is returned
+
+#### Scenario: Full and saved routes call the same step functions
+
+- **WHEN** a family supports both a full runner and saved phases
+- **THEN** both call the same acquisition, preparation, export, construction, sampling, result and product functions in the same order
+- **AND** a saved phase adds only loading its input checkpoint and saving its output checkpoint
+- **AND** results are constructed from arguments rather than modified after construction
+
+#### Scenario: Preparation steps do not extend acquired data
+
+- **WHEN** preparation derives observation errors and filters observations
+- **THEN** those steps return per-site datasets and aligned `SiteOptions`
+- **AND** the supplied `MergedData` remains acquired data and is never serialized with derived values
 
 #### Scenario: Full execution without intermediate saves
 - **WHEN** a full route runs with intermediate saves disabled

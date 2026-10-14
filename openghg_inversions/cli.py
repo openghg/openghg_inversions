@@ -86,7 +86,7 @@ def _add_output_dir(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def _stage_setup(args: argparse.Namespace):
+def _stage_setup(args: argparse.Namespace) -> Any:
     """Load and resolve one staged command's existing RHIME configuration."""
     from openghg_inversions.rhime.stages import load_stage_params, resolve_stage_setup
 
@@ -107,78 +107,18 @@ def _stage_output_dir(args: argparse.Namespace) -> Path:
 
 
 def _standard_phase_options(args: argparse.Namespace, *, phase: str) -> dict[str, dict[str, Any]]:
-    """Select active owner mappings before resolving their values."""
-    from collections.abc import Mapping
-    from typing import get_type_hints
+    """Load the owner groups one standard phase uses from its explicit request."""
+    from openghg_inversions.rhime.requests import load_rhime_params
 
-    from openghg_inversions.rhime._resources import resolve_resource_paths
-    from openghg_inversions.rhime._runner_compat import (
-        _ALIASES, resource_migration_errors, translate_rhime_aliases,
+    return load_rhime_params(
+        config_file=args.config, params_file=args.params_file, overrides=args.kwargs,
+        phase_groups={"prepare": {"data"}, "sample": {"model", "sampler"},
+                      "prior": {"model"}, "postprocess": {"output"}}[phase],
     )
-    from openghg_inversions.rhime.ini import read_rhime_ini
-    from openghg_inversions.rhime.params import DataConfig, rhime_option_groups
-    from openghg_inversions.rhime.specs import RhimeOutputSpec
-
-    owners = rhime_option_groups()
-    active = {"prepare": {"data"}, "sample": {"model", "sampler"},
-              "prior": {"model"}, "postprocess": {"output"}}[phase]
-    claims = {"use_bc", "bc_freq", "species", "domain", "flux_sources", "start_date", "end_date", "split_by_sectors"}
-    aliases = _ALIASES | {"emissions_store": "flux_store", "emissions_domain": "flux_domain"}
-    source = Path(args.config or args.params_file).resolve() if args.config or args.params_file else None
-    params = (read_rhime_ini(source) if args.config else json.loads(source.read_text())) if source else {}
-    groups: dict[str, dict[str, Any]] = {group: {} for group in owners}
-    override_names: dict[str, set[str]] = {group: set() for group in owners}
-    unsuitable = []
-    # Classify names only: inactive shared-file values must not be resolved.
-    for values, is_override in ((params, False), (args.kwargs or {}, True)):
-        if not isinstance(values, Mapping):
-            raise ValueError("RHIME parameters must be a mapping.")
-        for key, value in values.items():
-            entries = value.items() if key in owners and isinstance(value, Mapping) else [(key, value)]
-            if key in owners and not isinstance(value, Mapping):
-                raise ValueError(f"`{key}` must be a mapping.")
-            for name, item in entries:
-                canonical = aliases.get(name, name)
-                owner = key if key in owners else next(
-                    (group for group, names in owners.items() if canonical in names), None
-                )
-                if name == "use_tracer" and key not in owners:
-                    owner = "data"
-                if phase in {"sample", "prior"} and key not in owners and canonical in claims:
-                    owner = "model"
-                known = owner is not None and (canonical in owners[owner] or name == "use_tracer")
-                if not known or (is_override and owner not in active):
-                    unsuitable.append(f"{key}.{name}" if key in owners else name)
-                    continue
-                groups[owner][name] = item
-                if is_override:
-                    override_names[owner].add(name)
-    if unsuitable:
-        explanations = resource_migration_errors(name.rsplit(".", 1)[-1] for name in unsuitable)
-        raise ValueError(
-            f"Unsupported options or overrides that do not belong to this phase: {sorted(unsuitable)!r}. "
-            + " ".join(explanations)
-        )
-    annotations = get_type_hints(DataConfig) | get_type_hints(RhimeOutputSpec)
-    result = {group: {} for group in owners}
-    for group in active:
-        winning = groups[group]
-        translated = translate_rhime_aliases(winning)
-        invocation_names = {
-            aliases.get(name, name) for name in override_names[group]
-            if name not in aliases or aliases[name] not in winning
-        }
-        result[group] = resolve_resource_paths(
-            {name: value for name, value in translated.items() if name not in invocation_names},
-            annotations=annotations, base_dir=source.parent if source else Path.cwd(),
-        ) | resolve_resource_paths(
-            {name: value for name, value in translated.items() if name in invocation_names},
-            annotations=annotations, base_dir=Path.cwd(),
-        )
-    return result
 
 
 def _prepare_command(args: argparse.Namespace) -> None:
+    """Run the prepare phase for the selected family."""
     from openghg_inversions.rhime.stages import prepare, prepare_rhime_stage
     from openghg_inversions.rhime.params import DataConfig
 
@@ -202,6 +142,7 @@ def _check_saved_family(args: argparse.Namespace) -> None:
         raise ValueError(f"Saved family {record['family']!r} does not match --model {args.model!r}.")
 
 def _prior_predictive_command(args: argparse.Namespace) -> None:
+    """Run the prior-predictive readiness check for the selected family."""
     from openghg_inversions.rhime.stages import prior_predictive, prior_predictive_stage
 
     common = dict(output_dir=_stage_output_dir(args), check_output=args.check_output,
@@ -221,6 +162,7 @@ def _prior_predictive_command(args: argparse.Namespace) -> None:
 
 
 def _reject_standard_artifact_args(args: argparse.Namespace) -> None:
+    """Reject the multi-artifact arguments that standard manifests replace."""
     if getattr(args, "prepared_inputs", None) or getattr(args, "posterior", None):
         raise ValueError("Standard saved phases take one manifest; remove --prepared-inputs and --posterior.")
     if args.command == "postprocess" and args.preparation_manifest:
@@ -228,6 +170,7 @@ def _reject_standard_artifact_args(args: argparse.Namespace) -> None:
 
 
 def _sample_command(args: argparse.Namespace) -> None:
+    """Run the sample phase for the selected family."""
     from openghg_inversions.rhime.stages import sample, sample_rhime_stage
     from openghg_inversions.rhime.params import resolve_sampler_options
 
@@ -267,6 +210,7 @@ def _diagnose_command(args: argparse.Namespace) -> None:
 
 
 def _postprocess_command(args: argparse.Namespace) -> None:
+    """Run the postprocess phase for the selected family."""
     from openghg_inversions.rhime.stages import postprocess, postprocess_rhime_stage
     from openghg_inversions.rhime.specs import RhimeOutputSpec
 

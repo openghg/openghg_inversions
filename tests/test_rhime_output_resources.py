@@ -4,6 +4,7 @@ from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
+import xarray as xr
 
 from examples.rhime_customisation import runner as copied_runner
 from openghg_inversions.rhime import (
@@ -17,7 +18,9 @@ from openghg_inversions.rhime import (
     standard,
     validate_output_resources,
 )
+from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.rhime.specs import RhimeOutputSpec
+from tests.helpers import make_trace
 from tests.integration.test_custom_basis_rhime_runner import custom_basis_runner
 from tests.test_staged_workflow import _params, _prepared
 
@@ -66,6 +69,17 @@ def test_reporting_routes_reject_before_work_or_output_directory(tmp_path, monke
     monkeypatch.setattr(
         outputs, "_make_inversion_output", lambda **kwargs: pytest.fail("constructed products before preflight"),
     )
+    if route == "staged":
+        # Saved standard samples replay without a graph; only output choices change.
+        preparation = _standard_stages.save_preparation(_prepared(), data=config.data, output_dir=tmp_path / "prep")
+        sampled = _standard_stages.save_samples(
+            preparation, make_trace(posterior=xr.Dataset(
+                {"x": (("chain", "draw", "region"), [[[1.0]]])}, coords={"chain": [0], "draw": [0], "region": [0]},
+            )),
+            model=config.model, actual_inference=config.sampler.describe(),
+            output_contract=OutputContract(variable_roles={"flux_scale": "x"}, supported_output_formats=("none", "paris")),
+            build_and_sample_seconds=0.0, output_dir=tmp_path / "samples",
+        )
     error = ValueError if country is None else FileNotFoundError
     with pytest.raises(error, match="country_file" if country is None else None):
         if route == "standard":
@@ -92,10 +106,7 @@ def test_reporting_routes_reject_before_work_or_output_directory(tmp_path, monke
                 prepared_inputs=None, run_spec=config.retained_run_spec(_prepared()),
             )
         elif route == "staged":
-            _standard_stages.postprocess_rhime_stage(
-                setup=config, model="standard", prepared_inputs="absent.nc", posterior="absent.nc",
-                output_dir=destination, preparation_manifest="absent.json", sample_manifest="absent.json",
-            )
+            _standard_stages.postprocess(sampled, output=config.output)
         else:
             result = SimpleNamespace(output_spec=config.output)
             if route == "output_nested":

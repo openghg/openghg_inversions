@@ -33,9 +33,8 @@ from .specs import (
     validate_output_path_settings,
 )
 from .standard import (
-    build_standard_rhime_model_result,
+    build_standard,
     make_standard_rhime_result,
-    standard_model_input_names,
 )
 
 
@@ -139,29 +138,18 @@ def run_rhime_from_prepared_inputs(
         raise ValueError("A prepared RHIME run requires a model builder or likelihood.")
 
     run_spec = with_prepared_rhime_sites(run_spec, prepared_inputs)
-    # Complete-model builders historically own canonical, potentially lazy
-    # inputs. Only built-in graphs cross the named eager PyMC boundary here.
-    model_inputs = (
-        prepared_inputs.inv_inputs
-        if model_builder is not None
-        else materialize_pymc_inputs(
-            prepared_inputs,
-            variable_names=(
-                multisector_model_input_names(
-                    prepared_inputs,
-                    run_spec.model,
-                )
-                if multisector
-                else standard_model_input_names(
-                    prepared_inputs,
-                    run_spec.model,
-                )
-            ),
-        )
-    )
     build_and_sample_start = timer_start()
-
     if multisector:
+        # Complete-model builders historically own canonical, potentially lazy
+        # inputs. Only built-in graphs cross the named eager PyMC boundary here.
+        model_inputs = (
+            prepared_inputs.inv_inputs
+            if model_builder is not None
+            else materialize_pymc_inputs(
+                prepared_inputs,
+                variable_names=multisector_model_input_names(prepared_inputs, run_spec.model),
+            )
+        )
         model_build_result = build_multisector_rhime_model_result(
             prepared=prepared_inputs,
             model_inputs=model_inputs,
@@ -171,10 +159,9 @@ def run_rhime_from_prepared_inputs(
             likelihood_kwargs=likelihood_kwargs,
         )
     else:
-        model_build_result = build_standard_rhime_model_result(
-            prepared=prepared_inputs,
-            model_inputs=model_inputs,
-            run_spec=run_spec,
+        model_build_result = build_standard(
+            prepared_inputs,
+            run_spec,
             model_builder=model_builder,
             likelihood_builder=likelihood_builder,
             likelihood_kwargs=likelihood_kwargs,
@@ -210,5 +197,5 @@ def run_rhime_from_prepared_inputs(
             likelihood_builder=likelihood_builder,
             likelihood_kwargs=likelihood_kwargs,
         )
-        make_standard_rhime_outputs(result=result, prepared=prepared_inputs)
+        result = make_standard_rhime_outputs(result=result, prepared=prepared_inputs)
     return result

@@ -217,10 +217,10 @@ A result is a record of what happened, not a request to execute defaults:
 # Proposed field in the existing result type; no default factory.
 sampler: RhimeSampler | None = None
 
-# Live result: snapshot from the invocation actually used.
-result.output_metadata["sampler"] = describe_sampler(invocation_sampler)
-# Replay result: sampler stays None; use the recorded description.
-result.output_metadata["sampler"] = saved_sampler_metadata
+# Live result: the sampler's own description is recorded at construction.
+result = make_result(..., sampler=invocation_sampler)
+# Replay result: sampler stays None; the recorded description is an argument.
+result = make_result(..., sampler=None, sampler_metadata=saved_sampler_metadata)
 ```
 
 Keep live sampler access available for existing direct callers. Shared outputs
@@ -289,7 +289,9 @@ prepared representation and own any additional backend conversion they need.
 
 A full runner continues visibly from preparation through construction, inference,
 result reconstruction and products, without invoking file-handoff helpers. Saved
-sampling uses the same concrete scientific operations:
+entry points call the same step functions; they differ only by loading a checkpoint
+before and saving one after (see decision 8). Saved sampling uses the same
+concrete scientific operations:
 
 ```python
 def sample(prepared_manifest, *, model, sampler="default", output_dir, run_context=None):
@@ -498,6 +500,45 @@ Cover first-source weighting separately from all-source retained flux, source or
 and signed flux. CO2's native prior moments, effective operator, affine intercept
 and unresolved covariance remain one coherent preparation; replacing one array
 with matching labels cannot establish compatibility.
+
+### 8. Full and saved routes share one step sequence
+
+*Amendment from the #866 review, October 2026.* The routes must visibly do the
+same thing, so they call the same step functions with the same objects:
+
+```python
+merged   = acquire_merged_data(config.data, merged_data)
+prepared = prepare_standard(merged, ...)   # sub-pipeline over site datasets + SiteOptions
+prepared = <export_basis(prepared.basis_functions, config.data.basis_output_path)>
+built    = build_standard(prepared, run_spec, likelihood_builder=...)
+idata    = sample_rhime_model(built, sampler)
+result   = make_standard_rhime_result(..., sampler_metadata=..., provenance=...)
+result   = make_standard_rhime_outputs(result=result, prepared=prepared)  # returns, never mutates
+```
+
+- `prepare` runs the first three calls and saves; `sample` loads the preparation
+  (prepared inputs plus the recorded `DataConfig`) and runs the next two;
+  `postprocess` loads the samples and runs the last two. `prior_predictive` and
+  `run_rhime_from_prepared_inputs` build through `build_standard` too.
+- "Small repeated orchestration" (decision 3) means repeated calls, never copied
+  bodies between routes of one family.
+- Checkpoints reload the objects the full runner passes: the preparation records
+  `DataConfig.to_params()` and reloads it with `DataConfig.from_params`; the sample
+  record encodes the model with `RhimeModelSpec.to_record`, which describes lazy
+  prior arrays without computing them and rejects state-activity policies.
+- Results are constructed from arguments; product makers return what they make;
+  the replay destination policy lives beside the product writer.
+- One request loader (`load_rhime_params`) serves full runs and every phase; only
+  the base for relative file paths differs between them (an open compatibility
+  question, below).
+- `MergedData` holds acquired data only. Preparation steps pass per-site datasets
+  and `SiteOptions`; filtering keeps dropped-site reporting via `retain_sites`.
+- The multisector-only pre-handoff envelope lives in `_multisector_stages.py`
+  until §2 replaces it; later families follow decision 8, not the envelope.
+
+Open: unify the relative-path base for INI/JSON values across full and saved
+routes (a deliberate compatibility change needing migration notes), and decide
+whether full runs should also refuse existing output destinations.
 
 ## Migration Plan
 

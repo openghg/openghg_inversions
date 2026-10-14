@@ -24,7 +24,6 @@ from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
 from openghg_inversions.inversion_data._site_options import convert_to_list
 from openghg_inversions.inversion_data.acquisition import interpolate_flux_to_footprint_grid
 from openghg_inversions.inversion_data.observation_errors import prepare_observation_errors
-from openghg_inversions.inversion_data import RhimeMergedData, SiteOptions
 from openghg_inversions.hbmcmc.legacy_data import (
     data_processing_surface_notracer,
     _save_merged_data,
@@ -1149,12 +1148,8 @@ def test_add_obs_error_exceptions_warnings(rept_vals, perc_missing, caplog):
     ds["mf"] = xr.DataArray([1] * n, dims="time")
     fp_all = {"TAC": ds}
 
-    merged = RhimeMergedData(
-        site_data=fp_all, flux_data={},
-        site_options=SiteOptions.from_inputs(sites=["TAC"], averaging_period="1h"),
-    )
     with pytest.raises(ValueError):
-        prepare_observation_errors(merged, averaging_error=True)
+        prepare_observation_errors(fp_all, averaging_error=True)
 
     # check for WARNING when `mf_error` contains zeros
     # plus INFO suggesting fix
@@ -1165,11 +1160,7 @@ def test_add_obs_error_exceptions_warnings(rept_vals, perc_missing, caplog):
 
     fp_all["TAC"] = ds.chunk(time=n // 3)
 
-    merged = RhimeMergedData(
-        site_data=fp_all, flux_data={},
-        site_options=SiteOptions.from_inputs(sites=["TAC"], averaging_period="1h"),
-    )
-    prepare_observation_errors(merged, averaging_error=False)
+    prepare_observation_errors(fp_all, averaging_error=False)
 
     output = caplog.text
     assert f"{perc_missing} percent" in output
@@ -1187,11 +1178,7 @@ def test_add_obs_error_without_repeatability(caplog):
     # plus INFO suggesting fix
     caplog.set_level(logging.INFO)
 
-    merged = RhimeMergedData(
-        site_data=fp_all, flux_data={},
-        site_options=SiteOptions.from_inputs(sites=["TAC"], averaging_period="1h"),
-    )
-    prepare_observation_errors(merged, averaging_error=True)
+    prepare_observation_errors(fp_all, averaging_error=True)
 
     output = caplog.text
     assert "`mf_repeatability` not present; using `mf_variability` for `mf_error` at site TAC" in output

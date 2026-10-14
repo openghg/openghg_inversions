@@ -71,10 +71,11 @@ def test_custom_basis_runner_replaces_only_basis_stage(
 
     merged = RhimeMergedData(
         site_data={site: xr.Dataset({"mf_error": ("time", [1.0]), "mf_repeatability": ("time", [0.0]), "mf_variability": ("time", [0.0])}) for site in config.data.site_options.sites},
-        flux_data={}, site_options=config.data.site_options,
+        flux_data={"inventory": _basis_functions().flux.to_dataset(name="flux")},
+        site_options=config.data.site_options,
     )
-    filtered = SimpleNamespace(site_data=merged.site_data,
-        flux_data={"inventory": _basis_functions().flux.to_dataset(name="flux")}, split_by_sectors=False)
+    filtered = {"MHD": merged.site_data["MHD"]}
+    filtered_options = object()
     basis = _basis_functions()
     site_data = object()
     prepared = SimpleNamespace(
@@ -109,16 +110,17 @@ def test_custom_basis_runner_replaces_only_basis_stage(
         calls.append("retrieve")
         return merged
 
-    def filter_observations(actual: Any, *, filters: Any) -> Any:
-        assert actual is merged
+    def filter_observations(actual: Any, site_options: Any, *, filters: Any) -> Any:
+        assert actual.keys() == merged.site_data.keys()
+        assert site_options is merged.site_options
         assert filters is config.data.filters
         calls.append("filter")
-        return filtered
+        return filtered, filtered_options
 
     def build_project_basis(**kwargs: Any) -> BasisFunctions:
-        assert kwargs["site_data"] is filtered.site_data
+        assert kwargs["site_data"] is filtered
         assert kwargs["domain"] == config.data.domain
-        xr.testing.assert_equal(kwargs["weighting_flux"], filtered.flux_data["inventory"].flux)
+        xr.testing.assert_equal(kwargs["weighting_flux"], merged.flux_data["inventory"].flux)
         assert kwargs["nbasis"] == config.data.nbasis
         assert kwargs["project_basis_path"] == tmp_path / "external-basis.nc"
         assert kwargs["max_child_pca_eccentricity"] == 6.5
@@ -135,10 +137,10 @@ def test_custom_basis_runner_replaces_only_basis_stage(
         calls.append("sensitivities")
         return site_data
 
-    def assemble(actual: Any, actual_basis: Any, actual_site_data: Any, **kwargs: Any) -> Any:
-        assert actual is filtered
+    def assemble(actual: Any, actual_basis: Any, **kwargs: Any) -> Any:
+        assert actual is site_data
         assert actual_basis is basis
-        assert actual_site_data is site_data
+        assert kwargs["site_options"] is filtered_options
         assert kwargs["min_error_options"] == config.data.min_error_options
         assert kwargs["start_date"] == config.data.start_date
         calls.append("assemble")
@@ -194,6 +196,7 @@ def test_custom_basis_runner_replaces_only_basis_stage(
     def make_outputs(**kwargs: Any) -> None:
         assert kwargs == {"result": expected_result, "prepared": prepared}
         calls.append("outputs")
+        return kwargs["result"]
 
     monkeypatch.setattr(custom_basis_runner, "read_rhime_ini", parse_config)
     monkeypatch.setattr(custom_basis_runner.RhimeConfig, "from_params", classmethod(resolve))
@@ -413,10 +416,11 @@ def test_incompatible_project_basis_failure_remains_owned_by_sensitivity_stage(
     )
     merged = RhimeMergedData(
         site_data={site: xr.Dataset({"mf_error": ("time", [1.0]), "mf_repeatability": ("time", [0.0]), "mf_variability": ("time", [0.0])}) for site in config.data.site_options.sites},
-        flux_data={}, site_options=config.data.site_options,
+        flux_data={"inventory": _basis_functions().flux.to_dataset(name="flux")},
+        site_options=config.data.site_options,
     )
-    filtered = SimpleNamespace(site_data=merged.site_data,
-        flux_data={"inventory": _basis_functions().flux.to_dataset(name="flux")}, split_by_sectors=False)
+    filtered = {"MHD": merged.site_data["MHD"]}
+    filtered_options = object()
     incompatible_basis = object()
 
     monkeypatch.setattr(
@@ -430,7 +434,7 @@ def test_incompatible_project_basis_failure_remains_owned_by_sensitivity_stage(
     monkeypatch.setattr(
         custom_basis_runner,
         "filter_observations",
-        lambda actual, *, filters: filtered,
+        lambda actual, site_options, *, filters: (filtered, filtered_options),
     )
     monkeypatch.setattr(
         custom_basis_runner,
@@ -482,7 +486,9 @@ def test_custom_basis_runner_resolves_before_loading_project_artifact(
         site_options=SiteOptions.from_inputs(sites=["TAC"], averaging_period="1h"),
     )
     monkeypatch.setattr(custom_basis_runner.RhimeMergedData, "from_options", lambda **kwargs: merged)
-    monkeypatch.setattr(custom_basis_runner, "filter_observations", lambda value, **kwargs: value)
+    monkeypatch.setattr(
+        custom_basis_runner, "filter_observations", lambda value, site_options, **kwargs: (value, site_options),
+    )
     monkeypatch.setattr(
         custom_basis_runner, "_guarded_basis", lambda *args, **kwargs: pytest.fail("unexpected fitting"),
     )
@@ -491,7 +497,7 @@ def test_custom_basis_runner_resolves_before_loading_project_artifact(
         pass
 
     def check_loaded(actual, basis, **kwargs):
-        assert actual is merged
+        assert actual.keys() == merged.site_data.keys()
         xr.testing.assert_identical(basis.operator.basis_matrix, stored.operator.basis_matrix)
         assert basis.basis_artifact_source == "external-project"
         raise ReachedSensitivities

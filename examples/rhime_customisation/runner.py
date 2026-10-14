@@ -15,10 +15,9 @@ from __future__ import annotations
 
 from openghg_inversions.rhime._runner_compat import translate_rhime_aliases
 from openghg_inversions.basis import prepare_basis
-from openghg_inversions.basis.basis_functions import BASIS_ARTIFACT_PATH_ATTR
 from openghg_inversions.native_flux import resolve_runtime_flux
 from openghg_inversions.basis.support import load_bc_basis
-from openghg_inversions.rhime.preparation import resolve_basis_inputs
+from openghg_inversions.rhime.preparation import export_basis, resolve_basis_inputs
 
 import argparse
 from collections.abc import Sequence
@@ -93,16 +92,16 @@ def run_custom_rhime(
             "flux_non_finite_check",
         ),
     )
-    # 2. Keep the scientific preparation order visible in this recipe.
-    merged = prepare_observation_errors(merged, averaging_error=config.data.averaging_error)
-    filtered = filter_observations(merged, filters=config.data.filters)
+    # Keep the scientific preparation order visible; ``merged`` stays acquired data.
+    with_errors = prepare_observation_errors(merged.site_data, averaging_error=config.data.averaging_error)
+    filtered, site_options = filter_observations(with_errors, merged.site_options, filters=config.data.filters)
     runtime_flux = resolve_runtime_flux(
-        filtered.flux_data, split_by_sectors=filtered.split_by_sectors,
+        merged.flux_data, split_by_sectors=merged.split_by_sectors,
     )
-    weighting_source = config.data.flux_sources[0] if config.data.flux_sources else next(iter(filtered.flux_data))
-    weighting_flux = filtered.flux_data[weighting_source]["flux"]
+    weighting_source = config.data.flux_sources[0] if config.data.flux_sources else next(iter(merged.flux_data))
+    weighting_flux = merged.flux_data[weighting_source]["flux"]
     basis_functions = prepare_basis(
-        site_data=filtered.site_data,
+        site_data=filtered,
         runtime_flux=runtime_flux,
         weighting_flux=weighting_flux,
         **config.data.select(
@@ -111,12 +110,8 @@ def run_custom_rhime(
         fix_outer_regions=config.data.fix_basis_outer_regions,
         **basis_inputs,
     )
-    if config.data.basis_output_path is not None:
-        basis_functions.save(config.data.basis_output_path)
-        basis_functions = basis_functions.with_metadata(
-            {BASIS_ARTIFACT_PATH_ATTR: str(config.data.basis_output_path)}
-        )
-    site_data = build_sensitivities(
+    basis_functions = export_basis(basis_functions, config.data.basis_output_path)
+    sensitivities = build_sensitivities(
         filtered,
         basis_functions,
         **config.data.select(
@@ -126,9 +121,9 @@ def run_custom_rhime(
         multisector=False,
     )
     prepared = assemble_rhime_inputs(
-        filtered,
+        sensitivities,
         basis_functions,
-        site_data,
+        site_options=site_options,
         **config.data.select(
             "domain", "start_date", "bc_freq", "min_error",
             "min_error_options", "use_bc",
@@ -162,8 +157,7 @@ def run_custom_rhime(
         build_and_sample_seconds=perf_counter() - build_and_sample_start,
         likelihood_builder=likelihood_builder,
     )
-    make_standard_rhime_outputs(result=result, prepared=prepared)
-    return result
+    return make_standard_rhime_outputs(result=result, prepared=prepared)
 
 
 def _json_object(value: str) -> dict[str, Any]:

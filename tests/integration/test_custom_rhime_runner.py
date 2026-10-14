@@ -70,7 +70,8 @@ def test_custom_runner_uses_supported_stages_for_acquisition(
         flux_data={"inventory": xr.Dataset({"flux": (("lat", "lon"), [[2.]])},
                                            coords={"lat": [50.], "lon": [0.]})}, site_options=config.data.site_options,
     )
-    filtered = merged
+    filtered = {"MHD": merged.site_data["MHD"]}
+    filtered_options = object()
     basis = object()
     site_data = object()
     prepared = SimpleNamespace(
@@ -109,14 +110,15 @@ def test_custom_runner_uses_supported_stages_for_acquisition(
         calls.append("retrieve")
         return merged
 
-    def filter_observations(actual: Any, *, filters: Any) -> Any:
-        assert actual is merged
+    def filter_observations(actual: Any, site_options: Any, *, filters: Any) -> Any:
+        assert actual.keys() == merged.site_data.keys()
+        assert site_options is merged.site_options
         assert filters is config.data.filters
         calls.append("filter")
-        return filtered
+        return filtered, filtered_options
 
     def build_basis(**kwargs: Any) -> Any:
-        assert kwargs["site_data"] is filtered.site_data
+        assert kwargs["site_data"] is filtered
         assert kwargs["domain"] == config.data.domain
         assert kwargs["nbasis"] == config.data.nbasis
         assert kwargs["landsea_classes"] is resolved_basis["landsea_classes"]
@@ -133,10 +135,10 @@ def test_custom_runner_uses_supported_stages_for_acquisition(
         calls.append("sensitivities")
         return site_data
 
-    def assemble(actual: Any, actual_basis: Any, actual_site_data: Any, **kwargs: Any) -> Any:
-        assert actual is filtered
+    def assemble(actual: Any, actual_basis: Any, **kwargs: Any) -> Any:
+        assert actual is site_data
         assert actual_basis is basis
-        assert actual_site_data is site_data
+        assert kwargs["site_options"] is filtered_options
         assert kwargs["min_error_options"] == config.data.min_error_options
         assert kwargs["start_date"] == config.data.start_date
         calls.append("assemble")
@@ -184,6 +186,7 @@ def test_custom_runner_uses_supported_stages_for_acquisition(
     def make_outputs(**kwargs: Any) -> None:
         assert kwargs == {"result": expected_result, "prepared": prepared}
         calls.append("outputs")
+        return kwargs["result"]
 
     monkeypatch.setattr(custom_runner, "read_rhime_ini", parse_config)
     monkeypatch.setattr(custom_runner.RhimeConfig, "from_params", classmethod(resolve))

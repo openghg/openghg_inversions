@@ -117,6 +117,20 @@ scientific parity, RHIME, contract and compatibility checks passed 408 tests;
 the remaining custom-likelihood mock needed its declared offset added and passed
 on rerun. The separate handoff/deferred-family selection passed 94 tests.
 
+Review restructure, 14 October 2026 (design decision 8): `run_standard`,
+`prepare`/`sample`/`postprocess`/`prior_predictive` and the standard branch of
+`run_rhime_from_prepared_inputs` now call one step sequence (`acquire_merged_data`,
+`prepare_standard`, `export_basis`, `build_standard`, `sample_rhime_model`,
+`make_standard_rhime_result`, `make_standard_rhime_outputs`). Preparation reloads
+the recorded `DataConfig`; the model record is owned by `RhimeModelSpec` and no
+longer computes lazy priors (execution-count regression); provenance comes from
+the installed-package owner on both routes; outputs are returned rather than
+patched. One loader (`load_rhime_params`) serves full runs and phases. Preparation
+steps pass site datasets and `SiteOptions`, keeping `MergedData` acquired-only.
+The multisector envelope moved to `_multisector_stages.py` with restored tests.
+New acceptance covers custom-likelihood saved sampling against the full route and
+retrying a failed preparation into the same destination.
+
 No multisector/CO2 adoption, final integrated-family gate, or spec promotion is
 claimed by this standard delivery. CI verifies the pushed integration's full
 suite, supported Python versions, typing and documentation.
@@ -214,7 +228,7 @@ suite, supported Python versions, typing and documentation.
   add no 0.7 staged compatibility adapters.
   Cover canonical file options versus deprecated overrides, one error naming all
   unsuitable keys, and the distinct file-relative and invocation-relative path bases.
-- [x] 1.11 Clear the standard gate with a runnable preparation/two-model/two-product
+- [ ] 1.11 Clear the standard gate with a runnable preparation/two-model/two-product
   example, distinct sample destinations and real prior or likelihood
   calculations checked against an independent calculation or existing regression
   reference. Demonstrate equivalent full execution with intermediate saves
@@ -228,7 +242,11 @@ suite, supported Python versions, typing and documentation.
   the standard delivery's established persistence mechanics through ordinary
   functions. Verify full/staged/replay preserve sector/source-labelled inputs,
   scientific roles, retained-site subsets, all-source flux/source order and borrowed
-  arrays without introducing shared scientific dispatch.
+  arrays without introducing shared scientific dispatch. Follow design decision 8:
+  the full multisector runner and its saved phases call the same step functions
+  (including a `prepare_multisector(merged, ...)` preparation owner), then delete
+  the `_multisector_stages.py` envelope, its `stages.py` dispatch and the CLI
+  `--prepared-inputs`/`--posterior` arguments for multisector.
 - [ ] 2.2 Verify compatible sector-prior/likelihood changes reuse preparation and
   genuine preparation changes fail. Exercise saved-result products with unchanged
   sample meaning and current reporting choices, including graph-free
@@ -248,7 +266,9 @@ suite, supported Python versions, typing and documentation.
   Verify the actual configured full-run entry point consumes model/sampler/output
   choices and writes the selected products/destination, while raw runner trace
   returns remain intact. Remove redundant stage-only configuration wrappers;
-  keep the full route independent of manifest machinery.
+  keep the full route independent of manifest machinery while sharing its step
+  functions with the saved phases (design decision 8). Delete the CO2 branches of
+  the staged envelope facade once the handoffs replace them.
 - [ ] 3.2 Implement ordinary CO2 prepared/sample handoffs using existing numerical
   persistence and trace/affine output meaning. Verify independent BC/offset priors
   or supported mismatch changes reuse coherent preparation; changed defining

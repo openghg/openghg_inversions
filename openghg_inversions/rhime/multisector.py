@@ -6,8 +6,6 @@ from openghg_inversions.native_flux import resolve_runtime_flux
 from openghg_inversions.basis.support import load_bc_basis
 from openghg_inversions.inference.sampling import resolve_sampler
 from openghg_inversions.basis import prepare_basis
-from openghg_inversions.basis.basis_functions import BASIS_ARTIFACT_PATH_ATTR
-from openghg_inversions.rhime.preparation import resolve_basis_inputs
 
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
@@ -81,6 +79,9 @@ from .outputs import (
 from .ini import read_rhime_ini
 from .params import RhimeConfig
 from .preparation import (
+    acquire_merged_data,
+    resolve_basis_inputs,
+    export_basis,
     assemble_rhime_inputs,
     build_sensitivities,
     filter_observations,
@@ -730,51 +731,26 @@ def run_multisector(
     bc_basis = load_bc_basis(config.data.bc_basis_paths) if config.data.use_bc and config.data.bc_basis_paths is not None else None
 
 
-    # 1. Resolve acquisition through the data owner.
+    # 1. Acquire, or check supplied merged data.
     preparation_start = timer_start()
-    if merged_data is not None:
-        merged_data.validate_for_preparation(
-            **config.data.select("species", "domain", "start_date", "end_date", "split_by_sectors"),
-        )
-        merged = merged_data
-    else:
-        merged = RhimeMergedData.from_options(
-            **config.data.select(
-                "site_options", "species", "domain", "start_date",
-                "end_date",  "flux_sources", "split_by_sectors",
-                "bc_store", "obs_store", "footprint_store", "flux_store",
-                "flux_domain", "fp_model", "fp_species", "calibration_scale",
-                "use_bc", "bc_input",
-                "flux_non_finite_check",
-            ),
-        )
-    log_timing(
-        "rhime.prepare_inputs.merged_data",
-        timer_seconds(preparation_start),
-        sites=len(config.data.site_options.sites),
-        split_by_sectors=config.data.split_by_sectors,
-    )
-    # 2. Keep the scientific preparation order visible in this recipe.
-    merged = prepare_observation_errors(merged, averaging_error=config.data.averaging_error)
-    filtered = filter_observations(merged, filters=config.data.filters)
-    runtime_flux = resolve_runtime_flux(filtered.flux_data, split_by_sectors=filtered.split_by_sectors)
+    merged = acquire_merged_data(config.data, merged_data)
+    # 2. Preparation works on per-site datasets; ``merged`` stays acquired data.
+    with_errors = prepare_observation_errors(merged.site_data, averaging_error=config.data.averaging_error)
+    filtered, site_options = filter_observations(with_errors, merged.site_options, filters=config.data.filters)
+    runtime_flux = resolve_runtime_flux(merged.flux_data, split_by_sectors=merged.split_by_sectors)
     with timed("rhime.prepare_inputs.basis_build", basis_algorithm=config.data.basis_algorithm):
         basis_functions = prepare_basis(
-            site_data=filtered.site_data,
+            site_data=filtered,
             runtime_flux=runtime_flux,
-            weighting_flux=filtered.flux_data[config.data.flux_sources[0]]["flux"],
+            weighting_flux=merged.flux_data[config.data.flux_sources[0]]["flux"],
             **config.data.select(
                 "domain", "start_date", "basis_algorithm", "nbasis",
             ),
             fix_outer_regions=config.data.fix_basis_outer_regions,
             **basis_inputs,
         )
-    if config.data.basis_output_path is not None:
-        basis_functions.save(config.data.basis_output_path)
-        basis_functions = basis_functions.with_metadata(
-            {BASIS_ARTIFACT_PATH_ATTR: str(config.data.basis_output_path)}
-        )
-    site_data = build_sensitivities(
+    basis_functions = export_basis(basis_functions, config.data.basis_output_path)
+    sensitivities = build_sensitivities(
         filtered,
         basis_functions,
         **config.data.select(
@@ -784,9 +760,9 @@ def run_multisector(
         multisector=True,
     )
     prepared = assemble_rhime_inputs(
-        filtered,
+        sensitivities,
         basis_functions,
-        site_data,
+        site_options=site_options,
         **config.data.select(
             "domain", "start_date", "bc_freq", "min_error",
             "min_error_options", "use_bc",

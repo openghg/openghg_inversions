@@ -11,9 +11,13 @@ import xarray as xr
 
 from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
-from openghg_inversions.rhime import _standard_stages as stages
+import pymc
+
+from openghg_inversions import serialization
+from openghg_inversions.rhime import _standard_stages as stages, standard
 from openghg_inversions.rhime.params import RhimeConfig
-from openghg_inversions.rhime.specs import RhimeOutputSpec
+from openghg_inversions.rhime.requests import load_rhime_params
+from openghg_inversions.rhime.specs import RhimeModelSpec, RhimeOutputSpec
 from tests.helpers import make_trace
 from tests.test_staged_workflow import _params, _prepared
 
@@ -41,9 +45,9 @@ def test_manifest_relative_and_absolute_references_preserve_inputs(tmp_path, mon
     assert "configuration_identity" not in record
     monkeypatch.setenv("RUN_ROOT", str(tmp_path / "wrong-root"))
     monkeypatch.chdir(tmp_path.parent)
-    prepared, context = stages.load_preparation(preparation)
+    prepared, data = stages.load_preparation(preparation)
     xr.testing.assert_identical(prepared.inv_inputs, _prepared().inv_inputs)
-    assert context["end_date"] == "2019-02-01"  # observations end on January 2
+    assert data.end_date == "2019-02-01"  # observations end on January 2
     record["prepared_inputs"] = str(preparation.parent / record["prepared_inputs"])
     preparation.write_text(json.dumps(record))
     xr.testing.assert_identical(stages.load_preparation(preparation)[0].inv_inputs, prepared.inv_inputs)
@@ -67,14 +71,14 @@ def test_replay_in_fresh_process_uses_saved_model_and_inference(tmp_path):
     script = '''
 import sys
 from pathlib import Path
-from openghg_inversions.rhime import _standard_stages as stages
+from openghg_inversions.rhime import _standard_stages as stages, standard
 from openghg_inversions.rhime.specs import RhimeOutputSpec
 from openghg_inversions.inference.sampling import RhimeSampler
 root = Path(sys.argv[1])
 def forbidden(*args, **kwargs):
     raise AssertionError("replay performed acquisition, graph construction or inference")
-stages._build_prepared_model = forbidden
-stages.materialize_pymc_inputs = forbidden
+standard.build_standard = forbidden
+standard.materialize_pymc_inputs = forbidden
 stages.RhimeMergedData.from_options = forbidden
 RhimeSampler.sample = forbidden
 stages.resolve_sampler = forbidden
@@ -107,7 +111,7 @@ def test_bad_records_fail_without_graph_or_products(tmp_path, monkeypatch, corru
     else:
         del record["model"]["use_bc"]
     sampled.write_text(json.dumps(record))
-    monkeypatch.setattr(stages, "_build_prepared_model", lambda *a, **k: pytest.fail("graph construction"))
+    monkeypatch.setattr(standard, "build_standard", lambda *a, **k: pytest.fail("graph construction"))
     with pytest.raises((ValueError, FileNotFoundError)):
         stages.postprocess(sampled, output=RhimeOutputSpec(output_path=str(tmp_path / "products")))
     assert not (tmp_path / "products").exists()
@@ -125,7 +129,7 @@ def test_prior_readiness_catches_graph_failure_but_not_save_failure(tmp_path, mo
     preparation, _ = _saved(tmp_path)
     def fail(*args, **kwargs):
         raise ValueError("missing scientific input")
-    monkeypatch.setattr(stages, "_build_prepared_model", fail)
+    monkeypatch.setattr(standard, "build_standard", fail)
     result = stages.prior_predictive(preparation, model={"mismatch_model": "fixed_error"},
                                     output_dir=tmp_path / "prior")
     assert result["status"] == "fail"
@@ -156,14 +160,14 @@ def test_replay_refuses_existing_write_destination_but_allows_in_memory(tmp_path
     assert not list(output_dir.iterdir())
 
 
+# Recorded data choices are validated by DataConfig, exactly as a full-run request is.
 @pytest.mark.parametrize(("name", "value"), [
-    ("species", None), ("domain", ""), ("start_date", []), ("end_date", 7),
-    ("use_bc", "False"), ("flux_sources", "inventory"), ("flux_sources", []),
+    ("species", None), ("domain", ""), ("start_date", []), ("flux_sources", []),
 ])
 def test_malformed_preparation_facts_fail_at_reader(tmp_path, name, value):
     preparation, _ = _saved(tmp_path)
     record = json.loads(preparation.read_text())
-    record["context"][name] = value
+    record["data"][name] = value
     preparation.write_text(json.dumps(record))
     with pytest.raises(ValueError, match=name):
         stages.load_preparation(preparation)
@@ -177,7 +181,7 @@ def test_saved_model_cannot_redefine_preparation_facts(tmp_path, name):
         record["model"]["sectors"][0]["flux_source"] = "other-source"
     elif name == "use_bc":
         prep_record = json.loads(preparation.read_text())
-        prep_record["context"]["use_bc"] = False
+        prep_record["data"]["use_bc"] = False
         preparation.write_text(json.dumps(prep_record))
         record["model"]["use_bc"] = True
     else:
@@ -191,7 +195,7 @@ def test_grouped_resource_paths_resolve_beside_source(tmp_path):
     config = tmp_path / "request.json"
     config.write_text(json.dumps({"data": {"basis_path": "basis.nc"},
                                   "output": {"country_file": "country.nc"}}))
-    loaded = stages.load_stage_params(params_file=config)
+    loaded = load_rhime_params(params_file=config)
     assert loaded["data"]["basis_path"] == tmp_path / "basis.nc"
     assert loaded["output"]["country_file"] == tmp_path / "country.nc"
 
@@ -220,14 +224,14 @@ def test_prior_readiness_requires_finite_declared_prediction(tmp_path, monkeypat
     from types import SimpleNamespace
     preparation, _ = _saved(tmp_path)
     contract = OutputContract(variable_roles={"concentration": "observations"})
-    monkeypatch.setattr(stages, "_build_prepared_model", lambda *a, **k: SimpleNamespace(
+    monkeypatch.setattr(standard, "build_standard", lambda *a, **k: SimpleNamespace(
         model=nullcontext(), output_contract=contract))
     group = "prior" if evidence == "missing" else "prior_predictive"
     prior = make_trace(**{group: xr.Dataset({"observations": (("chain", "draw"),
                                                               [[np.nan if evidence == "nonfinite" else 1.]])})})
     if evidence == "empty":
         prior = prior.isel(draw=slice(0, 0))
-    monkeypatch.setattr(stages.pm, "sample_prior_predictive", lambda *a, **k: prior)
+    monkeypatch.setattr(pymc, "sample_prior_predictive", lambda *a, **k: prior)
     result = stages.prior_predictive(preparation, model={"mismatch_model": "fixed_error"},
                                     output_dir=tmp_path / "prior")
     assert result["status"] == status
@@ -245,15 +249,15 @@ def test_prior_serialization_errors_propagate(tmp_path, monkeypatch, empty):
     from contextlib import nullcontext
     from types import SimpleNamespace
     preparation, _ = _saved(tmp_path)
-    monkeypatch.setattr(stages, "_build_prepared_model", lambda *a, **k: SimpleNamespace(
+    monkeypatch.setattr(standard, "build_standard", lambda *a, **k: SimpleNamespace(
         model=nullcontext(), output_contract=OutputContract(variable_roles={"concentration": "y"})))
     prior = make_trace(prior_predictive=xr.Dataset({"y": (("chain", "draw"), [[1.]])}))
     if empty:
         prior = prior.isel(draw=slice(0, 0))
-    monkeypatch.setattr(stages.pm, "sample_prior_predictive", lambda *a, **k: prior)
+    monkeypatch.setattr(pymc, "sample_prior_predictive", lambda *a, **k: prior)
     def fail(*args, **kwargs):
         raise OSError("disk full")
-    monkeypatch.setattr(stages, "save_trace", fail)
+    monkeypatch.setattr(serialization, "save_trace", fail)
     with pytest.raises(OSError, match="disk full"):
         stages.prior_predictive(preparation, model={"mismatch_model": "fixed_error"},
                                 output_dir=tmp_path / "prior")
@@ -279,7 +283,7 @@ def test_failed_sample_save_leaves_no_completed_manifest(tmp_path, monkeypatch):
     monkeypatch.setattr(stages, "save_trace", fail)
     with pytest.raises(OSError, match="disk full"):
         stages.save_samples(
-            preparation, make_trace(posterior=xr.Dataset({"x": (("chain", "draw", "region"), [[[1.]]])})), model=stages._saved_model(record["model"]),
+            preparation, make_trace(posterior=xr.Dataset({"x": (("chain", "draw", "region"), [[[1.]]])})), model=RhimeModelSpec.from_record(record["model"]),
             output_contract=OutputContract.from_dict(record["output_contract"]), actual_inference={},
             build_and_sample_seconds=0., output_dir=tmp_path / "failed",
         )
@@ -300,7 +304,7 @@ def test_replay_rejects_unknown_inference_kind_before_loading(tmp_path, monkeypa
 def test_independent_diagnosis_accepts_current_sample_manifest(tmp_path, monkeypatch):
     from openghg_inversions.rhime._stage_checks import diagnose_rhime_stage
     _, sampled = _saved(tmp_path)
-    monkeypatch.setattr(stages, "_build_prepared_model", lambda *a, **k: pytest.fail("graph construction"))
+    monkeypatch.setattr(standard, "build_standard", lambda *a, **k: pytest.fail("graph construction"))
     check = diagnose_rhime_stage(posterior=sampled.parent / "posterior.nc", sample_manifest=sampled,
                                  output_dir=tmp_path / "diagnosis")
     assert check["status"] in {"unknown", "fail"}
@@ -314,7 +318,7 @@ def test_explicit_latent_only_trace_cannot_complete_handoff_or_replay(tmp_path):
     trace = make_trace(posterior=xr.Dataset({"x_latent": (("chain", "draw", "region"), [[[1.]]])}))
     with pytest.raises(ValueError, match="reconstruction state.*x"):
         stages.save_samples(
-            preparation, trace, model=stages._saved_model(record["model"]),
+            preparation, trace, model=RhimeModelSpec.from_record(record["model"]),
             output_contract=OutputContract.from_dict(record["output_contract"]), actual_inference={},
             build_and_sample_seconds=0., output_dir=tmp_path / "incomplete",
         )
@@ -340,7 +344,7 @@ def test_grouped_loader_merges_raw_aliases_before_translation(tmp_path, monkeypa
         overrides = {"output": overrides}
     monkeypatch.chdir(invocation)
     with pytest.warns(DeprecationWarning, match="Ignoring" if canonical_file else "deprecated"):
-        loaded = stages.load_stage_params(params_file=source, overrides=overrides)
+        loaded = load_rhime_params(params_file=source, overrides=overrides)
     expected = config_dir / "file-products" if canonical_file else invocation / "override-products"
     assert loaded["output"]["output_path"] == expected
     assert loaded["data"]["basis_path"] == config_dir / "basis.nc"
@@ -353,5 +357,66 @@ def test_grouped_loader_flat_canonical_override_wins_file_alias(tmp_path, monkey
     source.write_text(json.dumps({"output": {"outputpath": "file-products"}}))
     monkeypatch.chdir(invocation)
     with pytest.warns(DeprecationWarning, match="Ignoring"):
-        loaded = stages.load_stage_params(params_file=source, overrides={"output_path": "products"})
+        loaded = load_rhime_params(params_file=source, overrides={"output_path": "products"})
     assert loaded["output"]["output_path"] == invocation / "products"
+
+
+def test_saving_samples_does_not_compute_a_lazy_prior(tmp_path):
+    from dataclasses import replace
+    import dask
+    import dask.array as da
+
+    preparation, sampled = _saved(tmp_path)
+    record = json.loads(sampled.read_text())
+    calls = []
+    def mean():
+        calls.append(1)
+        return np.ones(1)
+    lazy = xr.DataArray(da.from_delayed(dask.delayed(mean)(), shape=(1,), dtype=float), dims=("region",))
+    model = RhimeModelSpec.from_record(record["model"])
+    model = replace(model, sectors=(replace(model.sectors[0], x_prior={"pdf": "normal", "mu": lazy, "sigma": 1.}),))
+    saved = stages.save_samples(
+        preparation, stages.load_trace(sampled.parent / "posterior.nc"), model=model,
+        output_contract=OutputContract.from_dict(record["output_contract"]), actual_inference={},
+        build_and_sample_seconds=0., output_dir=tmp_path / "lazy",
+    )
+    assert calls == []
+    assert json.loads(saved.read_text())["model"]["sectors"][0]["x_prior"]["mu"] == {
+        "dims": ["region"], "shape": [1], "lazy": True}
+
+
+def test_model_record_covers_every_field_or_rejects_it(tmp_path):
+    from dataclasses import fields, replace
+    from openghg_inversions.rhime.specs import _MODEL_RECORD_FIELDS
+
+    recorded = set(_MODEL_RECORD_FIELDS) | {"sectors", "likelihood"}
+    rejected = {"state_activity", "bc_state_activity"}
+    assert {field.name for field in fields(RhimeModelSpec)} == recorded | rejected
+    model = RhimeConfig.from_params(_params(), multisector=False).model
+    assert RhimeModelSpec.from_record(json.loads(json.dumps(model.to_record()))) == model
+    policy = object()
+    preparation, sampled = _saved(tmp_path)
+    record = json.loads(sampled.read_text())
+    for changed in (replace(model, state_activity=policy), replace(model, bc_state_activity=policy),
+                    replace(model, sectors=(replace(model.sectors[0], state_activity=policy),))):
+        with pytest.raises(ValueError, match="state_activity"):
+            stages.save_samples(
+                preparation, stages.load_trace(sampled.parent / "posterior.nc"), model=changed,
+                output_contract=OutputContract.from_dict(record["output_contract"]), actual_inference={},
+                build_and_sample_seconds=0., output_dir=tmp_path / "rejected",
+            )
+        assert not (tmp_path / "rejected").exists()
+
+
+def test_failed_acquisition_leaves_destination_free_for_retry(tmp_path, monkeypatch):
+    config = RhimeConfig.from_params(_params(), multisector=False).data
+    monkeypatch.setattr(stages, "resolve_basis_inputs", lambda data: {})
+    def unavailable(**kwargs):
+        raise OSError("object store unavailable")
+    monkeypatch.setattr(stages.RhimeMergedData, "from_options", unavailable)
+    with pytest.raises(OSError, match="unavailable"):
+        stages.prepare(config, output_dir=tmp_path / "prepared")
+    assert not (tmp_path / "prepared").exists()
+    monkeypatch.setattr(stages.RhimeMergedData, "from_options", lambda **kwargs: object())
+    monkeypatch.setattr(standard, "prepare_standard", lambda *args, **kwargs: _prepared())
+    assert stages.prepare(config, output_dir=tmp_path / "prepared").is_file()

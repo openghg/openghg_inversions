@@ -683,6 +683,7 @@ def test_real_prepared_inputs_save_load_and_run_without_repreparation(
         """Record the loaded object used for output construction."""
         observed["output_prepared"] = kwargs["prepared"]
         kwargs["result"].outputs["loaded"] = True
+        return kwargs["result"]
 
     monkeypatch.setattr(rhime_standard.RhimeMergedData, "from_options", fail_preparation)
     monkeypatch.setattr(rhime_standard, "build_standard_rhime_model", fake_builder)
@@ -1181,6 +1182,7 @@ def test_loaded_prepared_inputs_run_through_existing_seam(
         observed["output_prepared"] = kwargs["prepared"]
         observed["output_idata"] = kwargs["result"].idata
         kwargs["result"].outputs["loaded"] = True
+        return kwargs["result"]
 
     monkeypatch.setattr(rhime_standard.RhimeMergedData, "from_options", fail_preparation)
     monkeypatch.setattr(rhime_standard, "build_standard_rhime_model", fake_builder)

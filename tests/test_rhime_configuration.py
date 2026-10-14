@@ -332,11 +332,14 @@ def test_filtering_preserves_typed_filter_request():
         fp_all={"TAC": data, "MHD": data}, site_options=config.data.site_options
     )
 
-    filtered = rhime.filter_observations(merged, filters=config.data.filters)
+    filtered, site_options = rhime.filter_observations(
+        merged.site_data, merged.site_options, filters=config.data.filters,
+    )
 
-    assert to_legacy_fp_all(filtered)["TAC"].sizes["time"] == 1
-    assert to_legacy_fp_all(filtered)["TAC"].mf.item() == 2.0
-    assert to_legacy_fp_all(filtered)["MHD"].sizes["time"] == 2
+    assert site_options == config.data.site_options
+    assert filtered["TAC"].sizes["time"] == 1
+    assert filtered["TAC"].mf.item() == 2.0
+    assert filtered["MHD"].sizes["time"] == 2
     assert config.data.filters == before
     assert request["filters"] == before
     assert to_legacy_fp_all(merged)["TAC"].sizes["time"] == 2
@@ -373,7 +376,7 @@ def test_multisector_preparation_selects_sources_from_typed_request():
     basis = SimpleNamespace(sensitivity=lambda values: sensitivity)
 
     site_data = rhime.build_sensitivities(
-        merged, basis, flux_sources=config.data.flux_sources,
+        merged.site_data, basis, flux_sources=config.data.flux_sources,
         use_bc=config.data.use_bc, bc_basis=None, multisector=True,
     )
 

@@ -301,17 +301,17 @@ def run_custom_rhime(
             "flux_non_finite_check",
         ),
     )
-    # 2. Keep the scientific preparation order visible in this recipe.
-    merged = prepare_observation_errors(merged, averaging_error=config.data.averaging_error)
-    filtered = filter_observations(merged, filters=config.data.filters)
+    # Keep the scientific preparation order visible; ``merged`` stays acquired data.
+    with_errors = prepare_observation_errors(merged.site_data, averaging_error=config.data.averaging_error)
+    filtered, site_options = filter_observations(with_errors, merged.site_options, filters=config.data.filters)
     runtime_flux = resolve_runtime_flux(
-        filtered.flux_data, split_by_sectors=filtered.split_by_sectors,
+        merged.flux_data, split_by_sectors=merged.split_by_sectors,
     )
-    weighting_source = config.data.flux_sources[0] if config.data.flux_sources else next(iter(filtered.flux_data))
-    weighting_flux = filtered.flux_data[weighting_source]["flux"]
+    weighting_source = config.data.flux_sources[0] if config.data.flux_sources else next(iter(merged.flux_data))
+    weighting_flux = merged.flux_data[weighting_source]["flux"]
     # Replace only basis construction; subsequent scientific stages stay visible.
     basis_functions = build_project_basis(
-        site_data=filtered.site_data,
+        site_data=filtered,
         runtime_flux=runtime_flux,
         weighting_flux=weighting_flux,
         **config.data.select("domain", "nbasis"),
@@ -319,7 +319,7 @@ def run_custom_rhime(
         project_basis_path=project_basis_path,
         max_child_pca_eccentricity=max_child_pca_eccentricity,
     )
-    site_data = build_sensitivities(
+    sensitivities = build_sensitivities(
         filtered,
         basis_functions,
         **config.data.select(
@@ -329,9 +329,9 @@ def run_custom_rhime(
         multisector=False,
     )
     prepared = assemble_rhime_inputs(
-        filtered,
+        sensitivities,
         basis_functions,
-        site_data,
+        site_options=site_options,
         **config.data.select(
             "domain", "start_date", "bc_freq", "min_error",
             "min_error_options", "use_bc",
@@ -360,8 +360,7 @@ def run_custom_rhime(
         idata=idata,
         build_and_sample_seconds=perf_counter() - build_and_sample_start,
     )
-    make_standard_rhime_outputs(result=result, prepared=prepared)
-    return result
+    return make_standard_rhime_outputs(result=result, prepared=prepared)
 
 
 def _json_object(value: str) -> dict[str, Any]:

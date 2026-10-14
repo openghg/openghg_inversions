@@ -233,19 +233,42 @@ def _define_derived_output_filename(
     )
 
 
-def _save_requested_trace(result: RhimeResult) -> None:
-    """Save the sampled trace when requested by the resolved output spec."""
+def _save_requested_trace(result: RhimeResult) -> dict[str, str]:
+    """Save the sampled trace when requested; return its ``trace_path`` metadata."""
     trace_path = _resolve_output_path(
         result.output_spec.save_trace,
         result.output_spec.output_path,
         f"{result.output_spec.output_name}{result.run_spec.start_date}_trace.nc",
     )
     if trace_path is None:
-        return
+        return {}
     trace_path.parent.mkdir(parents=True, exist_ok=True)
     with timed("rhime.output.trace_save", path=trace_path):
         save_trace(result.idata, trace_path)
-    result.output_metadata["trace_path"] = str(trace_path)
+    return {"trace_path": str(trace_path)}
+
+
+def refuse_existing_output_destinations(output_spec: RhimeOutputSpec) -> None:
+    """Reject requested products whose destinations already exist.
+
+    Saved replay calls this before writing; full runs keep their established
+    overwrite behaviour.
+
+    Raises:
+        FileExistsError: If the output directory a requested product writes into,
+            or an explicitly named trace or inversion-output file, already exists.
+    """
+    if output_spec.output_format == "none":
+        return
+    writes_directory = (
+        output_spec.save_trace is True or output_spec.save_inversion_output is True
+        or output_spec.output_format in {"paris", "legacy"}
+    )
+    if writes_directory and output_spec.output_path is not None and Path(output_spec.output_path).exists():
+        raise FileExistsError(f"Output destination already exists: {output_spec.output_path}")
+    for setting in (output_spec.save_trace, output_spec.save_inversion_output):
+        if isinstance(setting, str | Path) and Path(setting).exists():
+            raise FileExistsError(f"Output file already exists: {setting}")
 
 
 def _make_inversion_output(
@@ -322,14 +345,18 @@ def make_standard_rhime_outputs(
     result: RhimeResult,
     prepared: RhimePreparedInputs,
     compatibility_output_chain: int | None = None,
-) -> None:
-    """Create and attach the requested standard RHIME outputs.
+) -> RhimeResult:
+    """Create the requested standard RHIME outputs.
 
     Args:
-        result: Sampled standard result receiving requested products.
+        result: Sampled standard result. It is not modified.
         prepared: Retained canonical inputs and basis functions.
         compatibility_output_chain: Optional zero-based chain index used only
             for ``run_hbmcmc`` derived-output compatibility.
+
+    Returns:
+        A new result holding ``result``'s values plus the inversion output,
+        in-memory products and written-file metadata.
 
     Raises:
         ValueError: If country reporting is requested without a country file.
@@ -340,7 +367,7 @@ def make_standard_rhime_outputs(
     run_spec = result.run_spec
     model_spec = result.model_spec
     if output_spec.output_format == "none":
-        return
+        return result
     validate_output_filenames(run_spec)
 
     outputs: dict[str, Any] = {}
@@ -442,11 +469,13 @@ def make_standard_rhime_outputs(
         with timed("rhime.output.inversion_output_save", path=inv_out_path):
             inv_out.save(inv_out_path)
         output_metadata["inversion_output_path"] = str(inv_out_path)
-    _save_requested_trace(result)
-
-    result.inv_out = inv_out
-    result.outputs.update(outputs)
-    result.output_metadata.update(output_metadata)
+    output_metadata.update(_save_requested_trace(result))
+    return replace(
+        result,
+        inv_out=inv_out,
+        outputs={**result.outputs, **outputs},
+        output_metadata={**result.output_metadata, **output_metadata},
+    )
 
 
 def _make_multisector_flux_diagnostics(
@@ -607,7 +636,7 @@ def make_multisector_rhime_outputs(
         with timed("rhime.output.inversion_output_save", path=inv_out_path):
             inv_out.save(inv_out_path)
         output_metadata["inversion_output_path"] = str(inv_out_path)
-    _save_requested_trace(result)
+    output_metadata.update(_save_requested_trace(result))
 
     result.inv_out = inv_out
     result.outputs.update(outputs)

@@ -13,7 +13,6 @@ from __future__ import annotations
 from openghg_inversions.native_flux import resolve_runtime_flux
 from openghg_inversions.basis.support import load_bc_basis
 from openghg_inversions.basis import prepare_basis
-from openghg_inversions.basis.basis_functions import BASIS_ARTIFACT_PATH_ATTR
 from openghg_inversions.rhime.preparation import resolve_basis_inputs
 from openghg_inversions.rhime._resources import resolve_resource_paths
 from openghg_inversions.rhime._runner_compat import translate_rhime_aliases
@@ -58,6 +57,8 @@ from .outputs import RhimeResult, _make_inversion_output, validate_output_resour
 from .ini import read_rhime_ini
 from .params import DataConfig, RhimeConfig
 from .preparation import (
+    acquire_merged_data,
+    export_basis,
     assemble_rhime_inputs,
     build_sensitivities,
     filter_observations,
@@ -718,13 +719,9 @@ def _prepare_one_domain(
             **basis_support_maps,
             allow_empty_inner_region=allow_empty_inner_region,
         )
-    if config.data.basis_output_path is not None:
-        basis_functions.save(config.data.basis_output_path)
-        basis_functions = basis_functions.with_metadata(
-            {BASIS_ARTIFACT_PATH_ATTR: str(config.data.basis_output_path)}
-        )
+    basis_functions = export_basis(basis_functions, config.data.basis_output_path)
     site_data = build_sensitivities(
-        merged,
+        merged.site_data,
         basis_functions,
         **config.data.select(
             "flux_sources", "use_bc",
@@ -733,9 +730,9 @@ def _prepare_one_domain(
         multisector=False,
     )
     return assemble_rhime_inputs(
-        merged,
-        basis_functions,
         site_data,
+        basis_functions,
+        site_options=merged.site_options,
         **config.data.select(
             "domain", "start_date", "bc_freq", "min_error",
             "min_error_options", "use_bc",
@@ -962,40 +959,23 @@ def prepare_nested_rhime_inputs(
     support_maps = [resolve_basis_inputs(domain_config.data) for domain_config in (outer_config, inner_config)]
     bc_basis = load_bc_basis(outer_config.data.bc_basis_paths) if outer_config.data.use_bc and outer_config.data.bc_basis_paths is not None else None
 
-    with timed(
-        "rhime.prepare_inputs.merged_data",
-        sites=len(outer_config.data.site_options.sites),
-        split_by_sectors=outer_config.data.split_by_sectors,
-    ):
-        outer_merged = RhimeMergedData.from_options(
-            **outer_config.data.select(
-                "site_options", "species", "domain", "start_date",
-                "end_date",  "flux_sources", "split_by_sectors",
-                "bc_store", "obs_store", "footprint_store", "flux_store",
-                "flux_domain", "fp_model", "fp_species", "calibration_scale",
-                "use_bc", "bc_input",
-                "flux_non_finite_check",
-            ),
-        )
-    with timed(
-        "rhime.prepare_inputs.merged_data",
-        sites=len(inner_config.data.site_options.sites),
-        split_by_sectors=inner_config.data.split_by_sectors,
-    ):
-        inner_merged = RhimeMergedData.from_options(
-            **inner_config.data.select(
-                "site_options", "species", "domain", "start_date",
-                "end_date",  "flux_sources", "split_by_sectors",
-                "bc_store", "obs_store", "footprint_store", "flux_store",
-                "flux_domain", "fp_model", "fp_species", "calibration_scale",
-                "use_bc", "bc_input",
-                "flux_non_finite_check",
-            ),
-        )
-    outer_merged = prepare_observation_errors(outer_merged, averaging_error=outer_config.data.averaging_error)
-    inner_merged = prepare_observation_errors(inner_merged, averaging_error=inner_config.data.averaging_error)
+    outer_merged = acquire_merged_data(outer_config.data)
+    inner_merged = acquire_merged_data(inner_config.data)
+    # shortcut: nested keeps derived site data in MergedData through domain alignment and
+    # masking; move it to (site data, SiteOptions) when nested adopts the shared preparation.
+    outer_merged = outer_merged.with_site_data(
+        prepare_observation_errors(outer_merged.site_data, averaging_error=outer_config.data.averaging_error),
+        context="Observation error preparation",
+    )
+    inner_merged = inner_merged.with_site_data(
+        prepare_observation_errors(inner_merged.site_data, averaging_error=inner_config.data.averaging_error),
+        context="Observation error preparation",
+    )
     outer_merged, inner_merged = _retain_common_sites(outer_merged, inner_merged)
-    outer_filtered = filter_observations(outer_merged, filters=outer_config.data.filters)
+    outer_site_data, _ = filter_observations(
+        outer_merged.site_data, outer_merged.site_options, filters=outer_config.data.filters,
+    )
+    outer_filtered = outer_merged.with_site_data(outer_site_data, context="Observation filtering")
     outer_filtered, inner_merged = _retain_common_sites(outer_filtered, inner_merged)
     inner_filtered = align_inner_merged_to_outer_observations(
         outer_filtered,

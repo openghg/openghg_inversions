@@ -8,10 +8,10 @@ by :func:`openghg_inversions.rhime.run_rhime` and copied project runners:
 Acquisition is owned by :mod:`openghg_inversions.inversion_data.acquisition`;
 stages accept explicit resolved choices.
 
-Merged data and xarray objects supplied to these stages are borrowed.  Stages
-return new handoffs when they need to attach variables or metadata and never
-mutate caller-owned datasets. Acquisition reads OpenGHG stores and returns an
-in-memory handoff. Filtering may
+Acquired merged data stays acquired: these stages take its per-site datasets
+(and, when sites can be dropped, its ``SiteOptions``) and return new mappings,
+never a ``MergedData`` carrying derived values. Supplied datasets are borrowed
+and never mutated. Filtering may
 compute when a selected filter cannot operate lazily.  Basis construction may
 read or fit a basis; runners own optional exports. Sensitivity construction may execute
 the basis and boundary-condition algorithms.  Labelled assembly validates the
@@ -35,10 +35,10 @@ import xarray as xr
 
 from openghg_inversions._timing import log_timing, timed, timer_seconds, timer_start
 from openghg_inversions.basis._helpers import bc_sensitivity
-from openghg_inversions.basis.basis_functions import BasisFunctions
+from openghg_inversions.basis.basis_functions import BASIS_ARTIFACT_PATH_ATTR, BasisFunctions
 from openghg_inversions.boundary_sensitivity import scale_satellite_boundary_sensitivity_to_column_signal
 from openghg_inversions.filters import filtering
-from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs
+from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs, SiteOptions
 from openghg_inversions.inversion_data.observation_errors import prepare_observation_errors
 from openghg_inversions.inversion_data.prepared_inputs import _make_site_metadata
 from openghg_inversions.inversion_inputs import make_inv_inputs
@@ -54,6 +54,8 @@ __all__ = [
     "filter_observations",
     "with_prepared_rhime_sites",
     "resolve_basis_inputs",
+    "acquire_merged_data",
+    "export_basis",
 ]
 
 
@@ -70,27 +72,27 @@ def with_prepared_sites(
 
 
 def filter_observations(
-    merged: RhimeMergedData,
+    site_data: Mapping[str, xr.Dataset],
+    site_options: SiteOptions,
     *,
     filters: Any = None,
-) -> RhimeMergedData:
-    """Filter borrowed observations and remove empty sites with aligned metadata.
+) -> tuple[dict[str, xr.Dataset], SiteOptions]:
+    """Filter borrowed observations and drop empty sites with aligned selectors.
 
-    The stage may compute site data if a filter cannot operate lazily.  It
-    returns a new merged-data handoff when filtering changes data and never
+    The stage may compute site data if a filter cannot operate lazily. It never
     constructs basis functions or model inputs.
 
     Args:
-        merged: Borrowed observations, shared scientific data and aligned
-            site selectors from acquisition or reload.
+        site_data: Borrowed per-site observation and footprint datasets keyed
+            by ``site_options.sites``.
+        site_options: Selectors aligned to ``site_data``.
         filters: Filter name, list of names, or mapping from site names to
             filters accepted by :func:`openghg_inversions.filters.filtering`.
             ``None`` applies no filters. The caller's mapping is not modified.
 
     Returns:
-        Merged data with empty sites removed and all selectors aligned to the
-        retained sites. Returns ``merged`` itself when no filtering or site
-        removal is needed.
+        Retained per-site datasets in selector order, and the selectors aligned
+        to them.
 
     Raises:
         ValueError: If no sites remain after filtering.
@@ -102,25 +104,22 @@ def filter_observations(
 
     with timed(
         "rhime.prepare_inputs.obs_filtering",
-        sites=len(merged.sites), filters=filters is not None,
+        sites=len(site_data), filters=filters is not None,
     ):
-        if filters is None and all(merged.site_data[site].sizes.get("time", 0) > 0 for site in merged.sites):
-            return merged
-
-        fp_data = {site: merged.site_data[site].copy() for site in merged.sites}
-        fp_data = _apply_filters_and_drop_empty_sites(
-            fp_data=fp_data,
-            sites=merged.sites,
+        # Selectors, not mapping order, fix the retained site order.
+        ordered = {site: site_data[site] for site in site_options.sites}
+        if filters is None and all(dataset.sizes.get("time", 0) > 0 for dataset in ordered.values()):
+            return ordered, site_options
+        retained = _apply_filters_and_drop_empty_sites(
+            fp_data={site: dataset.copy() for site, dataset in ordered.items()},
+            sites=site_options.sites,
             filters=filters,
         )
-        return merged.with_site_data(
-            fp_data,
-            context="Observation filtering",
-        )
+        return retained, site_options.retain_sites(tuple(retained), context="Observation filtering")
 
 
 def build_sensitivities(
-    merged: RhimeMergedData,
+    site_data: Mapping[str, xr.Dataset],
     basis_functions: BasisFunctions,
     *,
     flux_sources: Sequence[str],
@@ -131,11 +130,11 @@ def build_sensitivities(
     """Construct labelled flux and optional boundary-condition sensitivities.
 
     The stage creates per-site dataset copies, computes the basis projection,
-    using preloaded boundary-condition basis data. ``merged`` and
+    using preloaded boundary-condition basis data. ``site_data`` and
     ``basis_functions`` remain borrowed.
 
     Args:
-        merged: Filtered observations and footprints with aligned site options.
+        site_data: Filtered per-site observations and footprints.
         basis_functions: Retained basis and fluxes to project onto observations.
         flux_sources: Source names used to align the flux sensitivities.
         use_bc: Whether to construct boundary-condition sensitivities.
@@ -152,11 +151,11 @@ def build_sensitivities(
         ValueError: If the basis or source layout is incompatible with the
             selected sensitivity layout.
     """
-    with timed("rhime.prepare_inputs.footprint_sensitivity_total", sites=len(merged.sites)):
-        fp_data = {site: merged.site_data[site].copy() for site in merged.sites}
+    with timed("rhime.prepare_inputs.footprint_sensitivity_total", sites=len(site_data)):
+        fp_data = {site: dataset.copy() for site, dataset in site_data.items()}
         fp_x_flux_name = "fp_x_flux_sectoral" if multisector else "fp_x_flux"
 
-        for site in merged.sites:
+        for site in site_data:
             if fp_data[site].sizes.get("time", 0) == 0:
                 continue
             fp_x_flux = fp_data[site][fp_x_flux_name]
@@ -199,7 +198,7 @@ def build_sensitivities(
             )
 
         if use_bc:
-            with timed("rhime.prepare_inputs.bc_sensitivity", sites=len(merged.sites)):
+            with timed("rhime.prepare_inputs.bc_sensitivity", sites=len(site_data)):
                 fp_data = bc_sensitivity(
                     fp_data,
                     bc_basis=bc_basis,
@@ -209,10 +208,10 @@ def build_sensitivities(
 
 
 def assemble_inputs(
-    merged: RhimeMergedData,
-    basis_functions: BasisFunctions,
     site_data: Mapping[str, xr.Dataset],
+    basis_functions: BasisFunctions,
     *,
+    site_options: SiteOptions,
     domain: str,
     start_date: str,
     bc_freq: str | None = None,
@@ -232,11 +231,12 @@ def assemble_inputs(
     are dropped; backend selection and densification happen separately.
 
     Args:
-        merged: Borrowed filtered data and authoritative retained site options.
-        basis_functions: Basis and prior fluxes to retain with the inputs.
         site_data: Per-site datasets from sensitivity construction. Domain
             metadata is attached to shallow copies, leaving these datasets
             unchanged.
+        basis_functions: Basis and prior fluxes to retain with the inputs.
+        site_options: Selectors for the retained sites, as returned by
+            :func:`filter_observations`.
         domain: Domain label attached to the assembled site data.
         start_date: Requested start date used to anchor temporal parameters.
         bc_freq: Frequency of boundary-condition scaling parameters; ``None``
@@ -260,14 +260,14 @@ def assemble_inputs(
         KeyError: If the resolved ``by_site`` option is absent.
     """
     owned_site_data = {site: dataset.copy(deep=False) for site, dataset in site_data.items()}
-    for site in merged.sites:
+    for site in site_options.sites:
         owned_site_data[site].attrs["Domain"] = domain
     # These inverse-model settings are materialized into labelled arrays here
     # to preserve the existing numerical contract while preparation is split.
-    with timed("rhime.prepare_inputs.make_inv_inputs", sites=len(merged.sites)):
+    with timed("rhime.prepare_inputs.make_inv_inputs", sites=len(site_options.sites)):
         inv_inputs = make_inv_inputs(
             fp_data=owned_site_data,
-            sites=list(merged.sites),
+            sites=list(site_options.sites),
             start_date=start_date,
             bc_freq=bc_freq,
             min_error=min_error,
@@ -275,11 +275,11 @@ def assemble_inputs(
         )
     inv_inputs = scale_satellite_boundary_sensitivity_to_column_signal(
         inv_inputs,
-        sites=merged.sites,
-        platform=merged.platform,
-        observation_max_level=merged.site_options.max_level,
+        sites=site_options.sites,
+        platform=site_options.platform,
+        observation_max_level=site_options.max_level,
         footprint_max_level=tuple(
-            owned_site_data[site].attrs.get("footprint_max_level") for site in merged.sites
+            owned_site_data[site].attrs.get("footprint_max_level") for site in site_options.sites
         ),
     )
     _warn_for_nan_inputs(inv_inputs, use_bc=use_bc)
@@ -288,14 +288,14 @@ def assemble_inputs(
         "rhime.prepare_inputs.prepared_dims",
         0.0,
         nmeasure=inv_inputs.sizes.get("nmeasure"),
-        sites=len(merged.sites),
+        sites=len(site_options.sites),
         regions=inv_inputs.sizes.get("region"),
         sources=inv_inputs.sizes.get("source"),
         basis_source=basis_source,
     )
     site_metadata = _make_site_metadata(
-        sites=merged.sites,
-        averaging_period=merged.averaging_period,
+        sites=site_options.sites,
+        averaging_period=site_options.averaging_period,
     )
     def footprint_attr(site: str, name: str) -> str:
         value = owned_site_data[site].attrs.get(f"footprint_{name}")
@@ -304,7 +304,7 @@ def assemble_inputs(
     for name in ("transport_model", "transport_model_version", "met_model"):
         site_metadata[name] = (
             "site",
-            [footprint_attr(site, name) for site in merged.sites],
+            [footprint_attr(site, name) for site in site_options.sites],
         )
     return RhimePreparedInputs(
         inv_inputs=inv_inputs,
@@ -451,3 +451,54 @@ def resolve_basis_inputs(config: Any) -> dict[str, Any]:
         landsea_path=landsea_path, outer_regions_path=outer_path,
     ))
     return selected
+
+
+def acquire_merged_data(data: Any, merged_data: RhimeMergedData | None = None) -> RhimeMergedData:
+    """Acquire the configured data, or check a supplied handoff against the request.
+
+    Args:
+        data: Resolved :class:`~openghg_inversions.rhime.params.DataConfig`.
+        merged_data: Optional supplied acquisition handoff. It is borrowed and
+            returned unchanged after its recorded facts are checked.
+
+    Returns:
+        Acquired merged data for scientific preparation.
+
+    Raises:
+        ValueError: If supplied data conflicts with the requested species,
+            domain, dates or sector layout.
+    """
+    with timed(
+        "rhime.prepare_inputs.merged_data",
+        sites=len(data.site_options.sites), split_by_sectors=data.split_by_sectors,
+    ):
+        if merged_data is not None:
+            merged_data.validate_for_preparation(
+                **data.select("species", "domain", "start_date", "end_date", "split_by_sectors"),
+            )
+            return merged_data
+        return RhimeMergedData.from_options(
+            **data.select(
+                "site_options", "species", "domain", "start_date", "end_date", "flux_sources",
+                "split_by_sectors", "bc_store", "obs_store", "footprint_store", "flux_store",
+                "flux_domain", "fp_model", "fp_species", "calibration_scale", "use_bc", "bc_input",
+                "flux_non_finite_check",
+            ),
+        )
+
+
+def export_basis(basis_functions: BasisFunctions, path: str | Path | None) -> BasisFunctions:
+    """Save a basis to the runner-selected exact path and record that path.
+
+    Args:
+        basis_functions: Basis returned by scientific preparation.
+        path: Exact export destination, or ``None`` to skip the export.
+
+    Returns:
+        ``basis_functions`` unchanged without a path; otherwise a copy whose
+        metadata names the saved artifact.
+    """
+    if path is None:
+        return basis_functions
+    basis_functions.save(path)
+    return basis_functions.with_metadata({BASIS_ARTIFACT_PATH_ATTR: str(path)})
