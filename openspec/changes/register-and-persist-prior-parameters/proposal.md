@@ -3,7 +3,7 @@
 ## Why
 
 Review of [#866](https://github.com/openghg/openghg_inversions/pull/866)
-identified that fixed prior parameters bypass model-data registration, and its
+identified that array prior parameters bypass model-data registration, and its
 new sample records lose lazy parameter values by retaining only their shapes.
 Resolve [#872](https://github.com/openghg/openghg_inversions/issues/872) before
 #866 merges, using the existing registered-model and inference-data boundaries.
@@ -12,17 +12,19 @@ Resolve [#872](https://github.com/openghg/openghg_inversions/issues/872) before
 
 - Specify the division of responsibility between `CoordRegistry` (scientific
   indexes, auxiliary coordinates, PyMC range coordinates and restoration) and
-  registered model data (fixed numerical inputs).
-- Register supplied scalar and array prior parameters while scientific labels
-  are available; preserve scalar broadcasting, canonical alignment and active
-  state selection. Keep stochastic parameters and derived expressions in the
-  graph.
-- Register requested lognormal moments once and derive effective parameters
-  symbolically for ordinary and reparameterized construction.
+  registered model data (fixed numerical arrays). Constructed-prior metadata
+  retains scalar numerical parameters inline.
+- Register array prior parameters while scientific labels are available; retain
+  scalar arguments and broadcasting, canonical alignment and active state
+  selection. Keep stochastic parameters and derived expressions in the graph.
+- Derive effective lognormal parameters through one symbolic conversion path for
+  scalar, array and symbolic moments, shared by ordinary and reparameterized
+  construction. Retain fixed moments inline or through array-data references.
 - Materialize related lazy inputs together at the explicit model boundary,
   borrowing caller arrays. Save actual values and coordinates through existing
   inference-data serialization; model metadata references registered inputs
-  without recomputing caller graphs or embedding numerical arrays in JSON.
+  and retains resolved scalars inline without recomputing caller graphs or
+  embedding numerical arrays in JSON.
 - Record only priors used by the constructed model. Omit unused prior metadata
   and references without materializing configured lazy parameters of disabled
   components.

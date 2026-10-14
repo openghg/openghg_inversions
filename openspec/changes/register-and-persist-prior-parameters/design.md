@@ -17,7 +17,8 @@ review before implementation.
 ## Goals / Non-Goals
 
 **Goals:** Preserve the supplied parameterization, scientific alignment and actual
-fixed inputs of constructed priors using existing model data and trace storage.
+fixed inputs of constructed priors using inline scalars and existing model data
+and trace storage for arrays.
 Apply the fix at shared prior construction so full and saved standard runs agree.
 
 **Non-Goals:** A second registry, general tensor-expression serialization,
@@ -34,13 +35,16 @@ runtime handling is not slated for removal.
 
 Align state-valued parameters to the canonical full-state coordinate before
 stripping labels. Preserve lazy backing until related required inputs can be
-materialized together. Register the canonical supplied values once, then use
+materialized together. Register the canonical supplied arrays once, then use
 active-index expressions to select distribution inputs. The full-state coordinate
 and existing activity information explain the selected state's relationship to
 those values without storing another active-only numerical parameter array.
 
-Scalars remain zero-dimensional; positional arrays acquire the dimensions owned
-by their component. Do not assign every parameter the distribution's dimensions.
+Numerical scalars, including zero-dimensional numerical values, remain ordinary
+scalar arguments and are captured inline in constructed-prior metadata.
+Positional arrays acquire the dimensions owned by their component; a
+one-dimensional array of length one remains an array. Do not broadcast scalars
+into stored state arrays or assign every parameter the distribution's dimensions.
 The alternative of registering already stripped NumPy arrays loses scientific
 interpretation too early.
 
@@ -50,14 +54,18 @@ and experimental components. Reuse or relocate the existing registration helper
 if its current import direction prevents reuse from `priors.py`; do not duplicate
 it or silently create another coordinate registry.
 
-### 2. Register supplied fixed parameters and derive expressions in the graph
+### 2. Register arrays, retain scalar constants and derive expressions in the graph
 
-Use the existing model-data boundary for supplied fixed numerical parameters.
-Recognize symbolic inputs before numerical coercion and retain their graph
-dependencies. Distribution selectors and controls such as `pdf`, `reparameterise`
-and `dims` are metadata, not numerical prior parameters.
+Use the existing model-data boundary for fixed numerical arrays. Ordinary
+numerical scalars need no named `pm.Data` node or lookup reference. Recognize
+symbolic inputs before scalar/array coercion and retain their graph dependencies;
+a scalar-shaped symbolic parameter is not a numerical constant. Distribution
+selectors and controls such as `pdf`, `reparameterise` and `dims` are metadata,
+not numerical prior parameters.
 
-For arithmetic lognormal moments, register `mean` and `stdev` and derive:
+For arithmetic lognormal moments, use one PyTensor conversion in model
+construction. Scalar moments enter as constants, array moments as registered
+inputs, and symbolic moments as existing expressions. All use:
 
 ```text
 variance_log = log(1 + (stdev / mean)^2)
@@ -66,24 +74,34 @@ sigma = sqrt(variance_log)
 ```
 
 Both ordinary LogNormal construction and `exp(mu + sigma * latent)` consume these
-expressions. Direct `mu`/`sigma` input retains its own parameterization. Preserve
-the existing numerical conversion helper's public behavior where it is used
-outside graph construction. Storing both arithmetic and log-space arrays adds
-duplicate payloads; evaluating symbolic inputs would erase dependencies.
+expressions, including mixed scalar/array inputs. Do not split model conversion
+into NumPy and PyTensor branches based on parameter shape. Direct `mu`/`sigma`
+input retains its own parameterization. Preserve the existing numerical conversion
+helper's public behavior where it is used outside graph construction. Storing
+both arithmetic and log-space arrays adds duplicate payloads; evaluating symbolic
+inputs would erase dependencies. The latent's internal zero and one constants
+need no model-data registration.
 
 ### 3. Record names and policy; save values through the trace
 
-Give registered prior inputs deterministic names scoped to their scientific
+Give registered prior arrays deterministic names scoped to their scientific
 variable and parameter. A reference such as `{"data": "x_prior_mean"}` is enough
 to associate a model-record field with `constant_data`; exact spelling is an
-implementation detail. Record distribution and parameterization names,
-reparameterization policy and the association with existing activity metadata.
+implementation detail. Retain scalar values inline, for example:
+
+```json
+{"pdf": "normal", "mu": {"data": "x_prior_mu"}, "sigma": 0.2}
+```
+
+Record distribution and parameterization names, reparameterization policy and
+the association with existing activity metadata.
 These are ordinary descriptive mappings, not a second data registry.
 
-Build those associations from constructed priors and registered inputs, and pass
-them explicitly to record/output owners. Include only priors actually used by
-the constructed model: `bc_prior` with `use_bc=False`, or `offset_prior` with
-offsets disabled, produces no saved prior metadata or parameter references.
+Capture resolved scalar values, including applicable resolved defaults, and array
+associations at construction, and pass them explicitly to record/output owners.
+Include only priors actually used by the constructed model: `bc_prior` with
+`use_bc=False`, or `offset_prior` with offsets disabled, produces no saved prior
+metadata or parameter references.
 Construction owns this selection; being inside a model context alone does not
 prevent `RhimeModelSpec.to_record` from independently walking unused settings.
 Do not materialize unused lazy parameters to record configuration, or add a
@@ -91,24 +109,29 @@ separate filtering/validation framework.
 
 Preserve the constructed associations through the sampled trace and existing
 metadata channels. Replace the configured-prior walk and both shape-only lazy
-and eager-array JSON encoding in `RhimeModelSpec.to_record`; reuse registered
-values for full-run output metadata as well as saved sample metadata.
+and eager-array JSON encoding in `RhimeModelSpec.to_record`; reuse captured
+scalars and array references for full-run output metadata as well as saved sample
+metadata.
 
 The existing trace codec owns numerical storage and MultiIndex round trips.
-On replay, load that trace and resolve required prior-data references before
-decoding model choices for result construction. Decode into ordinary labelled
-values without building a graph or executing recorded callables. Missing required
-references fail at the owning writer/reader; no JSON numerical-array fallback or
-new sidecar is needed. Symbolic parameters retain descriptive associations;
-this is not a promise to reconstruct arbitrary hierarchical models from metadata.
+On replay, load that trace and resolve required prior-array references before
+decoding model choices for result construction. Scalar constants need no data
+lookup. Decode arrays into ordinary labelled values without building a graph or
+executing recorded callables. Missing required array references fail at the
+owning writer/reader; no JSON numerical-array fallback or new sidecar is needed.
+Symbolic parameters retain descriptive associations; this is not a promise to
+reconstruct arbitrary hierarchical models from metadata.
 
 ### 4. Keep the execution boundary explicit and shared
 
 Materialize related prior parameters, required auxiliary coordinates and other
 model inputs sharing their lazy graph together at the owning construction
-boundary. Use `to_dense` where sparse chunk payloads require densification and
-reuse the existing joint materialization pattern. Install results in locally
-owned containers; do not load or persist borrowed caller arrays in place.
+boundary. Include supported lazy zero-dimensional numerical inputs in that same
+computation, then capture their resulting scalar values inline. Metadata writing
+does not compute the original lazy scalars again. Use `to_dense` where sparse
+chunk payloads require densification and reuse the existing joint materialization
+pattern. Install results in locally owned containers; do not load or persist
+borrowed caller arrays in place.
 
 Full, prepared-input and saved standard routes already meet at `build_standard`
 in #866. Keep that shared flow and correct the lower-level prior helpers rather
@@ -120,10 +143,13 @@ to own their own numerical boundary.
 - Losing labels while slicing active states: register canonical inputs first;
   check a reversed-label example with partial activity independently.
 - Registering a graph expression as fixed data: check a hierarchical parameter
-  still depends on its parent random variable.
+  still depends on its parent random variable, including scalar-shaped expressions.
+- Losing the scalar/array distinction: check scalar-only priors add no
+  prior-parameter data variables and a length-one labelled array retains its axis.
 - Reexecuting a shared lazy graph through metadata or coordinates: use counted
-  delayed inputs with shared dependencies and verify counts across construction,
-  sampling, saving and reload, with borrowed inputs unchanged.
+  delayed inputs, including a supported lazy scalar, with shared dependencies
+  and verify counts across construction, sampling, saving and reload, with
+  borrowed inputs unchanged.
 - Serializing unused request settings: configure a disabled component with a
   counted lazy prior; saving must succeed with no prior metadata or references
   for that component and zero executions of its lazy graph.
@@ -137,8 +163,9 @@ to own their own numerical boundary.
 2. After maintainer spec review, use the proposal workflow to create implementation
    tasks, then implement the shared fix and record integration in the same PR.
 3. Check ordinary and reparameterized densities against independent calculations;
-   perform a small real sample/save/reload with labelled Dask-backed moments and
-   auxiliary coordinates, plus focused scalar, symbolic and unused-lazy-prior checks.
+   perform a small real sample/save/reload with labelled Dask-backed arrays and
+   auxiliary coordinates, retaining scalar parameters inline. Include focused
+   scalar-only, length-one array, symbolic and unused-lazy-prior checks.
    Compare full and saved standard construction without requiring identical draws.
 4. Update maintained usage documentation and add `newsfragments/872.bugfix.md`,
    then merge this child PR into #866 before #866 completes. Reconcile/promote

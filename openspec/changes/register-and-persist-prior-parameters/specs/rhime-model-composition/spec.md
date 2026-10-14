@@ -17,8 +17,9 @@ considers all supplied coordinate mapping keys as model dimensions.
 
 The registry SHALL own scientific dimension indexes, auxiliary-coordinate
 information, the corresponding PyMC range-coordinate mapping, and restoration
-into inference data. Registered model data SHALL own fixed numerical input
-values; the coordinate registry SHALL NOT become a second numerical-data store.
+into inference data. Registered model data SHALL own fixed numerical array input
+values; constructed-prior metadata SHALL retain numerical scalar parameters
+inline. The coordinate registry SHALL NOT become a second numerical-data store.
 Scientific coordinates SHALL be restored on matching inference-data dimensions,
 including those of registered prior parameters in `constant_data`.
 
@@ -60,14 +61,17 @@ supported behavior.
 
 ## ADDED Requirements
 
-### Requirement: Fixed prior inputs are registered with their scientific meaning
+### Requirement: Fixed prior inputs retain their scientific meaning
 
-Fixed numerical inputs consumed by registered RHIME construction, including
-supplied scalar and array prior parameters, SHALL enter through the existing
-model-data boundary. Shared prior construction SHALL consume those registered
-inputs consistently for ordinary and reparameterized distributions. Random
-variables and derived symbolic expressions SHALL remain graph expressions;
-registration SHALL NOT evaluate a stochastic parameter into fixed data.
+Fixed numerical array prior parameters consumed by registered RHIME construction
+SHALL enter through the existing model-data boundary. Numerical scalar parameters
+SHALL remain ordinary scalar arguments and be retained inline in constructed-prior
+metadata, without requiring named model-data variables. Shared prior construction
+SHALL apply this policy consistently for ordinary and reparameterized distributions.
+Random variables and derived symbolic expressions SHALL remain graph expressions,
+including scalar-shaped expressions. Their symbolic nature SHALL be recognized
+before scalar/array coercion; registration or metadata capture SHALL NOT evaluate
+a stochastic parameter into fixed data.
 
 Parameter registration SHALL preserve dimension and coordinate information
 before labels are discarded. Labelled parameters SHALL align to their owning
@@ -77,16 +81,33 @@ alignment boundary before distribution construction. Positional state arrays
 SHALL retain their documented canonical-order interpretation.
 
 Each parameter SHALL retain its own dimensions and scalar broadcasting
-semantics. A scalar SHALL be registered as zero-dimensional data, without
-expansion to the random variable's shape. Parameter dimensions SHALL NOT be
-inferred solely from the random variable's dimensions.
+semantics. Numerical scalars and zero-dimensional numerical values SHALL be
+distinguished from arrays with dimensions: a one-dimensional array of length one
+SHALL remain an array. Scalars SHALL NOT be expanded into stored arrays matching
+the random variable's shape. Parameter dimensions SHALL NOT be inferred solely
+from the random variable's dimensions.
 
 #### Scenario: Ordinary prior with scalar and labelled parameters
 
 - **WHEN** a Normal state prior receives a labelled `mu` and scalar `sigma`
-- **THEN** both fixed inputs are registered and used by the distribution
-- **AND** `mu` follows canonical state order while `sigma` remains scalar and
-  broadcasts to the state variable's shape
+- **THEN** `mu` is registered array data in canonical state order
+- **AND** `sigma` remains a scalar argument, broadcasts to the state variable's
+  shape and is retained inline in constructed-prior metadata
+- **AND** saving and reloading retains `mu`'s values and scientific coordinates
+  with its metadata reference resolved correctly
+
+#### Scenario: Scalar-only prior
+
+- **WHEN** a constructed prior uses only numerical scalar parameters
+- **THEN** its resolved parameters are retained inline in saved prior metadata
+- **AND** no prior-parameter data variables are added to `constant_data` for those
+  scalars
+
+#### Scenario: Length-one array retains its dimension
+
+- **WHEN** a prior parameter is a labelled one-dimensional array of length one
+- **THEN** registration and persistence retain its axis and scientific coordinate
+- **AND** the parameter is not squeezed into inline scalar metadata
 
 #### Scenario: Align and select active state parameters
 
@@ -105,7 +126,8 @@ inferred solely from the random variable's dimensions.
 
 #### Scenario: Preserve a stochastic parameter
 
-- **WHEN** a prior parameter is a random variable or an expression depending on one
+- **WHEN** a prior parameter is a random variable or an expression depending on
+  one, including a scalar-shaped parameter
 - **THEN** the distribution retains that symbolic dependency
 - **AND** registration does not replace it with an evaluated numerical value
 
@@ -118,23 +140,29 @@ prior metadata nor parameter references. Their lazy numerical inputs SHALL NOT
 be materialized for registration or metadata writing.
 
 Prior metadata SHALL identify the distribution, supplied parameterization and
-reparameterization policy, and associate fixed parameters with their registered
-data. Derived effective parameters SHALL remain identifiable from the retained
+reparameterization policy. It SHALL capture resolved scalar values, including
+applicable resolved defaults, and associate array parameters with registered data
+at construction rather than later rediscovering them from the original request.
+Derived effective parameters SHALL remain identifiable from the retained
 inputs and the declared conversion, without requiring duplicate numerical
 payloads or serialization of a general expression graph.
 
-For lognormal arithmetic-moment input, the supplied `mean` and `stdev` SHALL be
-registered once and effective `mu` and `sigma` SHALL be derived symbolically
-from them. Ordinary and reparameterized lognormal construction SHALL use the
-same conversion. Directly supplied `mu` and `sigma` SHALL remain distinguishable
-from arithmetic moments. Reparameterization SHALL retain the scientific
-variable and its declared relationship to the latent variable.
+For lognormal arithmetic-moment input, numerical scalar `mean` and `stdev` SHALL
+be retained inline and array moments SHALL be registered once. Effective `mu`
+and `sigma` SHALL be derived through one shared symbolic conversion in model
+construction, accepting scalar constants, registered arrays, symbolic parameters
+and mixed inputs. Ordinary and reparameterized lognormal construction SHALL use
+that same conversion. Scalar constants SHALL NOT require model-data registration
+to participate in it. Directly supplied `mu` and `sigma` SHALL remain
+distinguishable from arithmetic moments. Reparameterization SHALL retain the
+scientific variable and its declared relationship to the latent variable.
 
 #### Scenario: Arithmetic moments in either lognormal construction
 
 - **WHEN** a lognormal prior receives fixed `mean` and `stdev`, with or without
   reparameterization
-- **THEN** registered inputs retain the arithmetic moments and their labels
+- **THEN** constructed-prior metadata retains scalar moments inline and references
+  registered array moments with their scientific labels
 - **AND** the effective distribution has those requested moments
 - **AND** recording the conversion does not require storing duplicate `mu` and
   `sigma` arrays
@@ -142,7 +170,8 @@ variable and its declared relationship to the latent variable.
 #### Scenario: Direct lognormal parameters
 
 - **WHEN** a lognormal prior receives `mu` and `sigma` directly
-- **THEN** its fixed inputs are registered under that parameterization
+- **THEN** scalar parameters are retained inline and array parameters are
+  registered under that parameterization
 - **AND** metadata does not misdescribe them as arithmetic `mean` and `stdev`
 
 #### Scenario: Disabled component with an unused lazy prior
@@ -154,27 +183,31 @@ variable and its declared relationship to the latent variable.
   for the disabled component
 - **AND** the unused prior's lazy graph is never executed
 
-### Requirement: Registered prior inputs survive persistence without recomputation
+### Requirement: Constructed prior inputs survive persistence without recomputation
 
 Caller arrays SHALL be borrowed and potentially lazy. Related lazy inputs,
-including prior parameters and their required auxiliary coordinates, SHALL
-preserve shared execution graphs until materialized together at the explicit
-model-construction boundary. Alignment and materialization SHALL NOT mutate
-caller arrays or prior mappings.
+including supported lazy zero-dimensional numerical parameters and required
+auxiliary coordinates, SHALL preserve shared execution graphs until materialized
+together at the explicit model-construction boundary. Alignment and
+materialization SHALL NOT mutate caller arrays or prior mappings.
 
 Sampling and the existing inference-data persistence path SHALL retain the actual
-registered numerical prior inputs in `constant_data`, together with scientific
-coordinates. Model-record and output-metadata writing SHALL use registered
-values or references to them without executing the original caller arrays again.
-Numerical array payloads SHALL NOT be embedded in JSON; dimensions, shape or a
-lazy marker SHALL NOT substitute for retained values.
+registered numerical prior arrays in `constant_data`, together with scientific
+coordinates. Resolved scalar values SHALL be captured at construction and saved
+inline in prior metadata. Model-record and output-metadata writing SHALL use
+those captured scalars and registered array references without executing the
+original caller inputs again. Numerical scalar metadata SHALL be permitted in
+JSON; numerical array payloads SHALL NOT be embedded there. Dimensions, shape or
+a lazy marker SHALL NOT substitute for retained array values.
 
-The owning writer SHALL reject a record whose required prior-data references
+The owning writer SHALL reject a record whose required prior-array references
 cannot be satisfied before marking the saved handoff complete. The owning
 reader SHALL resolve those references from saved inference data and report
-missing required values clearly before product writes, without rebuilding a
-model or importing recorded callables. Full and saved standard execution SHALL
-use the same corrected model-construction path.
+missing required array values clearly before product writes, without rebuilding
+a model or importing recorded callables. Scalar constants SHALL require no data
+lookup, and unused configured priors SHALL generate no references. Full,
+prepared-input and saved standard execution SHALL use the same corrected
+model-construction and recording path.
 
 #### Scenario: Sample, save and reload lazy labelled prior inputs
 
@@ -187,24 +220,28 @@ use the same corrected model-construction path.
 
 #### Scenario: Shared lazy inputs execute only at construction
 
-- **WHEN** related prior parameters share a lazy dependency and the completed
-  run's trace and metadata are subsequently saved
+- **WHEN** related prior parameters, including a supported lazy zero-dimensional
+  numerical parameter, share a lazy dependency and the completed run's trace and
+  metadata are subsequently saved
 - **THEN** construction materializes the related parameters together, executing
   that shared dependency once
 - **AND** metadata saving does not execute the caller's dependency again
+- **AND** the lazy scalar's resolved value is retained inline without a model-data
+  lookup
 - **AND** caller arrays, labels, lazy backing and prior mappings remain unchanged
 
 #### Scenario: Missing registered parameter values
 
-- **WHEN** a saved model record references required prior data absent from its trace
+- **WHEN** a saved model record references a required prior array absent from its trace
 - **THEN** its owning writer refuses completion, or its owning reader reports
   the missing reference before product writes
 - **AND** it does not recover values from the original lazy inputs, JSON array
   payloads or a rebuilt model
 
-#### Scenario: Equivalent full and saved standard construction
+#### Scenario: Equivalent full, prepared-input and saved standard construction
 
-- **WHEN** full and saved standard routes consume equivalent prepared inputs
-  and prior choices
-- **THEN** both construct their priors through the same registration path
-- **AND** aligned fixed inputs and prior densities agree within numerical tolerance
+- **WHEN** full, prepared-input and saved standard routes consume equivalent
+  prepared inputs and prior choices
+- **THEN** all construct and record their priors through the same shared path
+- **AND** scalar metadata, aligned array inputs and prior densities agree within
+  numerical tolerance
