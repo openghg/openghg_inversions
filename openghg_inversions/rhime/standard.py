@@ -55,7 +55,10 @@ from .builders import (
     validate_model_build_result,
 )
 
-from .materialization import materialize_pymc_inputs
+from .materialization import (
+    _materialize_pymc_inputs_and_priors,
+    materialize_pymc_inputs as materialize_pymc_inputs,
+)
 from .outputs import (
     RhimeResult,
     annotate_likelihood_trace,
@@ -75,6 +78,7 @@ from .specs import (
     DEFAULT_BC_PRIOR,
     DEFAULT_OFFSET_PRIOR,
     DEFAULT_X_PRIOR,
+    AdditiveSigmaSettings,
     LikelihoodSettings,
     PollutionEventSettings,
     RhimeModelSpec,
@@ -446,7 +450,34 @@ def build_standard(
         if legacy_unused_sigma_settings is not None or legacy_minimum_error_floor:
             _require_component_inputs(prepared, ("min_error",), owner="Legacy run_hbmcmc likelihood compatibility")
             names.append("min_error")
-        model_inputs = materialize_pymc_inputs(prepared, variable_names=tuple(dict.fromkeys(names)))
+        model_spec = run_spec.model
+        if len(model_spec.sectors) != 1:
+            raise ValueError("Standard RHIME model specs must include exactly one sector.")
+        priors = {"x": model_spec.sectors[0].x_prior}
+        if model_spec.use_bc and model_spec.bc_prior is not None:
+            priors["bc"] = model_spec.bc_prior
+        if model_spec.add_offset and model_spec.offset_prior is not None:
+            priors["offset"] = model_spec.offset_prior
+        likelihood = model_spec.likelihood
+        if isinstance(likelihood, (PollutionEventSettings, AdditiveSigmaSettings)) and likelihood.sigma_prior is not None:
+            priors["sigma"] = likelihood.sigma_prior
+        if isinstance(likelihood, PollutionEventSettings) and isinstance(likelihood.power, Mapping):
+            priors["power"] = likelihood.power
+        if legacy_unused_sigma_settings is not None and legacy_unused_sigma_settings.sigma_prior is not None:
+            priors["legacy_sigma"] = legacy_unused_sigma_settings.sigma_prior
+        model_inputs, priors = _materialize_pymc_inputs_and_priors(
+            prepared, variable_names=tuple(dict.fromkeys(names)), prior_parameters=priors,
+        )
+        if likelihood is not None:
+            likelihood = replace(likelihood, **{field: priors[key] for field, key in
+                                 (("sigma_prior", "sigma"), ("power", "power")) if key in priors})
+        run_spec = replace(run_spec, model=replace(
+            model_spec, sectors=(replace(model_spec.sectors[0], x_prior=priors["x"]),),
+            bc_prior=priors.get("bc", model_spec.bc_prior),
+            offset_prior=priors.get("offset", model_spec.offset_prior), likelihood=likelihood,
+        ))
+        if legacy_unused_sigma_settings is not None and "legacy_sigma" in priors:
+            legacy_unused_sigma_settings = replace(legacy_unused_sigma_settings, sigma_prior=priors["legacy_sigma"])
     return build_standard_rhime_model_result(
         prepared=prepared,
         model_inputs=model_inputs,

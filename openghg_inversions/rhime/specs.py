@@ -269,50 +269,67 @@ class RhimeModelSpec:
     bc_state_activity: StateActivity | None = field(default=None, kw_only=True)
     state_activity: StateActivity | None = field(default=None, kw_only=True)
 
-    def to_record(self) -> dict[str, Any]:
-        """Describe these choices for a saved sample record.
+    def to_record(self, *, priors: Mapping[str, PriorArgs] | None = None) -> dict[str, Any]:
+        """Describe structural choices and construction-owned prior parameters.
 
-        Prior arrays already in memory keep their values; Dask-backed arrays are
-        described by dimensions and shape without computing their payload.
-
-        Returns:
-            A JSON-compatible mapping decoded by :meth:`from_record`.
-
-        Raises:
-            ValueError: If a state-activity policy is set; saved records cannot
-                represent it, so use the in-memory route.
+        ``priors`` contains inline numerical scalars and registered-array
+        references captured while constructing the model. Unused configured
+        prior mappings are never traversed or materialized here. Omitting
+        ``priors`` omits prior parameter values from the record.
         """
-        if (self.state_activity is not None or self.bc_state_activity is not None
-                or any(sector.state_activity is not None for sector in self.sectors)):
-            raise ValueError(
-                "Saved sample records cannot represent `state_activity`, `bc_state_activity` "
-                "or `SectorSpec.state_activity`; run these models in memory."
-            )
+        priors = priors or {}
         likelihood = None
         if self.likelihood is not None:
             kind = next(name for name, (cls, _) in _LIKELIHOOD_RECORDS.items() if isinstance(self.likelihood, cls))
-            options = {name: getattr(self.likelihood, name) for name in _LIKELIHOOD_RECORDS[kind][1]}
+            options = {name: getattr(self.likelihood, name) for name in _LIKELIHOOD_RECORDS[kind][1]
+                       if name != "sigma_prior"}
+            if "sigma_prior" in _LIKELIHOOD_RECORDS[kind][1]:
+                options["sigma_prior"] = priors.get("sigma")
+            if isinstance(options.get("power"), Mapping):
+                options["power"] = priors.get("power")
             likelihood = {"kind": kind, "options": options}
-        return _describe_arrays({
-            **{name: getattr(self, name) for name in _MODEL_RECORD_FIELDS},
+        return {
+            **{name: getattr(self, name) for name in _MODEL_RECORD_FIELDS
+               if name not in {"bc_prior", "offset_prior"}},
+            "bc_prior": priors.get("bc"),
+            "offset_prior": priors.get("offset_latent"),
             "sectors": [{"name": sector.name, "flux_source": sector.flux_source,
-                         "x_prior": sector.x_prior, "variable_suffix": sector.variable_suffix}
+                         "x_prior": priors.get("x" if len(self.sectors) == 1 and "x" in priors else f"x_{sector.variable_suffix}"),
+                         "variable_suffix": sector.variable_suffix}
                         for sector in self.sectors],
             "likelihood": likelihood,
-        })
+        }
 
     @classmethod
-    def from_record(cls, record: Any) -> RhimeModelSpec:
+    def from_record(cls, record: Any, *, trace: Any = None) -> RhimeModelSpec:
         """Decode :meth:`to_record` output without executing saved callables.
 
+        Args:
+            record: Structural model choices and construction-owned prior records.
+            trace: Saved inference data supplying any referenced ``constant_data``
+                arrays. Scalar-only prior records need no trace lookup.
+
         Raises:
-            ValueError: If the record is incomplete or names an unknown likelihood.
+            ValueError: If the record is incomplete, names an unknown likelihood,
+                or references a missing registered prior array.
         """
         expected = set(_MODEL_RECORD_FIELDS) | {"sectors", "likelihood"}
         if not isinstance(record, Mapping) or set(record) != expected:
             missing = sorted(expected - set(record)) if isinstance(record, Mapping) else sorted(expected)
             raise ValueError(f"Saved model record must contain exactly {sorted(expected)}; missing {missing}.")
-        values = dict(record)
+        def resolve(value: Any) -> Any:
+            if isinstance(value, Mapping):
+                if set(value) == {"data"}:
+                    name = value["data"]
+                    if trace is None or "constant_data" not in trace or name not in trace["constant_data"]:
+                        raise ValueError(f"Missing registered prior data {name!r}.")
+                    return trace["constant_data"][name]
+                return {key: resolve(item) for key, item in value.items()}
+            if isinstance(value, list):
+                return [resolve(item) for item in value]
+            return value
+
+        values = resolve(record)
         likelihood = values["likelihood"]
         try:
             if likelihood is not None:
@@ -342,23 +359,6 @@ _LIKELIHOOD_RECORDS: dict[str, tuple[type, tuple[str, ...]]] = {
     )),
 }
 
-
-def _describe_arrays(value: Any) -> Any:
-    """Replace prior arrays with JSON descriptions, never computing a lazy payload."""
-    import dask
-    import xarray as xr
-
-    from openghg_inversions._serialization_codecs import _json_value
-
-    if isinstance(value, xr.DataArray):
-        if dask.is_dask_collection(value):
-            return {"dims": [str(dim) for dim in value.dims], "shape": list(value.shape), "lazy": True}
-        return _json_value(value, materialize_dataarrays=True)
-    if isinstance(value, Mapping):
-        return {key: _describe_arrays(item) for key, item in value.items()}
-    if isinstance(value, list | tuple):
-        return [_describe_arrays(item) for item in value]
-    return value
 
 @dataclass(frozen=True)
 class RhimeOutputSpec:

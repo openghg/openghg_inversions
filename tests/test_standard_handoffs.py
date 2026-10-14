@@ -79,6 +79,7 @@ def forbidden(*args, **kwargs):
     raise AssertionError("replay performed acquisition, graph construction or inference")
 standard.build_standard = forbidden
 standard.materialize_pymc_inputs = forbidden
+standard._materialize_pymc_inputs_and_priors = forbidden
 stages.RhimeMergedData.from_options = forbidden
 RhimeSampler.sample = forbidden
 stages.resolve_sampler = forbidden
@@ -361,7 +362,7 @@ def test_grouped_loader_flat_canonical_override_wins_file_alias(tmp_path, monkey
     assert loaded["output"]["output_path"] == invocation / "products"
 
 
-def test_saving_samples_does_not_compute_a_lazy_prior(tmp_path):
+def test_saving_samples_ignores_unused_configured_lazy_priors(tmp_path):
     from dataclasses import replace
     import dask
     import dask.array as da
@@ -369,20 +370,24 @@ def test_saving_samples_does_not_compute_a_lazy_prior(tmp_path):
     preparation, sampled = _saved(tmp_path)
     record = json.loads(sampled.read_text())
     calls = []
-    def mean():
+
+    @dask.delayed
+    def unused():
         calls.append(1)
         return np.ones(1)
-    lazy = xr.DataArray(da.from_delayed(dask.delayed(mean)(), shape=(1,), dtype=float), dims=("region",))
+
+    lazy = xr.DataArray(da.from_delayed(unused(), shape=(1,), dtype=float), dims=("region",))
     model = RhimeModelSpec.from_record(record["model"])
-    model = replace(model, sectors=(replace(model.sectors[0], x_prior={"pdf": "normal", "mu": lazy, "sigma": 1.}),))
+    model = replace(model, bc_prior={"pdf": "normal", "mu": lazy, "sigma": 1.},
+                    offset_prior={"pdf": "normal", "mu": lazy, "sigma": 1.})
     saved = stages.save_samples(
         preparation, stages.load_trace(sampled.parent / "posterior.nc"), model=model,
         output_contract=OutputContract.from_dict(record["output_contract"]), actual_inference={},
         build_and_sample_seconds=0., output_dir=tmp_path / "lazy",
     )
     assert calls == []
-    assert json.loads(saved.read_text())["model"]["sectors"][0]["x_prior"]["mu"] == {
-        "dims": ["region"], "shape": [1], "lazy": True}
+    metadata = json.loads(saved.read_text())["model"]
+    assert metadata["bc_prior"] is None and metadata["offset_prior"] is None
 
 
 def test_model_record_covers_every_field_or_rejects_it(tmp_path):
@@ -393,7 +398,10 @@ def test_model_record_covers_every_field_or_rejects_it(tmp_path):
     rejected = {"state_activity", "bc_state_activity"}
     assert {field.name for field in fields(RhimeModelSpec)} == recorded | rejected
     model = RhimeConfig.from_params(_params(), multisector=False).model
-    assert RhimeModelSpec.from_record(json.loads(json.dumps(model.to_record()))) == model
+    recorded_model = model.to_record(priors={"x": model.sectors[0].x_prior})
+    decoded = RhimeModelSpec.from_record(json.loads(json.dumps(recorded_model)))
+    assert decoded.sectors[0].x_prior == model.sectors[0].x_prior
+    assert decoded.bc_prior is None and decoded.offset_prior is None
     policy = object()
     preparation, sampled = _saved(tmp_path)
     record = json.loads(sampled.read_text())

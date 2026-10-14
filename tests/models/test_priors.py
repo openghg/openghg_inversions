@@ -2,7 +2,6 @@ import numpy as np
 import pymc as pm
 import pytest
 import xarray as xr
-from pymc.distributions import continuous
 
 from openghg_inversions.models.priors import (
     lognormal_mu_sigma,
@@ -69,18 +68,14 @@ def test_positive_prior_args_normalises_distribution_name() -> None:
     }
 
 
-def test_parse_prior_does_not_globally_strip_xarray_labels(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Leave labelled parameters intact for state-aware callers to process explicitly."""
+def test_parse_prior_registers_labels_without_mutating_inputs() -> None:
+    from openghg_inversions.models.coords import registered_model
+    from openghg_inversions.models.priors import prior_records
+
     labelled_mu = xr.DataArray([1.0, 2.0], dims="region", coords={"region": ["a", "b"]})
-    captured: dict[str, object] = {}
-
-    def fake_normal(name: str, **kwargs: object) -> object:
-        """Capture arguments that parse_prior forwards to the distribution."""
-        captured["name"] = name
-        captured.update(kwargs)
-        return object()
-
-    monkeypatch.setattr(continuous, "Normal", fake_normal)
-    parse_prior("x", {"pdf": "normal", "mu": labelled_mu, "sigma": 0.2})
-
-    assert captured["mu"] is labelled_mu
+    with registered_model() as model:
+        parse_prior("x", {"pdf": "normal", "mu": labelled_mu, "sigma": 0.2}, dims="region")
+    np.testing.assert_array_equal(model["x_prior_mu"].get_value(), [1.0, 2.0])
+    assert prior_records(model)["x"] == {"pdf": "normal", "mu": {"data": "x_prior_mu"}, "sigma": 0.2}
+    assert "x_prior_sigma" not in model
+    assert labelled_mu.region.values.tolist() == ["a", "b"]

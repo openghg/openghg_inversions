@@ -14,6 +14,7 @@ configure_pytensor()
 
 from collections.abc import Mapping, Sequence
 from copy import copy
+import json
 from typing import Any, ClassVar, Literal, cast
 
 import numpy as np
@@ -23,6 +24,7 @@ from pymc.util import get_random_generator  # type: ignore[import-untyped]
 
 from openghg_inversions._timing import log_timing, timer_seconds, timer_start
 from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
+from openghg_inversions.models.priors import prior_records
 from openghg_inversions.postprocessing.contracts import resolve_predictive_names
 
 NutsSampler = Literal["pymc", "nutpie", "numpyro", "blackjax"]
@@ -399,6 +401,7 @@ class RhimeSampler:
         registry = get_coord_registry(model)
         if registry is not None:
             trace = restore_inferencedata_coords(trace, registry)
+        trace.attrs["rhime_priors"] = json.dumps(prior_records(model))
         log_timing(
             "rhime.sampler.coord_restore",
             timer_seconds(timing_start),

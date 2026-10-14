@@ -42,6 +42,36 @@ scientific ``x``, including when it is a deterministic transform of ``x_latent``
 Explicit trace selections missing required output state are rejected before a
 completed sample handoff or product is written.
 
+Prior parameters in saved samples describe the priors actually constructed.
+Numerical scalars are retained inline in model metadata. Array-valued parameters
+are registered as model data and saved in the trace's ``constant_data`` group,
+with their scientific dimensions and coordinates; metadata references those
+arrays rather than embedding numerical arrays in JSON. Disabled components
+contribute no prior metadata or references. Modern inversion outputs retain
+records captured by shared prior construction in
+``model_metadata["constructed_priors"]``, keyed by their concrete model variable
+names. Directly constructed PyMC priors are not automatically captured, and
+``Interpolated`` persistence remains excluded. Sector associations use the output
+contract's variable roles, including separate outer and inner state variables
+in nested outputs.
+
+Related lazy prior inputs, including supported zero-dimensional numerical
+inputs and auxiliary coordinates, are materialized together with selected model
+inputs at construction. An enabled prior may be computed before sensitivity
+evaluation finds that its states have no effect on observations and fixes them
+instead of sampling them; such a prior contributes no constructed-prior record.
+Disabled BC and offset components are excluded before this computation.
+Metadata writing uses the captured scalar values and registered arrays, without
+executing the original caller's lazy prior graph again. Scalar-shaped symbolic
+parameters retain their graph dependencies. Ordinary and reparameterized
+lognormal construction share the same symbolic moment conversion, preserving
+the supplied arithmetic or log-space parameterization in metadata.
+
+Use ``RhimeSampler.sample`` or the ordinary RHIME sampling routes before calling
+``save_samples`` directly: they attach the constructed-prior records to the
+trace. Required array references are checked when saving and reloading samples;
+missing values fail before completing a sample handoff or writing products.
+
 A selected saved basis supplies its operator while new preparation binds current
 native flux. Saved preparation and replay retain that flux and do not reacquire
 it. Species-dependent mass conversion belongs to postprocessing.

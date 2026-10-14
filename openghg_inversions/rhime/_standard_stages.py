@@ -22,6 +22,7 @@ from openghg_inversions.inference.sampling import RhimeSampler, resolve_sampler
 from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs
 from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.serialization import load_trace, save_trace
+from openghg_inversions.models.priors import trace_prior_records
 
 from ._stage_artifacts import write_json as _write_json
 from ._stage_checks import _check_draws, _check_stage, prior_predictive_check
@@ -217,7 +218,13 @@ def save_samples(
         FileExistsError: If ``output_dir`` already exists.
     """
     output_contract.validate_trace(posterior)
-    model_record = model.to_record()
+    if (model.state_activity is not None or model.bc_state_activity is not None
+            or any(sector.state_activity is not None for sector in model.sectors)):
+        raise ValueError(
+            "Saved sample records cannot represent `state_activity`, `bc_state_activity` "
+            "or `SectorSpec.state_activity`; run these models in memory."
+        )
+    model_record = model.to_record(priors=trace_prior_records(posterior))
     destination = Path(output_dir).resolve()
     destination.mkdir(parents=True, exist_ok=False)
     save_trace(posterior, destination / "posterior.nc")
@@ -315,7 +322,8 @@ def postprocess(sample_manifest: str | Path, *, output: RhimeOutputSpec) -> Rhim
     output_contract.validate_requested_output(output.output_format)
     refuse_existing_output_destinations(output)
     prepared, data = load_preparation(_reference(path, "preparation", record["preparation"]))
-    model = RhimeModelSpec.from_record(record["model"])
+    posterior = load_trace(_reference(path, "posterior", record["posterior"]))
+    model = RhimeModelSpec.from_record(record["model"], trace=posterior)
     # The manifests are separate files; keep the sample bound to its preparation.
     conflicts = {name: (getattr(model, name), getattr(data, name))
                  for name in ("species", "domain") if getattr(model, name) != getattr(data, name)}
@@ -328,7 +336,7 @@ def postprocess(sample_manifest: str | Path, *, output: RhimeOutputSpec) -> Rhim
         raise ValueError(f"Sample model conflicts with its preparation as (sample, preparation): {conflicts!r}.")
     result = make_standard_rhime_result(
         prepared=prepared, run_spec=retained_run_spec(data, prepared, model=model, output=output), sampler=None,
-        output_contract=output_contract, idata=load_trace(_reference(path, "posterior", record["posterior"])),
+        output_contract=output_contract, idata=posterior,
         build_and_sample_seconds=record["build_and_sample_seconds"],
         sampler_metadata=record.get("actual_inference"), provenance=record.get("provenance", {}),
     )

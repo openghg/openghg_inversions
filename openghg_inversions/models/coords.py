@@ -13,12 +13,40 @@ stored separately so they can later be restored onto sampled trace groups.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import pandas as pd
 import pymc as pm
 import xarray as xr
+from pytensor.tensor.variable import TensorVariable
+
+
+def add_model_data(data: xr.DataArray, name: str | None = None) -> TensorVariable:
+    """Register labelled numerical data on the active registered model.
+
+    Args:
+        data: Borrowed array, materialized here with its coordinates.
+        name: Model variable name; defaults to ``data.name``.
+
+    Returns:
+        The registered tensor, or the existing variable with the same name.
+
+    Raises:
+        ValueError: If neither an explicit name nor ``data.name`` is available.
+        RuntimeError: If the model lacks the coordinate registry installed by
+            :func:`registered_model`.
+    """
+    name = name or (str(data.name) if data.name is not None else None)
+    if name is None:
+        raise ValueError("Data must have a name if a name is not provided.")
+    model = pm.modelcontext(None)
+    if name in model:
+        return cast(TensorVariable, model[name])
+    materialized = data.compute()
+    dims = tuple(str(dim) for dim in materialized.dims)
+    add_coords(materialized.coords, model_dims=dims)
+    return cast(TensorVariable, pm.Data(name, materialized.values, dims=dims))
 
 
 def _coords_to_mapping(coords: dict[str, Any] | xr.Coordinates) -> dict[str, Any]:

@@ -71,6 +71,10 @@ original run window, retained sites, averaging periods and other preparation fac
 needed to construct the result and its outputs, without requiring duplicate
 numerical labels or arrays in the sample record. The sample SHALL add only the
 family-specific output context and provenance needed from completed inference.
+Fixed prior values, their scientific coordinates and model-record references
+SHALL follow the [pending model-composition amendment for #872](../../../register-and-persist-prior-parameters/specs/rhime-model-composition/spec.md).
+That amendment owns prior-data registration and persistence; this handoff
+contract does not duplicate numerical payloads or define another serializer.
 Recorded inference choices SHALL describe the completed invocation, not later
 configuration defaults. Keeping the run configuration alongside or referencing
 it SHALL be permitted; records SHALL NOT depend on a runtime dataclass layout

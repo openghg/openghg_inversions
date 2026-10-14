@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -35,6 +36,7 @@ from openghg_inversions.rhime.nested import (
     mask_outer_merged_for_inner_domain,
 )
 from openghg_inversions.rhime.materialization import materialize_pymc_inputs
+from openghg_inversions.models.priors import prior_records
 from openghg_inversions.rhime.outputs import RhimeResult
 from openghg_inversions.hbmcmc.compatibility import translate_rhime_aliases
 from openghg_inversions.rhime.params import RhimeConfig
@@ -791,6 +793,7 @@ def test_make_nested_inversion_outputs_builds_per_domain_views(retain_graph: boo
         prepared=prepared,
         model_inputs=prepared.combined.inv_inputs,
         run_spec=run_spec,
+        inner_x_prior={"pdf": "normal", "mu": 2.0, "sigma": 0.4},
     )
 
     result = RhimeResult(
@@ -821,9 +824,16 @@ def test_make_nested_inversion_outputs_builds_per_domain_views(retain_graph: boo
         output_contract=OutputContract.from_dict(build_result.output_contract.to_dict()),
         sampler=RhimeSampler(),
     )
+    records = prior_records(build_result.model)
+    assert records["x_outer"]["mu"] == 1.0
+    assert records["x_inner"]["mu"] == 2.0
+    result.idata.attrs["rhime_priors"] = json.dumps(records)
     nested_result = NestedRhimeResult(rhime_result=result, prepared_inputs=prepared)
 
     outer_inv_out, inner_inv_out = make_nested_inversion_outputs(nested_result)
+    assert outer_inv_out.model_metadata["sectors"][0]["x_prior"] == records["x_outer"]
+    assert inner_inv_out.model_metadata["sectors"][0]["x_prior"] == records["x_inner"]
+    assert inner_inv_out.model_metadata["constructed_priors"] == records
 
     assert outer_inv_out.variable_name("flux_scale") == "x_outer"
     assert inner_inv_out.variable_name("flux_scale") == "x_inner"
@@ -861,6 +871,8 @@ def test_make_nested_inversion_outputs_builds_per_domain_views(retain_graph: boo
     assert len(inner_nested["inner_grid"]["coordinate_sha256"]) == 64
 
     reloaded_inner = InversionOutput.from_datatree(inner_inv_out.to_datatree())
+    assert reloaded_inner.model_metadata["constructed_priors"] == records
+    assert reloaded_inner.model_metadata["sectors"][0]["x_prior"] == records["x_inner"]
     assert reloaded_inner.output_metadata["nested_domain"] == inner_nested
     assert reloaded_inner.state_dimension_mapping == {"trace": "inner_region", "basis": "region"}
 

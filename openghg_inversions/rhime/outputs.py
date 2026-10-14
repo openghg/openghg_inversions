@@ -27,6 +27,7 @@ from openghg_inversions.rhime.specs import (
     RhimeRunSpec,
 )
 from openghg_inversions.serialization import save_trace
+from openghg_inversions.models.priors import prior_records, trace_prior_records
 from openghg_inversions.utils import ncdf_encoding, write_netcdf_preserving_bounds_attrs
 
 
@@ -312,6 +313,22 @@ def _make_inversion_output(
         ),
         metadata=_structured_metadata(builder_metadata),
     )
+    constructed_priors = prior_records(result.model) if result.model is not None else trace_prior_records(result.idata)
+    model_metadata = result.model_spec.to_record(priors=constructed_priors)
+    model_metadata["constructed_priors"] = constructed_priors
+    if model_metadata["likelihood"] is not None:
+        model_metadata["likelihood"] = model_metadata["likelihood"]["options"]
+    # Keep existing in-memory activity provenance; saved phases reject these
+    # explicit policies before writing a sample record.
+    for name in ("state_activity", "bc_state_activity"):
+        policy = getattr(result.model_spec, name)
+        model_metadata[name] = None if policy is None else asdict(policy)
+    for sector, record in zip(result.model_spec.sectors, model_metadata["sectors"], strict=True):
+        role = "flux_scale" if len(result.model_spec.sectors) == 1 else f"flux_scale:{sector.name}"
+        variable = contract.variable_roles.get(role)
+        if variable is not None and variable in constructed_priors:
+            record["x_prior"] = constructed_priors[variable]
+        record["state_activity"] = None if sector.state_activity is None else asdict(sector.state_activity)
     return make_inversion_output(
         prepared=prepared,
         trace=result.idata,
@@ -323,7 +340,7 @@ def _make_inversion_output(
             "averaging_period": list(result.run_spec.averaging_period),
             "split_by_sectors": result.run_spec.split_by_sectors,
         },
-        model_metadata=_structured_metadata(asdict(result.model_spec)),
+        model_metadata=_structured_metadata(model_metadata),
         output_metadata={
             "output_format": result.output_spec.output_format,
             "output_path": result.output_spec.output_path,

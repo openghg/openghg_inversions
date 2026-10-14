@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import json
 import subprocess
 import sys
 from dataclasses import replace
@@ -2838,7 +2839,12 @@ def test_run_rhime_from_prepared_inputs_routes_without_preparation(
 
     # The standard branch builds through the shared ``standard.build_standard``.
     build_module = rhime_standard if sector_count == 1 else rhime_prepared
-    monkeypatch.setattr(build_module, "materialize_pymc_inputs", materialize)
+    if sector_count == 1:
+        monkeypatch.setattr(build_module, "_materialize_pymc_inputs_and_priors",
+                            lambda value, *, variable_names, prior_parameters:
+                            (materialize(value, variable_names=variable_names), prior_parameters))
+    else:
+        monkeypatch.setattr(build_module, "materialize_pymc_inputs", materialize)
     monkeypatch.setattr(
         build_module,
         "build_standard_rhime_model_result" if sector_count == 1 else "build_multisector_rhime_model_result",
@@ -3043,7 +3049,7 @@ def test_public_rhime_runners_follow_named_stage_order(
         assert kwargs["likelihood_builder"] is expected_builder
         expected_options = {"project_option": 42} if custom_likelihood else None
         assert kwargs["likelihood_kwargs"] == expected_options
-        assert kwargs["run_spec"] is run_spec
+        assert kwargs["run_spec"] == run_spec
         calls.append("build")
         return build_result
 
@@ -3077,7 +3083,12 @@ def test_public_rhime_runners_follow_named_stage_order(
     monkeypatch.setattr(recipe_module, "build_sensitivities", build_sensitivities)
     monkeypatch.setattr(recipe_module, "assemble_rhime_inputs", assemble)
     monkeypatch.setattr(rhime_params.RhimeConfig, "retained_run_spec", align)
-    monkeypatch.setattr(recipe_module, "materialize_pymc_inputs", materialize)
+    if multisector:
+        monkeypatch.setattr(recipe_module, "materialize_pymc_inputs", materialize)
+    else:
+        monkeypatch.setattr(recipe_module, "_materialize_pymc_inputs_and_priors",
+                            lambda value, *, variable_names, prior_parameters:
+                            (materialize(value, variable_names=variable_names), prior_parameters))
     monkeypatch.setattr(recipe_module, build_stage, build)
     monkeypatch.setattr(recipe_module, "sample_rhime_model", sample)
     monkeypatch.setattr(recipe_module, result_stage, result)
@@ -7669,7 +7680,9 @@ def test_legacy_model_error_metadata_uses_writer_likelihood() -> None:
         basis_functions=_fake_basis_functions(),
         site_metadata=_prepared_site_metadata(),
     )
-    result = _result_for_outputs(run_spec, _minimal_output_idata(), model_spec=model_spec)
+    idata = _minimal_output_idata()
+    idata.attrs["rhime_priors"] = json.dumps({"sigma": prior})
+    result = _result_for_outputs(run_spec, idata, model_spec=model_spec)
     result = rhime_outputs.make_standard_rhime_outputs(result=result, prepared=prepared)
     attrs = _legacy_hbmcmc_attrs(result.inv_out)
     assert attrs["Error for each site"] == "False"
