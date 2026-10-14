@@ -188,8 +188,13 @@ scientific variable and its declared relationship to the latent variable.
 Caller arrays SHALL be borrowed and potentially lazy. Related lazy inputs,
 including supported lazy zero-dimensional numerical parameters and required
 auxiliary coordinates, SHALL preserve shared execution graphs until materialized
-together at the explicit model-construction boundary. Alignment and
-materialization SHALL NOT mutate caller arrays or prior mappings.
+together at the explicit model-construction boundary. Enabled prior inputs MAY
+join this computation before sensitivity evaluation
+identifies exact-zero columns and fixes their states instead of sampling them,
+even if that evaluation makes a prior unnecessary. Disabled components SHALL be
+excluded before this boundary. Only actually constructed priors SHALL be
+recorded. Alignment and materialization SHALL NOT mutate caller arrays or prior
+mappings.
 
 Sampling and the existing inference-data persistence path SHALL retain the actual
 registered numerical prior arrays in `constant_data`, together with scientific

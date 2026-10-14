@@ -279,3 +279,54 @@ def test_custom_likelihood_saved_sampling_matches_full_route(tmp_path):
     full = run_standard(config=config, merged_data=merged, likelihood_builder=likelihood_builder)
     np.testing.assert_allclose(replay.idata["posterior"]["x"], full.idata["posterior"]["x"])
     assert "rhime_likelihood_builder" in replay.idata.attrs
+
+
+def test_standard_model_and_enabled_priors_share_computation_before_zero_pruning(tmp_path):
+    from dataclasses import replace
+    import dask
+    import dask.array as da
+    import numpy as np
+    import xarray as xr
+    from examples.standard_handoffs import synthetic_inputs
+    from openghg_inversions.models.priors import prior_records
+    from openghg_inversions.rhime import DataConfig, RhimeOutputSpec, stages
+    from openghg_inversions.rhime.params import retained_run_spec, resolve_model_options
+    from openghg_inversions.rhime.standard import build_standard
+
+    merged, options, *_ = synthetic_inputs(tmp_path)
+    manifest = stages.prepare(DataConfig.from_params(options), merged_data=merged,
+                              output_dir=tmp_path / "prepared")
+    prepared, data = stages.load_preparation(manifest)
+    sensitivity = prepared.inv_inputs["H"]
+    for all_zero in (False, True):
+        calls = []
+
+        @dask.delayed
+        def shared():
+            calls.append(1)
+            return np.zeros(sensitivity.shape) if all_zero else sensitivity.values
+
+        raw = da.from_delayed(shared(), shape=sensitivity.shape, dtype=float)
+        h = sensitivity.copy(data=raw)
+        mean = h.sum("nmeasure").assign_coords(prior_group=("state", raw.sum(axis=1).astype(int)))
+        prior = {"pdf": "normal", "mu": mean, "sigma": xr.DataArray(raw.sum() + 1.)}
+
+        @dask.delayed
+        def disabled():
+            raise AssertionError("disabled component prior executed")
+
+        unused = {"pdf": "normal", "mu": da.from_delayed(disabled(), shape=(1,), dtype=float), "sigma": .1}
+        model = resolve_model_options({"x_prior": prior, "bc_prior": unused, "offset_prior": unused,
+                                       "mismatch_model": "fixed_error"}, preparation=data)
+        borrowed = replace(prepared, inv_inputs=prepared.inv_inputs.assign(H=h))
+        built = build_standard(borrowed, retained_run_spec(data, borrowed, model=model,
+                               output=RhimeOutputSpec(output_format="none")))
+        assert calls == [1]
+        assert h.data is raw and dask.is_dask_collection(mean)
+        assert prior["mu"] is mean
+        records = prior_records(built.model)
+        assert ("x" in records) is not all_zero
+        assert "bc" not in records and "offset_latent" not in records
+        if not all_zero:
+            np.testing.assert_allclose(built.model["x_prior_mu"].get_value(), sensitivity.sum("nmeasure"))
+            assert records["x"]["sigma"] == float(sensitivity.sum() + 1.)

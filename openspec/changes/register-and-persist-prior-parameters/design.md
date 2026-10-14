@@ -177,13 +177,10 @@ The initial push contained only the spec for maintainer review. That review is
 complete and implementation is authorized; `tasks.md` tracks delivery and
 validation in the same stacked PR.
 
-## Implementation clarification pending
+## Construction ordering clarification
 
-Coordinated model/prior materialization must happen before data-dependent
-zero-sensitivity pruning if those inputs share a lazy dependency. Disabled BC
-and offset components can be omitted before that boundary. An enabled state
-prior can prove unnecessary only after its sensitivity is evaluated. Confirm
-whether such enabled priors may materialize jointly before pruning; otherwise,
-preserving both one execution of shared dependencies and zero execution of a
-subsequently unused prior needs additional execution-state management. No such
-management or exception to the contract has been implemented pending review.
+Enabled prior inputs may materialize jointly with sensitivities before exact-zero
+columns are detected and their states fixed rather than sampled. This preserves
+shared lazy computation even when sensitivity evaluation later makes an enabled
+prior unnecessary. Disabled BC and offset components are excluded before the
+boundary. Prior metadata still describes only priors actually constructed.

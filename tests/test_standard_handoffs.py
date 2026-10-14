@@ -79,6 +79,7 @@ def forbidden(*args, **kwargs):
     raise AssertionError("replay performed acquisition, graph construction or inference")
 standard.build_standard = forbidden
 standard.materialize_pymc_inputs = forbidden
+standard._materialize_pymc_inputs_and_priors = forbidden
 stages.RhimeMergedData.from_options = forbidden
 RhimeSampler.sample = forbidden
 stages.resolve_sampler = forbidden

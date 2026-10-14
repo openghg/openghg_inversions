@@ -50,7 +50,11 @@ arrays rather than embedding numerical arrays in JSON. Disabled components
 contribute no prior metadata or references.
 
 Related lazy prior inputs, including supported zero-dimensional numerical
-inputs and auxiliary coordinates, are materialized together at construction.
+inputs and auxiliary coordinates, are materialized together with selected model
+inputs at construction. An enabled prior may be computed before sensitivity
+evaluation finds that its states have no effect on observations and fixes them
+instead of sampling them; such a prior contributes no constructed-prior record.
+Disabled BC and offset components are excluded before this computation.
 Metadata writing uses the captured scalar values and registered arrays, without
 executing the original caller's lazy prior graph again. Scalar-shaped symbolic
 parameters retain their graph dependencies. Ordinary and reparameterized
