@@ -320,7 +320,7 @@ def test_lifted_prior_starts_and_caller_transforms_preserve_complete_state_targe
         ),
     )
     assert all(value is None for value in cached.model.rvs_to_initial_values.values())
-    np.testing.assert_array_equal(cached.initial_values["bc"], np.full(8, 0.8))
+    np.testing.assert_array_equal(cached.initial_values["bc"].eval(), np.full(8, 0.8))
     assert cached.initial_values["offset_latent"] == "prior"
     offset_value_name = cached.model.rvs_to_values[cached.states[-1]].name
     sampler = co2_cached_sigma_runner._sampler_for_cached_graph(

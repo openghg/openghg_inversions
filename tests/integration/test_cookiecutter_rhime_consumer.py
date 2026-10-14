@@ -57,7 +57,6 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
         averaging_period=("1h",),
         basis_artifact_source="controlled-test-basis",
     )
-    model_inputs = xr.Dataset({"mf": ("nmeasure", [1.0])})
     build_result = object()
     idata = object()
     expected = object()
@@ -113,18 +112,11 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
 
 
 
-    def materialize(actual: Any, *, variable_names: tuple[str, ...]) -> Any:
+    def build(actual: Any, model_spec: Any, **kwargs: Any) -> Any:
+        """Record the shared model boundary and project likelihood."""
         assert actual is prepared
-        assert set(variable_names) == {"H", "mf", "mf_error"}
-        calls.append("materialize")
-        return model_inputs
-
-    def build(**kwargs: Any) -> Any:
+        assert model_spec is config.model
         assert kwargs == {
-            "prepared": prepared,
-            "model_inputs": model_inputs,
-            "run_spec": config.retained_run_spec(prepared),
-            "model_builder": None,
             "likelihood_builder": likelihoods.likelihood_builder,
             "likelihood_kwargs": None,
             "preserve_legacy_likelihood": False,
@@ -159,13 +151,7 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
     monkeypatch.setattr(rhime_runner, "prepare_basis", build_basis)
     monkeypatch.setattr(rhime_runner, "build_sensitivities", build_sensitivities)
     monkeypatch.setattr(rhime_runner, "assemble_rhime_inputs", assemble)
-    monkeypatch.setattr(
-        rhime_runner,
-        "standard_model_input_names",
-        lambda _actual, _model, **_kwargs: ("H", "mf", "mf_error"),
-    )
-    monkeypatch.setattr(rhime_runner, "materialize_pymc_inputs", materialize)
-    monkeypatch.setattr(rhime_runner, "build_standard_rhime_model_result", build)
+    monkeypatch.setattr(rhime_runner, "build_standard", build)
     monkeypatch.setattr(rhime_runner, "sample_rhime_model", sample)
     monkeypatch.setattr(rhime_runner, "make_standard_rhime_result", make_result)
     monkeypatch.setattr(rhime_runner, "make_standard_rhime_outputs", make_outputs)
@@ -180,7 +166,6 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
         "basis",
         "sensitivities",
         "assemble",
-        "materialize",
         "build",
         "sample",
         "result",
