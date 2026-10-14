@@ -127,8 +127,8 @@ class OutputContract:
         """Require saved reconstruction states without materializing trace arrays.
 
         Predictive evidence is optional. A contract advertising products must
-        retain its declared flux and boundary scales in the posterior, even
-        when the current invocation does not request products.
+        retain its declared flux scales, boundary scales and observation offsets
+        in the posterior, even when the current invocation requests no products.
         """
         if set(self.supported_output_formats) == {"none"}:
             return
@@ -136,7 +136,7 @@ class OutputContract:
         available = set(posterior.data_vars) if posterior is not None else set()
         missing = {
             role: name for role, name in self.variable_roles.items()
-            if role.split(":", 1)[0] in {"flux_scale", "baseline_scale"} and name not in available
+            if role.split(":", 1)[0] in {"flux_scale", "baseline_scale", "offset"} and name not in available
         }
         if missing:
             raise ValueError(f"Trace is missing output-contract reconstruction state(s): {missing!r}.")

@@ -112,7 +112,9 @@ def _standard_phase_options(args: argparse.Namespace, *, phase: str) -> dict[str
     from typing import get_type_hints
 
     from openghg_inversions.rhime._resources import resolve_resource_paths
-    from openghg_inversions.rhime._runner_compat import _ALIASES, translate_rhime_aliases
+    from openghg_inversions.rhime._runner_compat import (
+        _ALIASES, resource_migration_errors, translate_rhime_aliases,
+    )
     from openghg_inversions.rhime.ini import read_rhime_ini
     from openghg_inversions.rhime.params import DataConfig, rhime_option_groups
     from openghg_inversions.rhime.specs import RhimeOutputSpec
@@ -152,7 +154,11 @@ def _standard_phase_options(args: argparse.Namespace, *, phase: str) -> dict[str
                 if is_override:
                     override_names[owner].add(name)
     if unsuitable:
-        raise ValueError(f"Unsupported options or overrides that do not belong to this phase: {sorted(unsuitable)!r}")
+        explanations = resource_migration_errors(name.rsplit(".", 1)[-1] for name in unsuitable)
+        raise ValueError(
+            f"Unsupported options or overrides that do not belong to this phase: {sorted(unsuitable)!r}. "
+            + " ".join(explanations)
+        )
     annotations = get_type_hints(DataConfig) | get_type_hints(RhimeOutputSpec)
     result = {group: {} for group in owners}
     for group in active:

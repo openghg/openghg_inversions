@@ -183,8 +183,9 @@ own constructor and resolution details. The request precedes preparation;
 retained-site execution facts become known later. Frozen records do not imply
 recursive immutability of borrowed arrays or caller-owned containers.
 
-Configuration groups preparation under ``RhimeConfig.preparation``. The standard
-recipe supports reusable preparation and sample manifests; see
+Configuration groups acquisition and preparation choices under
+``RhimeConfig.data: DataConfig``. The runner acquires data separately and passes
+it into scientific preparation. The standard recipe supports reusable preparation and sample manifests; see
 :doc:`/usage/staged_workflow`. The remaining family adoption tasks from
 `PR 802 <https://github.com/openghg/openghg_inversions/pull/802>`_ remain active.
 This guide does not fix private module locations, configuration class layout,

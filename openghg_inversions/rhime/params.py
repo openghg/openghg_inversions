@@ -163,11 +163,6 @@ class RhimeConfig:
         return DataConfig.option_names()
 
     @classmethod
-    def required_option_names(cls) -> frozenset[str]:
-        """Required complete-request values."""
-        return DataConfig.required_option_names() | {"output_name"}
-
-    @classmethod
     def supported_option_names(cls) -> frozenset[str]:
         """Combine external choices declared by concrete owners."""
         return (DataConfig.option_names() | frozenset(RhimeModelSpec.CONFIG_OPTION_NAMES)
@@ -506,11 +501,6 @@ def normalise_sector_sources(
     return normalized
 
 
-def required_run_params() -> set[str]:
-    """Return external requirements declared by the requested configuration."""
-    return set(RhimeConfig.required_option_names())
-
-
 def is_missing_required_value(value: Any) -> bool:
     """Return true when a required RHIME parameter has no usable value."""
     if value is None:
@@ -520,17 +510,6 @@ def is_missing_required_value(value: Any) -> bool:
     if isinstance(value, Sequence) and not isinstance(value, str | bytes) and len(value) == 0:
         return True
     return False
-
-
-def validate_required_params(params: Mapping[str, Any]) -> None:
-    """Raise if normalized run parameters are missing required values."""
-    missing = [
-        name
-        for name in sorted(required_run_params())
-        if name not in params or is_missing_required_value(params[name])
-    ]
-    if missing:
-        raise ValueError(f"Required RHIME parameter(s) missing: {missing!r}")
 
 
 def validate_supported_params(params: Mapping[str, Any]) -> None:

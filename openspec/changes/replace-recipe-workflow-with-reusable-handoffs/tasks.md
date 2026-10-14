@@ -105,6 +105,18 @@ Validation after integration:
   after updating their mocked posteriors to satisfy the retained-state contract.
 - Changed-path Ruff and both active changes' strict OpenSpec validation pass.
 
+Review follow-up on 14 October adds a real fixed-error/offset regression:
+a declared scientific offset must be retained even when latent offsets exist;
+predictive sampling may remain disabled. Empty, missing and nonfinite returned
+prior evidence is saved alongside a failed readiness report, and serialization
+errors propagate. Phase errors reuse the modern owner's resource migration
+guidance while collecting all unsuitable keys. Obsolete complete-request
+validators, duplicate replay checks and the retired standard envelope branch
+are removed; deferred-family behavior remains covered. Combined phase, handoff,
+scientific parity, RHIME, contract and compatibility checks passed 408 tests;
+the remaining custom-likelihood mock needed its declared offset added and passed
+on rerun. The separate handoff/deferred-family selection passed 94 tests.
+
 No multisector/CO2 adoption, final integrated-family gate, or spec promotion is
 claimed by this standard delivery. CI verifies the pushed integration's full
 suite, supported Python versions, typing and documentation.

@@ -147,3 +147,25 @@ def test_prior_readiness_rejects_explicit_sampler_overrides(tmp_path):
         main(["prior-predictive", "--preparation-manifest", "missing.json", "--output-dir", str(tmp_path),
               "--kwargs", '{"tune":99,"nuts_sampler":"numpyro"}'])
     assert "tune" in str(caught.value) and "nuts_sampler" in str(caught.value)
+
+
+@pytest.mark.parametrize("grouped", [False, True])
+def test_phase_preserves_resource_migration_guidance_in_aggregate_error(grouped):
+    from argparse import Namespace
+    from openghg_inversions.cli import _standard_phase_options
+    from openghg_inversions.rhime._runner_compat import normalise_param_aliases
+
+    removed = {"country_directory": "old", "bc_basis_case": "old", "bc_basis_directory": "old"}
+    kwargs = {"data": removed} if grouped else dict(removed)
+    kwargs.update(unknown=1, draws=10)
+    args = Namespace(config=None, params_file=None, kwargs=kwargs)
+    with pytest.raises(ValueError) as caught:
+        _standard_phase_options(args, phase="prepare")
+    message = str(caught.value)
+    for name in (*removed, "unknown", "draws"):
+        assert name in message
+    with pytest.raises(ValueError) as full:
+        normalise_param_aliases(removed)
+    assert str(full.value) in message
+    for replacement in ("country_file", "landsea_path", "outer_regions_path", "bc_basis_paths", "HBMCMC"):
+        assert replacement in message

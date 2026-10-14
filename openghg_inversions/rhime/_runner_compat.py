@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import warnings
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from typing import Any
 
 from openghg_inversions._flux_options import normalise_flux_aliases
@@ -24,21 +24,30 @@ _OUTPUT_FORMAT_ALIASES = {
 }
 
 
-def normalise_param_aliases(params: Mapping[str, Any]) -> dict[str, Any]:
-    """Normalize legacy config spellings to modern snake-case names."""
-    normalized = dict(params)
-    if "country_directory" in normalized:
-        raise ValueError(
+def resource_migration_errors(names: Iterable[str]) -> list[str]:
+    """Explain removed resource selectors at frontend validation boundaries."""
+    names = set(names)
+    errors = []
+    if "country_directory" in names:
+        errors.append(
             "`country_directory` was removed in 0.8; use `country_file` for reporting, "
             "`landsea_path` for land/sea classes, or `outer_regions_path` for outer regions."
         )
-    historical = {"fp_basis_case", "basis_directory", "bc_basis_case", "bc_basis_directory"} & normalized.keys()
+    historical = {"fp_basis_case", "basis_directory", "bc_basis_case", "bc_basis_directory"} & names
     if historical:
-        raise ValueError(
+        errors.append(
             f"Historical resource selectors {sorted(historical)!r} belong to the temporary HBMCMC route. "
             "Use `basis_path`, `basis_partition_path`/`basis_partition_paths`, or `bc_basis_paths` "
             "in modern RHIME requests."
         )
+    return errors
+
+
+def normalise_param_aliases(params: Mapping[str, Any]) -> dict[str, Any]:
+    """Normalize legacy config spellings to modern snake-case names."""
+    normalized = dict(params)
+    if errors := resource_migration_errors(normalized):
+        raise ValueError(" ".join(errors))
     for old, new in _ALIASES.items():
         if old not in normalized:
             continue

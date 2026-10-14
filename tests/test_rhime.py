@@ -3784,7 +3784,9 @@ def test_likelihood_builder_provenance_is_saved_with_result_metadata(
     ) -> xr.DataTree:
         assert model["offset_latent"].ndim == 0
         assert variable_roles["concentration"] == "y"
-        return _minimal_output_idata()
+        trace = _minimal_output_idata()
+        trace["posterior"]["offset"] = xr.zeros_like(inv_inputs["mf"]).expand_dims(chain=[0], draw=[0])
+        return trace
 
     monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
     result = run_rhime_from_prepared_inputs(
@@ -7124,9 +7126,11 @@ def test_required_parameter_validation_allows_missing_output_path_for_in_memory_
         "start_date": "2019-01-01",
         "end_date": "2019-01-02",
         "output_name": "test",
+        "flux_sources": ["inventory"],
+        "output_format": "none",
     }
 
-    rhime_params.validate_required_params(args)
+    rhime_params.RhimeConfig.from_params(args, multisector=False)
 
 
 def test_rhime_configuration_forwards_satellite_platform_to_preparation() -> None:
@@ -7167,11 +7171,13 @@ def test_required_parameter_validation_rejects_empty_values(name: str, value) ->
         "start_date": "2019-01-01",
         "end_date": "2019-01-02",
         "output_name": "test",
+        "flux_sources": ["inventory"],
+        "output_format": "none",
     }
     args[name] = value
 
     with pytest.raises(ValueError, match=name):
-        rhime_params.validate_required_params(args)
+        rhime_params.RhimeConfig.from_params(args, multisector=False)
 
 
 def test_output_path_validation_allows_output_none_without_path() -> None:

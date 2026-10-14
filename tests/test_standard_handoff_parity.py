@@ -184,3 +184,40 @@ def test_multiple_native_sources_are_retained_once_and_replayed_without_original
                             coords={"lat": [50., 51.], "lon": [-2., -1.]})
     xr.testing.assert_allclose(result.basis_functions.flux, expected)
     assert len(resolutions) == 4  # replay did not resolve native flux again
+
+
+def test_scientific_offset_is_required_but_predictive_samples_are_optional(tmp_path):
+    import json
+    import pytest
+    from examples.standard_handoffs import synthetic_inputs
+    from openghg_inversions.rhime import stages, DataConfig, RhimeOutputSpec, RhimeSampler
+    from openghg_inversions.serialization import save_trace
+
+    merged, options, *_ = synthetic_inputs(tmp_path)
+    prepared = stages.prepare(DataConfig.from_params(options), merged_data=merged,
+                              output_dir=tmp_path / "prepared")
+    model = {"mismatch_model": "fixed_error", "add_offset": True,
+             "x_prior": {"pdf": "normal", "mu": 1., "sigma": .2}}
+    for include_offset in (True, False):
+        names = ["x", "mu", "offset_latent"] + (["offset"] if include_offset else [])
+        sampler = RhimeSampler(draws=10, tune=10, chains=1,
+                               sample_kwargs={"random_seed": 42, "var_names": names},
+                               sample_prior_predictive=False, sample_posterior_predictive=False)
+        destination = tmp_path / ("complete" if include_offset else "omitted")
+        if include_offset:
+            sampled = stages.sample(prepared, model=model, sampler=sampler, output_dir=destination)
+        else:
+            with pytest.raises(ValueError, match="reconstruction state.*offset"):
+                stages.sample(prepared, model=model, sampler=sampler, output_dir=destination)
+            assert not (destination / "sample-manifest.json").exists()
+    output = RhimeOutputSpec(output_format="inv_out", save_inversion_output=False)
+    replay = stages.postprocess(sampled, output=output)
+    assert "offset" in replay.idata["posterior"]
+    assert "posterior_predictive" not in replay.idata.children
+    assert "prior_predictive" not in replay.idata.children
+    # A missing offset must also fail when loading a previously saved handoff.
+    record = json.loads(sampled.read_text())
+    replay.idata["posterior"] = replay.idata["posterior"].to_dataset().drop_vars("offset")
+    save_trace(replay.idata, sampled.parent / record["posterior"])
+    with pytest.raises(ValueError, match="reconstruction state.*offset"):
+        stages.postprocess(sampled, output=output)

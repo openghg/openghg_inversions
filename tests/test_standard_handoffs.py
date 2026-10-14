@@ -214,7 +214,7 @@ def test_prepare_preserves_exact_basis_export(tmp_path, monkeypatch, export):
     assert loaded.basis_artifact_path == str(target)
 
 
-@pytest.mark.parametrize("evidence,status", [("finite", "pass"), ("nonfinite", "fail"), ("missing", "fail")])
+@pytest.mark.parametrize("evidence,status", [("finite", "pass"), ("nonfinite", "fail"), ("missing", "fail"), ("empty", "fail")])
 def test_prior_readiness_requires_finite_declared_prediction(tmp_path, monkeypatch, evidence, status):
     from contextlib import nullcontext
     from types import SimpleNamespace
@@ -225,19 +225,31 @@ def test_prior_readiness_requires_finite_declared_prediction(tmp_path, monkeypat
     group = "prior" if evidence == "missing" else "prior_predictive"
     prior = make_trace(**{group: xr.Dataset({"observations": (("chain", "draw"),
                                                               [[np.nan if evidence == "nonfinite" else 1.]])})})
+    if evidence == "empty":
+        prior = prior.isel(draw=slice(0, 0))
     monkeypatch.setattr(stages.pm, "sample_prior_predictive", lambda *a, **k: prior)
     result = stages.prior_predictive(preparation, model={"mismatch_model": "fixed_error"},
                                     output_dir=tmp_path / "prior")
     assert result["status"] == status
+    evidence_path = tmp_path / "prior" / "prior-predictive.nc"
+    assert evidence_path.is_file()
+    assert (tmp_path / "prior" / "prior-predictive-readiness.json").is_file()
+    reopened = stages.load_trace(evidence_path)
+    xr.testing.assert_identical(reopened, prior)
+    if evidence == "empty":
+        assert "no concentration draws" in result["message"]
 
 
-def test_prior_serialization_errors_propagate(tmp_path, monkeypatch):
+@pytest.mark.parametrize("empty", [False, True])
+def test_prior_serialization_errors_propagate(tmp_path, monkeypatch, empty):
     from contextlib import nullcontext
     from types import SimpleNamespace
     preparation, _ = _saved(tmp_path)
     monkeypatch.setattr(stages, "_build_prepared_model", lambda *a, **k: SimpleNamespace(
         model=nullcontext(), output_contract=OutputContract(variable_roles={"concentration": "y"})))
     prior = make_trace(prior_predictive=xr.Dataset({"y": (("chain", "draw"), [[1.]])}))
+    if empty:
+        prior = prior.isel(draw=slice(0, 0))
     monkeypatch.setattr(stages.pm, "sample_prior_predictive", lambda *a, **k: prior)
     def fail(*args, **kwargs):
         raise OSError("disk full")

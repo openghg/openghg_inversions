@@ -47,7 +47,6 @@ from .outputs import (
     make_multisector_rhime_outputs,
     make_standard_rhime_outputs,
     validate_output_resources,
-    validate_output_filenames,
 )
 from .ini import read_rhime_ini
 from .params import RHIME_PREPARATION_OPTION_NAMES, RhimeConfig, DataConfig, resolve_model_options, resolve_flux_sources
@@ -516,30 +515,17 @@ def postprocess_rhime_stage(
         output_contract = _load_output_binding(sample_contract, manifest_path=Path(sample_manifest).resolve())
     output_contract.validate_requested_output(output_spec.output_format)
     idata = load_trace(posterior_path)
-    if model == "multisector":
-        result = make_multisector_rhime_result(
-            prepared=prepared,
-            run_spec=run_spec,
-            sampler=None,
-            model_build_result=built,
-            output_contract=output_contract,
-            idata=idata,
-            build_and_sample_seconds=0.0,
-        )
-        result.output_metadata["sampler"] = sampler_metadata
-        make_multisector_rhime_outputs(result=result, prepared=prepared)
-    else:
-        result = make_standard_rhime_result(
-            prepared=prepared,
-            run_spec=run_spec,
-            sampler=None,
-            model_build_result=built,
-            output_contract=output_contract,
-            idata=idata,
-            build_and_sample_seconds=0.0,
-        )
-        result.output_metadata["sampler"] = sampler_metadata
-        make_standard_rhime_outputs(result=result, prepared=prepared)
+    result = make_multisector_rhime_result(
+        prepared=prepared,
+        run_spec=run_spec,
+        sampler=None,
+        model_build_result=built,
+        output_contract=output_contract,
+        idata=idata,
+        build_and_sample_seconds=0.0,
+    )
+    result.output_metadata["sampler"] = sampler_metadata
+    make_multisector_rhime_outputs(result=result, prepared=prepared)
     artifacts = {
         name: path
         for name, path in result.output_metadata.items()
@@ -888,7 +874,6 @@ def postprocess(sample_manifest: str | Path, *, output: RhimeOutputSpec) -> Rhim
     if model.use_bc and not context["use_bc"]:
         raise ValueError("Sample model requires BC inputs absent from its preparation.")
     posterior = load_trace(_reference(path, record["posterior"]))
-    output_contract.validate_trace(posterior)
     result = make_standard_rhime_result(
         prepared=prepared, run_spec=_run_spec(prepared, context, model, output), sampler=None,
         output_contract=output_contract, idata=posterior,
@@ -896,7 +881,6 @@ def postprocess(sample_manifest: str | Path, *, output: RhimeOutputSpec) -> Rhim
     )
     result.output_metadata["sampler"] = record.get("actual_inference")
     result.output_metadata["provenance"] = record.get("provenance", {})
-    validate_output_filenames(result.run_spec)
     if output.output_format != "none":
         writes_directory = (
             output.save_trace is True or output.save_inversion_output is True
@@ -935,22 +919,25 @@ def prior_predictive(
         built = _build_prepared_model(prepared, run_spec, model="standard")
         with built.model:
             prior = pm.sample_prior_predictive(draws, built.model)
-        concentration = built.output_contract.variable_roles.get("concentration")
-        predictive = prior.children.get("prior_predictive")
-        if predictive is None or concentration not in predictive:
-            raise ValueError("Prior prediction is missing the declared concentration draws.")
-        if predictive[concentration].size == 0:
-            raise ValueError("Prior prediction contains no concentration draws.")
-        values = [np.asarray(group[name].values) for group in prior.children.values() for name in group.data_vars]
-        non_finite = sum(int(np.size(value) - np.isfinite(value).sum()) for value in values)
-        status = "pass" if values and non_finite == 0 else "fail"
-        message = (f"Prior predictive produced {draws} finite draws." if status == "pass"
-                   else f"Prior predictive contains {non_finite} non-finite values.")
     except (KeyError, ValueError) as exc:
         non_finite, status = None, "fail"
         message = f"Prior-predictive readiness failed: {type(exc).__name__}: {exc}"
         artifacts = []
     else:
+        concentration = built.output_contract.variable_roles.get("concentration")
+        predictive = prior.children.get("prior_predictive")
+        values = [np.asarray(group[name].values) for group in prior.children.values() for name in group.data_vars]
+        non_finite = sum(int(np.size(value) - np.isfinite(value).sum()) for value in values)
+        status = "fail"
+        if predictive is None or concentration not in predictive:
+            message = "Prior prediction is missing the declared concentration draws."
+        elif predictive[concentration].size == 0:
+            message = "Prior prediction contains no concentration draws."
+        elif non_finite:
+            message = f"Prior predictive contains {non_finite} non-finite values."
+        else:
+            status = "pass"
+            message = f"Prior predictive produced {draws} finite draws."
         prior_path = destination / "prior-predictive.nc"
         save_trace(prior, prior_path)
         artifacts = [str(prior_path)]
