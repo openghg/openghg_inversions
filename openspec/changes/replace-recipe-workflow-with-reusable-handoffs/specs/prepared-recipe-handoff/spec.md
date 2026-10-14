@@ -74,10 +74,13 @@ NOT add a Zarr rejection or conversion requirement solely for content hashing.
 - **THEN** the reader reports the problem before inference or product writes
 - **AND** it does not substitute another file found through configuration, working directory or environment defaults
 
-### Requirement: Fresh destinations and manifest-last completion
+### Requirement: Caller-selected destinations and manifest-last completion
 
-Saved scientific operations SHALL use a fresh caller-selected destination and
-reject an existing destination before owned writes. Ordinary numerical saves
+Saved scientific operations SHALL accept caller-selected destinations, including
+existing directories. Callers/orchestrators SHALL own directory allocation,
+collision avoidance and run isolation. Final-product writing SHALL follow the
+full runner overwrite behaviour. Normal filesystem errors SHALL propagate.
+Ordinary numerical saves
 SHALL complete before the final manifest is written. The final manifest SHALL be
 the completion marker; a failed save SHALL NOT leave one claiming completion.
 Files owned by the checkpoint writer SHALL remain under the explicit checkpoint
@@ -98,11 +101,12 @@ action.
 - **THEN** the operation reports the error without leaving a final completion manifest
 - **AND** any incomplete files do not constitute an accepted handoff
 
-#### Scenario: Shared preparation and protected saves
+#### Scenario: Shared preparation and caller isolation
 
 - **WHEN** two inference runs use one completed preparation and distinct new destinations
 - **THEN** both reference the same preparation without an implicit copy
-- **AND** attempting to save into an existing destination fails without altering its completed handoff or referenced artifacts
+- **AND** callers may choose existing directories without a freshness restriction
+- **AND** an interrupted replacement does not leave a manifest claiming the incomplete checkpoint is complete
 
 ### Requirement: Preparation owns filtering and retained-site alignment
 

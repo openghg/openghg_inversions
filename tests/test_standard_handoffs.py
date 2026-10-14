@@ -53,17 +53,16 @@ def test_manifest_relative_and_absolute_references_preserve_inputs(tmp_path, mon
     xr.testing.assert_identical(stages.load_preparation(preparation)[0].inv_inputs, prepared.inv_inputs)
 
 
-def test_fresh_destinations_and_manifest_last(tmp_path, monkeypatch):
+def test_reused_destinations_and_manifest_last(tmp_path, monkeypatch):
     preparation, _ = _saved(tmp_path)
     config = RhimeConfig.from_params(_params(), multisector=False)
-    with pytest.raises(FileExistsError):
-        stages.save_preparation(_prepared(), data=config.data, output_dir=preparation.parent)
+    assert stages.save_preparation(_prepared(), data=config.data, output_dir=preparation.parent) == preparation
     def fail(*args, **kwargs):
         raise OSError("disk full")
     monkeypatch.setattr(stages.RhimePreparedInputs, "save", fail)
     with pytest.raises(OSError, match="disk full"):
-        stages.save_preparation(_prepared(), data=config.data, output_dir=tmp_path / "failed")
-    assert not (tmp_path / "failed" / "prepare-manifest.json").exists()
+        stages.save_preparation(_prepared(), data=config.data, output_dir=preparation.parent)
+    assert not preparation.exists()
 
 
 def test_replay_in_fresh_process_uses_saved_model_and_inference(tmp_path):
@@ -150,15 +149,15 @@ def test_missing_descriptive_sampler_metadata_does_not_select_defaults(tmp_path,
     assert result.sampler is None
 
 
-def test_replay_refuses_existing_write_destination_but_allows_in_memory(tmp_path):
+def test_replay_overwrites_existing_products_and_accepts_existing_directory(tmp_path):
     _, sampled = _saved(tmp_path)
     output_dir = tmp_path / "products"
     output_dir.mkdir()
-    with pytest.raises(FileExistsError):
-        stages.postprocess(sampled, output=RhimeOutputSpec(output_path=str(output_dir)))
-    result = stages.postprocess(sampled, output=RhimeOutputSpec(output_path=str(output_dir), save_inversion_output=False))
-    assert result.inv_out is not None
-    assert not list(output_dir.iterdir())
+    output = RhimeOutputSpec(output_path=str(output_dir))
+    first = stages.postprocess(sampled, output=output)
+    second = stages.postprocess(sampled, output=output)
+    xr.testing.assert_equal(first.inv_out.trace, second.inv_out.trace)
+    assert list(output_dir.iterdir())
 
 
 # Recorded data choices are validated by DataConfig, exactly as a full-run request is.
@@ -192,7 +191,8 @@ def test_saved_model_cannot_redefine_preparation_facts(tmp_path, name):
         stages.postprocess(sampled, output=RhimeOutputSpec(output_format="none"))
 
 
-def test_grouped_resource_paths_resolve_beside_source(tmp_path):
+def test_grouped_resource_paths_resolve_from_invocation(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
     config = tmp_path / "request.json"
     config.write_text(json.dumps({"data": {"basis_path": "basis.nc"},
                                   "output": {"country_file": "country.nc"}}))
@@ -286,9 +286,9 @@ def test_failed_sample_save_leaves_no_completed_manifest(tmp_path, monkeypatch):
         stages.save_samples(
             preparation, make_trace(posterior=xr.Dataset({"x": (("chain", "draw", "region"), [[[1.]]])})), model=RhimeModelSpec.from_record(record["model"]),
             output_contract=OutputContract.from_dict(record["output_contract"]), actual_inference={},
-            build_and_sample_seconds=0., output_dir=tmp_path / "failed",
+            build_and_sample_seconds=0., output_dir=sampled.parent,
         )
-    assert not (tmp_path / "failed" / "sample-manifest.json").exists()
+    assert not sampled.exists()
 
 
 @pytest.mark.parametrize("inference_kind", [None, "map", "nested"])
@@ -346,9 +346,9 @@ def test_grouped_loader_merges_raw_aliases_before_translation(tmp_path, monkeypa
     monkeypatch.chdir(invocation)
     with pytest.warns(DeprecationWarning, match="Ignoring" if canonical_file else "deprecated"):
         loaded = load_rhime_params(params_file=source, overrides=overrides)
-    expected = config_dir / "file-products" if canonical_file else invocation / "override-products"
+    expected = invocation / ("file-products" if canonical_file else "override-products")
     assert loaded["output"]["output_path"] == expected
-    assert loaded["data"]["basis_path"] == config_dir / "basis.nc"
+    assert loaded["data"]["basis_path"] == invocation / "basis.nc"
 
 
 def test_grouped_loader_flat_canonical_override_wins_file_alias(tmp_path, monkeypatch):

@@ -249,29 +249,6 @@ def _save_requested_trace(result: RhimeResult) -> dict[str, str]:
     return {"trace_path": str(trace_path)}
 
 
-def refuse_existing_output_destinations(output_spec: RhimeOutputSpec) -> None:
-    """Reject requested products whose destinations already exist.
-
-    Saved replay calls this before writing; full runs keep their established
-    overwrite behaviour.
-
-    Raises:
-        FileExistsError: If the output directory a requested product writes into,
-            or an explicitly named trace or inversion-output file, already exists.
-    """
-    if output_spec.output_format == "none":
-        return
-    writes_directory = (
-        output_spec.save_trace is True or output_spec.save_inversion_output is True
-        or output_spec.output_format in {"paris", "legacy"}
-    )
-    if writes_directory and output_spec.output_path is not None and Path(output_spec.output_path).exists():
-        raise FileExistsError(f"Output destination already exists: {output_spec.output_path}")
-    for setting in (output_spec.save_trace, output_spec.save_inversion_output):
-        if isinstance(setting, str | Path) and Path(setting).exists():
-            raise FileExistsError(f"Output file already exists: {setting}")
-
-
 def _make_inversion_output(
     *,
     result: RhimeResult,

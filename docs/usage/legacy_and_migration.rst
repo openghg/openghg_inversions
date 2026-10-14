@@ -49,11 +49,20 @@ configuration as follows:
   aliases through 0.8 with deprecation warnings. ``RhimeConfig.from_params``
   accepts canonical names only and has no alias translation or warnings.
   Modern output formats and explicit save paths remain.
-* Use invocation-relative paths for Python/CLI calls and explicit overrides.
-  Saved-phase INI/JSON resource values are relative to their configuration
-  file. Staged ``output_path`` and explicit ``save_trace`` /
-  ``save_inversion_output`` filenames now follow this same rule; full-run INI
-  values retain their invocation-directory convention.
+* Standard ``run_rhime_from_prepared_inputs`` now uses the same model operations
+  as full and staged execution and rejects ``model_builder``. Use
+  ``likelihood_builder`` for a custom likelihood, or construct and sample a
+  custom PyMC graph directly. The complete-builder hook remains available for
+  multisector compatibility. ``build_standard_rhime_model_result`` takes
+  ``RhimeModelSpec`` instead of ``RhimeRunSpec``; output choices belong to result
+  and product construction. Select acquisition/preparation arguments with
+  ``config.data.select(...)`` and use ``config.model`` / ``config.output``
+  directly; the global ``RhimeConfig.select`` API has been removed.
+* Use invocation-relative paths for Python/CLI calls, INI/JSON resource and
+  output values, and explicit overrides in both full and staged execution.
+  Staged file values previously resolved beside their configuration file; use
+  absolute paths or invoke from the intended resource directory when migrating.
+  Manifest dependency references still resolve beside the declaring manifest.
   Absolute paths keep their destinations. Frontends convert declared ``Path``
   fields, including path collections, without treating scientific strings as
   paths or loading scientific data during configuration construction.
@@ -277,10 +286,9 @@ with the ``inner_`` prefix. No NESW directory is required.
 If the old run used ``country_directory``, remove it and set ``country_file``
 to the reporting file. Set ``landsea_path`` or ``outer_regions_path`` separately
 if overriding the packaged preparation maps. A reporting map never selects a
-preparation map. When moving this INI to staged execution, check relative output
-and resource destinations: ``outputs`` and an explicit ``save_trace`` filename
-resolve beside the INI there, but from the working directory in a full run.
-Explicit path overrides remain relative to the invocation directory.
+preparation map. Relative output and resource destinations, including ``outputs``
+and an explicit ``save_trace`` filename, resolve from the invocation working
+directory in both full and staged execution.
 
 Check scientific settings independently of renaming. In particular, moving from
 the HBMCMC wrapper to a RHIME runner can change output filename and chain-summary

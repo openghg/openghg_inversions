@@ -86,10 +86,14 @@ meaning and dimensions of `epsilon`. The custom callable owns those guarantees.
 
 Standard and multisector requests SHALL reject a custom `likelihood_builder`
 combined with configured built-in mismatch/likelihood settings before acquisition
-in ordinary runners or materialization in the prepared-input runner. Their
-public result-building stages, `build_standard_rhime_model_result` and
-`build_multisector_rhime_model_result`, SHALL reject simultaneous `model_builder`
-and `likelihood_builder` inputs before either callable runs. The lower-level
+in ordinary runners or materialization in the prepared-input runner. The
+standard result-building stage `build_standard_rhime_model_result` SHALL take
+`RhimeModelSpec` without output configuration and SHALL NOT accept `model_builder`.
+The standard `run_rhime_from_prepared_inputs` route SHALL reject that hook and use
+the same scientific operations as full and saved execution. The retained
+multisector `build_multisector_rhime_model_result` compatibility stage SHALL reject
+simultaneous `model_builder` and `likelihood_builder` inputs before either
+callable runs. The lower-level
 `build_standard_rhime_model` and `build_multisector_rhime_model` functions do not
 accept `model_builder`.
 
@@ -101,8 +105,7 @@ accept `model_builder`.
 
 #### Scenario: Reject competing builder ownership
 
-- **WHEN** `build_standard_rhime_model_result` or
-  `build_multisector_rhime_model_result` receives both a complete-model builder
+- **WHEN** `build_multisector_rhime_model_result` receives both a complete-model builder
   and a likelihood builder
 - **THEN** it raises `ValueError` before either builder executes
 

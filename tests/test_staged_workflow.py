@@ -138,7 +138,7 @@ def test_downstream_stage_parser_requires_handoff_manifests() -> None:
         )
 
 
-def test_stage_config_paths_are_relative_to_the_config_source(
+def test_stage_config_paths_are_relative_to_the_invocation(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -153,9 +153,9 @@ def test_stage_config_paths_are_relative_to_the_config_source(
 
     loaded = load_stage_params(params_file=params_path)
 
-    assert loaded["data"]["bc_basis_paths"] == (params_path.parent / "relative/bc.nc",)
-    assert loaded["output"]["country_file"] == params_path.parent / "relative/country.nc"
-    assert loaded["data"]["basis_partition_path"] == params_path.parent / "relative/partition.nc"
+    assert loaded["data"]["bc_basis_paths"] == (tmp_path.parent / "relative/bc.nc",)
+    assert loaded["output"]["country_file"] == tmp_path.parent / "relative/country.nc"
+    assert loaded["data"]["basis_partition_path"] == tmp_path.parent / "relative/partition.nc"
 
 
 @pytest.mark.parametrize(
@@ -700,12 +700,12 @@ def test_resource_origins_match_full_requests(tmp_path, monkeypatch, use_overrid
     source = config_dir / "run.json"
     source.write_text(json.dumps(_params(**resources)))
     overrides = resources if use_override else None
-    # One loader; only the base for file values differs (staged: the file, full run: the working directory).
+    # The same file has the same resource meaning in both routes.
     staged = load_rhime_params(params_file=source, overrides=overrides)
-    full = load_rhime_params(params_file=source, overrides=overrides, file_base=invocation)
+    full = load_rhime_params(params_file=source, overrides=overrides)
     def paths(loaded):
         return {name: {**loaded["data"], **loaded["output"]}[name] for name in resources}
-    assert paths(staged) == {name: (invocation if use_override else config_dir) / value
+    assert paths(staged) == {name: invocation / value
                              for name, value in resources.items()}
     assert paths(full) == {name: invocation / value for name, value in resources.items()}
     config = RhimeConfig.from_params(staged, multisector=False)

@@ -80,7 +80,6 @@ def test_custom_runner_uses_supported_stages_for_acquisition(
         averaging_period=("1h",),
         basis_artifact_source="test-basis",
     )
-    model_inputs = xr.Dataset({"mf": ("nmeasure", [1.0])})
     build_result = object()
     idata = object()
     expected_result = object()
@@ -145,20 +144,10 @@ def test_custom_runner_uses_supported_stages_for_acquisition(
         return prepared
 
 
-    def materialize(actual: Any, *, variable_names: tuple[str, ...]) -> xr.Dataset:
-        """Record the explicit eager model-input boundary."""
+    def build(actual: Any, model_spec: Any, **kwargs: Any) -> Any:
+        """Record the project-owned Student-t likelihood at the shared model boundary."""
         assert actual is prepared
-        assert set(variable_names) >= {"H", "mf", "mf_error"}
-        assert "min_error" not in variable_names
-        calls.append("materialize")
-        return model_inputs
-
-    def build(**kwargs: Any) -> Any:
-        """Record the project-owned Student-t likelihood handoff."""
-        assert kwargs["prepared"] is prepared
-        assert kwargs["model_inputs"] is model_inputs
-        assert kwargs["run_spec"].sites == ("MHD",)
-        assert kwargs["run_spec"].model is config.model
+        assert model_spec is config.model
         assert kwargs["likelihood_builder"] is custom_runner.likelihood_builder
         calls.append("build")
         return build_result
@@ -196,13 +185,7 @@ def test_custom_runner_uses_supported_stages_for_acquisition(
     monkeypatch.setattr(custom_runner, "prepare_basis", build_basis)
     monkeypatch.setattr(custom_runner, "build_sensitivities", build_sensitivities)
     monkeypatch.setattr(custom_runner, "assemble_rhime_inputs", assemble)
-    monkeypatch.setattr(
-        custom_runner,
-        "standard_model_input_names",
-        lambda _actual, _model: ("H", "mf", "mf_error"),
-    )
-    monkeypatch.setattr(custom_runner, "materialize_pymc_inputs", materialize)
-    monkeypatch.setattr(custom_runner, "build_standard_rhime_model_result", build)
+    monkeypatch.setattr(custom_runner, "build_standard", build)
     monkeypatch.setattr(custom_runner, "sample_rhime_model", sample)
     monkeypatch.setattr(custom_runner, "make_standard_rhime_result", make_result)
     monkeypatch.setattr(custom_runner, "make_standard_rhime_outputs", make_outputs)
@@ -218,7 +201,6 @@ def test_custom_runner_uses_supported_stages_for_acquisition(
         "basis",
         "sensitivities",
         "assemble",
-        "materialize",
         "build",
         "sample",
         "result",

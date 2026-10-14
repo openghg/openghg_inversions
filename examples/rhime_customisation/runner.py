@@ -32,17 +32,15 @@ from openghg_inversions.rhime import (
     RhimeResult,
     assemble_rhime_inputs,
     build_sensitivities,
-    build_standard_rhime_model_result,
     filter_observations,
     prepare_observation_errors,
     make_standard_rhime_result,
     make_standard_rhime_outputs,
     validate_output_resources,
-    materialize_pymc_inputs,
     read_rhime_ini,
     sample_rhime_model,
-    standard_model_input_names,
 )
+from openghg_inversions.rhime.standard import build_standard
 
 from .likelihoods import likelihood_builder
 
@@ -131,18 +129,10 @@ def run_custom_rhime(
     )
     run_spec = config.retained_run_spec(prepared)
 
-    model_inputs = materialize_pymc_inputs(
-        prepared,
-        variable_names=standard_model_input_names(
-            prepared,
-            run_spec.model,
-        ),
-    )
     build_and_sample_start = perf_counter()
-    model_build_result = build_standard_rhime_model_result(
-        prepared=prepared,
-        model_inputs=model_inputs,
-        run_spec=run_spec,
+    model_build_result = build_standard(
+        prepared,
+        run_spec.model,
         # This is the deliberate scientific replacement in the copied runner.
         likelihood_builder=likelihood_builder,
     )

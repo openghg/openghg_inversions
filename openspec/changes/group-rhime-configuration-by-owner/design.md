@@ -16,7 +16,9 @@ handoff codec. Acquisition and preparation remain distinct operations.
 
 Move fields/defaults into `DataConfig` and expose `config.data`; do not keep a
 second flat copy or an alias for the unshipped `preparation` group. Runners select
-named acquisition arguments and preparation arguments explicitly. Apply winning
+named acquisition arguments and preparation arguments explicitly through
+`config.data.select(...)`; use `config.model` and `config.output` directly.
+Remove the global `RhimeConfig.select` API rather than flatten owner meanings. Apply winning
 raw overrides before the runner/frontend alias owner outside HBMCMC, then resolve only applicable
 groups. Bind inference choices against requested or retained preparation facts
 as specified in the delta. Reuse the established sampler and model owners.

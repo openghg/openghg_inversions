@@ -20,7 +20,7 @@ def test_lazy_array_prior_uses_same_full_prepared_and_saved_construction(tmp_pat
     from openghg_inversions.models.priors import trace_prior_records
     from openghg_inversions.rhime import DataConfig, RhimeConfig, RhimeOutputSpec, run_standard, stages
     from openghg_inversions.rhime.standard import build_standard
-    from openghg_inversions.rhime.params import retained_run_spec, resolve_model_options
+    from openghg_inversions.rhime.params import resolve_model_options
 
     merged, options, *_ = synthetic_inputs(tmp_path)
     preparation = stages.prepare(DataConfig.from_params(options), merged_data=merged,
@@ -54,8 +54,7 @@ def test_lazy_array_prior_uses_same_full_prepared_and_saved_construction(tmp_pat
 
     prepared, data = stages.load_preparation(preparation)
     model = resolve_model_options({"x_prior": prior, "mismatch_model": "fixed_error"}, preparation=data)
-    built = build_standard(prepared, retained_run_spec(data, prepared, model=model,
-                           output=RhimeOutputSpec(output_format="none")))
+    built = build_standard(prepared, model)
     assert calls == [1, 1, 1]
     for x in (.7, 1., 1.4):
         np.testing.assert_allclose(full.model.compile_logp()({"x": np.array([x])}),
@@ -158,13 +157,8 @@ def test_default_log_normal_state_is_retained_and_explicit_omission_is_rejected(
     result = stages.postprocess(sampled, output=RhimeOutputSpec(output_format="inv_out", save_inversion_output=False))
     assert "x" in result.idata["posterior"]
     assert "x_latent" in result.idata["posterior"]
-    omitted = RhimeSampler(draws=10, tune=10, chains=1,
-                           sample_kwargs={"random_seed": 42, "var_names": ["x_latent", "mu"]},
-                           sample_prior_predictive=False, sample_posterior_predictive=False)
-    with pytest.raises(ValueError, match="x"):
-        stages.sample(manifest, model={"mismatch_model": "fixed_error"}, sampler=omitted,
-                      output_dir=tmp_path / "omitted")
-    assert not (tmp_path / "omitted" / "sample-manifest.json").exists()
+    with pytest.raises(ValueError, match="var_names"):
+        RhimeSampler(sample_kwargs={"var_names": ["x_latent", "mu"]})
 
 
 def test_multiple_native_sources_are_retained_once_and_replayed_without_original_operator(tmp_path, monkeypatch):
@@ -235,18 +229,10 @@ def test_scientific_offset_is_required_but_predictive_samples_are_optional(tmp_p
                               output_dir=tmp_path / "prepared")
     model = {"mismatch_model": "fixed_error", "add_offset": True,
              "x_prior": {"pdf": "normal", "mu": 1., "sigma": .2}}
-    for include_offset in (True, False):
-        names = ["x", "mu", "offset_latent"] + (["offset"] if include_offset else [])
-        sampler = RhimeSampler(draws=10, tune=10, chains=1,
-                               sample_kwargs={"random_seed": 42, "var_names": names},
-                               sample_prior_predictive=False, sample_posterior_predictive=False)
-        destination = tmp_path / ("complete" if include_offset else "omitted")
-        if include_offset:
-            sampled = stages.sample(prepared, model=model, sampler=sampler, output_dir=destination)
-        else:
-            with pytest.raises(ValueError, match="reconstruction state.*offset"):
-                stages.sample(prepared, model=model, sampler=sampler, output_dir=destination)
-            assert not (destination / "sample-manifest.json").exists()
+    sampler = RhimeSampler(draws=10, tune=10, chains=1,
+                           sample_kwargs={"random_seed": 42},
+                           sample_prior_predictive=False, sample_posterior_predictive=False)
+    sampled = stages.sample(prepared, model=model, sampler=sampler, output_dir=tmp_path / "complete")
     output = RhimeOutputSpec(output_format="inv_out", save_inversion_output=False)
     replay = stages.postprocess(sampled, output=output)
     assert "offset" in replay.idata["posterior"]
@@ -289,8 +275,8 @@ def test_standard_model_and_enabled_priors_share_computation_before_zero_pruning
     import xarray as xr
     from examples.standard_handoffs import synthetic_inputs
     from openghg_inversions.models.priors import prior_records
-    from openghg_inversions.rhime import DataConfig, RhimeOutputSpec, stages
-    from openghg_inversions.rhime.params import retained_run_spec, resolve_model_options
+    from openghg_inversions.rhime import DataConfig, stages
+    from openghg_inversions.rhime.params import resolve_model_options
     from openghg_inversions.rhime.standard import build_standard
 
     merged, options, *_ = synthetic_inputs(tmp_path)
@@ -319,8 +305,7 @@ def test_standard_model_and_enabled_priors_share_computation_before_zero_pruning
         model = resolve_model_options({"x_prior": prior, "bc_prior": unused, "offset_prior": unused,
                                        "mismatch_model": "fixed_error"}, preparation=data)
         borrowed = replace(prepared, inv_inputs=prepared.inv_inputs.assign(H=h))
-        built = build_standard(borrowed, retained_run_spec(data, borrowed, model=model,
-                               output=RhimeOutputSpec(output_format="none")))
+        built = build_standard(borrowed, model)
         assert calls == [1]
         assert h.data is raw and dask.is_dask_collection(mean)
         assert prior["mu"] is mean

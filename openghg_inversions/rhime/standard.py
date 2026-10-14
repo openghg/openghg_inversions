@@ -44,15 +44,11 @@ from ._model_building import (
     ForwardModelTerms,
     add_rhime_likelihood,
     builtin_model_build_result,
-    validated_custom_model_build,
 )
 from .builders import (
     RhimeLikelihoodBuilder,
-    RhimeModelBuilder,
-    RhimeModelBuilderContext,
     RhimeModelBuildResult,
     callable_metadata,
-    validate_model_build_result,
 )
 
 from .materialization import (
@@ -312,10 +308,8 @@ def build_standard_rhime_model(
 
 def build_standard_rhime_model_result(
     *,
-    prepared: RhimePreparedInputs,
     model_inputs: xr.Dataset,
-    run_spec: RhimeRunSpec,
-    model_builder: RhimeModelBuilder | None = None,
+    model_spec: RhimeModelSpec,
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
     likelihood_kwargs: Mapping[str, Any] | None = None,
     preserve_legacy_likelihood: bool = False,
@@ -325,11 +319,8 @@ def build_standard_rhime_model_result(
     """Build the standard graph and describe its output roles.
 
     Args:
-        prepared: Retained prepared-input artifact used by custom builders.
         model_inputs: Eager canonical arrays for the built-in PyMC graph.
-        run_spec: Resolved model, sampling, and output specification.
-        model_builder: Optional complete-model builder for advanced prepared-
-            input workflows.
+        model_spec: Resolved scientific model choices.
         likelihood_builder: Optional observation-error and distribution builder
             used with the built-in graph.
         likelihood_kwargs: Options expanded only into the custom likelihood.
@@ -344,74 +335,61 @@ def build_standard_rhime_model_result(
         Model plus variable roles, supported outputs, and build metadata.
 
     Raises:
-        ValueError: If both builder extension points are supplied or the built
-            result is inconsistent with the run specification.
+        ValueError: If likelihood options conflict, lack a custom builder, or
+            the model specification does not contain exactly one sector.
     """
-    if model_builder is not None and likelihood_builder is not None:
-        raise ValueError("Pass either `model_builder` or `likelihood_builder`, not both.")
     if likelihood_kwargs and likelihood_builder is None:
         raise ValueError("Non-empty `likelihood_kwargs` require an active `likelihood_builder`.")
     timing_start = timer_start()
-    if model_builder is not None:
-        builder_context = RhimeModelBuilderContext(
-            prepared_inputs=prepared,
-            run_spec=run_spec,
-            multisector=False,
-        )
-        result = validated_custom_model_build(model_builder, context=builder_context)
-        validate_model_build_result(result, context=builder_context)
-    else:
-        model_spec = run_spec.model
-        if len(model_spec.sectors) != 1:
-            raise ValueError("Standard RHIME model specs must include exactly one sector.")
-        sector = model_spec.sectors[0]
-        if likelihood_builder is not None and model_spec.likelihood is not None:
-            raise ValueError("A custom likelihood cannot be combined with built-in likelihood settings.")
-        aggregation_error = resolve_aggregation_error(
-            model_inputs,
-            model_spec.aggregation_error_mode,
-        )
-        state_activity = (
-            sector.state_activity if sector.state_activity is not None else model_spec.state_activity
-        )
-        model = build_standard_rhime_model(
-            model_inputs["H"],
-            observations=model_inputs["mf"],
-            observation_error=model_inputs["mf_error"],
-            aggregation_error=aggregation_error,
-            minimum_error=model_inputs.get("min_error"),
-            likelihood_settings=model_spec.likelihood,
-            likelihood_builder=likelihood_builder,
-            likelihood_kwargs=likelihood_kwargs,
-            boundary_sensitivity=model_inputs.get("H_bc"),
-            x_prior=dict(sector.x_prior),
-            state_activity=state_activity,
-            bc_prior=model_spec.bc_prior,
-            bc_state_activity=model_spec.bc_state_activity,
-            offset_prior=model_spec.offset_prior,
-            add_offset=model_spec.add_offset,
-            use_bc=model_spec.use_bc,
-            offset_args=model_spec.offset_args,
-            preserve_legacy_likelihood=preserve_legacy_likelihood,
-            legacy_unused_sigma_settings=legacy_unused_sigma_settings,
-            legacy_minimum_error_floor=legacy_minimum_error_floor,
-        )
-        result = builtin_model_build_result(
-            model,
-            model_spec=run_spec.model,
-            multisector=False,
-            input_names=tuple(str(name) for name in model_inputs.data_vars),
-            preserve_legacy_baseline=preserve_legacy_likelihood,
-        )
+    if len(model_spec.sectors) != 1:
+        raise ValueError("Standard RHIME model specs must include exactly one sector.")
+    sector = model_spec.sectors[0]
+    if likelihood_builder is not None and model_spec.likelihood is not None:
+        raise ValueError("A custom likelihood cannot be combined with built-in likelihood settings.")
+    aggregation_error = resolve_aggregation_error(
+        model_inputs,
+        model_spec.aggregation_error_mode,
+    )
+    state_activity = (
+        sector.state_activity if sector.state_activity is not None else model_spec.state_activity
+    )
+    model = build_standard_rhime_model(
+        model_inputs["H"],
+        observations=model_inputs["mf"],
+        observation_error=model_inputs["mf_error"],
+        aggregation_error=aggregation_error,
+        minimum_error=model_inputs.get("min_error"),
+        likelihood_settings=model_spec.likelihood,
+        likelihood_builder=likelihood_builder,
+        likelihood_kwargs=likelihood_kwargs,
+        boundary_sensitivity=model_inputs.get("H_bc"),
+        x_prior=dict(sector.x_prior),
+        state_activity=state_activity,
+        bc_prior=model_spec.bc_prior,
+        bc_state_activity=model_spec.bc_state_activity,
+        offset_prior=model_spec.offset_prior,
+        add_offset=model_spec.add_offset,
+        use_bc=model_spec.use_bc,
+        offset_args=model_spec.offset_args,
+        preserve_legacy_likelihood=preserve_legacy_likelihood,
+        legacy_unused_sigma_settings=legacy_unused_sigma_settings,
+        legacy_minimum_error_floor=legacy_minimum_error_floor,
+    )
+    result = builtin_model_build_result(
+        model,
+        model_spec=model_spec,
+        multisector=False,
+        input_names=tuple(str(name) for name in model_inputs.data_vars),
+        preserve_legacy_baseline=preserve_legacy_likelihood,
+    )
     log_timing("rhime.model_build", timer_seconds(timing_start), multisector=False)
     return result
 
 
 def build_standard(
     prepared: RhimePreparedInputs,
-    run_spec: RhimeRunSpec,
+    model_spec: RhimeModelSpec,
     *,
-    model_builder: RhimeModelBuilder | None = None,
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
     likelihood_kwargs: Mapping[str, Any] | None = None,
     preserve_legacy_likelihood: bool = False,
@@ -421,13 +399,12 @@ def build_standard(
     """Select and materialize the standard model inputs, then build the graph.
 
     Every standard route (full, prepared-input and saved) builds through this
-    function. Complete custom ``model_builder``s receive the potentially lazy
-    ``prepared.inv_inputs``; built-in graphs cross the named PyMC boundary.
+    function. Scientific inputs and enabled priors cross the named PyMC boundary
+    together; output settings are not part of model construction.
 
     Args:
         prepared: Prepared inputs from preparation or a saved preparation.
-        run_spec: Retained sites with resolved model and output choices.
-        model_builder: Optional complete-model builder.
+        model_spec: Resolved scientific model choices.
         likelihood_builder: Optional custom likelihood for the built-in graph.
         likelihood_kwargs: Options for ``likelihood_builder``.
         preserve_legacy_likelihood: Private ``run_hbmcmc`` compatibility switch.
@@ -441,48 +418,42 @@ def build_standard(
         ValueError: If no likelihood is selected or a selected component's
             prepared input is missing.
     """
-    if model_builder is None and likelihood_builder is None and run_spec.model.likelihood is None:
+    if likelihood_builder is None and model_spec.likelihood is None:
         raise ValueError("A standard RHIME run requires a built-in or custom likelihood.")
-    if model_builder is not None:
-        model_inputs = prepared.inv_inputs
-    else:
-        names = list(standard_model_input_names(prepared, run_spec.model))
-        if legacy_unused_sigma_settings is not None or legacy_minimum_error_floor:
-            _require_component_inputs(prepared, ("min_error",), owner="Legacy run_hbmcmc likelihood compatibility")
-            names.append("min_error")
-        model_spec = run_spec.model
-        if len(model_spec.sectors) != 1:
-            raise ValueError("Standard RHIME model specs must include exactly one sector.")
-        priors = {"x": model_spec.sectors[0].x_prior}
-        if model_spec.use_bc and model_spec.bc_prior is not None:
-            priors["bc"] = model_spec.bc_prior
-        if model_spec.add_offset and model_spec.offset_prior is not None:
-            priors["offset"] = model_spec.offset_prior
-        likelihood = model_spec.likelihood
-        if isinstance(likelihood, (PollutionEventSettings, AdditiveSigmaSettings)) and likelihood.sigma_prior is not None:
-            priors["sigma"] = likelihood.sigma_prior
-        if isinstance(likelihood, PollutionEventSettings) and isinstance(likelihood.power, Mapping):
-            priors["power"] = likelihood.power
-        if legacy_unused_sigma_settings is not None and legacy_unused_sigma_settings.sigma_prior is not None:
-            priors["legacy_sigma"] = legacy_unused_sigma_settings.sigma_prior
-        model_inputs, priors = _materialize_pymc_inputs_and_priors(
-            prepared, variable_names=tuple(dict.fromkeys(names)), prior_parameters=priors,
-        )
-        if likelihood is not None:
-            likelihood = replace(likelihood, **{field: priors[key] for field, key in
-                                 (("sigma_prior", "sigma"), ("power", "power")) if key in priors})
-        run_spec = replace(run_spec, model=replace(
-            model_spec, sectors=(replace(model_spec.sectors[0], x_prior=priors["x"]),),
-            bc_prior=priors.get("bc", model_spec.bc_prior),
-            offset_prior=priors.get("offset", model_spec.offset_prior), likelihood=likelihood,
-        ))
-        if legacy_unused_sigma_settings is not None and "legacy_sigma" in priors:
-            legacy_unused_sigma_settings = replace(legacy_unused_sigma_settings, sigma_prior=priors["legacy_sigma"])
+    names = list(standard_model_input_names(prepared, model_spec))
+    if legacy_unused_sigma_settings is not None or legacy_minimum_error_floor:
+        _require_component_inputs(prepared, ("min_error",), owner="Legacy run_hbmcmc likelihood compatibility")
+        names.append("min_error")
+    if len(model_spec.sectors) != 1:
+        raise ValueError("Standard RHIME model specs must include exactly one sector.")
+    priors = {"x": model_spec.sectors[0].x_prior}
+    if model_spec.use_bc and model_spec.bc_prior is not None:
+        priors["bc"] = model_spec.bc_prior
+    if model_spec.add_offset and model_spec.offset_prior is not None:
+        priors["offset"] = model_spec.offset_prior
+    likelihood = model_spec.likelihood
+    if isinstance(likelihood, (PollutionEventSettings, AdditiveSigmaSettings)) and likelihood.sigma_prior is not None:
+        priors["sigma"] = likelihood.sigma_prior
+    if isinstance(likelihood, PollutionEventSettings) and isinstance(likelihood.power, Mapping):
+        priors["power"] = likelihood.power
+    if legacy_unused_sigma_settings is not None and legacy_unused_sigma_settings.sigma_prior is not None:
+        priors["legacy_sigma"] = legacy_unused_sigma_settings.sigma_prior
+    model_inputs, priors = _materialize_pymc_inputs_and_priors(
+        prepared, variable_names=tuple(dict.fromkeys(names)), prior_parameters=priors,
+    )
+    if likelihood is not None:
+        likelihood = replace(likelihood, **{field: priors[key] for field, key in
+                             (("sigma_prior", "sigma"), ("power", "power")) if key in priors})
+    model_spec = replace(
+        model_spec, sectors=(replace(model_spec.sectors[0], x_prior=priors["x"]),),
+        bc_prior=priors.get("bc", model_spec.bc_prior),
+        offset_prior=priors.get("offset", model_spec.offset_prior), likelihood=likelihood,
+    )
+    if legacy_unused_sigma_settings is not None and "legacy_sigma" in priors:
+        legacy_unused_sigma_settings = replace(legacy_unused_sigma_settings, sigma_prior=priors["legacy_sigma"])
     return build_standard_rhime_model_result(
-        prepared=prepared,
         model_inputs=model_inputs,
-        run_spec=run_spec,
-        model_builder=model_builder,
+        model_spec=model_spec,
         likelihood_builder=likelihood_builder,
         likelihood_kwargs=likelihood_kwargs,
         preserve_legacy_likelihood=preserve_legacy_likelihood,
@@ -500,7 +471,6 @@ def make_standard_rhime_result(
     output_contract: OutputContract | None = None,
     idata: xr.DataTree,
     build_and_sample_seconds: float,
-    model_builder: RhimeModelBuilder | None = None,
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
     likelihood_kwargs: Mapping[str, Any] | None = None,
     sampler_metadata: Any = None,
@@ -517,7 +487,6 @@ def make_standard_rhime_result(
             Defaults to the live build result's contract when supplied.
         idata: Sampled posterior and predictive groups.
         build_and_sample_seconds: Combined graph-build and sampling duration.
-        model_builder: Optional complete-model callable used for provenance.
         likelihood_builder: Optional likelihood callable used for provenance.
         likelihood_kwargs: Serializable options owned by the likelihood.
         sampler_metadata: Recorded sampler description for saved replay, kept as
@@ -549,11 +518,6 @@ def make_standard_rhime_result(
         output_contract=output_contract,
         output_metadata=output_metadata,
     )
-    if result.output_contract is not None:
-        result.output_contract.validate_trace(idata)
-    if model_builder is not None:
-        identity = callable_metadata(model_builder)
-        result.output_metadata["model_builder"] = identity
     if likelihood_builder is not None:
         identity = callable_metadata(likelihood_builder)
         result.output_metadata["likelihood_builder"] = identity
@@ -723,7 +687,7 @@ def run_standard(
         if config.data.split_by_sectors:
             raise ValueError("`run_rhime` received configuration for a different sector layout.")
     else:
-        params = load_rhime_params(config_file=config_file, overrides=kwargs, file_base=Path.cwd())
+        params = load_rhime_params(config_file=config_file, overrides=kwargs)
         if likelihood_builder is not None and params["model"].get("mismatch_model") is not None:
             raise ValueError("A custom likelihood cannot be combined with a built-in mismatch model.")
         config = RhimeConfig.from_params(params, multisector=False)
@@ -756,7 +720,7 @@ def run_standard(
     build_and_sample_start = timer_start()
     model_build_result = build_standard(
         prepared,
-        run_spec,
+        run_spec.model,
         likelihood_builder=likelihood_builder,
         likelihood_kwargs=likelihood_kwargs,
         preserve_legacy_likelihood=preserve_legacy_likelihood,

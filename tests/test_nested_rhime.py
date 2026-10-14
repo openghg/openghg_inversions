@@ -283,11 +283,13 @@ def test_mask_outer_merged_zeroes_overlap_lazily_without_mutating_inputs() -> No
 
     masked = mask_outer_merged_for_inner_domain(outer, inner)
 
-    assert isinstance(to_legacy_fp_all(masked)["TAC"]["fp"].data, da.Array)
-    assert isinstance(to_legacy_fp_all(masked)[".flux"]["inventory"].data["flux"].data, da.Array)
-    assert float(to_legacy_fp_all(masked)["TAC"]["fp"].isel(time=0, lat=1, lon=1).compute()) == 0.0
-    assert float(to_legacy_fp_all(masked)["TAC"]["fp"].isel(time=0, lat=0, lon=0).compute()) == 1.0
-    assert float(to_legacy_fp_all(masked)[".flux"]["inventory"].data["flux"].isel(time=0, lat=1, lon=1).compute()) == 0.0
+    assert not isinstance(masked, type(outer))
+    assert masked.site_options is outer.site_options
+    assert isinstance(masked.site_data["TAC"]["fp"].data, da.Array)
+    assert isinstance(masked.flux_data["inventory"]["flux"].data, da.Array)
+    assert float(masked.site_data["TAC"]["fp"].isel(time=0, lat=1, lon=1).compute()) == 0.0
+    assert float(masked.site_data["TAC"]["fp"].isel(time=0, lat=0, lon=0).compute()) == 1.0
+    assert float(masked.flux_data["inventory"]["flux"].isel(time=0, lat=1, lon=1).compute()) == 0.0
     assert float(to_legacy_fp_all(outer)["TAC"]["fp"].isel(time=0, lat=1, lon=1).compute()) == 1.0
 
 

@@ -222,10 +222,6 @@ class RhimeConfig:
             output=RhimeOutputSpec.from_params(sections["output"], multisector=multisector),
         )
 
-    def select(self, *names: str) -> dict[str, Any]:
-        """Return named direct attributes in a new dictionary, borrowing values."""
-        return {name: getattr(self, name) for name in names}
-
     def retained_run_spec(self, prepared: RhimePreparedInputs) -> RhimeRunSpec:
         """Compose retained sites with this request; see :func:`retained_run_spec`."""
         return retained_run_spec(self.data, prepared, model=self.model, output=self.output)

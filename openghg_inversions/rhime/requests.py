@@ -24,7 +24,6 @@ def load_rhime_params(
     config_file: str | Path | None = None,
     params_file: str | Path | None = None,
     overrides: Mapping[str, Any] | None = None,
-    file_base: Path | None = None,
     phase_groups: Collection[str] | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Read one explicit request, apply overrides and group it by owner.
@@ -38,8 +37,6 @@ def load_rhime_params(
         params_file: Explicit JSON file, or ``None``. Pass at most one source.
         overrides: Invocation values, flat or grouped. Relative paths resolve
             from the working directory.
-        file_base: Base for relative paths read from the file; defaults to the
-            file's directory. Full runs pass the working directory.
         phase_groups: Owner groups a saved phase uses. Overrides for other groups
             are unsuitable, only these groups are resolved, and repeated data
             facts belong to ``model`` when ``data`` is inactive.
@@ -66,7 +63,6 @@ def load_rhime_params(
     active = set(owners) if phase_groups is None else set(phase_groups)
     claims_owner = "data" if "data" in active else "model"
     groups: dict[str, dict[str, Any]] = {group: {} for group in owners}
-    override_names: dict[str, set[str]] = {group: set() for group in owners}
     unsuitable = []
     # Classify names only: values of inactive groups are never resolved.
     for values, is_override in ((params, False), (overrides or {}, True)):
@@ -90,8 +86,6 @@ def load_rhime_params(
                     unsuitable.append(f"{key}.{name}" if key in owners else name)
                     continue
                 groups[owner][name] = item
-                if is_override:
-                    override_names[owner].add(name)
     if unsuitable:
         where = "" if phase_groups is None else " for this phase"
         raise ValueError(
@@ -99,20 +93,10 @@ def load_rhime_params(
                       *migration_errors(name.rsplit(".", 1)[-1] for name in unsuitable)])
         )
     annotations = get_type_hints(DataConfig) | get_type_hints(RhimeOutputSpec)
-    file_base = file_base or (source.parent if source is not None else Path.cwd())
     result: dict[str, dict[str, Any]] = {group: {} for group in owners}
     for group in active:
-        winning = groups[group]
-        translated = translate_rhime_aliases(winning)
-        invocation = {
-            REQUEST_ALIASES.get(name, name) for name in override_names[group]
-            if name not in REQUEST_ALIASES or REQUEST_ALIASES[name] not in winning
-        }
         result[group] = resolve_resource_paths(
-            {name: value for name, value in translated.items() if name not in invocation},
-            annotations=annotations, base_dir=file_base,
-        ) | resolve_resource_paths(
-            {name: value for name, value in translated.items() if name in invocation},
+            translate_rhime_aliases(groups[group]),
             annotations=annotations, base_dir=Path.cwd(),
         )
     return result

@@ -3,7 +3,9 @@ Staged RHIME workflows
 
 The standard recipe can prepare once, sample compatible models into separate
 locations, and produce different outputs from saved samples. ``run_standard``
-and the saved phases call the same step functions (``acquire_merged_data``,
+and ``run_rhime_from_prepared_inputs`` use the same scientific operations as
+the saved phases. Full and saved execution call the same step functions
+(``acquire_merged_data``,
 ``prepare_standard``, ``export_basis``, ``build_standard``,
 ``sample_rhime_model``, ``make_standard_rhime_result`` and
 ``make_standard_rhime_outputs``) in the same order. A saved phase only adds
@@ -39,8 +41,8 @@ and samples without building a graph or running inference. Its returned
 unavailable. Output naming, destination and supported formats can change;
 scientific choices cannot relabel saved samples. Default sampling retains
 scientific ``x``, including when it is a deterministic transform of ``x_latent``.
-Explicit trace selections missing required output state are rejected before a
-completed sample handoff or product is written.
+Posterior ``sample_kwargs["var_names"]`` overrides are rejected by the sampler;
+intentional posterior-predictive variable selection remains supported.
 
 Prior parameters in saved samples describe the priors actually constructed.
 Numerical scalars are retained inline in model metadata. Array-valued parameters
@@ -76,13 +78,11 @@ A selected saved basis supplies its operator while new preparation binds current
 native flux. Saved preparation and replay retain that flux and do not reacquire
 it. Species-dependent mass conversion belongs to postprocessing.
 
-Relative filesystem values inside an INI or JSON parameter file are resolved
-against that file's directory. This includes ``output_path`` and explicit
-``save_trace`` / ``save_inversion_output`` filenames: staged output destinations
-now follow the same file-relative rule as resource inputs. Ordinary full-run
-INI values remain relative to the invocation directory. Explicit ``--kwargs``
-path overrides resolve from the invocation working directory; absolute paths
-keep their destination.
+Relative filesystem values inside an INI or JSON parameter file resolve from
+the invocation working directory, in both full and staged execution. This includes
+resource inputs, ``output_path`` and explicit ``save_trace`` /
+``save_inversion_output`` filenames. Explicit ``--kwargs`` path overrides follow
+the same rule; absolute paths keep their destination.
 Filesystem annotations identify the fields to convert: resolved configuration
 uses ``Path`` values, including tuples of paths, while parameter JSON and stage
 manifests store paths as strings and path collections as JSON arrays. Scientific
@@ -117,10 +117,13 @@ files use existing codecs, and manifests use JSON without mandatory content
 hashes or full-configuration equality gates. Missing or malformed files fail at
 loading; incompatible scientific inputs fail at their owning operation.
 
-Preparation and sample saves need fresh destinations. Numerical files are saved
+Callers choose checkpoint locations and own collision avoidance and run isolation.
+A simple layout is ``run/prepare``, ``run/sample`` and ``run/products``; explicit
+locations are supported, including existing directories. Numerical files are saved
 first and the manifest is written last as the completion marker. A failed save
 can leave partial files but no completed manifest. Postprocessing uses the same
-product writer as full execution; in-memory products require no destination.
+product writer and overwrite behaviour as full execution; in-memory products
+require no destination. Normal filesystem errors propagate.
 ``basis_output_path`` is an exact destination and may be outside the checkpoint
 directory. It is resolved at the frontend and forwarded unchanged to the runner's
 optional basis export.
@@ -146,7 +149,7 @@ Unknown names remain errors, while known inactive values are not resolved.
 Explicit ``--kwargs`` overrides for another phase and unsupported names are
 reported together in one error. Raw file options and overrides are combined
 before alias translation; a canonical spelling wins over its deprecated alias. Relative input
-paths resolve from the configuration file. ``CONFIG_FILE`` is not an automatic
+paths resolve from the invocation working directory. ``CONFIG_FILE`` is not an automatic
 source; ``OUTPUT_DIR`` is an optional destination default.
 
 For example, with preparation settings in ``preparation.json``:

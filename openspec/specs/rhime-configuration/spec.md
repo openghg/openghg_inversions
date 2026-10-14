@@ -68,8 +68,11 @@ those choices.
 
 ### Requirement: Explicit shallow selection for scientific keyword calls
 
-`RhimeConfig.select(*names)` SHALL return a new dictionary containing the
-explicitly named attributes. Selected values SHALL remain borrowed, including
+`DataConfig.select(*names)` SHALL return a new dictionary containing the
+explicitly named data attributes. `RhimeConfig` SHALL expose its `data`, `model`,
+`output` and `sampler` owners explicitly and SHALL NOT provide a global selection
+API that flattens their distinct meanings. Selected values SHALL remain borrowed,
+including
 mutable containers and opaque objects. Selection SHALL NOT copy nested values,
 resolve defaults, inspect consumer signatures, execute scientific work or define
 a serialization schema. An unknown attribute SHALL raise `AttributeError`.
@@ -79,8 +82,8 @@ when composing several stages.
 
 #### Scenario: Forward selected resolved values
 
-- **WHEN** a caller unpacks `config.select("filters")` into the observation filter
-- **THEN** the function receives the same resolved value as `filters=config.filters`
+- **WHEN** a caller unpacks `config.data.select("filters")` into the observation filter
+- **THEN** the function receives the same resolved value as `filters=config.data.filters`
 - **AND** changing the selection dictionary does not change the configuration
 - **AND** mutable values inside the dictionary retain their existing identity
 

@@ -69,11 +69,9 @@ SHALL remain separate from data-free configuration construction; the existing
 
 Runner/frontends SHALL resolve external resource and export paths before calling
 scientific operations. Direct Python/CLI paths, including explicit overrides,
-SHALL resolve relative to the invocation working directory. Saved-phase file
-resource paths SHALL resolve relative to the configuration file's directory.
-Absolute paths SHALL retain their selected destination. These rules clarify the
-saved-phase override convention; other established file-frontend conventions
-remain unchanged and SHALL be documented by their frontend.
+SHALL resolve relative to the invocation working directory, including resource
+and output values read from INI or JSON configuration in full and saved phases.
+Absolute paths SHALL retain their selected destination.
 
 Scientific preparation SHALL receive selected exact input paths or resolved
 labelled arrays and SHALL return its basis result without saving an export.
@@ -87,8 +85,8 @@ prepared handoff contract, not these invocation rules.
 #### Scenario: File resource and invocation override
 
 - **WHEN** a saved-phase file at `/configs/run.json` supplies `basis_path="basis.nc"`
-- **THEN** it selects `/configs/basis.nc`
-- **AND** an explicit `basis_path="basis.nc"` invocation override instead selects the file beneath the invocation working directory
+- **THEN** it selects `basis.nc` beneath the invocation working directory
+- **AND** an explicit `basis_path="basis.nc"` invocation override selects the same file
 - **AND** scientific preparation receives the selected absolute path without another resolution pass
 
 #### Scenario: Runner saves the scientific basis result

@@ -387,8 +387,9 @@ def save_samples(
     return directory / "sample-manifest.json"
 ```
 
-Use a fresh operation destination so sampling cannot silently overwrite a completed
-run or its prepared inputs. Write the final manifest after numerical saves succeed;
+Let callers/orchestrators choose destinations and manage collision avoidance and
+run isolation; existing directories are accepted. Write the final manifest after
+numerical saves succeed;
 a temporary JSON file and rename are enough. Do not add transaction machinery or
 recursive symlink scans.
 Checkpoint containment applies to checkpoint-owned files. Separately requested
@@ -510,7 +511,7 @@ same thing, so they call the same step functions with the same objects:
 merged   = acquire_merged_data(config.data, merged_data)
 prepared = prepare_standard(merged, ...)   # sub-pipeline over site datasets + SiteOptions
 prepared = <export_basis(prepared.basis_functions, config.data.basis_output_path)>
-built    = build_standard(prepared, run_spec, likelihood_builder=...)
+built    = build_standard(prepared, model_spec, likelihood_builder=...)
 idata    = sample_rhime_model(built, sampler)
 result   = make_standard_rhime_result(..., sampler_metadata=..., provenance=...)
 result   = make_standard_rhime_outputs(result=result, prepared=prepared)  # returns, never mutates
@@ -524,21 +525,22 @@ result   = make_standard_rhime_outputs(result=result, prepared=prepared)  # retu
   bodies between routes of one family.
 - Checkpoints reload the objects the full runner passes: the preparation records
   `DataConfig.to_params()` and reloads it with `DataConfig.from_params`; the sample
-  record encodes the model with `RhimeModelSpec.to_record`, which describes lazy
-  prior arrays without computing them and rejects state-activity policies.
+  record encodes model choices with `RhimeModelSpec.to_record`; constructed prior
+  scalars stay inline, and array parameters use registered model data saved with
+  the trace. Metadata writing does not execute borrowed prior graphs.
 - Results are constructed from arguments; product makers return what they make;
-  the replay destination policy lives beside the product writer.
-- One request loader (`load_rhime_params`) serves full runs and every phase; only
-  the base for relative file paths differs between them (an open compatibility
-  question, below).
+  replay uses the full runner product overwrite behaviour.
+- One request loader (`load_rhime_params`) serves standard full runs and every phase;
+  relative configuration resource and output paths resolve from the invocation
+  working directory in both routes.
 - `MergedData` holds acquired data only. Preparation steps pass per-site datasets
   and `SiteOptions`; filtering keeps dropped-site reporting via `retain_sites`.
 - The multisector-only pre-handoff envelope lives in `_multisector_stages.py`
   until §2 replaces it; later families follow decision 8, not the envelope.
 
-Open: unify the relative-path base for INI/JSON values across full and saved
-routes (a deliberate compatibility change needing migration notes), and decide
-whether full runs should also refuse existing output destinations.
+Settled: full and saved routes share invocation-relative configuration paths and
+the full runner final-product overwrite behaviour. Checkpoint allocation and run
+isolation belong to the caller; manifest references remain manifest-relative.
 
 ## Migration Plan
 

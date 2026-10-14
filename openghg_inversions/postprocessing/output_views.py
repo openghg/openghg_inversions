@@ -40,12 +40,11 @@ def make_inversion_output(
 
     Returns:
         An ordinary ``InversionOutput`` consumed by reconstruction and product
-        writers. Numerical validation and labelled state normalization remain
-        owned by that value; the caller's arrays and metadata are not mutated.
+        writers. The trace is trusted from sampling or its external loading
+        boundary; the caller's arrays and metadata are not mutated.
         Matching prepared and trace artifact identities is the caller's
         responsibility; this factory does not authenticate saved artifacts.
     """
-    contract.validate_trace(trace)
     model_metadata = dict(model_metadata)
     model_metadata["footprint_provenance"] = {
         str(site): {

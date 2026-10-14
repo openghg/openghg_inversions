@@ -58,9 +58,11 @@ def run_rhime_from_prepared_inputs(
     Args:
         prepared_inputs: Validated canonical inversion inputs and retained
             basis functions.
+        run_spec: Model, output, dates and retained-site choices for this run.
         sampler: Use ``"default"`` to request a fresh ``RhimeSampler()``.
             Explicit ``None`` is invalid; omit the argument to select defaults.
-        model_builder: Optional complete-model callable for advanced graphs.
+        model_builder: Complete-model callable for multisector graphs only.
+            Standard runs use ``likelihood_builder`` for likelihood customization.
         likelihood_builder: Optional ordinary likelihood callable used with
             the built-in graph.
         likelihood_kwargs: Options specific to the custom likelihood.
@@ -87,6 +89,11 @@ def run_rhime_from_prepared_inputs(
     if sector_count < 1:
         raise ValueError(f"`run_spec.model.sectors` must contain at least one sector; found {sector_count}.")
     multisector = sector_count > 1
+    if model_builder is not None and not multisector:
+        raise ValueError(
+            "Standard prepared runs no longer accept `model_builder`; use `likelihood_builder` "
+            "or build and sample a custom PyMC model directly."
+        )
 
     sensitivity = prepared_inputs.inv_inputs["H"]
     source_coord = sensitivity.coords.get("source")
@@ -161,8 +168,7 @@ def run_rhime_from_prepared_inputs(
     else:
         model_build_result = build_standard(
             prepared_inputs,
-            run_spec,
-            model_builder=model_builder,
+            run_spec.model,
             likelihood_builder=likelihood_builder,
             likelihood_kwargs=likelihood_kwargs,
         )
@@ -193,7 +199,6 @@ def run_rhime_from_prepared_inputs(
             model_build_result=model_build_result,
             idata=idata,
             build_and_sample_seconds=build_and_sample_seconds,
-            model_builder=model_builder,
             likelihood_builder=likelihood_builder,
             likelihood_kwargs=likelihood_kwargs,
         )

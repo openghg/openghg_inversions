@@ -19,7 +19,7 @@ def _sampling_only_context() -> RhimeModelBuilderContext:
         SimpleNamespace(
             run_spec=SimpleNamespace(output=SimpleNamespace(output_format="none")),
             prepared_inputs=SimpleNamespace(inv_inputs=xr.Dataset()),
-            multisector=False,
+            multisector=True,
         ),
     )
 

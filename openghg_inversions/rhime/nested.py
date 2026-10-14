@@ -23,7 +23,7 @@ from dataclasses import dataclass, replace
 import hashlib
 from numbers import Integral
 from pathlib import Path
-from typing import Any, Literal, cast, get_type_hints
+from typing import Any, Literal, TypeVar, cast, get_type_hints
 
 from dask import compute as dask_compute
 import numpy as np
@@ -34,7 +34,7 @@ import xarray as xr
 from openghg_inversions._timing import log_timing, timed, timer_seconds, timer_start
 from openghg_inversions.array_ops import to_dense
 from ._domain_support import rectangular_extent_mask, remove_domain_overlap
-from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs
+from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs, SiteOptions
 from openghg_inversions.models.components import add_linear_component, add_offset_component
 from openghg_inversions.models.coords import registered_model
 from openghg_inversions.models.priors import PriorArgs
@@ -551,7 +551,33 @@ def _mask_spatial_variables(dataset: xr.Dataset, mask: xr.DataArray) -> xr.Datas
     return result
 
 
-def _select_merged_sites(merged: RhimeMergedData, sites: Sequence[str]) -> RhimeMergedData:
+@dataclass(frozen=True)
+class _NestedDomainData:
+    """Borrowed preparation intermediates, separate from the acquisition handoff."""
+
+    site_data: Mapping[str, xr.Dataset]
+    flux_data: Mapping[str, xr.Dataset]
+    site_options: SiteOptions
+
+    @property
+    def sites(self) -> tuple[str, ...]:
+        """Site order owned by the retained selectors."""
+        return self.site_options.sites
+
+    def with_site_data(
+        self, site_data: Mapping[str, xr.Dataset], *, context: str,
+    ) -> _NestedDomainData:
+        """Retain aligned selectors and report sites dropped during preparation."""
+        return replace(
+            self, site_data=site_data,
+            site_options=self.site_options.retain_sites(tuple(site_data), context=context),
+        )
+
+
+_DomainData = TypeVar("_DomainData", RhimeMergedData, _NestedDomainData)
+
+
+def _select_merged_sites(merged: _DomainData, sites: Sequence[str]) -> _DomainData:
     """Return a borrowed merged-data view restricted to a common site set."""
     return merged.with_site_data(
         {str(site): merged.site_data[str(site)] for site in sites},
@@ -560,9 +586,9 @@ def _select_merged_sites(merged: RhimeMergedData, sites: Sequence[str]) -> Rhime
 
 
 def _retain_common_sites(
-    outer: RhimeMergedData,
-    inner: RhimeMergedData,
-) -> tuple[RhimeMergedData, RhimeMergedData]:
+    outer: _DomainData,
+    inner: _DomainData,
+) -> tuple[_DomainData, _DomainData]:
     """Select sites present in both domains, preserving outer order."""
     common_sites = tuple(site for site in outer.sites if site in set(inner.sites))
     if not common_sites:
@@ -571,11 +597,11 @@ def _retain_common_sites(
 
 
 def align_inner_merged_to_outer_observations(
-    outer: RhimeMergedData,
-    inner: RhimeMergedData,
+    outer: RhimeMergedData | _NestedDomainData,
+    inner: _DomainData,
     *,
     time_tolerance: str | pd.Timedelta | None = None,
-) -> RhimeMergedData:
+) -> _DomainData:
     """Select inner scenarios at the filtered outer observation timestamps.
 
     Observation filters are evaluated once on the canonical outer scenario.
@@ -630,14 +656,14 @@ def align_inner_merged_to_outer_observations(
 
 
 def mask_outer_merged_for_inner_domain(
-    outer: RhimeMergedData,
-    inner: RhimeMergedData,
-) -> RhimeMergedData:
+    outer: RhimeMergedData | _NestedDomainData,
+    inner: RhimeMergedData | _NestedDomainData,
+) -> _NestedDomainData:
     """Mask outer footprint response and prior flux over the inner extent.
 
-    The returned datasets are shallow copies and ``where`` preserves Dask
-    laziness.  The borrowed outer and inner merged-data objects are not
-    modified.  The union of all retained inner site extents is applied to the
+    The returned preparation record holds shallow dataset copies and
+    ``where`` preserves Dask laziness. Acquired ``MergedData`` inputs remain
+    borrowed and unmodified; masked values are never wrapped in that type.  The union of all retained inner site extents is applied to the
     retained outer flux used by basis generation and post-run reconstruction.
     """
     if outer.sites != inner.sites:
@@ -682,9 +708,9 @@ def mask_outer_merged_for_inner_domain(
         masked_dataset["flux"] = remove_domain_overlap(flux, union_mask)
         masked_flux_entries[source] = masked_dataset
 
-    return replace(
-        outer.with_site_data(site_data, context="Nested-domain masking"),
-        flux_data=masked_flux_entries,
+    return _NestedDomainData(
+        site_data=site_data, flux_data=masked_flux_entries,
+        site_options=outer.site_options,
     )
 
 
@@ -698,7 +724,7 @@ def _inner_domain_name(outer_domain: str, inner_domain: str) -> str:
 
 
 def _prepare_one_domain(
-    merged: RhimeMergedData,
+    merged: RhimeMergedData | _NestedDomainData,
     config: RhimeConfig,
     *,
     allow_empty_inner_region: bool = False,
@@ -706,7 +732,7 @@ def _prepare_one_domain(
     bc_basis: xr.Dataset | None = None,
 ) -> RhimePreparedInputs:
     """Run one domain's scientific stages from already-resolved choices."""
-    runtime_flux = resolve_runtime_flux(merged.flux_data, split_by_sectors=merged.split_by_sectors)
+    runtime_flux = resolve_runtime_flux(merged.flux_data, split_by_sectors=False)
     with timed("rhime.prepare_inputs.basis_build", basis_algorithm=config.data.basis_algorithm):
         basis_functions = prepare_basis(
             site_data=merged.site_data,
@@ -741,7 +767,7 @@ def _prepare_one_domain(
 
 
 def _nested_sensitivity_reductions(
-    merged: RhimeMergedData,
+    merged: RhimeMergedData | _NestedDomainData,
     *,
     label: str,
 ) -> list[xr.DataArray]:
@@ -768,8 +794,8 @@ def _nested_sensitivity_reductions(
 
 
 def _allocate_nested_nbasis(
-    outer: RhimeMergedData,
-    inner: RhimeMergedData,
+    outer: RhimeMergedData | _NestedDomainData,
+    inner: RhimeMergedData | _NestedDomainData,
     *,
     total_nbasis: int,
 ) -> tuple[int, int]:
@@ -959,27 +985,28 @@ def prepare_nested_rhime_inputs(
     support_maps = [resolve_basis_inputs(domain_config.data) for domain_config in (outer_config, inner_config)]
     bc_basis = load_bc_basis(outer_config.data.bc_basis_paths) if outer_config.data.use_bc and outer_config.data.bc_basis_paths is not None else None
 
-    outer_merged = acquire_merged_data(outer_config.data)
-    inner_merged = acquire_merged_data(inner_config.data)
-    # shortcut: nested keeps derived site data in MergedData through domain alignment and
-    # masking; move it to (site data, SiteOptions) when nested adopts the shared preparation.
-    outer_merged = outer_merged.with_site_data(
-        prepare_observation_errors(outer_merged.site_data, averaging_error=outer_config.data.averaging_error),
+    outer_acquired = acquire_merged_data(outer_config.data)
+    inner_acquired = acquire_merged_data(inner_config.data)
+    # Acquisition records stop here; errors, filtering and masking belong to preparation.
+    outer_data = _NestedDomainData(outer_acquired.site_data, outer_acquired.flux_data, outer_acquired.site_options)
+    inner_data = _NestedDomainData(inner_acquired.site_data, inner_acquired.flux_data, inner_acquired.site_options)
+    outer_data = outer_data.with_site_data(
+        prepare_observation_errors(outer_data.site_data, averaging_error=outer_config.data.averaging_error),
         context="Observation error preparation",
     )
-    inner_merged = inner_merged.with_site_data(
-        prepare_observation_errors(inner_merged.site_data, averaging_error=inner_config.data.averaging_error),
+    inner_data = inner_data.with_site_data(
+        prepare_observation_errors(inner_data.site_data, averaging_error=inner_config.data.averaging_error),
         context="Observation error preparation",
     )
-    outer_merged, inner_merged = _retain_common_sites(outer_merged, inner_merged)
+    outer_data, inner_data = _retain_common_sites(outer_data, inner_data)
     outer_site_data, _ = filter_observations(
-        outer_merged.site_data, outer_merged.site_options, filters=outer_config.data.filters,
+        outer_data.site_data, outer_data.site_options, filters=outer_config.data.filters,
     )
-    outer_filtered = outer_merged.with_site_data(outer_site_data, context="Observation filtering")
-    outer_filtered, inner_merged = _retain_common_sites(outer_filtered, inner_merged)
+    outer_filtered = outer_data.with_site_data(outer_site_data, context="Observation filtering")
+    outer_filtered, inner_data = _retain_common_sites(outer_filtered, inner_data)
     inner_filtered = align_inner_merged_to_outer_observations(
         outer_filtered,
-        inner_merged,
+        inner_data,
         time_tolerance=time_tolerance,
     )
     masked_outer = mask_outer_merged_for_inner_domain(outer_filtered, inner_filtered)

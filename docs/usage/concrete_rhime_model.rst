@@ -465,10 +465,17 @@ Inversions' aggregation-error and Gaussian likelihood machinery.
 Advanced whole-model compatibility boundary
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-A complete model builder is an advanced escape hatch available only through
-``run_rhime_from_prepared_inputs``. It receives a
+A complete model builder is a retained multisector compatibility escape hatch
+available through ``run_rhime_from_prepared_inputs`` when
+``run_spec.split_by_sectors=True``.
+The standard prepared-input route accepts alternative or cached preparation, then
+uses the same construction, sampling, result and product operations as full and
+saved execution. Its builder takes ``RhimeModelSpec`` without output settings.
+Standard callers must replace ``model_builder`` with ``likelihood_builder`` when
+changing the likelihood, or construct and sample a custom PyMC model directly
+when replacing the complete graph. The retained multisector builder receives a
 ``RhimeModelBuilderContext`` containing the validated ``RhimePreparedInputs``,
-updated ``RhimeRunSpec``, and validated single- versus multi-sector mode, and
+updated ``RhimeRunSpec``, and validated multisector mode, and
 returns a ``RhimeModelBuildResult``. Ordinary standard and multisector recipes
 never construct or consume this context. Complete builders also bypass the
 ordinary recipe-owned materialization step, so they must select, validate, and
@@ -521,6 +528,7 @@ materialize any lazy arrays they consume:
        )
 
 
+   # prepared and run_spec must describe a multisector run.
    result = run_rhime_from_prepared_inputs(
        prepared_inputs=prepared,
        run_spec=run_spec,

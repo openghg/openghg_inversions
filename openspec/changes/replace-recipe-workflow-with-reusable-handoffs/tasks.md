@@ -131,6 +131,17 @@ The multisector envelope moved to `_multisector_stages.py` with restored tests.
 New acceptance covers custom-likelihood saved sampling against the full route and
 retrying a failed preparation into the same destination.
 
+Settled review decisions, 14 October 2026: standard construction now receives
+`RhimeModelSpec` without output choices. Standard prepared execution rejects the
+complete-model-builder hook while preserving custom likelihoods and alternative
+preparation. Posterior `var_names` overrides fail at the sampler boundary; result
+and inversion-output construction trust the produced trace. Full and saved
+configuration paths resolve from the invocation working directory; final products
+share the full runner overwrite behaviour. Callers own checkpoint allocation,
+collision avoidance and isolation; manifest-last completion remains required.
+These decisions supersede the earlier standard complete-builder acceptance and
+trace-retention test details above.
+
 No multisector/CO2 adoption, final integrated-family gate, or spec promotion is
 claimed by this standard delivery. CI verifies the pushed integration's full
 suite, supported Python versions, typing and documentation.
@@ -165,8 +176,10 @@ suite, supported Python versions, typing and documentation.
   preparation accepts acquired inputs with retrieval disabled and no export writes.
   Consume #837's explicit assembly/execution boundaries and the named joint PyMC
   materialization boundary. Verify retained-site/averaging alignment, empty-set
-  rejection, borrowed lazy arrays and custom builder/likelihood contracts across
+  rejection, borrowed lazy arrays and custom-likelihood contracts across
   full, supplied-merged/prepared and saved routes; remove forwarding-only wrappers.
+  Standard construction receives model choices without output configuration;
+  complete-model builders remain only at the retained multisector boundary.
   Preserve the current model-composition seam and registered-coordinate owner;
   do not broaden the canonical custom-likelihood contract through role handling.
 - [x] 1.4 Consume #838/#839's explicit basis and runtime-flux contracts. Verify a
@@ -183,9 +196,11 @@ suite, supported Python versions, typing and documentation.
   are disabled. Share the existing variable-role/output-contract owner between
   predictive sampling and postprocessing; remove independent concentration-name
   inference in the sampler. Keep species-dependent mass conversion in
-  postprocessing. Verify a valid custom no-product model is accepted, an invalid
-  declared role fails with `output_format="none"`, and direct scientific arguments,
-  conflict checks and established returns remain usable.
+  postprocessing. Verify custom-likelihood construction with model-only choices,
+  posterior variable-selection rejection at the sampler boundary, and necessary
+  role validation at external save/load boundaries. Standard complete-model
+  builders are explicitly rejected; direct scientific arguments, conflict checks
+  and established returns remain usable.
 - [x] 1.6 Implement standard `prepare` returning one absolute manifest path,
   using existing numerical codecs and #808's bounded contract. Omit the obsolete
   filtered checkpoint without adding acquisition persistence. Verify acquisition
@@ -227,7 +242,7 @@ suite, supported Python versions, typing and documentation.
   product and direct scientific APIs from retired staged envelopes/aliases;
   add no 0.7 staged compatibility adapters.
   Cover canonical file options versus deprecated overrides, one error naming all
-  unsuitable keys, and the distinct file-relative and invocation-relative path bases.
+  unsuitable keys, and the shared invocation-relative configuration path base and manifest-relative references.
 - [ ] 1.11 Clear the standard gate with a runnable preparation/two-model/two-product
   example, distinct sample destinations and real prior or likelihood
   calculations checked against an independent calculation or existing regression

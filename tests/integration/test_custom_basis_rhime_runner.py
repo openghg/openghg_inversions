@@ -85,7 +85,6 @@ def test_custom_basis_runner_replaces_only_basis_stage(
         averaging_period=("1h",),
         basis_artifact_source=basis.basis_artifact_source,
     )
-    model_inputs = xr.Dataset({"mf": ("nmeasure", [1.0])})
     build_result = object()
     idata = object()
     expected_result = object()
@@ -148,20 +147,10 @@ def test_custom_basis_runner_replaces_only_basis_stage(
 
 
 
-    def materialize(actual: Any, *, variable_names: tuple[str, ...]) -> xr.Dataset:
-        """Record the explicit eager model-input boundary."""
+    def build(actual: Any, model_spec: Any) -> Any:
+        """Record the shared standard model boundary after custom preparation."""
         assert actual is prepared
-        assert set(variable_names) >= {"H", "mf", "mf_error", "min_error"}
-        calls.append("materialize")
-        return model_inputs
-
-    def build(**kwargs: Any) -> Any:
-        """Record the unchanged standard model stage."""
-        assert kwargs == {
-            "prepared": prepared,
-            "model_inputs": model_inputs,
-            "run_spec": config.retained_run_spec(prepared),
-        }
+        assert model_spec is config.model
         calls.append("build")
         return build_result
 
@@ -205,13 +194,7 @@ def test_custom_basis_runner_replaces_only_basis_stage(
     monkeypatch.setattr(custom_basis_runner, "build_project_basis", build_project_basis)
     monkeypatch.setattr(custom_basis_runner, "build_sensitivities", build_sensitivities)
     monkeypatch.setattr(custom_basis_runner, "assemble_rhime_inputs", assemble)
-    monkeypatch.setattr(
-        custom_basis_runner,
-        "standard_model_input_names",
-        lambda _actual, _model: ("H", "mf", "mf_error", "min_error"),
-    )
-    monkeypatch.setattr(custom_basis_runner, "materialize_pymc_inputs", materialize)
-    monkeypatch.setattr(custom_basis_runner, "build_standard_rhime_model_result", build)
+    monkeypatch.setattr(custom_basis_runner, "build_standard", build)
     monkeypatch.setattr(custom_basis_runner, "sample_rhime_model", sample)
     monkeypatch.setattr(custom_basis_runner, "make_standard_rhime_result", make_result)
     monkeypatch.setattr(custom_basis_runner, "make_standard_rhime_outputs", make_outputs)
@@ -230,7 +213,6 @@ def test_custom_basis_runner_replaces_only_basis_stage(
         "project-basis",
         "sensitivities",
         "assemble",
-        "materialize",
         "build",
         "sample",
         "result",

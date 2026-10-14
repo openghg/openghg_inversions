@@ -93,7 +93,7 @@ def test_phase_reports_all_unsuitable_override_keys(tmp_path):
         assert name in str(caught.value)
 
 
-def test_phase_paths_keep_file_and_invocation_origins(tmp_path, monkeypatch):
+def test_phase_paths_use_invocation_directory(tmp_path, monkeypatch):
     from argparse import Namespace
     from openghg_inversions.cli import _standard_phase_options
 
@@ -107,7 +107,7 @@ def test_phase_paths_keep_file_and_invocation_origins(tmp_path, monkeypatch):
     monkeypatch.chdir(invocation)
     args = Namespace(config=None, params_file=str(choices), kwargs={"basis_output_path": "../exports/basis.nc"})
     result = _standard_phase_options(args, phase="prepare")
-    assert result["data"]["basis_path"] == config_dir / "operator.nc"
+    assert result["data"]["basis_path"] == invocation / "operator.nc"
     assert result["data"]["basis_output_path"] == tmp_path / "exports/basis.nc"
     assert result["sampler"] == {}
 

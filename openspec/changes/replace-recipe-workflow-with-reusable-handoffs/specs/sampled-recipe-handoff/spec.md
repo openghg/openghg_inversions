@@ -84,10 +84,12 @@ Default trace retention SHALL include the scientific quantities needed by the
 declared output contract, including standard flux scales `x`. Existing named
 deterministic expressions SHALL remain available as those scientific quantities;
 internal `_latent` variables alone SHALL NOT substitute for their output roles.
-Explicit trace selection that omits a required quantity SHALL fail before a
-completed sample manifest or product is written, unless an implemented supported
-reconstruction route can recover it from retained inputs. The scientific output
-owner SHALL validate these prerequisites against the numerical data. General
+The sampler SHALL reject posterior `sample_kwargs["var_names"]` overrides at its
+owning boundary. Intentional posterior-predictive variable selection SHALL remain
+supported. Result and inversion-output construction SHALL trust PyMC-produced
+traces after supported coordinate restoration and burn operations, rather than
+revalidate the same scientific trace. Necessary external-input validation SHALL
+remain at its owning loading or construction boundary. General
 deterministic reconstruction and compact-storage policy remain with the issues
 indexed by [#850](https://github.com/openghg/openghg_inversions/issues/850).
 The record SHALL NOT require a separate output-binding
@@ -115,16 +117,17 @@ transitive authentication or rehashing dependencies before and after inference.
 
 - **WHEN** the standard model constructs `x` as a deterministic transform of `x_latent`
 - **THEN** default sampling retains `x` for postprocessing
-- **AND** an explicit trace selection keeping only `x_latent` and `mu` is rejected before completing a handoff that requires `x`, unless supported reconstruction exists
+- **AND** an explicit posterior trace selection keeping only `x_latent` and `mu` is rejected at the sampler boundary
 - **AND** replay cannot write an apparently valid inversion output with an absent flux-scale role
 
 ### Requirement: Replay uses existing scientific validation
 
 Replay SHALL read the current supported record and output-contract formats and
 report missing required files or unsupported formats clearly. Existing scientific
-loaders and output owners SHALL check roles, labels, units and reconstruction
-associations against the numerical data before product writes, without
-constructing a model. The workflow SHALL trust values validated by those owners
+loaders SHALL perform their necessary external-input checks on roles, labels,
+units and reconstruction associations without constructing a model. Result and
+product construction SHALL NOT repeat validation of the same scientific trace.
+The workflow SHALL trust values validated by those owners
 rather than repeat their checks at every stage. It SHALL NOT require artifact
 digests, tamper detection, schema-downgrade handling or 0.7 compatibility paths.
 Missing required scientific context SHALL fail clearly without graph recovery or

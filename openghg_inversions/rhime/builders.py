@@ -23,7 +23,7 @@ class RhimeModelBuilderContext:
 
     Ordinary in-tree recipes and components use explicit named scientific
     inputs. This context remains solely for user-owned complete models invoked
-    through ``run_rhime_from_prepared_inputs``; those builders own validation
+    through the multisector ``run_rhime_from_prepared_inputs`` route; those builders own validation
     and materialization of any lazy arrays they consume.
 
     Args:

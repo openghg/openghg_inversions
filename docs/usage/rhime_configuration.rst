@@ -31,7 +31,9 @@ The returned ``RhimeConfig`` is the complete requested configuration:
 Sampler options cannot override model-owned coordinates: ``coords`` and ``dims``
 inside ``sample_kwargs["idata_kwargs"]`` or
 ``posterior_predictive_kwargs["idata_kwargs"]`` are rejected, even if empty. Register
-coordinates and dimensions when constructing the model instead. This rule also
+coordinates and dimensions when constructing the model instead. Posterior
+``sample_kwargs["var_names"]`` overrides are also rejected at the sampler boundary;
+posterior-predictive variable selection remains supported. This rule also
 applies when constructing or directly invoking ``RhimeSampler``.
 
 For example, a scalar period broadcasts across the effective requested sites:
@@ -346,6 +348,8 @@ values for an ordinary keyword call:
    )
 
 ``config.data.select(*names)`` returns a fresh dictionary of the named attributes.
+Use ``config.model`` and ``config.output`` for their separate owners;
+``RhimeConfig`` has no global ``select`` API.
 Values are borrowed: mutable mappings and objects are shared with ``config``.
 Selection does not normalize, validate, copy nested values or serialize settings;
 an unknown attribute raises ``AttributeError``. Scientific stages still accept
@@ -372,12 +376,11 @@ Standard saved sampling checks scientific compatibility with preparation,
 allowing compatible model choices to change without full-configuration equality.
 For persisted workflows, see :doc:`staged_workflow`: version 0.8 does not
 support staged artifacts produced by 0.7; consume them with 0.7 or regenerate
-them with 0.8. Ordinary paths remain relative to the working directory and
-staged file resources retain their configuration-file-relative convention.
-Explicit staged path overrides resolve from the invocation working directory.
-Runners forward absolute resource and export paths downstream; absolute inputs
-keep their destinations. Ordinary full-run INI values retain the invocation
-working directory convention. Filesystem fields are declared as ``Path`` types,
+them with 0.8. Configuration resource and output paths resolve from the invocation
+working directory in both full and staged execution, including INI/JSON values
+and explicit overrides. Runners forward absolute resource and export paths
+downstream; absolute inputs keep their destinations. Manifest dependency references
+remain relative to the declaring manifest. Filesystem fields are declared as ``Path`` types,
 including optional paths and collections such as ``bc_basis_paths``. Frontends
 accept path strings and convert only these annotated fields; domain names and
 scientific selectors remain ordinary strings. Each configuration owner supplies

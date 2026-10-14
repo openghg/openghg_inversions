@@ -409,7 +409,7 @@ def test_config_selection_borrows_values_and_rejects_unknown_attributes():
     selected["species"] = "co2"
     assert config.data.species == "ch4"
     with pytest.raises(AttributeError, match="misspelled"):
-        config.select("misspelled")
+        config.data.select("misspelled")
 
 
 def test_configuration_uses_the_sampler_owning_defaults(monkeypatch):
@@ -561,9 +561,7 @@ def test_grouped_full_and_phase_resolution_share_owners(use_bc):
     assert full.data == preparation
     assert full.model == rhime_params.resolve_model_options(sections["model"], preparation=preparation)
     assert full.model.use_bc is use_bc
-    assert full.select("data")["data"] is full.data
-    with pytest.raises(AttributeError, match="species"):
-        full.select("species")
+    assert not hasattr(full, "select")
 
 
 def test_model_bc_policy_binds_preparation_without_reinterpreting_frequency():
@@ -604,19 +602,6 @@ def test_repeated_boundary_frequency_accepts_equivalent_fixed_duration():
         rhime_params.resolve_model_options({"bc_freq": "monthly"}, preparation=preparation)
     with pytest.raises(ValueError, match="bc_freq"):
         rhime_params.resolve_model_options({"bc_freq": "invalid"}, preparation=preparation)
-
-
-def test_complete_selection_borrows_group_objects_without_flattening():
-    config = rhime_params.RhimeConfig.from_params(_request(), multisector=False)
-    selected = config.select("model", "sampler", "output", "data")
-    assert selected == {"model": config.model, "sampler": config.sampler,
-                        "output": config.output, "data": config.data}
-    assert selected["model"] is config.model
-    assert selected["sampler"] is config.sampler
-    selected["model"] = None
-    assert config.model is not None
-    with pytest.raises(AttributeError, match="species"):
-        config.select("species")
 
 
 def test_scalar_site_shorthand_stays_one_site():

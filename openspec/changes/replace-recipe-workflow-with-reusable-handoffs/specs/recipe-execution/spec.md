@@ -112,7 +112,7 @@ owners without implying additional nested or linked checkpoint support.
   regression reference rather than requiring identical stochastic trajectories
 
 #### Scenario: Direct customization and partial recipes
-- **WHEN** a caller uses supported likelihood or complete-model customization,
+- **WHEN** a caller uses supported likelihood or retained multisector complete-model customization,
   or a family supports only prepared construction and its own inference
 - **THEN** its explicit scientific arguments, conflict rules and return contract,
   subject to the declared sampler-default and prerequisite basis-export migrations,
@@ -220,10 +220,12 @@ eager-kernel boundary materializes the related arrays required there together.
 Preparation SHALL NOT be required to keep every array lazy across an explicit
 scientific execution boundary. Borrowed inputs SHALL remain unchanged.
 Built-in construction SHALL own its remaining model-specific materialization;
-a supplied complete-model builder SHALL receive inputs after the documented
-preparation boundaries, including any arrays that remain lazy, and own any further
-materialization required by its implementation. Custom builders SHALL NOT be
-forced through a built-in model's additional execution boundary.
+the standard prepared-input route SHALL use the same construction operation as
+full and saved execution, receiving model choices without output configuration.
+Its complete-model-builder hook SHALL be rejected; its custom-likelihood seam
+SHALL remain available. Retained multisector complete-model builders SHALL receive
+inputs after the documented preparation boundaries, including remaining lazy
+arrays, and own any further materialization their implementation requires.
 
 #### Scenario: Borrowed lazy preparation and construction
 - **WHEN** a route receives borrowed inputs with shared lazy arrays
@@ -233,8 +235,8 @@ forced through a built-in model's additional execution boundary.
   materialize together at the declared boundary rather than through incidental
   configuration access
 
-#### Scenario: Custom complete-model builder
-- **WHEN** a caller supplies a supported complete-model builder
+#### Scenario: Retained multisector complete-model builder
+- **WHEN** a multisector caller supplies a supported complete-model builder
 - **THEN** the route forwards its resolved scientific arguments and prepared
   inputs, including remaining lazy arrays, without imposing the built-in model's
   additional construction boundary

@@ -44,7 +44,9 @@ def _copy_sampler_options(value: Any) -> Any:
 
 
 def _validate_idata_options(kwargs: Mapping[str, Any] | None, *, label: str) -> None:
-    """Keep model registration authoritative for inference coordinates."""
+    """Keep posterior storage and inference coordinates owned by the model."""
+    if label == "sample_kwargs" and "var_names" in (kwargs or {}):
+        raise ValueError("sampler.sample_kwargs must not contain var_names; retain the complete posterior.")
     idata_kwargs = (kwargs or {}).get("idata_kwargs", {})
     if idata_kwargs is None:
         return
@@ -90,7 +92,7 @@ def resolve_sampler(
 
     Raises:
         TypeError: If the request is neither a sampler nor ``"default"``.
-        ValueError: If default sampler options override model coordinate registration.
+        ValueError: If default options override posterior storage or model coordinates.
     """
     if isinstance(sampler, str) and sampler == "default":
         return RhimeSampler(**default_options)
@@ -199,8 +201,9 @@ class RhimeSampler:
         sample_kwargs: Extra keyword arguments forwarded to ``pm.sample``.
             Nested containers and NumPy option arrays are copied; opaque
             runtime objects and xarray/Dask values are borrowed.
-            ``idata_kwargs.coords`` and ``dims`` are invalid because model
-            registration owns coordinates and dimensions.
+            Posterior ``var_names`` overrides are invalid because sampling
+            retains the complete posterior. ``idata_kwargs.coords`` and ``dims``
+            are invalid because model registration owns coordinates and dimensions.
             Its ``random_seed`` also seeds independent prior and posterior
             predictive streams without consuming a caller-owned generator.
         sample_prior_predictive: Whether to append prior predictive draws.
@@ -213,8 +216,8 @@ class RhimeSampler:
             unseeded posterior prediction.
 
     Raises:
-        ValueError: If the NUTS backend is unknown or inference coordinates
-            override model registration.
+        ValueError: If the NUTS backend is unknown, posterior variable selection
+            is overridden, or inference coordinates override model registration.
     """
 
     # The established configured frontend exposes this subset. Predictive
@@ -334,6 +337,7 @@ class RhimeSampler:
                 explicit ``concentration`` role when a custom model has no
                 variable named ``y``.
         """
+        _validate_idata_options(self.sample_kwargs, label="sample_kwargs")
         sample_kwargs = _copy_sampler_options(self.sample_kwargs or {})
         sample_kwargs.pop("return_inferencedata", None)
         idata_kwargs = dict(sample_kwargs.pop("idata_kwargs", {}))

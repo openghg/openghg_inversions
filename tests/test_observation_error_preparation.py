@@ -171,6 +171,7 @@ def test_nested_domains_prepare_errors_before_outer_aggregation_and_inner_alignm
         pass
 
     def reached_basis(merged, **kwargs):
+        assert not isinstance(merged, RhimeMergedData)
         captured.append(merged)
         if len(captured) == 2:
             raise PreparedBothDomains

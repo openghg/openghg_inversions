@@ -31,12 +31,11 @@ from .outputs import (
     RhimeResult,
     annotate_likelihood_trace,
     make_standard_rhime_outputs,
-    refuse_existing_output_destinations,
 )
 from .params import DataConfig, resolve_model_options, retained_run_spec
 from .preparation import acquire_merged_data, export_basis, resolve_basis_inputs
 from .sampling import sample_rhime_model
-from .specs import RhimeModelSpec, RhimeOutputSpec, RhimeRunSpec
+from .specs import RhimeModelSpec, RhimeOutputSpec
 
 
 def _read_record(path: str | Path, *, stage: str) -> tuple[Path, dict[str, Any]]:
@@ -100,23 +99,23 @@ def save_preparation(prepared: RhimePreparedInputs, *, data: DataConfig, output_
         prepared: Prepared inputs, e.g. from :func:`prepare_standard`.
         data: Data choices that produced ``prepared``. They are recorded in their
             external option form and reloaded by :func:`load_preparation`.
-        output_dir: New directory for the preparation.
+        output_dir: Directory for the preparation.
 
     Returns:
         Absolute path of the completed preparation manifest.
 
     Raises:
         ValueError: If ``data`` selects sector-split preparation.
-        FileExistsError: If ``output_dir`` already exists.
     """
     _require_standard(data)
     destination = Path(output_dir).resolve()
-    destination.mkdir(parents=True, exist_ok=False)
+    destination.mkdir(parents=True, exist_ok=True)
     return _write_preparation(prepared, data=data, destination=destination)
 
 
 def _write_preparation(prepared: RhimePreparedInputs, *, data: DataConfig, destination: Path) -> Path:
     """Write prepared inputs, then the manifest that marks the preparation complete."""
+    (destination / "prepare-manifest.json").unlink(missing_ok=True)
     prepared.save(destination / "prepared-inputs.nc")
     return _save_record(
         destination, stage="prepare", prepared_inputs="prepared-inputs.nc",
@@ -153,7 +152,7 @@ def prepare(data: DataConfig, *, output_dir: str | Path, merged_data: RhimeMerge
 
     Args:
         data: Resolved data choices.
-        output_dir: New directory for the preparation.
+        output_dir: Directory for the preparation.
         merged_data: Optional supplied acquisition handoff; skips acquisition.
 
     Returns:
@@ -162,13 +161,10 @@ def prepare(data: DataConfig, *, output_dir: str | Path, merged_data: RhimeMerge
     Raises:
         ValueError: If ``data`` selects sector-split preparation or supplied data
             conflicts with it.
-        FileExistsError: If ``output_dir`` already exists.
     """
     from .standard import prepare_standard
 
     _require_standard(data)
-    if Path(output_dir).exists():
-        raise FileExistsError(f"Preparation destination already exists: {Path(output_dir).resolve()}")
     basis_inputs = resolve_basis_inputs(data)
     bc_basis = load_bc_basis(data.bc_basis_paths) if data.use_bc and data.bc_basis_paths is not None else None
     merged = acquire_merged_data(data, merged_data)
@@ -182,7 +178,7 @@ def prepare(data: DataConfig, *, output_dir: str | Path, merged_data: RhimeMerge
     )
     # Create the destination only now, so a failed acquisition or preparation can be retried.
     destination = Path(output_dir).resolve()
-    destination.mkdir(parents=True, exist_ok=False)
+    destination.mkdir(parents=True, exist_ok=True)
     if data.basis_output_path is not None:
         prepared = replace(prepared, basis_functions=export_basis(prepared.basis_functions, data.basis_output_path))
     return _write_preparation(prepared, data=data, destination=destination)
@@ -207,7 +203,7 @@ def save_samples(
         model: Resolved model choices; see :meth:`RhimeModelSpec.to_record`.
         actual_inference: Description of the sampler invocation that ran.
         build_and_sample_seconds: Duration of model construction and sampling.
-        output_dir: New directory for the samples.
+        output_dir: Directory for the samples.
 
     Returns:
         Absolute path of the completed sample manifest.
@@ -215,7 +211,6 @@ def save_samples(
     Raises:
         ValueError: If the posterior lacks a required state or the model choices
             cannot be recorded. Both are checked before anything is written.
-        FileExistsError: If ``output_dir`` already exists.
     """
     output_contract.validate_trace(posterior)
     if (model.state_activity is not None or model.bc_state_activity is not None
@@ -226,7 +221,8 @@ def save_samples(
         )
     model_record = model.to_record(priors=trace_prior_records(posterior))
     destination = Path(output_dir).resolve()
-    destination.mkdir(parents=True, exist_ok=False)
+    destination.mkdir(parents=True, exist_ok=True)
+    (destination / "sample-manifest.json").unlink(missing_ok=True)
     save_trace(posterior, destination / "posterior.nc")
     return _save_record(
         destination, stage="sample", preparation=str(Path(preparation_manifest).resolve()),
@@ -236,14 +232,13 @@ def save_samples(
     )
 
 
-def _saved_run_spec(
+def _saved_model(
     preparation_manifest: str | Path, model: Mapping[str, Any],
-) -> tuple[RhimePreparedInputs, RhimeRunSpec]:
+) -> tuple[RhimePreparedInputs, RhimeModelSpec]:
     """Load a preparation and bind current model choices to its data choices."""
     prepared, data = load_preparation(preparation_manifest)
     model_spec = resolve_model_options(model, preparation=data)
-    # Sampling requests no products; output choices are made at postprocessing.
-    return prepared, retained_run_spec(data, prepared, model=model_spec, output=RhimeOutputSpec(output_format="none"))
+    return prepared, model_spec
 
 
 def sample(
@@ -262,7 +257,7 @@ def sample(
         model: Canonical model choices, bound to the saved data choices.
         sampler: Sampler to copy for this invocation; ``"default"`` selects a
             fresh default sampler and ``None`` is rejected.
-        output_dir: New directory for the samples.
+        output_dir: Directory for the samples.
         likelihood_builder: Optional Python custom likelihood.
         likelihood_kwargs: Options for ``likelihood_builder``.
 
@@ -272,17 +267,14 @@ def sample(
     Raises:
         ValueError: If model choices conflict with the preparation, no likelihood
             is selected, or the posterior lacks a required state.
-        FileExistsError: If ``output_dir`` already exists.
     """
     from .standard import build_standard
 
     sampler = resolve_sampler(sampler)
-    if Path(output_dir).exists():
-        raise FileExistsError(f"Sample destination already exists: {Path(output_dir).resolve()}")
-    prepared, run_spec = _saved_run_spec(preparation_manifest, model)
+    prepared, model_spec = _saved_model(preparation_manifest, model)
     started = timer_start()
     built = build_standard(
-        prepared, run_spec, likelihood_builder=likelihood_builder, likelihood_kwargs=likelihood_kwargs,
+        prepared, model_spec, likelihood_builder=likelihood_builder, likelihood_kwargs=likelihood_kwargs,
     )
     posterior = sample_rhime_model(built, sampler)
     if likelihood_builder is not None:
@@ -291,7 +283,7 @@ def sample(
         )
     return save_samples(
         preparation_manifest, posterior, output_contract=built.output_contract,
-        model=run_spec.model, actual_inference=sampler.describe(),
+        model=model_spec, actual_inference=sampler.describe(),
         build_and_sample_seconds=timer_seconds(started), output_dir=output_dir,
     )
 
@@ -305,7 +297,7 @@ def postprocess(sample_manifest: str | Path, *, output: RhimeOutputSpec) -> Rhim
 
     Args:
         sample_manifest: Saved samples.
-        output: Output choices. Existing destinations are refused.
+        output: Output choices, with the full runner's overwrite behavior.
 
     Returns:
         The replayed result with ``sampler=None`` and ``model=None``.
@@ -313,16 +305,15 @@ def postprocess(sample_manifest: str | Path, *, output: RhimeOutputSpec) -> Rhim
     Raises:
         ValueError: If the manifest is invalid, its model conflicts with its
             preparation, or the output is unsupported by the saved roles.
-        FileExistsError: If a requested output destination already exists.
     """
     from .standard import make_standard_rhime_result
 
     path, record = _read_record(sample_manifest, stage="sample")
     output_contract = OutputContract.from_dict(record["output_contract"])
     output_contract.validate_requested_output(output.output_format)
-    refuse_existing_output_destinations(output)
     prepared, data = load_preparation(_reference(path, "preparation", record["preparation"]))
     posterior = load_trace(_reference(path, "posterior", record["posterior"]))
+    output_contract.validate_trace(posterior)
     model = RhimeModelSpec.from_record(record["model"], trace=posterior)
     # The manifests are separate files; keep the sample bound to its preparation.
     conflicts = {name: (getattr(model, name), getattr(data, name))
@@ -357,7 +348,7 @@ def prior_predictive(
     Args:
         preparation_manifest: Saved preparation to check.
         model: Canonical model choices, bound to the saved data choices.
-        output_dir: New directory for the evidence and report.
+        output_dir: Directory for the evidence and report.
         draws: Positive number of prior-predictive draws.
         check_output: Optional report path beneath ``output_dir``.
         stage: Stage label recorded in the report.
@@ -370,18 +361,17 @@ def prior_predictive(
     Raises:
         ValueError: If ``draws`` or ``stage`` is invalid or model choices conflict
             with the preparation.
-        FileExistsError: If ``output_dir`` already exists.
     """
     from .standard import build_standard
 
     stage = _check_stage(stage)
     _check_draws(draws)
-    prepared, run_spec = _saved_run_spec(preparation_manifest, model)
+    prepared, model_spec = _saved_model(preparation_manifest, model)
     destination = Path(output_dir).resolve()
-    destination.mkdir(parents=True, exist_ok=False)
+    destination.mkdir(parents=True, exist_ok=True)
     return prior_predictive_check(
         lambda: build_standard(
-            prepared, run_spec, likelihood_builder=likelihood_builder, likelihood_kwargs=likelihood_kwargs,
+            prepared, model_spec, likelihood_builder=likelihood_builder, likelihood_kwargs=likelihood_kwargs,
         ),
         draws=draws, destination=destination, check_output=check_output, stage=stage,
     )
