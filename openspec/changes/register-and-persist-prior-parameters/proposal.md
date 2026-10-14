@@ -23,6 +23,9 @@ Resolve [#872](https://github.com/openghg/openghg_inversions/issues/872) before
   borrowing caller arrays. Save actual values and coordinates through existing
   inference-data serialization; model metadata references registered inputs
   without recomputing caller graphs or embedding numerical arrays in JSON.
+- Record only priors used by the constructed model. Omit unused prior metadata
+  and references without materializing configured lazy parameters of disabled
+  components.
 - Make full and saved standard execution consume the same corrected shared
   prior path; add a cross-reference in the existing sampled-handoff proposal.
 
@@ -46,8 +49,9 @@ this amendment without duplicating it.
 Implementation will affect shared prior/state alignment helpers, their direct
 callers, model-record encoding/decoding and the existing trace persistence path.
 No new registry, serializer framework or dependency is needed. Coordinate issue
-#856, general model resizing and additional saved state-activity support remain
-outside this change.
+#856, general model resizing, `Interpolated` registration/persistence and
+additional saved state-activity support remain outside this change. This scope
+does not remove existing runtime handling of `Interpolated` priors.
 
 This initial PR contains planning artifacts only, stacked on
 `codex/standard-reusable-handoffs` at `7dad0b05`. The maintainer will review the

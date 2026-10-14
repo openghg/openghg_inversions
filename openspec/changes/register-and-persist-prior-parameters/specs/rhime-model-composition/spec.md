@@ -1,5 +1,8 @@
 # RHIME model composition delta
 
+Registration and persistence work for `Interpolated` priors is outside this
+amendment; its existing runtime handling is not removed.
+
 ## MODIFIED Requirements
 
 ### Requirement: Registered scientific coordinates
@@ -76,8 +79,7 @@ SHALL retain their documented canonical-order interpretation.
 Each parameter SHALL retain its own dimensions and scalar broadcasting
 semantics. A scalar SHALL be registered as zero-dimensional data, without
 expansion to the random variable's shape. Parameter dimensions SHALL NOT be
-inferred solely from the random variable's dimensions; distribution support
-grids SHALL NOT be interpreted as state-valued parameters.
+inferred solely from the random variable's dimensions.
 
 #### Scenario: Ordinary prior with scalar and labelled parameters
 
@@ -101,12 +103,6 @@ grids SHALL NOT be interpreted as state-valued parameters.
 - **THEN** alignment reports the incompatibility before constructing the prior
   rather than silently using positional values or filling missing parameters
 
-#### Scenario: Preserve a distribution support grid
-
-- **WHEN** an `Interpolated` prior receives fixed support points and densities
-- **THEN** those numerical inputs are registered on their support axis
-- **AND** state alignment or active-state selection does not slice that axis
-
 #### Scenario: Preserve a stochastic parameter
 
 - **WHEN** a prior parameter is a random variable or an expression depending on one
@@ -114,6 +110,12 @@ grids SHALL NOT be interpreted as state-valued parameters.
 - **AND** registration does not replace it with an evaluated numerical value
 
 ### Requirement: Prior records distinguish requested and effective parameterization
+
+Saved prior metadata SHALL be derived only from priors actually used by the
+constructed model, rather than all prior settings in the request. Unused priors,
+including those configured for disabled components, SHALL produce neither saved
+prior metadata nor parameter references. Their lazy numerical inputs SHALL NOT
+be materialized for registration or metadata writing.
 
 Prior metadata SHALL identify the distribution, supplied parameterization and
 reparameterization policy, and associate fixed parameters with their registered
@@ -142,6 +144,15 @@ variable and its declared relationship to the latent variable.
 - **WHEN** a lognormal prior receives `mu` and `sigma` directly
 - **THEN** its fixed inputs are registered under that parameterization
 - **AND** metadata does not misdescribe them as arithmetic `mean` and `stdev`
+
+#### Scenario: Disabled component with an unused lazy prior
+
+- **WHEN** a model is constructed with `use_bc=False` and a configured lazy
+  `bc_prior`, or with offsets disabled and a configured lazy `offset_prior`,
+  then sampled and saved
+- **THEN** saving succeeds without saved prior metadata or parameter references
+  for the disabled component
+- **AND** the unused prior's lazy graph is never executed
 
 ### Requirement: Registered prior inputs survive persistence without recomputation
 

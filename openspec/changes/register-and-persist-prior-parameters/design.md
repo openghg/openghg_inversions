@@ -25,6 +25,8 @@ automatic data deduplication across unrelated priors, arbitrary model resizing,
 #856, or extending the saved frontend to accept currently rejected state-activity
 policies. Active-state behavior is checked through its already supported model
 construction interface, including default zero-sensitivity pruning.
+`Interpolated` registration/persistence is outside this change; its existing
+runtime handling is not slated for removal.
 
 ## Decisions
 
@@ -38,9 +40,9 @@ and existing activity information explain the selected state's relationship to
 those values without storing another active-only numerical parameter array.
 
 Scalars remain zero-dimensional; positional arrays acquire the dimensions owned
-by their component. Support grids retain a separate support axis. Do not assign
-every parameter the distribution's dimensions. The alternative of registering
-already stripped NumPy arrays loses scientific interpretation too early.
+by their component. Do not assign every parameter the distribution's dimensions.
+The alternative of registering already stripped NumPy arrays loses scientific
+interpretation too early.
 
 Keep this correction local to shared prior/alignment helpers and their callers.
 Audit all `parse_prior` callers, including direct scalar priors, mismatch, offset
@@ -79,11 +81,18 @@ reparameterization policy and the association with existing activity metadata.
 These are ordinary descriptive mappings, not a second data registry.
 
 Build those associations from constructed priors and registered inputs, and pass
-them explicitly to record/output owners. Preserve them through the sampled trace
-and existing metadata channels. Do not walk the original lazy request again to
-recover values. Replace both the shape-only lazy encoding and eager-array JSON
-encoding in `RhimeModelSpec.to_record`; reuse the registered values when producing
-full-run output metadata as well as saved sample metadata.
+them explicitly to record/output owners. Include only priors actually used by
+the constructed model: `bc_prior` with `use_bc=False`, or `offset_prior` with
+offsets disabled, produces no saved prior metadata or parameter references.
+Construction owns this selection; being inside a model context alone does not
+prevent `RhimeModelSpec.to_record` from independently walking unused settings.
+Do not materialize unused lazy parameters to record configuration, or add a
+separate filtering/validation framework.
+
+Preserve the constructed associations through the sampled trace and existing
+metadata channels. Replace the configured-prior walk and both shape-only lazy
+and eager-array JSON encoding in `RhimeModelSpec.to_record`; reuse registered
+values for full-run output metadata as well as saved sample metadata.
 
 The existing trace codec owns numerical storage and MultiIndex round trips.
 On replay, load that trace and resolve required prior-data references before
@@ -115,6 +124,9 @@ to own their own numerical boundary.
 - Reexecuting a shared lazy graph through metadata or coordinates: use counted
   delayed inputs with shared dependencies and verify counts across construction,
   sampling, saving and reload, with borrowed inputs unchanged.
+- Serializing unused request settings: configure a disabled component with a
+  counted lazy prior; saving must succeed with no prior metadata or references
+  for that component and zero executions of its lazy graph.
 - Accidentally broadening saved state-activity support: preserve #866's explicit
   rejection and check active construction separately from saved frontend support.
 
@@ -126,7 +138,7 @@ to own their own numerical boundary.
    tasks, then implement the shared fix and record integration in the same PR.
 3. Check ordinary and reparameterized densities against independent calculations;
    perform a small real sample/save/reload with labelled Dask-backed moments and
-   auxiliary coordinates, plus focused scalar, support-grid and symbolic checks.
+   auxiliary coordinates, plus focused scalar, symbolic and unused-lazy-prior checks.
    Compare full and saved standard construction without requiring identical draws.
 4. Update maintained usage documentation and add `newsfragments/872.bugfix.md`,
    then merge this child PR into #866 before #866 completes. Reconcile/promote
