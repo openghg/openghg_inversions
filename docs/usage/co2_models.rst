@@ -795,7 +795,7 @@ declared boundary for preserving gathered MultiIndex coordinates.
 .. _linked-prepared-replay:
 
 Save and replay linked prepared inputs
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 To retain the fixed observation-error policy with the scientific inputs, pass
 ``independent_error_sd`` to ``prepare_co2_o2_inputs``. This optional vector must

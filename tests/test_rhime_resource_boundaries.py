@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 import xarray as xr
 
+from openghg_inversions.inversion_data import RhimeMergedData
 from openghg_inversions.rhime.params import RhimeConfig
 from tests.test_bc_basis_resources import _basis
 from tests.test_staged_workflow import _params
@@ -31,8 +32,7 @@ def test_bc_resource_loading_precedes_acquisition(tmp_path, monkeypatch, route, 
     if selection != "nesw":
         options["bc_basis_paths"] = paths
     loaded = []
-    resource_owner = import_module("openghg_inversions.rhime.standard") if route == "staged" else module
-    real_load = resource_owner.load_bc_basis
+    real_load = module.load_bc_basis
 
     def load(selected):
         value = real_load(selected)
@@ -50,8 +50,8 @@ def test_bc_resource_loading_precedes_acquisition(tmp_path, monkeypatch, route, 
             assert not loaded
         raise Acquired
 
-    monkeypatch.setattr(resource_owner, "load_bc_basis", load)
-    monkeypatch.setattr(resource_owner.RhimeMergedData, "from_options", acquire)
+    monkeypatch.setattr(module, "load_bc_basis", load)
+    monkeypatch.setattr(RhimeMergedData, "from_options", acquire)
 
     def run():
         if route in ("staged", "nested"):

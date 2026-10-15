@@ -38,7 +38,7 @@ runner.
    openghg_inversions.rhime.co2.run_rhime_co2_o2_cached_sigma_from_prepared_inputs
 
 Resolve a requested RHIME configuration
---------------------------------------
+---------------------------------------
 
 Inspect standard/multisector choices before data access. Decode an INI with
 ``read_rhime_ini``, or start with Python options. Apply overrides and extract

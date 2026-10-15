@@ -460,7 +460,7 @@ saved or loaded. To migrate one, use an older environment to reload it and
 save it as Zarr before upgrading.
 
 Merged-data acquisition and prepared-input reuse
------------------------------------------------
+------------------------------------------------
 
 Modern RHIME acquisition returns an in-memory ``RhimeMergedData`` handoff.
 The proposed acquisition-artifact ``save``, ``load`` and ``load_legacy`` methods

@@ -126,8 +126,10 @@ def normalise_frequency(value: str | None) -> Literal["monthly"] | pd.Timedelta 
     Raises:
         ValueError: If a fixed duration is malformed, nonfinite, zero or negative.
     """
-    if value is None or value == "monthly":
-        return value
+    if value is None:
+        return None
+    if value == "monthly":
+        return "monthly"
     try:
         if not isinstance(value, str):
             raise ValueError("expected a frequency string")

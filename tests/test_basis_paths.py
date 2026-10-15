@@ -225,7 +225,7 @@ def test_runners_export_returned_basis_without_mutating_inputs(tmp_path, monkeyp
     if route != "staged":
         (tmp_path / "runs/prepared").mkdir(parents=True)
     borrowed = sources["a"].flux.data
-    monkeypatch.setattr(module.RhimeMergedData, "from_options", lambda **kwargs: merged)
+    monkeypatch.setattr(RhimeMergedData, "from_options", lambda **kwargs: merged)
     monkeypatch.setattr(module, "prepare_observation_errors", lambda data, **kwargs: data)
     monkeypatch.setattr(module, "filter_observations", lambda data, site_options, **kwargs: (data, site_options))
     captured = []
@@ -269,7 +269,7 @@ def test_runners_export_returned_basis_without_mutating_inputs(tmp_path, monkeyp
         if route == "staged":
             _standard_stages.prepare(config.data, output_dir="runs/prepared")
         elif route == "nested":
-            module._prepare_one_domain(merged, config.data, basis_support_maps=resolve_basis_inputs(config.data))
+            module._prepare_one_domain(merged, data=config.data, basis_support_maps=resolve_basis_inputs(config.data))
         elif route == "example":
             module.run_custom_rhime(**options)
         elif route == "multisector":
