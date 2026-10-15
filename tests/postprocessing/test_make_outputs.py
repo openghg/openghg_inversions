@@ -201,8 +201,9 @@ def test_multisector_flux_total_requires_each_sector_per_draw(
         sector: make_outputs.OutputSector,
         *,
         report_flux_on_inversion_grid: bool,
+        chunks: dict[str, int] | None = None,
     ) -> xr.Dataset:
-        del output, report_flux_on_inversion_grid
+        del output, report_flux_on_inversion_grid, chunks
         values = (
             np.asarray([0.0, 0.0, 0.0])
             if sector.variable_suffix == "ff"
@@ -320,3 +321,120 @@ def test_multisector_country_traces_project_basis_regions_before_scaling(
             + country_trace[f"country_ocean_{when}"].isel(draw=0),
         )
         assert country_trace[f"country_total_{when}"].attrs["units"] == "g/yr"
+
+
+@pytest.mark.parametrize("source_specific", [False, True], ids=["shared-basis", "source-specific-basis"])
+@pytest.mark.parametrize("inversion_grid", [False, True], ids=["native-grid", "region-mean-grid"])
+def test_multisector_flux_tiles_preserve_statistics_and_bound_reconstruction(
+    monkeypatch: pytest.MonkeyPatch,
+    multisector_postprocessing_inv_out: Callable[..., InversionOutput],
+    source_specific: bool,
+    inversion_grid: bool,
+) -> None:
+    """Bounded tiles retain the original kernels, paired draws, and full region means."""
+    from dask.callbacks import Callback
+
+    from openghg_inversions.postprocessing.stats import calculate_stats
+
+    coords = {"lat": [4.0, 3.0, 2.0, 1.0, 0.0], "lon": np.arange(7, dtype=float)}
+    labels = xr.DataArray(
+        np.where(np.indices((5, 7))[1] < 3, 1, 2), dims=("lat", "lon"), coords=coords
+    )
+    signed = (np.arange(35).reshape(5, 7) % 7 - 3).astype("float32")
+    flux = xr.DataArray(
+        np.stack([signed, signed[::-1] / 2 + 1])[..., None] * np.array([1, 2, 3], dtype="float32"),
+        dims=("source", "lat", "lon", "flux_time"),
+        coords={
+            "source": ["ff-inventory", "ocean-inventory"],
+            "flux_time": np.array(["2019-01-01", "2019-01-02", "2019-01-03"], dtype="datetime64[ns]"),
+            **coords,
+        },
+        attrs={"units": "mol/m2/s"},
+    )
+    if inversion_grid:
+        flux = flux.isel(flux_time=[0])
+    if source_specific:
+        basis = BasisFunctions.from_multi_source_flat_basis(
+            basis_flat={"ff-inventory": labels, "ocean-inventory": xr.ones_like(labels)},
+            flux=flux,
+            operator_kwargs={"state_dim": "region"},
+        )
+    else:
+        basis = BasisFunctions.from_flat_basis(
+            basis_flat=labels, flux=flux, operator_kwargs={"state_dim": "region"}
+        )
+    inv_out = multisector_postprocessing_inv_out(basis)
+    ocean_regions = 1 if source_specific else 2
+    draws = np.arange(20, dtype="float32")
+    ff = np.stack([draws % 5 - 2, draws % 3 - 1], axis=-1)
+    ocean = np.broadcast_to((2 - draws % 5)[:, None], (20, ocean_regions)).copy()
+    inv_out.trace = az.from_dict(
+        posterior={"x_ff": ff[None, :16], "x_ocean": ocean[None, :16]},
+        prior={"x_ff": ff[None], "x_ocean": ocean[None]},
+        coords=(
+            {"state_ff": [0, 1], "state_ocean": np.arange(ocean_regions)}
+            if source_specific else {"region": [0, 1]}
+        ),
+        dims=(
+            {"x_ff": ["state_ff"], "x_ocean": ["state_ocean"]}
+            if source_specific else {"x_ff": ["region"], "x_ocean": ["region"]}
+        ),
+    )
+    # A different second chain must not silently change the stable converter's behavior.
+    for group in ("prior", "posterior"):
+        original = getattr(inv_out.trace, group)
+        two_chains = xr.concat([original, original + 100], dim="chain").assign_coords(chain=[0, 1])
+        setattr(inv_out.trace, group, two_chains)
+    borrowed = (inv_out.trace, inv_out.basis_functions.operator, inv_out.flux.data)
+    trace_before = {group: getattr(inv_out.trace, group).copy(deep=True) for group in ("prior", "posterior")}
+    flux_before = inv_out.flux.copy(deep=True)
+    stats = ["mean", "stdev"] if inversion_grid else ["mean", "stdev", "quantiles", "hdi"]
+    options = {"stats": stats, "hdi_prob": [0.68, 0.95]}
+
+    sectors, traces, total = make_outputs._multisector_flux_trace_parts(
+        inv_out, report_flux_on_inversion_grid=inversion_grid
+    )
+    assert total["flux_total_posterior"].isel(draw=-1).isnull().all().compute()
+    expected = xr.merge([calculate_stats(item, **options) for item in [total, *traces]])
+    expected = make_outputs._set_multisector_flux_attrs(expected, inv_out, sectors).as_numpy()
+    expected = make_outputs._copy_first_flux_nonfinite_metadata(expected, [total, *traces])
+    expected = make_outputs.add_basis_reconstruction_metadata(expected, inv_out.basis_functions)
+
+    monkeypatch.setattr(make_outputs, "_FLUX_STATS_CHUNKS", {"lat": 2, "lon": 2, "flux_time": 1})
+    sample_payload_sizes = []
+
+    def record_payload(key, value, dsk, state, worker_id):
+        if isinstance(value, np.ndarray) and 20 in value.shape:
+            sample_payload_sizes.append(value.size)
+
+    with Callback(posttask=record_payload):
+        actual = make_flux_outputs(
+            inv_out,
+            stats=options["stats"],
+            stats_args={"hdi_prob": options["hdi_prob"]},
+            include_scale_factors=False,
+            report_flux_on_inversion_grid=inversion_grid,
+        )
+
+    for name in expected.data_vars:
+        assert actual[name].dtype == expected[name].dtype
+        if name.endswith("_stdev"):
+            # Changing spatial strides may move float32 standard deviations by one ULP.
+            np.testing.assert_array_max_ulp(actual[name].values, expected[name].values, maxulp=1)
+            xr.testing.assert_identical(actual[name].copy(data=expected[name].data), expected[name])
+        else:
+            xr.testing.assert_identical(actual[name], expected[name])
+    xr.testing.assert_identical(actual.coords.to_dataset(), expected.coords.to_dataset())
+    assert actual.attrs == expected.attrs
+    if not inversion_grid:
+        assert list(actual.hdi.values) == ["lower", "higher"]
+        assert actual.hdi.attrs == {"hdi_prob": 0.68}
+    assert sample_payload_sizes
+    # At most two sector arrays for one 2x2 tile, with every padded draw retained.
+    assert max(sample_payload_sizes) <= 2 * 2 * 2 * 20
+    assert inv_out.trace is borrowed[0]
+    assert inv_out.basis_functions.operator is borrowed[1]
+    assert inv_out.flux.data is borrowed[2]
+    xr.testing.assert_identical(inv_out.flux, flux_before)
+    for group, original in trace_before.items():
+        xr.testing.assert_identical(getattr(inv_out.trace, group), original)

@@ -243,32 +243,27 @@ def test_latest_paris_flux_output_processes_multisector_sectors(
             coord_offset=1e-10,
         )
     )
-    reconstruction_calls: list[tuple[bool, bool]] = []
+    reduction_calls: list[tuple[tuple[str, ...], bool]] = []
     sector_reconstruction_grids: list[bool] = []
-    original_reconstruct = make_paris_outputs.make_multisector_flux_trace_outputs
+    original_reduce = make_outputs._calculate_flux_stats
     original_sector_reconstruct = make_outputs._sector_flux_trace_dataset
 
-    def record_reconstruction(
-        output: InversionOutput,
-        report_flux_on_inversion_grid: bool = True,
-        *,
-        materialize: bool = True,
-    ) -> xr.Dataset:
-        """Record whether PARIS crosses the eager trace boundary before aggregation."""
-        trace = original_reconstruct(
-            output,
-            report_flux_on_inversion_grid=report_flux_on_inversion_grid,
-            materialize=materialize,
+    def record_reduction(trace: xr.Dataset, **kwargs) -> xr.Dataset:
+        """Record that full traces stay lazy until the bounded reduction boundary."""
+        reduction_calls.append(
+            (
+                tuple(str(name) for name in trace.data_vars),
+                all(not isinstance(value.data, np.ndarray) for value in trace.data_vars.values()),
+            )
         )
-        is_lazy_or_sparse = not isinstance(trace["flux_total_posterior"].data, np.ndarray)
-        reconstruction_calls.append((materialize, is_lazy_or_sparse))
-        return trace
+        return original_reduce(trace, **kwargs)
 
     def record_sector_reconstruction(
         output: InversionOutput,
         sector: make_outputs.OutputSector,
         *,
         report_flux_on_inversion_grid: bool,
+        chunks: dict[str, int] | None = None,
     ) -> xr.Dataset:
         """Record each sector reconstruction and the grid it targets."""
         sector_reconstruction_grids.append(report_flux_on_inversion_grid)
@@ -276,13 +271,10 @@ def test_latest_paris_flux_output_processes_multisector_sectors(
             output,
             sector,
             report_flux_on_inversion_grid=report_flux_on_inversion_grid,
+            chunks=chunks,
         )
 
-    monkeypatch.setattr(
-        make_paris_outputs,
-        "make_multisector_flux_trace_outputs",
-        record_reconstruction,
-    )
+    monkeypatch.setattr(make_outputs, "_calculate_flux_stats", record_reduction)
     monkeypatch.setattr(make_outputs, "_sector_flux_trace_dataset", record_sector_reconstruction)
 
     flux_outputs = paris_flux_output(
@@ -294,7 +286,8 @@ def test_latest_paris_flux_output_processes_multisector_sectors(
     )
 
     assert flux_outputs.attrs["paris_flux_template_version"] == "v03"
-    assert reconstruction_calls == [(False, True)]
+    assert any("flux_total_posterior" in names for names, _ in reduction_calls)
+    assert all(is_lazy for _, is_lazy in reduction_calls)
     assert sector_reconstruction_grids.count(False) == 2
     assert sector_reconstruction_grids.count(True) == 2
     assert "flux_total_posterior" in flux_outputs

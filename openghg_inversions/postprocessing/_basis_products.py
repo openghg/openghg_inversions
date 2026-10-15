@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from dataclasses import replace
+
 import xarray as xr
 
 from openghg_inversions.array_ops import align_sparse_lat_lon, sparse_xr_dot
 from openghg_inversions.basis.basis_functions import BasisFunctions
+from openghg_inversions.basis.operators import BucketBasisOperator
 from openghg_inversions.flux_sanitization import copy_flux_nonfinite_attrs, sanitize_flux_nonfinite
 
 BASIS_RECONSTRUCTION_PATH_ATTR = "basis_reconstruction_path"
@@ -134,6 +138,7 @@ def reconstruct_flux_stats(
     stats_ds: xr.Dataset,
     *,
     report_flux_on_inversion_grid: bool,
+    _chunks: Mapping[str, int] | None = None,
 ) -> xr.Dataset:
     """Reconstruct gridded flux statistics with the retained basis operator.
 
@@ -143,6 +148,9 @@ def reconstruct_flux_stats(
         stats_ds: Statistics in basis-state space.
         report_flux_on_inversion_grid: Report region-mean flux when ``True``;
             otherwise interpolate with prior-flux weights.
+        _chunks: Internal spatial/time chunk limits for per-draw reconstruction.
+            Region means retain the original full-domain reduction before the
+            interpolation operator is chunked.
 
     Returns:
         Reconstructed gridded statistics carrying non-finite policy metadata.
@@ -156,8 +164,32 @@ def reconstruct_flux_stats(
         context="operator-backed flux reconstruction",
         warn=True,
     )
+    region_flux = None
     if report_flux_on_inversion_grid:
         region_flux = _operator_region_flux_mean(basis_functions, flux)
+        if _chunks is not None:
+            # This compact state/time boundary preserves the original spatial
+            # reduction order and avoids repeating global region means per tile.
+            region_flux = region_flux.compute(scheduler="single-threaded").as_numpy()
+
+    if _chunks is not None:
+        operator = basis_functions.operator
+        if isinstance(operator, BucketBasisOperator):
+            operator = BucketBasisOperator(
+                operator.basis_flat,
+                meta=operator.meta,
+                region_labels=operator.region_labels,
+                state_metadata=operator.state_metadata,
+                chunks={dim: size for dim, size in _chunks.items() if dim in operator.meta.grid_dims},
+            )
+            basis_functions = replace(basis_functions, operator=operator)
+        flux = flux.chunk({dim: size for dim, size in _chunks.items() if dim in flux.dims})
+        if region_flux is not None:
+            region_flux = region_flux.chunk(
+                {dim: size for dim, size in _chunks.items() if dim in region_flux.dims}
+            )
+
+    if region_flux is not None:
         state = _to_operator_state_dim(stats_ds, basis_functions) * region_flux
         return copy_flux_nonfinite_attrs(_interpolate_dataset(state, basis_functions, weights=None), flux)
 

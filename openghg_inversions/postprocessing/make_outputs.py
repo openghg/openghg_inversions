@@ -3,6 +3,7 @@ from collections.abc import Mapping
 from typing import Any, Literal, NamedTuple, cast
 
 import numpy as np
+import dask
 import pandas as pd
 import xarray as xr
 
@@ -44,6 +45,45 @@ TRACE_GROUP_SUFFIXES = (
     "_prior",
     "_posterior",
 )
+
+_FLUX_STATS_CHUNKS = {"lat": 32, "lon": 32, "latitude": 32, "longitude": 32, "flux_time": 1}
+
+
+def _calculate_flux_stats(ds: xr.Dataset, **kwargs) -> xr.Dataset:
+    """Reduce one gridded variable and spatial/time tile at a time.
+
+    Reconstruction must already have bounded spatial chunks. Keep the original
+    sample chunks and statistic kernels, and materialize only completed tile
+    statistics before moving on. This bounds live reconstruction intermediates
+    without changing the sample reduction order.
+    """
+    sample_dims = {value for key, value in kwargs.items() if key.endswith("sample_dim")}
+    limits = {dim: size for dim, size in _FLUX_STATS_CHUNKS.items() if dim not in sample_dims}
+
+    def reduce_tile(data: xr.Dataset, dimensions: list[str]) -> xr.Dataset:
+        if dimensions:
+            dim, *remaining = dimensions
+            if data.sizes[dim]:
+                return xr.concat(
+                    [
+                        reduce_tile(data.isel({dim: slice(start, start + limits[dim])}), remaining)
+                        for start in range(0, data.sizes[dim], limits[dim])
+                    ],
+                    dim=dim,
+                    combine_attrs="override",
+                )
+        result = calculate_stats(data, **kwargs)
+        return result.compute().as_numpy()
+
+    # The eager HDI boundary also runs under this scheduler: concurrent tiles
+    # or upstream contractions must not multiply the reconstruction workspace.
+    with dask.config.set(scheduler="single-threaded"):
+        return xr.merge(
+            [reduce_tile(ds[[name]], [dim for dim in limits if dim in ds[name].dims]) for name in ds],
+            combine_attrs="override",
+        )
+
+
 _PRODUCT_METADATA_FIELDS = Literal["species", "domain", "start_date", "end_date"]
 
 
@@ -278,6 +318,7 @@ def _sector_flux_trace_dataset(
     sector: OutputSector,
     *,
     report_flux_on_inversion_grid: bool,
+    chunks: Mapping[str, int] | None = None,
 ) -> xr.Dataset:
     """Return one sector's per-draw reconstructed flux trace."""
     trace = _sector_scale_trace(inv_out, sector)
@@ -288,6 +329,7 @@ def _sector_flux_trace_dataset(
         sector_flux,
         trace,
         report_flux_on_inversion_grid=report_flux_on_inversion_grid,
+        _chunks=chunks,
     )
     reconstructed = rename_by_replacement(reconstructed, "x", "flux")
     return _rename_sector_flux_vars(reconstructed, sector)
@@ -361,6 +403,8 @@ def _copy_first_flux_nonfinite_metadata(ds: xr.Dataset, sources: list[xr.Dataset
 def _multisector_flux_trace_parts(
     inv_out: InversionOutput,
     report_flux_on_inversion_grid: bool = True,
+    *,
+    chunks: Mapping[str, int] | None = None,
 ) -> tuple[list[OutputSector], list[xr.Dataset], xr.Dataset]:
     """Return sector metadata, sector flux traces, and total flux trace."""
     if not inv_out.is_multisector:
@@ -372,6 +416,7 @@ def _multisector_flux_trace_parts(
             inv_out,
             sector,
             report_flux_on_inversion_grid=report_flux_on_inversion_grid,
+            chunks=chunks,
         )
         for sector in sectors
     ]
@@ -514,12 +559,13 @@ def make_sector_flux_outputs(
     sectors, sector_flux_traces, total_flux_trace = _multisector_flux_trace_parts(
         inv_out,
         report_flux_on_inversion_grid=report_flux_on_inversion_grid,
+        chunks=_FLUX_STATS_CHUNKS,
     )
     flux_stats_args = _stats_args_with_defaults(stats, stats_args)
 
-    outputs = [calculate_stats(total_flux_trace, **flux_stats_args)]
+    outputs = [_calculate_flux_stats(total_flux_trace, **flux_stats_args)]
     for sector, flux_trace in zip(sectors, sector_flux_traces, strict=True):
-        outputs.append(calculate_stats(flux_trace, **flux_stats_args))
+        outputs.append(_calculate_flux_stats(flux_trace, **flux_stats_args))
         if include_scale_factors:
             outputs.append(
                 _sector_scale_factor_stats(
