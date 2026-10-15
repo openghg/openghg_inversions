@@ -475,7 +475,8 @@ Advanced whole-model compatibility boundary
 A complete model builder is a retained multisector compatibility escape hatch
 available through ``run_rhime_from_prepared_inputs`` when
 ``run_spec.split_by_sectors=True``.
-The standard prepared-input route accepts alternative or cached preparation, then
+The standard ``run_standard(prepared=..., config=...)`` route accepts alternative
+or cached preparation, then
 uses the same construction, sampling, result and product operations as full and
 saved execution. Its builder takes ``RhimeModelSpec`` without output settings.
 Standard callers must replace ``model_builder`` with ``likelihood_builder`` when
@@ -503,6 +504,7 @@ materialize any lazy arrays they consume:
        add_coords,
        registered_model,
    )
+   from openghg_inversions.postprocessing.contracts import OutputContract
 
 
    def complete_model(
@@ -521,17 +523,19 @@ materialize any lazy arrays they consume:
            )
        return RhimeModelBuildResult(
            model=model,
-           variable_roles={
-               "observation": "mf",
-               "observation_error": "mf_error",
-               "concentration": "custom_y",
-           },
-           supported_output_formats=("none", "inv_out"),
-           metadata={
-               "package": "my-rhime-models",
-               "version": version("my-rhime-models"),
-               "model": "complete_model_v1",
-           },
+           output_contract=OutputContract(
+               variable_roles={
+                   "observation": "mf",
+                   "observation_error": "mf_error",
+                   "concentration": "custom_y",
+               },
+               supported_output_formats=("none", "inv_out"),
+               metadata={
+                   "package": "my-rhime-models",
+                   "version": version("my-rhime-models"),
+                   "model": "complete_model_v1",
+               },
+           ),
        )
 
 

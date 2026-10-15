@@ -8,12 +8,11 @@ Use :func:`run_custom_rhime` from Python or :func:`main` from the command line.
 The standard single-sector stages are preserved, model inputs materialize only
 at the explicit PyMC boundary. This copied runner always acquires fresh data,
 samples a model, and writes its configured outputs. To reuse persisted prepared
-inputs, use :func:`openghg_inversions.rhime.run_rhime_from_prepared_inputs`.
+inputs, use :func:`openghg_inversions.rhime.run_standard` with ``prepared=...``.
 """
 
 from __future__ import annotations
 
-from openghg_inversions.rhime._runner_compat import translate_rhime_aliases
 from openghg_inversions.basis import prepare_basis
 from openghg_inversions.native_flux import resolve_runtime_flux
 from openghg_inversions.basis.support import load_bc_basis
@@ -29,7 +28,8 @@ from openghg_inversions.inversion_data import RhimeMergedData
 from openghg_inversions.rhime import (
     RhimeConfig,
     make_standard_output,
-    write_standard_outputs,
+    save_standard_artifacts,
+    annotate_sample_trace,
     assemble_rhime_inputs,
     build_sensitivities,
     filter_observations,
@@ -39,10 +39,8 @@ from openghg_inversions.rhime import (
     sample_rhime_model,
 )
 from openghg_inversions.rhime.standard import build_standard_model, materialize_standard_inputs
-from openghg_inversions.rhime.outputs import annotate_sample_trace, standard_artifact_paths
+from openghg_inversions.rhime.requests import load_params
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
-from openghg_inversions.serialization import save_trace
-from openghg_inversions._provenance import installed_ogi_provenance
 
 from .likelihoods import likelihood_builder
 
@@ -60,7 +58,7 @@ def run_custom_rhime(
             ``config_file``.
 
     Returns:
-        The sampled result and any outputs requested by the RHIME options.
+        The sampled scientific view; requested files are written before return.
 
     Raises:
         TypeError: If the likelihood builder returns an invalid result type.
@@ -71,12 +69,13 @@ def run_custom_rhime(
         This workflow always acquires fresh data, materializes related model
         arrays together at the named PyMC boundary without mutating canonical
         prepared inputs, runs sampling, and writes outputs requested by the
-        resolved RHIME options.
+        resolved RHIME options. Supported outputs are checked against the built
+        model contract before posterior sampling.
     """
     params = read_rhime_ini(config_file) if config_file is not None else {}
     params.update(kwargs)
     params["mismatch_model"] = None
-    config = RhimeConfig.from_params(translate_rhime_aliases(params), multisector=False)
+    config = RhimeConfig.from_params(load_params(overrides=params), multisector=False)
     validate_output_resources(config.output)
 
     # Resolve selected support files before acquiring observations or flux.
@@ -111,6 +110,7 @@ def run_custom_rhime(
         **basis_inputs,
     )
     if config.data.basis_output_path is not None:
+        Path(config.data.basis_output_path).parent.mkdir(parents=True, exist_ok=True)
         basis_functions.save(config.data.basis_output_path)
     sensitivities = build_sensitivities(
         filtered,
@@ -136,6 +136,7 @@ def run_custom_rhime(
         # This is the deliberate scientific replacement in the copied runner.
         likelihood_builder=likelihood_builder,
     )
+    model_build_result.output_contract.validate_requested_output(config.output.output_format)
     idata = sample_rhime_model(model_build_result, config.sampler)
 
     annotate_sample_trace(model_build_result, idata, likelihood_builder=likelihood_builder)
@@ -143,16 +144,9 @@ def run_custom_rhime(
         prepared=prepared, model_spec=config.model, posterior=idata,
         output_contract=model_build_result.output_contract,
         start_date=config.data.start_date, end_date=config.data.end_date,
-        actual_inference=config.sampler.describe(), provenance=installed_ogi_provenance(),
+        actual_inference=config.sampler.describe(),
     )
-    write_standard_outputs(inv_out, config.output)
-    output_path, trace_path = standard_artifact_paths(inv_out, config.output)
-    if output_path is not None:
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        inv_out.save(output_path)
-    if trace_path is not None:
-        trace_path.parent.mkdir(parents=True, exist_ok=True)
-        save_trace(idata, trace_path)
+    save_standard_artifacts(inv_out, config.output)
     return inv_out
 
 

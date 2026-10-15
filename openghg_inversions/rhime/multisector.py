@@ -66,7 +66,6 @@ from .builders import (
     RhimeModelBuilderContext,
     RhimeModelBuildResult,
     callable_metadata,
-    validate_model_build_result,
 )
 
 from .materialization import materialize_pymc_inputs
@@ -549,7 +548,6 @@ def build_multisector_rhime_model_result(
             multisector=True,
         )
         result = validated_custom_model_build(model_builder, context=builder_context)
-        validate_model_build_result(result, context=builder_context)
     else:
         model_spec = run_spec.model
         if likelihood_builder is not None and model_spec.likelihood is not None:
@@ -804,6 +802,7 @@ def run_multisector(
         likelihood_builder=likelihood_builder,
         likelihood_kwargs=likelihood_kwargs,
     )
+    model_build_result.output_contract.validate_requested_output(run_spec.output.output_format)
     # 4. Inference receives the completed graph and its variable roles.
     idata = sample_rhime_model(
         model_build_result,

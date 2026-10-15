@@ -25,9 +25,8 @@ def run(*, model: str = "standard", **kwargs: Any) -> Any:
         ValueError: If the model name is unsupported.
         TypeError: If arguments do not match the selected recipe's interface.
 
-    Established ``run_standard*`` imports remain available through the 0.9
-    compatibility cycle. See the concrete recipe for scientific options,
-    ownership and output behavior.
+    See the concrete recipe for scientific options, ownership and output
+    behavior. Standard callers may supply ``prepared`` to skip preparation.
     """
     if model == "standard":
         from .standard import run_standard

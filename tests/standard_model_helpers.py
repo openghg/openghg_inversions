@@ -1,14 +1,17 @@
 """Adapt concise array fixtures to the standard eager builder contract."""
 
-from types import SimpleNamespace
-from typing import cast
+from dask import compute
 
 import numpy as np
 import xarray as xr
 
-from openghg_inversions.inversion_data import RhimePreparedInputs
+from openghg_inversions.array_ops import to_dense
 from openghg_inversions.rhime.specs import DEFAULT_X_PRIOR, RhimeModelSpec, SectorSpec
-from openghg_inversions.rhime.standard import build_standard_model, materialize_standard_inputs
+from openghg_inversions.rhime.standard import (
+    _standard_input_names,
+    _standard_prior_parameters,
+    build_standard_model,
+)
 
 
 def build_standard_graph(
@@ -33,8 +36,14 @@ def build_standard_graph(
         species="ch4", domain="EUROPE", sectors=(SectorSpec("total", "inventory", prior, "total"),),
         likelihood=likelihood_settings, aggregation_error_mode=aggregation_error.mode, **options,
     )
-    prepared = cast(RhimePreparedInputs, SimpleNamespace(inv_inputs=inputs))
-    model_inputs, priors = materialize_standard_inputs(prepared, spec)
+    selected_priors = {
+        name: {key: to_dense(value) if isinstance(value, xr.DataArray) else value
+               for key, value in params.items()}
+        for name, params in _standard_prior_parameters(spec).items()
+    }
+    model_inputs, priors = compute(
+        inputs[list(_standard_input_names(inputs, spec))].map(to_dense), selected_priors,
+    )
     return build_standard_model(
         model_inputs, spec, priors=priors, likelihood_builder=likelihood_builder,
         likelihood_kwargs=likelihood_kwargs, sigma_alignment=sigma_alignment,

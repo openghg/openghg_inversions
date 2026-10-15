@@ -11,7 +11,9 @@ import xarray as xr
 
 from openghg_inversions.inversion_data import RhimeMergedData
 from openghg_inversions.rhime.params import RhimeConfig
+from openghg_inversions.rhime.requests import load_params
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
+from openghg_inversions.postprocessing.contracts import OutputContract
 
 from examples.rhime_customisation import likelihoods
 from examples.rhime_customisation import runner as custom_runner
@@ -81,7 +83,7 @@ def test_custom_runner_uses_supported_stages_for_acquisition(
         averaging_period=("1h",),
         basis_artifact_source="test-basis",
     )
-    output_contract = object()
+    output_contract = OutputContract(variable_roles={"flux_scale": "x"}, supported_output_formats=("none", "inv_out"))
     build_result = SimpleNamespace(output_contract=output_contract)
     idata = xr.DataTree()
     model_inputs = prepared.inv_inputs
@@ -94,7 +96,7 @@ def test_custom_runner_uses_supported_stages_for_acquisition(
         return {"output_format": "none"}
 
     def resolve(cls, params: dict[str, Any], *, multisector: bool) -> Any:
-        assert params == {"output_format": "none", **overrides, "mismatch_model": None}
+        assert params == load_params(overrides={"output_format": "none", **overrides, "mismatch_model": None})
         assert multisector is False
         calls.append("resolve")
         return config
@@ -210,8 +212,7 @@ def test_custom_runner_uses_supported_stages_for_acquisition(
     monkeypatch.setattr(custom_runner, "sample_rhime_model", sample)
     monkeypatch.setattr(custom_runner, "annotate_sample_trace", annotate)
     monkeypatch.setattr(custom_runner, "make_standard_output", make_result)
-    monkeypatch.setattr(custom_runner, "write_standard_outputs", write_outputs)
-    monkeypatch.setattr(custom_runner, "standard_artifact_paths", lambda *args: (None, None))
+    monkeypatch.setattr(custom_runner, "save_standard_artifacts", write_outputs)
 
     result = custom_runner.run_custom_rhime(config_file=config_file, **overrides)
 

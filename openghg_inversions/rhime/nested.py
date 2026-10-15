@@ -10,6 +10,8 @@ built, and combines only the two observation-aligned sensitivity matrices.
 
 from __future__ import annotations
 
+from openghg_inversions.postprocessing.contracts import OutputContract
+
 from openghg_inversions.native_flux import resolve_runtime_flux
 from openghg_inversions.basis.support import load_bc_basis
 from openghg_inversions.basis import prepare_basis
@@ -51,9 +53,13 @@ from .builders import (
     RhimeModelBuilderContext,
     RhimeModelBuildResult,
     validate_model_build_result,
+    callable_metadata,
 )
 from .materialization import materialize_pymc_inputs
-from .outputs import RhimeResult, _make_inversion_output, validate_output_resources, annotate_sample_trace
+from .outputs import (
+    RhimeResult, _make_inversion_output, validate_output_resources,
+    annotate_sample_trace, annotate_likelihood_trace,
+)
 from .ini import read_rhime_ini
 from .params import DataConfig, RhimeConfig
 from .preparation import (
@@ -75,7 +81,7 @@ from .specs import (
     RhimeModelSpec,
     RhimeRunSpec,
 )
-from .standard import make_standard_rhime_result, standard_model_input_names
+from .standard import standard_model_input_names
 
 __all__ = [
     "NestedRhimePreparedInputs",
@@ -1264,19 +1270,21 @@ def build_nested_rhime_model_result(
         roles["offset"] = "offset"
     result = RhimeModelBuildResult(
         model=model,
-        variable_roles=roles,
-        supported_output_formats=("none", "paris"),
-        metadata={
-            "kind": "builtin_nested",
-            "outer_state_dimension": _state_dimension(
-                prepared.combined.inv_inputs["H"],
-                label="Outer",
-            ),
-            "inner_state_dimension": _state_dimension(
-                prepared.combined.inv_inputs["H_inner"],
-                label="Inner",
-            ),
-        },
+        output_contract=OutputContract(
+            variable_roles=roles,
+            supported_output_formats=("none", "paris"),
+            metadata={
+                "kind": "builtin_nested",
+                "outer_state_dimension": _state_dimension(
+                    prepared.combined.inv_inputs["H"],
+                    label="Outer",
+                ),
+                "inner_state_dimension": _state_dimension(
+                    prepared.combined.inv_inputs["H_inner"],
+                    label="Inner",
+                ),
+            },
+        ),
     )
     validate_model_build_result(
         result,
@@ -1287,6 +1295,60 @@ def build_nested_rhime_model_result(
         ),
     )
     return result
+
+
+def _make_nested_rhime_result(
+    *,
+    prepared: RhimePreparedInputs,
+    run_spec: RhimeRunSpec,
+    sampler: RhimeSampler,
+    model_build_result: RhimeModelBuildResult,
+    idata: xr.DataTree,
+    build_and_sample_seconds: float,
+    likelihood_builder: RhimeLikelihoodBuilder | None = None,
+    likelihood_kwargs: Mapping[str, Any] | None = None,
+) -> RhimeResult:
+    """Construct the nested runner compatibility result before output side effects.
+
+    Args:
+        prepared: Retained canonical inputs and basis functions.
+        run_spec: Resolved model, output, and run settings.
+        sampler: Live sampler used for the trace.
+        model_build_result: Concrete graph and its output contract.
+        idata: Borrowed posterior and predictive groups. Trace metadata is
+            annotated in place when ``likelihood_builder`` is supplied.
+        build_and_sample_seconds: Combined graph-build and sampling duration.
+        likelihood_builder: Optional likelihood callable used for provenance.
+        likelihood_kwargs: Serializable options owned by the likelihood.
+
+    Returns:
+        Nested-run compatibility result ready for output construction.
+    """
+    output_metadata: dict[str, Any] = {
+        "build_and_sample_seconds": build_and_sample_seconds,
+    }
+    if likelihood_builder is not None:
+        identity = callable_metadata(likelihood_builder)
+        output_metadata["likelihood_builder"] = identity
+        annotate_likelihood_trace(
+            idata,
+            builder_identity=identity,
+            likelihood_kwargs=likelihood_kwargs,
+        )
+    if likelihood_kwargs is not None:
+        output_metadata["likelihood_kwargs"] = likelihood_kwargs
+    return RhimeResult(
+        run_spec=run_spec,
+        model_spec=run_spec.model,
+        output_spec=run_spec.output,
+        inv_inputs=prepared.inv_inputs,
+        idata=idata,
+        sampler=sampler,
+        model=model_build_result.model,
+        basis_functions=prepared.basis_functions,
+        model_build_result=model_build_result,
+        output_metadata=output_metadata,
+    )
 
 
 def _write_nested_paris_outputs(nested_result: NestedRhimeResult) -> None:
@@ -1436,7 +1498,7 @@ def run_rhime_nested_from_prepared_inputs(
     )
     idata = sample_rhime_model(build_result, active_sampler)
     annotate_sample_trace(build_result, idata)
-    result = make_standard_rhime_result(
+    result = _make_nested_rhime_result(
         prepared=prepared_inputs.combined,
         run_spec=run_spec,
         sampler=active_sampler,
@@ -1448,8 +1510,8 @@ def run_rhime_nested_from_prepared_inputs(
     )
     nested_result = NestedRhimeResult(rhime_result=result, prepared_inputs=prepared_inputs)
     result.output_metadata["nested_domains"] = {
-        "outer_state_dimension": build_result.metadata["outer_state_dimension"],
-        "inner_state_dimension": build_result.metadata["inner_state_dimension"],
+        "outer_state_dimension": build_result.output_contract.metadata["outer_state_dimension"],
+        "inner_state_dimension": build_result.output_contract.metadata["inner_state_dimension"],
         "inner_domain_label": prepared_inputs.inner_domain_label,
         "outer_overlap_mask_policy": prepared_inputs.outer_overlap_mask_policy,
         "outer_grid": _grid_identity(prepared_inputs.outer),

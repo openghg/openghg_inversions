@@ -13,7 +13,9 @@ import xarray as xr
 
 from openghg_inversions.inversion_data import RhimeMergedData, SiteOptions
 from openghg_inversions.rhime.params import RhimeConfig
+from openghg_inversions.rhime.requests import load_params
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
+from openghg_inversions.postprocessing.contracts import OutputContract
 
 from openghg_inversions.basis.basis_functions import BasisFunctions
 
@@ -57,7 +59,7 @@ def test_custom_basis_runner_replaces_only_basis_stage(
     project_basis_path.touch()
     overrides = {"draws": 3}
     parsed_params = {
-        "from_config": True,
+        "species": "ch4",
         "max_child_pca_eccentricity": 6.5,
         **overrides,
     }
@@ -86,7 +88,7 @@ def test_custom_basis_runner_replaces_only_basis_stage(
         averaging_period=("1h",),
         basis_artifact_source=basis.basis_artifact_source,
     )
-    output_contract = object()
+    output_contract = OutputContract(variable_roles={"flux_scale": "x"}, supported_output_formats=("none", "inv_out"))
     build_result = SimpleNamespace(output_contract=output_contract)
     idata = xr.DataTree()
     model_inputs = prepared.inv_inputs
@@ -101,7 +103,7 @@ def test_custom_basis_runner_replaces_only_basis_stage(
 
     def resolve(cls, params: dict[str, Any], *, multisector: bool) -> Any:
         """Record recipe resolution after project options have been consumed."""
-        assert params == {"from_config": True, **overrides}
+        assert params == load_params(overrides={"species": "ch4", **overrides})
         assert multisector is False
         calls.append("resolve")
         return config
@@ -211,8 +213,7 @@ def test_custom_basis_runner_replaces_only_basis_stage(
     monkeypatch.setattr(custom_basis_runner, "sample_rhime_model", sample)
     monkeypatch.setattr(custom_basis_runner, "annotate_sample_trace", annotate)
     monkeypatch.setattr(custom_basis_runner, "make_standard_output", make_result)
-    monkeypatch.setattr(custom_basis_runner, "write_standard_outputs", write_outputs)
-    monkeypatch.setattr(custom_basis_runner, "standard_artifact_paths", lambda *args: (None, None))
+    monkeypatch.setattr(custom_basis_runner, "save_standard_artifacts", write_outputs)
 
     result = custom_basis_runner.run_custom_rhime(
         config_file=config_file,

@@ -138,8 +138,9 @@ def _check_saved_family(args: argparse.Namespace) -> None:
     """Reject an explicit selector that contradicts a current saved handoff."""
     manifest = args.sample_manifest if args.command == "postprocess" else args.preparation_manifest
     record = json.loads(Path(manifest).read_text(encoding="utf-8"))
-    if isinstance(record, dict) and record.get("family") not in (None, args.model):
-        raise ValueError(f"Saved family {record['family']!r} does not match --model {args.model!r}.")
+    schema = record.get("schema", "") if isinstance(record, dict) else ""
+    if schema.startswith("openghg_inversions.standard.") and args.model != "standard":
+        raise ValueError(f"Saved standard checkpoint does not match --model {args.model!r}.")
 
 def _prior_predictive_command(args: argparse.Namespace) -> None:
     """Run the prior-predictive readiness check for the selected family."""

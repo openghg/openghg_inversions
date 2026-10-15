@@ -234,7 +234,8 @@ def prior_predictive_stage(
     )
     return prior_predictive_check(
         lambda: _build_prepared_model(prepared, run_spec),
-        draws=draws, destination=destination, check_output=check_output, stage=stage,
+        draws=draws, destination=destination,
+        report=_output_path(destination, check_output, "prior-predictive-readiness.json"), stage=stage,
     )
 
 

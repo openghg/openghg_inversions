@@ -16,6 +16,8 @@ import pymc as pm
 from pymc.initial_point import convert_str_to_rv_dict, make_initial_point_fn  # type: ignore[import-untyped]
 import xarray as xr
 
+from openghg_inversions.postprocessing.contracts import OutputContract
+
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
 from openghg_inversions.models.priors import PriorArgs
@@ -352,8 +354,10 @@ def co2_cached_sigma_build_result(
             variable_roles[role] = name
     built = RhimeModelBuildResult(
         model=cached_model.model,
-        variable_roles=variable_roles,
-        metadata=metadata,
+        output_contract=OutputContract(
+            variable_roles=variable_roles,
+            metadata=metadata,
+        ),
     )
     return built
 

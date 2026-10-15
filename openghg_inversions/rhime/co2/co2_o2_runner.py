@@ -11,6 +11,8 @@ from dask.array import Array as DaskArray
 import numpy as np
 import xarray as xr
 
+from openghg_inversions.postprocessing.contracts import OutputContract
+
 from openghg_inversions.array_ops import to_dense
 from openghg_inversions.models import StateActivity
 from openghg_inversions.models.priors import PriorArgs, prior_records
@@ -192,12 +194,12 @@ def _annotate_co2_o2_trace(
     trace.attrs["rhime_priors"] = json.dumps(prior_records(built.model))
     trace.attrs["rhime_recipe"] = "co2_o2"
     trace.attrs["rhime_variable_roles"] = json.dumps(
-        dict(built.variable_roles),
+        dict(built.output_contract.variable_roles),
         sort_keys=True,
     )
-    trace.attrs["rhime_model_metadata"] = json.dumps(dict(built.metadata), sort_keys=True)
+    trace.attrs["rhime_model_metadata"] = json.dumps(dict(built.output_contract.metadata), sort_keys=True)
     roles_by_variable: dict[str, list[str]] = {}
-    for role, variable in built.variable_roles.items():
+    for role, variable in built.output_contract.variable_roles.items():
         roles_by_variable.setdefault(variable, []).append(role)
 
     concentration_variables = {
@@ -210,7 +212,7 @@ def _annotate_co2_o2_trace(
         "epsilon",
     }
     concentration_variables.update(
-        variable for role, variable in built.variable_roles.items() if role.endswith("concentration")
+        variable for role, variable in built.output_contract.variable_roles.items() if role.endswith("concentration")
     )
     state_variables = {
         "flux_scaling",
@@ -395,8 +397,10 @@ def run_rhime_co2_o2_from_prepared_inputs(
         metadata["likelihood"] = "joint Gaussian with fixed OU blocks by (species, site)"
     built = RhimeModelBuildResult(
         model=model,
-        variable_roles=variable_roles,
-        metadata=metadata,
+        output_contract=OutputContract(
+            variable_roles=variable_roles,
+            metadata=metadata,
+        ),
     )
     trace = sample_rhime_model(built, sampler)
     trace = _annotate_co2_o2_trace(trace, built=built)

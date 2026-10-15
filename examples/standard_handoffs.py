@@ -71,7 +71,7 @@ def run_example(destination: Path, *, multiple_sources: bool = False) -> None:
     preparation = DataConfig.from_params(preparation_options)
     manifest = handoffs.prepare(preparation, output_dir=destination / "prepared", merged_data=merged)
     preparation_bytes = manifest.read_bytes()
-    prepared, _ = handoffs.load_preparation(manifest)
+    prepared, _, _ = handoffs.load_preparation(manifest)
     np.testing.assert_allclose(prepared.inv_inputs.H, h[None, :])
     np.testing.assert_allclose(prepared.inv_inputs.mf_error, .1)
     xr.testing.assert_equal(site, original)

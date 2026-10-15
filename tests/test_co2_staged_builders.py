@@ -61,7 +61,7 @@ def test_unsampled_builders_and_correlated_cached_prior(monkeypatch: Any, tmp_pa
         monkeypatch.setattr(module, "sample_rhime_model", unexpected_sampling)
     prepared = cast(Any, Prepared())
     ordinary = build_rhime_co2(prepared_inputs=prepared, no_model_error=True)
-    assert ordinary.variable_roles["model_mean"] == "modelled_concentration"
+    assert ordinary.output_contract.variable_roles["model_mean"] == "modelled_concentration"
     cached = build_rhime_co2_cached_sigma(
         prepared_inputs=prepared,
         tau_hours=4.0,

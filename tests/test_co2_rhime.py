@@ -712,7 +712,7 @@ def test_public_co2_runner_selects_fixed_ou_likelihood(monkeypatch: Any) -> None
     assert {"modelled_concentration", "y", "epsilon", "ou_site_amplitude"} <= set(
         model.named_vars
     )
-    assert set(built.variable_roles.values()) <= set(model.named_vars)
+    assert set(built.output_contract.variable_roles.values()) <= set(model.named_vars)
     assert "sigma" not in model.named_vars
 
     mean, actual_logp = _initial_mean_and_observed_logp(model)
@@ -757,7 +757,7 @@ def test_public_co2_runner_selects_iid_site_sigma_likelihood(monkeypatch: Any) -
     )
     assert aggregation_error.covariance.values[0, 1] != 0.0
     assert {"modelled_concentration", "y", "epsilon", "sigma_site"} <= set(model.named_vars)
-    assert set(built.variable_roles.values()) <= set(model.named_vars)
+    assert set(built.output_contract.variable_roles.values()) <= set(model.named_vars)
     assert "sigma" not in model.named_vars
 
     mean, actual_logp = _initial_mean_and_observed_logp(model)

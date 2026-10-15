@@ -9,7 +9,7 @@ from typing import Any, ClassVar, Literal, TYPE_CHECKING, cast, get_args, get_ty
 
 from openghg_inversions.inversion_inputs import DatetimeLike
 from openghg_inversions.rhime._resources import resolve_resource_paths
-from openghg_inversions.models.priors import PriorArgs
+from openghg_inversions.models.priors import PriorArgs, trace_prior_records
 from openghg_inversions.models.additive_sigma import DEFAULT_ADDITIVE_SIGMA_PRIOR
 from openghg_inversions.models.state_activity import StateActivity
 from openghg_inversions.observation_error import AggregationErrorMode
@@ -329,11 +329,7 @@ class RhimeModelSpec:
             ValueError: If activity policies cannot be recorded, trace prior metadata
                 is missing, or the model contradicts the preparation.
         """
-        from openghg_inversions.models.priors import trace_prior_records
-
         self.validate_recordable()
-        if "rhime_priors" not in trace.attrs:
-            raise ValueError("Saved samples require construction-owned `rhime_priors` trace metadata.")
         if (self.species != data_config.species or self.domain != data_config.domain
                 or tuple(sector.flux_source for sector in self.sectors) != data_config.flux_sources
                 or (self.use_bc and not data_config.use_bc)):

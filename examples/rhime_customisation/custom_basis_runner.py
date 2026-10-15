@@ -29,7 +29,6 @@ from typing import Any
 import numpy as np
 import xarray as xr
 
-from openghg_inversions.rhime._runner_compat import translate_rhime_aliases
 from openghg_inversions.basis import (
     BasisFunctions,
     basis_functions_from_flat_basis,
@@ -52,7 +51,8 @@ from openghg_inversions.basis.support import load_bc_basis
 from openghg_inversions.rhime import (
     RhimeConfig,
     make_standard_output,
-    write_standard_outputs,
+    save_standard_artifacts,
+    annotate_sample_trace,
     assemble_rhime_inputs,
     build_sensitivities,
     filter_observations,
@@ -62,10 +62,8 @@ from openghg_inversions.rhime import (
     sample_rhime_model,
 )
 from openghg_inversions.rhime.standard import build_standard_model, materialize_standard_inputs
-from openghg_inversions.rhime.outputs import annotate_sample_trace, standard_artifact_paths
+from openghg_inversions.rhime.requests import load_params
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
-from openghg_inversions.serialization import save_trace
-from openghg_inversions._provenance import installed_ogi_provenance
 
 
 DEFAULT_MAX_CHILD_PCA_ECCENTRICITY = 10.0
@@ -253,7 +251,7 @@ def run_custom_rhime(
             before standard configuration resolution.
 
     Returns:
-        The sampled result and any outputs requested by the RHIME options.
+        The sampled scientific view; requested files are written before return.
 
     Raises:
         OSError: If configured artifact, input, or output I/O fails.
@@ -263,7 +261,8 @@ def run_custom_rhime(
     Notes:
         This workflow acquires data, may eagerly fit or load a
         basis, eagerly materializes PyMC model inputs, runs sampling, and writes
-        outputs requested by the resolved RHIME options.
+        outputs requested by the resolved RHIME options. Supported outputs are
+        checked against the built model contract before posterior sampling.
     """
     params = read_rhime_ini(config_file) if config_file is not None else {}
     params.update(kwargs)
@@ -280,7 +279,7 @@ def run_custom_rhime(
     # A built-in algorithm choice is irrelevant to this copied recipe.
     params.pop("basis_algorithm", None)
     params.pop("basis_path", None)
-    config = RhimeConfig.from_params(translate_rhime_aliases(params), multisector=False)
+    config = RhimeConfig.from_params(load_params(overrides=params), multisector=False)
     validate_output_resources(config.output)
     bc_basis = load_bc_basis(config.data.bc_basis_paths) if config.data.use_bc and config.data.bc_basis_paths is not None else None
 
@@ -319,6 +318,9 @@ def run_custom_rhime(
         project_basis_path=project_basis_path,
         max_child_pca_eccentricity=max_child_pca_eccentricity,
     )
+    if config.data.basis_output_path is not None:
+        Path(config.data.basis_output_path).parent.mkdir(parents=True, exist_ok=True)
+        basis_functions.save(config.data.basis_output_path)
     sensitivities = build_sensitivities(
         filtered,
         basis_functions,
@@ -341,6 +343,7 @@ def run_custom_rhime(
     model_build_result = build_standard_model(
         model_inputs, config.model, priors=priors,
     )
+    model_build_result.output_contract.validate_requested_output(config.output.output_format)
     idata = sample_rhime_model(model_build_result, config.sampler)
 
     annotate_sample_trace(model_build_result, idata, likelihood_builder=None)
@@ -348,16 +351,9 @@ def run_custom_rhime(
         prepared=prepared, model_spec=config.model, posterior=idata,
         output_contract=model_build_result.output_contract,
         start_date=config.data.start_date, end_date=config.data.end_date,
-        actual_inference=config.sampler.describe(), provenance=installed_ogi_provenance(),
+        actual_inference=config.sampler.describe(),
     )
-    write_standard_outputs(inv_out, config.output)
-    output_path, trace_path = standard_artifact_paths(inv_out, config.output)
-    if output_path is not None:
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        inv_out.save(output_path)
-    if trace_path is not None:
-        trace_path.parent.mkdir(parents=True, exist_ok=True)
-        save_trace(idata, trace_path)
+    save_standard_artifacts(inv_out, config.output)
     return inv_out
 
 

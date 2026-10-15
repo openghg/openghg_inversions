@@ -55,6 +55,7 @@ def make_inversion_output(
         for site in prepared.sites
     }
     model_metadata["variable_roles"] = dict(contract.variable_roles)
+    model_metadata["supported_output_formats"] = list(contract.supported_output_formats)
     if contract.state_dimension_mapping:
         model_metadata["state_dimension_mapping"] = dict(contract.state_dimension_mapping)
     if contract.metadata:

@@ -84,12 +84,12 @@ def _stage_output_directory(output_dir: str | Path) -> Path:
 
 
 def _validate_filename_component(name: str, value: Any) -> None:
-    """Validate a value interpolated into staged output filenames."""
+    """Validate one value interpolated into an output filename."""
     text = str(value)
     path = Path(text)
     if not text or text in {".", ".."} or path.is_absolute() or path.name != text:
         raise ValueError(
-            f"Staged RHIME {name} {value!r} must be a non-empty filename component without directories."
+            f"{name} {value!r} must be a non-empty filename component without directories."
         )
 
 

@@ -259,9 +259,9 @@ def prior_records(model: pm.Model) -> dict[str, PriorArgs]:
 def trace_prior_records(trace: xr.DataTree) -> dict[str, PriorArgs]:
     """Read constructed prior metadata and validate its required array references."""
     try:
-        records = json.loads(trace.attrs.get("rhime_priors", "{}"))
-    except (TypeError, ValueError) as exc:
-        raise ValueError("Trace `rhime_priors` must contain a JSON mapping.") from exc
+        records = json.loads(trace.attrs["rhime_priors"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("Trace requires construction-owned `rhime_priors` containing a JSON mapping.") from exc
     if not isinstance(records, dict) or any(not isinstance(prior, dict) for prior in records.values()):
         raise ValueError("Trace `rhime_priors` must map prior names to parameter mappings.")
     for prior in records.values():

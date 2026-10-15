@@ -4,16 +4,15 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from pathlib import Path
+import os
 from typing import Any, Literal
 from uuid import uuid4
 
 import xarray as xr
 
 from openghg_inversions._provenance import installed_ogi_provenance
-from openghg_inversions._timing import timed, timer_seconds, timer_start
 from openghg_inversions.inference.sampling import RhimeSampler, resolve_sampler
 from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs
-from openghg_inversions.models.priors import trace_prior_records
 from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.serialization import load_trace, save_trace
@@ -25,8 +24,7 @@ from ._stage_artifacts import (
 from ._stage_checks import _check_draws, _check_stage, prior_predictive_check
 from .builders import RhimeLikelihoodBuilder
 from .outputs import (
-    annotate_sample_trace, make_standard_output, standard_artifact_paths,
-    write_standard_outputs,
+    annotate_sample_trace, make_standard_output, save_standard_artifacts, validate_output_resources,
 )
 from .sampling import sample_rhime_model
 from .params import DataConfig, resolve_model_options
@@ -81,7 +79,6 @@ def save_preparation(
         "schema": "openghg_inversions.standard.prepare", "schema_version": 1,
         "producer": "openghg_inversions", "stage": "prepare", "generation": uuid4().hex,
         "prepared_inputs": "prepared-inputs.nc", "data": data_config.to_params(),
-        "basis_artifact_source": prepared.basis_artifact_source,
     })
 
 
@@ -98,7 +95,7 @@ def _load_preparation(
     return prepared, data_config, record["generation"], payload
 
 
-def load_preparation(manifest: str | Path) -> tuple[RhimePreparedInputs, DataConfig]:
+def load_preparation(manifest: str | Path) -> tuple[RhimePreparedInputs, DataConfig, str]:
     """Load prepared inputs and their recorded acquisition/preparation choices.
 
     Args:
@@ -106,14 +103,15 @@ def load_preparation(manifest: str | Path) -> tuple[RhimePreparedInputs, DataCon
             resolve beside it; absolute shared-cache references are accepted.
 
     Returns:
-        Prepared inputs and their data configuration.
+        Prepared inputs, their data configuration and the generation to pass
+        to :func:`save_samples` after inference.
 
     Raises:
         ValueError: If the manifest, generation or recorded choices are invalid.
         FileNotFoundError: If the manifest or numerical payload is missing.
     """
-    prepared, data_config, _, _ = _load_preparation(manifest)
-    return prepared, data_config
+    prepared, data_config, generation, _ = _load_preparation(manifest)
+    return prepared, data_config, generation
 
 
 def prepare(
@@ -132,7 +130,6 @@ def prepare(
     Raises:
         ValueError: If the data configuration or supplied inputs conflict.
     """
-    _require_standard(data_config)
     prepared = prepare_inputs(data_config, merged_data=merged_data)
     if data_config.basis_output_path is not None:
         data_config.basis_output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -143,8 +140,7 @@ def prepare(
 def save_samples(
     preparation_manifest: str | Path, posterior: xr.DataTree, *,
     output_contract: OutputContract, model: RhimeModelSpec,
-    actual_inference: Mapping[str, Any], build_and_sample_seconds: float,
-    output_dir: str | Path, preparation_generation: str | None = None,
+    actual_inference: Mapping[str, Any], output_dir: str | Path, preparation_generation: str,
 ) -> Path:
     """Save samples bound to one completed preparation generation.
 
@@ -156,10 +152,9 @@ def save_samples(
         output_contract: Scientific roles of the sampled graph.
         model: Model choices used for sampling.
         actual_inference: Recorded sampler invocation.
-        build_and_sample_seconds: Duration of construction and sampling.
         output_dir: Caller-selected sample checkpoint directory.
-        preparation_generation: Generation captured before inference. Omission
-            binds an external caller's samples to the current preparation.
+        preparation_generation: Generation returned by :func:`load_preparation`
+            before inference; it must still match at this saving boundary.
 
     Returns:
         Absolute path of the completed sample manifest.
@@ -170,8 +165,7 @@ def save_samples(
     """
     output_contract.validate_trace(posterior)
     preparation_path, preparation = _preparation_record(preparation_manifest)
-    if preparation_generation is not None:
-        _check_generation(preparation_path, preparation, preparation_generation)
+    _check_generation(preparation_path, preparation, preparation_generation)
     data_config = DataConfig.from_params(preparation["data"])
     model_record = model.to_record(trace=posterior, data_config=data_config)
     destination = start_checkpoint(
@@ -182,10 +176,10 @@ def save_samples(
     return finish_checkpoint(destination, "sample", {
         "schema": "openghg_inversions.standard.sample", "schema_version": 1,
         "producer": "openghg_inversions", "stage": "sample",
-        "preparation": str(preparation_path), "preparation_generation": preparation["generation"],
+        "preparation": os.path.relpath(preparation_path, destination), "preparation_generation": preparation["generation"],
         "posterior": "posterior.nc", "output_contract": output_contract.to_dict(),
         "model": model_record, "actual_inference": dict(actual_inference),
-        "build_and_sample_seconds": build_and_sample_seconds, "provenance": installed_ogi_provenance(),
+        "provenance": installed_ogi_provenance(),
     })
 
 
@@ -214,13 +208,12 @@ def sample(
     """
     sampler = resolve_sampler(sampler)
     prepared, data_config, generation, payload = _load_preparation(preparation_manifest)
-    model_spec = resolve_model_options(model, data=data_config)
+    model_spec = resolve_model_options(model, data_config=data_config)
     model_spec.validate_recordable()
     check_checkpoint_targets(
         Path(output_dir).resolve(), stage="sample", payloads=("posterior.nc",),
         referenced=(Path(preparation_manifest).resolve(), payload),
     )
-    started = timer_start()
     model_inputs, priors = materialize_standard_inputs(prepared, model_spec)
     built = build_standard_model(
         model_inputs, model_spec, priors=priors,
@@ -231,7 +224,7 @@ def sample(
     return save_samples(
         preparation_manifest, posterior, output_contract=built.output_contract,
         model=model_spec, actual_inference=sampler.describe(),
-        build_and_sample_seconds=timer_seconds(started), output_dir=output_dir,
+        output_dir=output_dir,
         preparation_generation=generation,
     )
 
@@ -253,7 +246,7 @@ def load_samples(sample_manifest: str | Path) -> InversionOutput:
     """
     path, record = read_manifest(sample_manifest, "openghg_inversions.standard.sample", (
         "preparation", "preparation_generation", "posterior", "output_contract", "model",
-        "build_and_sample_seconds",
+        "actual_inference", "provenance",
     ))
     preparation_path = reference(path, record["preparation"])
     if not isinstance(record["preparation_generation"], str) or not record["preparation_generation"]:
@@ -262,16 +255,13 @@ def load_samples(sample_manifest: str | Path) -> InversionOutput:
         preparation_path, expected_generation=record["preparation_generation"],
     )
     posterior = load_trace(reference(path, record["posterior"]))
-    if "rhime_priors" not in posterior.attrs:
-        raise ValueError("Saved samples require construction-owned `rhime_priors` trace metadata.")
-    trace_prior_records(posterior)
     output_contract = OutputContract.from_dict(record["output_contract"])
     output_contract.validate_trace(posterior)
     model_spec = RhimeModelSpec.from_record(record["model"], trace=posterior, data_config=data_config)
     inv_out = make_standard_output(
         prepared=prepared, model_spec=model_spec, posterior=posterior,
         output_contract=output_contract, start_date=data_config.start_date, end_date=data_config.end_date,
-        actual_inference=record.get("actual_inference"), provenance=record.get("provenance", {}),
+        actual_inference=record["actual_inference"], provenance=record["provenance"],
     )
     return inv_out
 
@@ -290,17 +280,9 @@ def postprocess(sample_manifest: str | Path, *, output: RhimeOutputSpec) -> Inve
         ValueError: If checkpoint generation, scientific records or requested
             products are incompatible.
     """
+    validate_output_resources(output)
     inv_out = load_samples(sample_manifest)
-    write_standard_outputs(inv_out, output)
-    inversion_path, trace_path = standard_artifact_paths(inv_out, output)
-    if inversion_path is not None:
-        inversion_path.parent.mkdir(parents=True, exist_ok=True)
-        with timed("rhime.output.inversion_output_save"):
-            inv_out.save(inversion_path)
-    if trace_path is not None:
-        trace_path.parent.mkdir(parents=True, exist_ok=True)
-        with timed("rhime.output.trace_save"):
-            save_trace(inv_out.trace, trace_path)
+    save_standard_artifacts(inv_out, output)
     return inv_out
 
 
@@ -329,7 +311,7 @@ def prior_predictive(
     stage = _check_stage(stage)
     _check_draws(draws)
     prepared, data_config, _, payload = _load_preparation(preparation_manifest)
-    model_spec = resolve_model_options(model, data=data_config)
+    model_spec = resolve_model_options(model, data_config=data_config)
     destination = Path(output_dir).resolve()
     report = _output_path(destination, check_output, "prior-predictive-readiness.json")
     check_checkpoint_targets(
@@ -347,5 +329,5 @@ def prior_predictive(
         )
 
     return prior_predictive_check(
-        build, draws=draws, destination=destination, check_output=check_output, stage=stage,
+        build, draws=draws, destination=destination, report=report, stage=stage,
     )

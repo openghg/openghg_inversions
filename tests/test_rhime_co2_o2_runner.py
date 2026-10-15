@@ -15,6 +15,8 @@ import pymc as pm
 import pytest
 import xarray as xr
 
+from openghg_inversions.postprocessing.contracts import OutputContract
+
 from openghg_inversions.models.priors import parse_prior
 from openghg_inversions.rhime.builders import RhimeModelBuildResult
 from openghg_inversions.rhime import co2 as co2_public
@@ -53,7 +55,12 @@ def test_trace_annotation_labels_total_marginal_error() -> None:
 
     with pm.Model() as model:
         parse_prior("scale", {"pdf": "halfnormal", "sigma": 1.0})
-    built = RhimeModelBuildResult(model=model, variable_roles=_CO2_O2_VARIABLE_ROLES)
+    built = RhimeModelBuildResult(
+        model=model,
+        output_contract=OutputContract(
+            variable_roles=_CO2_O2_VARIABLE_ROLES,
+        ),
+    )
     co2_o2_runner._annotate_co2_o2_trace(trace, built=built)
 
     assert json.loads(trace.attrs["rhime_priors"]) == {"scale": {"pdf": "halfnormal", "sigma": 1.0}}

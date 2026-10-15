@@ -94,8 +94,9 @@ runner/caller operation; a shared helper MAY compute selected related inputs and
 enabled priors jointly to preserve shared Dask execution. Construction SHALL NOT
 compute lazy payloads, rebuild the model spec solely to replace prior values, or
 introduce lazy/eager builder variants or another saved-workflow phase.
-The standard `run_rhime_from_prepared_inputs` route SHALL reject that hook and use
-the same scientific operations as full and saved execution. The retained
+Standard `run_standard(prepared=...)` SHALL use the same scientific operations
+as acquired-data and saved execution without a complete-model-builder hook.
+`run_rhime_from_prepared_inputs` SHALL retain only its multisector contract. The retained
 multisector `build_multisector_rhime_model_result` compatibility stage SHALL reject
 simultaneous `model_builder` and `likelihood_builder` inputs before either
 callable runs. The lower-level

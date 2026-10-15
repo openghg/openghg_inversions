@@ -49,17 +49,19 @@ configuration as follows:
   aliases through 0.8 with deprecation warnings. ``RhimeConfig.from_params``
   accepts canonical names only and has no alias translation or warnings.
   Modern output formats and explicit save paths remain.
-* Standard ``run_rhime_from_prepared_inputs`` now uses the same model operations
-  as full and staged execution and rejects ``model_builder``. Use
-  ``likelihood_builder`` for a custom likelihood, or construct and sample a
-  custom PyMC graph directly. The complete-builder hook remains available for
-  multisector compatibility. Standard builders have been consolidated into
-  ``build_standard_model``, which accepts eager inputs and materialized priors.
-  Call ``materialize_standard_inputs`` explicitly before construction when
-  inputs or prior parameters are lazy; related arrays compute together.
-  Output choices belong to the runner. Select acquisition/preparation arguments with
-  ``config.data.select(...)`` and use ``config.model`` / ``config.output``
-  directly; the global ``RhimeConfig.select`` API has been removed.
+* Replace standard ``run_rhime_from_prepared_inputs(prepared_inputs=...,
+  run_spec=...)`` calls, including the 0.7 one-sector ``RhimeRunSpec`` convention,
+  with ``run_standard(prepared=prepared, config=config)``. The ordinary resolved
+  ``RhimeConfig`` supplies model, output, date and sampler choices; supplied
+  prepared inputs skip acquisition/preparation. ``run_rhime_from_prepared_inputs``
+  now serves only the retained multisector compatibility route. Standard custom
+  likelihoods use ``likelihood_builder``; replacing the complete standard graph
+  requires direct PyMC construction and sampling. Standard construction uses
+  ``build_standard_model`` with eager inputs and prior parameters. Call
+  ``materialize_standard_inputs`` explicitly where needed to compute related
+  arrays together. Select acquisition/preparation arguments with
+  ``config.data.select(...)`` and use ``config.model`` / ``config.output`` directly;
+  the global ``RhimeConfig.select`` API has been removed.
 * Use invocation-relative paths for Python/CLI calls, INI/JSON resource and
   output values, and explicit overrides in both full and staged execution.
   Staged file values previously resolved beside their configuration file; use
@@ -81,14 +83,28 @@ Replace ``build_standard``, ``build_standard_rhime_model`` and
 be materialized before calling it; ``materialize_standard_inputs`` is the shared
 convenience operation. It is not another CLI phase.
 
+``RhimeModelBuildResult`` now takes only ``model`` and ``output_contract``.
+Move its former ``variable_roles``, ``supported_output_formats`` and ``metadata``
+arguments into an ``OutputContract`` from
+``openghg_inversions.postprocessing.contracts``. The legacy
+``make_standard_rhime_result`` facade is removed; use ``make_standard_output``
+for the standard scientific result.
+
 Configuration helpers introduced during this development cycle are named
 ``load_params``, ``group_params`` and ``option_groups``; ``read_rhime_ini`` retains
 its established name. ``RHIME_PREPARATION_OPTION_NAMES`` is removed; select named
 arguments from their explicit configuration owner instead.
 
-Optional basis exports save the existing scientific value without replacing it
+Standard ``output_format="basic"`` does not compute a discarded in-memory summary
+or write a product file. Call ``basic_output(result, country_file=...)`` explicitly
+on the returned ``InversionOutput``. PARIS and legacy outputs retain their file
+writers. ``save_standard_artifacts(result, output_spec)`` is the runner-invoked
+operational helper for requested products and inversion-output/trace exports.
+
+Optional standard basis exports save the existing scientific value without replacing it
 to stamp an export-path receipt. Original basis source provenance is retained;
 the requested destination belongs to configuration or run/checkpoint metadata.
+Deferred-family basis exports retain their existing metadata contract.
 Self-contained ``InversionOutput`` and trace exports retain their defaults and
 formats. The proposed deprecation of the self-contained file export has not been
 implemented.

@@ -32,7 +32,7 @@ def test_lazy_array_prior_uses_same_full_prepared_and_saved_construction(tmp_pat
         calls.append(1)
         return np.array([1.2])
 
-    prepared, data = stages.load_preparation(preparation)
+    prepared, data, _ = stages.load_preparation(preparation)
     state = prepared.inv_inputs["H"]["state"]
     mu = xr.DataArray(da.from_delayed(mean(), shape=(1,), dtype=float), dims="state", coords=state.coords)
     prior = {"pdf": "normal", "mu": mu, "sigma": .3}
@@ -52,8 +52,8 @@ def test_lazy_array_prior_uses_same_full_prepared_and_saved_construction(tmp_pat
     np.testing.assert_allclose(replay.trace["constant_data"]["x_prior_mu"], [1.2])
     assert trace_prior_records(full.trace) == trace_prior_records(replay.trace)
 
-    prepared, data = stages.load_preparation(preparation)
-    model = resolve_model_options({"x_prior": prior, "mismatch_model": "fixed_error"}, data=data)
+    prepared, data, _ = stages.load_preparation(preparation)
+    model = resolve_model_options({"x_prior": prior, "mismatch_model": "fixed_error"}, data_config=data)
     model_inputs, priors = materialize_standard_inputs(prepared, model)
     built = build_standard_model(model_inputs, model, priors=priors)
     assert calls == [1, 1, 1]
@@ -83,7 +83,7 @@ def test_cookiecutter_project_runs_real_student_t_recipe(tmp_path):
 
     manifest = stages.prepare(DataConfig.from_params(options), merged_data=merged,
                               output_dir=tmp_path / "custom-prepared")
-    prepared, _ = stages.load_preparation(manifest)
+    prepared, _, _ = stages.load_preparation(manifest)
     config = RhimeConfig.from_params({**options, "output_name": "project", "output_format": "none",
                                      "mismatch_model": None, "x_prior": {"pdf": "normal", "mu": 1., "sigma": .2}},
                                     multisector=False)
@@ -96,8 +96,9 @@ def test_cookiecutter_project_runs_real_student_t_recipe(tmp_path):
     assert result.trace["posterior"].sizes["draw"] == 10
     samples = stages.save_samples(
         manifest, result.trace, output_contract=built.output_contract, model=config.model,
-        actual_inference=result.output_metadata["sampler"], build_and_sample_seconds=0.,
+        actual_inference=result.output_metadata["sampler"],
         output_dir=tmp_path / "custom-samples",
+        preparation_generation=stages.load_preparation(manifest)[2],
     )
     replay = stages.postprocess(samples, output=RhimeOutputSpec(output_format="inv_out", save_inversion_output=False))
     np.testing.assert_array_equal(replay.trace["posterior"]["x"], result.trace["posterior"]["x"])
@@ -122,7 +123,7 @@ def test_saved_preparation_retains_subset_and_borrows_lazy_inputs(tmp_path):
     configuration = DataConfig.from_params({**options, "sites": ["MHD", "TAC"],
                                                    "averaging_period": ["3h", "1h"]})
     manifest = prepare(configuration, merged_data=merged, output_dir=tmp_path / "prepared")
-    reopened, data = load_preparation(manifest)
+    reopened, data, _ = load_preparation(manifest)
     assert reopened.sites == ("TAC",)
     assert reopened.averaging_period == ("1h",)
     assert data.start_date == "2019-01-01" and data.end_date == "2019-02-01"
@@ -142,7 +143,7 @@ def test_saved_model_missing_likelihood_input_fails_before_inference(tmp_path, m
 
     merged, options, *_ = synthetic_inputs(tmp_path)
     complete = stages.prepare(DataConfig.from_params(options), merged_data=merged, output_dir=tmp_path / "complete")
-    prepared, data = stages.load_preparation(complete)
+    prepared, data, _ = stages.load_preparation(complete)
     prepared = replace(prepared, inv_inputs=prepared.inv_inputs.drop_vars("min_error"))
     manifest = stages.save_preparation(prepared, data_config=data, output_dir=tmp_path / "prepared")
     monkeypatch.setattr(stages, "sample_rhime_model", lambda *args, **kwargs: pytest.fail("inference"))
@@ -293,7 +294,7 @@ def test_standard_model_and_enabled_priors_share_computation_before_zero_pruning
     merged, options, *_ = synthetic_inputs(tmp_path)
     manifest = stages.prepare(DataConfig.from_params(options), merged_data=merged,
                               output_dir=tmp_path / "prepared")
-    prepared, data = stages.load_preparation(manifest)
+    prepared, data, _ = stages.load_preparation(manifest)
     sensitivity = prepared.inv_inputs["H"]
     for all_zero in (False, True):
         calls = []
@@ -314,7 +315,7 @@ def test_standard_model_and_enabled_priors_share_computation_before_zero_pruning
 
         unused = {"pdf": "normal", "mu": da.from_delayed(disabled(), shape=(1,), dtype=float), "sigma": .1}
         model = resolve_model_options({"x_prior": prior, "bc_prior": unused, "offset_prior": unused,
-                                       "mismatch_model": "fixed_error"}, data=data)
+                                       "mismatch_model": "fixed_error"}, data_config=data)
         borrowed = replace(prepared, inv_inputs=prepared.inv_inputs.assign(H=h))
         model_inputs, priors = materialize_standard_inputs(borrowed, model)
         built = build_standard_model(model_inputs, model, priors=priors)

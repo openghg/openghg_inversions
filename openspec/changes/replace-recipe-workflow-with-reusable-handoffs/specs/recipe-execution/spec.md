@@ -249,11 +249,17 @@ arrays, and own any further materialization their implementation requires.
 
 Standard full, prepared-input and postprocessing routes SHALL build an
 `InversionOutput` view, write requested products/exports, and return that view.
+Prepared standard callers SHALL enter through `run_standard(prepared=...)`,
+rather than a dual-mode prepared runner with a union return.
 They SHALL NOT construct an intermediate `RhimeResult` or thread an output-bearing
 `RhimeRunSpec` through scientific operations. Dates SHALL come from the data
 configuration or explicit prepared-input arguments; retained selectors SHALL come
 from the prepared inputs. Derived products MAY be generated/written through their
-existing owners. The runner SHALL explicitly save the optional self-contained
+existing owners. The runner SHALL invoke one operational artifact-saving helper
+for products and exports, preserving visible scientific steps. The `basic` runner
+choice SHALL NOT compute an inaccessible summary; callers SHALL use `basic_output`
+on the returned scientific view when they want that product.
+The runner SHALL explicitly save the optional self-contained
 inversion-output artifact, trace and basis through shared naming/path policy.
 Exporting the basis SHALL NOT replace the scientific value to record a receipt;
 original source provenance SHALL remain intact. Requested export destinations

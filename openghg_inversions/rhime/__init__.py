@@ -72,6 +72,8 @@ from .outputs import (
     RhimeResult,
     make_multisector_rhime_outputs,
     make_standard_output,
+    annotate_sample_trace,
+    save_standard_artifacts,
     write_standard_outputs,
     validate_output_resources,
 )
@@ -94,7 +96,6 @@ from .standard import (
     build_standard_model,
     materialize_standard_inputs,
     prepare_inputs,
-    make_standard_rhime_result,
     run_standard,
     standard_model_input_names,
 )
@@ -161,8 +162,9 @@ __all__ = [
     "prepare_nested_rhime_inputs",
     "make_multisector_rhime_result",
     "make_multisector_rhime_outputs",
-    "make_standard_rhime_result",
     "make_standard_output",
+    "annotate_sample_trace",
+    "save_standard_artifacts",
     "write_standard_outputs",
     "validate_output_resources",
     "materialize_pymc_inputs",
@@ -199,4 +201,4 @@ def __getattr__(name: str):
             f"`{name}` was removed in 0.8; materialize inputs and priors explicitly, "
             "then use `build_standard_model`."
         )
-    raise AttributeError(name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

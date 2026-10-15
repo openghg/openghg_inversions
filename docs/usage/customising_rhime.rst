@@ -31,7 +31,7 @@ Choose the smallest starting point that fits the change:
 * To change a preparation stage such as basis construction, copy the visible
   runner and replace that stage.
 * To start from alternative or cached prepared data with the standard model, use
-  ``run_rhime_from_prepared_inputs``. To replace the complete standard graph,
+  ``run_standard(prepared=prepared, config=config)``. To replace the complete standard graph,
   construct and sample a PyMC model directly; the complete-builder hook remains
   available only for multisector compatibility.
 
@@ -455,8 +455,8 @@ Copy the complete runner
 The copied runner below is an advanced, version-coupled escape hatch for
 scientific changes beyond the likelihood seam. It makes the major stages
 visible while importing their implementations from the supported public RHIME
-API. Prefer ``run_rhime_from_prepared_inputs`` when replaying prepared inputs
-or deliberately starting from a different preparation graph while retaining
+API. Prefer ``run_standard(prepared=prepared, config=config)`` when replaying
+prepared inputs or starting from a different preparation graph while retaining
 the standard model operations.
 
 The deliberate change is the likelihood passed to

@@ -238,6 +238,12 @@ preserve that Python entry point and its `RhimeResult` return. The `run-rhime`
 CLI command SHALL call `run_standard` directly and preserve its command name,
 written files, export defaults and logging.
 
+Standard prepared execution SHALL use `run_standard(prepared=..., config=...)`,
+skipping acquisition/preparation and then using the ordinary scientific pipeline.
+`prepared` and `merged_data` SHALL be mutually exclusive. The former standard
+`run_rhime_from_prepared_inputs`/one-sector `RhimeRunSpec` call SHALL be removed;
+that entry point SHALL retain only its multisector compatibility contract.
+
 Standard full, prepared-input and saved postprocessing SHALL return
 `InversionOutput`, including with `output_format="none"`. The in-memory view SHALL
 borrow its numerical inputs; `none` SHALL suppress writes, not result construction.

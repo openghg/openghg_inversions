@@ -7,6 +7,8 @@ from typing import Any, Literal
 
 import xarray as xr
 
+from openghg_inversions.postprocessing.contracts import OutputContract
+
 from openghg_inversions.models import StateActivity
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.rhime.builders import RhimeModelBuildResult
@@ -184,7 +186,13 @@ def run_rhime_co2_o2_cached_sigma_from_prepared_inputs(
         roles["offset_concentration"] = "offset_concentration"
     if boundaries or offset_prior:
         roles["baseline_concentration"] = "baseline_concentration"
-    built = RhimeModelBuildResult(model=cached.model, variable_roles=roles, metadata=metadata)
+    built = RhimeModelBuildResult(
+        model=cached.model,
+        output_contract=OutputContract(
+            variable_roles=roles,
+            metadata=metadata,
+        ),
+    )
     sampling_sampler = _sampler_for_cached_graph(
         requested_sampler,
         cached_model=cached,

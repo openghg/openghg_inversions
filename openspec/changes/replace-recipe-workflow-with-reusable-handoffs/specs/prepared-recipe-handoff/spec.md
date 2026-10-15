@@ -77,7 +77,10 @@ NOT add a Zarr rejection or conversion requirement solely for content hashing.
 ### Requirement: Bind samples to the preparation generation
 
 Each preparation save SHALL assign a generation identifier. Sample records SHALL
-capture that identifier, and loading samples SHALL reject a replacement preparation
+capture that identifier. Public preparation loading SHALL return it alongside
+the prepared inputs and data configuration; public sample saving SHALL require
+that identifier from the caller rather than adopt a current replacement.
+Loading samples SHALL reject a replacement preparation
 at the same reference whose generation differs. This check SHALL bind checkpoint
 replacement, not authenticate arbitrary numerical payload contents. It SHALL NOT
 require content hashes or recursive artifact scans.

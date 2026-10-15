@@ -239,7 +239,7 @@ class RhimeConfig:
             if len(source_names) < 2:
                 _validate_sector_source_mapping(source_names, normalise_sector_sources(sector_sources) or {})
         data = DataConfig.from_params(sections["data"], multisector=multisector)
-        model = resolve_model_options(sections["model"], data=data)
+        model = resolve_model_options(sections["model"], data_config=data)
         # Multisector source routing owns the retained source order.
         if multisector and sections["model"].get("sector_sources") is not None:
             data = replace(data, flux_sources=tuple(s.flux_source for s in model.sectors))
@@ -348,7 +348,7 @@ def _bc_frequency_policy(value: str | None) -> str | pd.Timedelta | None:
         raise ValueError(f"Invalid `bc_freq`: {value!r}.") from exc
 
 
-def resolve_model_options(params: Mapping[str, Any], *, data: DataConfig) -> RhimeModelSpec:
+def resolve_model_options(params: Mapping[str, Any], *, data_config: DataConfig) -> RhimeModelSpec:
     """Bind raw model choices to authoritative acquisition and preparation choices.
 
     Omitted BC use inherits the data configuration. Explicit BC use requires prepared BC
@@ -356,7 +356,7 @@ def resolve_model_options(params: Mapping[str, Any], *, data: DataConfig) -> Rhi
 
     Args:
         params: External model options and any repeated data facts.
-        data: Resolved acquisition and preparation choices that own those facts.
+        data_config: Resolved acquisition and preparation choices that own those facts.
 
     Returns:
         Model choices bound to the data configuration.
@@ -377,24 +377,24 @@ def resolve_model_options(params: Mapping[str, Any], *, data: DataConfig) -> Rhi
             claim = claimed
             if name == "flux_sources":
                 claim = tuple(as_list(claim) or ())
-            expected = getattr(data, name)
+            expected = getattr(data_config, name)
             matches = (
                 _bc_frequency_policy(claim) == _bc_frequency_policy(expected)
                 if name == "bc_freq" else claim == expected
             )
             if not matches:
                 raise ValueError(f"`{name}` conflicts with data: claimed {claimed!r}, expected {expected!r}.")
-    use_bc = remaining.pop("use_bc", data.use_bc)
-    if use_bc and not data.use_bc:
+    use_bc = remaining.pop("use_bc", data_config.use_bc)
+    if use_bc and not data_config.use_bc:
         raise ValueError("Model `use_bc=True` requires data configured with BC inputs.")
-    flux_sources = list(data.flux_sources)
+    flux_sources = list(data_config.flux_sources)
     sector_sources = normalise_sector_sources(remaining.pop("sector_sources", None))
     if sector_sources is not None:
-        if not data.split_by_sectors:
+        if not data_config.split_by_sectors:
             raise ValueError("`sector_sources` is only supported by `run_rhime_multisector`.")
         _validate_sector_source_mapping(flux_sources, sector_sources)
     x_prior = remaining.pop("x_prior", None)
-    if data.split_by_sectors:
+    if data_config.split_by_sectors:
         validate_multisector_x_prior(x_prior)
     sector_priors = remaining.pop("sector_priors", None)
     if sector_priors is not None:
@@ -411,10 +411,10 @@ def resolve_model_options(params: Mapping[str, Any], *, data: DataConfig) -> Rhi
     if aggregation not in get_args(AggregationErrorMode):
         raise ValueError(f"Invalid `aggregation_error_mode`: {aggregation!r}.")
     likelihood = _make_likelihood_settings(
-        remaining, mismatch_model=remaining.pop("mismatch_model", None), start_date=data.start_date,
+        remaining, mismatch_model=remaining.pop("mismatch_model", None), start_date=data_config.start_date,
     )
     return _make_model_spec(
-        species=data.species, domain=data.domain, flux_sources=flux_sources,
+        species=data_config.species, domain=data_config.domain, flux_sources=flux_sources,
         x_prior=x_prior, sector_priors=sector_priors, sector_sources=sector_sources,
         bc_prior=bc_prior, offset_prior=offset_prior, use_bc=use_bc, likelihood=likelihood,
         add_offset=add_offset, offset_args=offset_args, aggregation_error_mode=aggregation,

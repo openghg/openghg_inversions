@@ -47,7 +47,7 @@ def test_reporting_resource_policy(tmp_path, output_format):
 @pytest.mark.parametrize("route", [
     "standard", "multisector", "nested", "copied", "copied_basis",
     "prepared", "prepared_multi", "prepared_nested", "staged",
-    "output_standard", "output_multi", "output_nested",
+    "output_multi", "output_nested",
 ])
 def test_reporting_routes_reject_before_work_or_output_directory(tmp_path, monkeypatch, country_kind, route):
     destination = tmp_path / "outputs"
@@ -80,7 +80,8 @@ def test_reporting_routes_reject_before_work_or_output_directory(tmp_path, monke
             preparation, posterior,
             model=config.model, actual_inference=config.sampler.describe(),
             output_contract=OutputContract(variable_roles={"flux_scale": "x"}, supported_output_formats=("none", "paris")),
-            build_and_sample_seconds=0.0, output_dir=tmp_path / "samples",
+            output_dir=tmp_path / "samples",
+            preparation_generation=_standard_stages.load_preparation(preparation)[2],
         )
     error = ValueError if country is None else FileNotFoundError
     with pytest.raises(error, match="country_file" if country is None else None):
@@ -105,10 +106,7 @@ def test_reporting_routes_reject_before_work_or_output_directory(tmp_path, monke
                     prepared_inputs=inputs, run_spec=config.retained_run_spec(inputs),
                 )
             else:
-                prepared.run_rhime_from_prepared_inputs(
-                    prepared_inputs=inputs, model_spec=config.model, output_spec=config.output,
-                    start_date=config.data.start_date, end_date=config.data.end_date,
-                )
+                standard.run_standard(prepared=inputs, config=config)
         elif route == "prepared_nested":
             nested.run_rhime_nested_from_prepared_inputs(
                 prepared_inputs=None, run_spec=config.retained_run_spec(_prepared()),
@@ -120,10 +118,7 @@ def test_reporting_routes_reject_before_work_or_output_directory(tmp_path, monke
             if route == "output_nested":
                 nested._write_nested_paris_outputs(SimpleNamespace(rhime_result=result))
             else:
-                if route == "output_standard":
-                    outputs.write_standard_outputs(None, config.output)
-                else:
-                    outputs.make_multisector_rhime_outputs(result=result, prepared=None)
+                outputs.make_multisector_rhime_outputs(result=result, prepared=None)
     assert not destination.exists()
 
 

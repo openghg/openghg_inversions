@@ -3,7 +3,7 @@ Staged RHIME workflows
 
 The standard recipe can prepare once, sample compatible models into separate
 locations, and produce different outputs from saved samples. ``run_standard``
-and standard ``run_rhime_from_prepared_inputs`` use the same scientific operations
+with or without ``prepared=...`` uses the same scientific operations
 as the saved phases: prepare inputs, explicitly materialize selected arrays and
 enabled priors where needed, build one eager model, sample, construct an
 ``InversionOutput`` view, then write requested products and exports. Checkpoints
@@ -17,7 +17,9 @@ Standard saved phases
 ``prepare`` returns one absolute path to ``prepare-manifest.json``. It references
 prepared numerical inputs and records the ``DataConfig`` that produced them in
 its external option form; ``load_preparation`` returns the prepared inputs and
-that ``DataConfig``, validated exactly as a full-run request is. Retained sites and their averaging periods come from the
+that ``DataConfig`` and its generation identifier. The recorded configuration
+is validated exactly as a full-run request is. Retained sites and their averaging
+periods come from the
 numerical artifact, including when acquisition or filtering drops a site.
 Observation errors are established before filtering, then basis construction,
 sensitivities and assembly run in scientific order. No filtered checkpoint is
@@ -71,9 +73,11 @@ the supplied arithmetic or log-space parameterization in metadata.
 
 Ordinary standard sampling routes attach constructed-prior records and callable
 provenance to the trace once after sampling. When composing these operations
-directly, call ``annotate_sample_trace`` from ``rhime.outputs`` with the build
-result and posterior before ``save_samples``; the generic sampler does not own
-RHIME scientific metadata. Required array references are checked when saving and reloading samples;
+directly, call the public ``annotate_sample_trace`` with the build
+result and posterior before ``save_samples``; pass the generation returned by
+``load_preparation`` as ``preparation_generation``. The generic sampler does not
+own RHIME scientific metadata. Required array references are checked when saving
+and reloading samples;
 missing values fail before completing a sample handoff or writing products.
 
 A selected saved basis supplies its operator while new preparation binds current
@@ -119,10 +123,20 @@ files use existing codecs, and manifests use JSON without mandatory content
 hashes or full-configuration equality gates. Missing or malformed files fail at
 loading; incompatible scientific inputs fail at their owning operation.
 
+The public ``load_preparation`` returns ``(prepared, data_config, generation)``.
+External ``save_samples`` calls must supply that exact ``preparation_generation``;
+the writer does not silently bind an old posterior to whichever preparation is
+currently stored at a path.
+
 Each preparation save assigns a generation identifier. A sample manifest records
 that identifier and rejects replay against a replacement preparation at the same
 path. This binds checkpoint generations, not arbitrary payload contents; it does
 not provide content-integrity or tamper detection.
+
+Standard ``output_format="basic"`` returns the scientific view without computing
+an unused summary. For in-memory reporting, call ``basic_output(inv_out,
+country_file=...)`` yourself. Runners call ``save_standard_artifacts`` for requested
+written products and exports; self-contained export defaults remain unchanged.
 
 Callers choose checkpoint locations and own collision avoidance and run isolation.
 A simple layout is ``run/prepare``, ``run/sample`` and ``run/products``; explicit

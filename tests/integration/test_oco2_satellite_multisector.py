@@ -179,4 +179,4 @@ def test_real_oco2_prepared_inputs_run_through_multisector_model(
     assert tuple(result.inv_inputs.source.values) == _FLUX_SOURCES
     assert {"x_anth", "x_resp", "x_gpp_atm"}.issubset(result.idata.posterior)
     assert result.model_build_result is not None
-    assert result.model_build_result.variable_roles["flux_scale:anth"] == "x_anth"
+    assert result.model_build_result.output_contract.variable_roles["flux_scale:anth"] == "x_anth"

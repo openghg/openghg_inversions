@@ -151,6 +151,14 @@ reader/writer owns reference reconstruction and preparation generation binding.
 Runners own optional basis, trace and inversion-output exports without rewriting
 scientific inputs for receipts. The earlier recorded builder/result shapes are
 superseded; their historical test counts do not establish the revised acceptance.
+Further cleanup review at f4fb9542: standard prepared input now enters through
+`run_standard(prepared=..., config=...)`; the old standard prepared runner is
+removed, leaving its multisector compatibility interface. One public operational
+artifact saver replaces repeated write/export blocks. Public preparation loads
+return the generation, and external sample saves must provide it. Relative
+preparation references and required/used manifest fields replace the earlier
+absolute-reference and unused-timing records. This supersedes the intermediate
+shapes described in the dated validation history above.
 Task 1.11 is failed/pending implementation revision and actual maintainer review,
 not an administrative tick. No passing test marks that readability gate complete.
 

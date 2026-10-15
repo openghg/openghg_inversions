@@ -185,67 +185,53 @@ legacy HBMCMC output formatting does not support column observations.
 Running Prepared Inputs
 -----------------------
 
-Advanced workflows can prepare canonical RHIME inputs separately from data
-acquisition and run them without repeating OpenGHG-backed preparation. Supply
-the retained ``RhimePreparedInputs`` with model and output choices, date bounds
-and sampler settings. Standard execution returns ``InversionOutput``:
+Advanced standard workflows can prepare canonical inputs separately from data
+acquisition. Pass the retained ``RhimePreparedInputs`` as ``prepared`` to
+``run_standard`` with the ordinary resolved configuration. This skips acquisition
+and preparation, then uses the same explicit materialization, model construction,
+sampling and output operations. The result is ``InversionOutput``:
 
 .. code-block:: python
 
-   from openghg_inversions.rhime import (
-       PollutionEventSettings,
-       RhimeModelSpec,
-       SectorSpec,
-   )
    from openghg_inversions.inversion_data import RhimePreparedInputs
-   from openghg_inversions.rhime import (
-       RhimeOutputSpec,
-       RhimeSampler,
-       run_rhime_from_prepared_inputs,
-   )
+   from openghg_inversions.rhime import RhimeConfig, run_standard
 
-   # Produced by assemble_rhime_inputs or by another source adapter that
-   # satisfies the same canonical contract.
-   prepared = prepare_inputs_elsewhere()
-   prepared.save("prepared-inputs.nc")
+   # Constructed by another preparation graph or restored from a numerical cache.
    prepared = RhimePreparedInputs.load("prepared-inputs.nc")
-   model_spec = RhimeModelSpec(
-       species="ch4",
-       domain="EUROPE",
-       likelihood=PollutionEventSettings(),
-       sectors=(
-           SectorSpec(
-               name="total",
-               flux_source="total-ukghg-edgar7",
-               x_prior={"pdf": "lognormal", "mean": 1.0, "stdev": 1.0},
-               variable_suffix="total",
-           ),
-       ),
+   config = RhimeConfig.from_params(
+       {
+           "species": "ch4",
+           "domain": "EUROPE",
+           "sites": prepared.sites,
+           "averaging_period": prepared.averaging_period,
+           "start_date": "2019-01-01",
+           "end_date": "2019-01-02",
+           "flux_sources": ["total-ukghg-edgar7"],
+           "x_prior": {"pdf": "lognormal", "mean": 1.0, "stdev": 1.0},
+           "draws": 1000,
+           "tune": 1000,
+           "chains": 4,
+           "output_name": "prepared",
+           "output_format": "none",
+       },
+       multisector=False,
    )
-   result = run_rhime_from_prepared_inputs(
-       prepared_inputs=prepared,
-       model_spec=model_spec,
-       output_spec=RhimeOutputSpec(output_format="none"),
-       start_date="2019-01-01",
-       end_date="2019-01-02",
-       sampler=RhimeSampler(draws=1000, tune=1000, chains=4),
-   )
+   result = run_standard(prepared=prepared, config=config)
 
-Omit ``sampler`` or pass ``sampler="default"`` to request a fresh default sampler
-without importing ``RhimeSampler``. Pass an instance to choose its settings;
-each invocation isolates its mutable option containers and NumPy option arrays.
-Models, steps, and borrowed xarray or Dask objects retain their identity.
-Explicit ``sampler=None``
-is rejected: migrate that spelling to ``"default"`` or omit the argument.
-The same selection rule applies to the nested, CO2 and CO2/O2 direct runners,
-which retain their recipe-specific defaults. Complete configured runs use
-``config.sampler`` instead of replacing its settings with defaults.
+Keep model, output and sampler choices in the ordinary configuration. A supplied
+``prepared`` handoff and a supplied ``merged_data`` handoff are mutually exclusive:
+they enter at different scientific boundaries. Standard results retain the actual
+inference description in ``result.output_metadata["sampler"]`` without a live
+sampler or PyMC model. Replay reuses that description without inference or current
+defaults.
 
-Standard results contain the inference description in
-``result.output_metadata["sampler"]`` without retaining the live sampler or PyMC
-model. Replay reuses the saved description without inference or current defaults.
-Deferred multisector, nested and CO2 results keep their existing live-reference
-contract until their separate handoff adoption.
+``run_rhime_from_prepared_inputs`` is retained only for multisector execution with
+``RhimeRunSpec``. The standard 0.7 call using ``prepared_inputs`` plus a one-sector
+``run_spec`` must migrate to ``run_standard(prepared=..., config=...)``; it is not
+accepted by the retained multisector entry point. That entry point and the nested,
+CO2 and CO2/O2 prepared runners accept ``sampler="default"`` (also omission) or a
+configured ``RhimeSampler``. Explicit ``sampler=None`` is rejected. Each invocation
+isolates mutable option containers while borrowing scientific arrays.
 
 The prepared object is trusted canonical input: it must already contain the
 observation, error, sensitivity, and optional boundary-condition variables
@@ -949,6 +935,13 @@ Standard single-sector RHIME supports ``inv_out``, ``basic``, ``paris``, and
 product from the modern ``InversionOutput``. The deprecated names ``hbmcmc``
 and ``hbmcmc_postprocessing`` are accepted with ``DeprecationWarning`` during
 configuration construction. Prefer ``legacy`` in new configurations.
+
+``basic`` selects no written product and does not compute a discarded summary in
+the standard runner. To inspect reporting results in memory, call
+``basic_output(result, country_file=...)`` on the returned ``InversionOutput``.
+The runner invokes ``save_standard_artifacts`` for configured written products
+and optional self-contained inversion-output/trace exports; their defaults and
+filename policy remain unchanged.
 
 Single-sector ``paris`` keeps the legacy template by default. Pass
 ``paris_postprocessing_kwargs={"template_version": "latest"}`` to write the

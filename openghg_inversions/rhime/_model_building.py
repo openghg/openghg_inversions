@@ -20,7 +20,11 @@ from openghg_inversions.models.additive_sigma import (
 from openghg_inversions.models.fixed_error import add_fixed_error_likelihood
 from openghg_inversions.models.pollution_event import add_pollution_event_likelihood
 from openghg_inversions.models.priors import PriorArgs
-from openghg_inversions.observation_error import AggregationError
+from openghg_inversions.observation_error import (
+    AggregationError, AGGREGATION_ERROR_SD, AGGREGATION_ERROR_COVARIANCE,
+    LOW_RANK_FACTOR, DIAGONAL_RESIDUAL_VARIANCE,
+)
+from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.sigma import SigmaAlignment
 
 from .builders import (
@@ -28,12 +32,14 @@ from .builders import (
     RhimeModelBuilderContext,
     RhimeModelBuildResult,
     RhimeLikelihoodBuilder,
+    validate_model_build_result,
 )
 from .specs import (
     DEFAULT_POLLUTION_EVENT_SIGMA_PRIOR,
     AdditiveSigmaSettings,
     FixedErrorSettings,
     LikelihoodSettings,
+    OutputFormat,
     PollutionEventSettings,
     RhimeModelSpec,
 )
@@ -392,14 +398,20 @@ def builtin_model_build_result(
     elif model_spec.add_offset and not model_spec.use_bc:
         roles["baseline"] = "offset"
 
-    supported_output_formats = (
+    supported_output_formats: tuple[OutputFormat, ...] = (
         ("none", "inv_out", "paris") if multisector else ("none", "inv_out", "basic", "paris", "legacy")
     )
+    aggregation_mode = model_spec.aggregation_error_mode
+    aggregation_inputs = {AGGREGATION_ERROR_SD, AGGREGATION_ERROR_COVARIANCE,
+                          LOW_RANK_FACTOR, DIAGONAL_RESIDUAL_VARIANCE}
+    if aggregation_mode != "none" and (aggregation_mode != "auto" or aggregation_inputs.intersection(input_names)):
+        supported_output_formats = ("none", "inv_out")
     return RhimeModelBuildResult(
         model=model,
-        variable_roles=roles,
-        supported_output_formats=supported_output_formats,
-        metadata={"kind": "builtin"},
+        output_contract=OutputContract(
+            variable_roles=roles, supported_output_formats=supported_output_formats,
+            metadata={"kind": "builtin"},
+        ),
     )
 
 
@@ -408,7 +420,7 @@ def validated_custom_model_build(
     *,
     context: RhimeModelBuilderContext,
 ) -> RhimeModelBuildResult:
-    """Call an advanced complete-model builder and validate its return type.
+    """Call a complete-model builder and validate its external graph contract.
 
     Args:
         model_builder: User-owned complete-model callable.
@@ -419,10 +431,13 @@ def validated_custom_model_build(
 
     Raises:
         TypeError: If the callable returns the wrong result type.
+        ValueError: If coordinate registration, declared variable roles or
+            requested output capabilities are invalid.
     """
     result = model_builder(context)
     if not isinstance(result, RhimeModelBuildResult):
         raise TypeError(
             f"A RHIME model builder must return `RhimeModelBuildResult`; got {type(result).__name__}."
         )
+    validate_model_build_result(result, context=context)
     return result

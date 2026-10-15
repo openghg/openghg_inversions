@@ -85,16 +85,9 @@ Illustrative pseudocode below describes the intended interfaces, not installed
 API names. Decoded sections are ordinary mappings, not resolved records:
 
 ```python
-sections = group_legacy_options(read_rhime_ini("run.ini"))
+sections = group_params(read_rhime_ini("run.ini"))
 # {"data": {...}, "model": {...}, "sampler": {...}, "output": {...}}
-
-data = DataConfig.from_params(sections["data"])
-config = RhimeConfig(
-    data=data,
-    model=resolve_model_options(sections["model"], facts=data.requested_facts),
-    sampler=resolve_sampler_options(sections.get("sampler", {})),
-    output=RhimeOutputSpec.from_params(sections.get("output", {})),
-)
+config = RhimeConfig.from_params(sections, multisector=False)
 result = run_standard(config=config)
 ```
 
@@ -167,14 +160,14 @@ a complete resolved configuration combined with additional raw overrides.
 
 ```python
 def sample(preparation_manifest, *, model, sampler="default", output_dir):
-    prepared, data_config = load_preparation(preparation_manifest)
+    prepared, data_config, generation = load_preparation(preparation_manifest)
     model_spec = resolve_model_options(model, data_config=data_config)
     invocation = resolve_sampler(sampler)
     inputs, priors = materialize_standard_inputs(prepared, model_spec)
     built = build_standard_model(inputs, model_spec, priors=priors)
     posterior = sample_rhime_model(built, invocation)
     # Record constructed priors and callable provenance once on the trace.
-    return save_samples(...)
+    return save_samples(..., preparation_generation=generation)
 ```
 
 `"default"` requests live behavior; it is not recorded as the settings actually
@@ -278,12 +271,12 @@ concrete scientific operations:
 
 ```python
 def sample(preparation_manifest, *, model, sampler="default", output_dir):
-    prepared, data_config = load_preparation(preparation_manifest)
+    prepared, data_config, generation = load_preparation(preparation_manifest)
     model_spec = resolve_model_options(model, data_config=data_config)
     inputs, priors = materialize_standard_inputs(prepared, model_spec)
     built = build_standard_model(inputs, model_spec, priors=priors)
     posterior = sample_rhime_model(built, resolve_sampler(sampler))
-    return save_samples(...)
+    return save_samples(..., preparation_generation=generation)
 ```
 
 Validate declared model coordinates/output roles even when no products are requested.
@@ -345,23 +338,14 @@ numerical codecs. They replace the earlier `publish_*` terminology; there is no
 publisher abstraction or remote publication. The final manifest marks completion.
 
 ```python
-def save_samples(
-    directory, prepared_manifest, posterior, contract,
-    *, run_config, actual_inference,
-):
-    directory = Path(directory).resolve()
-    directory.mkdir(parents=True, exist_ok=False)
-    save_trace(posterior, directory / "posterior.nc")
-    record = sample_record(
-        preparation=str(Path(prepared_manifest).resolve()),
-        posterior="posterior.nc",
-        output_contract=contract.to_dict(),
-        run_config=str(run_config) if run_config is not None else None,
-        actual_inference=actual_inference,
-    )
-    write_json(directory / ".sample-manifest.tmp", record)
-    os.replace(directory / ".sample-manifest.tmp", directory / "sample-manifest.json")
-    return directory / "sample-manifest.json"
+prepared, data_config, generation = load_preparation(preparation_manifest)
+# Build/sample with these scientific inputs, then save using their generation.
+sample_manifest = save_samples(
+    preparation_manifest, posterior,
+    preparation_generation=generation,
+    output_contract=built.output_contract, model=model_spec,
+    actual_inference=sampler.describe(), output_dir=sample_directory,
+)
 ```
 
 Let callers/orchestrators choose destinations and manage collision avoidance and
@@ -372,10 +356,6 @@ recursive symlink scans.
 Checkpoint containment applies to checkpoint-owned files. Separately requested
 basis exports follow the resource-I/O contract; this handoff design does not
 introduce a new export restriction.
-
-The optional `run_config` above is a reference to an existing configuration file.
-If context is supplied only in memory, the caller supplies it again for later
-postprocessing; saving does not serialize that runtime object.
 
 Resolve relative references from their record's directory. Explicit absolute paths
 are useful for shared preparation caches. Use those selected paths directly rather
@@ -420,14 +400,13 @@ The current output-consumer inventory establishes the standard slice's boundary:
 | Sampler summary | Actual draws, burn, tune, chains and backend, plus supported invocation provenance |
 
 Use this inventory to pass existing run context to each supported product. Preserve
-available timing metadata, package version and Git revision when available; an
+inference descriptions, package version and Git revision when available; an
 unknown revision does not prevent execution. CO2 keeps its trace/affine meaning.
 
 ```python
 def postprocess(sample_manifest, *, output):
     inv_out = load_samples(sample_manifest)  # decode the borrowed scientific view
-    write_standard_outputs(inv_out, output)
-    # The runner explicitly saves requested inversion-output and trace exports.
+    save_standard_artifacts(inv_out, output)
     return inv_out
 ```
 
@@ -461,7 +440,8 @@ prepared_B = prepare(current_flux=B, selected_operator=saved_operator_A)
 assert prepared_B.retained_flux == B
 saved_B = save_preparation(prepared_B, requested_facts, destination)
 # Reload after disabling acquisition; same state gives the same flux based on B.
-assert reconstruct(load_preparation(saved_B), state) == reconstruct(prepared_B, state)
+reloaded_B, data_config, generation = load_preparation(saved_B)
+assert reconstruct(reloaded_B, state) == reconstruct(prepared_B, state)
 ```
 
 Cover first-source weighting separately from all-source retained flux, source order
@@ -482,14 +462,13 @@ preparation is already eager, but direct Python priors may remain lazy until thi
 call. No mandatory prior-materialization stage or new CLI command is introduced.
 
 ```python
-prepared = prepare_inputs(data_config, merged_data)
+prepared = supplied_prepared if supplied_prepared is not None else prepare_inputs(data_config, merged_data)
 # Optional basis export saves this value without rewriting its source metadata.
 inputs, priors = materialize_standard_inputs(prepared, model_spec)
 built = build_standard_model(inputs, model_spec, priors=priors, likelihood_builder=...)
 posterior = sample_rhime_model(built, sampler)
 inv_out = make_standard_output(...)
-write_standard_outputs(inv_out, output_spec)
-# Optional inversion-output and trace exports are explicit runner operations.
+save_standard_artifacts(inv_out, output_spec)  # runner-invoked operational writer
 return inv_out
 ```
 
@@ -497,7 +476,9 @@ return inv_out
   `sample` loads preparation, materializes where needed, builds, samples and saves.
   `postprocess` uses one `load_samples` decoder returning the scientific view and
   writes requested products/exports. Standard prepared-input execution uses the
-  same post-preparation operations.
+  same post-preparation operations through `run_standard(prepared=..., config=...)`.
+  The former dual-mode `run_rhime_from_prepared_inputs` standard branch is removed;
+  its remaining signature and result are multisector-only.
 - `InversionOutput` is returned even with `output_format="none"`; no files are
   written in that case. Its output metadata holds only the inference description.
   In-memory products can be recomputed through existing product functions.
@@ -506,7 +487,9 @@ return inv_out
   Existing CLI export defaults, filenames, overwrite behaviour and logs remain.
   Deprecation of the self-contained file export remains a separate proposal.
 - Preparation and sample persistence use their existing codecs and explicit
-  records. Preparation generation identifiers detect replacement at the same
+  records. Required manifest fields are exactly the fields used by their reader;
+  unused build/sample timing fields are not written. Preparation references are
+  stored relative to the declaring sample manifest. Preparation generation identifiers detect replacement at the same
   reference, without claiming payload integrity. Manifest-last completion and
   concrete-target checks apply without fresh-directory or recursive-scan policy.
 - Prior scalars remain inline; array parameters use registered model data saved

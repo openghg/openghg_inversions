@@ -22,7 +22,8 @@ from openghg_inversions.basis.basis_functions import (
 )
 from openghg_inversions.basis.operators import MultiSourceBucketBasisOperator
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
-from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs
+from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs, SiteOptions
+from openghg_inversions.rhime.params import DataConfig, RhimeConfig
 from openghg_inversions.inversion_data import acquisition
 from openghg_inversions.inversion_data import prepared_inputs as prepared_contract
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
@@ -47,6 +48,21 @@ from openghg_inversions.serialization import (
     trace_to_datatree,
 )
 from tests.helpers import make_trace, prepare_inputs
+
+
+def _standard_config(run_spec, prepared, sampler=None):
+    """Retain scientific fixture choices in the standard runner's request."""
+    return RhimeConfig(
+        data=DataConfig(
+            site_options=SiteOptions.from_inputs(sites=prepared.sites, averaging_period=prepared.averaging_period),
+            species=run_spec.model.species, domain=run_spec.model.domain,
+            start_date=run_spec.start_date, end_date=run_spec.end_date,
+            flux_sources=tuple(sector.flux_source for sector in run_spec.model.sectors),
+            use_bc=run_spec.model.use_bc,
+        ),
+        model=run_spec.model, output=run_spec.output,
+        sampler=sampler or RhimeSampler(),
+    )
 
 
 def test_data_contracts_preserve_legacy_imports_and_prepared_schema() -> None:
@@ -169,7 +185,11 @@ def test_structured_aggregation_error_survives_prepared_input_round_trip(
     xr.testing.assert_identical(loaded.inv_inputs, structured.inv_inputs)
 
 
-def test_derived_outputs_reject_aggregation_error_until_reconstruction_lands() -> None:
+def test_derived_outputs_reject_aggregation_error_until_reconstruction_lands(tmp_path, monkeypatch) -> None:
+    country_file = tmp_path / "country.nc"
+    country_file.touch()
+    monkeypatch.setattr(rhime_standard, "sample_rhime_model",
+                        lambda *args, **kwargs: pytest.fail("sampled unsupported covariance outputs"))
     prepared = _prepared_inputs()
     prepared.inv_inputs["aggregation_error_sd"] = ("nmeasure", [0.2, 0.3])
     model_spec = RhimeModelSpec(
@@ -193,12 +213,11 @@ def test_derived_outputs_reject_aggregation_error_until_reconstruction_lands() -
         sites=prepared.sites,
         averaging_period=prepared.averaging_period,
         model=model_spec,
-        output=RhimeOutputSpec(output_format="basic", save_inversion_output=False),
+        output=RhimeOutputSpec(output_format="basic", save_inversion_output=False, country_file=country_file),
     )
 
-    with pytest.raises(ValueError, match="aggregation-error covariance.*output_format='basic'"):
-        run_rhime_from_prepared_inputs(prepared_inputs=prepared, model_spec=run_spec.model, output_spec=run_spec.output,
-        start_date=run_spec.start_date, end_date=run_spec.end_date)
+    with pytest.raises(ValueError, match="does not declare output_format='basic' compatible"):
+        rhime_standard.run_standard(prepared=prepared, config=_standard_config(run_spec, prepared))
 
 
 def _multisource_prepared_inputs() -> RhimePreparedInputs:
@@ -684,15 +703,14 @@ def test_real_prepared_inputs_save_load_and_run_without_repreparation(
         return {}
 
     monkeypatch.setattr(rhime_standard.RhimeMergedData, "from_options", fail_preparation)
-    monkeypatch.setattr(rhime_prepared, "build_standard_model", fake_builder)
+    monkeypatch.setattr(rhime_standard, "prepare_inputs", fail_preparation)
+    monkeypatch.setattr(rhime_standard, "build_standard_model", fake_builder)
     monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
-    monkeypatch.setattr(rhime_prepared, "write_standard_outputs", fake_outputs)
+    monkeypatch.setattr(rhime_standard, "save_standard_artifacts", fake_outputs)
 
-    result = run_rhime_from_prepared_inputs(
-        prepared_inputs=loaded,
-        model_spec=run_spec.model, output_spec=run_spec.output,
-        start_date=run_spec.start_date, end_date=run_spec.end_date,
-        sampler=RhimeSampler(draws=1, tune=1, chains=1),
+    result = rhime_standard.run_standard(
+        prepared=loaded,
+        config=_standard_config(run_spec, loaded, RhimeSampler(draws=1, tune=1, chains=1)),
     )
 
     builder_inputs = observed["builder_inputs"]
@@ -1181,15 +1199,14 @@ def test_loaded_prepared_inputs_run_through_existing_seam(
         return {}
 
     monkeypatch.setattr(rhime_standard.RhimeMergedData, "from_options", fail_preparation)
-    monkeypatch.setattr(rhime_prepared, "build_standard_model", fake_builder)
+    monkeypatch.setattr(rhime_standard, "prepare_inputs", fail_preparation)
+    monkeypatch.setattr(rhime_standard, "build_standard_model", fake_builder)
     monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
-    monkeypatch.setattr(rhime_prepared, "write_standard_outputs", fake_outputs)
+    monkeypatch.setattr(rhime_standard, "save_standard_artifacts", fake_outputs)
 
-    result = run_rhime_from_prepared_inputs(
-        prepared_inputs=loaded,
-        model_spec=run_spec.model, output_spec=run_spec.output,
-        start_date=run_spec.start_date, end_date=run_spec.end_date,
-        sampler=RhimeSampler(draws=1, tune=1, chains=1),
+    result = rhime_standard.run_standard(
+        prepared=loaded,
+        config=_standard_config(run_spec, loaded, RhimeSampler(draws=1, tune=1, chains=1)),
     )
 
     builder_inputs = observed["builder_inputs"]

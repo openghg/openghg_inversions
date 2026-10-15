@@ -34,14 +34,15 @@ def _saved(tmp_path):
         preparation, posterior, model=config.model, actual_inference=config.sampler.describe(),
         output_contract=OutputContract(variable_roles={"flux_scale": "x"},
                                        supported_output_formats=("none", "inv_out")),
-        build_and_sample_seconds=2.5, output_dir=tmp_path / "samples",
+        output_dir=tmp_path / "samples",
+        preparation_generation=stages.load_preparation(preparation)[2],
     )
     return preparation, sampled
 
 
 def _model(sampled):
     record = json.loads(sampled.read_text())
-    _, data_config = stages.load_preparation(record["preparation"])
+    _, data_config, _ = stages.load_preparation(sampled.parent / record["preparation"])
     return RhimeModelSpec.from_record(record["model"], data_config=data_config)
 
 
@@ -56,7 +57,7 @@ def test_manifest_relative_and_absolute_references_preserve_inputs(tmp_path, mon
     assert "configuration_identity" not in record
     monkeypatch.setenv("RUN_ROOT", str(tmp_path / "wrong-root"))
     monkeypatch.chdir(tmp_path.parent)
-    prepared, data = stages.load_preparation(preparation)
+    prepared, data, _ = stages.load_preparation(preparation)
     xr.testing.assert_identical(prepared.inv_inputs, _prepared().inv_inputs)
     assert data.end_date == "2019-02-01"  # observations end on January 2
     record["prepared_inputs"] = str(preparation.parent / record["prepared_inputs"])
@@ -216,7 +217,7 @@ def test_prepare_preserves_exact_basis_export(tmp_path, monkeypatch, export):
     manifest = stages.prepare(config, output_dir=destination)
     assert manifest.is_file()
     assert target.exists()
-    loaded, _ = stages.load_preparation(manifest)
+    loaded, _, _ = stages.load_preparation(manifest)
     assert loaded.basis_artifact_path == _prepared().basis_artifact_path
 
 
@@ -290,7 +291,8 @@ def test_failed_sample_save_leaves_no_completed_manifest(tmp_path, monkeypatch):
         stages.save_samples(
             preparation, stages.load_trace(sampled.parent / "posterior.nc"), model=_model(sampled),
             output_contract=OutputContract.from_dict(record["output_contract"]), actual_inference={},
-            build_and_sample_seconds=0., output_dir=sampled.parent,
+            output_dir=sampled.parent,
+            preparation_generation=stages.load_preparation(preparation)[2],
         )
     assert not sampled.exists()
 
@@ -325,7 +327,8 @@ def test_explicit_latent_only_trace_cannot_complete_handoff_or_replay(tmp_path):
         stages.save_samples(
             preparation, trace, model=_model(sampled),
             output_contract=OutputContract.from_dict(record["output_contract"]), actual_inference={},
-            build_and_sample_seconds=0., output_dir=tmp_path / "incomplete",
+            output_dir=tmp_path / "incomplete",
+            preparation_generation=stages.load_preparation(preparation)[2],
         )
     assert not (tmp_path / "incomplete").exists()
     save_trace(trace, sampled.parent / record["posterior"])
@@ -387,7 +390,8 @@ def test_saving_samples_ignores_unused_configured_lazy_priors(tmp_path):
     saved = stages.save_samples(
         preparation, stages.load_trace(sampled.parent / "posterior.nc"), model=model,
         output_contract=OutputContract.from_dict(record["output_contract"]), actual_inference={},
-        build_and_sample_seconds=0., output_dir=tmp_path / "lazy",
+        output_dir=tmp_path / "lazy",
+        preparation_generation=stages.load_preparation(preparation)[2],
     )
     assert calls == []
     metadata = json.loads(saved.read_text())["model"]
@@ -418,7 +422,8 @@ def test_model_record_covers_every_field_or_rejects_it(tmp_path):
             stages.save_samples(
                 preparation, stages.load_trace(sampled.parent / "posterior.nc"), model=changed,
                 output_contract=OutputContract.from_dict(record["output_contract"]), actual_inference={},
-                build_and_sample_seconds=0., output_dir=tmp_path / "rejected",
+                output_dir=tmp_path / "rejected",
+                preparation_generation=stages.load_preparation(preparation)[2],
             )
         assert not (tmp_path / "rejected").exists()
 
@@ -446,7 +451,7 @@ def test_failed_acquisition_leaves_destination_free_for_retry(tmp_path, monkeypa
 ])
 def test_checkpoint_write_targets_cannot_redirect_into_preparation(tmp_path, stage, filename):
     preparation, sampled = _saved(tmp_path)
-    prepared, data = stages.load_preparation(preparation)
+    prepared, data, _ = stages.load_preparation(preparation)
     result = stages.postprocess(sampled, output=RhimeOutputSpec(output_format="none"))
     victim = preparation.parent / "prepared-inputs.nc"
     original = victim.read_bytes()
@@ -461,7 +466,8 @@ def test_checkpoint_write_targets_cannot_redirect_into_preparation(tmp_path, sta
             stages.save_samples(
                 preparation, result.trace, model=_model(sampled),
                 output_contract=_contract(sampled), actual_inference={},
-                build_and_sample_seconds=0., output_dir=destination,
+                output_dir=destination,
+                preparation_generation=stages.load_preparation(preparation)[2],
             )
     assert victim.read_bytes() == original
     xr.testing.assert_identical(stages.load_preparation(preparation)[0].inv_inputs, prepared.inv_inputs)
@@ -483,7 +489,8 @@ def test_sample_targets_cannot_alias_a_colocated_preparation(tmp_path, target_na
         stages.save_samples(
             preparation, result.trace, model=_model(sampled),
             output_contract=_contract(sampled), actual_inference={},
-            build_and_sample_seconds=0., output_dir=preparation.parent,
+            output_dir=preparation.parent,
+            preparation_generation=stages.load_preparation(preparation)[2],
         )
     assert payload.read_bytes() == original
     assert not (preparation.parent / "sample-manifest.json").exists()
@@ -492,13 +499,14 @@ def test_sample_targets_cannot_alias_a_colocated_preparation(tmp_path, target_na
 def test_colocated_checkpoints_ignore_unrelated_symlinks(tmp_path):
     preparation, sampled = _saved(tmp_path)
     result = stages.postprocess(sampled, output=RhimeOutputSpec(output_format="none"))
-    before, data = stages.load_preparation(preparation)
+    before, data, _ = stages.load_preparation(preparation)
     (preparation.parent / "unrelated-link").symlink_to(tmp_path / "absent")
     stages.save_preparation(before, data_config=data, output_dir=preparation.parent)
     stages.save_samples(
         preparation, result.trace, model=_model(sampled),
         output_contract=_contract(sampled), actual_inference={},
-        build_and_sample_seconds=0., output_dir=preparation.parent,
+        output_dir=preparation.parent,
+        preparation_generation=stages.load_preparation(preparation)[2],
     )
     xr.testing.assert_identical(stages.load_preparation(preparation)[0].inv_inputs, before.inv_inputs)
 
@@ -507,7 +515,7 @@ def test_preparation_replacement_with_same_config_rejects_old_samples(tmp_path):
     from dataclasses import replace
 
     preparation, sampled = _saved(tmp_path)
-    prepared, data_config = stages.load_preparation(preparation)
+    prepared, data_config, _ = stages.load_preparation(preparation)
     old_generation = json.loads(preparation.read_text())["generation"]
     changed = replace(prepared, inv_inputs=prepared.inv_inputs.assign(mf_error=prepared.inv_inputs.mf_error + 1))
     stages.save_preparation(changed, data_config=data_config, output_dir=preparation.parent)
@@ -521,7 +529,7 @@ def test_preparation_replaced_during_inference_cannot_complete_new_samples(tmp_p
     from types import SimpleNamespace
 
     preparation, sampled = _saved(tmp_path)
-    prepared, data_config = stages.load_preparation(preparation)
+    prepared, data_config, _ = stages.load_preparation(preparation)
     posterior = stages.load_trace(sampled.parent / "posterior.nc")
     existing = sampled.read_bytes()
     monkeypatch.setattr(stages, "materialize_standard_inputs", lambda *a, **k: (xr.Dataset(), {}))
@@ -546,7 +554,8 @@ def test_missing_constructed_priors_cannot_complete_public_save(tmp_path):
     with pytest.raises(ValueError, match="rhime_priors"):
         stages.save_samples(
             preparation, posterior, model=_model(sampled), output_contract=_contract(sampled),
-            actual_inference={}, build_and_sample_seconds=0., output_dir=sampled.parent,
+            actual_inference={}, output_dir=sampled.parent,
+            preparation_generation=stages.load_preparation(preparation)[2],
         )
     assert sampled.read_bytes() == before
 
@@ -585,16 +594,45 @@ def test_multisector_load_checks_required_scientific_state(tmp_path):
         postprocess_rhime_stage(**arguments)
 
 
-def test_missing_descriptive_metadata_remains_unknown(tmp_path, monkeypatch):
+@pytest.mark.parametrize("name", ["actual_inference", "provenance"])
+def test_missing_sampling_metadata_fails_at_reader(tmp_path, monkeypatch, name):
     _, sampled = _saved(tmp_path)
     record = json.loads(sampled.read_text())
-    del record["actual_inference"]
-    del record["provenance"]
+    del record[name]
     sampled.write_text(json.dumps(record))
-    monkeypatch.setattr(stages, "resolve_sampler", lambda *a, **k: pytest.fail("live sampler"))
-    result = stages.load_samples(sampled)
-    assert result.output_metadata["sampler"] is None
-    assert result.provenance == {}
+    monkeypatch.setattr(stages, "load_trace", lambda *a, **k: pytest.fail("numerical load"))
+    with pytest.raises(ValueError, match=name):
+        stages.load_samples(sampled)
+
+
+def test_relocated_checkpoint_tree_retains_preparation_reference(tmp_path):
+    import shutil
+
+    original = tmp_path / "original"
+    _, sampled = _saved(original)
+    record = json.loads(sampled.read_text())
+    assert record["preparation"] == "../prepared/prepare-manifest.json"
+    assert "build_and_sample_seconds" not in record
+    expected = stages.load_samples(sampled)
+    moved = tmp_path / "moved"
+    shutil.move(original, moved)
+    actual = stages.load_samples(moved / "samples" / sampled.name)
+    xr.testing.assert_identical(actual.inv_inputs, expected.inv_inputs)
+    xr.testing.assert_identical(actual.trace, expected.trace)
+
+
+def test_public_sample_writer_requires_original_preparation_generation(tmp_path):
+    preparation, sampled = _saved(tmp_path)
+    prepared, data, generation = stages.load_preparation(preparation)
+    posterior = stages.load_trace(sampled.parent / "posterior.nc")
+    model = _model(sampled)
+    contract = _contract(sampled)
+    stages.save_preparation(prepared, data_config=data, output_dir=preparation.parent)
+    with pytest.raises(ValueError, match="was replaced"):
+        stages.save_samples(
+            preparation, posterior, model=model, output_contract=contract,
+            actual_inference={}, output_dir=sampled.parent, preparation_generation=generation,
+        )
 
 
 def test_saved_output_contract_rejects_unsupported_products(tmp_path):

@@ -130,6 +130,8 @@ value and its unchanged version-1 schema live in
    openghg_inversions.rhime.preparation.export_basis
    openghg_inversions.rhime.standard.build_standard_model
    openghg_inversions.rhime.standard.materialize_standard_inputs
+   openghg_inversions.rhime.save_standard_artifacts
+   openghg_inversions.rhime.annotate_sample_trace
    openghg_inversions.rhime.requests.load_params
    openghg_inversions.rhime.params.retained_run_spec
    openghg_inversions.rhime.filter_observations

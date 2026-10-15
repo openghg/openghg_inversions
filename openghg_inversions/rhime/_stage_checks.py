@@ -36,7 +36,6 @@ def _check_result(
     artifact_paths: list[str],
     stage: str,
 ) -> dict[str, Any]:
-    stage = _check_stage(stage)
     return {
         "schema_version": CHECK_SCHEMA_VERSION,
         "name": name,
@@ -55,7 +54,7 @@ def prior_predictive_check(
     *,
     draws: int,
     destination: Path,
-    check_output: str | Path | None,
+    report: Path,
     stage: str,
 ) -> dict[str, Any]:
     """Draw prior predictions and write the evidence and a readiness report.
@@ -67,7 +66,7 @@ def prior_predictive_check(
         build: Builds the model to check; its readiness errors become a failed check.
         draws: Positive number of prior-predictive draws.
         destination: Existing check directory receiving the evidence and report.
-        check_output: Optional report path beneath ``destination``.
+        report: Resolved report path selected and checked by the caller.
         stage: Validated stage label.
 
     Returns:
@@ -76,7 +75,6 @@ def prior_predictive_check(
     Raises:
         OSError: If writing the evidence or report fails.
     """
-    report = _output_path(destination, check_output, "prior-predictive-readiness.json")
     report.unlink(missing_ok=True)
     import pymc as pm
 
