@@ -13,6 +13,7 @@ import xarray as xr
 from openghg_inversions.inversion_data import RhimeMergedData
 from openghg_inversions.rhime.params import RhimeConfig
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
+from openghg_inversions.postprocessing.contracts import OutputContract
 
 from examples.rhime_cookiecutter.my_inversion import likelihoods
 from examples.rhime_cookiecutter.my_inversion import runner as consumer_runner
@@ -58,7 +59,9 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
         averaging_period=("1h",),
         basis_artifact_source="controlled-test-basis",
     )
-    output_contract = object()
+    output_contract = OutputContract(
+        variable_roles={"flux_scale": "x"}, supported_output_formats=("none", "inv_out"),
+    )
     build_result = SimpleNamespace(output_contract=output_contract)
     idata = xr.DataTree()
     model_inputs = prepared.inv_inputs

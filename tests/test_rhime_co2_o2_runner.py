@@ -15,6 +15,8 @@ import pymc as pm
 import pytest
 import xarray as xr
 
+from openghg_inversions.models.priors import parse_prior
+from openghg_inversions.rhime.builders import RhimeModelBuildResult
 from openghg_inversions.rhime import co2 as co2_public
 from openghg_inversions.rhime.co2 import co2_o2_cached_sigma_runner, co2_o2_runner
 from openghg_inversions.rhime.co2.co2_o2_runner import (
@@ -49,11 +51,12 @@ def test_trace_annotation_labels_total_marginal_error() -> None:
     )
     trace = xr.DataTree.from_dict({"posterior": posterior})
 
-    co2_o2_runner._annotate_co2_o2_trace(
-        trace,
-        built=SimpleNamespace(variable_roles=_CO2_O2_VARIABLE_ROLES, metadata={}),
-    )
+    with pm.Model() as model:
+        parse_prior("scale", {"pdf": "halfnormal", "sigma": 1.0})
+    built = RhimeModelBuildResult(model=model, variable_roles=_CO2_O2_VARIABLE_ROLES)
+    co2_o2_runner._annotate_co2_o2_trace(trace, built=built)
 
+    assert json.loads(trace.attrs["rhime_priors"]) == {"scale": {"pdf": "halfnormal", "sigma": 1.0}}
     assert json.loads(trace["posterior"]["epsilon"].attrs["rhime_scientific_roles"]) == [
         "total_marginal_error"
     ]

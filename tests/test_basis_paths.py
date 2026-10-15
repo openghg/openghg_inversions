@@ -229,6 +229,7 @@ def test_runners_export_returned_basis_without_mutating_inputs(tmp_path, monkeyp
     monkeypatch.setattr(module, "prepare_observation_errors", lambda data, **kwargs: data)
     monkeypatch.setattr(module, "filter_observations", lambda data, site_options, **kwargs: (data, site_options))
     captured = []
+    original_metadata = []
     original_prepare = module.prepare_basis
 
     def prepare(**kwargs):
@@ -237,6 +238,7 @@ def test_runners_export_returned_basis_without_mutating_inputs(tmp_path, monkeyp
             assert Path(kwargs["basis_path"]) == tmp_path / "input.nc"
         result = original_prepare(**kwargs)
         captured.append(result)
+        original_metadata.append(dict(result.metadata))
         assert not list((tmp_path / "runs/prepared").glob("basis*"))
         return result
 
@@ -252,17 +254,16 @@ def test_runners_export_returned_basis_without_mutating_inputs(tmp_path, monkeyp
     if route in {"standard", "staged"}:
         # Standard preparation is scientific-only; its runner and staged
         # handoff export the completed basis before using the prepared inputs.
-        from dataclasses import replace
         from openghg_inversions.rhime import _standard_stages
         from tests.test_staged_workflow import _prepared
         monkeypatch.setattr(module, "build_sensitivities", lambda *args, **kwargs: {})
         monkeypatch.setattr(module, "assemble_rhime_inputs",
                             lambda site_data, basis, **kwargs: replace(_prepared(), basis_functions=basis))
         def after_preparation(*args, **kwargs):
-            captured.append(args[-1].basis_functions)  # the prepared inputs
+            captured.append(args[0].basis_functions)  # the prepared inputs
             raise AfterBasis
-        monkeypatch.setattr(RhimeConfig, "retained_run_spec", after_preparation)
-        monkeypatch.setattr(_standard_stages, "_write_preparation", after_preparation)
+        monkeypatch.setattr(module, "materialize_standard_inputs", after_preparation)
+        monkeypatch.setattr(_standard_stages, "save_preparation", after_preparation)
     config = RhimeConfig.from_params(options, multisector=route == "multisector")
     with pytest.raises(AfterBasis):
         if route == "staged":
@@ -277,19 +278,25 @@ def test_runners_export_returned_basis_without_mutating_inputs(tmp_path, monkeyp
             module.run_standard(config=config)
     assert sources["a"].flux.data is borrowed
     assert config.data.basis_output_path == (tmp_path / options["basis_output_path"] if suffix else None)
+    if route in {"standard", "staged", "example"}:
+        # An explicit export preserves scientific basis payloads and acquisition
+        # metadata rather than attaching a destination receipt.
+        assert captured[0].operator is captured[1].operator
+        assert captured[0].flux.data is captured[1].flux.data
+        assert captured[1].metadata == original_metadata[0]
+        assert captured[1].basis_artifact_path == (str(tmp_path / "input.nc") if selection == "reused" else None)
     if suffix is None:
-        if route in {"standard", "staged"}:
-            assert captured[0].operator is captured[1].operator
-            assert captured[0].flux.data is captured[1].flux.data
-        else:
+        if route not in {"standard", "staged"}:
             assert captured[0] is captured[1]
         assert not list((tmp_path / "runs/prepared").glob("basis*"))
         return
     exported = tmp_path / options["basis_output_path"]
     assert exported.exists()
     assert not (tmp_path / "runs/prepared/runs").exists()
-    assert captured[1].basis_artifact_path == str(exported)
-    assert captured[0].basis_artifact_path != str(exported)
+    if route in {"multisector", "nested"}:
+        # Deferred families retain their historical export receipt copy.
+        assert captured[1].basis_artifact_path == str(exported)
+        assert captured[0].basis_artifact_path != str(exported)
     restored = BasisFunctions.load(exported)
     xr.testing.assert_equal(restored.flat_basis(), captured[0].flat_basis())
     xr.testing.assert_equal(restored.flux, resolve_runtime_flux(sources, split_by_sectors=route == "multisector"))
