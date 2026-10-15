@@ -10,7 +10,7 @@ from typing import Annotated, Any, ClassVar, Union
 
 import numpy as np
 from pydantic import (
-    BeforeValidator, ConfigDict, Field, StrictBool, StrictStr, TypeAdapter, ValidationError, ValidationInfo, field_validator, model_validator,
+    BeforeValidator, ConfigDict, Field, StrictBool, StrictStr, TypeAdapter, ValidationError, field_validator,
 )
 from pydantic.dataclasses import dataclass
 
@@ -66,11 +66,16 @@ class LikelihoodSettings:
                     f"{sorted(names)!r}. Pass custom options through `likelihood_kwargs`."
                 )
             return None
+        options = {"kind": mismatch_model, **{name: remaining.pop(name) for name in names}}
+        # Compare only ordinary tags; array equality can otherwise execute a lazy scalar.
+        variant = (next((variant for variant in cls.variants() if variant.kind == mismatch_model), None)
+                   if isinstance(mismatch_model, str) else None)
+        if variant is not None and issubclass(variant, SigmaSettings):
+            if options.get("sigma_prior") is None:
+                options["sigma_prior"] = dict(variant.DEFAULT_SIGMA_PRIOR)
+            options.setdefault("sigma_freq_anchor", start_date)
         try:
-            return cls.adapter().validate_python(
-                {"kind": mismatch_model, **{name: remaining.pop(name) for name in names}},
-                context={"start_date": start_date},
-            )
+            return cls.adapter().validate_python(options)
         except ValidationError as error:
             title = f"Invalid `mismatch_model={mismatch_model!r}` options"
             raise ValidationError.from_exception_data(title, error.errors(include_url=False)) from error
@@ -100,17 +105,6 @@ class SigmaSettings(LikelihoodSettings):
         if value is not None and not isinstance(value, str | datetime | np.datetime64):
             raise ValueError("sigma_freq_anchor must be a date-time string or temporal scalar")
         return _json_value(value)
-
-    @model_validator(mode="before")
-    @classmethod
-    def resolve_requested_defaults(cls, value: Any, info: ValidationInfo) -> Any:
-        if info.context is None:
-            return value
-        options = dict(value)
-        if options.get("sigma_prior") is None:
-            options["sigma_prior"] = dict(cls.DEFAULT_SIGMA_PRIOR)
-        options.setdefault("sigma_freq_anchor", info.context["start_date"])
-        return options
 
     def recorded_options(self) -> dict[str, Any]:
         """Exclude every caller prior before serializing ordinary option values."""

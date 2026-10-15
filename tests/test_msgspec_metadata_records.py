@@ -194,3 +194,27 @@ def test_output_contract_relations_are_in_runtime_and_schema(tmp_path, field, va
         convert_record(raw, OutputContractRecord)
     with pytest.raises(jsonschema.ValidationError):
         jsonschema.Draft202012Validator(msgspec.json.schema(OutputContractRecord)).validate(raw)
+
+
+@pytest.mark.parametrize("description", [None, {"data": "parameter"}, {"variable": "scale"}, {"symbolic": True}])
+def test_prior_provenance_roundtrips_without_executable_restoration(tmp_path, description):
+    _, sampled = _saved(tmp_path)
+    raw = json.loads(sampled.read_text())["model"]
+    raw["sectors"][0]["x_prior"] = {"pdf": "normal", "sigma": description, "lower": None}
+    record = convert_record(raw, ModelRecord)
+    assert json.loads(encode_record(record)) == raw
+    jsonschema.Draft202012Validator(msgspec.json.schema(ModelRecord)).validate(raw)
+
+
+@pytest.mark.parametrize("description", [
+    {}, {"data": None}, {"variable": ""}, {"variable": " "}, {"symbolic": False}, {"symbolic": 1},
+    {"variable": "scale", "data": "parameter"}, {"symbolic": True, "extra": 1},
+])
+def test_prior_descriptor_runtime_and_schema_reject_the_same_shapes(tmp_path, description):
+    _, sampled = _saved(tmp_path)
+    raw = json.loads(sampled.read_text())["model"]
+    raw["sectors"][0]["x_prior"] = {"sigma": description}
+    with pytest.raises(msgspec.ValidationError):
+        convert_record(raw, ModelRecord)
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.Draft202012Validator(msgspec.json.schema(ModelRecord)).validate(raw)

@@ -32,7 +32,7 @@ class StandardManifest(Record):
 
         The runner creates the directory and saves numerical artifacts first.
         """
-        record = type(self).model_validate(self.model_dump(mode="json", by_alias=True))
+        record = type(self).model_validate(self.model_dump(mode="python", by_alias=True, warnings=False))
         destination = Path(directory).resolve()
         temporary = destination / f".{record.stage}-manifest.tmp"
         temporary.write_text(record.model_dump_json(by_alias=True, indent=2) + "\n", encoding="utf-8")

@@ -41,6 +41,15 @@ class SectorRecord(Record):
             x_prior=None if self.x_prior is None else self.x_prior.to_runtime(trace=trace),
         )
 
+    def for_postprocessing(self, *, trace: xr.DataTree | None = None) -> SectorSpec:
+        """Retain descriptive priors while checking their registered data references."""
+        from .specs import SectorSpec
+
+        return SectorSpec(
+            **self.model_dump(exclude={"x_prior"}),
+            x_prior=None if self.x_prior is None else self.x_prior.for_postprocessing(trace=trace),
+        )
+
 
 class ModelRecord(Record):
     """Required structural choices; each component owns its metadata conversion."""
@@ -75,7 +84,7 @@ class ModelRecord(Record):
         })
 
     def to_runtime(self, *, trace: xr.DataTree | None = None) -> RhimeModelSpec:
-        """Borrow referenced arrays and delegate options to their concrete owners."""
+        """Restore executable prior values; symbolic dependencies need the original recipe."""
         from .specs import RhimeModelSpec
 
         return RhimeModelSpec(
@@ -84,4 +93,21 @@ class ModelRecord(Record):
             bc_prior=None if self.bc_prior is None else self.bc_prior.to_runtime(trace=trace),
             offset_prior=None if self.offset_prior is None else self.offset_prior.to_runtime(trace=trace),
             likelihood=None if self.likelihood is None else self.likelihood.to_runtime(trace=trace),
+        )
+
+    def for_postprocessing(self, *, trace: xr.DataTree | None = None) -> RhimeModelSpec:
+        """Build a metadata view for saved-state products, retaining prior descriptions.
+
+        The returned specification describes the sampled model. Its prior
+        dictionaries may contain symbolic descriptors and are not an executable
+        model recipe; use ``to_runtime`` when executable restoration is needed.
+        """
+        from .specs import RhimeModelSpec
+
+        return RhimeModelSpec(
+            **self.model_dump(exclude={"sectors", "likelihood", "bc_prior", "offset_prior"}),
+            sectors=tuple(sector.for_postprocessing(trace=trace) for sector in self.sectors),
+            bc_prior=None if self.bc_prior is None else self.bc_prior.for_postprocessing(trace=trace),
+            offset_prior=None if self.offset_prior is None else self.offset_prior.for_postprocessing(trace=trace),
+            likelihood=None if self.likelihood is None else self.likelihood.for_postprocessing(trace=trace),
         )

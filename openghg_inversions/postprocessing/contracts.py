@@ -67,16 +67,17 @@ class OutputContract(Record):
     ) -> OutputContract:
         """Create new output metadata; saved contracts must supply every field."""
         return cls(
-            schema=_SCHEMA, schema_version=1, variable_roles=variable_roles,
+            schema=_SCHEMA, schema_version=1, variable_roles=dict(variable_roles),
             supported_output_formats=(list(supported_output_formats)
                                       if isinstance(supported_output_formats, tuple) else supported_output_formats),
-            metadata={} if metadata is None else metadata,
-            state_dimension_mapping={} if state_dimension_mapping is None else state_dimension_mapping,
+            metadata={} if metadata is None else dict(metadata),
+            state_dimension_mapping={} if state_dimension_mapping is None else dict(state_dimension_mapping),
         )
 
     def with_updates(self, **changes: Any) -> OutputContract:
         """Validate a new output view and own its JSON containers."""
-        return type(self).model_validate(self.to_dict() | changes)
+        current = self.model_dump(mode="python", by_alias=True, warnings=False)
+        return type(self).model_validate(current | changes)
 
     def validate_requested_output(self, output_format: str) -> None:
         """Reject a writer that the bound scientific contract does not support."""
@@ -106,8 +107,9 @@ class OutputContract(Record):
             raise ValueError(f"Trace is missing output-contract reconstruction state(s): {missing!r}.")
 
     def to_dict(self) -> dict[str, Any]:
-        """Return a versioned JSON value with no numerical payload or callable."""
-        return self.model_dump(mode="json", by_alias=True)
+        """Validate current metadata before projecting it into a versioned JSON value."""
+        current = self.model_dump(mode="python", by_alias=True, warnings=False)
+        return type(self).model_validate(current).model_dump(mode="json", by_alias=True)
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> OutputContract:

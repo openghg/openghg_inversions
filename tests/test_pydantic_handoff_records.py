@@ -112,6 +112,11 @@ def test_output_record_copies_json_and_refuses_lazy_arrays_without_computing():
     array = xr.DataArray(da.from_delayed(lazy(), shape=(1,), dtype=float), dims="region")
     with pytest.raises(ValidationError):
         OutputContract.create(variable_roles={"flux_scale": "x"}, metadata={"array": array})
+    contract.metadata["array"] = array
+    with pytest.raises(ValidationError):
+        contract.to_dict()
+    with pytest.raises(ValidationError):
+        contract.with_updates()
     assert calls == []
 
 
@@ -167,9 +172,10 @@ def test_output_view_updates_validate_and_own_containers():
         original.with_updates(misspelled_roles={})
 
 
-def test_existing_contract_is_revalidated_at_sample_write_boundary(tmp_path, monkeypatch):
+@pytest.mark.parametrize("invalid", [float("nan"), {1: "integer evidence", "1": "string evidence"}])
+def test_existing_contract_is_revalidated_at_sample_write_boundary(tmp_path, monkeypatch, invalid):
     contract = OutputContract.create(variable_roles={"flux_scale": "x"})
-    contract.metadata["unexpected"] = float("nan")
+    contract.metadata["unexpected"] = invalid
     config = RhimeConfig.from_params(_params(), multisector=False)
     monkeypatch.setattr(stages, "save_trace", lambda *args: pytest.fail("wrote invalid contract"))
     with pytest.raises(ValidationError) as caught:
@@ -178,7 +184,7 @@ def test_existing_contract_is_revalidated_at_sample_write_boundary(tmp_path, mon
             output_contract=contract, actual_inference={}, build_and_sample_seconds=0.0,
             output_dir=tmp_path / "samples",
         )
-    assert caught.value.errors()[0]["loc"][:3] == ("output_contract", "metadata", "unexpected")
+    assert caught.value.errors()[0]["loc"][:2] == ("metadata", "unexpected")
     assert not (tmp_path / "samples").exists()
 
 
@@ -217,3 +223,29 @@ def test_manifest_save_revalidates_mutable_metadata_before_writing(tmp_path):
     with pytest.raises(ValidationError):
         record.save(destination)
     assert not list(destination.iterdir())
+
+
+def test_preparation_save_rejects_mutated_key_collision_before_writing(tmp_path):
+    record = PrepareManifest(
+        schema="openghg_inversions.standard.prepare", schema_version=1,
+        producer="openghg_inversions", family="standard", stage="prepare",
+        prepared_inputs="prepared-inputs.nc", data={}, basis_artifact_source=None,
+    )
+    record.data["collision"] = {1: "integer evidence", "1": "string evidence"}
+    with pytest.raises(ValidationError) as caught:
+        record.save(tmp_path)
+    assert caught.value.errors()[0]["loc"][:2] == ("data", "collision")
+    assert not list(tmp_path.iterdir())
+
+
+def test_sample_save_rejects_mutated_nested_contract_before_writing(tmp_path):
+    _, samples = _saved(tmp_path)
+    record = SampleManifest.load(samples)
+    record.output_contract.metadata["collision"] = {1: "integer evidence", "1": "string evidence"}
+    destination = tmp_path / "invalid-copy"
+    destination.mkdir()
+    with pytest.raises(ValidationError) as caught:
+        record.save(destination)
+    assert caught.value.errors()[0]["loc"][:3] == ("output_contract", "metadata", "collision")
+    assert not list(destination.iterdir())
+    assert SampleManifest.load(samples).output_contract.metadata == {}

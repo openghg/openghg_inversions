@@ -129,16 +129,22 @@ class RhimeModelSpec:
     def to_record(self, *, priors: Mapping[str, PriorArgs] | None = None) -> dict[str, Any]:
         """Describe structural choices and construction-owned prior parameters.
 
-        ``priors`` contains inline numerical scalars and registered-array
-        references captured while constructing the model. Unused configured
-        prior mappings are never traversed or materialized here. Omitting
-        ``priors`` omits prior parameter values from the record.
+        ``priors`` contains nullable scalar values, registered-array references
+        and named or opaque symbolic descriptions captured during construction.
+        Symbolic descriptions are provenance; recording them does not evaluate
+        or reconstruct their dependencies. Unused configured prior mappings
+        are never traversed or materialized here. Omitting ``priors`` omits
+        prior parameter values from the record.
         """
         return ModelRecord.from_runtime(self, priors=dict(priors or {})).model_dump(mode="json")
 
     @classmethod
     def from_record(cls, record: Any, *, trace: Any = None) -> RhimeModelSpec:
-        """Decode :meth:`to_record` output without executing saved callables.
+        """Restore scalar and registered-array priors without executing saved callables.
+
+        Named and unnamed symbolic descriptions need the original model recipe
+        for executable restoration. Saved posterior products instead use the
+        metadata view from :meth:`ModelRecord.for_postprocessing`.
 
         Args:
             record: Structural model choices and construction-owned prior records.
@@ -147,7 +153,8 @@ class RhimeModelSpec:
 
         Raises:
             ValueError: If the record is incomplete, names an unknown likelihood,
-                or references a missing registered prior array.
+                references a missing registered prior array, or contains a
+                symbolic parameter that cannot be restored as executable input.
         """
         return ModelRecord.model_validate(record).to_runtime(trace=trace)
 

@@ -16,12 +16,13 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from datetime import datetime, timezone
+from math import isclose
 from typing import Annotated, Any, Literal, TypeVar
 import warnings
 
 import numpy as np
 import xarray as xr
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from openghg_inversions._record_schema import JsonFloat, Record, SchemaVersion
 from openghg_inversions.array_ops import to_dense
@@ -50,6 +51,12 @@ class FluxNonFiniteMetadata(Record):
     the metadata can survive NetCDF/Zarr roundtrips without placing a Python
     object in ``DataArray.attrs``.
 
+    Computed evidence requires count, total and fraction, with count no larger
+    than total and fraction equal to their ratio within relative tolerance
+    ``1e-12``. Empty data has count and fraction zero. Uncounted evidence carries
+    none of these values. These relationships are validated without reading flux
+    data; generated JSON Schema describes the individual fields only.
+
     Attributes:
         schema_version: JSON metadata schema version.
         policy: Non-finite handling policy. Currently only ``"zero_fill"`` is
@@ -74,6 +81,22 @@ class FluxNonFiniteMetadata(Record):
     count: Annotated[int, Field(ge=0)] | None = None
     total: Annotated[int, Field(ge=0)] | None = None
     fraction: Annotated[JsonFloat, Field(ge=0, le=1)] | None = None
+
+    @model_validator(mode="after")
+    def validate_counts(self) -> "FluxNonFiniteMetadata":
+        """Keep counted evidence coherent without inspecting the flux array."""
+        if self.checked == NONFINITE_CHECKED_NOT_COUNTED:
+            if any(value is not None for value in (self.count, self.total, self.fraction)):
+                raise ValueError("Uncounted flux metadata cannot contain count, total or fraction.")
+            return self
+        if self.count is None or self.total is None or self.fraction is None:
+            raise ValueError("Computed flux metadata requires count, total and fraction.")
+        if self.count > self.total:
+            raise ValueError("Non-finite count cannot exceed the total cell count.")
+        expected = self.count / self.total if self.total else 0.0
+        if not isclose(self.fraction, expected, rel_tol=1e-12, abs_tol=0.0):
+            raise ValueError("Non-finite fraction must equal count / total (zero for empty data).")
+        return self
 
     @classmethod
     def from_attrs(cls, attrs: Mapping[Any, Any]) -> "FluxNonFiniteMetadata | None":

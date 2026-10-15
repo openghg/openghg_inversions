@@ -57,6 +57,33 @@ def test_flux_metadata_boundary_reports_bad_fields(change, path):
     assert error.value.errors()[0]["loc"] == (path,)
 
 
+@pytest.mark.parametrize("change,message", [
+    ({"checked": "computed"}, "requires count, total and fraction"),
+    ({"count": 0}, "Uncounted flux metadata"),
+    ({"checked": "computed", "count": 3, "total": 2, "fraction": 1.}, "cannot exceed"),
+    ({"checked": "computed", "count": 1, "total": 2, "fraction": 0.}, "must equal count / total"),
+    ({"checked": "computed", "count": 0, "total": 0, "fraction": 1.}, "zero for empty data"),
+])
+def test_flux_metadata_rejects_inconsistent_counted_evidence(change, message):
+    raw = {"schema_version": 1} | change
+    with pytest.raises(ValidationError, match=message):
+        FluxNonFiniteMetadata.from_json(raw)
+    with pytest.raises(ValidationError, match=message):
+        FluxNonFiniteMetadata.from_json(json.dumps(raw))
+
+
+@pytest.mark.parametrize("values,count,total,fraction", [
+    ([], 0, 0, 0.),
+    ([1., np.nan, np.inf], 2, 3, 2 / 3),
+])
+def test_public_flux_count_writer_establishes_consistent_evidence(values, count, total, fraction):
+    original = xr.DataArray(values, dims="cell")
+    sanitized = sanitize_flux_nonfinite(original, context="count consistency", check="count")
+    metadata = FluxNonFiniteMetadata.from_attrs(sanitized.attrs)
+    assert (metadata.count, metadata.total, metadata.fraction) == (count, total, fraction)
+    assert FluxNonFiniteMetadata.from_json(metadata.to_json()) == metadata
+
+
 def test_absence_is_distinct_from_malformed_present_and_lazy_values_never_run():
     assert FluxNonFiniteMetadata.from_attrs({}) is None
     for malformed in (None, "{", "{}", [], 1):

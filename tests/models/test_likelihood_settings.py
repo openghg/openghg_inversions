@@ -8,7 +8,7 @@ import dask.array as da
 import numpy as np
 import pytest
 import xarray as xr
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError
 
 from openghg_inversions.models._likelihood_settings import LikelihoodSettings
 from openghg_inversions.models.additive_sigma import AdditiveSigmaRecord, AdditiveSigmaSettings
@@ -49,6 +49,36 @@ def test_discriminated_factory_resolves_defaults_and_consumes_only_its_options()
         assert error.value.errors()[0]["loc"][0] == "additive_sigma"
     anchor = np.datetime64("2026-01-01T00:00:00.123456789", "ns")
     assert AdditiveSigmaSettings(sigma_freq_anchor=anchor).sigma_freq_anchor == str(anchor)
+
+
+@pytest.mark.parametrize("kind,settings_type", [
+    ("additive_sigma", AdditiveSigmaSettings),
+    ("pollution_event", PollutionEventSettings),
+])
+def test_request_defaults_are_explicit_and_do_not_depend_on_validation_context(kind, settings_type):
+    direct = settings_type()
+    assert TypeAdapter(settings_type).validate_python({}, context={"unrelated": True}) == direct
+    assert direct.sigma_prior is None and direct.sigma_freq_anchor is None
+
+    omitted = LikelihoodSettings.from_params({}, mismatch_model=kind, start_date="2026-01-01")
+    explicit_null = LikelihoodSettings.from_params(
+        {"sigma_prior": None, "sigma_freq_anchor": None}, mismatch_model=kind, start_date="2026-01-01",
+    )
+    assert omitted.sigma_freq_anchor == "2026-01-01"
+    assert explicit_null.sigma_freq_anchor is None
+    assert omitted.sigma_prior == explicit_null.sigma_prior == settings_type.DEFAULT_SIGMA_PRIOR
+    omitted.sigma_prior["pdf"] = "normal"
+    assert explicit_null.sigma_prior == settings_type.DEFAULT_SIGMA_PRIOR
+
+
+def test_request_discriminator_validation_does_not_execute_a_lazy_scalar():
+    @dask.delayed
+    def forbidden():
+        raise AssertionError("Validating a likelihood tag computed a lazy scalar")
+
+    tag = da.from_delayed(forbidden(), shape=(), dtype=object)
+    with pytest.raises(ValidationError):
+        LikelihoodSettings.from_params({}, mismatch_model=tag, start_date="2026-01-01")
 
 
 def test_prior_ownership_capture_and_numeric_rejection_never_compute():

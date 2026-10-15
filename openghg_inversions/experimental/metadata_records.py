@@ -31,13 +31,25 @@ class Record(msgspec.Struct, forbid_unknown_fields=True, frozen=True):
     """Typed metadata only; validation happens at an explicit boundary."""
 
 
-class PriorDataReference(Record):
-    """Name of a numerical parameter already owned by trace constant_data."""
+class PriorReference(Record, omit_defaults=True):
+    """Exactly one data reference or descriptive graph dependency, without evaluation."""
 
-    data: NonBlank
+    data: NonBlank | msgspec.UnsetType = msgspec.UNSET
+    variable: NonBlank | msgspec.UnsetType = msgspec.UNSET
+    symbolic: Literal[True] | msgspec.UnsetType = msgspec.UNSET
+
+    def __post_init__(self) -> None:
+        if sum(value is not msgspec.UNSET for value in (self.data, self.variable, self.symbolic)) != 1:
+            raise ValueError("Prior references require exactly one of 'data', 'variable', or 'symbolic'")
 
 
-Prior = dict[str, str | bool | int | float | PriorDataReference]
+Prior = dict[str, Annotated[
+    str | bool | int | float | None | PriorReference,
+    msgspec.Meta(extra_json_schema={
+        "if": {"type": "object"},
+        "then": {"oneOf": [{"required": ["data"]}, {"required": ["variable"]}, {"required": ["symbolic"]}]},
+    }),
+]]
 
 
 class FixedErrorOptions(Record):

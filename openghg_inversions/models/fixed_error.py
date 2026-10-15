@@ -62,6 +62,10 @@ class FixedErrorRecord(Record):
     kind: Literal["fixed_error"]
     options: FixedErrorOptions
 
+    def for_postprocessing(self, *, trace: xr.DataTree | None = None) -> FixedErrorSettings:
+        """Describe this selection; there are no prior dependencies to restore."""
+        return FixedErrorSettings()
+
     def to_runtime(self, *, trace: xr.DataTree | None = None) -> FixedErrorSettings:
         return FixedErrorSettings()
 

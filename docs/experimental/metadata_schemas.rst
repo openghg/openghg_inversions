@@ -72,6 +72,14 @@ validates a replacement and owns its JSON containers. Pydantic's native
 ``model_copy(update=...)`` does not validate updates, so it is not used for that
 public operation. Replay reuses the validated contract directly.
 
+Frozen models still contain mutable nested JSON containers. Manifest saving,
+contract export and contract updates therefore validate a Python-mode snapshot
+before converting it to JSON. This order preserves invalid evidence long enough
+to reject it: integer key ``1`` and string key ``"1"`` must not collapse into one
+JSON key before validation. The new-contract convenience constructor accepts
+``Mapping`` values and copies them into the record's owned dictionaries; loading
+saved metadata keeps the strict durable field types.
+
 .. code-block:: python
 
    from openghg_inversions.postprocessing.contracts import OutputContract
@@ -93,11 +101,35 @@ the requested likelihood instead of central parallel dispatch tables.
 ``DataConfig`` retains ownership of preparation option semantics, and
 ``RhimeModelSpec`` remains an ordinary dataclass.
 
+The existing settings factory resolves request-dependent sigma defaults before
+validation. An omitted temporal anchor uses the request's start date; an explicit
+``None`` remains unanchored. Constructing a settings dataclass directly validates
+its supplied values without relying on hidden validation context.
+
 Runtime likelihood settings can borrow numerical prior values. Their stored
 options instead carry construction-owned scalars or references, so those are
 still distinct types with an explicit scientific persistence boundary.
 ``PriorRecord`` owns restoring its references. Selecting a schema does not
 construct a model or compute a prior array.
+
+``ModelRecord.for_postprocessing(trace=...)`` produces a metadata view for
+products based on already sampled states. It checks registered array names while
+retaining prior descriptions. ``ModelRecord.to_runtime(trace=...)`` instead
+restores executable scalar/array prior parameters and rejects unresolved graph
+dependencies. These operations have different requirements even though both
+reuse the existing scientific specification dataclasses.
+
+.. code-block:: python
+
+   from openghg_inversions.models.priors import PriorRecord
+
+   prior = PriorRecord.model_validate({
+       "pdf": "normal", "mu": 0.0, "sigma": {"variable": "scale"},
+   })
+   print(prior.for_postprocessing(trace=None))
+
+This preserves the named dependency without evaluating it. It is not an
+executable recipe for constructing ``scale`` or arbitrary PyTensor expressions.
 
 ``FluxNonFiniteMetadata`` is also one Pydantic model. Its attribute reader and
 JSON writer use native validation and serialization instead of manually
@@ -105,6 +137,13 @@ casting/reconstructing every field. The schema version is now required;
 optional provenance defaults remain explicit. A missing attribute returns
 ``None``; malformed-present values fail with field paths. NetCDF and Zarr
 tests exercise the public flux sanitation writer and metadata reader.
+
+Its after-model validator also owns count consistency: computed evidence requires
+all three count/total/fraction fields, count cannot exceed total, and fraction
+must agree with count divided by total. Empty data has zero count and fraction;
+uncounted evidence carries none of these fields. Validation never inspects the
+flux payload. Generated JSON Schema describes the scalar constraints; consumers
+still need the runtime validator for relationships between fields.
 
 For example, ``schema_version=true`` fails at ``schema_version`` instead of
 passing Python's ``True == 1`` comparison. A ``sigma_per_site`` option on a
@@ -139,9 +178,14 @@ Scientific ownership and compatibility
 * Prior arrays use the existing constructed-prior records from PR 873:
   ``{"data": "x_prior_mu"}`` refers to saved ``constant_data``. Required missing
   references fail during scientific reconstruction. The prototype never walks
-  unused configured prior arrays. Symbolic ``variable``/``symbolic`` prior
-  descriptors are intentionally unsupported; arbitrary graph restoration is
-  outside this experiment.
+  unused configured prior arrays. Null-valued parameters remain null, including
+  an unbounded ``upper`` parameter. Named ``{"variable": "scale"}`` dependencies
+  and opaque ``{"symbolic": true}`` descriptions are valid provenance, without
+  evaluating their graphs or promising to rebuild them. Reading descriptive
+  metadata and producing supported products from saved posterior draws do not
+  require executable prior restoration. An operation explicitly restoring a
+  prior rejects unresolved symbolic descriptions; arbitrary graph restoration
+  remains outside this experiment.
 * Pydantic rejects nested nonfinite JSON values. Strict float validation alone
   can still call ``__float__`` on array-like objects. The shared ``JsonFloat``
   field type requires an ordinary JSON number before conversion, preventing
@@ -171,6 +215,9 @@ require matching names or lengths.
 
    portable = Co2PreparedInputs.dataset_schema()
    retained = Co2PreparedInputs.dataset_schema("retained")
+   complete = Co2PreparedInputs.dataset_schema(
+       "retained", concentration_units="ppm", aggregation_error_mode="low_rank",
+   )
 
 The bound schema requires ``H(nmeasure, retained)``,
 ``alpha_prior_mean(retained)`` and
@@ -179,18 +226,32 @@ second-axis name and uses one bound schema pass; scientific datasets may use
 ``region``, ``retained`` or another meaningful state name. Missing H or H with
 the wrong rank uses the unbound schema for required-variable/rank diagnostics.
 
-Scientific coordinate equality/order, covariance squareness, numeric unit
-scale and aggregation representations retain explicit owning checks. NetCDF
-and Zarr tests verify round trips, loader rejection and non-mutation with a
-nonstandard retained-state name; Dask tests verify no payload or auxiliary
-coordinate computation. This prototype adds a floating-dtype restriction and
-changes structural error text.
+The complete schema also declares the selected aggregation representation and
+its unit relationships. Equal-scale checks use native ``AttrSchema(units=...)``
+with OpenGHG's unit registry, retaining a small Pint fallback for equivalent
+expressions the native comparison cannot express, such as ``umol/mol`` versus
+``ppm``. Convertible units alone are insufficient: accepting ``ppb`` would not
+convert its numerical values to ``ppm``. Unit conversion belongs at ingestion;
+independently supplied or loaded artifacts establish their unit contract here.
 
-``xarray-validate==0.0.5`` cannot faithfully export this schema: generic dtype
-constraints are silently omitted by ``serialize()``. The unbound declaration
+Each shared Dataset index is checked once. Covariance row and column dimensions
+have distinct names, so their label equality/order remains an explicit owning
+check. NetCDF and Zarr tests verify round trips, loader rejection and
+non-mutation with a nonstandard retained-state name; Dask tests verify no payload
+or auxiliary coordinate computation. This prototype adds floating-dtype
+restrictions and changes structural error text.
+
+``xarray-validate==0.0.5`` omits generic dtype constraints such as ``np.floating``
+from ``serialize()`` before either JSON or YAML encoding. YAML loading is
+supported: handwritten ``dtype: floating`` and exported concrete ``float64``
+constraints work. This is an export limitation, not a limitation of YAML schema
+expression. Schema export is optional for this prototype's runtime validation.
+Callable scientific checks also remain runtime rules, rather than a portable
+description of the complete scientific contract.
+The unbound declaration
 does not infer state relationships; the product supplies explicit dimension
 names for that purpose. This CO2
-structural schema runs on construction/load. Saving a subsequently mutated
+schema runs on construction/load. Saving a subsequently mutated
 dataset does not rerun it, although other RHIME/aggregation checks still apply.
 
 Assessment
@@ -200,8 +261,10 @@ Pydantic is the stronger candidate here for actionable nested errors and
 removing routine handwritten validation. Msgspec remains attractive for small
 manifest records, with a stricter need to funnel construction through boundary
 helpers. Neither replaces scientific codecs. The CO2 schema is clearer when
-its owner binds the state dimensions explicitly, although incomplete schema
-export remains a limitation for wider adoption.
+its owner binds the state dimensions explicitly. The demonstrated gains are
+consistent construction and I/O boundaries, useful errors and generated schemas,
+not a reduction in total source length. Optional schema export does not gate
+adoption of useful runtime validation.
 
 `OpenGHG PR 1768 <https://github.com/openghg/openghg/pull/1768>`_ was reviewed:
 its proposed generic finite metadata/history utilities overlap common storage

@@ -286,7 +286,7 @@ def postprocess(sample_manifest: str | Path, *, output: RhimeOutputSpec) -> Rhim
     refuse_existing_output_destinations(output)
     prepared, data = load_preparation((path.parent / record.preparation).resolve())
     posterior = load_trace((path.parent / record.posterior).resolve())
-    model = record.model.to_runtime(trace=posterior)
+    model = record.model.for_postprocessing(trace=posterior)
     # The manifests are separate files; keep the sample bound to its preparation.
     conflicts = {name: (getattr(model, name), getattr(data, name))
                  for name in ("species", "domain") if getattr(model, name) != getattr(data, name)}

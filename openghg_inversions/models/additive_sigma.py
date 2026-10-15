@@ -92,6 +92,14 @@ class AdditiveSigmaRecord(Record):
     kind: Literal["additive_sigma"]
     options: AdditiveSigmaOptions
 
+    def for_postprocessing(self, *, trace: xr.DataTree | None = None) -> AdditiveSigmaSettings:
+        """Retain prior descriptions for products that consume already sampled states."""
+        return AdditiveSigmaSettings(
+            **self.options.model_dump(exclude={"sigma_prior"}),
+            sigma_prior=(None if self.options.sigma_prior is None
+                         else self.options.sigma_prior.for_postprocessing(trace=trace)),
+        )
+
     def to_runtime(self, *, trace: xr.DataTree | None = None) -> AdditiveSigmaSettings:
         return AdditiveSigmaSettings(
             **self.options.model_dump(exclude={"sigma_prior"}),

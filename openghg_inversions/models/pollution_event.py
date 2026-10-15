@@ -96,6 +96,16 @@ class PollutionEventRecord(Record):
     kind: Literal["pollution_event"]
     options: PollutionEventOptions
 
+    def for_postprocessing(self, *, trace: xr.DataTree | None = None) -> PollutionEventSettings:
+        """Keep descriptive prior dependencies without recreating the likelihood graph."""
+        power = self.options.power
+        return PollutionEventSettings(
+            **self.options.model_dump(exclude={"sigma_prior", "power"}),
+            sigma_prior=(None if self.options.sigma_prior is None
+                         else self.options.sigma_prior.for_postprocessing(trace=trace)),
+            power=power.for_postprocessing(trace=trace) if isinstance(power, PriorRecord) else power,
+        )
+
     def to_runtime(self, *, trace: xr.DataTree | None = None) -> PollutionEventSettings:
         power = self.options.power
         return PollutionEventSettings(
