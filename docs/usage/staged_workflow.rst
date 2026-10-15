@@ -62,8 +62,13 @@ evaluation finds that its states have no effect on observations and fixes them
 instead of sampling them; such a prior contributes no constructed-prior record.
 Disabled BC and offset components are excluded before this computation.
 Metadata writing uses the captured scalar values and registered arrays, without
-executing the original caller's lazy prior graph again. Scalar-shaped symbolic
-parameters retain their graph dependencies. Ordinary and reparameterized
+executing the original caller's lazy prior graph again. Runtime symbolic
+parameters retain their graph dependencies; saved metadata describes named
+dependencies or marks unnamed symbolic expressions without saving an executable
+graph. Supported products from saved posterior states can retain these
+descriptions. Restoring executable prior parameters with symbolic dependencies
+requires the original model recipe. Null-valued parameters, such as an unbounded
+``upper``, remain null. Ordinary and reparameterized
 lognormal construction share the same symbolic moment conversion, preserving
 the supplied arithmetic or log-space parameterization in metadata.
 

@@ -77,7 +77,7 @@ def test_reporting_routes_reject_before_work_or_output_directory(tmp_path, monke
                 {"x": (("chain", "draw", "region"), [[[1.0]]])}, coords={"chain": [0], "draw": [0], "region": [0]},
             )),
             model=config.model, actual_inference=config.sampler.describe(),
-            output_contract=OutputContract(variable_roles={"flux_scale": "x"}, supported_output_formats=("none", "paris")),
+            output_contract=OutputContract.create(variable_roles={"flux_scale": "x"}, supported_output_formats=("none", "paris")),
             build_and_sample_seconds=0.0, output_dir=tmp_path / "samples",
         )
     error = ValueError if country is None else FileNotFoundError

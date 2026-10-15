@@ -19,6 +19,8 @@ from typing import Any, Literal, Self, cast
 import pandas as pd
 import numpy as np
 import xarray as xr
+from xarray_validate import AttrSchema, DataArraySchema, DatasetSchema, SchemaError, ValidationContext
+from xarray_validate.units import set_registry
 from openghg.util import (  # pyright: ignore[reportPrivateImportUsage, reportAttributeAccessIssue]
     cf_ureg,
 )
@@ -38,6 +40,8 @@ from openghg_inversions.observation_error import (
 )
 from openghg_inversions.serialization import open_datatree_loaded, save_datatree
 
+
+set_registry(cf_ureg)
 
 CO2_PREPARED_INPUTS_SCHEMA = "openghg_inversions.co2_prepared_inputs"
 CO2_PREPARED_INPUTS_SCHEMA_VERSION = 1
@@ -152,6 +156,13 @@ def _require_equivalent_units(actual: Any, expected: str, *, name: str) -> None:
     if not isinstance(actual, str) or not actual.strip():
         raise ValueError(f"{name} requires non-empty units.")
     try:
+        AttrSchema(units=expected).validate(actual)
+        return
+    except (SchemaError, ValueError):
+        # Native unit identity is narrower than equal-scale expressions such
+        # as umol/mol versus ppm, and cannot parse squared numeric scales.
+        pass
+    try:
         actual_quantity = cf_ureg.parse_expression(actual)
         expected_quantity = cf_ureg.parse_expression(expected)
         if not hasattr(actual_quantity, "to"):
@@ -163,86 +174,6 @@ def _require_equivalent_units(actual: Any, expected: str, *, name: str) -> None:
         raise ValueError(f"{name} units {actual!r} are incompatible with {expected!r}.") from exc
     if not np.isclose(scale, 1.0, rtol=1e-12, atol=0.0):
         raise ValueError(f"{name} units {actual!r} do not have the same numeric scale as {expected!r}.")
-
-
-def _validate_co2_dataset(inputs: xr.Dataset) -> None:
-    """Validate the scientific layout owned by the CO2 artifact."""
-    required = (
-        "H",
-        "alpha_prior_mean",
-        "alpha_prior_covariance",
-        "fixed_prior_contribution",
-        "mf",
-        "mf_error",
-    )
-    missing = [name for name in required if name not in inputs]
-    if missing:
-        raise ValueError(f"CO2 prepared inputs are missing required variable(s): {missing!r}.")
-
-    observations = inputs["mf"]
-    if observations.dims != ("nmeasure",):
-        raise ValueError("CO2 observations must have dimensions ('nmeasure',).")
-    observation_index = _require_axis(observations, "nmeasure", name="CO2 observations")
-    sensitivity = inputs["H"]
-    if sensitivity.ndim != 2 or sensitivity.dims[0] != "nmeasure":
-        raise ValueError("CO2 H must be observation-by-state with nmeasure first.")
-    state_dim = str(sensitivity.dims[1])
-    state_index = _require_axis(sensitivity, state_dim, name="CO2 H")
-    _require_same_axis(sensitivity, "nmeasure", observation_index, name="CO2 H")
-
-    mean = inputs["alpha_prior_mean"]
-    if mean.dims != (state_dim,):
-        raise ValueError("CO2 alpha_prior_mean must use the H retained-state dimension.")
-    _require_same_axis(mean, state_dim, state_index, name="CO2 alpha_prior_mean")
-    covariance_dim = f"{state_dim}_cov"
-    covariance = inputs["alpha_prior_covariance"]
-    validate_covariance_coordinates(
-        covariance,
-        dim=state_dim,
-        covariance_dim=covariance_dim,
-    )
-    for name in ("fixed_prior_contribution", "mf_error"):
-        value = inputs[name]
-        if value.dims != ("nmeasure",):
-            raise ValueError(f"CO2 {name} must have dimensions ('nmeasure',).")
-        _require_same_axis(value, "nmeasure", observation_index, name=f"CO2 {name}")
-
-    concentration_units = observations.attrs.get("units")
-    if not concentration_units:
-        raise ValueError("CO2 observations require units.")
-    mole_fraction_unit_scale(str(concentration_units), context="CO2 prepared observations")
-    for name in ("H", "fixed_prior_contribution", "mf_error"):
-        _require_equivalent_units(
-            inputs[name].attrs.get("units"),
-            str(concentration_units),
-            name=f"CO2 {name}",
-        )
-    if mean.attrs.get("units") != "1" or covariance.attrs.get("units") != "1":
-        raise ValueError("CO2 retained prior mean and covariance must be dimensionless.")
-
-    squared_units = f"({concentration_units})**2"
-    if AGGREGATION_ERROR_COVARIANCE in inputs:
-        _require_equivalent_units(
-            inputs[AGGREGATION_ERROR_COVARIANCE].attrs.get("units"),
-            squared_units,
-            name="CO2 aggregation_error_covariance",
-        )
-    if LOW_RANK_FACTOR in inputs:
-        _require_equivalent_units(
-            inputs[LOW_RANK_FACTOR].attrs.get("units"),
-            str(concentration_units),
-            name="CO2 low_rank_factor",
-        )
-    if DIAGONAL_RESIDUAL_VARIANCE in inputs:
-        _require_equivalent_units(
-            inputs[DIAGONAL_RESIDUAL_VARIANCE].attrs.get("units"),
-            squared_units,
-            name="CO2 diagonal_residual_variance",
-        )
-
-    for name in ("state_is_active", "state_fixed_value"):
-        if name in inputs and inputs[name].dims != (state_dim,):
-            raise ValueError(f"CO2 {name} must use the retained-state dimension.")
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -274,38 +205,167 @@ class Co2PreparedInputs:
     provenance: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        if self.aggregation_error_mode not in ("dense", "low_rank"):
+        if self.aggregation_error_mode is None:
             raise ValueError("CO2 aggregation_error_mode must be 'dense' or 'low_rank'.")
         inputs = self.rhime_inputs.inv_inputs
-        _validate_co2_dataset(inputs)
-        dense = AGGREGATION_ERROR_COVARIANCE in inputs
-        factor_present = LOW_RANK_FACTOR in inputs
-        diagonal_present = DIAGONAL_RESIDUAL_VARIANCE in inputs
-        if factor_present != diagonal_present:
-            missing = DIAGONAL_RESIDUAL_VARIANCE if factor_present else LOW_RANK_FACTOR
-            raise ValueError(
-                "Low-rank CO2 inputs require low_rank_factor and "
-                f"diagonal_residual_variance together; missing {missing!r}."
-            )
-        low_rank = factor_present and diagonal_present
-        if self.aggregation_error_mode == "dense" and (not dense or low_rank):
-            raise ValueError("Dense CO2 inputs must contain only the dense aggregation covariance.")
-        if self.aggregation_error_mode == "low_rank" and (dense or not low_rank):
-            raise ValueError("Low-rank CO2 inputs must contain only the factor and diagonal residual.")
-        if dense:
+        self._validate_dataset()
+        if self.aggregation_error_mode == "dense":
             validate_covariance_coordinates(
                 inputs[AGGREGATION_ERROR_COVARIANCE],
                 dim="nmeasure",
                 covariance_dim="nmeasure_cov",
             )
-        if low_rank:
-            factor = inputs[LOW_RANK_FACTOR]
-            diagonal = inputs[DIAGONAL_RESIDUAL_VARIANCE]
-            if factor.dims != ("nmeasure", "agg_rank"):
-                raise ValueError("CO2 low_rank_factor must have dimensions ('nmeasure', 'agg_rank').")
-            if diagonal.dims != ("nmeasure",):
-                raise ValueError("CO2 diagonal_residual_variance must have dimensions ('nmeasure',).")
         object.__setattr__(self, "provenance", _json_mapping(self.provenance))
+
+    @staticmethod
+    def dataset_schema(
+        state_dim: str | None = None,
+        *,
+        concentration_units: str | None = None,
+        aggregation_error_mode: Co2AggregationErrorMode | None = None,
+    ) -> DatasetSchema:
+        """Describe the required numerical variables without reading their data.
+
+        Args:
+            state_dim: Retained-state dimension name, for example ``"region"``.
+                ``None`` matches one arbitrary axis name at each position; it
+                does not make variables optional or permit a different rank.
+                Wildcards are independent, so construction binds the actual
+                state name from H before validating the complete layout.
+            concentration_units: Optional reference units for concentration
+                variables and squared covariance units. Unit checks use
+                native xarray-validate checks with a Pint fallback for
+                equivalent expressions such as ``umol/mol`` and ``(1e-6)**2``.
+            aggregation_error_mode: Optional representation whose required
+                variables and dimensions are included in this schema. A bound
+                mode also rejects the opposing aggregation representation.
+
+        Returns:
+            A metadata-only schema. Passing a state name also binds the prior
+            covariance column dimension to ``f"{state_dim}_cov"``. Scientific
+            labels and covariance squareness retain their own checks. Unit
+            checks compare metadata without converting or executing data.
+
+        Raises:
+            ValueError: If the aggregation mode is unsupported.
+        """
+        if aggregation_error_mode is not None and (
+            not isinstance(aggregation_error_mode, str) or aggregation_error_mode not in ("dense", "low_rank")
+        ):
+            raise ValueError("CO2 aggregation_error_mode must be 'dense', 'low_rank', or None.")
+        covariance_dims = (None, None) if state_dim is None else (state_dim, f"{state_dim}_cov")
+
+        prior_attrs = {"units": AttrSchema(type=str)} if concentration_units is not None else None
+        data_vars = {
+            "H": DataArraySchema(dtype=np.floating, dims=("nmeasure", state_dim)),
+            "alpha_prior_mean": DataArraySchema(dtype=np.floating, dims=(state_dim,), attrs=prior_attrs),
+            "alpha_prior_covariance": DataArraySchema(
+                dtype=np.floating, dims=covariance_dims, attrs=prior_attrs,
+            ),
+            "fixed_prior_contribution": DataArraySchema(
+                dtype=np.floating, dims=("nmeasure",),
+            ),
+            "mf": DataArraySchema(dtype=np.floating, dims=("nmeasure",)),
+            "mf_error": DataArraySchema(dtype=np.floating, dims=("nmeasure",)),
+        }
+        unit_targets = dict.fromkeys(("mf", "H", "fixed_prior_contribution", "mf_error"), concentration_units)
+        if aggregation_error_mode == "dense":
+            data_vars[AGGREGATION_ERROR_COVARIANCE] = DataArraySchema(
+                dtype=np.floating, dims=("nmeasure", "nmeasure_cov"),
+            )
+            unit_targets[AGGREGATION_ERROR_COVARIANCE] = f"({concentration_units})**2"
+        elif aggregation_error_mode == "low_rank":
+            data_vars[LOW_RANK_FACTOR] = DataArraySchema(
+                dtype=np.floating, dims=("nmeasure", "agg_rank"),
+            )
+            data_vars[DIAGONAL_RESIDUAL_VARIANCE] = DataArraySchema(
+                dtype=np.floating, dims=("nmeasure",),
+            )
+            unit_targets[LOW_RANK_FACTOR] = concentration_units
+            unit_targets[DIAGONAL_RESIDUAL_VARIANCE] = f"({concentration_units})**2"
+
+        def representation(dataset: xr.Dataset) -> None:
+            if aggregation_error_mode is None:
+                return
+            dense = AGGREGATION_ERROR_COVARIANCE in dataset
+            factor_present = LOW_RANK_FACTOR in dataset
+            diagonal_present = DIAGONAL_RESIDUAL_VARIANCE in dataset
+            if factor_present != diagonal_present:
+                missing = DIAGONAL_RESIDUAL_VARIANCE if factor_present else LOW_RANK_FACTOR
+                raise ValueError(
+                    "Low-rank CO2 inputs require low_rank_factor and "
+                    f"diagonal_residual_variance together; missing {missing!r}."
+                )
+            low_rank = factor_present and diagonal_present
+            if aggregation_error_mode == "dense" and (not dense or low_rank):
+                raise ValueError("Dense CO2 inputs must contain only the dense aggregation covariance.")
+            if aggregation_error_mode == "low_rank" and (dense or not low_rank):
+                raise ValueError("Low-rank CO2 inputs must contain only the factor and diagonal residual.")
+
+        def units(dataset: xr.Dataset) -> None:
+            if concentration_units is None:
+                return
+            for name in ("alpha_prior_mean", "alpha_prior_covariance"):
+                if name in dataset:
+                    actual = dataset[name].attrs.get("units")
+                    if not isinstance(actual, str) or actual != "1":
+                        raise ValueError("CO2 retained prior mean and covariance must be dimensionless.")
+            for name, expected in unit_targets.items():
+                if expected is not None and name in dataset:
+                    _require_equivalent_units(
+                        dataset[name].attrs.get("units"), expected, name=f"CO2 {name}",
+                    )
+
+        return DatasetSchema(data_vars=data_vars, checks=[representation, units])
+
+    def _validate_dataset(self) -> None:
+        """Validate the scientific layout owned by the CO2 artifact."""
+        inputs = self.inv_inputs
+        sensitivity = inputs.get("H")
+        state_dim = str(sensitivity.dims[1]) if sensitivity is not None and sensitivity.ndim == 2 else None
+        observations = inputs.get("mf")
+        concentration_units = observations.attrs.get("units") if observations is not None else None
+        if not isinstance(concentration_units, str) or not concentration_units.strip():
+            concentration_units = None
+        # "lazy" collects errors; it is independent of Dask's execution model.
+        validation = ValidationContext(mode="lazy")
+        try:
+            self.dataset_schema(
+                state_dim,
+                concentration_units=concentration_units,
+                aggregation_error_mode=self.aggregation_error_mode,
+            ).validate(inputs, context=validation)
+        except ValueError as error:
+            if validation.has_errors:
+                raise ValueError(
+                    f"CO2 prepared inputs: {validation.result.get_error_summary()}\n{error}"
+                ) from error
+            raise
+        if validation.has_errors:
+            raise ValueError(f"CO2 prepared inputs: {validation.result.get_error_summary()}")
+
+        observations = inputs["mf"]
+        # Variables on one Dataset dimension already share its labels. Check
+        # each index once; differently named covariance axes still need order checks.
+        _require_axis(observations, "nmeasure", name="CO2 observations")
+        sensitivity = inputs["H"]
+        state_dim = str(sensitivity.dims[1])
+        _require_axis(sensitivity, state_dim, name="CO2 H")
+
+        covariance_dim = f"{state_dim}_cov"
+        covariance = inputs["alpha_prior_covariance"]
+        validate_covariance_coordinates(
+            covariance,
+            dim=state_dim,
+            covariance_dim=covariance_dim,
+        )
+        concentration_units = observations.attrs.get("units")
+        if not isinstance(concentration_units, str) or not concentration_units.strip():
+            raise ValueError("CO2 observations require units.")
+        mole_fraction_unit_scale(str(concentration_units), context="CO2 prepared observations")
+        for name in ("state_is_active", "state_fixed_value"):
+            if name in inputs and inputs[name].dims != (state_dim,):
+                raise ValueError(f"CO2 {name} must use the retained-state dimension.")
 
     @property
     def inv_inputs(self) -> xr.Dataset:
