@@ -67,7 +67,7 @@ def test_sample_cli_translates_alias_before_phase_claim(tmp_path, monkeypatch):
 
 def test_saved_family_mismatch_fails_before_config_resolution(tmp_path):
     manifest = tmp_path / "prepared.json"
-    manifest.write_text(json.dumps({"family": "standard"}))
+    manifest.write_text(json.dumps({"schema": "openghg_inversions.standard.prepare"}))
     with pytest.raises(ValueError, match="does not match"):
         main(["sample", "--model", "co2", "--preparation-manifest", str(manifest),
               "--output-dir", str(tmp_path / "sample")])

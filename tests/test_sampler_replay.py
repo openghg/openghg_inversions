@@ -57,10 +57,7 @@ def test_unavailable_sampler_description_does_not_block_products(tmp_path, monke
     _, path = _saved(tmp_path)
     output_dir = tmp_path / "products"
     manifest = json.loads(path.read_text())
-    if recorded is None:
-        del manifest["actual_inference"]
-    else:
-        manifest["actual_inference"] = recorded
+    manifest["actual_inference"] = recorded
     path.write_text(json.dumps(manifest))
     monkeypatch.setattr(RhimeSampler, "sample", _forbidden)
     monkeypatch.setattr(standard, "build_standard_model", _forbidden)
