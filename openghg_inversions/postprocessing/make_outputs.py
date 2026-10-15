@@ -563,9 +563,9 @@ def make_sector_flux_outputs(
     )
     flux_stats_args = _stats_args_with_defaults(stats, stats_args)
     # Reuse one-shot probability iterables across totals, sectors, and tiles.
-    for key in ("hdi_prob", "hdi__hdi_prob"):
-        if isinstance(flux_stats_args.get(key), Iterable):
-            flux_stats_args[key] = tuple(flux_stats_args[key])
+    probability_key = "hdi__hdi_prob" if "hdi__hdi_prob" in flux_stats_args else "hdi_prob"
+    if isinstance(flux_stats_args.get(probability_key), Iterable):
+        flux_stats_args[probability_key] = tuple(flux_stats_args[probability_key])
 
     outputs = [_calculate_flux_stats(total_flux_trace, **flux_stats_args)]
     for sector, flux_trace in zip(sectors, sector_flux_traces, strict=True):
@@ -609,9 +609,9 @@ def make_flux_outputs(
         include_scale_factors: If True, report stats for scale factors, in
             addition to stats for fluxes (which are calculated by transforming the
             scale factor stats to the lat/lon grid using the prior flux).
-        report_flux_on_inversion_grid: If True, report fluxes by basis function,
-            without incorporating the prior flux. Note: we do not actually optimise
-            for this quantity, since the prior flux is used in the forward model.
+        report_flux_on_inversion_grid: If True, report flux using the mean prior
+            flux in each basis region; otherwise reconstruct using the native-grid
+            prior flux.
 
     Returns:
         xr.Dataset with computed flux stats.

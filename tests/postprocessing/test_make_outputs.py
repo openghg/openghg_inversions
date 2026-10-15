@@ -53,10 +53,15 @@ def test_multisector_flux_outputs_reconstruct_sector_and_total_flux(
     assert _flux_nonfinite_metadata(outputs).policy == NONFINITE_POLICY_ZERO_FILL
 
 
-@pytest.mark.parametrize("probability_key", ["hdi_prob", "hdi__hdi_prob"])
+@pytest.mark.parametrize(
+    "probability_key, shared_generator",
+    [("hdi_prob", False), ("hdi__hdi_prob", False), ("hdi__hdi_prob", True)],
+    ids=["generic", "override", "shared-generator"],
+)
 def test_multisector_flux_tiles_reuse_hdi_probability_generators(
     multisector_postprocessing_inv_out: Callable[..., InversionOutput],
     probability_key: str,
+    shared_generator: bool,
 ) -> None:
     """HDI generators cover every tile, trace group, sector, and scale factor."""
     labels = xr.DataArray(
@@ -79,18 +84,74 @@ def test_multisector_flux_tiles_reuse_hdi_probability_generators(
     )
     generator = (probability for probability in probabilities)
     options[probability_key] = generator
+    if shared_generator:
+        options["hdi_prob"] = generator
     actual = make_flux_outputs(
         inv_out, stats=["hdi"], stats_args=options, report_flux_on_inversion_grid=False
     )
 
     xr.testing.assert_identical(actual, expected)
     assert options[probability_key] is generator
+    if shared_generator:
+        assert options["hdi_prob"] is generator
     assert set(actual.data_vars) == {
         f"{product}_{group}_hdi_{probability}"
         for product in ("flux_total", "flux_ff", "flux_ocean", "scaling_ff", "scaling_ocean")
         for group in ("prior", "posterior")
         for probability in (68, 95)
     }
+
+
+@pytest.mark.parametrize("chunks", [None, {"lat": 1, "lon": 1, "flux_time": 1}])
+def test_inversion_grid_signed_sparse_flux_preserves_lazy_region_means(chunks) -> None:
+    """Signed sparse fills remain compatible across spatial and time chunks."""
+    from dask.callbacks import Callback
+    import sparse
+
+    from openghg_inversions.array_ops import to_dense
+    from openghg_inversions.postprocessing._basis_products import (
+        _operator_region_flux_mean,
+        reconstruct_flux_stats,
+    )
+
+    labels = xr.DataArray(
+        [[1, 2], [1, 2]], dims=("lat", "lon"), coords={"lat": [0.0, 1.0], "lon": [0.0, 1.0]}
+    )
+    flux = xr.DataArray(
+        np.array(
+            [[[-1.0, -2.0, -3.0], [1.0, 2.0, 3.0]], [[3.0, 4.0, 5.0], [-3.0, -4.0, -5.0]]],
+            dtype="float32",
+        ),
+        dims=("lat", "lon", "flux_time"),
+        coords={**labels.coords, "flux_time": [0, 1, 2]},
+    ).chunk({"lat": 1, "lon": 1, "flux_time": 2})
+    borrowed = flux.data
+    graph = borrowed.__dask_graph__()
+    basis = BasisFunctions.from_flat_basis(
+        basis_flat=labels, flux=flux, operator_kwargs={"state_dim": "region"}
+    )
+    tasks = []
+    with Callback(pretask=lambda key, *args: tasks.append(key)):
+        means = _operator_region_flux_mean(basis, flux)
+    assert not tasks
+    assert isinstance(means.data._meta, sparse.COO)
+    assert means.dtype == flux.dtype
+    dense_flux = flux.compute()
+    expected_means = xr.concat(
+        [dense_flux.where(labels == label).mean(["lat", "lon"]) for label in (1, 2)],
+        dim=xr.IndexVariable("region", [0, 1]),
+    )
+    xr.testing.assert_allclose(to_dense(means).compute().transpose("region", "flux_time"), expected_means)
+
+    state = xr.Dataset({"x": ("region", np.array([2.0, 3.0], dtype="float32"))}, coords={"region": [0, 1]})
+    result = reconstruct_flux_stats(
+        basis, flux, state, report_flux_on_inversion_grid=True, _chunks=chunks
+    )
+    expected = (expected_means * state.x).isel(region=labels - 1).drop_vars("region")
+    xr.testing.assert_allclose(to_dense(result.x).compute(), expected.transpose(*result.x.dims))
+    assert result.x.dtype == flux.dtype
+    assert flux.data is borrowed
+    assert flux.data.__dask_graph__() is graph
 
 
 def test_multisector_flux_outputs_support_inversion_grid_mean_stats(

@@ -129,7 +129,9 @@ def _operator_region_flux_mean(basis_functions: BasisFunctions, flux: xr.DataArr
     """Return mean prior flux in each basis region using the retained operator."""
     basis = align_sparse_lat_lon(basis_functions.operator.basis_matrix, flux)
     grid_dims = list(basis_functions.operator.meta.grid_dims)
-    return ((basis * flux).sum(grid_dims) / basis.sum(grid_dims)).fillna(0.0)
+    # Sparse concatenation distinguishes -0.0 and +0.0 fill values.
+    weighted_basis = basis * flux + 0.0
+    return (weighted_basis.sum(grid_dims) / basis.sum(grid_dims)).fillna(0.0)
 
 
 def reconstruct_flux_stats(
@@ -151,6 +153,8 @@ def reconstruct_flux_stats(
         _chunks: Internal spatial/time chunk limits for per-draw reconstruction.
             Region means retain the original full-domain reduction before the
             interpolation operator is chunked.
+            When inversion-grid reporting is enabled, supplying ``_chunks`` eagerly
+            computes the compact region/time prior-flux means before lazy interpolation.
 
     Returns:
         Reconstructed gridded statistics carrying non-finite policy metadata.
