@@ -1,7 +1,6 @@
 """The Pydantic prototype validates the JSON written by public handoff APIs."""
 
 import json
-from dataclasses import replace
 
 import dask
 import dask.array as da
@@ -11,7 +10,7 @@ from pydantic import ValidationError
 import pytest
 import xarray as xr
 
-from openghg_inversions.postprocessing.contracts import OutputContract, OutputContractRecord
+from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.rhime import _standard_stages as stages
 from openghg_inversions.rhime._manifest_records import PrepareManifest, SampleManifest
 from openghg_inversions.rhime.params import RhimeConfig
@@ -21,19 +20,26 @@ from tests.test_staged_workflow import _params
 from tests.test_standard_handoffs import _saved
 
 
-def test_public_writers_produce_json_matching_generated_schemas(tmp_path):
+def test_public_writers_produce_json_matching_generated_schemas(tmp_path, monkeypatch):
     preparation, samples = _saved(tmp_path)
     for manifest, record_type in ((preparation, PrepareManifest), (samples, SampleManifest)):
         wire = json.loads(manifest.read_text())
         schema = record_type.model_json_schema()
         Draft202012Validator.check_schema(schema)
         Draft202012Validator(schema).validate(wire)
-        record = record_type.model_validate_json(manifest.read_bytes())
+        record = record_type.load(manifest)
         assert json.loads(record.model_dump_json(by_alias=True)) == wire
         assert not list(manifest.parent.glob(".*-manifest.tmp"))
+        copied = tmp_path / f"copy-{record.stage}"
+        copied.mkdir()
+        assert record_type.load(record.save(copied)) == record
+        assert not list(copied.glob(".*-manifest.tmp"))
     assert (preparation.parent / "prepared-inputs.nc").is_file()
     assert (samples.parent / "posterior.nc").is_file()
+    assert isinstance(record.output_contract, OutputContract)
+    monkeypatch.setattr(OutputContract, "from_dict", lambda *args: pytest.fail("revalidated loaded contract"))
     result = stages.postprocess(samples, output=RhimeOutputSpec(output_format="none"))
+    assert isinstance(result.output_contract, OutputContract)
     assert result.run_spec.model.species == "ch4"
     assert result.output_metadata["build_and_sample_seconds"] == 2.5
     assert result.output_metadata["sampler"]["draws"] == 10
@@ -82,7 +88,7 @@ def test_sample_writer_validates_before_creating_artifacts(tmp_path, monkeypatch
     with pytest.raises(ValidationError):
         stages.save_samples(
             tmp_path / "prepared.json", make_trace(posterior=xr.Dataset()), model=config.model,
-            output_contract=OutputContract(variable_roles={"flux_scale": "x"}),
+            output_contract=OutputContract.create(variable_roles={"flux_scale": "x"}),
             actual_inference=metadata, build_and_sample_seconds=duration, output_dir=tmp_path / "samples",
         )
     assert not (tmp_path / "samples").exists()
@@ -90,12 +96,12 @@ def test_sample_writer_validates_before_creating_artifacts(tmp_path, monkeypatch
 
 def test_output_record_copies_json_and_refuses_lazy_arrays_without_computing():
     metadata = {"builder": {"sources": ["bio"]}}
-    contract = OutputContract(variable_roles={"flux_scale": "x"}, metadata=metadata)
+    contract = OutputContract.create(variable_roles={"flux_scale": "x"}, metadata=metadata)
     metadata["builder"]["sources"].append("fossil")
     wire = contract.to_dict()
     wire["metadata"]["builder"]["sources"].append("other")
     assert contract.metadata == {"builder": {"sources": ["bio"]}}
-    assert replace(contract, metadata={}).metadata == {}
+    assert contract.with_updates(metadata={}).metadata == {}
     calls = []
 
     @dask.delayed
@@ -105,7 +111,7 @@ def test_output_record_copies_json_and_refuses_lazy_arrays_without_computing():
 
     array = xr.DataArray(da.from_delayed(lazy(), shape=(1,), dtype=float), dims="region")
     with pytest.raises(ValidationError):
-        OutputContract(variable_roles={"flux_scale": "x"}, metadata={"array": array})
+        OutputContract.create(variable_roles={"flux_scale": "x"}, metadata={"array": array})
     assert calls == []
 
 
@@ -115,23 +121,27 @@ def test_output_record_copies_json_and_refuses_lazy_arrays_without_computing():
     {"variable_roles": {" ": "x"}},
 ])
 def test_generated_output_schema_expresses_custom_constraints(change):
-    wire = OutputContract(variable_roles={"flux_scale": "x"}).to_dict()
+    wire = OutputContract.create(variable_roles={"flux_scale": "x"}).to_dict()
     wire.update(change)
-    assert list(Draft202012Validator(OutputContractRecord.model_json_schema()).iter_errors(wire))
+    assert list(Draft202012Validator(OutputContract.model_json_schema()).iter_errors(wire))
     with pytest.raises(ValidationError):
-        OutputContractRecord.model_validate_json(json.dumps(wire))
+        OutputContract.model_validate_json(json.dumps(wire))
 
 
-def test_required_record_fields_are_not_filled_with_runtime_defaults():
-    wire = OutputContract(variable_roles={"flux_scale": "x"}).to_dict()
-    del wire["metadata"]
+@pytest.mark.parametrize("field", [
+    "schema", "schema_version", "variable_roles", "supported_output_formats", "metadata", "state_dimension_mapping",
+])
+def test_required_record_fields_are_not_filled_with_runtime_defaults(field):
+    wire = OutputContract.create(variable_roles={"flux_scale": "x"}).to_dict()
+    assert field in OutputContract.model_json_schema()["required"]
+    del wire[field]
     with pytest.raises(ValidationError) as caught:
         OutputContract.from_dict(wire)
-    assert caught.value.errors()[0]["loc"] == ("metadata",)
+    assert caught.value.errors()[0]["loc"] == (field,)
 
 
 def test_python_alias_does_not_replace_required_wire_schema_field():
-    wire = OutputContract(variable_roles={"flux_scale": "x"}).to_dict()
+    wire = OutputContract.create(variable_roles={"flux_scale": "x"}).to_dict()
     wire["schema_name"] = wire.pop("schema")
     with pytest.raises(ValidationError) as caught:
         OutputContract.from_dict(wire)
@@ -141,5 +151,69 @@ def test_python_alias_does_not_replace_required_wire_schema_field():
 @pytest.mark.parametrize("formats", [None, "none", 1])
 def test_runtime_formats_report_validation_errors_for_invalid_containers(formats):
     with pytest.raises(ValidationError) as caught:
-        OutputContract(variable_roles={"flux_scale": "x"}, supported_output_formats=formats)
+        OutputContract.create(variable_roles={"flux_scale": "x"}, supported_output_formats=formats)
     assert caught.value.errors()[0]["loc"] == ("supported_output_formats",)
+
+
+def test_output_view_updates_validate_and_own_containers():
+    original = OutputContract.create(variable_roles={"flux_scale": "x"}, metadata={"sources": ["bio"]})
+    changed = original.with_updates(variable_roles={"flux_scale": "inner_scale"})
+    changed.metadata["sources"].append("other")
+    assert original.variable_roles == {"flux_scale": "x"}
+    assert original.metadata == {"sources": ["bio"]}
+    with pytest.raises(ValidationError, match="both 'trace' and 'basis'"):
+        original.with_updates(state_dimension_mapping={"trace": "region"})
+    with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+        original.with_updates(misspelled_roles={})
+
+
+def test_existing_contract_is_revalidated_at_sample_write_boundary(tmp_path, monkeypatch):
+    contract = OutputContract.create(variable_roles={"flux_scale": "x"})
+    contract.metadata["unexpected"] = float("nan")
+    config = RhimeConfig.from_params(_params(), multisector=False)
+    monkeypatch.setattr(stages, "save_trace", lambda *args: pytest.fail("wrote invalid contract"))
+    with pytest.raises(ValidationError) as caught:
+        stages.save_samples(
+            tmp_path / "prepared.json", make_trace(posterior=xr.Dataset()), model=config.model,
+            output_contract=contract, actual_inference={}, build_and_sample_seconds=0.0,
+            output_dir=tmp_path / "samples",
+        )
+    assert caught.value.errors()[0]["loc"][:3] == ("output_contract", "metadata", "unexpected")
+    assert not (tmp_path / "samples").exists()
+
+
+def test_lazy_duration_is_rejected_without_computing_or_writing(tmp_path, monkeypatch):
+    calls = []
+
+    @dask.delayed
+    def duration():
+        calls.append(1)
+        return np.array(1.5)
+
+    lazy = da.from_delayed(duration(), shape=(), dtype=float)
+    preparation, samples = _saved(tmp_path)
+    wire = json.loads(samples.read_text()) | {"build_and_sample_seconds": lazy}
+    with pytest.raises(ValidationError) as caught:
+        SampleManifest(**wire)
+    assert caught.value.errors()[0]["loc"] == ("build_and_sample_seconds",)
+    config = RhimeConfig.from_params(_params(), multisector=False)
+    monkeypatch.setattr(stages, "save_trace", lambda *args: pytest.fail("wrote sample with lazy duration"))
+    with pytest.raises(ValidationError):
+        stages.save_samples(
+            preparation, make_trace(posterior=xr.Dataset()), model=config.model,
+            output_contract=OutputContract.create(variable_roles={"flux_scale": "x"}),
+            actual_inference={}, build_and_sample_seconds=lazy, output_dir=tmp_path / "lazy-duration",
+        )
+    assert calls == []
+    assert not (tmp_path / "lazy-duration").exists()
+
+
+def test_manifest_save_revalidates_mutable_metadata_before_writing(tmp_path):
+    _, samples = _saved(tmp_path)
+    record = SampleManifest.load(samples)
+    record.provenance["changed_after_construction"] = float("nan")
+    destination = tmp_path / "invalid-copy"
+    destination.mkdir()
+    with pytest.raises(ValidationError):
+        record.save(destination)
+    assert not list(destination.iterdir())

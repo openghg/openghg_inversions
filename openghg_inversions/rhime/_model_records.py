@@ -1,27 +1,23 @@
-"""Prototype schemas for small model records, separate from runtime arrays."""
+"""Persisted model structure, with options owned by their scientific components."""
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Annotated, Any, Literal
+from collections.abc import Mapping
+from typing import TYPE_CHECKING, Annotated, Literal
 
+import xarray as xr
 from pydantic import Field, JsonValue
 
 from openghg_inversions._record_schema import Record
-from openghg_inversions._serialization_codecs import _json_value
+from openghg_inversions.models.additive_sigma import AdditiveSigmaRecord
+from openghg_inversions.models.fixed_error import FixedErrorRecord
+from openghg_inversions.models.pollution_event import PollutionEventRecord
+from openghg_inversions.models.priors import PriorArgs, PriorRecord
 
 if TYPE_CHECKING:
-    from .specs import RhimeModelSpec
+    from .specs import RhimeModelSpec, SectorSpec
 
 Name = Annotated[str, Field(min_length=1, pattern=r"\S")]
-
-
-class PriorDataReference(Record):
-    """An array already persisted in the trace's constant_data group."""
-
-    data: Name
-
-
-type PriorRecord = dict[str, str | bool | int | float | PriorDataReference]
 
 
 class SectorRecord(Record):
@@ -30,45 +26,24 @@ class SectorRecord(Record):
     x_prior: PriorRecord | None
     variable_suffix: str
 
+    @classmethod
+    def from_runtime(cls, sector: SectorSpec, *, prior: PriorArgs | None) -> SectorRecord:
+        return cls.model_validate({
+            "name": sector.name, "flux_source": sector.flux_source,
+            "variable_suffix": sector.variable_suffix, "x_prior": prior,
+        })
 
-class FixedErrorOptions(Record):
-    pass
+    def to_runtime(self, *, trace: xr.DataTree | None = None) -> SectorSpec:
+        from .specs import SectorSpec
 
-
-class AdditiveSigmaOptions(Record):
-    sigma_prior: PriorRecord | None
-    sigma_freq: str | None
-    sigma_per_site: bool
-    sigma_freq_anchor: str | None
-    use_minimum_error_floor: bool
-
-
-class PollutionEventOptions(Record):
-    sigma_prior: PriorRecord | None
-    sigma_freq: str | None
-    sigma_per_site: bool
-    sigma_freq_anchor: str | None
-    pollution_events_from_obs: bool
-    power: PriorRecord | float | int | None
-
-
-class FixedErrorRecord(Record):
-    kind: Literal["fixed_error"]
-    options: FixedErrorOptions
-
-
-class AdditiveSigmaRecord(Record):
-    kind: Literal["additive_sigma"]
-    options: AdditiveSigmaOptions
-
-
-class PollutionEventRecord(Record):
-    kind: Literal["pollution_event"]
-    options: PollutionEventOptions
+        return SectorSpec(
+            **self.model_dump(exclude={"x_prior"}),
+            x_prior=None if self.x_prior is None else self.x_prior.to_runtime(trace=trace),
+        )
 
 
 class ModelRecord(Record):
-    """Required structural choices; numerical arrays have named references."""
+    """Required structural choices; each component owns its metadata conversion."""
 
     species: Name
     domain: Name
@@ -85,57 +60,28 @@ class ModelRecord(Record):
     ] | None
 
     @classmethod
-    def from_runtime(cls, model: RhimeModelSpec, *, priors: dict[str, Any]) -> ModelRecord:
+    def from_runtime(cls, model: RhimeModelSpec, *, priors: Mapping[str, PriorArgs]) -> ModelRecord:
         """Capture only constructed priors; never inspect unused caller arrays."""
-        from dataclasses import fields
-
-        from .specs import AdditiveSigmaSettings, FixedErrorSettings, PollutionEventSettings
-
-        likelihood = None
-        if model.likelihood is not None:
-            kind = {FixedErrorSettings: "fixed_error", AdditiveSigmaSettings: "additive_sigma",
-                    PollutionEventSettings: "pollution_event"}[type(model.likelihood)]
-            options = {field.name: getattr(model.likelihood, field.name)
-                       for field in fields(model.likelihood) if field.name != "sigma_prior"}
-            if not isinstance(model.likelihood, FixedErrorSettings):
-                options["sigma_prior"] = priors.get("sigma")
-                options["sigma_freq_anchor"] = _json_value(options["sigma_freq_anchor"])
-            if isinstance(options.get("power"), dict):
-                options["power"] = priors.get("power")
-            likelihood = {"kind": kind, "options": options}
         return cls.model_validate({
-            **{name: getattr(model, name) for name in
-               ("species", "domain", "use_bc", "add_offset", "aggregation_error_mode", "offset_args")},
+            "species": model.species, "domain": model.domain, "use_bc": model.use_bc,
+            "add_offset": model.add_offset, "aggregation_error_mode": model.aggregation_error_mode,
+            "offset_args": model.offset_args,
             "bc_prior": priors.get("bc"), "offset_prior": priors.get("offset_latent"),
-            "sectors": [{"name": sector.name, "flux_source": sector.flux_source,
-                         "x_prior": priors.get("x" if len(model.sectors) == 1 and "x" in priors
-                                               else f"x_{sector.variable_suffix}"),
-                         "variable_suffix": sector.variable_suffix} for sector in model.sectors],
-            "likelihood": likelihood,
+            "sectors": [SectorRecord.from_runtime(
+                sector, prior=priors.get("x" if len(model.sectors) == 1 and "x" in priors
+                                         else f"x_{sector.variable_suffix}"),
+            ) for sector in model.sectors],
+            "likelihood": None if model.likelihood is None else model.likelihood.to_record(priors=priors),
         })
 
-    def to_runtime(self, *, trace: Any = None) -> RhimeModelSpec:
-        """Resolve references with the scientific owner, without building a graph."""
-        from .specs import (
-            AdditiveSigmaSettings, FixedErrorSettings, PollutionEventSettings, RhimeModelSpec, SectorSpec,
+    def to_runtime(self, *, trace: xr.DataTree | None = None) -> RhimeModelSpec:
+        """Borrow referenced arrays and delegate options to their concrete owners."""
+        from .specs import RhimeModelSpec
+
+        return RhimeModelSpec(
+            **self.model_dump(exclude={"sectors", "likelihood", "bc_prior", "offset_prior"}),
+            sectors=tuple(sector.to_runtime(trace=trace) for sector in self.sectors),
+            bc_prior=None if self.bc_prior is None else self.bc_prior.to_runtime(trace=trace),
+            offset_prior=None if self.offset_prior is None else self.offset_prior.to_runtime(trace=trace),
+            likelihood=None if self.likelihood is None else self.likelihood.to_runtime(trace=trace),
         )
-
-        def resolve(value: Any) -> Any:
-            if isinstance(value, dict):
-                if set(value) == {"data"}:
-                    name = value["data"]
-                    if trace is None or "constant_data" not in trace or name not in trace["constant_data"]:
-                        raise ValueError(f"Missing registered prior data {name!r}.")
-                    return trace["constant_data"][name]
-                return {key: resolve(item) for key, item in value.items()}
-            return value
-
-        values = self.model_dump()
-        values["sectors"] = tuple(SectorSpec(**resolve(sector)) for sector in values["sectors"])
-        for name in ("bc_prior", "offset_prior"):
-            values[name] = resolve(values[name])
-        if self.likelihood is not None:
-            settings_type = {"fixed_error": FixedErrorSettings, "additive_sigma": AdditiveSigmaSettings,
-                             "pollution_event": PollutionEventSettings}[self.likelihood.kind]
-            values["likelihood"] = settings_type(**resolve(self.likelihood.options.model_dump()))
-        return RhimeModelSpec(**values)

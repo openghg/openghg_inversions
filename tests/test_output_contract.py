@@ -11,13 +11,15 @@ from openghg_inversions.postprocessing.contracts import OutputContract
 
 def test_output_contract_roundtrip_copies_roles_and_preserves_explicit_view() -> None:
     roles = {"flux_scale": "inner_scale"}
-    contract = OutputContract(
+    contract = OutputContract.create(
         variable_roles=roles,
         supported_output_formats=("none", "paris"),
         metadata={"recipe": "nested", "source_order": ["fossil", "bio"]},
         state_dimension_mapping={"trace": "inner_region", "basis": "region"},
     )
     roles["flux_scale"] = "outer_scale"
+    assert json.loads(contract.model_dump_json()) == contract.to_dict()
+    assert OutputContract.model_validate_json(contract.model_dump_json()) == contract
     loaded = OutputContract.from_dict(json.loads(json.dumps(contract.to_dict())))
     assert loaded == contract
     assert loaded.variable_roles["flux_scale"] == "inner_scale"
@@ -39,7 +41,7 @@ def test_output_contract_roundtrip_copies_roles_and_preserves_explicit_view() ->
     ],
 )
 def test_output_contract_rejects_malformed_persisted_metadata(change: dict) -> None:
-    payload = OutputContract(variable_roles={"flux_scale": "x"}).to_dict()
+    payload = OutputContract.create(variable_roles={"flux_scale": "x"}).to_dict()
     payload.update(change)
     with pytest.raises(ValueError):
         OutputContract.from_dict(payload)

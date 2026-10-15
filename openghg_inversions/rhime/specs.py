@@ -5,13 +5,18 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field, fields
 from pathlib import Path
-from typing import Any, ClassVar, Literal, cast, get_args, get_type_hints
+from typing import Any, ClassVar, Literal, cast, get_type_hints
 
 from openghg_inversions.rhime._model_records import ModelRecord
-from openghg_inversions.inversion_inputs import DatetimeLike
 from openghg_inversions.rhime._resources import resolve_resource_paths
 from openghg_inversions.models.priors import PriorArgs
-from openghg_inversions.models.additive_sigma import DEFAULT_ADDITIVE_SIGMA_PRIOR
+from openghg_inversions.models._likelihood_settings import LikelihoodSettings as _LikelihoodSettings
+from openghg_inversions.models.additive_sigma import AdditiveSigmaSettings
+from openghg_inversions.models.fixed_error import FixedErrorSettings
+from openghg_inversions.models.pollution_event import (
+    DEFAULT_POLLUTION_EVENT_SIGMA_PRIOR as DEFAULT_POLLUTION_EVENT_SIGMA_PRIOR,
+    PollutionEventSettings,
+)
 from openghg_inversions.models.state_activity import StateActivity
 from openghg_inversions.observation_error import AggregationErrorMode
 
@@ -31,170 +36,21 @@ DEFAULT_BC_PRIOR: PriorArgs = {
     "sigma": 0.05,
     "lower": 0.0,
 }
-DEFAULT_POLLUTION_EVENT_SIGMA_PRIOR: PriorArgs = {
-    "pdf": "uniform",
-    "lower": 0.0,
-    "upper": 0.1,
-}
 DEFAULT_OFFSET_PRIOR: PriorArgs = {"pdf": "normal", "mu": 0, "sigma": 1}
 
 
-def _copy_option_containers(value: Any) -> Any:
-    """Own ordinary option containers while borrowing opaque numerical values."""
-    if isinstance(value, dict):
-        return {key: _copy_option_containers(item) for key, item in value.items()}
-    if isinstance(value, list):
-        return [_copy_option_containers(item) for item in value]
-    if isinstance(value, tuple):
-        return tuple(_copy_option_containers(item) for item in value)
-    return value
+_copy_option_containers = _LikelihoodSettings.own_containers
 
 
 def normalise_optional_mapping(value: Mapping[str, Any] | None) -> dict[str, Any] | None:
     """Own an optional mapping and its ordinary configuration containers."""
-    return None if value is None else _copy_option_containers(dict(value))
-
-
-@dataclass(frozen=True)
-class PollutionEventSettings:
-    """Serializable settings for pollution-event-scaled model error.
-
-    Args:
-        sigma_prior: Prior for the observation-aligned fractional model error.
-        sigma_freq: Frequency of the latent model-error periods. ``None`` uses
-            one period.
-        sigma_per_site: Whether model error varies by observation site.
-        sigma_freq_anchor: Optional anchor for fixed-duration periods.
-        pollution_events_from_obs: Derive pollution events from observations
-            after removing the baseline instead of from modelled pollution.
-        power: Exponent or prior used in pollution-event error scaling.
-    """
-
-    sigma_prior: PriorArgs | None = None
-    sigma_freq: str | None = None
-    sigma_per_site: bool = True
-    sigma_freq_anchor: DatetimeLike | None = None
-    pollution_events_from_obs: bool = False
-    power: PriorArgs | float = 1.99
-
-    @property
-    def required_prepared_inputs(self) -> tuple[str, ...]:
-        """Return prepared arrays owned by this likelihood."""
-        return ("min_error",)
-
-
-@dataclass(frozen=True)
-class AdditiveSigmaSettings:
-    """Serializable settings for additive model-data-mismatch error.
-
-    Args:
-        sigma_prior: Prior for the additive model-error standard deviation.
-        sigma_freq: Frequency of the latent model-error periods. ``None`` uses
-            one period.
-        sigma_per_site: Whether model error varies by observation site.
-        sigma_freq_anchor: Optional anchor for fixed-duration periods.
-        use_minimum_error_floor: Apply the prepared historical minimum total-
-            error floor.
-    """
-
-    sigma_prior: PriorArgs | None = None
-    sigma_freq: str | None = None
-    sigma_per_site: bool = True
-    sigma_freq_anchor: DatetimeLike | None = None
-    use_minimum_error_floor: bool = False
-
-    @property
-    def required_prepared_inputs(self) -> tuple[str, ...]:
-        """Return prepared arrays owned by this likelihood."""
-        return ("min_error",) if self.use_minimum_error_floor else ()
-
-
-@dataclass(frozen=True)
-class FixedErrorSettings:
-    """Serializable selection of reported observation error only."""
-
-    @property
-    def required_prepared_inputs(self) -> tuple[str, ...]:
-        """Return prepared arrays owned by this likelihood."""
-        return ()
+    return None if value is None else _LikelihoodSettings.own_containers(dict(value))
 
 
 LikelihoodSettings = PollutionEventSettings | AdditiveSigmaSettings | FixedErrorSettings
-
-# These records declare external likelihood choices, not runtime array inputs.
-LIKELIHOOD_OPTION_NAMES = frozenset(
-    setting.name for settings in get_args(LikelihoodSettings) for setting in fields(settings)
-)
+LIKELIHOOD_OPTION_NAMES = _LikelihoodSettings.option_names()
 LIKELIHOOD_PRIOR_OPTION_NAMES = ("sigma_prior",)
-
-
-def make_likelihood_settings(
-    remaining: dict[str, Any],
-    *,
-    mismatch_model: MismatchModel | None,
-    start_date: str,
-) -> LikelihoodSettings | None:
-    """Consume the selected likelihood's external choices and resolve defaults.
-
-    The mapping is a resolver-owned working copy. Priors and power mappings
-    are copied without copying opaque numerical payloads. Date-dependent
-    alignment defaults use the winning requested start date.
-
-    Args:
-        remaining: Owned working options after alias and type normalization;
-            selected likelihood names are removed from this mapping.
-        mismatch_model: Selected built-in mismatch equation, or ``None`` for a
-            custom likelihood with no built-in options.
-        start_date: Effective request date used for an omitted period anchor.
-
-    Returns:
-        Complete settings for the selected likelihood, or ``None`` for custom
-        construction. No model, numerical input or inference is constructed.
-
-    Raises:
-        ValueError: If the selection is unknown or options belong to another
-            built-in likelihood or a custom likelihood.
-    """
-    if mismatch_model is None:
-        unused = sorted(LIKELIHOOD_OPTION_NAMES & remaining.keys())
-        if unused:
-            raise ValueError(
-                "Built-in likelihood option(s) cannot be used with `mismatch_model=None`: "
-                f"{unused!r}. Pass custom options through `likelihood_kwargs`."
-            )
-        return None
-    settings_type = {
-        "pollution_event": PollutionEventSettings,
-        "additive_sigma": AdditiveSigmaSettings,
-        "fixed_error": FixedErrorSettings,
-    }.get(mismatch_model) if isinstance(mismatch_model, str) else None
-    if settings_type is None:
-        raise ValueError(
-            "`mismatch_model` must be None, 'pollution_event', 'additive_sigma', or "
-            "'fixed_error'; "
-            f"got {mismatch_model!r}."
-        )
-    names = {setting.name for setting in fields(settings_type)}
-    invalid = (LIKELIHOOD_OPTION_NAMES - names) & remaining.keys()
-    if invalid:
-        raise ValueError(
-            f"`mismatch_model={mismatch_model!r}` does not accept option(s) {sorted(invalid)!r}."
-        )
-    options = {name: remaining.pop(name) for name in names if name in remaining}
-    if settings_type is FixedErrorSettings:
-        return FixedErrorSettings()
-    options["sigma_prior"] = normalise_optional_mapping(options.get("sigma_prior"))
-    if options["sigma_prior"] is None:
-        options["sigma_prior"] = dict(
-            DEFAULT_POLLUTION_EVENT_SIGMA_PRIOR
-            if settings_type is PollutionEventSettings
-            else DEFAULT_ADDITIVE_SIGMA_PRIOR
-        )
-    options.setdefault("sigma_freq_anchor", start_date)
-    if isinstance(options.get("power"), Mapping):
-        options["power"] = normalise_optional_mapping(options["power"])
-    return settings_type(**options)
-
+make_likelihood_settings = _LikelihoodSettings.from_params
 
 
 @dataclass(frozen=True)

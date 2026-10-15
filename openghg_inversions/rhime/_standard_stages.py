@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
-from typing import Any, Literal, TypeVar
+from typing import Any, Literal
 
 import xarray as xr
 
@@ -24,7 +24,7 @@ from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.serialization import load_trace, save_trace
 from openghg_inversions.models.priors import trace_prior_records
 
-from ._manifest_records import PrepareManifest, SampleManifest, StandardManifest
+from ._manifest_records import PrepareManifest, SampleManifest
 from ._stage_checks import _check_draws, _check_stage, prior_predictive_check
 from .builders import RhimeLikelihoodBuilder, callable_metadata
 from .outputs import (
@@ -37,22 +37,6 @@ from .params import DataConfig, resolve_model_options, retained_run_spec
 from .preparation import acquire_merged_data, export_basis, resolve_basis_inputs
 from .sampling import sample_rhime_model
 from .specs import RhimeModelSpec, RhimeOutputSpec, RhimeRunSpec
-
-
-Manifest = TypeVar("Manifest", bound=StandardManifest)
-
-
-def _read_record(path: str | Path, record_type: type[Manifest]) -> tuple[Path, Manifest]:
-    """Read the current standard format once, without ambient path discovery."""
-    path = Path(path).resolve()
-    return path, record_type.model_validate_json(path.read_text(encoding="utf-8"))
-
-
-def _save_record(destination: Path, record: PrepareManifest | SampleManifest) -> Path:
-    """Write a completed manifest last, so its presence marks a finished stage."""
-    temporary = destination / f".{record.stage}-manifest.tmp"
-    temporary.write_text(record.model_dump_json(by_alias=True, indent=2) + "\n", encoding="utf-8")
-    return temporary.replace(destination / f"{record.stage}-manifest.json")
 
 
 def _require_standard(data: DataConfig) -> None:
@@ -96,7 +80,7 @@ def _write_preparation(prepared: RhimePreparedInputs, *, data: DataConfig, desti
         basis_artifact_source=prepared.basis_artifact_source,
     )
     prepared.save(destination / "prepared-inputs.nc")
-    return _save_record(destination, record)
+    return record.save(destination)
 
 
 def load_preparation(manifest: str | Path) -> tuple[RhimePreparedInputs, DataConfig]:
@@ -114,7 +98,8 @@ def load_preparation(manifest: str | Path) -> tuple[RhimePreparedInputs, DataCon
             recorded data choices are invalid.
         FileNotFoundError: If the referenced numerical file is missing.
     """
-    path, record = _read_record(manifest, PrepareManifest)
+    path = Path(manifest).resolve()
+    record = PrepareManifest.load(path)
     data = DataConfig.from_params(record.data)
     _require_standard(data)
     return RhimePreparedInputs.load((path.parent / record.prepared_inputs).resolve()), data
@@ -210,7 +195,7 @@ def save_samples(
     destination = Path(output_dir).resolve()
     destination.mkdir(parents=True, exist_ok=False)
     save_trace(posterior, destination / "posterior.nc")
-    return _save_record(destination, record)
+    return record.save(destination)
 
 
 def _saved_run_spec(
@@ -294,8 +279,9 @@ def postprocess(sample_manifest: str | Path, *, output: RhimeOutputSpec) -> Rhim
     """
     from .standard import make_standard_rhime_result
 
-    path, record = _read_record(sample_manifest, SampleManifest)
-    output_contract = OutputContract.from_dict(record.output_contract.model_dump(mode="json", by_alias=True))
+    path = Path(sample_manifest).resolve()
+    record = SampleManifest.load(path)
+    output_contract = record.output_contract
     output_contract.validate_requested_output(output.output_format)
     refuse_existing_output_destinations(output)
     prepared, data = load_preparation((path.parent / record.preparation).resolve())

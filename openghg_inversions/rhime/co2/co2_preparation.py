@@ -50,17 +50,6 @@ _AGGREGATION_PAYLOAD_NAMES = (
     DIAGONAL_RESIDUAL_VARIANCE,
 )
 _AGGREGATION_REPRESENTATION_DIMS = {"agg_rank", "nmeasure_cov"}
-# This schema checks metadata only: no array coercion or payload execution.
-_CO2_DATASET_SCHEMA = DatasetSchema(
-    data_vars={
-        "H": DataArraySchema(dtype=np.floating, dims=("nmeasure", None)),
-        "alpha_prior_mean": DataArraySchema(dtype=np.floating, dims=(None,)),
-        "alpha_prior_covariance": DataArraySchema(dtype=np.floating, dims=(None, None)),
-        "fixed_prior_contribution": DataArraySchema(dtype=np.floating, dims=("nmeasure",)),
-        "mf": DataArraySchema(dtype=np.floating, dims=("nmeasure",)),
-        "mf_error": DataArraySchema(dtype=np.floating, dims=("nmeasure",)),
-    },
-)
 
 
 def _json_mapping(value: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -177,73 +166,6 @@ def _require_equivalent_units(actual: Any, expected: str, *, name: str) -> None:
         raise ValueError(f"{name} units {actual!r} do not have the same numeric scale as {expected!r}.")
 
 
-def _validate_co2_dataset(inputs: xr.Dataset) -> None:
-    """Validate the scientific layout owned by the CO2 artifact."""
-    # "lazy" collects errors; it is independent of Dask's execution model.
-    validation = _CO2_DATASET_SCHEMA.validate(inputs, mode="lazy")
-    if validation is not None and validation.has_errors:
-        raise ValueError(f"CO2 prepared inputs: {validation.get_error_summary()}")
-
-    observations = inputs["mf"]
-    observation_index = _require_axis(observations, "nmeasure", name="CO2 observations")
-    sensitivity = inputs["H"]
-    state_dim = str(sensitivity.dims[1])
-    state_index = _require_axis(sensitivity, state_dim, name="CO2 H")
-    _require_same_axis(sensitivity, "nmeasure", observation_index, name="CO2 H")
-
-    mean = inputs["alpha_prior_mean"]
-    if mean.dims != (state_dim,):
-        raise ValueError("CO2 alpha_prior_mean must use the H retained-state dimension.")
-    _require_same_axis(mean, state_dim, state_index, name="CO2 alpha_prior_mean")
-    covariance_dim = f"{state_dim}_cov"
-    covariance = inputs["alpha_prior_covariance"]
-    validate_covariance_coordinates(
-        covariance,
-        dim=state_dim,
-        covariance_dim=covariance_dim,
-    )
-    for name in ("fixed_prior_contribution", "mf_error"):
-        value = inputs[name]
-        _require_same_axis(value, "nmeasure", observation_index, name=f"CO2 {name}")
-
-    concentration_units = observations.attrs.get("units")
-    if not concentration_units:
-        raise ValueError("CO2 observations require units.")
-    mole_fraction_unit_scale(str(concentration_units), context="CO2 prepared observations")
-    for name in ("H", "fixed_prior_contribution", "mf_error"):
-        _require_equivalent_units(
-            inputs[name].attrs.get("units"),
-            str(concentration_units),
-            name=f"CO2 {name}",
-        )
-    if mean.attrs.get("units") != "1" or covariance.attrs.get("units") != "1":
-        raise ValueError("CO2 retained prior mean and covariance must be dimensionless.")
-
-    squared_units = f"({concentration_units})**2"
-    if AGGREGATION_ERROR_COVARIANCE in inputs:
-        _require_equivalent_units(
-            inputs[AGGREGATION_ERROR_COVARIANCE].attrs.get("units"),
-            squared_units,
-            name="CO2 aggregation_error_covariance",
-        )
-    if LOW_RANK_FACTOR in inputs:
-        _require_equivalent_units(
-            inputs[LOW_RANK_FACTOR].attrs.get("units"),
-            str(concentration_units),
-            name="CO2 low_rank_factor",
-        )
-    if DIAGONAL_RESIDUAL_VARIANCE in inputs:
-        _require_equivalent_units(
-            inputs[DIAGONAL_RESIDUAL_VARIANCE].attrs.get("units"),
-            squared_units,
-            name="CO2 diagonal_residual_variance",
-        )
-
-    for name in ("state_is_active", "state_fixed_value"):
-        if name in inputs and inputs[name].dims != (state_dim,):
-            raise ValueError(f"CO2 {name} must use the retained-state dimension.")
-
-
 @dataclass(frozen=True, slots=True, eq=False)
 class Co2PreparedInputs:
     """Durable coherent-reduction inputs for the CO2 model recipes.
@@ -276,7 +198,7 @@ class Co2PreparedInputs:
         if self.aggregation_error_mode not in ("dense", "low_rank"):
             raise ValueError("CO2 aggregation_error_mode must be 'dense' or 'low_rank'.")
         inputs = self.rhime_inputs.inv_inputs
-        _validate_co2_dataset(inputs)
+        self._validate_dataset()
         dense = AGGREGATION_ERROR_COVARIANCE in inputs
         factor_present = LOW_RANK_FACTOR in inputs
         diagonal_present = DIAGONAL_RESIDUAL_VARIANCE in inputs
@@ -305,6 +227,101 @@ class Co2PreparedInputs:
             if diagonal.dims != ("nmeasure",):
                 raise ValueError("CO2 diagonal_residual_variance must have dimensions ('nmeasure',).")
         object.__setattr__(self, "provenance", _json_mapping(self.provenance))
+
+    @staticmethod
+    def dataset_schema(state_dim: str | None = None) -> DatasetSchema:
+        """Describe the required numerical variables without reading their data.
+
+        Args:
+            state_dim: Retained-state dimension name, for example ``"region"``.
+                ``None`` matches one arbitrary axis name at each position; it
+                does not make variables optional or permit a different rank.
+                Wildcards are independent, so construction binds the actual
+                state name from H before validating the complete layout.
+
+        Returns:
+            A metadata-only schema. Passing a state name also binds the prior
+            covariance column dimension to ``f"{state_dim}_cov"``. Scientific
+            labels, covariance squareness, and units retain their own checks.
+        """
+        covariance_dims = (None, None) if state_dim is None else (state_dim, f"{state_dim}_cov")
+        return DatasetSchema(
+            data_vars={
+                "H": DataArraySchema(dtype=np.floating, dims=("nmeasure", state_dim)),
+                "alpha_prior_mean": DataArraySchema(dtype=np.floating, dims=(state_dim,)),
+                "alpha_prior_covariance": DataArraySchema(dtype=np.floating, dims=covariance_dims),
+                "fixed_prior_contribution": DataArraySchema(dtype=np.floating, dims=("nmeasure",)),
+                "mf": DataArraySchema(dtype=np.floating, dims=("nmeasure",)),
+                "mf_error": DataArraySchema(dtype=np.floating, dims=("nmeasure",)),
+            },
+        )
+
+    def _validate_dataset(self) -> None:
+        """Validate the scientific layout owned by the CO2 artifact."""
+        inputs = self.inv_inputs
+        sensitivity = inputs.get("H")
+        state_dim = str(sensitivity.dims[1]) if sensitivity is not None and sensitivity.ndim == 2 else None
+        # "lazy" collects errors; it is independent of Dask's execution model.
+        validation = self.dataset_schema(state_dim).validate(inputs, mode="lazy")
+        if validation is not None and validation.has_errors:
+            raise ValueError(f"CO2 prepared inputs: {validation.get_error_summary()}")
+
+        observations = inputs["mf"]
+        observation_index = _require_axis(observations, "nmeasure", name="CO2 observations")
+        sensitivity = inputs["H"]
+        state_dim = str(sensitivity.dims[1])
+        state_index = _require_axis(sensitivity, state_dim, name="CO2 H")
+        _require_same_axis(sensitivity, "nmeasure", observation_index, name="CO2 H")
+
+        mean = inputs["alpha_prior_mean"]
+        _require_same_axis(mean, state_dim, state_index, name="CO2 alpha_prior_mean")
+        covariance_dim = f"{state_dim}_cov"
+        covariance = inputs["alpha_prior_covariance"]
+        validate_covariance_coordinates(
+            covariance,
+            dim=state_dim,
+            covariance_dim=covariance_dim,
+        )
+        for name in ("fixed_prior_contribution", "mf_error"):
+            value = inputs[name]
+            _require_same_axis(value, "nmeasure", observation_index, name=f"CO2 {name}")
+
+        concentration_units = observations.attrs.get("units")
+        if not concentration_units:
+            raise ValueError("CO2 observations require units.")
+        mole_fraction_unit_scale(str(concentration_units), context="CO2 prepared observations")
+        for name in ("H", "fixed_prior_contribution", "mf_error"):
+            _require_equivalent_units(
+                inputs[name].attrs.get("units"),
+                str(concentration_units),
+                name=f"CO2 {name}",
+            )
+        if mean.attrs.get("units") != "1" or covariance.attrs.get("units") != "1":
+            raise ValueError("CO2 retained prior mean and covariance must be dimensionless.")
+
+        squared_units = f"({concentration_units})**2"
+        if AGGREGATION_ERROR_COVARIANCE in inputs:
+            _require_equivalent_units(
+                inputs[AGGREGATION_ERROR_COVARIANCE].attrs.get("units"),
+                squared_units,
+                name="CO2 aggregation_error_covariance",
+            )
+        if LOW_RANK_FACTOR in inputs:
+            _require_equivalent_units(
+                inputs[LOW_RANK_FACTOR].attrs.get("units"),
+                str(concentration_units),
+                name="CO2 low_rank_factor",
+            )
+        if DIAGONAL_RESIDUAL_VARIANCE in inputs:
+            _require_equivalent_units(
+                inputs[DIAGONAL_RESIDUAL_VARIANCE].attrs.get("units"),
+                squared_units,
+                name="CO2 diagonal_residual_variance",
+            )
+
+        for name in ("state_is_active", "state_fixed_value"):
+            if name in inputs and inputs[name].dims != (state_dim,):
+                raise ValueError(f"CO2 {name} must use the retained-state dimension.")
 
     @property
     def inv_inputs(self) -> xr.Dataset:

@@ -157,7 +157,7 @@ def test_copy_flux_nonfinite_attrs_copies_json_metadata() -> None:
     target = xr.Dataset(attrs={"title": "output"})
     flux = xr.DataArray(
         [1.0],
-        attrs={NONFINITE_METADATA_ATTR: FluxNonFiniteMetadata(context="copy test").to_json()},
+        attrs={NONFINITE_METADATA_ATTR: FluxNonFiniteMetadata(schema_version=1, context="copy test").to_json()},
     )
 
     result = copy_flux_nonfinite_attrs(target, flux)

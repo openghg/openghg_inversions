@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Annotated, Any, Literal
 
-from pydantic import Field, StringConstraints, field_validator
+from pydantic import ConfigDict, Field, StringConstraints, field_validator
 
 if TYPE_CHECKING:
     import xarray as xr
@@ -20,8 +19,15 @@ NonemptyString = Annotated[str, StringConstraints(pattern=r"\S")]
 OutputFormat = Literal["none", "inv_out", "basic", "paris", "legacy"]
 
 
-class OutputContractRecord(Record):
-    """Version-1 output metadata, with a generated JSON Schema."""
+class OutputContract(Record):
+    """Bind scientific roles and a selected state axis to durable model data.
+
+    All fields are required when validating a saved contract. Use :meth:`create`
+    for a new contract with runtime defaults. Metadata owns its ordinary JSON
+    containers; this value carries no numerical arrays or callable objects.
+    """
+
+    model_config = ConfigDict(serialize_by_alias=True)
 
     schema_name: Literal["openghg_inversions.output_contract"] = Field(alias="schema")
     schema_version: SchemaVersion
@@ -51,6 +57,62 @@ class OutputContractRecord(Record):
         if values and set(values) != {"trace", "basis"}:
             raise ValueError("State-dimension mappings require both 'trace' and 'basis'")
         return values
+
+    @classmethod
+    def create(
+        cls, *, variable_roles: Mapping[str, str],
+        supported_output_formats: tuple[OutputFormat, ...] | list[OutputFormat] = ("none",),
+        metadata: Mapping[str, JsonValue] | None = None,
+        state_dimension_mapping: Mapping[str, str] | None = None,
+    ) -> OutputContract:
+        """Create new output metadata; saved contracts must supply every field."""
+        return cls(
+            schema=_SCHEMA, schema_version=1, variable_roles=variable_roles,
+            supported_output_formats=(list(supported_output_formats)
+                                      if isinstance(supported_output_formats, tuple) else supported_output_formats),
+            metadata={} if metadata is None else metadata,
+            state_dimension_mapping={} if state_dimension_mapping is None else state_dimension_mapping,
+        )
+
+    def with_updates(self, **changes: Any) -> OutputContract:
+        """Validate a new output view and own its JSON containers."""
+        return type(self).model_validate(self.to_dict() | changes)
+
+    def validate_requested_output(self, output_format: str) -> None:
+        """Reject a writer that the bound scientific contract does not support."""
+        if output_format not in self.supported_output_formats:
+            raise ValueError(
+                f"RHIME model does not declare output_format={output_format!r} compatible. "
+                f"Declared formats: {list(self.supported_output_formats)!r}. Use output_format='none' or "
+                "select a model that explicitly supports the requested RHIME output contract."
+            )
+
+    def validate_trace(self, trace: xr.DataTree) -> None:
+        """Require saved reconstruction states without materializing trace arrays.
+
+        Predictive evidence is optional. A contract advertising products must
+        retain its declared flux scales, boundary scales and observation offsets
+        in the posterior, even when the current invocation requests no products.
+        """
+        if set(self.supported_output_formats) == {"none"}:
+            return
+        posterior = trace.children.get("posterior")
+        available = set(posterior.data_vars) if posterior is not None else set()
+        missing = {
+            role: name for role, name in self.variable_roles.items()
+            if role.split(":", 1)[0] in {"flux_scale", "baseline_scale", "offset"} and name not in available
+        }
+        if missing:
+            raise ValueError(f"Trace is missing output-contract reconstruction state(s): {missing!r}.")
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return a versioned JSON value with no numerical payload or callable."""
+        return self.model_dump(mode="json", by_alias=True)
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> OutputContract:
+        """Load the exact supported schema, rejecting incomplete or unknown data."""
+        return cls.model_validate(value)
 
 
 DEFAULT_VARIABLE_ROLES: dict[str, str] = {
@@ -92,91 +154,3 @@ def resolve_predictive_names(
             f"{missing!r}. Use concrete model names or semantic keys from `variable_roles`."
         )
     return list(dict.fromkeys(resolved))
-
-
-@dataclass(frozen=True)
-class OutputContract:
-    """Bind scientific roles and a selected state axis to durable model data.
-
-    Args:
-        variable_roles: Nonempty mapping of nonempty scientific role strings to
-            nonempty variable names in samples or prepared data.
-        supported_output_formats: Supported writer names from ``none``, ``inv_out``,
-            ``basic``, ``paris`` and ``legacy``. Must include ``none``.
-        metadata: Finite JSON-compatible builder identity and scientific provenance.
-        state_dimension_mapping: Optional explicit ``trace`` and ``basis`` state
-            dimensions for one output view over the shared posterior. Must be empty
-            or contain exactly these two keys with nonempty string values.
-
-    Raises:
-        ValueError: A role, format, metadata value or dimension mapping violates
-            the constraints above.
-    """
-
-    variable_roles: Mapping[str, str]
-    supported_output_formats: tuple[str, ...] = ("none",)
-    metadata: Mapping[str, Any] = field(default_factory=dict)
-    state_dimension_mapping: Mapping[str, str] = field(default_factory=dict)
-
-    def __post_init__(self) -> None:
-        """Validate and copy metadata without touching numerical arrays."""
-        record = self._record()
-        object.__setattr__(self, "variable_roles", record.variable_roles)
-        object.__setattr__(self, "supported_output_formats", tuple(record.supported_output_formats))
-        object.__setattr__(self, "metadata", record.metadata)
-        object.__setattr__(self, "state_dimension_mapping", record.state_dimension_mapping)
-
-    def _record(self) -> OutputContractRecord:
-        return OutputContractRecord(
-            schema=_SCHEMA,
-            schema_version=1,
-            variable_roles=self.variable_roles,
-            supported_output_formats=(
-                list(self.supported_output_formats)
-                if isinstance(self.supported_output_formats, tuple) else self.supported_output_formats
-            ),
-            metadata=self.metadata,
-            state_dimension_mapping=self.state_dimension_mapping,
-        )
-
-    def validate_requested_output(self, output_format: str) -> None:
-        """Reject a writer that the bound scientific contract does not support."""
-        if output_format not in self.supported_output_formats:
-            raise ValueError(
-                f"RHIME model does not declare output_format={output_format!r} compatible. "
-                f"Declared formats: {list(self.supported_output_formats)!r}. Use output_format='none' or "
-                "select a model that explicitly supports the requested RHIME output contract."
-            )
-
-    def validate_trace(self, trace: xr.DataTree) -> None:
-        """Require saved reconstruction states without materializing trace arrays.
-
-        Predictive evidence is optional. A contract advertising products must
-        retain its declared flux scales, boundary scales and observation offsets
-        in the posterior, even when the current invocation requests no products.
-        """
-        if set(self.supported_output_formats) == {"none"}:
-            return
-        posterior = trace.children.get("posterior")
-        available = set(posterior.data_vars) if posterior is not None else set()
-        missing = {
-            role: name for role, name in self.variable_roles.items()
-            if role.split(":", 1)[0] in {"flux_scale", "baseline_scale", "offset"} and name not in available
-        }
-        if missing:
-            raise ValueError(f"Trace is missing output-contract reconstruction state(s): {missing!r}.")
-
-    def to_dict(self) -> dict[str, Any]:
-        """Return a versioned JSON value with no numerical payload or callable."""
-        return self._record().model_dump(mode="json", by_alias=True)
-
-    @classmethod
-    def from_dict(cls, value: Mapping[str, Any]) -> OutputContract:
-        """Load the exact supported schema, rejecting incomplete or unknown data."""
-        record = OutputContractRecord.model_validate(value)
-        return cls(
-            variable_roles=record.variable_roles,
-            supported_output_formats=tuple(record.supported_output_formats),
-            metadata=record.metadata,
-            state_dimension_mapping=record.state_dimension_mapping,
-        )

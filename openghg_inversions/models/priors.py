@@ -9,8 +9,7 @@ the user-facing deterministic variable.
 from __future__ import annotations
 
 from collections.abc import Mapping
-import json
-from typing import Any, TypeAlias
+from typing import Annotated, Any, TypeAlias
 
 import numpy as np
 import pymc as pm
@@ -20,11 +19,46 @@ from dask import compute
 from pymc.distributions import continuous
 from pytensor.graph.basic import Variable
 from pytensor.tensor.variable import TensorVariable
+from pydantic import ConfigDict, Field, RootModel, TypeAdapter
 
+from openghg_inversions._record_schema import JsonFloat, Record
 from openghg_inversions.array_ops import to_dense
 from openghg_inversions.models.coords import add_model_data, get_coord_registry
 
 PriorArgs: TypeAlias = dict[str, Any]
+
+
+class PriorDataReference(Record):
+    """A constructed numerical parameter persisted in trace constant_data."""
+
+    data: Annotated[str, Field(min_length=1, pattern=r"\S")]
+
+    def to_runtime(self, *, trace: xr.DataTree | None) -> xr.DataArray:
+        """Borrow the registered array without copying or materializing its payload."""
+        if trace is None or "constant_data" not in trace or self.data not in trace["constant_data"]:
+            raise ValueError(f"Missing registered prior data {self.data!r}.")
+        return trace["constant_data"][self.data]
+
+
+class PriorRecord(RootModel[dict[str, str | bool | int | JsonFloat | PriorDataReference]]):
+    """Used scalar parameters and registered-array references, never caller arrays."""
+
+    model_config = ConfigDict(strict=True, allow_inf_nan=False, validate_default=True, frozen=True)
+
+    def to_runtime(self, *, trace: xr.DataTree | None) -> PriorArgs:
+        return {key: value.to_runtime(trace=trace) if isinstance(value, PriorDataReference) else value
+                for key, value in self.root.items()}
+
+    @classmethod
+    def from_trace(cls, trace: xr.DataTree) -> dict[str, PriorArgs]:
+        """Validate captured JSON and require each referenced array, without loading it."""
+        records = TypeAdapter(dict[str, cls]).validate_json(trace.attrs.get("rhime_priors", "{}"))
+        result = {}
+        for name, prior in records.items():
+            prior.to_runtime(trace=trace)
+            result[name] = prior.model_dump(mode="json")
+        return result
+
 
 _POSITIVE_PRIOR_FAMILIES = {
     "exponential",
@@ -256,12 +290,4 @@ def prior_records(model: pm.Model) -> dict[str, PriorArgs]:
     return getattr(model, "_openghg_prior_records", {})
 
 
-def trace_prior_records(trace: xr.DataTree) -> dict[str, PriorArgs]:
-    """Read constructed prior metadata and validate its required array references."""
-    records = json.loads(trace.attrs.get("rhime_priors", "{}"))
-    for prior in records.values():
-        for value in prior.values():
-            if isinstance(value, dict) and "data" in value:
-                if "constant_data" not in trace or value["data"] not in trace["constant_data"]:
-                    raise ValueError(f"Missing registered prior data {value['data']!r}.")
-    return records
+trace_prior_records = PriorRecord.from_trace

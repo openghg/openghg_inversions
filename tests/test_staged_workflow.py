@@ -390,7 +390,7 @@ def test_prior_predictive_does_not_hide_serialisation_failures(
         stages,
         "_build_prepared_model",
         lambda *args, **kwargs: SimpleNamespace(
-            model=nullcontext(), output_contract=OutputContract(variable_roles={"concentration": "x"})),
+            model=nullcontext(), output_contract=OutputContract.create(variable_roles={"concentration": "x"})),
     )
     monkeypatch.setattr(pymc, "sample_prior_predictive", lambda *args, **kwargs: prior)
     monkeypatch.setattr(
@@ -636,7 +636,7 @@ def test_diagnostics_reject_empty_check_stage_before_loading(tmp_path: Path) -> 
 
 @pytest.mark.parametrize("model", ["standard", "co2"])
 def test_diagnostics_accept_digest_free_sample_manifest(tmp_path: Path, model: str) -> None:
-    from openghg_inversions.rhime import _standard_stages as stages
+    from openghg_inversions.rhime._stage_artifacts import write_json
 
     posterior = make_trace(
         posterior=xr.Dataset({"x": (("chain", "draw"), np.ones((2, 4)))})
@@ -644,7 +644,7 @@ def test_diagnostics_accept_digest_free_sample_manifest(tmp_path: Path, model: s
     supplied_path = tmp_path / "supplied.nc"
     save_trace(posterior, supplied_path)
     manifest_path = tmp_path / "sample-manifest.json"
-    stages._write_json(
+    write_json(
         manifest_path,
         {
             "schema_version": 1,
@@ -747,7 +747,7 @@ def _saved_multisector_binding(tmp_path: Path) -> dict[str, Any]:
     binding_path = tmp_path / "output-binding.json"
     stages._write_json(binding_path, {
         "schema": "openghg_inversions.output_binding", "schema_version": 1,
-        "output_contract": OutputContract(variable_roles={"flux_scale": "x"},
+        "output_contract": OutputContract.create(variable_roles={"flux_scale": "x"},
                                           supported_output_formats=("none", "inv_out")).to_dict(),
     })
     sample_manifest = tmp_path / "sample-manifest.json"
@@ -819,7 +819,7 @@ def test_multisector_version_one_manifest_rebuilds_missing_roles(tmp_path, monke
     calls = []
     def legacy_build(*args, **kwargs):
         calls.append(True)
-        return SimpleNamespace(model=None, output_contract=OutputContract(
+        return SimpleNamespace(model=None, output_contract=OutputContract.create(
             variable_roles={"flux_scale": "x"}, supported_output_formats=("none", "inv_out")))
     monkeypatch.setattr(stages, "_build_prepared_model", legacy_build)
     result = postprocess_rhime_stage(**arguments)
@@ -833,7 +833,7 @@ def test_multisector_sample_stage_saves_binding_and_manifest(tmp_path, monkeypat
     arguments = _saved_multisector_binding(tmp_path)
     trace = stages.load_trace(arguments["posterior"])
     monkeypatch.setattr(stages, "_build_prepared_model", lambda *a, **k: SimpleNamespace(
-        output_contract=OutputContract(variable_roles={"flux_scale": "x"}, supported_output_formats=("none",))))
+        output_contract=OutputContract.create(variable_roles={"flux_scale": "x"}, supported_output_formats=("none",))))
     monkeypatch.setattr(stages, "sample_rhime_model", lambda *a, **k: trace)
     sampled = sample_rhime_stage(
         setup=arguments["setup"], model="multisector", prepared_inputs=arguments["prepared_inputs"],

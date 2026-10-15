@@ -75,13 +75,13 @@ class RhimeModelBuildResult:
 
         contract = self.output_contract
         object.__setattr__(self, "variable_roles", dict(contract.variable_roles))
-        object.__setattr__(self, "supported_output_formats", contract.supported_output_formats)
+        object.__setattr__(self, "supported_output_formats", tuple(contract.supported_output_formats))
         object.__setattr__(self, "metadata", dict(contract.metadata))
 
     @property
     def output_contract(self) -> OutputContract:
         """Expose durable output information without retaining the model graph."""
-        return OutputContract(
+        return OutputContract.create(
             variable_roles=self.variable_roles,
             supported_output_formats=self.supported_output_formats,
             metadata=self.metadata,

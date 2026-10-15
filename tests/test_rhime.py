@@ -4289,11 +4289,11 @@ def test_rhime_configuration_builds_specs_before_preparation(tmp_path: Path) -> 
 @pytest.mark.parametrize(
     ("mismatch_model", "options", "message"),
     [
-        ("additive_sigma", {"power": 2.0}, "does not accept.*power"),
+        ("additive_sigma", {"power": 2.0}, "(?s)mismatch_model=.*power"),
         (
             "pollution_event",
             {"use_minimum_error_floor": True},
-            "does not accept.*use_minimum_error_floor",
+            "(?s)mismatch_model=.*use_minimum_error_floor",
         ),
         (
             None,
@@ -4303,12 +4303,12 @@ def test_rhime_configuration_builds_specs_before_preparation(tmp_path: Path) -> 
         (
             "fixed_error",
             {"sigma_prior": {"pdf": "halfnormal", "sigma": 1.0}},
-            "does not accept.*sigma_prior",
+            "(?s)mismatch_model=.*sigma_prior",
         ),
         (
             "fixed_error",
             {"use_minimum_error_floor": True},
-            "does not accept.*use_minimum_error_floor",
+            "(?s)mismatch_model=.*use_minimum_error_floor",
         ),
     ],
 )

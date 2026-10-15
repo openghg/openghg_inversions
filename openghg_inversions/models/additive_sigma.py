@@ -16,16 +16,22 @@ component: RHIME-specific site/frequency translation lives outside this module.
 
 from __future__ import annotations
 
-from typing import Any, cast
+from collections.abc import Mapping
+from dataclasses import field
+from typing import Any, ClassVar, Literal, cast
 
 import numpy as np
 import pymc as pm
 import pytensor.tensor as pt
 import xarray as xr
 from pytensor.tensor.variable import TensorVariable
+from pydantic import StrictBool
+from pydantic.dataclasses import dataclass
 
+from openghg_inversions._record_schema import Record
+from openghg_inversions.models._likelihood_settings import SETTINGS_CONFIG, SigmaSettings
 from openghg_inversions.models.components import add_model_data, add_sigma_component
-from openghg_inversions.models.priors import PriorArgs
+from openghg_inversions.models.priors import PriorArgs, PriorRecord
 from openghg_inversions.models._gaussian_observation import (
     add_aggregation_error_data,
     add_gaussian_observation_likelihood,
@@ -39,6 +45,58 @@ from openghg_inversions.sigma import SigmaAlignment
 
 FIXED_MODEL_MISMATCH = "fixed_model_mismatch"
 DEFAULT_ADDITIVE_SIGMA_PRIOR: PriorArgs = {"pdf": "halfnormal", "sigma": 1.0}
+
+
+@dataclass(frozen=True, config=SETTINGS_CONFIG)
+class AdditiveSigmaSettings(SigmaSettings):
+    """Validated settings for additive model-data-mismatch error.
+
+    Numerical prior values are borrowed; ``to_record`` persists only used,
+    constructed prior metadata supplied by the caller.
+
+    Args:
+        sigma_prior: Prior for the additive model-error standard deviation.
+        sigma_freq: Frequency of the latent model-error periods. ``None`` uses
+            one period.
+        sigma_per_site: Whether model error varies by observation site.
+        sigma_freq_anchor: Optional anchor for fixed-duration periods.
+        use_minimum_error_floor: Apply the prepared historical minimum total-
+            error floor.
+    """
+
+    DEFAULT_SIGMA_PRIOR: ClassVar[PriorArgs] = DEFAULT_ADDITIVE_SIGMA_PRIOR
+
+    use_minimum_error_floor: StrictBool = False
+    kind: Literal["additive_sigma"] = field(default="additive_sigma", kw_only=True)
+
+    @property
+    def required_prepared_inputs(self) -> tuple[str, ...]:
+        return ("min_error",) if self.use_minimum_error_floor else ()
+
+    def to_record(self, *, priors: Mapping[str, PriorArgs]) -> AdditiveSigmaRecord:
+        return AdditiveSigmaRecord.model_validate({
+            "kind": self.kind,
+            "options": {**self.recorded_options(), "sigma_prior": priors.get("sigma")},
+        })
+
+
+class AdditiveSigmaOptions(Record):
+    sigma_prior: PriorRecord | None
+    sigma_freq: str | None
+    sigma_per_site: bool
+    sigma_freq_anchor: str | None
+    use_minimum_error_floor: bool
+
+
+class AdditiveSigmaRecord(Record):
+    kind: Literal["additive_sigma"]
+    options: AdditiveSigmaOptions
+
+    def to_runtime(self, *, trace: xr.DataTree | None = None) -> AdditiveSigmaSettings:
+        return AdditiveSigmaSettings(
+            **self.options.model_dump(exclude={"sigma_prior"}),
+            sigma_prior=None if self.options.sigma_prior is None else self.options.sigma_prior.to_runtime(trace=trace),
+        )
 
 
 def add_additive_sigma_likelihood(
@@ -160,6 +218,7 @@ def add_additive_sigma_likelihood(
         output_dim=output_dim,
     )
 __all__ = [
+    "AdditiveSigmaSettings", "AdditiveSigmaOptions", "AdditiveSigmaRecord",
     "DEFAULT_ADDITIVE_SIGMA_PRIOR",
     "FIXED_MODEL_MISMATCH",
     "add_additive_sigma_likelihood",

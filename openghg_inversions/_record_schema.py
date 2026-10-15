@@ -15,6 +15,16 @@ def _integer_version(value: object) -> object:
 SchemaVersion = Annotated[Literal[1], BeforeValidator(_integer_version)]
 
 
+def _json_number(value: object) -> object:
+    """Reject opaque scalar casts, which can execute a Dask graph."""
+    if type(value) not in (int, float):
+        raise ValueError("expected a JSON number, without array or object conversion")
+    return value
+
+
+JsonFloat = Annotated[float, BeforeValidator(_json_number)]
+
+
 class Record(BaseModel):
     """Validate external metadata without coercion or numerical execution."""
 
@@ -27,4 +37,4 @@ class Record(BaseModel):
     )
 
 
-__all__ = ["JsonValue", "Record", "SchemaVersion"]
+__all__ = ["JsonFloat", "JsonValue", "Record", "SchemaVersion"]

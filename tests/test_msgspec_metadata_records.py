@@ -80,7 +80,7 @@ def test_likelihood_variants_and_registered_prior_references_survive_real_writer
     posterior.attrs["rhime_priors"] = json.dumps({"x": prior})
     path = stages.save_samples(
         preparation, posterior, model=replace(config.model, likelihood=settings), actual_inference={},
-        output_contract=OutputContract(variable_roles={"flux_scale": "x"}),
+        output_contract=OutputContract.create(variable_roles={"flux_scale": "x"}),
         build_and_sample_seconds=0.0, output_dir=tmp_path / "variant",
     )
     decoded = decode_record(path.read_bytes(), SampleRecord)

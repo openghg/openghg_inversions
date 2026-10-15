@@ -9,6 +9,7 @@ from dask.callbacks import Callback
 import numpy as np
 import pytest
 import xarray as xr
+from xarray_validate import SchemaError
 
 from openghg_inversions.rhime.co2 import Co2PreparedInputs, prepare_co2_inputs
 from openghg_inversions.serialization import save_datatree
@@ -18,6 +19,45 @@ from test_co2_preparation import _canonical_inputs, _reduction
 def _prepared() -> Co2PreparedInputs:
     canonical = _canonical_inputs()
     return prepare_co2_inputs(canonical, _reduction(canonical), aggregation_error_rank=None)
+
+
+def test_none_dimensions_match_independent_axis_names_but_preserve_rank() -> None:
+    inputs = _prepared().inv_inputs.copy(deep=False)
+    mean = inputs["alpha_prior_mean"]
+    inputs["alpha_prior_mean"] = xr.DataArray(mean.data, dims="other_state", attrs=mean.attrs)
+    portable_schema = Co2PreparedInputs.dataset_schema()
+
+    # Independent None entries permit different state names across variables.
+    portable_schema.validate(inputs)
+    with pytest.raises(SchemaError, match="dimension mismatch.*other_state.*region"):
+        Co2PreparedInputs.dataset_schema("region").validate(inputs)
+
+    # None still occupies one axis; it does not mean any number of dimensions.
+    inputs["H"] = xr.DataArray(np.zeros(3), dims="nmeasure")
+    with pytest.raises(SchemaError, match="dimension number mismatch: got 1, expected 2"):
+        portable_schema.validate(inputs)
+
+
+@pytest.mark.parametrize("rank", [0, 1, 3])
+def test_product_reports_malformed_h_rank_through_its_schema(rank: int) -> None:
+    prepared = _prepared()
+    dimensions = ("nmeasure", "region", "unexpected")[:rank]
+    shape = (3, 2, 1)[:rank]
+    prepared.inv_inputs["H"] = xr.DataArray(np.zeros(shape), dims=dimensions)
+
+    with pytest.raises(ValueError, match="data_vars.H.dims: dimension number mismatch"):
+        replace(prepared)
+
+
+@pytest.mark.parametrize("name", ["alpha_prior_mean", "alpha_prior_covariance"])
+def test_product_schema_binds_state_relationships(name: str) -> None:
+    prepared = _prepared()
+    value = prepared.inv_inputs[name]
+    dimensions = ("other_state",) if name == "alpha_prior_mean" else ("region", "other_covariance")
+    prepared.inv_inputs[name] = xr.DataArray(value.data, dims=dimensions, attrs=value.attrs)
+
+    with pytest.raises(ValueError, match=f"data_vars.{name}.dims: dimension mismatch"):
+        replace(prepared)
 
 
 @pytest.mark.parametrize(
@@ -109,9 +149,21 @@ def test_scientific_covariance_shape_and_numeric_unit_scale_still_have_owners() 
 @pytest.mark.parametrize("suffix", [".nc", ".zarr"])
 def test_disk_loader_rejects_schema_invalid_payload(tmp_path: Path, suffix: str) -> None:
     prepared = _prepared()
+    # The product binds the actual H state name rather than hard-coding region.
+    prepared = replace(
+        prepared,
+        rhime_inputs=replace(
+            prepared.rhime_inputs,
+            inv_inputs=prepared.inv_inputs.rename(region="retained", region_cov="retained_cov"),
+        ),
+    )
+    before = prepared.inv_inputs.copy(deep=True)
     path = tmp_path / f"co2-schema{suffix}"
     prepared.save(path)
+    xr.testing.assert_identical(prepared.inv_inputs, before)
     restored = Co2PreparedInputs.load(path)
+    assert restored.inv_inputs["H"].dims == ("nmeasure", "retained")
+    assert restored.inv_inputs["alpha_prior_covariance"].dims == ("retained", "retained_cov")
     xr.testing.assert_identical(restored.inv_inputs, prepared.inv_inputs)
 
     tree = prepared.to_datatree()

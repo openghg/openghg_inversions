@@ -17,27 +17,92 @@ RHIME's general likelihood-builder seam.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
-from typing import Any, cast
+from dataclasses import dataclass, field
+from typing import Any, ClassVar, Literal, cast
 
 import numpy as np
 import pymc as pm
 import pytensor.tensor as pt
 import xarray as xr
 from pytensor.tensor.variable import TensorVariable
+from pydantic import StrictBool
+from pydantic.dataclasses import dataclass as validated_dataclass
 
+from openghg_inversions._record_schema import JsonFloat, Record
+from openghg_inversions.models._likelihood_settings import BorrowedPrior, SETTINGS_CONFIG, SigmaSettings
 from openghg_inversions.models.components import add_model_data, add_sigma_component
 from openghg_inversions.models._gaussian_observation import (
     RegisteredAggregationError,
     add_aggregation_error_data,
     add_gaussian_observation_likelihood,
 )
-from openghg_inversions.models.priors import parse_prior
+from openghg_inversions.models.priors import PriorArgs, PriorRecord, parse_prior
 from openghg_inversions.observation_error import (
     AggregationError,
     validate_observation_error_arrays,
 )
 from openghg_inversions.sigma import SigmaAlignment
+
+
+DEFAULT_POLLUTION_EVENT_SIGMA_PRIOR: PriorArgs = {"pdf": "uniform", "lower": 0.0, "upper": 0.1}
+
+
+@validated_dataclass(frozen=True, config=SETTINGS_CONFIG)
+class PollutionEventSettings(SigmaSettings):
+    """Validated settings for pollution-event-scaled model error.
+
+    Numerical prior values are borrowed; ``to_record`` persists only used,
+    constructed prior metadata supplied by the caller.
+
+    Args:
+        sigma_prior: Prior for the observation-aligned fractional model error.
+        sigma_freq: Frequency of the latent model-error periods. ``None`` uses
+            one period.
+        sigma_per_site: Whether model error varies by observation site.
+        sigma_freq_anchor: Optional anchor for fixed-duration periods.
+        pollution_events_from_obs: Derive pollution events from observations
+            after removing the baseline instead of from modelled pollution.
+        power: Exponent or prior used in pollution-event error scaling.
+    """
+
+    DEFAULT_SIGMA_PRIOR: ClassVar[PriorArgs] = DEFAULT_POLLUTION_EVENT_SIGMA_PRIOR
+
+    pollution_events_from_obs: StrictBool = False
+    power: BorrowedPrior | JsonFloat | None = 1.99
+    kind: Literal["pollution_event"] = field(default="pollution_event", kw_only=True)
+
+    @property
+    def required_prepared_inputs(self) -> tuple[str, ...]:
+        return ("min_error",)
+
+    def to_record(self, *, priors: Mapping[str, PriorArgs]) -> PollutionEventRecord:
+        return PollutionEventRecord.model_validate({
+            "kind": self.kind,
+            "options": {**self.recorded_options(), "sigma_prior": priors.get("sigma"),
+                        "power": priors.get("power") if isinstance(self.power, Mapping) else self.power},
+        })
+
+
+class PollutionEventOptions(Record):
+    sigma_prior: PriorRecord | None
+    sigma_freq: str | None
+    sigma_per_site: bool
+    sigma_freq_anchor: str | None
+    pollution_events_from_obs: bool
+    power: PriorRecord | JsonFloat | int | None
+
+
+class PollutionEventRecord(Record):
+    kind: Literal["pollution_event"]
+    options: PollutionEventOptions
+
+    def to_runtime(self, *, trace: xr.DataTree | None = None) -> PollutionEventSettings:
+        power = self.options.power
+        return PollutionEventSettings(
+            **self.options.model_dump(exclude={"sigma_prior", "power"}),
+            sigma_prior=None if self.options.sigma_prior is None else self.options.sigma_prior.to_runtime(trace=trace),
+            power=power.to_runtime(trace=trace) if isinstance(power, PriorRecord) else power,
+        )
 
 
 @dataclass(frozen=True)
@@ -248,4 +313,7 @@ def add_pollution_event_likelihood(
     )
 
 
-__all__ = ["add_pollution_event_likelihood"]
+__all__ = [
+    "add_pollution_event_likelihood", "PollutionEventSettings", "PollutionEventOptions", "PollutionEventRecord",
+    "DEFAULT_POLLUTION_EVENT_SIGMA_PRIOR",
+]
