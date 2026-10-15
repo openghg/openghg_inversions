@@ -255,15 +255,6 @@ def save_samples(
     )
 
 
-def _saved_model(
-    preparation_manifest: str | Path, model: Mapping[str, Any],
-) -> tuple[RhimePreparedInputs, RhimeModelSpec]:
-    """Load a preparation and bind current model choices to its data choices."""
-    prepared, data = load_preparation(preparation_manifest)
-    model_spec = resolve_model_options(model, data=data)
-    return prepared, model_spec
-
-
 def sample(
     preparation_manifest: str | Path, *, model: Mapping[str, Any],
     sampler: RhimeSampler | Literal["default"] = "default", output_dir: str | Path,
@@ -294,7 +285,8 @@ def sample(
     from .standard import build_standard
 
     sampler = resolve_sampler(sampler)
-    prepared, model_spec = _saved_model(preparation_manifest, model)
+    prepared, data = load_preparation(preparation_manifest)
+    model_spec = resolve_model_options(model, data=data)
     started = timer_start()
     built = build_standard(
         prepared, model_spec, likelihood_builder=likelihood_builder, likelihood_kwargs=likelihood_kwargs,
@@ -389,7 +381,8 @@ def prior_predictive(
 
     stage = _check_stage(stage)
     _check_draws(draws)
-    prepared, model_spec = _saved_model(preparation_manifest, model)
+    prepared, data = load_preparation(preparation_manifest)
+    model_spec = resolve_model_options(model, data=data)
     destination = Path(output_dir).resolve()
     destination.mkdir(parents=True, exist_ok=True)
     return prior_predictive_check(

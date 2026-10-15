@@ -107,7 +107,8 @@ class DataConfig:
     def from_params(cls, params: Mapping[str, Any], *, multisector: bool = False) -> DataConfig:
         """Resolve acquisition and preparation options without constructing other groups.
 
-        Unknown or wrong-phase names fail. Select the data mapping from
+        Unknown or wrong-phase names fail. An explicit ``split_by_sectors``
+        must agree with the selected ``multisector`` recipe. Select the data mapping from
         ``group_rhime_params`` first when consuming a shared configuration file.
         """
         remaining = normalise_rhime_params(params)
@@ -115,6 +116,11 @@ class DataConfig:
         unsupported = sorted(set(remaining) - cls.option_names())
         if unsupported:
             raise ValueError(f"Unsupported data parameter(s): {unsupported!r}")
+        if "split_by_sectors" in remaining and remaining["split_by_sectors"] != multisector:
+            raise ValueError(
+                f"`split_by_sectors={remaining['split_by_sectors']!r}` conflicts with "
+                f"the selected recipe (multisector={multisector!r})."
+            )
         missing = sorted(name for name in cls.required_option_names()
                          if name not in remaining or is_missing_required_value(remaining[name]))
         if missing:

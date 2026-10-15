@@ -53,6 +53,16 @@ def test_manifest_relative_and_absolute_references_preserve_inputs(tmp_path, mon
     xr.testing.assert_identical(stages.load_preparation(preparation)[0].inv_inputs, prepared.inv_inputs)
 
 
+def test_conflicting_recorded_layout_fails_before_numerical_loading(tmp_path, monkeypatch):
+    preparation, _ = _saved(tmp_path)
+    record = json.loads(preparation.read_text())
+    record["data"]["split_by_sectors"] = True
+    preparation.write_text(json.dumps(record))
+    monkeypatch.setattr(stages.RhimePreparedInputs, "load", lambda *a, **k: pytest.fail("loaded numerical data"))
+    with pytest.raises(ValueError, match="split_by_sectors=True.*multisector=False"):
+        stages.load_preparation(preparation)
+
+
 def test_reused_destinations_and_manifest_last(tmp_path, monkeypatch):
     preparation, _ = _saved(tmp_path)
     config = RhimeConfig.from_params(_params(), multisector=False)

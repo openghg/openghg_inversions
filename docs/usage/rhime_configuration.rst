@@ -71,7 +71,10 @@ its options again:
    result = run_rhime(config=config)
 
 For multisector requests, construct with ``multisector=True`` and use
-``run_rhime_multisector(config=config)``. A resolved ``config`` cannot be
+``run_rhime_multisector(config=config)``. An explicit ``data.split_by_sectors``
+value must match the selected recipe; omitted values inherit it. Saved standard
+preparations with a conflicting recorded layout are rejected before numerical
+inputs are loaded. A resolved ``config`` cannot be
 combined with ``config_file`` or raw configuration keyword arguments. Python
 execution inputs such as ``merged_data`` and a custom ``likelihood_builder``
 remain separate arguments; a custom likelihood still requires the resolved

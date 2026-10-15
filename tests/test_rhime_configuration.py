@@ -553,6 +553,19 @@ def test_preparation_only_ignores_unselected_group_values(monkeypatch):
         rhime_params.group_rhime_params({**request, "typo": 1})
 
 
+@pytest.mark.parametrize("multisector", [False, True])
+def test_data_layout_agrees_with_explicit_recipe(multisector):
+    options = rhime_params.group_rhime_params(_request())["data"]
+    options["flux_sources"] = ["first", "second"] if multisector else ["first"]
+    for recorded in ({}, {"split_by_sectors": multisector}):
+        data = rhime_params.DataConfig.from_params({**options, **recorded}, multisector=multisector)
+        assert data.split_by_sectors is multisector
+    with pytest.raises(ValueError, match="split_by_sectors.*conflicts with the selected recipe"):
+        rhime_params.DataConfig.from_params(
+            {**options, "split_by_sectors": not multisector}, multisector=multisector
+        )
+
+
 @pytest.mark.parametrize("use_bc", [False, True])
 def test_grouped_full_and_phase_resolution_share_owners(use_bc):
     sections = rhime_params.group_rhime_params(_request(use_bc=use_bc))
