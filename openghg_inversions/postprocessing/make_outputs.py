@@ -1,5 +1,5 @@
 from pathlib import Path
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from typing import Any, Literal, NamedTuple, cast
 
 import numpy as np
@@ -562,6 +562,10 @@ def make_sector_flux_outputs(
         chunks=_FLUX_STATS_CHUNKS,
     )
     flux_stats_args = _stats_args_with_defaults(stats, stats_args)
+    # Reuse one-shot probability iterables across totals, sectors, and tiles.
+    for key in ("hdi_prob", "hdi__hdi_prob"):
+        if isinstance(flux_stats_args.get(key), Iterable):
+            flux_stats_args[key] = tuple(flux_stats_args[key])
 
     outputs = [_calculate_flux_stats(total_flux_trace, **flux_stats_args)]
     for sector, flux_trace in zip(sectors, sector_flux_traces, strict=True):
@@ -572,7 +576,7 @@ def make_sector_flux_outputs(
                     inv_out,
                     sector,
                     stats=stats,
-                    stats_args=stats_args,
+                    stats_args=flux_stats_args,
                 )
             )
 
