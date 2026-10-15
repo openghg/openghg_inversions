@@ -53,7 +53,7 @@ def test_lazy_array_prior_uses_same_full_prepared_and_saved_construction(tmp_pat
     assert trace_prior_records(full.idata) == trace_prior_records(replay.idata)
 
     prepared, data = stages.load_preparation(preparation)
-    model = resolve_model_options({"x_prior": prior, "mismatch_model": "fixed_error"}, preparation=data)
+    model = resolve_model_options({"x_prior": prior, "mismatch_model": "fixed_error"}, data=data)
     built = build_standard(prepared, model)
     assert calls == [1, 1, 1]
     for x in (.7, 1., 1.4):
@@ -303,7 +303,7 @@ def test_standard_model_and_enabled_priors_share_computation_before_zero_pruning
 
         unused = {"pdf": "normal", "mu": da.from_delayed(disabled(), shape=(1,), dtype=float), "sigma": .1}
         model = resolve_model_options({"x_prior": prior, "bc_prior": unused, "offset_prior": unused,
-                                       "mismatch_model": "fixed_error"}, preparation=data)
+                                       "mismatch_model": "fixed_error"}, data=data)
         borrowed = replace(prepared, inv_inputs=prepared.inv_inputs.assign(H=h))
         built = build_standard(borrowed, model)
         assert calls == [1]

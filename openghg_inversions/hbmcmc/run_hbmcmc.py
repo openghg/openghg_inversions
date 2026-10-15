@@ -12,8 +12,8 @@ e.g.
 start - Start of date range to use for MCMC inversion (YYYY-MM-DD)
 end - End of date range to use for MCMC inversion (YYYY-MM-DD) (must be after start)
 -c / --config - existing fixedbasis-style configuration file.
---all-chains - use every sampled chain in derived outputs. By default this
-compatibility entry point warns and continues to use chain 0.
+Derived summaries use all sampled chains. Historical compatibility quirks require
+OpenGHG Inversions 0.7; this entry point is removed in 0.9.
 
 If start and end are specified these will supersede the values within the configuration file, if present.
 """
@@ -21,7 +21,6 @@ If start and end are specified these will supersede the values within the config
 import argparse
 import json
 import re
-import warnings
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -30,8 +29,7 @@ from openghg_inversions._timing import log_timing, timed, timer_seconds, timer_s
 from openghg_inversions.config import config
 from openghg_inversions.hbmcmc import compatibility
 from openghg_inversions.models.additive_sigma import DEFAULT_ADDITIVE_SIGMA_PRIOR
-from openghg_inversions.rhime import PollutionEventSettings, RhimeConfig, run_rhime
-from openghg_inversions.rhime.params import validate_rhime_param_types
+from openghg_inversions.rhime import RhimeConfig, run_rhime
 
 
 _ADDITIVE_SIGMA_LIKELIHOOD = "additive_sigma"
@@ -41,7 +39,6 @@ _ADDITIVE_SIGMA_OPTION_NAMES = (
     "sigma_freq",
     "sigma_per_site",
     "sigma_freq_anchor",
-    "no_model_error",
 )
 _REQUIRED_FIXEDBASIS_PARAMS = (
     "species",
@@ -74,7 +71,7 @@ def _select_additive_sigma_model_options(
     if not isinstance(likelihood, str) or likelihood.strip().lower() != _ADDITIVE_SIGMA_LIKELIHOOD:
         raise ValueError(
             "run_hbmcmc supports only likelihood='additive_sigma'; omit `likelihood` "
-            "to retain the historical pollution-event likelihood."
+            "to select the pollution-event likelihood."
         )
     if rhime_params.get("aggregation_error_mode", "none") != "none":
         raise ValueError(
@@ -184,11 +181,6 @@ def build_parser() -> argparse.ArgumentParser:
         "--output-path",
         help="Path to write ini file and results to.",
     )
-    parser.add_argument(
-        "--all-chains",
-        action="store_true",
-        help="Use every sampled chain in derived outputs (recommended).",
-    )
     return parser
 
 
@@ -257,36 +249,22 @@ def main(argv: list[str] | None = None) -> None:
 
     with timed("run_hbmcmc.fixedbasis_to_rhime_translation"):
         rhime_params = compatibility.fixedbasis_params_to_rhime(param)
-        additive_sigma_options = _select_additive_sigma_model_options(param, rhime_params)
-        no_model_error = bool(rhime_params.pop("no_model_error", False))
-        legacy_unused_sigma_settings: PollutionEventSettings | None = None
-        legacy_minimum_error_floor = False
-        if additive_sigma_options is not None:
-            no_model_error = bool(additive_sigma_options.get("no_model_error", no_model_error))
-            if no_model_error:
-                for name in _ADDITIVE_SIGMA_OPTION_NAMES:
-                    rhime_params.pop(name, None)
-                rhime_params.update(
-                    mismatch_model="fixed_error",
-                    aggregation_error_mode="none",
-                )
-                legacy_minimum_error_floor = True
-            else:
-                rhime_params.update(additive_sigma_options)
-                rhime_params.pop("no_model_error", None)
-        elif no_model_error:
-            # Validate the prior before removing it from the resolver's inputs.
-            validate_rhime_param_types({"sigma_prior": rhime_params.get("sigma_prior")})
-            legacy_unused_sigma_settings = PollutionEventSettings(
-                sigma_prior=rhime_params.pop("sigma_prior", None),
-                sigma_freq=rhime_params.pop("sigma_freq", None),
-                sigma_per_site=rhime_params.pop("sigma_per_site", True),
-                sigma_freq_anchor=rhime_params.pop("sigma_freq_anchor", None),
+        if rhime_params.pop("no_model_error", False):
+            raise ValueError(
+                "run_hbmcmc no_model_error=True compatibility was removed in 0.8; "
+                "use OpenGHG Inversions 0.7 for the historical behavior, or run_standard "
+                "with mismatch_model='fixed_error' for the current fixed-error model."
             )
-            rhime_params.pop("pollution_events_from_obs", None)
-            rhime_params.pop("power", None)
-            rhime_params["mismatch_model"] = "fixed_error"
+        additive_sigma_options = _select_additive_sigma_model_options(param, rhime_params)
+        if additive_sigma_options is not None:
+            rhime_params.update(additive_sigma_options)
         else:
+            if rhime_params.get("add_offset", False) and rhime_params.get("pollution_events_from_obs", False):
+                raise ValueError(
+                    "run_hbmcmc observation-based pollution error with add_offset=True "
+                    "used a historical boundary-only baseline removed in 0.8; use OpenGHG "
+                    "Inversions 0.7 for that behavior, or run_standard for the current full baseline."
+                )
             rhime_params["mismatch_model"] = "pollution_event"
 
     with timed("run_hbmcmc.validation"):
@@ -295,25 +273,10 @@ def main(argv: list[str] | None = None) -> None:
 
     _validate_country_file(rhime_params)
 
-    if not args.all_chains:
-        warnings.warn(
-            "run_hbmcmc.py is preserving historical chain-0-only derived outputs. "
-            "Pass --all-chains to use every sampled chain (recommended). Pooling chains "
-            "does not establish convergence.",
-            UserWarning,
-            stacklevel=2,
-        )
-
     with timed("run_hbmcmc.config_copy"):
         _copy_config_file(config_file, param=param, **command_line_args)
 
-    run_rhime(
-        preserve_legacy_likelihood=additive_sigma_options is None,
-        _compatibility_unused_sigma_settings=legacy_unused_sigma_settings,
-        _compatibility_minimum_error_floor=legacy_minimum_error_floor,
-        compatibility_output_chain=None if args.all_chains else 0,
-        config=resolved_config,
-    )
+    run_rhime(config=resolved_config)
 
 
 if __name__ == "__main__":

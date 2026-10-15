@@ -663,7 +663,6 @@ def test_real_prepared_inputs_save_load_and_run_without_repreparation(
         """Record the loaded builder inputs and build the real canonical graph."""
         assert kwargs["likelihood_builder"] is None
         assert kwargs["likelihood_settings"] == model_spec.likelihood
-        assert kwargs["preserve_legacy_likelihood"] is False
         observed["builder_inputs"] = flux_sensitivity
         observed["observations"] = kwargs["observations"]
         return original_builder(flux_sensitivity, **kwargs)
@@ -1161,7 +1160,6 @@ def test_loaded_prepared_inputs_run_through_existing_seam(
         """Record model-builder inputs and build the real canonical graph."""
         assert kwargs["likelihood_builder"] is None
         assert kwargs["likelihood_settings"] == model_spec.likelihood
-        assert kwargs["preserve_legacy_likelihood"] is False
         observed["builder_inputs"] = flux_sensitivity
         observed["observations"] = kwargs["observations"]
         return original_builder(flux_sensitivity, **kwargs)

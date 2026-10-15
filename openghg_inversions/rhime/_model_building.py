@@ -158,8 +158,6 @@ def add_configured_pollution_event_likelihood(
     minimum_error: xr.DataArray | None,
     output_dim: str,
     sigma_alignment: SigmaAlignment | None = None,
-    legacy_pollution_event_baseline: TensorVariable | None = None,
-    preserve_legacy_pollution_event: bool = False,
 ) -> TensorVariable:
     """Resolve pollution-event settings into the direct PyMC component."""
     if minimum_error is None:
@@ -172,11 +170,6 @@ def add_configured_pollution_event_likelihood(
             per_site=settings.sigma_per_site,
             anchor_time=settings.sigma_freq_anchor,
         )
-    baseline = (
-        legacy_pollution_event_baseline
-        if preserve_legacy_pollution_event
-        else forward.baseline
-    )
     return add_pollution_event_likelihood(
         observations=observations,
         observation_error=observation_error,
@@ -184,7 +177,7 @@ def add_configured_pollution_event_likelihood(
         aggregation_error=aggregation_error,
         mean=forward.total,
         pollution_mean=forward.pollution,
-        pollution_event_baseline=baseline,
+        pollution_event_baseline=forward.baseline,
         sigma_alignment=resolved_alignment,
         sigma_prior=dict(
             DEFAULT_POLLUTION_EVENT_SIGMA_PRIOR
@@ -238,55 +231,9 @@ def add_configured_fixed_error_likelihood(
     observations: xr.DataArray,
     observation_error: xr.DataArray,
     aggregation_error: AggregationError,
-    minimum_error: xr.DataArray | None,
     output_dim: str,
-    sigma_alignment: SigmaAlignment | None = None,
-    legacy_unused_sigma_settings: PollutionEventSettings | None = None,
-    legacy_minimum_error_floor: bool = False,
 ) -> TensorVariable:
     """Resolve fixed-error settings into the direct Gaussian component."""
-    if legacy_unused_sigma_settings is not None:
-        if minimum_error is None:
-            raise ValueError("Legacy no-model-error compatibility requires `minimum_error`.")
-        alignment = sigma_alignment
-        if alignment is None:
-            alignment = SigmaAlignment.from_observations(
-                observations,
-                frequency=legacy_unused_sigma_settings.sigma_freq,
-                per_site=legacy_unused_sigma_settings.sigma_per_site,
-                anchor_time=legacy_unused_sigma_settings.sigma_freq_anchor,
-            )
-        return add_pollution_event_likelihood(
-            observations=observations,
-            observation_error=observation_error,
-            minimum_error=minimum_error,
-            aggregation_error=aggregation_error,
-            mean=forward.total,
-            pollution_mean=forward.pollution,
-            pollution_event_baseline=forward.baseline,
-            sigma_alignment=alignment,
-            sigma_prior=dict(
-                DEFAULT_POLLUTION_EVENT_SIGMA_PRIOR
-                if legacy_unused_sigma_settings.sigma_prior is None
-                else legacy_unused_sigma_settings.sigma_prior
-            ),
-            power=1.99,
-            pollution_events_from_obs=False,
-            no_model_error=True,
-            retain_unused_sigma=True,
-            output_dim=output_dim,
-        )
-    if legacy_minimum_error_floor:
-        if minimum_error is None:
-            raise ValueError("Legacy additive compatibility requires `minimum_error`.")
-        return add_additive_sigma_likelihood(
-            observations=observations,
-            observation_error=observation_error,
-            aggregation_error=aggregation_error,
-            mean=forward.total,
-            minimum_error_floor=minimum_error,
-            output_dim=output_dim,
-        )
     return add_fixed_error_likelihood(
         observations=observations,
         observation_error=observation_error,
@@ -306,10 +253,6 @@ def _add_builtin_likelihood(
     minimum_error: xr.DataArray | None,
     output_dim: str,
     sigma_alignment: SigmaAlignment | None = None,
-    legacy_pollution_event_baseline: TensorVariable | None = None,
-    preserve_legacy_pollution_event: bool = False,
-    legacy_unused_sigma_settings: PollutionEventSettings | None = None,
-    legacy_minimum_error_floor: bool = False,
 ) -> TensorVariable:
     """Dispatch one resolved built-in likelihood with explicit scientific inputs."""
     if isinstance(settings, PollutionEventSettings):
@@ -322,8 +265,6 @@ def _add_builtin_likelihood(
             minimum_error=minimum_error,
             output_dim=output_dim,
             sigma_alignment=sigma_alignment,
-            legacy_pollution_event_baseline=legacy_pollution_event_baseline,
-            preserve_legacy_pollution_event=preserve_legacy_pollution_event,
         )
     if isinstance(settings, AdditiveSigmaSettings):
         return add_configured_additive_sigma_likelihood(
@@ -342,11 +283,7 @@ def _add_builtin_likelihood(
             observations=observations,
             observation_error=observation_error,
             aggregation_error=aggregation_error,
-            minimum_error=minimum_error,
             output_dim=output_dim,
-            sigma_alignment=sigma_alignment,
-            legacy_unused_sigma_settings=legacy_unused_sigma_settings,
-            legacy_minimum_error_floor=legacy_minimum_error_floor,
         )
 
     raise TypeError(f"Unsupported built-in likelihood settings: {type(settings).__name__}.")
@@ -364,10 +301,6 @@ def add_rhime_likelihood(
     minimum_error: xr.DataArray | None,
     output_dim: str,
     sigma_alignment: SigmaAlignment | None = None,
-    legacy_pollution_event_baseline: TensorVariable | None = None,
-    preserve_legacy_pollution_event: bool = False,
-    legacy_unused_sigma_settings: PollutionEventSettings | None = None,
-    legacy_minimum_error_floor: bool = False,
 ) -> TensorVariable:
     """Add exactly one built-in or custom likelihood to a concrete recipe."""
     if settings is None:
@@ -393,10 +326,6 @@ def add_rhime_likelihood(
         minimum_error=minimum_error,
         output_dim=output_dim,
         sigma_alignment=sigma_alignment,
-        legacy_pollution_event_baseline=legacy_pollution_event_baseline,
-        preserve_legacy_pollution_event=preserve_legacy_pollution_event,
-        legacy_unused_sigma_settings=legacy_unused_sigma_settings,
-        legacy_minimum_error_floor=legacy_minimum_error_floor,
     )
 
 
@@ -406,7 +335,6 @@ def builtin_model_build_result(
     model_spec: RhimeModelSpec,
     multisector: bool,
     input_names: Collection[str],
-    preserve_legacy_baseline: bool = False,
 ) -> RhimeModelBuildResult:
     """Describe a built-in graph through its whole-model output roles.
 
@@ -415,8 +343,6 @@ def builtin_model_build_result(
         model_spec: Scientific options used to build the graph.
         multisector: Whether sector-specific flux roles are required.
         input_names: Names available from retained canonical inputs.
-        preserve_legacy_baseline: Whether the compatibility graph exposes the
-            historical boundary-only baseline role.
 
     Returns:
         Concrete graph plus semantic roles and supported output formats.
@@ -450,9 +376,7 @@ def builtin_model_build_result(
         )
     if model_spec.add_offset:
         roles["offset"] = "offset"
-    if preserve_legacy_baseline and model_spec.use_bc:
-        roles["baseline"] = "mu_bc"
-    elif model_spec.use_bc and not model_spec.add_offset:
+    if model_spec.use_bc and not model_spec.add_offset:
         roles["baseline"] = "mu_bc"
     elif model_spec.add_offset and not model_spec.use_bc:
         roles["baseline"] = "offset"

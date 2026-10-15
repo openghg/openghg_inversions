@@ -76,6 +76,42 @@ explicit inputs needed by that contract rather than add downstream discovery.
 - **THEN** it fails before acquisition with migration guidance
 - **AND** no modern adapter calls HBMCMC to interpret those fields
 
+### Requirement: Historical scientific quirks require version 0.7
+
+Version 0.8 SHALL remove `preserve_legacy_likelihood`,
+`_compatibility_unused_sigma_settings`, `_compatibility_minimum_error_floor` and
+`compatibility_output_chain` from modern runner and builder operations. The
+lower-level `retain_unused_sigma` and `derived_output_chain` options SHALL also be
+removed. The HBMCMC CLI SHALL remove `--all-chains`, because all retained chains
+are always used. Historical boundary-only pollution-event likelihood behaviour, disconnected sigma-prior
+variables and additive fixed-error minimum-error floors SHALL NOT be reproduced
+through modern scientific construction. The HBMCMC boundary SHALL reject affected
+historical configurations before scientific execution with guidance to use
+OpenGHG Inversions 0.7. The rejected historical inputs SHALL include
+`no_model_error=True` for both pollution-event and additive likelihoods, and the
+default pollution-event selection (omitted `likelihood`) with both
+`add_offset=True` and `pollution_events_from_obs=True`. Guidance SHALL also identify
+direct modern `run_standard` configuration for selecting the current model.
+Other accepted wrapper requests SHALL use modern full-baseline and output-role
+semantics; modern standard offsets SHALL remain supported.
+
+Derived outputs SHALL use all retained chains, including outputs requested through
+the transitional HBMCMC wrapper and legacy-format summaries. Reproduction of the
+historical chain-0-only summary policy SHALL require OpenGHG Inversions 0.7. Modern
+legacy-format codecs and explicit save paths SHALL remain supported.
+
+#### Scenario: Historical likelihood configuration
+
+- **WHEN** an HBMCMC request requires a removed likelihood or unused-prior quirk
+- **THEN** the legacy boundary rejects it with guidance to use OpenGHG Inversions 0.7
+- **AND** no modern runner reconstructs that compatibility graph
+
+#### Scenario: Wrapper output uses retained chains
+
+- **WHEN** the transitional HBMCMC wrapper writes derived products
+- **THEN** it follows ordinary RHIME output policy over all retained chains
+- **AND** it does not select only chain 0 through a private compatibility switch
+
 ### Requirement: Retained modern behavior has modern owners
 
 Supported modern INI decoding, RHIME aliases, configuration construction, path

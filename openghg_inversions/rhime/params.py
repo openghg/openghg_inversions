@@ -89,14 +89,14 @@ class DataConfig:
 
     @classmethod
     def option_names(cls) -> frozenset[str]:
-        """External names declared by preparation and site-selector owners."""
+        """External names declared by data and site-selector owners."""
         return frozenset(f.name for f in fields(cls) if f.name != "site_options") | frozenset(
             f.name for f in fields(SiteOptions)
         )
 
     @classmethod
     def required_option_names(cls) -> frozenset[str]:
-        """Required preparation values before site shorthand resolution."""
+        """Required data choices before site shorthand resolution."""
         return frozenset(
             f.name for f in fields(cls)
             if f.default is MISSING and f.default_factory is MISSING
@@ -105,7 +105,7 @@ class DataConfig:
 
     @classmethod
     def from_params(cls, params: Mapping[str, Any], *, multisector: bool = False) -> DataConfig:
-        """Resolve preparation-only options without constructing other groups.
+        """Resolve acquisition and preparation options without constructing other groups.
 
         Unknown or wrong-phase names fail. Select the data mapping from
         ``group_rhime_params`` first when consuming a shared configuration file.
@@ -114,7 +114,7 @@ class DataConfig:
         remaining = resolve_resource_paths(remaining, annotations=get_type_hints(cls), base_dir=Path.cwd())
         unsupported = sorted(set(remaining) - cls.option_names())
         if unsupported:
-            raise ValueError(f"Unsupported preparation parameter(s): {unsupported!r}")
+            raise ValueError(f"Unsupported data parameter(s): {unsupported!r}")
         missing = sorted(name for name in cls.required_option_names()
                          if name not in remaining or is_missing_required_value(remaining[name]))
         if missing:
@@ -211,13 +211,13 @@ class RhimeConfig:
             source_names = as_list(sections["data"].get("flux_sources")) or []
             if len(source_names) < 2:
                 _validate_sector_source_mapping(source_names, normalise_sector_sources(sector_sources) or {})
-        preparation = DataConfig.from_params(sections["data"], multisector=multisector)
-        model = resolve_model_options(sections["model"], preparation=preparation)
+        data = DataConfig.from_params(sections["data"], multisector=multisector)
+        model = resolve_model_options(sections["model"], data=data)
         # Multisector source routing owns the retained source order.
         if multisector and sections["model"].get("sector_sources") is not None:
-            preparation = replace(preparation, flux_sources=tuple(s.flux_source for s in model.sectors))
+            data = replace(data, flux_sources=tuple(s.flux_source for s in model.sectors))
         return cls(
-            data=preparation, model=model,
+            data=data, model=model,
             sampler=resolve_sampler_options(sections["sampler"]),
             output=RhimeOutputSpec.from_params(sections["output"], multisector=multisector),
         )
@@ -227,10 +227,7 @@ class RhimeConfig:
         return retained_run_spec(self.data, prepared, model=self.model, output=self.output)
 
 
-RHIME_PREPARATION_OPTION_NAMES = DataConfig.option_names()
-
-
-# Data facts a model request may repeat; each must agree with the preparation.
+# Data facts a model request may repeat; each must agree with the data configuration.
 REQUEST_CLAIM_NAMES = (
     "species", "domain", "flux_sources", "start_date", "end_date", "split_by_sectors", "bc_freq", "use_bc",
 )
@@ -305,11 +302,22 @@ def _bc_frequency_policy(value: str | None) -> str | pd.Timedelta | None:
         raise ValueError(f"Invalid `bc_freq`: {value!r}.") from exc
 
 
-def resolve_model_options(params: Mapping[str, Any], *, preparation: DataConfig) -> RhimeModelSpec:
-    """Bind raw model choices to authoritative preparation facts.
+def resolve_model_options(params: Mapping[str, Any], *, data: DataConfig) -> RhimeModelSpec:
+    """Bind raw model choices to authoritative acquisition and preparation choices.
 
-    Omitted BC use inherits preparation. Explicit BC use requires prepared BC
-    inputs; repeated temporal or source facts must agree with preparation.
+    Omitted BC use inherits the data configuration. Explicit BC use requires prepared BC
+    inputs; repeated temporal or source facts must agree with the data configuration.
+
+    Args:
+        params: External model options and any repeated data facts.
+        data: Resolved acquisition and preparation choices that own those facts.
+
+    Returns:
+        Model choices bound to the data configuration.
+
+    Raises:
+        ValueError: If options are unsupported or invalid, repeated data facts
+            conflict, or the model requires unavailable BC inputs.
     """
     remaining = normalise_rhime_params(params)
     facts = tuple(name for name in REQUEST_CLAIM_NAMES if name != "use_bc")
@@ -319,25 +327,28 @@ def resolve_model_options(params: Mapping[str, Any], *, preparation: DataConfig)
         raise ValueError(f"Unsupported model parameter(s): {unknown!r}")
     for name in facts:
         if name in remaining:
-            claim = remaining.pop(name)
+            claimed = remaining.pop(name)
+            claim = claimed
             if name == "flux_sources":
                 claim = tuple(as_list(claim) or ())
-            expected = getattr(preparation, name)
-            if name == "bc_freq":
-                claim, expected = _bc_frequency_policy(claim), _bc_frequency_policy(expected)
-            if claim != expected:
-                raise ValueError(f"`{name}` conflicts with preparation.")
-    use_bc = remaining.pop("use_bc", preparation.use_bc)
-    if use_bc and not preparation.use_bc:
-        raise ValueError("Model `use_bc=True` requires preparation with BC inputs.")
-    flux_sources = list(preparation.flux_sources)
+            expected = getattr(data, name)
+            matches = (
+                _bc_frequency_policy(claim) == _bc_frequency_policy(expected)
+                if name == "bc_freq" else claim == expected
+            )
+            if not matches:
+                raise ValueError(f"`{name}` conflicts with data: claimed {claimed!r}, expected {expected!r}.")
+    use_bc = remaining.pop("use_bc", data.use_bc)
+    if use_bc and not data.use_bc:
+        raise ValueError("Model `use_bc=True` requires data configured with BC inputs.")
+    flux_sources = list(data.flux_sources)
     sector_sources = normalise_sector_sources(remaining.pop("sector_sources", None))
     if sector_sources is not None:
-        if not preparation.split_by_sectors:
+        if not data.split_by_sectors:
             raise ValueError("`sector_sources` is only supported by `run_rhime_multisector`.")
         _validate_sector_source_mapping(flux_sources, sector_sources)
     x_prior = remaining.pop("x_prior", None)
-    if preparation.split_by_sectors:
+    if data.split_by_sectors:
         validate_multisector_x_prior(x_prior)
     sector_priors = remaining.pop("sector_priors", None)
     if sector_priors is not None:
@@ -354,10 +365,10 @@ def resolve_model_options(params: Mapping[str, Any], *, preparation: DataConfig)
     if aggregation not in get_args(AggregationErrorMode):
         raise ValueError(f"Invalid `aggregation_error_mode`: {aggregation!r}.")
     likelihood = _make_likelihood_settings(
-        remaining, mismatch_model=remaining.pop("mismatch_model", None), start_date=preparation.start_date,
+        remaining, mismatch_model=remaining.pop("mismatch_model", None), start_date=data.start_date,
     )
     return _make_model_spec(
-        species=preparation.species, domain=preparation.domain, flux_sources=flux_sources,
+        species=data.species, domain=data.domain, flux_sources=flux_sources,
         x_prior=x_prior, sector_priors=sector_priors, sector_sources=sector_sources,
         bc_prior=bc_prior, offset_prior=offset_prior, use_bc=use_bc, likelihood=likelihood,
         add_offset=add_offset, offset_args=offset_args, aggregation_error_mode=aggregation,

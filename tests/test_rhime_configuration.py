@@ -557,9 +557,9 @@ def test_preparation_only_ignores_unselected_group_values(monkeypatch):
 def test_grouped_full_and_phase_resolution_share_owners(use_bc):
     sections = rhime_params.group_rhime_params(_request(use_bc=use_bc))
     full = rhime_params.RhimeConfig.from_params(sections, multisector=False)
-    preparation = rhime_params.DataConfig.from_params(sections["data"])
-    assert full.data == preparation
-    assert full.model == rhime_params.resolve_model_options(sections["model"], preparation=preparation)
+    data = rhime_params.DataConfig.from_params(sections["data"])
+    assert full.data == data
+    assert full.model == rhime_params.resolve_model_options(sections["model"], data=data)
     assert full.model.use_bc is use_bc
     assert not hasattr(full, "select")
 
@@ -572,9 +572,9 @@ def test_model_bc_policy_binds_preparation_without_reinterpreting_frequency():
     assert full.model.use_bc is False
     for claim in (None, "daily"):
         with pytest.raises(ValueError, match="bc_freq"):
-            rhime_params.resolve_model_options({"use_bc": False, "bc_freq": claim}, preparation=full.data)
+            rhime_params.resolve_model_options({"use_bc": False, "bc_freq": claim}, data=full.data)
     assert not rhime_params.resolve_model_options(
-        {"use_bc": False, "bc_freq": "monthly"}, preparation=full.data,
+        {"use_bc": False, "bc_freq": "monthly"}, data=full.data,
     ).use_bc
     sections["data"]["use_bc"] = False
     sections["model"]["use_bc"] = True
@@ -583,25 +583,26 @@ def test_model_bc_policy_binds_preparation_without_reinterpreting_frequency():
 
 
 def test_model_defaults_and_repeated_facts_use_saved_preparation():
-    preparation = rhime_params.DataConfig.from_params(
+    data = rhime_params.DataConfig.from_params(
         rhime_params.group_rhime_params(_request(start_date="2020-05-01"))["data"]
     )
-    model = rhime_params.resolve_model_options({"mismatch_model": "pollution_event"}, preparation=preparation)
+    model = rhime_params.resolve_model_options({"mismatch_model": "pollution_event"}, data=data)
     assert model.likelihood.sigma_freq_anchor == "2020-05-01"
     for name, value in (("species", "co2"), ("domain", "OTHER"), ("flux_sources", ["other"])):
-        with pytest.raises(ValueError, match=name):
-            rhime_params.resolve_model_options({name: value}, preparation=preparation)
+        with pytest.raises(ValueError, match=name) as error:
+            rhime_params.resolve_model_options({name: value}, data=data)
+        assert f"claimed {value!r}, expected {getattr(data, name)!r}" in str(error.value)
 
 
 def test_repeated_boundary_frequency_accepts_equivalent_fixed_duration():
-    preparation = rhime_params.DataConfig.from_params(
+    data = rhime_params.DataConfig.from_params(
         rhime_params.group_rhime_params(_request(bc_freq="24h"))["data"]
     )
-    assert rhime_params.resolve_model_options({"bc_freq": "1D"}, preparation=preparation).use_bc
+    assert rhime_params.resolve_model_options({"bc_freq": "1D"}, data=data).use_bc
     with pytest.raises(ValueError, match="bc_freq"):
-        rhime_params.resolve_model_options({"bc_freq": "monthly"}, preparation=preparation)
+        rhime_params.resolve_model_options({"bc_freq": "monthly"}, data=data)
     with pytest.raises(ValueError, match="bc_freq"):
-        rhime_params.resolve_model_options({"bc_freq": "invalid"}, preparation=preparation)
+        rhime_params.resolve_model_options({"bc_freq": "invalid"}, data=data)
 
 
 def test_scalar_site_shorthand_stays_one_site():

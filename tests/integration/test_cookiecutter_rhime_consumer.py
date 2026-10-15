@@ -119,9 +119,6 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
         assert kwargs == {
             "likelihood_builder": likelihoods.likelihood_builder,
             "likelihood_kwargs": None,
-            "preserve_legacy_likelihood": False,
-            "legacy_unused_sigma_settings": None,
-            "legacy_minimum_error_floor": False,
         }
         calls.append("build")
         return build_result
@@ -141,7 +138,7 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
         return expected
 
     def make_outputs(**kwargs: Any) -> None:
-        assert kwargs == {"result": expected, "prepared": prepared, "compatibility_output_chain": None}
+        assert kwargs == {"result": expected, "prepared": prepared}
         calls.append("output")
         return kwargs["result"]
 

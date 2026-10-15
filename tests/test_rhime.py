@@ -886,18 +886,17 @@ def test_build_rhime_model_contains_expected_variables(
     }
 
 
-def test_preserved_legacy_likelihood_excludes_offset_from_error_scale(
+def test_pollution_event_error_scale_uses_complete_baseline(
     rhime_inv_inputs: xr.Dataset,
     builder_args: dict,
 ) -> None:
-    """The run_hbmcmc compatibility equation keeps offset out of PEFO only."""
+    """Observed pollution enhancements remove both boundary and offset terms."""
     model = build_rhime_model(
         rhime_inv_inputs,
         **{
             **builder_args,
             "add_offset": True,
             "power": 2.0,
-            "preserve_legacy_likelihood": True,
         },
     )
     likelihood_mean = model["y"].owner.inputs[-2]
@@ -931,7 +930,7 @@ def test_preserved_legacy_likelihood_excludes_offset_from_error_scale(
 
     observation_sigma = sigma[site_index, period_index]
     expected_epsilon = np.sqrt(
-        observation_error**2 + (np.abs(observed - boundary_mean) * observation_sigma) ** 2
+        observation_error**2 + (np.abs(observed - boundary_mean - offset) * observation_sigma) ** 2
     )
     np.testing.assert_allclose(epsilon, expected_epsilon)
     np.testing.assert_allclose(total_mean, pollution_mean + boundary_mean + offset)
@@ -1620,10 +1619,10 @@ def test_non_default_sigma_owner_does_not_construct_sigma_alignment(
         assert "min_error" not in names
 
 
-def test_custom_likelihood_does_not_inherit_legacy_sigma_retention(
+def test_custom_likelihood_does_not_construct_builtin_sigma(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The legacy sigma exception belongs only to the built-in likelihood."""
+    """A custom likelihood has no built-in sigma or site-alignment requirement."""
     inv_inputs = _minimal_output_inv_inputs().drop_vars("site_indicator")
     model_spec, _, run_spec = _minimal_output_specs(output_format="none")
     model_spec = replace(model_spec, use_bc=False, likelihood=None)
@@ -1645,7 +1644,6 @@ def test_custom_likelihood_does_not_inherit_legacy_sigma_retention(
         model_inputs=model_inputs,
         model_spec=run_spec.model,
         likelihood_builder=example_likelihoods.likelihood_builder,
-        preserve_legacy_likelihood=True,
     )
 
     assert "site_indicator" not in names
@@ -2570,19 +2568,17 @@ def test_multisector_model_preserves_additive_semantics(
 
 
 @pytest.mark.parametrize(
-    ("use_bc", "add_offset", "preserve_legacy", "expected_baseline"),
+    ("use_bc", "add_offset", "expected_baseline"),
     [
-        (True, False, False, "mu_bc"),
-        (False, True, False, "offset"),
-        (True, True, False, None),
-        (True, True, True, "mu_bc"),
-        (False, False, False, None),
+        (True, False, "mu_bc"),
+        (False, True, "offset"),
+        (True, True, None),
+        (False, False, None),
     ],
 )
 def test_builtin_baseline_roles_describe_persisted_terms(
     use_bc: bool,
     add_offset: bool,
-    preserve_legacy: bool,
     expected_baseline: str | None,
 ) -> None:
     """Whole-model roles do not invent a persisted complete baseline."""
@@ -2594,7 +2590,6 @@ def test_builtin_baseline_roles_describe_persisted_terms(
         model_spec=model_spec,
         multisector=False,
         input_names=_minimal_output_inv_inputs().data_vars,
-        preserve_legacy_baseline=preserve_legacy,
     )
 
     assert result.variable_roles.get("baseline") == expected_baseline
@@ -3073,7 +3068,6 @@ def test_public_rhime_runners_follow_named_stage_order(
 
     def outputs(**kwargs: Any) -> None:
         """Record the recipe-specific public output stage."""
-        assert kwargs.pop("compatibility_output_chain", None) is None
         assert kwargs == {"result": expected, "prepared": prepared}
         calls.append("outputs")
         return expected
@@ -8524,10 +8518,10 @@ def test_standard_basic_output_uses_modern_postprocessing_without_legacy_adapter
     assert "basic" in bundle.outputs
 
 
-def test_run_hbmcmc_chain_selection_does_not_truncate_archived_trace(
+def test_standard_products_and_archived_trace_use_all_chains(
     monkeypatch, europe_country_file: Path,
 ) -> None:
-    """Compatibility selection affects derived products, not the modern artifact."""
+    """Derived products consume every chain retained in the modern artifact."""
     model_spec, _, run_spec = _minimal_output_specs(output_format="basic")
     prepared = RhimePreparedInputs(
         inv_inputs=_minimal_output_inv_inputs(),
@@ -8559,12 +8553,11 @@ def test_run_hbmcmc_chain_selection_does_not_truncate_archived_trace(
     bundle = rhime_outputs.make_standard_rhime_outputs(
         result=bundle,
         prepared=prepared,
-        compatibility_output_chain=0,
     )
 
     assert bundle.inv_out is not None
     assert bundle.inv_out.trace.posterior.sizes["chain"] == 2
-    assert captured["inv_out"].trace.posterior.sizes["chain"] == 1
+    assert captured["inv_out"].trace.posterior.sizes["chain"] == 2
 
 
 def test_standard_paris_output_uses_modern_postprocessing_without_legacy_adapter(
@@ -9294,3 +9287,20 @@ def test_acquisition_keeps_acquired_flux_lazy(monkeypatch):
         )
     assert merged.flux_data["inventory"] is flux
     np.testing.assert_array_equal(merged.flux_data["inventory"].flux.compute(), [0., 0., 2.])
+
+
+@pytest.mark.parametrize("option", [
+    "preserve_legacy_likelihood",
+    "_compatibility_unused_sigma_settings",
+    "_compatibility_minimum_error_floor",
+    "compatibility_output_chain",
+])
+def test_standard_rejects_removed_compatibility_options_before_acquisition(monkeypatch, option):
+    """Removed runner controls fail at the shared request boundary."""
+    monkeypatch.setattr(
+        RhimeMergedData,
+        "from_options",
+        lambda **kwargs: pytest.fail("removed option reached acquisition"),
+    )
+    with pytest.raises(ValueError, match=f"Unsupported RHIME parameter.*{option}"):
+        run_rhime(**{option: True})

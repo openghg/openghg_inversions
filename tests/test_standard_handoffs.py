@@ -120,7 +120,7 @@ def test_bad_records_fail_without_graph_or_products(tmp_path, monkeypatch, corru
 def test_changed_preparation_policy_fails_before_sampling(tmp_path, monkeypatch):
     preparation, _ = _saved(tmp_path)
     monkeypatch.setattr(stages, "sample_rhime_model", lambda *a, **k: pytest.fail("inference"))
-    with pytest.raises(ValueError, match="conflicts with preparation"):
+    with pytest.raises(ValueError, match="conflicts with data"):
         stages.sample(preparation, model={"bc_freq": "monthly"}, output_dir=tmp_path / "new-samples")
     assert not (tmp_path / "new-samples").exists()
 

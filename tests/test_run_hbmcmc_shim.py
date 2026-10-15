@@ -12,7 +12,7 @@ import xarray as xr
 
 import openghg_inversions.hbmcmc.run_hbmcmc as run_hbmcmc
 import openghg_inversions.rhime.standard as rhime_standard
-from openghg_inversions.rhime import AdditiveSigmaSettings, FixedErrorSettings, PollutionEventSettings
+from openghg_inversions.rhime import AdditiveSigmaSettings, PollutionEventSettings
 from openghg_inversions.sigma import SigmaAlignment
 
 
@@ -345,19 +345,18 @@ def test_run_hbmcmc_main_routes_to_run_rhime(monkeypatch: pytest.MonkeyPatch, tm
 
     assert not hasattr(run_hbmcmc, "resolve_rhime_config")
 
-    with pytest.warns(UserWarning, match="--all-chains"):
-        run_hbmcmc.main(
-            [
-                "2020-01-01",
-                "2020-02-01",
-                "-c",
-                str(config_file),
-                "--output-path",
-                str(output_path),
-                "--kwargs",
-                '{"nchain": 2}',
-            ]
-        )
+    run_hbmcmc.main(
+        [
+            "2020-01-01",
+            "2020-02-01",
+            "-c",
+            str(config_file),
+            "--output-path",
+            str(output_path),
+            "--kwargs",
+            '{"nchain": 2}',
+        ]
+    )
 
     copied_config = output_path / "CH4_EUROPE_legacy_run_2020-01-01.ini"
     expected_config = (
@@ -376,14 +375,13 @@ def test_run_hbmcmc_main_routes_to_run_rhime(monkeypatch: pytest.MonkeyPatch, tm
     assert config.output.output_format == "legacy"
     assert config.output.output_filename_convention == "legacy"
     assert isinstance(config.model.likelihood, PollutionEventSettings)
-    assert seen["run_rhime_kwargs"]["preserve_legacy_likelihood"] is True
-    assert seen["run_rhime_kwargs"]["compatibility_output_chain"] == 0
+    assert set(seen["run_rhime_kwargs"]) == {"config"}
 
 
-def test_run_hbmcmc_all_chains_is_explicit_opt_in(
+def test_run_hbmcmc_always_routes_all_chains(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The compatibility CLI can use all chains without restoring the old executor."""
+    """The translation CLI forwards its full sampler without selecting a chain."""
     config_file = tmp_path / "hbmcmc.ini"
     _fixedbasis_config(config_file)
     seen: dict[str, Any] = {}
@@ -393,10 +391,11 @@ def test_run_hbmcmc_all_chains_is_explicit_opt_in(
 
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        run_hbmcmc.main(["-c", str(config_file), "--all-chains"])
+        run_hbmcmc.main(["-c", str(config_file)])
 
     assert not [warning for warning in caught if "chain-0-only" in str(warning.message)]
-    assert seen["compatibility_output_chain"] is None
+    assert set(seen) == {"config"}
+    assert seen["config"].sampler.chains == 3
 
 
 @pytest.mark.rhime_contract
@@ -427,65 +426,44 @@ def test_run_hbmcmc_translated_params_enter_real_rhime(
         )
 
 
-def test_run_hbmcmc_no_model_error_retains_legacy_unused_sigma(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
+@pytest.mark.parametrize("likelihood", [None, "additive_sigma"])
+def test_run_hbmcmc_rejects_no_model_error_before_copy_or_acquisition(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, likelihood: str | None,
 ) -> None:
-    """Historical PEFO no-model-error runs keep their disconnected sigma variable."""
+    """Removed likelihood equations require the 0.7 route before output side effects."""
     config_file = tmp_path / "hbmcmc.ini"
     _fixedbasis_config(config_file)
-    config_file.write_text(
-        config_file.read_text(encoding="utf-8").replace(
-            "[MCMC.OPTIONS]",
-            "[MCMC.OPTIONS]\nno_model_error = True",
-        ),
-        encoding="utf-8",
-    )
-    seen: dict[str, Any] = {}
-    monkeypatch.setattr(run_hbmcmc, "_copy_config_file", lambda *args, **kwargs: None)
-    monkeypatch.setattr(run_hbmcmc, "run_rhime", lambda **kwargs: seen.update(kwargs))
+    additions = "no_model_error = True"
+    if likelihood is not None:
+        additions += f'\nlikelihood = "{likelihood}"'
+    config_file.write_text(config_file.read_text().replace("[MCMC.OPTIONS]", "[MCMC.OPTIONS]\n" + additions))
 
-    run_hbmcmc.main(["-c", str(config_file)])
+    def unexpected(*args: Any, **kwargs: Any) -> None:
+        pytest.fail("Removed compatibility equation reached config copying or acquisition")
 
-    assert isinstance(seen["config"].model.likelihood, FixedErrorSettings)
-    assert seen["preserve_legacy_likelihood"] is True
-    assert "use_minimum_error_floor" not in seen
-    assert seen["_compatibility_minimum_error_floor"] is False
-    assert isinstance(seen["_compatibility_unused_sigma_settings"], PollutionEventSettings)
-    assert seen["_compatibility_unused_sigma_settings"].sigma_prior == {
-        "pdf": "uniform",
-        "lower": 0.1,
-        "upper": 10.0,
-    }
+    monkeypatch.setattr(run_hbmcmc, "_copy_config_file", unexpected)
+    monkeypatch.setattr(rhime_standard.RhimeMergedData, "from_options", unexpected)
+    with pytest.raises(ValueError, match=r"0\.7"):
+        run_hbmcmc.main(["-c", str(config_file)])
 
 
-def test_run_hbmcmc_additive_no_model_error_uses_fixed_error_with_floor(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
+def test_run_hbmcmc_rejects_default_observed_pollution_with_offset_before_copy_or_acquisition(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
 ) -> None:
-    """Historical additive no-model-error omits sigma but keeps its minimum floor."""
+    """An omitted likelihood still rejects the removed boundary-only PEFO equation."""
     config_file = tmp_path / "hbmcmc.ini"
     _fixedbasis_config(config_file)
-    config_file.write_text(
-        config_file.read_text(encoding="utf-8").replace(
-            "[MCMC.OPTIONS]",
-            '[MCMC.OPTIONS]\nlikelihood = "additive_sigma"\nno_model_error = True',
-        ),
-        encoding="utf-8",
-    )
-    seen: dict[str, Any] = {}
-    monkeypatch.setattr(run_hbmcmc, "_copy_config_file", lambda *args, **kwargs: None)
-    monkeypatch.setattr(run_hbmcmc, "run_rhime", lambda **kwargs: seen.update(kwargs))
+    config_file.write_text(config_file.read_text().replace(
+        "[MCMC.OPTIONS]", "[MCMC.OPTIONS]\nadd_offset = True\npollution_events_from_obs = True",
+    ))
 
-    run_hbmcmc.main(["-c", str(config_file)])
+    def unexpected(*args: Any, **kwargs: Any) -> None:
+        pytest.fail("Removed offset equation reached config copying or acquisition")
 
-    assert isinstance(seen["config"].model.likelihood, FixedErrorSettings)
-    assert "use_minimum_error_floor" not in seen
-    assert seen["_compatibility_minimum_error_floor"] is True
-    assert seen["preserve_legacy_likelihood"] is False
-    assert seen["_compatibility_unused_sigma_settings"] is None
-    assert "_compatibility_likelihood_provenance" not in seen
-    assert "sigma_prior" not in seen
+    monkeypatch.setattr(run_hbmcmc, "_copy_config_file", unexpected)
+    monkeypatch.setattr(rhime_standard.RhimeMergedData, "from_options", unexpected)
+    with pytest.raises(ValueError, match=r"0\.7"):
+        run_hbmcmc.main(["-c", str(config_file)])
 
 
 def test_run_hbmcmc_main_selects_additive_sigma_from_ini(
@@ -520,7 +498,6 @@ def test_run_hbmcmc_main_selects_additive_sigma_from_ini(
     assert likelihood.use_minimum_error_floor is True
     assert likelihood.sigma_prior == {"pdf": "halfnormal", "sigma": {"TAC": 2.0}}
     assert seen["config"].model.aggregation_error_mode == "none"
-    assert seen["preserve_legacy_likelihood"] is False
     assert "_compatibility_likelihood_provenance" not in seen
 
 
@@ -529,8 +506,9 @@ def test_run_hbmcmc_parser_rejects_removed_legacy_fixedbasis_flag(tmp_path: Path
     parser = run_hbmcmc.build_parser()
 
     assert "--legacy-fixedbasis" not in parser.format_help()
-    assert parser.parse_args(["-c", str(tmp_path / "hbmcmc.ini")]).all_chains is False
-    assert parser.parse_args(["-c", str(tmp_path / "hbmcmc.ini"), "--all-chains"]).all_chains is True
+    assert "--all-chains" not in parser.format_help()
+    with pytest.raises(SystemExit):
+        parser.parse_args(["-c", str(tmp_path / "hbmcmc.ini"), "--all-chains"])
     with pytest.raises(SystemExit):
         parser.parse_args(["-c", str(tmp_path / "hbmcmc.ini"), "--legacy-fixedbasis"])
 
@@ -607,12 +585,11 @@ def test_run_hbmcmc_main_checks_country_file_before_copying_or_running(
         run_hbmcmc.main(["-c", str(config_file)])
 
 
-def test_unused_sigma_prior_is_validated_before_config_copy(monkeypatch, tmp_path):
+def test_sigma_prior_is_validated_before_config_copy(monkeypatch, tmp_path):
     config_file = tmp_path / "hbmcmc.ini"
     _fixedbasis_config(config_file)
     config_file.write_text(
         config_file.read_text()
-        .replace("[MCMC.OPTIONS]", "[MCMC.OPTIONS]\nno_model_error = True")
         .replace('sigprior = {"pdf": "uniform", "lower": 0.1, "upper": 10.0}', 'sigprior = "invalid-prior"')
     )
 
@@ -687,7 +664,7 @@ def test_legacy_bc_selection_reaches_real_cli_acquisition(monkeypatch, tmp_path,
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         with pytest.raises(ReachedAcquisition):
-            run_hbmcmc.main(["-c", str(config_file), "--all-chains", "--kwargs", json.dumps(overrides)])
+            run_hbmcmc.main(["-c", str(config_file), "--kwargs", json.dumps(overrides)])
     if selection in ("nesw", "override"):
         assert any("directory is unused for NESW" in str(w.message) for w in caught)
     if selection in ("nesw", "disabled"):

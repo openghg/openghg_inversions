@@ -95,14 +95,14 @@ compatibility cycle are not promised to disappear at the start of 0.9.
 Chain handling in ``run_hbmcmc.py``
 -----------------------------------
 
-The compatibility wrapper uses chain 0 for derived products by default,
-matching its historical output behaviour, and emits a warning when it does so.
-Pass ``--all-chains`` to use every retained chain in modern ``basic`` and PARIS
-products and in legacy-format summary fields. The wrapper does not save the
-modern inversion-output artifact by default. When requested with
-``save_inversion_output``, that artifact retains the full-chain trace in either
-case. Pooling all chains for a summary does not by itself establish that the
-chains converged.
+In 0.8, the compatibility wrapper uses every retained chain for derived products,
+including modern ``basic`` and PARIS products and legacy-format summary fields.
+The chain-0-only compatibility policy and ``--all-chains`` flag have been removed;
+all retained chains are now always used. Use OpenGHG Inversions
+0.7 when reproducing that historical policy. The wrapper does not save the
+modern inversion-output artifact by default; request it with
+``save_inversion_output``. Pooling all chains for a summary does not by itself
+establish that the chains converged.
 
 Choose a migration route
 ------------------------
@@ -124,8 +124,8 @@ ones from ``openghg_inversions/config/templates/rhime_template.ini`` and run
 them with ``openghg-inversions run-rhime``.
 
 Batch scripts need only replace a direct source-tree path with the module form
-above. Start and end dates, ``-c``, ``--output-path``, ``--kwargs``, and
-``--all-chains`` remain available. The JSON supplied to ``--kwargs`` must be
+above. Start and end dates, ``-c``, ``--output-path`` and ``--kwargs`` remain
+available. The JSON supplied to ``--kwargs`` must be
 quoted as one shell argument, for example::
 
    python -m openghg_inversions.hbmcmc.run_hbmcmc \
@@ -291,8 +291,9 @@ and an explicit ``save_trace`` filename, resolve from the invocation working
 directory in both full and staged execution.
 
 Check scientific settings independently of renaming. In particular, moving from
-the HBMCMC wrapper to a RHIME runner can change output filename and chain-summary
-policy described above; renaming parameters alone does not reproduce that policy.
+OpenGHG Inversions 0.7 to 0.8 can change likelihood behaviour and the chain-summary
+policy described here; renaming parameters alone does not reproduce historical
+scientific behaviour.
 
 The temporary dictionary adapter is available from
 ``openghg_inversions.hbmcmc.compatibility``. With ``normalise=False``,
@@ -438,12 +439,28 @@ sampling path.
 Scientific compatibility
 ------------------------
 
-The wrapper retains the translated pollution-event likelihood semantics used
-by existing old-INI workflows. This is a compatibility boundary inside the
-single RHIME implementation, not a second model executor. Migrating a config
-to canonical RHIME names should therefore be separated from intentional
-changes to priors, likelihood options, basis construction, or output format so
-that scientific changes remain reviewable.
+The 0.8 wrapper translates supported historical options into the ordinary RHIME
+model. It no longer preserves the historical boundary-only pollution-event
+baseline, disconnected sigma-prior variable, or additive fixed-error minimum
+error floor. Affected historical configurations fail at the HBMCMC boundary with
+guidance to use OpenGHG Inversions 0.7. Use that release when those likelihood or
+prior quirks are required for reproduction.
+
+The runner switches ``preserve_legacy_likelihood``,
+``_compatibility_unused_sigma_settings``, ``_compatibility_minimum_error_floor``
+and ``compatibility_output_chain`` have been removed, along with the lower-level
+``retain_unused_sigma`` and ``derived_output_chain`` compatibility options.
+The HBMCMC boundary rejects ``no_model_error=True`` for both pollution-event and
+additive likelihoods. It also rejects the default pollution-event selection
+(omitted ``likelihood``) when both ``add_offset=True`` and
+``pollution_events_from_obs=True``. Use version 0.7 for the historical behaviour,
+or configure ``run_standard`` directly to select the current model; modern
+standard offsets remain supported. Other accepted wrapper configurations use
+the modern full baseline and output roles. Modern fixed-error and
+pollution-event models retain their documented scientific definitions; modern
+legacy-format output remains supported and uses all retained chains. Review
+changes to priors, likelihood options, basis construction and outputs explicitly
+when migrating an analysis to 0.8.
 
 Explicit legacy merged-data utilities
 -------------------------------------

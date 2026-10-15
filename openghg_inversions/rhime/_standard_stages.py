@@ -260,7 +260,7 @@ def _saved_model(
 ) -> tuple[RhimePreparedInputs, RhimeModelSpec]:
     """Load a preparation and bind current model choices to its data choices."""
     prepared, data = load_preparation(preparation_manifest)
-    model_spec = resolve_model_options(model, preparation=data)
+    model_spec = resolve_model_options(model, data=data)
     return prepared, model_spec
 
 

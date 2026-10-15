@@ -204,11 +204,11 @@ def stub_legacy_product_builders(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
-def test_legacy_derived_chain_selection_keeps_full_trace_metadata(
+def test_legacy_products_use_all_chains_and_keep_trace_metadata(
     stub_legacy_product_builders: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Compatibility summaries select chain 0 without truncating diagnostics metadata."""
+    """Legacy product summaries and diagnostic metadata retain all sampled chains."""
     inv_out = _legacy_inv_out(model_data=True, chains=2)
     original = legacy_outputs.make_concentration_outputs
     captured: dict[str, int] = {}
@@ -219,9 +219,9 @@ def test_legacy_derived_chain_selection_keeps_full_trace_metadata(
 
     monkeypatch.setattr(legacy_outputs, "make_concentration_outputs", record_concentration)
 
-    output = legacy_outputs.make_legacy_hbmcmc_output(inv_out, derived_output_chain=0)
+    output = legacy_outputs.make_legacy_hbmcmc_output(inv_out)
 
-    assert captured["chains"] == 1
+    assert captured["chains"] == 2
     assert output.attrs["Number of chains"] == "2"
     assert output.sizes["steps"] == inv_out.trace_group("posterior").sizes["draw"]
 
