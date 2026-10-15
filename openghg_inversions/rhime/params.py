@@ -22,6 +22,7 @@ from openghg_inversions.flux_sanitization import FluxNonFiniteCheck
 from openghg_inversions.inversion_data._site_options import SiteOptions
 from openghg_inversions.model_error import MinErrorConfig
 from openghg_inversions.inversion_data.prepared_inputs import RhimePreparedInputs
+from openghg_inversions.inversion_inputs import normalise_frequency
 from openghg_inversions.model_error import normalise_min_error, normalise_min_error_options
 from openghg_inversions.models._flux import safe_pymc_name
 from openghg_inversions.observation_error import AggregationErrorMode
@@ -180,6 +181,9 @@ def retained_run_spec(
 ) -> RhimeRunSpec:
     """Compose the sites retained by preparation with the requested dates and choices.
 
+    Multisector and nested execution retain this transitional run envelope.
+    Standard execution passes the separate choices and prepared inputs directly.
+
     Args:
         data: Data choices that produced ``prepared``.
         prepared: Prepared inputs whose retained sites and averaging periods are recorded.
@@ -333,18 +337,10 @@ def resolve_sampler_options(params: Mapping[str, Any]) -> RhimeSampler:
 
 
 def _bc_frequency_policy(value: str | None) -> str | pd.Timedelta | None:
-    """Compare the calendar or fixed-duration policy used by make_freq_indicator."""
-    if value is None or value == "monthly":
-        return value
+    """Report the configuration key when the shared frequency policy is invalid."""
     try:
-        frequency = f"1{value}" if isinstance(value, str) and value.isalpha() else value
-        if not isinstance(frequency, str):
-            raise ValueError("expected a frequency string")
-        duration = pd.to_timedelta(frequency.replace("H", "h"))
-        if pd.isna(duration) or duration <= pd.Timedelta(0):
-            raise ValueError("frequency must be positive")
-        return duration
-    except (TypeError, ValueError) as exc:
+        return normalise_frequency(value)
+    except ValueError as exc:
         raise ValueError(f"Invalid `bc_freq`: {value!r}.") from exc
 
 

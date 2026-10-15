@@ -703,7 +703,7 @@ def test_real_prepared_inputs_save_load_and_run_without_repreparation(
         return {}
 
     monkeypatch.setattr(rhime_standard.RhimeMergedData, "from_options", fail_preparation)
-    monkeypatch.setattr(rhime_standard, "prepare_inputs", fail_preparation)
+    monkeypatch.setattr(rhime_standard, "prepare_standard", fail_preparation)
     monkeypatch.setattr(rhime_standard, "build_standard_model", fake_builder)
     monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
     monkeypatch.setattr(rhime_standard, "save_standard_artifacts", fake_outputs)
@@ -1199,7 +1199,7 @@ def test_loaded_prepared_inputs_run_through_existing_seam(
         return {}
 
     monkeypatch.setattr(rhime_standard.RhimeMergedData, "from_options", fail_preparation)
-    monkeypatch.setattr(rhime_standard, "prepare_inputs", fail_preparation)
+    monkeypatch.setattr(rhime_standard, "prepare_standard", fail_preparation)
     monkeypatch.setattr(rhime_standard, "build_standard_model", fake_builder)
     monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
     monkeypatch.setattr(rhime_standard, "save_standard_artifacts", fake_outputs)

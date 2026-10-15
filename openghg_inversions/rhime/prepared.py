@@ -89,11 +89,6 @@ def run_rhime_from_prepared_inputs(
     if sector_count < 1:
         raise ValueError(f"`run_spec.model.sectors` must contain at least one sector; found {sector_count}.")
     multisector = sector_count > 1
-    if model_builder is not None and not multisector:
-        raise ValueError(
-            "Standard prepared runs no longer accept `model_builder`; use `likelihood_builder` "
-            "or build and sample a custom PyMC model directly."
-        )
 
     _require_prepared_layout(prepared_inputs, multisector=run_spec.split_by_sectors)
     if run_spec.split_by_sectors is not multisector:

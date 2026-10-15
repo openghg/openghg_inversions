@@ -393,7 +393,7 @@ assemble_rhime_inputs = assemble_inputs
 with_prepared_rhime_sites = with_prepared_sites
 
 
-def resolve_basis_inputs(config: Any) -> dict[str, Any]:
+def resolve_basis_inputs(data_config: Any) -> dict[str, Any]:
     """Resolve exact scientific inputs before acquisition.
 
     Configuration resolution itself stays data-free. This application boundary
@@ -404,7 +404,7 @@ def resolve_basis_inputs(config: Any) -> dict[str, Any]:
     resources are validated separately by the output owner.
 
     Args:
-        config: Resolved :class:`~openghg_inversions.rhime.params.DataConfig`.
+        data_config: Resolved :class:`~openghg_inversions.rhime.params.DataConfig`.
             Explicit retained artifacts and partition files bypass algorithm
             support defaults; explicitly selected support files are still read.
             Plural partition paths are sorted before loading; the first file
@@ -425,60 +425,50 @@ def resolve_basis_inputs(config: Any) -> dict[str, Any]:
     from openghg_inversions.basis.support import load_basis_partition, resolve_basis_support_maps
 
     if sum(value is not None for value in (
-        config.basis_path, config.basis_partition_path, config.basis_partition_paths,
+        data_config.basis_path, data_config.basis_partition_path, data_config.basis_partition_paths,
     )) > 1:
         raise ValueError("Supply either basis_path, basis_partition_path or basis_partition_paths.")
     selected: dict[str, Any] = {}
-    landsea_path = config.landsea_path
-    outer_path = config.outer_regions_path
-    if config.basis_path is not None:
-        selected["basis_path"] = config.basis_path
-    if config.basis_partition_path is not None:
-        selected["basis_partition"] = load_basis_partition(config.basis_partition_path)
-    if config.basis_partition_paths is not None:
-        if not config.basis_partition_paths:
+    landsea_path = data_config.landsea_path
+    outer_path = data_config.outer_regions_path
+    if data_config.basis_path is not None:
+        selected["basis_path"] = data_config.basis_path
+    if data_config.basis_partition_path is not None:
+        selected["basis_partition"] = load_basis_partition(data_config.basis_partition_path)
+    if data_config.basis_partition_paths is not None:
+        if not data_config.basis_partition_paths:
             raise ValueError("basis_partition_paths must select at least one file.")
         from openghg_inversions.utils import read_netcdfs
 
-        with read_netcdfs(sorted(config.basis_partition_paths)) as dataset:
+        with read_netcdfs(sorted(data_config.basis_partition_paths)) as dataset:
             selected["basis_partition"] = dataset["basis"].load()
     if selected.get("basis_path") is not None and not Path(selected["basis_path"]).exists():
         raise FileNotFoundError(selected["basis_path"])
     loading = "basis_path" in selected or "basis_partition" in selected
     selected.update(resolve_basis_support_maps(
-        domain=config.domain, basis_algorithm=None if loading else config.basis_algorithm,
-        fix_outer_regions=config.fix_basis_outer_regions and not loading,
+        domain=data_config.domain, basis_algorithm=None if loading else data_config.basis_algorithm,
+        fix_outer_regions=data_config.fix_basis_outer_regions and not loading,
         landsea_path=landsea_path, outer_regions_path=outer_path,
     ))
     return selected
 
 
-def acquire_merged_data(data: Any, merged_data: RhimeMergedData | None = None) -> RhimeMergedData:
-    """Acquire the configured data, or check a supplied handoff against the request.
+def acquire_merged_data(data_config: Any) -> RhimeMergedData:
+    """Acquire the configured observations, transport and flux.
 
     Args:
-        data: Resolved :class:`~openghg_inversions.rhime.params.DataConfig`.
-        merged_data: Optional supplied acquisition handoff. It is borrowed and
-            returned unchanged after its recorded facts are checked.
+        data_config: Resolved :class:`~openghg_inversions.rhime.params.DataConfig`.
 
     Returns:
-        Acquired merged data for scientific preparation.
-
-    Raises:
-        ValueError: If supplied data conflicts with the requested species,
-            domain, dates or sector layout.
+        Acquired merged data for scientific preparation. To reuse supplied data,
+        the runner calls its ``validate_for_preparation`` method instead.
     """
     with timed(
         "rhime.prepare_inputs.merged_data",
-        sites=len(data.site_options.sites), split_by_sectors=data.split_by_sectors,
+        sites=len(data_config.site_options.sites), split_by_sectors=data_config.split_by_sectors,
     ):
-        if merged_data is not None:
-            merged_data.validate_for_preparation(
-                **data.select("species", "domain", "start_date", "end_date", "split_by_sectors"),
-            )
-            return merged_data
         return RhimeMergedData.from_options(
-            **data.select(
+            **data_config.select(
                 "site_options", "species", "domain", "start_date", "end_date", "flux_sources",
                 "split_by_sectors", "bc_store", "obs_store", "footprint_store", "flux_store",
                 "flux_domain", "fp_model", "fp_species", "calibration_scale", "use_bc", "bc_input",

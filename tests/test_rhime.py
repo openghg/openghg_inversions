@@ -1988,6 +1988,7 @@ def test_prepared_replay_computes_selected_error_only_at_pymc_boundary(
     monkeypatch.setattr(rhime_standard, "build_standard_model", build)
     monkeypatch.setattr(rhime_standard, "sample_rhime_model", lambda *args, **kwargs: _minimal_output_idata())
     monkeypatch.setattr(rhime_standard, "make_standard_output", lambda **kwargs: expected)
+    monkeypatch.setattr(rhime_standard, "postprocess_standard_outputs", lambda *args: None)
     monkeypatch.setattr(rhime_standard, "save_standard_artifacts", lambda *args: {})
 
     result = _run_prepared(prepared_inputs=prepared, run_spec=run_spec)
@@ -2890,6 +2891,7 @@ def test_run_rhime_from_prepared_inputs_routes_without_preparation(
     # The standard branch builds through the shared ``standard.build_standard``.
     build_module = rhime_standard if sector_count == 1 else rhime_prepared
     if sector_count == 1:
+        monkeypatch.setattr(rhime_standard, "postprocess_standard_outputs", lambda *args: None)
         monkeypatch.setattr(rhime_standard, "_materialize_pymc_inputs_and_priors",
                             lambda value, *, variable_names, prior_parameters:
                             (materialize(value, variable_names=variable_names), prior_parameters))
@@ -3148,6 +3150,7 @@ def test_public_rhime_runners_follow_named_stage_order(
     if multisector:
         monkeypatch.setattr(recipe_module, "materialize_pymc_inputs", materialize)
     else:
+        monkeypatch.setattr(recipe_module, "postprocess_standard_outputs", lambda *args: None)
         monkeypatch.setattr(recipe_module, "_materialize_pymc_inputs_and_priors",
                             lambda value, *, variable_names, prior_parameters:
                             (materialize(value, variable_names=variable_names), prior_parameters))
@@ -3319,6 +3322,7 @@ def test_rhime_public_package_exports_supported_orchestration_stages() -> None:
         "build_multisector_rhime_model_result",
         "sample_rhime_model",
         "make_standard_output",
+        "postprocess_standard_outputs",
         "save_standard_artifacts",
         "make_multisector_rhime_result",
         "make_multisector_rhime_outputs",
@@ -7414,7 +7418,7 @@ def test_make_standard_output_preserves_release_coordinates() -> None:
     bundle = _result_for_outputs(run_spec, _minimal_output_idata(), model_spec=model_spec)
     output_spec = bundle.output_spec
     bundle = _make_standard_fixture_output(bundle, prepared)
-    products = rhime_outputs.write_standard_outputs(bundle, output_spec)
+    products = rhime_outputs.postprocess_standard_outputs(bundle, output_spec)
 
     assert isinstance(bundle, InversionOutput)
     xr.testing.assert_identical(bundle.inv_inputs.release_lat, inv_inputs.release_lat)
@@ -7460,7 +7464,7 @@ def test_standard_postprocessing_failure_precedes_output_writes(
     with pytest.raises(ValueError, match="invalid PARIS options"):
         output_spec = result.output_spec
         result = _make_standard_fixture_output(result, prepared)
-        rhime_outputs.write_standard_outputs(result, output_spec)
+        rhime_outputs.postprocess_standard_outputs(result, output_spec)
     assert not any(tmp_path.iterdir())
 
 
@@ -7485,7 +7489,7 @@ def test_output_bundle_serializes_state_activity_spec() -> None:
     bundle = _result_for_outputs(run_spec, _minimal_output_idata(), model_spec=model_spec)
     output_spec = bundle.output_spec
     bundle = _make_standard_fixture_output(bundle, prepared)
-    rhime_outputs.write_standard_outputs(bundle, output_spec)
+    rhime_outputs.postprocess_standard_outputs(bundle, output_spec)
 
     assert bundle is not None
     policy = bundle.model_metadata["sectors"][0]["state_activity"]
@@ -7732,7 +7736,7 @@ def test_default_model_inversion_output_save_load_roundtrip(tmp_path: Path) -> N
     bundle = _result_for_outputs(run_spec, idata, model_spec=model_spec)
     output_spec = bundle.output_spec
     bundle = _make_standard_fixture_output(bundle, prepared)
-    rhime_outputs.write_standard_outputs(bundle, output_spec)
+    rhime_outputs.postprocess_standard_outputs(bundle, output_spec)
     assert bundle is not None
 
     output_file = tmp_path / "default_model_inv_out.nc"
@@ -7772,7 +7776,7 @@ def test_legacy_model_error_metadata_uses_writer_likelihood() -> None:
     result = _result_for_outputs(run_spec, idata, model_spec=model_spec)
     output_spec = result.output_spec
     result = _make_standard_fixture_output(result, prepared)
-    rhime_outputs.write_standard_outputs(result, output_spec)
+    rhime_outputs.postprocess_standard_outputs(result, output_spec)
     attrs = _legacy_hbmcmc_attrs(result)
     assert attrs["Error for each site"] == "False"
     assert attrs["Model error Prior"] == "pdf,uniform,lower,0.1,upper,1.0"
@@ -7825,7 +7829,7 @@ def test_modern_inversion_output_save_load_roundtrip(tmp_path: Path) -> None:
     bundle = _result_for_outputs(run_spec, idata, model_spec=model_spec)
     output_spec = bundle.output_spec
     bundle = _make_standard_fixture_output(bundle, prepared)
-    rhime_outputs.write_standard_outputs(bundle, output_spec)
+    rhime_outputs.postprocess_standard_outputs(bundle, output_spec)
     assert bundle is not None
 
     output_file = tmp_path / "modern_inv_out.nc"
@@ -7878,7 +7882,7 @@ def test_modern_inversion_output_restores_bytes_multiindex_metadata() -> None:
     bundle = _result_for_outputs(run_spec, _minimal_output_idata(), model_spec=model_spec)
     output_spec = bundle.output_spec
     bundle = _make_standard_fixture_output(bundle, prepared)
-    rhime_outputs.write_standard_outputs(bundle, output_spec)
+    rhime_outputs.postprocess_standard_outputs(bundle, output_spec)
     assert bundle is not None
 
     dt = bundle.to_datatree()
@@ -7925,7 +7929,7 @@ def test_modern_inversion_output_roundtrips_trace_multiindex() -> None:
     )
     output_spec = bundle.output_spec
     bundle = _make_standard_fixture_output(bundle, prepared)
-    rhime_outputs.write_standard_outputs(bundle, output_spec)
+    rhime_outputs.postprocess_standard_outputs(bundle, output_spec)
     assert bundle is not None
 
     reloaded = InversionOutput.from_datatree(bundle.to_datatree())
@@ -7958,7 +7962,7 @@ def test_modern_inversion_output_ignores_malformed_multiindex_metadata(raw_multi
     bundle = _result_for_outputs(run_spec, _minimal_output_idata(), model_spec=model_spec)
     output_spec = bundle.output_spec
     bundle = _make_standard_fixture_output(bundle, prepared)
-    rhime_outputs.write_standard_outputs(bundle, output_spec)
+    rhime_outputs.postprocess_standard_outputs(bundle, output_spec)
     assert bundle is not None
 
     dt = bundle.to_datatree()
@@ -7998,7 +8002,7 @@ def test_modern_inversion_output_supports_flux_outputs() -> None:
     )
     output_spec = bundle.output_spec
     bundle = _make_standard_fixture_output(bundle, prepared)
-    rhime_outputs.write_standard_outputs(bundle, output_spec)
+    rhime_outputs.postprocess_standard_outputs(bundle, output_spec)
     assert bundle is not None
 
     modern_flux = make_flux_outputs(
@@ -8162,7 +8166,7 @@ def test_observation_inputs_for_outputs_stay_dataset_based() -> None:
     bundle = _result_for_outputs(run_spec, _minimal_output_idata(), model_spec=model_spec)
     output_spec = bundle.output_spec
     bundle = _make_standard_fixture_output(bundle, prepared)
-    rhime_outputs.write_standard_outputs(bundle, output_spec)
+    rhime_outputs.postprocess_standard_outputs(bundle, output_spec)
     assert bundle is not None
 
     obs_inputs = observation_inputs_for_outputs(bundle)
@@ -8591,7 +8595,7 @@ def test_standard_basic_output_uses_modern_postprocessing_without_legacy_adapter
     )
     output_spec = bundle.output_spec
     bundle = _make_standard_fixture_output(bundle, prepared)
-    products = rhime_outputs.write_standard_outputs(bundle, output_spec)
+    products = rhime_outputs.postprocess_standard_outputs(bundle, output_spec)
 
     assert isinstance(bundle, InversionOutput)
     assert products is None
@@ -8688,7 +8692,7 @@ def test_standard_paris_output_uses_modern_postprocessing_without_legacy_adapter
     )
     output_spec = bundle.output_spec
     bundle = _make_standard_fixture_output(bundle, prepared)
-    products = rhime_outputs.write_standard_outputs(bundle, output_spec)
+    products = rhime_outputs.postprocess_standard_outputs(bundle, output_spec)
 
     assert isinstance(bundle, InversionOutput)
     assert captured["inv_out"] is bundle
@@ -8738,7 +8742,7 @@ def test_standard_latest_paris_output_writes_index_as_unlimited_dimension(
     )
     output_spec = bundle.output_spec
     bundle = _make_standard_fixture_output(bundle, prepared)
-    rhime_outputs.write_standard_outputs(bundle, output_spec)
+    rhime_outputs.postprocess_standard_outputs(bundle, output_spec)
 
     with xr.open_dataset(tmp_path / "test_conc_ch4_EUROPE_2019-01-01.nc") as saved_concentration:
         assert saved_concentration.encoding["unlimited_dims"] == {"index"}
@@ -8795,7 +8799,7 @@ def test_standard_legacy_output_uses_modern_inversion_output(
     )
     output_spec = bundle.output_spec
     bundle = _make_standard_fixture_output(bundle, prepared)
-    products = rhime_outputs.write_standard_outputs(bundle, output_spec)
+    products = rhime_outputs.postprocess_standard_outputs(bundle, output_spec)
 
     assert isinstance(bundle, InversionOutput)
     assert products is None
@@ -9204,6 +9208,7 @@ output_format = "inv_out"
     monkeypatch.setattr(rhime_standard, "build_standard_model", fake_build)
     monkeypatch.setattr(rhime_standard, "sample_rhime_model", lambda *args, **kwargs: idata)
     monkeypatch.setattr(rhime_standard, "make_standard_output", fake_result)
+    monkeypatch.setattr(rhime_standard, "postprocess_standard_outputs", lambda *args: None)
     monkeypatch.setattr(rhime_standard, "save_standard_artifacts", lambda value, output: seen.update(output=output))
 
     main(

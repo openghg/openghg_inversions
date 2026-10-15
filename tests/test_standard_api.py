@@ -25,16 +25,16 @@ def test_established_cli_calls_standard_without_python_compatibility_warning(mon
 def test_older_scientific_view_none_is_noop_and_missing_capabilities_are_actionable():
     import xarray as xr
     from openghg_inversions.postprocessing.inversion_output import InversionOutput
-    from openghg_inversions.rhime.outputs import write_standard_outputs
+    from openghg_inversions.rhime.outputs import postprocess_standard_outputs
     from openghg_inversions.rhime.specs import RhimeOutputSpec
     from tests.test_staged_workflow import _prepared
 
     prepared = _prepared()
     older = InversionOutput(trace=xr.DataTree(), inv_inputs=prepared.inv_inputs,
                             basis_functions=prepared.basis_functions)
-    assert write_standard_outputs(older, RhimeOutputSpec(output_format="none")) is None
+    assert postprocess_standard_outputs(older, RhimeOutputSpec(output_format="none")) is None
     with pytest.raises(ValueError, match="lacks supported-output capabilities"):
-        write_standard_outputs(older, RhimeOutputSpec(output_format="inv_out", save_inversion_output=False))
+        postprocess_standard_outputs(older, RhimeOutputSpec(output_format="inv_out", save_inversion_output=False))
 
 
 def test_saved_standard_family_selector_rejects_multisector(tmp_path):
@@ -52,7 +52,7 @@ def test_shared_output_view_projects_capabilities_and_basic_is_explicit(monkeypa
     from openghg_inversions.postprocessing.contracts import OutputContract
     from openghg_inversions.postprocessing.output_views import make_inversion_output
     from openghg_inversions.postprocessing import make_outputs
-    from openghg_inversions.rhime.outputs import write_standard_outputs, validate_output_resources
+    from openghg_inversions.rhime.outputs import postprocess_standard_outputs, validate_output_resources
     from openghg_inversions.rhime.specs import RhimeOutputSpec
     from tests.test_staged_workflow import _prepared
 
@@ -68,4 +68,58 @@ def test_shared_output_view_projects_capabilities_and_basic_is_explicit(monkeypa
     country.touch()
     spec = RhimeOutputSpec(output_format="basic", country_file=country, save_inversion_output=False)
     validate_output_resources(spec)
-    assert write_standard_outputs(inv_out, spec) is None
+    assert postprocess_standard_outputs(inv_out, spec) is None
+
+
+@pytest.mark.parametrize("output_format", ["paris", "legacy"])
+def test_product_processing_and_artifact_export_are_separate(tmp_path, monkeypatch, output_format):
+    import xarray as xr
+    from openghg_inversions.postprocessing.inversion_output import InversionOutput
+    from openghg_inversions.rhime import outputs
+    from openghg_inversions.rhime.specs import RhimeOutputSpec
+    from tests.test_staged_workflow import _prepared
+
+    prepared = _prepared()
+    inv_out = InversionOutput(
+        trace=xr.DataTree(), inv_inputs=prepared.inv_inputs, basis_functions=prepared.basis_functions,
+        run_metadata={"start_date": "2019-01-01", "averaging_period": ["1h"]},
+        model_metadata={"species": "ch4", "domain": "EUROPE", "use_bc": False,
+                        "supported_output_formats": [output_format]},
+    )
+    country = tmp_path / "country.nc"
+    country.touch()
+    spec = RhimeOutputSpec(output_format=output_format, output_path=tmp_path, country_file=country, save_trace=True)
+    outputs.validate_standard_output_resources(spec)
+    events = []
+    product = xr.Dataset()
+
+    def compute(*args, **kwargs):
+        events.append("compute")
+        return (product, product) if output_format == "paris" else product
+
+    monkeypatch.setattr("openghg_inversions.postprocessing.make_paris_outputs.make_paris_outputs", compute)
+    monkeypatch.setattr("openghg_inversions.postprocessing.legacy_outputs.make_legacy_hbmcmc_output", compute)
+    monkeypatch.setattr(outputs, "write_netcdf_preserving_bounds_attrs", lambda *a, **k: events.append("product"))
+    monkeypatch.setattr(xr.Dataset, "to_netcdf", lambda *a, **k: events.append("product"))
+    monkeypatch.setattr(InversionOutput, "save", lambda *a, **k: events.append("inversion"))
+    monkeypatch.setattr(outputs, "save_trace", lambda *a, **k: events.append("trace"))
+
+    outputs.postprocess_standard_outputs(inv_out, spec)
+    assert events == ["compute"] + ["product"] * (2 if output_format == "paris" else 1)
+    events.clear()
+    outputs.save_standard_artifacts(inv_out, spec)
+    assert events == ["inversion", "trace"]
+
+
+@pytest.mark.parametrize("field", ["output_name", "start_date"])
+def test_direct_artifact_export_rejects_filename_traversal(tmp_path, field):
+    from types import SimpleNamespace
+    from openghg_inversions.rhime.outputs import save_standard_artifacts
+    from openghg_inversions.rhime.specs import RhimeOutputSpec
+
+    destination = tmp_path / "outputs"
+    inv_out = SimpleNamespace(run_metadata={"start_date": "../../outside" if field == "start_date" else "2019-01-01"})
+    spec = RhimeOutputSpec(output_path=destination, output_name="../../outside" if field == "output_name" else "run")
+    with pytest.raises(ValueError, match="filename component"):
+        save_standard_artifacts(inv_out, spec)
+    assert not destination.exists()

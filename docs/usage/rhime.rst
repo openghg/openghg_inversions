@@ -939,9 +939,12 @@ configuration construction. Prefer ``legacy`` in new configurations.
 ``basic`` selects no written product and does not compute a discarded summary in
 the standard runner. To inspect reporting results in memory, call
 ``basic_output(result, country_file=...)`` on the returned ``InversionOutput``.
-The runner invokes ``save_standard_artifacts`` for configured written products
-and optional self-contained inversion-output/trace exports; their defaults and
-filename policy remain unchanged.
+The runner calls ``postprocess_standard_outputs`` to compute and write configured
+PARIS or legacy products, then ``save_standard_artifacts`` to export the scientific
+result and trace. PARIS and legacy requests require an ``output_path`` before
+sampling. Export defaults and filename policy remain unchanged. See
+:doc:`staged_workflow` for the distinction between checkpoints, self-contained
+inversion outputs, traces and basis exports.
 
 Single-sector ``paris`` keeps the legacy template by default. Pass
 ``paris_postprocessing_kwargs={"template_version": "latest"}`` to write the

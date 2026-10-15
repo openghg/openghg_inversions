@@ -203,7 +203,7 @@ def test_custom_basis_runner_replaces_only_basis_stage(
 
     monkeypatch.setattr(custom_basis_runner, "read_rhime_ini", parse_config)
     monkeypatch.setattr(custom_basis_runner.RhimeConfig, "from_params", classmethod(resolve))
-    monkeypatch.setattr(custom_basis_runner.RhimeMergedData, "from_options", retrieve)
+    monkeypatch.setattr(RhimeMergedData, "from_options", retrieve)
     monkeypatch.setattr(custom_basis_runner, "filter_observations", filter_observations)
     monkeypatch.setattr(custom_basis_runner, "build_project_basis", build_project_basis)
     monkeypatch.setattr(custom_basis_runner, "build_sensitivities", build_sensitivities)
@@ -428,7 +428,7 @@ def test_incompatible_project_basis_failure_remains_owned_by_sensitivity_stage(
         "from_params",
         classmethod(lambda cls, params, *, multisector: config),
     )
-    monkeypatch.setattr(custom_basis_runner.RhimeMergedData, "from_options",
+    monkeypatch.setattr(RhimeMergedData, "from_options",
         lambda **kwargs: merged,
     )
     monkeypatch.setattr(
@@ -485,7 +485,7 @@ def test_custom_basis_runner_resolves_before_loading_project_artifact(
         flux_data={"inventory": stored.flux.to_dataset(name="flux")},
         site_options=SiteOptions.from_inputs(sites=["TAC"], averaging_period="1h"),
     )
-    monkeypatch.setattr(custom_basis_runner.RhimeMergedData, "from_options", lambda **kwargs: merged)
+    monkeypatch.setattr(RhimeMergedData, "from_options", lambda **kwargs: merged)
     monkeypatch.setattr(
         custom_basis_runner, "filter_observations", lambda value, site_options, **kwargs: (value, site_options),
     )
@@ -519,7 +519,7 @@ def test_custom_basis_missing_selected_map_fails_before_acquisition(
     """The project validates its selected support map before store access."""
     missing_map = tmp_path / "missing-classes.nc"
     monkeypatch.setattr(
-        custom_basis_runner.RhimeMergedData,
+        RhimeMergedData,
         "from_options",
         lambda **kwargs: pytest.fail("a missing selected map must fail before acquisition"),
     )

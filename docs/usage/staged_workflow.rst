@@ -36,7 +36,9 @@ the baked policy, even when the selected model ignores BCs. Changing acquired
 data, filters, basis, native flux or baked numerical policy needs new preparation.
 
 ``load_samples`` decodes the sample manifest to ``InversionOutput``.
-``postprocess`` uses that reader with current output choices. It loads
+``postprocess`` uses that reader with current output choices, calls
+``postprocess_standard_outputs`` to compute and write requested PARIS or legacy
+products, then calls ``save_standard_artifacts`` for optional exports. It loads
 the recorded model meaning, output contract, inference metadata, prepared inputs
 and samples without building a graph or running inference. It returns
 ``InversionOutput`` without a live model or sampler. Missing descriptive metadata stays
@@ -135,8 +137,24 @@ not provide content-integrity or tamper detection.
 
 Standard ``output_format="basic"`` returns the scientific view without computing
 an unused summary. For in-memory reporting, call ``basic_output(inv_out,
-country_file=...)`` yourself. Runners call ``save_standard_artifacts`` for requested
-written products and exports; self-contained export defaults remain unchanged.
+country_file=...)`` yourself. PARIS and legacy products require ``output_path``;
+missing destinations fail before sampling in a full run or before loading samples
+in staged postprocessing. ``save_standard_artifacts`` only exports the scientific
+result and trace; it does not compute derived products.
+
+Choose saved artifacts by what you need to reuse:
+
+* Preparation and sample checkpoints preserve phase inputs and execution records.
+  A sample checkpoint references its preparation, so keep that dependency with it.
+* A self-contained ``InversionOutput`` export carries the prepared scientific
+  values, basis and trace needed for later reporting without the checkpoint manifests.
+* A trace export carries sampled variables and diagnostics; it does not replace
+  the prepared inputs and output contract required for scientific reconstruction.
+* An optional basis export preserves the basis for inspection or reuse. It does
+  not contain the observations and posterior of an inversion.
+
+Full execution needs no checkpoints, so these optional exports remain useful.
+Their defaults and formats are unchanged.
 
 Callers choose checkpoint locations and own collision avoidance and run isolation.
 A simple layout is ``run/prepare``, ``run/sample`` and ``run/products``; explicit
@@ -196,8 +214,8 @@ For example, with preparation settings in ``preparation.json``:
      --kwargs '{"output_format":"inv_out"}' --output-dir run/inversion-output
 
    rhime postprocess --sample-manifest run/model-a/sample-manifest.json \
-     --kwargs '{"output_format":"basic","country_file":"/data/countries.nc"}' \
-     --output-dir run/basic
+     --kwargs '{"output_format":"paris","country_file":"/data/countries.nc"}' \
+     --output-dir run/paris
 
 ``--model standard`` is the default for these commands. A manifest's family must
 match the selected route. Full-run ``rhime run`` choices and aliases are

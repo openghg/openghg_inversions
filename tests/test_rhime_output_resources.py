@@ -129,3 +129,43 @@ def test_resource_helpers_are_public_and_indexed():
     index = (Path(__file__).parents[1] / "docs/reference/index.rst").read_text()
     assert "openghg_inversions.rhime.preparation.resolve_basis_inputs" in index
     assert "openghg_inversions.rhime.outputs.validate_output_resources" in index
+
+
+@pytest.mark.parametrize("output_format", ["paris", "legacy"])
+@pytest.mark.parametrize("route", ["standard", "prepared", "staged", "copied", "copied_basis"])
+def test_standard_file_products_require_destination_before_work(tmp_path, monkeypatch, output_format, route):
+    country = tmp_path / "country.nc"
+    country.touch()
+    params = _params(output_format=output_format, country_file=country, output_path=None,
+                     save_inversion_output=False)
+    config = RhimeConfig.from_params(params, multisector=False)
+    monkeypatch.setattr(
+        standard.RhimeMergedData, "from_options", lambda **kwargs: pytest.fail("acquired before preflight"),
+    )
+    monkeypatch.setattr(
+        standard, "sample_rhime_model", lambda *args, **kwargs: pytest.fail("sampled before preflight"),
+    )
+    monkeypatch.setattr(
+        standard, "materialize_standard_inputs", lambda *args, **kwargs: pytest.fail("materialized before preflight"),
+    )
+    with pytest.raises(ValueError, match="output_path.*required.*standard"):
+        if route == "standard":
+            standard.run_standard(config=config)
+        elif route == "prepared":
+            standard.run_standard(config=config, prepared=_prepared())
+        elif route == "staged":
+            _standard_stages.postprocess(tmp_path / "absent-manifest.json", output=config.output)
+        elif route == "copied":
+            copied_runner.run_custom_rhime(**params)
+        else:
+            custom_basis_runner.run_custom_rhime(**params)
+
+
+@pytest.mark.parametrize("output_format", ["paris", "legacy"])
+def test_shared_resource_validation_preserves_deferred_in_memory_products(tmp_path, output_format):
+    country = tmp_path / "country.nc"
+    country.touch()
+    spec = RhimeOutputSpec(output_format=output_format, country_file=country, save_inversion_output=False)
+    validate_output_resources(spec)
+    with pytest.raises(ValueError, match="output_path"):
+        outputs.validate_standard_output_resources(spec)

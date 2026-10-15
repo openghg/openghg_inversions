@@ -1,7 +1,10 @@
 """Public file-backed RHIME stages and explicit family dispatch.
 
-Concrete workflows own scientific execution and replay policy. Shared artifact
-and check owners are independent of this facade.
+This module is in transition: standard ``prepare``, ``sample`` and ``postprocess``
+use the current numerical handoffs, while multisector and CO2 dispatch retains
+its earlier interfaces until those recipes migrate. The public stage namespace
+remains; retaining the old family wrappers does not make them the standard API.
+Concrete workflows own scientific execution and replay policy.
 """
 
 from __future__ import annotations

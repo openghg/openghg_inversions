@@ -74,8 +74,9 @@ from .outputs import (
     make_standard_output,
     annotate_sample_trace,
     save_standard_artifacts,
-    write_standard_outputs,
+    postprocess_standard_outputs,
     validate_output_resources,
+    validate_standard_output_resources,
 )
 from .prepared import run_rhime_from_prepared_inputs
 from .sampling import RhimeSampler, sample_rhime_model
@@ -95,7 +96,6 @@ from .stages import (
 from .standard import (
     build_standard_model,
     materialize_standard_inputs,
-    prepare_inputs,
     run_standard,
     standard_model_input_names,
 )
@@ -149,7 +149,6 @@ __all__ = [
     "build_sensitivities",
     "build_standard_model",
     "materialize_standard_inputs",
-    "prepare_inputs",
     "filter_observations",
     "prepare_observation_errors",
     "configuration_identity",
@@ -165,8 +164,9 @@ __all__ = [
     "make_standard_output",
     "annotate_sample_trace",
     "save_standard_artifacts",
-    "write_standard_outputs",
+    "postprocess_standard_outputs",
     "validate_output_resources",
+    "validate_standard_output_resources",
     "materialize_pymc_inputs",
     "co2_model_input_names",
     "multisector_model_input_names",

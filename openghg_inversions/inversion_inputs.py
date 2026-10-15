@@ -113,22 +113,47 @@ def make_site_names(site_coord: xr.DataArray) -> xr.DataArray:
     return xr.DataArray(site_names, dims=("nsite",), name="site_names")
 
 
+def normalise_frequency(value: str | None) -> Literal["monthly"] | pd.Timedelta | None:
+    """Resolve calendar periods or a positive fixed duration without observations.
+
+    Args:
+        value: ``None`` for one period, ``"monthly"`` for calendar months, or a
+            pandas duration string. Bare units and uppercase ``H`` are accepted.
+
+    Returns:
+        The unchanged single/calendar-period policy or a positive fixed duration.
+
+    Raises:
+        ValueError: If a fixed duration is malformed, nonfinite, zero or negative.
+    """
+    if value is None or value == "monthly":
+        return value
+    try:
+        if not isinstance(value, str):
+            raise ValueError("expected a frequency string")
+        frequency = f"1{value}" if value.isalpha() else value
+        duration = pd.to_timedelta(frequency.replace("H", "h"))
+        if pd.isna(duration) or duration <= pd.Timedelta(0):
+            raise ValueError("frequency must be positive")
+        return duration
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError(f"Invalid frequency {value!r}; expected 'monthly' or a positive fixed duration.") from exc
+
+
 def make_freq_indicator(
     time: xr.DataArray,
     freq: Literal["monthly"] | str,
     *,
     anchor_time: DatetimeLike | None = None,
 ) -> xr.DataArray:
-    if freq == "monthly":
+    frequency = normalise_frequency(freq)
+    if frequency is None:
+        return xr.zeros_like(time, dtype=int)
+    if frequency == "monthly":
         return time.dt.month - time.min().dt.month + 12 * (time.dt.year - time.min().dt.year)
 
-    # fixed-duration freq strings (e.g. "8d", "12h", "3h")
-    if isinstance(freq, str) and freq.isalpha():
-        freq = f"1{freq}"
-    if isinstance(freq, str):
-        freq = freq.replace("H", "h")
     anchor = np.datetime64(anchor_time) if anchor_time is not None else time.min().values
-    dt = np.timedelta64(pd.to_timedelta(freq).value, "ns")  # robust to xarray dtype
+    dt = np.timedelta64(frequency.value, "ns")  # robust to xarray dtype
     idx = ((time.values.astype("datetime64[ns]") - anchor) // dt).astype(int)
     idx = idx - idx.min()
     return xr.DataArray(idx, coords=time.coords, dims=time.dims)

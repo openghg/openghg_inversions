@@ -731,7 +731,7 @@ def _inner_domain_name(outer_domain: str, inner_domain: str) -> str:
 
 def _prepare_one_domain(
     merged: RhimeMergedData | _NestedDomainData,
-    data: DataConfig,
+    data_config: DataConfig,
     *,
     allow_empty_inner_region: bool = False,
     basis_support_maps: Mapping[str, Any],
@@ -739,23 +739,23 @@ def _prepare_one_domain(
 ) -> RhimePreparedInputs:
     """Run one domain's scientific stages from already-resolved choices."""
     runtime_flux = resolve_runtime_flux(merged.flux_data, split_by_sectors=False)
-    with timed("rhime.prepare_inputs.basis_build", basis_algorithm=data.basis_algorithm):
+    with timed("rhime.prepare_inputs.basis_build", basis_algorithm=data_config.basis_algorithm):
         basis_functions = prepare_basis(
             site_data=merged.site_data,
             runtime_flux=runtime_flux,
-            weighting_flux=merged.flux_data[data.flux_sources[0]]["flux"],
-            **data.select(
+            weighting_flux=merged.flux_data[data_config.flux_sources[0]]["flux"],
+            **data_config.select(
                 "domain", "start_date", "basis_algorithm", "nbasis",
             ),
-            fix_outer_regions=data.fix_basis_outer_regions,
+            fix_outer_regions=data_config.fix_basis_outer_regions,
             **basis_support_maps,
             allow_empty_inner_region=allow_empty_inner_region,
         )
-    basis_functions = export_basis(basis_functions, data.basis_output_path)
+    basis_functions = export_basis(basis_functions, data_config.basis_output_path)
     site_data = build_sensitivities(
         merged.site_data,
         basis_functions,
-        **data.select(
+        **data_config.select(
             "flux_sources", "use_bc",
         ),
         bc_basis=bc_basis,
@@ -765,7 +765,7 @@ def _prepare_one_domain(
         site_data,
         basis_functions,
         site_options=merged.site_options,
-        **data.select(
+        **data_config.select(
             "domain", "start_date", "bc_freq", "min_error",
             "min_error_options", "use_bc",
         ),
@@ -988,6 +988,7 @@ def prepare_nested_rhime_inputs(
 
     outer_acquired = acquire_merged_data(outer_config)
     inner_acquired = acquire_merged_data(inner_config)
+
     # Acquisition records stop here; errors, filtering and masking belong to preparation.
     outer_data = _NestedDomainData(outer_acquired.site_data, outer_acquired.flux_data, outer_acquired.site_options)
     inner_data = _NestedDomainData(inner_acquired.site_data, inner_acquired.flux_data, inner_acquired.site_options)

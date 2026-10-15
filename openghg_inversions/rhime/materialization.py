@@ -50,12 +50,26 @@ def _materialize_pymc_inputs_and_priors(
     variable_names: Collection[str],
     prior_parameters: Mapping[str, PriorArgs] | None = None,
 ) -> tuple[xr.Dataset, dict[str, PriorArgs]]:
-    """Compute selected model inputs and enabled priors in one borrowed boundary.
+    """Materialize selected inputs and prior parameters together without mutation.
 
-    Return new prior mappings, including computed lazy scalars and auxiliary
-    coordinates, for explicit forwarding by the concrete recipe. Selection
-    precedes data-dependent zero-sensitivity pruning; construction still owns
-    which priors actually enter the graph and its metadata.
+    Args:
+        prepared: Borrowed backend-neutral prepared inputs.
+        variable_names: Prepared variables consumed by the concrete model.
+            Their sparse payloads are densified; those values, lazy auxiliary
+            coordinates and prior parameters share one Dask computation.
+        prior_parameters: Prior parameter mappings keyed by model variable name,
+            such as ``x`` or ``sigma``. Omission selects no prior parameters.
+
+    Returns:
+        A shallow Dataset copy retaining every prepared variable, with selected
+        inputs and their coordinates materialized, and a new dictionary of
+        prior parameter mappings under the supplied model-variable keys.
+        Unselected Dataset variables remain borrowed and may remain lazy.
+        Prior selection precedes zero-sensitivity pruning; model construction
+        decides which selected priors actually enter the graph and its metadata.
+
+    Raises:
+        ValueError: If a selected variable is absent from the prepared data.
     """
     timing_start = timer_start()
     inv_inputs = prepared.inv_inputs

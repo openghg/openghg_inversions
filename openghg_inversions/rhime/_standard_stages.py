@@ -11,6 +11,7 @@ from uuid import uuid4
 import xarray as xr
 
 from openghg_inversions._provenance import installed_ogi_provenance
+from openghg_inversions.basis.support import load_bc_basis
 from openghg_inversions.inference.sampling import RhimeSampler, resolve_sampler
 from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs
 from openghg_inversions.postprocessing.contracts import OutputContract
@@ -24,12 +25,14 @@ from ._stage_artifacts import (
 from ._stage_checks import _check_draws, _check_stage, prior_predictive_check
 from .builders import RhimeLikelihoodBuilder
 from .outputs import (
-    annotate_sample_trace, make_standard_output, save_standard_artifacts, validate_output_resources,
+    annotate_sample_trace, make_standard_output, postprocess_standard_outputs,
+    save_standard_artifacts, validate_standard_output_resources,
 )
 from .sampling import sample_rhime_model
 from .params import DataConfig, resolve_model_options
 from .specs import RhimeModelSpec, RhimeOutputSpec
-from .standard import build_standard_model, materialize_standard_inputs, prepare_inputs
+from .standard import build_standard_model, materialize_standard_inputs, prepare_standard
+from .preparation import acquire_merged_data, resolve_basis_inputs
 
 
 def _require_standard(data_config: DataConfig) -> None:
@@ -130,7 +133,28 @@ def prepare(
     Raises:
         ValueError: If the data configuration or supplied inputs conflict.
     """
-    prepared = prepare_inputs(data_config, merged_data=merged_data)
+    basis_inputs = resolve_basis_inputs(data_config)
+    bc_basis = (
+        load_bc_basis(data_config.bc_basis_paths)
+        if data_config.use_bc and data_config.bc_basis_paths is not None else None
+    )
+
+    if merged_data is None:
+        merged_data = acquire_merged_data(data_config)
+    else:
+        merged_data.validate_for_preparation(
+            **data_config.select("species", "domain", "start_date", "end_date", "split_by_sectors"),
+        )
+
+    prepared = prepare_standard(
+        merged_data, basis_inputs=basis_inputs, bc_basis=bc_basis,
+        **data_config.select(
+            "domain", "start_date", "flux_sources", "averaging_error", "filters",
+            "basis_algorithm", "nbasis", "fix_basis_outer_regions", "use_bc", "bc_freq",
+            "min_error", "min_error_options",
+        ),
+    )
+
     if data_config.basis_output_path is not None:
         data_config.basis_output_path.parent.mkdir(parents=True, exist_ok=True)
         prepared.basis_functions.save(data_config.basis_output_path)
@@ -214,13 +238,16 @@ def sample(
         Path(output_dir).resolve(), stage="sample", payloads=("posterior.nc",),
         referenced=(Path(preparation_manifest).resolve(), payload),
     )
+
     model_inputs, priors = materialize_standard_inputs(prepared, model_spec)
     built = build_standard_model(
         model_inputs, model_spec, priors=priors,
         likelihood_builder=likelihood_builder, likelihood_kwargs=likelihood_kwargs,
     )
+
     posterior = sample_rhime_model(built, sampler)
     annotate_sample_trace(built, posterior, likelihood_builder=likelihood_builder, likelihood_kwargs=likelihood_kwargs)
+
     return save_samples(
         preparation_manifest, posterior, output_contract=built.output_contract,
         model=model_spec, actual_inference=sampler.describe(),
@@ -280,8 +307,9 @@ def postprocess(sample_manifest: str | Path, *, output: RhimeOutputSpec) -> Inve
         ValueError: If checkpoint generation, scientific records or requested
             products are incompatible.
     """
-    validate_output_resources(output)
+    validate_standard_output_resources(output)
     inv_out = load_samples(sample_manifest)
+    postprocess_standard_outputs(inv_out, output)
     save_standard_artifacts(inv_out, output)
     return inv_out
 

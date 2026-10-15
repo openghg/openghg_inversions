@@ -178,7 +178,8 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
     monkeypatch.setattr(rhime_runner, "sample_rhime_model", sample)
     monkeypatch.setattr(rhime_runner, "annotate_sample_trace", annotate)
     monkeypatch.setattr(rhime_runner, "make_standard_output", make_result)
-    monkeypatch.setattr(rhime_runner, "save_standard_artifacts", write_outputs)
+    monkeypatch.setattr(rhime_runner, "postprocess_standard_outputs", write_outputs)
+    monkeypatch.setattr(rhime_runner, "save_standard_artifacts", lambda *a: calls.append("export"))
 
     result = consumer_runner.run(species="ch4", output_format="inv_out")
 
@@ -196,6 +197,7 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
         "annotate",
         "result",
         "output",
+        "export",
     ]
 
 

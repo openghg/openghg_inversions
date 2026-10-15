@@ -55,6 +55,24 @@ def validate_output_resources(output_spec: RhimeOutputSpec) -> None:
         raise ValueError("country_file must be supplied for country reporting outputs.")
 
 
+def validate_standard_output_resources(output_spec: RhimeOutputSpec) -> None:
+    """Check reporting resources and file-product destinations before standard execution.
+
+    Args:
+        output_spec: Resolved output choices. PARIS and legacy products require
+            ``output_path`` because standard runners return the scientific view,
+            not the derived products. Use the product functions directly for
+            in-memory reporting.
+
+    Raises:
+        FileNotFoundError: If the selected country file is missing or is a directory.
+        ValueError: If a required country file or product destination is absent.
+    """
+    validate_output_resources(output_spec)
+    if output_spec.output_format in ("paris", "legacy") and output_spec.output_path is None:
+        raise ValueError("`output_path` is required for standard PARIS or legacy products.")
+
+
 def validate_output_filenames(run_spec: RhimeRunSpec) -> None:
     """Check metadata interpolated into product filenames before writing.
 
@@ -347,13 +365,13 @@ def _make_inversion_output(
     )
 
 
-def write_standard_outputs(inv_out: InversionOutput, output_spec: RhimeOutputSpec) -> None:
-    """Write requested PARIS or legacy products from a scientific result.
+def postprocess_standard_outputs(inv_out: InversionOutput, output_spec: RhimeOutputSpec) -> None:
+    """Compute and write requested PARIS or legacy products from a scientific result.
 
     Args:
         inv_out: Borrowed scientific result, independent of output policy.
         output_spec: Resolved product and destination choices. The caller must
-            first call :func:`validate_output_resources`. ``none``, ``inv_out`` and ``basic``
+            first call :func:`validate_standard_output_resources`. ``none``, ``inv_out`` and ``basic``
             produce no derived files; use ``basic_output(inv_out)`` for in-memory products.
 
     Raises:
@@ -674,22 +692,25 @@ def make_standard_output(
 
 
 def save_standard_artifacts(inv_out: InversionOutput, output_spec: RhimeOutputSpec) -> None:
-    """Write selected products and scientific exports using the shared naming policy.
+    """Export the scientific result and trace without computing derived products.
 
     Args:
         inv_out: Scientific result to serialize without changing its metadata.
-        output_spec: Resolved choices; the caller must first call
-            :func:`validate_output_resources`. ``inv_out`` defaults to exporting the
+        output_spec: Resolved export choices. ``inv_out`` defaults to exporting the
             scientific result; ``none`` writes nothing. Explicit paths retain
             their destinations and existing files follow normal overwrite behavior.
 
     Raises:
-        ValueError: If the requested format, filenames or destinations are invalid.
+        ValueError: If filenames or destinations are invalid.
         OSError: If an artifact cannot be written.
     """
-    write_standard_outputs(inv_out, output_spec)
     if output_spec.output_format == "none":
         return
+    if not output_spec.save_inversion_output and not output_spec.save_trace:
+        return
+    for name, value in (("output_name", output_spec.output_name),
+                        ("start_date", inv_out.run_metadata["start_date"])):
+        _validate_filename_component(name, value)
     stem = f"{output_spec.output_name}{inv_out.run_metadata['start_date']}"
     inversion_path = _resolve_output_path(
         output_spec.save_inversion_output, output_spec.output_path, f"{stem}_inversion_output.nc",

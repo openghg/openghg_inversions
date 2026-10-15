@@ -129,8 +129,10 @@ def prepare_rhime_stage(
     destination = _stage_output_directory(output_dir)
 
     merged = acquire_merged_data(setup.data)
+
     with_errors = prepare_observation_errors(merged.site_data, averaging_error=setup.data.averaging_error)
     filtered, site_options = filter_observations(with_errors, merged.site_options, filters=setup.data.filters)
+
     runtime_flux = resolve_runtime_flux(merged.flux_data, split_by_sectors=merged.split_by_sectors)
     with timed("rhime.prepare_inputs.basis_build", basis_algorithm=setup.data.basis_algorithm):
         basis = prepare_basis(
@@ -144,6 +146,7 @@ def prepare_rhime_stage(
             **basis_inputs,
         )
     basis = export_basis(basis, setup.data.basis_output_path)
+
     sensitivities = build_sensitivities(
         filtered,
         basis,
@@ -153,6 +156,7 @@ def prepare_rhime_stage(
         bc_basis=bc_basis,
         multisector=True,
     )
+
     prepared = assemble_rhime_inputs(
         sensitivities,
         basis,

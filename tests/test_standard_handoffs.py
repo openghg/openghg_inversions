@@ -213,7 +213,7 @@ def test_prepare_preserves_exact_basis_export(tmp_path, monkeypatch, export):
     target = tmp_path / export
     config = replace(config, basis_output_path=target)
     monkeypatch.setattr(stages.RhimeMergedData, "from_options", lambda **kwargs: object())
-    monkeypatch.setattr(stages, "prepare_inputs", lambda *args, **kwargs: _prepared())
+    monkeypatch.setattr(stages, "prepare_standard", lambda *args, **kwargs: _prepared())
     manifest = stages.prepare(config, output_dir=destination)
     assert manifest.is_file()
     assert target.exists()
@@ -437,7 +437,7 @@ def test_failed_acquisition_leaves_destination_free_for_retry(tmp_path, monkeypa
         stages.prepare(config, output_dir=tmp_path / "prepared")
     assert not (tmp_path / "prepared").exists()
     monkeypatch.setattr(stages.RhimeMergedData, "from_options", lambda **kwargs: object())
-    monkeypatch.setattr(stages, "prepare_inputs", lambda *args, **kwargs: _prepared())
+    monkeypatch.setattr(stages, "prepare_standard", lambda *args, **kwargs: _prepared())
     assert stages.prepare(config, output_dir=tmp_path / "prepared").is_file()
 
 
@@ -660,3 +660,48 @@ def test_external_trace_prior_metadata_fails_at_sample_reader(tmp_path, metadata
     with pytest.raises(ValueError, match="rhime_priors"):
         stages.postprocess(sampled, output=RhimeOutputSpec(output_format="inv_out", output_path=destination))
     assert not destination.exists()
+
+
+@pytest.mark.parametrize("route", ["full", "staged"])
+@pytest.mark.parametrize("conflicting_species", [False, True])
+def test_supplied_merged_data_is_checked_without_acquiring_again(
+    tmp_path, monkeypatch, route, conflicting_species,
+):
+    from dataclasses import replace
+
+    from examples.standard_handoffs import synthetic_inputs
+
+    merged, options, *_ = synthetic_inputs(tmp_path)
+    merged.acquisition = replace(merged.acquisition, species="co2" if conflicting_species else "ch4")
+    config = RhimeConfig.from_params({**options, "output_name": "supplied", "output_format": "none", "mismatch_model": "fixed_error"}, multisector=False)
+    owner = standard if route == "full" else stages
+    monkeypatch.setattr(owner, "acquire_merged_data", lambda *a, **k: pytest.fail("reacquired supplied data"))
+
+    def begin_preparation(supplied, **kwargs):
+        assert supplied is merged
+        raise RuntimeError("preparation reached")
+
+    monkeypatch.setattr(owner, "prepare_standard", begin_preparation)
+    error = ValueError if conflicting_species else RuntimeError
+    message = "incompatible species" if conflicting_species else "preparation reached"
+    with pytest.raises(error, match=message):
+        if route == "full":
+            standard.run_standard(config=config, merged_data=merged)
+        else:
+            stages.prepare(config.data, merged_data=merged, output_dir=tmp_path / "prepared")
+
+
+def test_supplied_preparation_skips_resources_and_acquisition(monkeypatch):
+    config = RhimeConfig.from_params({**_params(), "output_format": "none", "mismatch_model": "fixed_error"}, multisector=False)
+    prepared = _prepared()
+    monkeypatch.setattr(standard, "resolve_basis_inputs", lambda *a, **k: pytest.fail("resolved unused resources"))
+    monkeypatch.setattr(standard, "acquire_merged_data", lambda *a, **k: pytest.fail("acquired unused data"))
+    monkeypatch.setattr(standard, "prepare_standard", lambda *a, **k: pytest.fail("repeated preparation"))
+
+    def materialize(supplied, model):
+        xr.testing.assert_identical(supplied.inv_inputs, prepared.inv_inputs)
+        raise RuntimeError("materialization reached")
+
+    monkeypatch.setattr(standard, "materialize_standard_inputs", materialize)
+    with pytest.raises(RuntimeError, match="materialization reached"):
+        standard.run_standard(config=config, prepared=prepared)

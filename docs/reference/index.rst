@@ -130,6 +130,8 @@ value and its unchanged version-1 schema live in
    openghg_inversions.rhime.preparation.export_basis
    openghg_inversions.rhime.standard.build_standard_model
    openghg_inversions.rhime.standard.materialize_standard_inputs
+   openghg_inversions.rhime.standard.prepare_standard
+   openghg_inversions.rhime.postprocess_standard_outputs
    openghg_inversions.rhime.save_standard_artifacts
    openghg_inversions.rhime.annotate_sample_trace
    openghg_inversions.rhime.requests.load_params
@@ -264,6 +266,7 @@ and samples; it does not write products. See
    :nosignatures:
 
    openghg_inversions.rhime.outputs.validate_output_resources
+   openghg_inversions.rhime.validate_standard_output_resources
    openghg_inversions.postprocessing.inversion_output.InversionOutput
    openghg_inversions.postprocessing.contracts.OutputContract
    openghg_inversions.postprocessing.output_views.make_inversion_output

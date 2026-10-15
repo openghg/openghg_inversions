@@ -356,6 +356,20 @@ suite, supported Python versions, typing and documentation.
   relevant broader scientific, predictive and output checks; record merged evidence
   and supported/unsupported combinations without adding a second sampling harness.
 
+## Review follow-up tracking — 15 October 2026
+
+GitHub [#880](https://github.com/openghg/openghg_inversions/issues/880) mirrors
+OPE-207 and indexes the remaining family slices. The standard #866 readability
+corrections do not clear the maintainer acceptance gate. Deferred alignment
+ownership is [#876](https://github.com/openghg/openghg_inversions/issues/876)
+(OPE-105); durable input decisions and output consumer migration are
+[#877](https://github.com/openghg/openghg_inversions/issues/877) and
+[#878](https://github.com/openghg/openghg_inversions/issues/878) (OPE-106/107).
+Compact/recoverable output implementation is
+[#879](https://github.com/openghg/openghg_inversions/issues/879) (OPE-125),
+under existing storage policy #465 and output umbrella #850. Nested remains
+outside this change, with runner follow-up assigned to existing #408.
+
 ## 5. Integrated acceptance and completion
 
 - [ ] 5.1 Reconcile all four family deliveries against the three new capability specs and the configuration/resource-I/O capabilities

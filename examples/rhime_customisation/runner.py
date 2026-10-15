@@ -16,7 +16,7 @@ from __future__ import annotations
 from openghg_inversions.basis import prepare_basis
 from openghg_inversions.native_flux import resolve_runtime_flux
 from openghg_inversions.basis.support import load_bc_basis
-from openghg_inversions.rhime.preparation import resolve_basis_inputs
+from openghg_inversions.rhime.preparation import acquire_merged_data, resolve_basis_inputs
 
 import argparse
 from collections.abc import Sequence
@@ -24,17 +24,17 @@ import json
 from pathlib import Path
 from typing import Any
 
-from openghg_inversions.inversion_data import RhimeMergedData
 from openghg_inversions.rhime import (
     RhimeConfig,
     make_standard_output,
+    postprocess_standard_outputs,
     save_standard_artifacts,
     annotate_sample_trace,
     assemble_rhime_inputs,
     build_sensitivities,
     filter_observations,
     prepare_observation_errors,
-    validate_output_resources,
+    validate_standard_output_resources,
     read_rhime_ini,
     sample_rhime_model,
 )
@@ -76,24 +76,17 @@ def run_custom_rhime(
     params.update(kwargs)
     params["mismatch_model"] = None
     config = RhimeConfig.from_params(load_params(overrides=params), multisector=False)
-    validate_output_resources(config.output)
+    validate_standard_output_resources(config.output)
 
     # Resolve selected support files before acquiring observations or flux.
     basis_inputs = resolve_basis_inputs(config.data)
     bc_basis = load_bc_basis(config.data.bc_basis_paths) if config.data.use_bc and config.data.bc_basis_paths is not None else None
-    merged = RhimeMergedData.from_options(
-        **config.data.select(
-            "site_options", "species", "domain", "start_date",
-            "end_date",  "flux_sources", "split_by_sectors",
-            "bc_store", "obs_store", "footprint_store", "flux_store",
-            "flux_domain", "fp_model", "fp_species", "calibration_scale",
-            "use_bc", "bc_input",
-            "flux_non_finite_check",
-        ),
-    )
+    merged = acquire_merged_data(config.data)
+
     # Keep the scientific preparation order visible; ``merged`` stays acquired data.
     with_errors = prepare_observation_errors(merged.site_data, averaging_error=config.data.averaging_error)
     filtered, site_options = filter_observations(with_errors, merged.site_options, filters=config.data.filters)
+
     runtime_flux = resolve_runtime_flux(
         merged.flux_data, split_by_sectors=merged.split_by_sectors,
     )
@@ -112,6 +105,7 @@ def run_custom_rhime(
     if config.data.basis_output_path is not None:
         Path(config.data.basis_output_path).parent.mkdir(parents=True, exist_ok=True)
         basis_functions.save(config.data.basis_output_path)
+
     sensitivities = build_sensitivities(
         filtered,
         basis_functions,
@@ -121,6 +115,7 @@ def run_custom_rhime(
         bc_basis=bc_basis,
         multisector=False,
     )
+
     prepared = assemble_rhime_inputs(
         sensitivities,
         basis_functions,
@@ -130,6 +125,7 @@ def run_custom_rhime(
             "min_error_options", "use_bc",
         ),
     )
+
     model_inputs, priors = materialize_standard_inputs(prepared, config.model)
     model_build_result = build_standard_model(
         model_inputs, config.model, priors=priors,
@@ -137,6 +133,7 @@ def run_custom_rhime(
         likelihood_builder=likelihood_builder,
     )
     model_build_result.output_contract.validate_requested_output(config.output.output_format)
+
     idata = sample_rhime_model(model_build_result, config.sampler)
 
     annotate_sample_trace(model_build_result, idata, likelihood_builder=likelihood_builder)
@@ -146,6 +143,7 @@ def run_custom_rhime(
         start_date=config.data.start_date, end_date=config.data.end_date,
         actual_inference=config.sampler.describe(),
     )
+    postprocess_standard_outputs(inv_out, config.output)
     save_standard_artifacts(inv_out, config.output)
     return inv_out
 

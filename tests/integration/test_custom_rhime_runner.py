@@ -202,7 +202,7 @@ def test_custom_runner_uses_supported_stages_for_acquisition(
     monkeypatch.setattr(custom_runner, "read_rhime_ini", parse_config)
     monkeypatch.setattr(custom_runner.RhimeConfig, "from_params", classmethod(resolve))
     monkeypatch.setattr(custom_runner, "resolve_basis_inputs", resolve_basis_inputs)
-    monkeypatch.setattr(custom_runner.RhimeMergedData, "from_options", retrieve)
+    monkeypatch.setattr(RhimeMergedData, "from_options", retrieve)
     monkeypatch.setattr(custom_runner, "filter_observations", filter_observations)
     monkeypatch.setattr(custom_runner, "prepare_basis", build_basis)
     monkeypatch.setattr(custom_runner, "build_sensitivities", build_sensitivities)

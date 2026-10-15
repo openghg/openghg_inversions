@@ -820,7 +820,7 @@ def test_adapter_output_executes_through_prepared_runner_without_openghg(
         },
         multisector=False,
     )
-    monkeypatch.setattr(rhime_standard, "prepare_inputs",
+    monkeypatch.setattr(rhime_standard, "prepare_standard",
                         lambda *args, **kwargs: pytest.fail("repeated acquisition/preparation"))
     models = []
     original_builder = rhime_standard.build_standard_model

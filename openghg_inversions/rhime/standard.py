@@ -57,11 +57,12 @@ from .materialization import (
 )
 from .outputs import (
     make_standard_output,
+    postprocess_standard_outputs,
     save_standard_artifacts,
     annotate_sample_trace,
-    validate_output_resources,
+    validate_standard_output_resources,
 )
-from .params import DataConfig, RhimeConfig
+from .params import RhimeConfig
 from .requests import load_params
 from .preparation import (
     assemble_rhime_inputs,
@@ -203,8 +204,10 @@ def materialize_standard_inputs(
         model_spec: Scientific choices selecting the required inputs and priors.
 
     Returns:
-        Eager selected inputs and prior parameters keyed by constructed variable
-        name. Unselected preparation extensions remain borrowed and may be lazy.
+        A shallow copy of the prepared Dataset with selected inputs and their
+        coordinates materialized, plus prior parameter mappings keyed by model
+        variable name. Unselected preparation variables remain borrowed and may
+        be lazy; construction decides which selected priors enter the graph.
 
     Raises:
         ValueError: If the model has other than one sector or a selected input
@@ -261,18 +264,21 @@ def build_standard_model(
     lazy_priors, _ = unpack_collections(priors)
     if any(is_dask_collection(model_inputs[name]) for name in names) or lazy_priors:
         raise ValueError("Standard model inputs and prior parameters must be materialized before building.")
+
     timing_start = timer_start()
     flux_sensitivity = model_inputs["H"]
     observations = model_inputs["mf"]
     observation_error = model_inputs["mf_error"]
     minimum_error = model_inputs.get("min_error")
     aggregation_error = resolve_aggregation_error(model_inputs, model_spec.aggregation_error_mode)
+
     use_bc = model_spec.use_bc
     add_offset = model_spec.add_offset
     offset_args = model_spec.offset_args
     sector = model_spec.sectors[0]
     state_activity = sector.state_activity if sector.state_activity is not None else model_spec.state_activity
     bc_state_activity = model_spec.bc_state_activity
+
     x_prior = dict(priors["x"])
     bc_prior = dict(priors.get("bc", DEFAULT_BC_PRIOR))
     offset_prior = dict(priors.get("offset_latent", DEFAULT_OFFSET_PRIOR))
@@ -385,6 +391,7 @@ def prepare_standard(
     # Preparation works on per-site datasets; ``merged_data`` stays acquired data.
     with_errors = prepare_observation_errors(merged_data.site_data, averaging_error=averaging_error)
     filtered, site_options = filter_observations(with_errors, merged_data.site_options, filters=filters)
+
     runtime_flux = resolve_runtime_flux(merged_data.flux_data, split_by_sectors=merged_data.split_by_sectors)
     with timed("rhime.prepare_inputs.basis_build", basis_algorithm=basis_algorithm):
         basis_functions = prepare_basis(
@@ -395,6 +402,7 @@ def prepare_standard(
             fix_outer_regions=fix_basis_outer_regions,
             **basis_inputs,
         )
+
     sensitivities = build_sensitivities(
         filtered,
         basis_functions,
@@ -402,6 +410,7 @@ def prepare_standard(
         bc_basis=bc_basis,
         multisector=False,
     )
+
     prepared = assemble_rhime_inputs(
         sensitivities,
         basis_functions,
@@ -420,36 +429,6 @@ def prepare_standard(
         basis_source=prepared.basis_artifact_source,
     )
     return prepared
-
-
-def prepare_inputs(
-    data_config: DataConfig,
-    merged_data: RhimeMergedData | None = None,
-) -> RhimePreparedInputs:
-    """Resolve selected resources and prepare canonical inputs from acquired data.
-
-    Args:
-        data_config: Resolved data and scientific preparation choices.
-        merged_data: Optional borrowed acquired data; omission requests acquisition.
-
-    Returns:
-        Prepared inputs with retained-site metadata and the current flux binding.
-
-    Raises:
-        ValueError: If supplied data or selected resources conflict with the request.
-        FileNotFoundError: If a selected support resource is missing.
-    """
-    basis_inputs = resolve_basis_inputs(data_config)
-    bc_basis = load_bc_basis(data_config.bc_basis_paths) if data_config.use_bc and data_config.bc_basis_paths is not None else None
-    merged = acquire_merged_data(data_config, merged_data)
-    return prepare_standard(
-        merged, basis_inputs=basis_inputs, bc_basis=bc_basis,
-        **data_config.select(
-            "domain", "start_date", "flux_sources", "averaging_error", "filters",
-            "basis_algorithm", "nbasis", "fix_basis_outer_regions", "use_bc", "bc_freq",
-            "min_error", "min_error_options",
-        ),
-    )
 
 
 def run_standard(
@@ -541,13 +520,37 @@ def run_standard(
     if likelihood_builder is None and config.model.likelihood is None:
         raise ValueError("A standard RHIME run requires a built-in or custom likelihood.")
 
-    validate_output_resources(config.output)
-    # 1. Acquire and prepare scientific inputs; export the basis only when requested.
-    prepared = (prepare_inputs(config.data, merged_data)
-                if prepared is None else prepared.validated())
+    validate_standard_output_resources(config.output)
+    # 1. Resolve resources, acquire or validate data, then prepare scientific inputs.
+    if prepared is None:
+        basis_inputs = resolve_basis_inputs(config.data)
+        bc_basis = (
+            load_bc_basis(config.data.bc_basis_paths)
+            if config.data.use_bc and config.data.bc_basis_paths is not None else None
+        )
+
+        if merged_data is None:
+            merged_data = acquire_merged_data(config.data)
+        else:
+            merged_data.validate_for_preparation(
+                **config.data.select("species", "domain", "start_date", "end_date", "split_by_sectors"),
+            )
+
+        prepared = prepare_standard(
+            merged_data, basis_inputs=basis_inputs, bc_basis=bc_basis,
+            **config.data.select(
+                "domain", "start_date", "flux_sources", "averaging_error", "filters",
+                "basis_algorithm", "nbasis", "fix_basis_outer_regions", "use_bc", "bc_freq",
+                "min_error", "min_error_options",
+            ),
+        )
+    else:
+        prepared = prepared.validated()
+
     if config.data.basis_output_path is not None:
         Path(config.data.basis_output_path).parent.mkdir(parents=True, exist_ok=True)
         prepared.basis_functions.save(config.data.basis_output_path)
+
     # 2. Materialize selected inputs and priors together, then build and sample.
     model_inputs, priors = materialize_standard_inputs(prepared, config.model)
     built = build_standard_model(
@@ -555,10 +558,12 @@ def run_standard(
         likelihood_builder=likelihood_builder, likelihood_kwargs=likelihood_kwargs,
     )
     built.output_contract.validate_requested_output(config.output.output_format)
+
     posterior = sample_rhime_model(built, sampler)
     annotate_sample_trace(
         built, posterior, likelihood_builder=likelihood_builder, likelihood_kwargs=likelihood_kwargs,
     )
+
     # 3. Bind the scientific view, write requested products, then export artifacts.
     output_start = timer_start()
     with (timed("rhime.output.inversion_output_create", output_format=config.output.output_format)
@@ -569,6 +574,7 @@ def run_standard(
             end_date=config.data.end_date, actual_inference=sampler.describe(),
             provenance=installed_ogi_provenance(),
         )
+    postprocess_standard_outputs(inv_out, config.output)
     save_standard_artifacts(inv_out, config.output)
     log_timing(
         "rhime.output_total", timer_seconds(output_start),

@@ -303,13 +303,15 @@ full request can supply its data record; a preparation-only invocation can resol
 the same `data` mapping independently:
 
 ```python
-data = DataConfig.from_params(sections["data"])
-prepared = standard_stages.prepare(data, output_dir="runs/prepared")
+data_config = DataConfig.from_params(sections["data"])
+prepared = standard_stages.prepare(data_config, output_dir="runs/prepared")
 a = standard_stages.sample(prepared, model=model_a, output_dir="runs/a")
 b = standard_stages.sample(prepared, model=model_b, output_dir="runs/b")
 result = standard_stages.postprocess(
-    a, run_context=context,
-    output=RhimeOutputSpec(output_format="basic", output_path="runs/products"),
+    a,
+    output=RhimeOutputSpec(
+        output_format="paris", output_path="runs/products", country_file="countries.nc",
+    ),
 )
 ```
 
@@ -405,7 +407,9 @@ unknown revision does not prevent execution. CO2 keeps its trace/affine meaning.
 
 ```python
 def postprocess(sample_manifest, *, output):
+    validate_standard_output_resources(output)
     inv_out = load_samples(sample_manifest)  # decode the borrowed scientific view
+    postprocess_standard_outputs(inv_out, output)
     save_standard_artifacts(inv_out, output)
     return inv_out
 ```
@@ -462,17 +466,46 @@ preparation is already eager, but direct Python priors may remain lazy until thi
 call. No mandatory prior-materialization stage or new CLI command is introduced.
 
 ```python
-prepared = supplied_prepared if supplied_prepared is not None else prepare_inputs(data_config, merged_data)
+validate_standard_output_resources(output_spec)
+if supplied_prepared is None:
+    basis_inputs = resolve_basis_inputs(data_config)
+    bc_basis = (
+        load_bc_basis(data_config.bc_basis_paths)
+        if data_config.use_bc and data_config.bc_basis_paths is not None else None
+    )
+    if merged_data is None:
+        merged_data = acquire_merged_data(data_config)
+    else:
+        merged_data.validate_for_preparation(
+            **data_config.select("species", "domain", "start_date", "end_date", "split_by_sectors"),
+        )
+    prepared = prepare_standard(
+        merged_data, basis_inputs=basis_inputs, bc_basis=bc_basis,
+        **data_config.select(
+            "domain", "start_date", "flux_sources", "averaging_error", "filters",
+            "basis_algorithm", "nbasis", "fix_basis_outer_regions", "use_bc", "bc_freq",
+            "min_error", "min_error_options",
+        ),
+    )
+else:
+    prepared = supplied_prepared.validated()
+
 # Optional basis export saves this value without rewriting its source metadata.
 inputs, priors = materialize_standard_inputs(prepared, model_spec)
 built = build_standard_model(inputs, model_spec, priors=priors, likelihood_builder=...)
+built.output_contract.validate_requested_output(output_spec.output_format)
 posterior = sample_rhime_model(built, sampler)
+annotate_sample_trace(built, posterior, likelihood_builder=...)
 inv_out = make_standard_output(...)
-save_standard_artifacts(inv_out, output_spec)  # runner-invoked operational writer
+postprocess_standard_outputs(inv_out, output_spec)  # compute and write derived products
+save_standard_artifacts(inv_out, output_spec)  # export scientific result and trace
 return inv_out
 ```
 
-- `prepare` uses the common preparation operation and `save_preparation`.
+- `prepare` resolves resources, acquires or validates supplied data, calls
+  `prepare_standard`, then `save_preparation`. These steps remain visible in
+  the phase runner, as in full execution; no helper combines acquisition and
+  preparation. `acquire_merged_data` only acquires data.
   `sample` loads preparation, materializes where needed, builds, samples and saves.
   `postprocess` uses one `load_samples` decoder returning the scientific view and
   writes requested products/exports. Standard prepared-input execution uses the
@@ -482,8 +515,11 @@ return inv_out
 - `InversionOutput` is returned even with `output_format="none"`; no files are
   written in that case. Its output metadata holds only the inference description.
   In-memory products can be recomputed through existing product functions.
-- The runner owns optional self-contained inversion-output, trace and basis
-  exports. Derived-product generation/writing may retain its existing owner.
+- The runner calls `postprocess_standard_outputs` for PARIS/legacy generation
+  and writing, then `save_standard_artifacts` for optional self-contained
+  inversion-output and trace exports. Standard PARIS/legacy requests require
+  a destination before execution; in-memory reporting uses product functions
+  directly. Optional basis export remains visible beside preparation.
   Existing CLI export defaults, filenames, overwrite behaviour and logs remain.
   Deprecation of the self-contained file export remains a separate proposal.
 - Preparation and sample persistence use their existing codecs and explicit

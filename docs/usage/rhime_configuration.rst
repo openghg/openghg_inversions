@@ -225,11 +225,16 @@ To select a packaged resource explicitly from Python:
 
 These resources support basis construction. Country reporting is a separate
 operation: supply ``country_file`` for ``basic`` or ``paris`` country reporting.
-Complete runs call ``rhime.validate_output_resources(config.output)`` before
-acquisition or inference; output helpers check again before creating products.
-Preparation-only workflows do not require reporting resources. Staged
-postprocessing checks them before creating its output directory. Packaged tutorial
-fixtures remain usable when explicitly selected.
+Standard full runs call
+``rhime.validate_standard_output_resources(config.output)`` before acquisition or
+inference. This checks country resources and requires ``output_path`` for PARIS
+and legacy products. Staged standard postprocessing applies the same check before
+loading samples. Direct callers of ``postprocess_standard_outputs`` must perform
+this check first. Multisector and nested routes retain
+``rhime.validate_output_resources``, which checks country resources without
+requiring a written-product destination. Preparation-only workflows do not
+require reporting resources. Packaged tutorial fixtures remain usable when
+explicitly selected.
 
 For devel/0.8, saving a basis uses the retained modern artifact by default.
 For historical callers, ``basis.compatibility.make_basis_functions`` accepts

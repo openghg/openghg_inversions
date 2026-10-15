@@ -98,8 +98,17 @@ arguments from their explicit configuration owner instead.
 Standard ``output_format="basic"`` does not compute a discarded in-memory summary
 or write a product file. Call ``basic_output(result, country_file=...)`` explicitly
 on the returned ``InversionOutput``. PARIS and legacy outputs retain their file
-writers. ``save_standard_artifacts(result, output_spec)`` is the runner-invoked
-operational helper for requested products and inversion-output/trace exports.
+writers, invoked through ``postprocess_standard_outputs(result, output_spec)``.
+Call ``validate_standard_output_resources(output_spec)`` before execution;
+standard PARIS and legacy requests require an ``output_path``. The separate
+``save_standard_artifacts(result, output_spec)`` exports inversion outputs and
+traces without computing derived products. Copied runners should call the
+postprocessor before the exporter.
+
+``acquire_merged_data(data_config)`` now only acquires data. Validate a supplied
+handoff with ``merged_data.validate_for_preparation(...)`` in the runner, then
+call ``prepare_standard`` with the selected resources and resolved choices.
+The combined ``standard.prepare_inputs`` convenience function is removed.
 
 Optional standard basis exports save the existing scientific value without replacing it
 to stamp an export-path receipt. Original basis source provenance is retained;
@@ -107,7 +116,10 @@ the requested destination belongs to configuration or run/checkpoint metadata.
 Deferred-family basis exports retain their existing metadata contract.
 Self-contained ``InversionOutput`` and trace exports retain their defaults and
 formats. The proposed deprecation of the self-contained file export has not been
-implemented.
+implemented. Checkpoints retain dependencies between phases; a self-contained
+inversion-output export supports reporting without those manifests, while a
+trace or basis export alone is not a complete inversion result. See
+:doc:`staged_workflow` for artifact choices.
 
 Planned 0.9 deprecations and removals
 -------------------------------------

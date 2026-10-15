@@ -739,10 +739,18 @@ def run_multisector(
 
     # 1. Acquire, or check supplied merged data.
     preparation_start = timer_start()
-    merged = acquire_merged_data(config.data, merged_data)
+    if merged_data is None:
+        merged = acquire_merged_data(config.data)
+    else:
+        merged_data.validate_for_preparation(
+            **config.data.select("species", "domain", "start_date", "end_date", "split_by_sectors"),
+        )
+        merged = merged_data
+
     # 2. Preparation works on per-site datasets; ``merged`` stays acquired data.
     with_errors = prepare_observation_errors(merged.site_data, averaging_error=config.data.averaging_error)
     filtered, site_options = filter_observations(with_errors, merged.site_options, filters=config.data.filters)
+
     runtime_flux = resolve_runtime_flux(merged.flux_data, split_by_sectors=merged.split_by_sectors)
     with timed("rhime.prepare_inputs.basis_build", basis_algorithm=config.data.basis_algorithm):
         basis_functions = prepare_basis(
@@ -756,6 +764,7 @@ def run_multisector(
             **basis_inputs,
         )
     basis_functions = export_basis(basis_functions, config.data.basis_output_path)
+
     sensitivities = build_sensitivities(
         filtered,
         basis_functions,
@@ -765,6 +774,7 @@ def run_multisector(
         bc_basis=bc_basis,
         multisector=True,
     )
+
     prepared = assemble_rhime_inputs(
         sensitivities,
         basis_functions,

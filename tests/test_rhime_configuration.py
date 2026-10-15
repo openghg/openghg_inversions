@@ -607,11 +607,12 @@ def test_model_defaults_and_repeated_facts_use_saved_preparation():
         assert f"claimed {value!r}, expected {getattr(data, name)!r}" in str(error.value)
 
 
-def test_repeated_boundary_frequency_accepts_equivalent_fixed_duration():
+@pytest.mark.parametrize(("frequency", "equivalent"), [("24h", "1D"), ("H", "1h"), ("3H", "180min")])
+def test_repeated_boundary_frequency_accepts_equivalent_fixed_duration(frequency, equivalent):
     data = rhime_params.DataConfig.from_params(
-        rhime_params.group_params(_request(bc_freq="24h"))["data"]
+        rhime_params.group_params(_request(bc_freq=frequency))["data"]
     )
-    assert rhime_params.resolve_model_options({"bc_freq": "1D"}, data_config=data).use_bc
+    assert rhime_params.resolve_model_options({"bc_freq": equivalent}, data_config=data).use_bc
     with pytest.raises(ValueError, match="bc_freq"):
         rhime_params.resolve_model_options({"bc_freq": "monthly"}, data_config=data)
     with pytest.raises(ValueError, match="bc_freq"):

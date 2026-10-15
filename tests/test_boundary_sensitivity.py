@@ -34,6 +34,13 @@ def test_prepare_boundary_sensitivity_labels_one_period_and_provenance() -> None
     np.testing.assert_allclose(result.values, _sensitivity().values)
 
 
+@pytest.mark.parametrize("frequency", ["0h", "-1h", "NaT", "nan", "inf"])
+@pytest.mark.filterwarnings("error")
+def test_boundary_frequency_rejects_invalid_duration(frequency: str) -> None:
+    with pytest.raises(ValueError, match="Invalid frequency"):
+        BoundaryAlignment.prepare(_sensitivity(), frequency=frequency)
+
+
 def test_prepare_boundary_sensitivity_reorders_observations() -> None:
     sensitivity = _sensitivity()
     reordered = sensitivity.time[[2, 0]]
