@@ -15,11 +15,11 @@ from typing import Any, get_type_hints
 from ._resources import resolve_resource_paths
 from ._runner_compat import REQUEST_ALIASES, migration_errors, translate_rhime_aliases
 from .ini import read_rhime_ini
-from .params import REQUEST_CLAIM_NAMES, DataConfig, rhime_option_groups
+from .params import REQUEST_CLAIM_NAMES, DataConfig, option_groups
 from .specs import RhimeOutputSpec
 
 
-def load_rhime_params(
+def load_params(
     *,
     config_file: str | Path | None = None,
     params_file: str | Path | None = None,
@@ -59,7 +59,7 @@ def load_rhime_params(
         params = read_rhime_ini(source)
     elif source is not None:
         params = json.loads(source.read_text(encoding="utf-8"))
-    owners = rhime_option_groups()
+    owners = option_groups()
     active = set(owners) if phase_groups is None else set(phase_groups)
     claims_owner = "data" if "data" in active else "model"
     groups: dict[str, dict[str, Any]] = {group: {} for group in owners}

@@ -53,7 +53,7 @@ from .builders import (
     validate_model_build_result,
 )
 from .materialization import materialize_pymc_inputs
-from .outputs import RhimeResult, _make_inversion_output, validate_output_resources
+from .outputs import RhimeResult, _make_inversion_output, validate_output_resources, annotate_sample_trace
 from .ini import read_rhime_ini
 from .params import DataConfig, RhimeConfig
 from .preparation import (
@@ -1435,6 +1435,7 @@ def run_rhime_nested_from_prepared_inputs(
         likelihood_kwargs=likelihood_kwargs,
     )
     idata = sample_rhime_model(build_result, active_sampler)
+    annotate_sample_trace(build_result, idata)
     result = make_standard_rhime_result(
         prepared=prepared_inputs.combined,
         run_spec=run_spec,
@@ -1492,7 +1493,7 @@ def run_nested(
     """Run a standard one-source RHIME inversion on nested native grids.
 
     Nested options may be supplied directly or in the INI file. Ordinary
-    options use the same modern vocabulary as :func:`run_rhime`.
+    options use the same modern vocabulary as :func:`run_standard`.
     ``output_format='none'`` returns the sampled result without formatted
     products; ``output_format='paris'`` creates separate native-grid flux
     products and one shared concentration product.

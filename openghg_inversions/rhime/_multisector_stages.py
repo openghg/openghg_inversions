@@ -36,6 +36,7 @@ from .multisector import (
 )
 from .outputs import (
     RhimeResult,
+    annotate_sample_trace,
     make_multisector_rhime_outputs,
     validate_output_resources,
 )
@@ -258,6 +259,7 @@ def sample_rhime_stage(
     )
     built = _build_prepared_model(prepared, run_spec)
     idata = sample_rhime_model(built, setup.sampler)
+    annotate_sample_trace(built, idata)
     trace_path = _output_path(destination, None, "posterior.nc")
     save_trace(idata, trace_path)
     binding_path = _write_json(
@@ -332,6 +334,7 @@ def postprocess_rhime_stage(
         output_contract = _load_output_binding(sample_contract, manifest_path=Path(sample_manifest).resolve())
     output_contract.validate_requested_output(output_spec.output_format)
     idata = load_trace(posterior_path)
+    output_contract.validate_trace(idata)
     result = make_multisector_rhime_result(
         prepared=prepared,
         run_spec=run_spec,

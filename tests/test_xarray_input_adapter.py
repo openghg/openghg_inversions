@@ -834,12 +834,11 @@ def test_adapter_output_executes_through_prepared_runner_without_openghg(
     }, coords={"region": prepared.inv_inputs.region}))
     monkeypatch.setattr(RhimeSampler, "sample", lambda self, model, **kwargs: sampled)
 
-    result = run_rhime_from_prepared_inputs(prepared_inputs=prepared, run_spec=run_spec)
+    result = run_rhime_from_prepared_inputs(prepared_inputs=prepared, model_spec=run_spec.model, output_spec=run_spec.output, start_date=run_spec.start_date, end_date=run_spec.end_date)
 
     xr.testing.assert_identical(result.inv_inputs, prepared.inv_inputs)
-    assert result.run_spec.sites == ("TAC",)
-    assert result.model is not None
-    assert {"x", "y"}.issubset(result.model.named_vars)
+    assert tuple(result.run_metadata["sites"]) == ("TAC",)
+    assert "x" in result.trace["posterior"]
 
 
 @pytest.mark.parametrize("suffix", [".nc", ".zarr"])

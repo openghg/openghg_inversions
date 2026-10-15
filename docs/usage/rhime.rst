@@ -148,7 +148,7 @@ metadata.
 Inspecting configuration
 ------------------------
 
-Pass options directly to ``run_rhime`` or ``run_rhime_multisector`` for an
+Pass options directly to ``run_standard`` or ``run_rhime_multisector`` for an
 ordinary inversion. To inspect their resolved choices before retrieving data,
 use ``RhimeConfig.from_params(options, multisector=False)`` (or
 ``multisector=True`` for the multisector recipe), then pass the result as
@@ -187,8 +187,8 @@ Running Prepared Inputs
 
 Advanced workflows can prepare canonical RHIME inputs separately from data
 acquisition and run them without repeating OpenGHG-backed preparation. Supply
-the retained ``RhimePreparedInputs`` together with the existing public run,
-model, output, and sampler specifications:
+the retained ``RhimePreparedInputs`` with model and output choices, date bounds
+and sampler settings. Standard execution returns ``InversionOutput``:
 
 .. code-block:: python
 
@@ -200,7 +200,6 @@ model, output, and sampler specifications:
    from openghg_inversions.inversion_data import RhimePreparedInputs
    from openghg_inversions.rhime import (
        RhimeOutputSpec,
-       RhimeRunSpec,
        RhimeSampler,
        run_rhime_from_prepared_inputs,
    )
@@ -223,18 +222,12 @@ model, output, and sampler specifications:
            ),
        ),
    )
-   run_spec = RhimeRunSpec(
-       start_date="2019-01-01",
-       end_date="2019-01-02",
-       sites=prepared.sites,
-       averaging_period=prepared.averaging_period,
-       model=model_spec,
-       output=RhimeOutputSpec(output_format="none"),
-       split_by_sectors=False,
-   )
    result = run_rhime_from_prepared_inputs(
        prepared_inputs=prepared,
-       run_spec=run_spec,
+       model_spec=model_spec,
+       output_spec=RhimeOutputSpec(output_format="none"),
+       start_date="2019-01-01",
+       end_date="2019-01-02",
        sampler=RhimeSampler(draws=1000, tune=1000, chains=4),
    )
 
@@ -248,14 +241,11 @@ The same selection rule applies to the nested, CO2 and CO2/O2 direct runners,
 which retain their recipe-specific defaults. Complete configured runs use
 ``config.sampler`` instead of replacing its settings with defaults.
 
-Live results retain their invocation's sampler and a descriptive snapshot in
-``result.output_metadata["sampler"]``. A result constructed without a sampler,
-including a replay result, has ``result.sampler is None``. Replay passes the saved
-snapshot to outputs without running inference. It may construct sampler settings
-to describe recorded values; missing or unparseable descriptions remain unavailable
-and do not prevent scientific products. Current defaults do not fill missing
-provenance. ``None`` denotes absence of a live object, not absence of completed
-inference.
+Standard results contain the inference description in
+``result.output_metadata["sampler"]`` without retaining the live sampler or PyMC
+model. Replay reuses the saved description without inference or current defaults.
+Deferred multisector, nested and CO2 results keep their existing live-reference
+contract until their separate handoff adoption.
 
 The prepared object is trusted canonical input: it must already contain the
 observation, error, sensitivity, and optional boundary-condition variables
@@ -741,34 +731,27 @@ experiment such as asking what could be recovered if one emissions sector were
 known without uncertainty. The fixed state's uncertainty is deliberately
 removed rather than transferred into aggregation error.
 
-Given canonical ``inv_inputs``, the following example assumes that
-``inv_inputs["H"]`` carries a state-aligned ``basis_group`` coordinate
+Given canonical ``prepared`` inputs and a resolved one-sector ``model_spec``,
+the following example assumes that ``prepared.inv_inputs["H"]`` carries a
+state-aligned ``basis_group`` coordinate
 containing the value ``"outer"``:
 
 .. code-block:: python
 
    from openghg_inversions.models import StateActivity
-   from openghg_inversions.observation_error import resolve_aggregation_error
-   from openghg_inversions.rhime import PollutionEventSettings
-   from openghg_inversions.rhime.standard import build_standard_rhime_model
+   from dataclasses import replace
+   from openghg_inversions.rhime.standard import (
+       build_standard_model, materialize_standard_inputs,
+   )
 
    state_policy = StateActivity(
        fixed_groups=("outer",),
        fixed_value=1.0,
    )
-   model = build_standard_rhime_model(
-       inv_inputs["H"],
-       observations=inv_inputs["mf"],
-       observation_error=inv_inputs["mf_error"],
-       aggregation_error=resolve_aggregation_error(inv_inputs, "none"),
-       minimum_error=inv_inputs["min_error"],
-       likelihood_settings=PollutionEventSettings(
-           sigma_prior={"pdf": "uniform", "lower": 0.0, "upper": 0.1},
-       ),
-       boundary_sensitivity=inv_inputs.get("H_bc"),
-       x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.5},
-       state_activity=state_policy,
-   )
+   selected_model = replace(model_spec, state_activity=state_policy)
+   inputs, priors = materialize_standard_inputs(prepared, selected_model)
+   built = build_standard_model(inputs, selected_model, priors=priors)
+   model = built.model
 
 The direct multisector builder accepts one ordered sequence of ``SectorSpec``
 objects. Each sector carries its source, backend suffix, prior, and optional
@@ -901,33 +884,33 @@ The retained flux is used unless an explicit replacement is supplied. State
 and source labels come from the retained operator; source-specific ragged bases
 retain their gathered ``(source, region_in_source)`` state coordinate.
 
+This example uses canonical ``prepared`` inputs and a resolved one-sector
+``model_spec`` matching the retained basis.
+
 .. code-block:: python
 
    from openghg_inversions.basis import (
        calibrate_basis_prior_stdev,
        project_basis_prior_stdev,
    )
-   from openghg_inversions.observation_error import resolve_aggregation_error
-   from openghg_inversions.rhime import PollutionEventSettings
-   from openghg_inversions.rhime.standard import build_standard_rhime_model
+   from dataclasses import replace
+   from openghg_inversions.rhime.standard import (
+       build_standard_model, materialize_standard_inputs,
+   )
 
    x_prior_stdev = project_basis_prior_stdev(
        basis_functions,
        area_grid=cell_area,
        grid_cell_prior_stdev=grid_prior_sd,
    )
-   model = build_standard_rhime_model(
-       inv_inputs["H"],
-       observations=inv_inputs["mf"],
-       observation_error=inv_inputs["mf_error"],
-       aggregation_error=resolve_aggregation_error(inv_inputs, "none"),
-       minimum_error=inv_inputs["min_error"],
-       likelihood_settings=PollutionEventSettings(
-           sigma_prior={"pdf": "uniform", "lower": 0.0, "upper": 0.1},
-       ),
-       boundary_sensitivity=inv_inputs.get("H_bc"),
+   selected_sector = replace(
+       model_spec.sectors[0],
        x_prior={"pdf": "normal", "mu": 1.0, "sigma": x_prior_stdev},
    )
+   selected_model = replace(model_spec, sectors=(selected_sector,))
+   inputs, priors = materialize_standard_inputs(prepared, selected_model)
+   built = build_standard_model(inputs, selected_model, priors=priors)
+   model = built.model
 
 ``calibrate_basis_prior_stdev`` accepts a caller-defined target matrix and
 requested relative standard deviation. It projects a unit cell standard
@@ -1001,9 +984,9 @@ source-axis contract.
 
 ``run_hbmcmc.py`` is a transitional compatibility wrapper for supported old
 fixedbasis-style INI files. It translates legacy option names to the modern
-``run_rhime`` API and uses the legacy filename convention. It always executes
+``run_standard`` API and uses the legacy filename convention. It always executes
 RHIME: the direct ``fixedbasisMCMC`` / ``inferpymc`` implementation and the
 ``--legacy-fixedbasis`` option have been removed. New scripts and new configs
-should use ``openghg-inversions run-rhime`` or ``run_rhime(...)`` directly.
+should use ``openghg-inversions run-rhime`` or ``run_standard(...)`` directly.
 See :doc:`legacy_and_migration` for the parameter map, return-type changes,
 and interfaces without a current equivalent.

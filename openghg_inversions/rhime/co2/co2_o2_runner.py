@@ -13,7 +13,7 @@ import xarray as xr
 
 from openghg_inversions.array_ops import to_dense
 from openghg_inversions.models import StateActivity
-from openghg_inversions.models.priors import PriorArgs
+from openghg_inversions.models.priors import PriorArgs, prior_records
 from openghg_inversions.rhime.builders import RhimeModelBuildResult
 from openghg_inversions.inference.sampling import resolve_sampler
 from openghg_inversions.rhime.sampling import RhimeSampler, sample_rhime_model
@@ -189,6 +189,7 @@ def _annotate_co2_o2_trace(
     built: RhimeModelBuildResult,
 ) -> xr.DataTree:
     """Persist scientific roles, units, and provenance after coord restoration."""
+    trace.attrs["rhime_priors"] = json.dumps(prior_records(built.model))
     trace.attrs["rhime_recipe"] = "co2_o2"
     trace.attrs["rhime_variable_roles"] = json.dumps(
         dict(built.variable_roles),

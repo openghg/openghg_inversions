@@ -39,11 +39,11 @@ options and limits.
 Run a standard inversion
 ------------------------
 
-Python scripts and notebooks should call ``run_rhime``::
+Python scripts and notebooks should call ``run_standard``::
 
-   from openghg_inversions.rhime import run_rhime
+   from openghg_inversions.rhime import run_standard
 
-   result = run_rhime(
+   result = run_standard(
        species="ch4",
        sites=["TAC"],
        averaging_period=["1h"],

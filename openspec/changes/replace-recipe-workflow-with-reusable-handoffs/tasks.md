@@ -142,6 +142,18 @@ collision avoidance and isolation; manifest-last completion remains required.
 These decisions supersede the earlier standard complete-builder acceptance and
 trace-retention test details above.
 
+Revised delivery plan, 15 October 2026: standard full/prepared/replay execution
+returns `InversionOutput`, including for no-output runs. The Python `run_rhime`
+name is removed in 0.8 with helpful import guidance; CLI files/logs remain
+unchanged. Consolidate the builders into one eager operation and explicitly
+materialize related selected inputs and enabled priors in callers. One sample
+reader/writer owns reference reconstruction and preparation generation binding.
+Runners own optional basis, trace and inversion-output exports without rewriting
+scientific inputs for receipts. The earlier recorded builder/result shapes are
+superseded; their historical test counts do not establish the revised acceptance.
+Task 1.11 is failed/pending implementation revision and actual maintainer review,
+not an administrative tick. No passing test marks that readability gate complete.
+
 No multisector/CO2 adoption, final integrated-family gate, or spec promotion is
 claimed by this standard delivery. CI verifies the pushed integration's full
 suite, supported Python versions, typing and documentation.

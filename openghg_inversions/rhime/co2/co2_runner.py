@@ -16,7 +16,7 @@ from typing import Any, Literal
 import xarray as xr
 
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
-from openghg_inversions.models.priors import PriorArgs
+from openghg_inversions.models.priors import PriorArgs, prior_records
 from openghg_inversions.models.scalar_sigma import (
     ScalarSigmaEigenbasis,
     add_scalar_sigma_eigen_likelihood,
@@ -71,6 +71,7 @@ def annotate_co2_trace(
     Returns:
         The annotated trace.
     """
+    trace.attrs["rhime_priors"] = json.dumps(prior_records(built.model))
     roles = dict(built.variable_roles)
     metadata = dict(built.metadata)
     trace.attrs["rhime_variable_roles"] = json.dumps(roles, sort_keys=True)

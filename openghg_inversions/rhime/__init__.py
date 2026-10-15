@@ -33,7 +33,7 @@ from .materialization import materialize_pymc_inputs
 from .ini import read_rhime_ini
 from .params import (
     DataConfig,
-    group_rhime_params,
+    group_params,
     RhimeConfig,
     resolve_flux_sources,
 )
@@ -71,7 +71,8 @@ from .nested import (
 from .outputs import (
     RhimeResult,
     make_multisector_rhime_outputs,
-    make_standard_rhime_outputs,
+    make_standard_output,
+    write_standard_outputs,
     validate_output_resources,
 )
 from .prepared import run_rhime_from_prepared_inputs
@@ -90,11 +91,11 @@ from .stages import (
     sample_rhime_stage,
 )
 from .standard import (
-    build_standard_rhime_model,
-    build_standard_rhime_model_result,
+    build_standard_model,
+    materialize_standard_inputs,
+    prepare_inputs,
     make_standard_rhime_result,
     run_standard,
-    run_rhime,
     standard_model_input_names,
 )
 from .specs import (
@@ -118,7 +119,7 @@ __all__ = [
     "with_prepared_sites",
     "RhimeConfig",
     "DataConfig",
-    "group_rhime_params",
+    "group_params",
     "read_rhime_ini",
     "SectorSpec",
     "AdditiveSigmaSettings",
@@ -145,8 +146,9 @@ __all__ = [
     "build_nested_rhime_model",
     "build_nested_rhime_model_result",
     "build_sensitivities",
-    "build_standard_rhime_model",
-    "build_standard_rhime_model_result",
+    "build_standard_model",
+    "materialize_standard_inputs",
+    "prepare_inputs",
     "filter_observations",
     "prepare_observation_errors",
     "configuration_identity",
@@ -160,7 +162,8 @@ __all__ = [
     "make_multisector_rhime_result",
     "make_multisector_rhime_outputs",
     "make_standard_rhime_result",
-    "make_standard_rhime_outputs",
+    "make_standard_output",
+    "write_standard_outputs",
     "validate_output_resources",
     "materialize_pymc_inputs",
     "co2_model_input_names",
@@ -172,7 +175,6 @@ __all__ = [
     "postprocess_rhime_stage",
     "prepare_rhime_stage",
     "prior_predictive_stage",
-    "run_rhime",
     "run_rhime_co2",
     "run_rhime_from_prepared_inputs",
     "run_rhime_multisector",
@@ -183,3 +185,18 @@ __all__ = [
     "standard_model_input_names",
     "with_prepared_rhime_sites",
 ]
+
+
+def __getattr__(name: str):
+    """Explain removal of the historical standard runner import."""
+    if name == "run_rhime":
+        raise ImportError(
+            "`run_rhime` was removed in 0.8; use `run_standard`, which returns an `InversionOutput`. "
+            "The `run-rhime` CLI command is unchanged."
+        )
+    if name in {"build_standard_rhime_model", "build_standard_rhime_model_result"}:
+        raise ImportError(
+            f"`{name}` was removed in 0.8; materialize inputs and priors explicitly, "
+            "then use `build_standard_model`."
+        )
+    raise AttributeError(name)

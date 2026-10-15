@@ -45,7 +45,7 @@ configuration as follows:
 * Replace the removed RHIME ``params_from_config`` re-export with
   ``read_rhime_ini``, apply overrides, then call ``RhimeConfig.from_params``.
   The dictionary adapter remains only in ``hbmcmc.compatibility`` during 0.8.
-  Runner frontends, including direct ``run_rhime`` calls, retain supported
+  Runner frontends, including direct ``run_standard`` calls, retain supported
   aliases through 0.8 with deprecation warnings. ``RhimeConfig.from_params``
   accepts canonical names only and has no alias translation or warnings.
   Modern output formats and explicit save paths remain.
@@ -53,9 +53,11 @@ configuration as follows:
   as full and staged execution and rejects ``model_builder``. Use
   ``likelihood_builder`` for a custom likelihood, or construct and sample a
   custom PyMC graph directly. The complete-builder hook remains available for
-  multisector compatibility. ``build_standard_rhime_model_result`` takes
-  ``RhimeModelSpec`` instead of ``RhimeRunSpec``; output choices belong to result
-  and product construction. Select acquisition/preparation arguments with
+  multisector compatibility. Standard builders have been consolidated into
+  ``build_standard_model``, which accepts eager inputs and materialized priors.
+  Call ``materialize_standard_inputs`` explicitly before construction when
+  inputs or prior parameters are lazy; related arrays compute together.
+  Output choices belong to the runner. Select acquisition/preparation arguments with
   ``config.data.select(...)`` and use ``config.model`` / ``config.output``
   directly; the global ``RhimeConfig.select`` API has been removed.
 * Use invocation-relative paths for Python/CLI calls, INI/JSON resource and
@@ -69,6 +71,27 @@ configuration as follows:
 
 See :doc:`rhime_configuration` for complete resource selection examples and
 :doc:`staged_workflow` for the separate 0.7-to-0.8 staged artifact migration.
+
+Additional 0.8 Python API changes
+---------------------------------
+
+Replace ``build_standard``, ``build_standard_rhime_model`` and
+``build_standard_rhime_model_result`` with the single eager
+``build_standard_model`` contract. Model inputs and enabled prior parameters must
+be materialized before calling it; ``materialize_standard_inputs`` is the shared
+convenience operation. It is not another CLI phase.
+
+Configuration helpers introduced during this development cycle are named
+``load_params``, ``group_params`` and ``option_groups``; ``read_rhime_ini`` retains
+its established name. ``RHIME_PREPARATION_OPTION_NAMES`` is removed; select named
+arguments from their explicit configuration owner instead.
+
+Optional basis exports save the existing scientific value without replacing it
+to stamp an export-path receipt. Original basis source provenance is retained;
+the requested destination belongs to configuration or run/checkpoint metadata.
+Self-contained ``InversionOutput`` and trace exports retain their defaults and
+formats. The proposed deprecation of the self-contained file export has not been
+implemented.
 
 Planned 0.9 deprecations and removals
 -------------------------------------
@@ -117,7 +140,7 @@ transitional wrapper::
        2019-01-01 2019-02-01 -c my_inversion.ini
 
 The wrapper translates the old vocabulary, copies the effective configuration
-for provenance, and calls ``run_rhime``. It does not run the removed HBMCMC
+for provenance, and calls ``run_standard``. It does not run the removed HBMCMC
 implementation. ``--legacy-fixedbasis`` and ``--generate`` are no longer
 accepted. Keep existing configuration files while migrating, but create new
 ones from ``openghg_inversions/config/templates/rhime_template.ini`` and run
@@ -135,12 +158,12 @@ quoted as one shell argument, for example::
 Python workflows
 ~~~~~~~~~~~~~~~~
 
-Replace ``fixedbasisMCMC(...)`` with ``run_rhime(...)`` and use the names in
+Replace ``fixedbasisMCMC(...)`` with ``run_standard(...)`` and use the names in
 the table below::
 
-   from openghg_inversions.rhime import run_rhime
+   from openghg_inversions.rhime import run_standard
 
-   result = run_rhime(
+   result = run_standard(
        species="ch4",
        sites=["TAC"],
        averaging_period=["1h"],
@@ -154,11 +177,21 @@ the table below::
        output_name="ch4_TAC",
    )
 
-``run_rhime`` returns a :class:`~openghg_inversions.rhime.RhimeResult`, not a
-legacy tuple or sampler dictionary. Its principal attributes are ``idata``
-(an xarray ``DataTree`` with ArviZ-compatible groups), ``inv_inputs`` (the labelled model inputs),
-``inv_out`` (the modern ``InversionOutput`` when constructed), and ``outputs``
-(requested derived products).
+The Python ``run_rhime`` API is removed in 0.8; importing it raises an
+``ImportError`` directing callers to ``run_standard``. This supersedes the earlier
+proposal to retain a deprecated wrapper. The ``run-rhime`` CLI command retains its
+name, written files and logging and calls ``run_standard`` directly.
+
+``run_standard``, standard prepared-input execution and ``stages.postprocess``
+return an :class:`~openghg_inversions.postprocessing.inversion_output.InversionOutput`,
+including with ``output_format="none"``. Use ``result.trace`` instead of
+``result.idata``, and use ``result.inv_inputs``, ``result.basis_functions``,
+``result.variable_roles``, ``result.run_metadata`` and ``result.model_metadata``
+for the scientific result. Output-policy choices, written paths, live PyMC models
+and samplers are not stored on it; ``output_metadata`` contains the inference
+description. Call product functions such as ``basic_output(result)`` to produce
+in-memory summaries. For graph inspection, call the eager model builder directly.
+Deferred multisector, nested and CO2 families retain their existing result types.
 
 Parameter mapping
 -----------------
@@ -238,7 +271,7 @@ translate aliases nor emit alias deprecation warnings.
      - Put ``reparameterise = true`` in each relevant lognormal prior mapping
 
 The wrapper retains the historical output filename convention. Direct
-``run_rhime`` calls use the RHIME filename convention unless explicitly
+``run_standard`` calls use the RHIME filename convention unless explicitly
 configured otherwise.
 
 Migrating an old configuration
@@ -353,7 +386,7 @@ the retained RHIME abstractions:
    * - ``basis_functions_wrapper``
      - ``prepare_basis``
      - Call ``BasisFunctions.sensitivity`` when applying the retained basis;
-       complete inversions should normally use ``run_rhime``
+       complete inversions should normally use ``run_standard``
    * - ``add_inferpymc_likelihood_component``
      - RHIME likelihood selection
      - Configure a built-in likelihood, or pass a ``likelihood_builder`` for a

@@ -24,7 +24,6 @@ import argparse
 from collections.abc import Sequence
 import json
 from pathlib import Path
-from time import perf_counter
 from typing import Any
 
 import numpy as np
@@ -52,18 +51,21 @@ from openghg_inversions.native_flux import resolve_runtime_flux
 from openghg_inversions.basis.support import load_bc_basis
 from openghg_inversions.rhime import (
     RhimeConfig,
-    RhimeResult,
+    make_standard_output,
+    write_standard_outputs,
     assemble_rhime_inputs,
     build_sensitivities,
     filter_observations,
     prepare_observation_errors,
-    make_standard_rhime_result,
-    make_standard_rhime_outputs,
     validate_output_resources,
     read_rhime_ini,
     sample_rhime_model,
 )
-from openghg_inversions.rhime.standard import build_standard
+from openghg_inversions.rhime.standard import build_standard_model, materialize_standard_inputs
+from openghg_inversions.rhime.outputs import annotate_sample_trace, standard_artifact_paths
+from openghg_inversions.postprocessing.inversion_output import InversionOutput
+from openghg_inversions.serialization import save_trace
+from openghg_inversions._provenance import installed_ogi_provenance
 
 
 DEFAULT_MAX_CHILD_PCA_ECCENTRICITY = 10.0
@@ -234,7 +236,7 @@ def run_custom_rhime(
     project_basis_path: str | Path | None = None,
     max_child_pca_eccentricity: float | None = None,
     **kwargs: Any,
-) -> RhimeResult:
+) -> InversionOutput:
     """Run standard single-sector RHIME with a project-owned basis stage.
 
     Args:
@@ -335,24 +337,28 @@ def run_custom_rhime(
             "min_error_options", "use_bc",
         ),
     )
-    run_spec = config.retained_run_spec(prepared)
-
-    build_and_sample_start = perf_counter()
-    model_build_result = build_standard(
-        prepared,
-        run_spec.model,
+    model_inputs, priors = materialize_standard_inputs(prepared, config.model)
+    model_build_result = build_standard_model(
+        model_inputs, config.model, priors=priors,
     )
     idata = sample_rhime_model(model_build_result, config.sampler)
 
-    result = make_standard_rhime_result(
-        prepared=prepared,
-        run_spec=run_spec,
-        sampler=config.sampler,
-        model_build_result=model_build_result,
-        idata=idata,
-        build_and_sample_seconds=perf_counter() - build_and_sample_start,
+    annotate_sample_trace(model_build_result, idata, likelihood_builder=None)
+    inv_out = make_standard_output(
+        prepared=prepared, model_spec=config.model, posterior=idata,
+        output_contract=model_build_result.output_contract,
+        start_date=config.data.start_date, end_date=config.data.end_date,
+        actual_inference=config.sampler.describe(), provenance=installed_ogi_provenance(),
     )
-    return make_standard_rhime_outputs(result=result, prepared=prepared)
+    write_standard_outputs(inv_out, config.output)
+    output_path, trace_path = standard_artifact_paths(inv_out, config.output)
+    if output_path is not None:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        inv_out.save(output_path)
+    if trace_path is not None:
+        trace_path.parent.mkdir(parents=True, exist_ok=True)
+        save_trace(idata, trace_path)
+    return inv_out
 
 
 def _json_object(value: str) -> dict[str, Any]:
@@ -377,7 +383,7 @@ def _json_object(value: str) -> dict[str, Any]:
     return parsed
 
 
-def main(argv: Sequence[str] | None = None) -> RhimeResult:
+def main(argv: Sequence[str] | None = None) -> InversionOutput:
     """Parse command-line options and run the custom-basis RHIME workflow.
 
     Args:

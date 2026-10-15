@@ -36,7 +36,7 @@ from openghg_inversions.rhime.multisector import (
     build_multisector_rhime_model as _build_multisector_model,
 )
 from openghg_inversions.rhime.specs import FixedErrorSettings, PollutionEventSettings, SectorSpec
-from openghg_inversions.rhime.standard import build_standard_rhime_model as _build_standard_model
+from tests.standard_model_helpers import build_standard_graph as _build_standard_model
 from openghg_inversions.serialization import load_inferencedata, save_inferencedata
 from openghg_inversions.sigma import SigmaAlignment
 

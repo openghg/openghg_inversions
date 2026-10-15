@@ -20,7 +20,7 @@ around NetCDF/Zarr limitations.
 
 from pathlib import Path
 from collections.abc import Hashable, Iterable, Mapping
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from typing import Any, Literal, Self, cast
 import json
 
@@ -267,17 +267,6 @@ class InversionOutput:
     model_metadata: dict[str, Any] = field(default_factory=dict)
     output_metadata: dict[str, Any] = field(default_factory=dict)
     provenance: dict[str, Any] = field(default_factory=dict)
-
-    def select_chain(self, index: int) -> Self:
-        """Return a derived-output view containing one chain.
-
-        Args:
-            index: Zero-based chain position to retain.
-
-        Returns:
-            A shallowly replaced output whose trace retains only that chain.
-        """
-        return replace(self, trace=self.trace.isel(chain=[index]))
 
     def trace_group(self, name: str) -> xr.Dataset:
         """Return one exact, direct trace group as a Dataset.

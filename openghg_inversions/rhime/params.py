@@ -109,7 +109,18 @@ class DataConfig:
 
         Unknown or wrong-phase names fail. An explicit ``split_by_sectors``
         must agree with the selected ``multisector`` recipe. Select the data mapping from
-        ``group_rhime_params`` first when consuming a shared configuration file.
+        ``group_params`` first when consuming a shared configuration file.
+
+        Args:
+            params: Canonical acquisition/preparation options, including site selectors.
+            multisector: Explicit recipe selection; omitted layout values inherit it.
+
+        Returns:
+            Resolved data choices with owned option containers and borrowed arrays.
+
+        Raises:
+            ValueError: If required options are missing, values are invalid, or an
+                explicit layout conflicts with the selected recipe.
         """
         remaining = normalise_rhime_params(params)
         remaining = resolve_resource_paths(remaining, annotations=get_type_hints(cls), base_dir=Path.cwd())
@@ -129,7 +140,7 @@ class DataConfig:
         if multisector and len(flux_sources) < 2:
             raise ValueError("`run_rhime_multisector` requires at least two flux sources.")
         if not multisector and len(flux_sources) != 1:
-            raise ValueError("`run_rhime` requires exactly one flux source.")
+            raise ValueError("`run_standard` requires exactly one flux source.")
         check = remaining.get("flux_non_finite_check", cls.flux_non_finite_check)
         if check not in get_args(FluxNonFiniteCheck):
             raise ValueError(f"Invalid `flux_non_finite_check`: {check!r}.")
@@ -207,8 +218,18 @@ class RhimeConfig:
 
         Group mappings permit a model to omit BC terms while preparation keeps
         BC inputs available. Flat options retain their established precedence.
+
+        Args:
+            params: Canonical flat options or mappings grouped by their owners.
+            multisector: Whether to resolve the multisector recipe.
+
+        Returns:
+            Acquisition, model, sampler and output configuration without scientific I/O.
+
+        Raises:
+            ValueError: If required options are missing, unsupported, inconsistent or invalid.
         """
-        sections = group_rhime_params(params)
+        sections = group_params(params)
         if is_missing_required_value(sections["output"].get("output_name")):
             raise ValueError("Required RHIME parameter(s) missing: ['output_name']")
         # Preserve routing errors before the recipe's source-count check.
@@ -239,7 +260,7 @@ REQUEST_CLAIM_NAMES = (
 )
 
 
-def rhime_option_groups() -> dict[str, frozenset[str]]:
+def option_groups() -> dict[str, frozenset[str]]:
     """Expose canonical option names from their existing concrete owners."""
     return {
         "data": DataConfig.option_names(),
@@ -249,13 +270,22 @@ def rhime_option_groups() -> dict[str, frozenset[str]]:
     }
 
 
-def group_rhime_params(params: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
+def group_params(params: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
     """Group canonical flat options without validating inactive values or defaults.
 
     Already grouped mappings are accepted as well. Names are checked even for
     inactive groups; each selected resolver owns its value validation.
+
+    Args:
+        params: Canonical flat options or data/model/sampler/output group mappings.
+
+    Returns:
+        New dictionaries grouped by their explicit owners, borrowing option values.
+
+    Raises:
+        ValueError: If a group is not a mapping or an option name is unsupported.
     """
-    owners = rhime_option_groups()
+    owners = option_groups()
     if set(params) & owners.keys():
         unknown = list(set(params) - owners.keys())
         result = {}
@@ -281,7 +311,17 @@ def group_rhime_params(params: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
 
 
 def resolve_sampler_options(params: Mapping[str, Any]) -> RhimeSampler:
-    """Resolve only sampler choices using the existing sampler's defaults."""
+    """Resolve only sampler choices using the existing sampler's defaults.
+
+    Args:
+        params: Canonical sampler options; omitted options retain sampler defaults.
+
+    Returns:
+        A fresh sampler configuration without executing inference.
+
+    Raises:
+        ValueError: If an option is unsupported or has an invalid value.
+    """
     remaining = normalise_rhime_params(params)
     unknown = sorted(set(remaining) - set(RhimeSampler.CONFIG_OPTION_NAMES))
     if unknown:

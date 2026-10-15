@@ -18,7 +18,7 @@ from openghg_inversions.inversion_data import RhimePreparedInputs
 from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.postprocessing.output_views import make_inversion_output
-from openghg_inversions.rhime.builders import RhimeModelBuildResult
+from openghg_inversions.rhime.builders import RhimeModelBuildResult, callable_metadata, RhimeLikelihoodBuilder
 from openghg_inversions.rhime.sampling import RhimeSampler
 from openghg_inversions.rhime.specs import (
     OutputFilenameConvention,
@@ -53,7 +53,14 @@ def validate_output_resources(output_spec: RhimeOutputSpec) -> None:
 
 
 def validate_output_filenames(run_spec: RhimeRunSpec) -> None:
-    """Check metadata interpolated into product filenames before writing."""
+    """Check metadata interpolated into product filenames before writing.
+
+    Args:
+        run_spec: Retained family run metadata and requested output naming.
+
+    Raises:
+        ValueError: If a filename field is empty, a directory or a dot component.
+    """
     for name, value in (("species", run_spec.model.species), ("domain", run_spec.model.domain),
                         ("output_name", run_spec.output.output_name), ("start_date", run_spec.start_date)):
         if not value or value in {".", ".."} or Path(value).name != value:
@@ -62,7 +69,10 @@ def validate_output_filenames(run_spec: RhimeRunSpec) -> None:
 
 @dataclass
 class RhimeResult:
-    """Complete result of a concrete RHIME recipe, including coherent CO2.
+    """Retained runtime envelope for families awaiting standard handoff adoption.
+
+    Standard execution returns :class:`InversionOutput` directly. This envelope
+    remains for multisector and nested compatibility until their own migrations.
 
     Args:
         run_spec: Top-level dates, sites, model, and output settings for the run.
@@ -291,7 +301,7 @@ def _make_inversion_output(
         metadata=_structured_metadata(builder_metadata),
     )
     constructed_priors = prior_records(result.model) if result.model is not None else trace_prior_records(result.idata)
-    model_metadata = result.model_spec.to_record(priors=constructed_priors)
+    model_metadata = result.model_spec.describe(priors=constructed_priors)
     model_metadata["constructed_priors"] = constructed_priors
     if model_metadata["likelihood"] is not None:
         model_metadata["likelihood"] = model_metadata["likelihood"]["options"]
@@ -334,48 +344,34 @@ def _make_inversion_output(
     )
 
 
-def make_standard_rhime_outputs(
-    *,
-    result: RhimeResult,
-    prepared: RhimePreparedInputs,
-) -> RhimeResult:
-    """Create the requested standard RHIME outputs.
+def write_standard_outputs(inv_out: InversionOutput, output_spec: RhimeOutputSpec) -> dict[str, Any]:
+    """Construct requested derived products and write their selected files.
 
     Args:
-        result: Sampled standard result. It is not modified.
-        prepared: Retained canonical inputs and basis functions.
+        inv_out: Borrowed scientific result, independent of output policy.
+        output_spec: Product and destination choices. ``none`` performs no work.
 
     Returns:
-        A new result holding ``result``'s values plus the inversion output,
-        in-memory products and written-file metadata.
+        Constructed products and any written file paths. The scientific view is unchanged.
 
     Raises:
-        ValueError: If country reporting is requested without a country file.
-        FileNotFoundError: If a selected country file is missing or is a directory.
+        ValueError: If country reporting lacks a country file or filename values are invalid.
+        FileNotFoundError: If an explicit country file is unavailable.
     """
-    output_spec = result.output_spec
     validate_output_resources(output_spec)
-    run_spec = result.run_spec
-    model_spec = result.model_spec
     if output_spec.output_format == "none":
-        return result
-    validate_output_filenames(run_spec)
-
+        return {}
+    supported = inv_out.model_metadata.get("supported_output_formats")
+    if supported is None:
+        raise ValueError("Scientific output lacks supported-output capabilities; use product functions directly for older artifacts.")
+    if output_spec.output_format not in supported:
+        raise ValueError(
+            f"Model does not declare output_format={output_spec.output_format!r} compatible. "
+            f"Declared formats: {supported!r}."
+        )
+    _validate_standard_filenames(inv_out, output_spec)
     outputs: dict[str, Any] = {}
     output_metadata: dict[str, Any] = {}
-    with timed("rhime.output.inversion_output_create", output_format=output_spec.output_format):
-        inv_out = _make_inversion_output(
-            result=result,
-            prepared=prepared,
-        )
-    outputs["inversion_output"] = inv_out
-    output_metadata["inversion_output_contract"] = "modern"
-
-    inv_out_path = _resolve_output_path(
-        output_spec.save_inversion_output,
-        output_spec.output_path,
-        f"{output_spec.output_name}{run_spec.start_date}_inversion_output.nc",
-    )
     if output_spec.output_format == "basic":
         from openghg_inversions.postprocessing.make_outputs import basic_output
 
@@ -386,13 +382,13 @@ def make_standard_rhime_outputs(
         from openghg_inversions.postprocessing.make_paris_outputs import make_paris_outputs
 
         output_metadata["postprocessing_input_contract"] = "modern_inversion_output"
-        obs_avg_period = prepared.averaging_period[0] or "0h"
+        obs_avg_period = inv_out.run_metadata["averaging_period"][0] or "0h"
         kwargs = output_spec.paris_postprocessing_kwargs or {}
         with timed("rhime.output.paris_postprocess"):
             flux_outs, conc_outs = make_paris_outputs(
                 inv_out,
                 country_file=output_spec.country_file,
-                domain=model_spec.domain,
+                domain=inv_out.model_metadata["domain"],
                 obs_avg_period=obs_avg_period,
                 **kwargs,
             )
@@ -403,18 +399,18 @@ def make_standard_rhime_outputs(
             Path(output_spec.output_path).mkdir(parents=True, exist_ok=True)
             conc_file = _define_derived_output_filename(
                 output_spec,
-                species=model_spec.species,
-                domain=model_spec.domain,
+                species=inv_out.model_metadata["species"],
+                domain=inv_out.model_metadata["domain"],
                 output_name=output_spec.output_name + "_conc",
-                start_date=run_spec.start_date,
+                start_date=inv_out.run_metadata["start_date"],
                 ext=".nc",
             )
             flux_file = _define_derived_output_filename(
                 output_spec,
-                species=model_spec.species,
-                domain=model_spec.domain,
+                species=inv_out.model_metadata["species"],
+                domain=inv_out.model_metadata["domain"],
                 output_name=output_spec.output_name + "_flux",
-                start_date=run_spec.start_date,
+                start_date=inv_out.run_metadata["start_date"],
                 ext=".nc",
             )
             with timed("rhime.output.paris_concentration_netcdf_write", path=conc_file):
@@ -433,7 +429,7 @@ def make_standard_rhime_outputs(
             legacy_out = make_legacy_hbmcmc_output(
                 inv_out,
                 country_file=output_spec.country_file,
-                use_bc=model_spec.use_bc,
+                use_bc=inv_out.model_metadata["use_bc"],
             )
         outputs["legacy"] = legacy_out
 
@@ -441,28 +437,17 @@ def make_standard_rhime_outputs(
             Path(output_spec.output_path).mkdir(parents=True, exist_ok=True)
             legacy_file = _define_derived_output_filename(
                 output_spec,
-                species=model_spec.species,
-                domain=model_spec.domain,
+                species=inv_out.model_metadata["species"],
+                domain=inv_out.model_metadata["domain"],
                 output_name=output_spec.output_name,
-                start_date=run_spec.start_date,
+                start_date=inv_out.run_metadata["start_date"],
                 ext=".nc",
             )
             with timed("rhime.output.legacy_netcdf_write", path=legacy_file):
                 legacy_out.to_netcdf(legacy_file, mode="w", encoding=ncdf_encoding(legacy_out))
             output_metadata["legacy_output_path"] = str(legacy_file)
 
-    if inv_out_path is not None:
-        inv_out_path.parent.mkdir(parents=True, exist_ok=True)
-        with timed("rhime.output.inversion_output_save", path=inv_out_path):
-            inv_out.save(inv_out_path)
-        output_metadata["inversion_output_path"] = str(inv_out_path)
-    output_metadata.update(_save_requested_trace(result))
-    return replace(
-        result,
-        inv_out=inv_out,
-        outputs={**result.outputs, **outputs},
-        output_metadata={**result.output_metadata, **output_metadata},
-    )
+    return {**outputs, **output_metadata}
 
 
 def _make_multisector_flux_diagnostics(
@@ -628,3 +613,109 @@ def make_multisector_rhime_outputs(
     result.inv_out = inv_out
     result.outputs.update(outputs)
     result.output_metadata.update(output_metadata)
+
+
+def annotate_sample_trace(
+    built: RhimeModelBuildResult,
+    posterior: xr.DataTree,
+    *,
+    likelihood_builder: RhimeLikelihoodBuilder | None = None,
+    likelihood_kwargs: Mapping[str, Any] | None = None,
+) -> None:
+    """Attach construction-owned prior and optional likelihood metadata after sampling.
+
+    Args:
+        built: Sampled graph and its construction-owned metadata.
+        posterior: Trace annotated in place; numerical payloads are not copied.
+        likelihood_builder: Custom likelihood whose identity is recorded.
+        likelihood_kwargs: Serializable options for that likelihood.
+    """
+    posterior.attrs["rhime_priors"] = json.dumps(prior_records(built.model))
+    if likelihood_builder is not None:
+        annotate_likelihood_trace(
+            posterior, builder_identity=callable_metadata(likelihood_builder),
+            likelihood_kwargs=likelihood_kwargs,
+        )
+
+
+def make_standard_output(
+    *, prepared: RhimePreparedInputs, model_spec: RhimeModelSpec, posterior: xr.DataTree,
+    output_contract: OutputContract, start_date: str, end_date: str,
+    actual_inference: Mapping[str, Any] | None = None,
+    provenance: Mapping[str, Any] | None = None,
+) -> InversionOutput:
+    """Bind standard samples to borrowed preparation and scientific meaning.
+
+    Args:
+        prepared: Retained scientific inputs and basis.
+        model_spec: Model choices used for sampling.
+        posterior: Sampler-produced or externally validated trace with prior metadata.
+        output_contract: Constructed model roles and supported products.
+        start_date: Requested inversion start, independently of retained observations.
+        end_date: Requested inversion end.
+        actual_inference: Description of the inference that ran.
+        provenance: Installed-package provenance, recorded at sampling for replay.
+
+    Returns:
+        A scientific view borrowing the prepared arrays and trace, without writing files.
+    """
+    priors = json.loads(posterior.attrs.get("rhime_priors", "{}"))
+    model_metadata = model_spec.describe(priors=priors)
+    model_metadata["constructed_priors"] = priors
+    model_metadata["supported_output_formats"] = list(output_contract.supported_output_formats)
+    if model_metadata["likelihood"] is not None:
+        model_metadata["likelihood"] = model_metadata["likelihood"]["options"]
+    for name in ("state_activity", "bc_state_activity"):
+        policy = getattr(model_spec, name)
+        model_metadata[name] = None if policy is None else asdict(policy)
+    for sector, record in zip(model_spec.sectors, model_metadata["sectors"], strict=True):
+        record["state_activity"] = None if sector.state_activity is None else asdict(sector.state_activity)
+    metadata = dict(output_contract.metadata)
+    for attr, key in (("rhime_likelihood_builder", "likelihood_builder"),
+                      ("rhime_likelihood_kwargs", "likelihood_kwargs")):
+        if attr in posterior.attrs:
+            metadata[key] = json.loads(posterior.attrs[attr])
+    contract = replace(output_contract, metadata=metadata) if metadata != output_contract.metadata else output_contract
+    return make_inversion_output(
+        prepared=prepared, trace=posterior, contract=contract,
+        run_metadata={"start_date": start_date, "end_date": end_date, "sites": list(prepared.sites),
+                      "averaging_period": list(prepared.averaging_period), "split_by_sectors": False},
+        model_metadata=_structured_metadata(model_metadata),
+        output_metadata={"sampler": dict(actual_inference) if isinstance(actual_inference, Mapping) else actual_inference},
+        provenance=dict(provenance or {}),
+    )
+
+
+def _validate_standard_filenames(inv_out: InversionOutput, output_spec: RhimeOutputSpec) -> None:
+    """Validate scientific filename fields without an output-bearing run specification."""
+    for name, value in (("species", inv_out.model_metadata["species"]),
+                        ("domain", inv_out.model_metadata["domain"]),
+                        ("output_name", output_spec.output_name),
+                        ("start_date", inv_out.run_metadata["start_date"])):
+        if not value or value in {".", ".."} or Path(value).name != value:
+            raise ValueError(f"{name} must be a non-empty filename component without directories.")
+
+
+def standard_artifact_paths(
+    inv_out: InversionOutput, output_spec: RhimeOutputSpec,
+) -> tuple[Path | None, Path | None]:
+    """Resolve optional scientific-artifact exports for concrete runners.
+
+    Args:
+        inv_out: Scientific result supplying requested dates for naming.
+        output_spec: Shared format, destination and explicit-path choices.
+
+    Returns:
+        Inversion-output and trace destinations; both are absent for ``none``.
+
+    Raises:
+        ValueError: If saving requires an unavailable destination or filename metadata is invalid.
+    """
+    if output_spec.output_format == "none":
+        return None, None
+    _validate_standard_filenames(inv_out, output_spec)
+    stem = f"{output_spec.output_name}{inv_out.run_metadata['start_date']}"
+    return (
+        _resolve_output_path(output_spec.save_inversion_output, output_spec.output_path, f"{stem}_inversion_output.nc"),
+        _resolve_output_path(output_spec.save_trace, output_spec.output_path, f"{stem}_trace.nc"),
+    )

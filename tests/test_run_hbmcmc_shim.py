@@ -330,7 +330,7 @@ def test_fixedbasis_params_to_rhime_preserves_explicit_inversion_output_save(tmp
 
 @pytest.mark.rhime_contract
 def test_run_hbmcmc_main_routes_to_run_rhime(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """Route legacy CLI parameters through run_rhime and copy the effective config."""
+    """Route legacy CLI parameters through run_standard and copy the effective config."""
     config_file = tmp_path / "hbmcmc.ini"
     output_path = tmp_path / "outputs"
     _fixedbasis_config(config_file)
@@ -341,7 +341,7 @@ def test_run_hbmcmc_main_routes_to_run_rhime(monkeypatch: pytest.MonkeyPatch, tm
         """Capture translated keyword arguments without running an inversion."""
         seen["run_rhime_kwargs"] = kwargs
 
-    monkeypatch.setattr(run_hbmcmc, "run_rhime", fake_run_rhime)
+    monkeypatch.setattr(run_hbmcmc, "run_standard", fake_run_rhime)
 
     assert not hasattr(run_hbmcmc, "resolve_rhime_config")
 
@@ -387,7 +387,7 @@ def test_run_hbmcmc_always_routes_all_chains(
     seen: dict[str, Any] = {}
 
     monkeypatch.setattr(run_hbmcmc, "_copy_config_file", lambda *args, **kwargs: None)
-    monkeypatch.setattr(run_hbmcmc, "run_rhime", lambda **kwargs: seen.update(kwargs))
+    monkeypatch.setattr(run_hbmcmc, "run_standard", lambda **kwargs: seen.update(kwargs))
 
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
@@ -487,7 +487,7 @@ def test_run_hbmcmc_main_selects_additive_sigma_from_ini(
     seen: dict[str, Any] = {}
 
     monkeypatch.setattr(run_hbmcmc, "_copy_config_file", lambda *args, **kwargs: None)
-    monkeypatch.setattr(run_hbmcmc, "run_rhime", lambda **kwargs: seen.update(kwargs))
+    monkeypatch.setattr(run_hbmcmc, "run_standard", lambda **kwargs: seen.update(kwargs))
 
     run_hbmcmc.main(["-c", str(config_file)])
 
@@ -579,7 +579,7 @@ def test_run_hbmcmc_main_checks_country_file_before_copying_or_running(
         raise AssertionError("RHIME should run only after country-file validation.")
 
     monkeypatch.setattr(run_hbmcmc, "_copy_config_file", fail_copy_config_file)
-    monkeypatch.setattr(run_hbmcmc, "run_rhime", fail_run_rhime)
+    monkeypatch.setattr(run_hbmcmc, "run_standard", fail_run_rhime)
 
     with pytest.raises(FileNotFoundError, match="country_file"):
         run_hbmcmc.main(["-c", str(config_file)])
@@ -597,7 +597,7 @@ def test_sigma_prior_is_validated_before_config_copy(monkeypatch, tmp_path):
         pytest.fail("Invalid sigma prior reached config copying or acquisition")
 
     monkeypatch.setattr(run_hbmcmc, "_copy_config_file", unexpected)
-    monkeypatch.setattr(run_hbmcmc, "run_rhime", unexpected)
+    monkeypatch.setattr(run_hbmcmc, "run_standard", unexpected)
     with pytest.raises(ValueError, match="sigma_prior.*mapping/dict"):
         run_hbmcmc.main(["-c", str(config_file)])
 
@@ -674,7 +674,7 @@ def test_legacy_bc_selection_reaches_real_cli_acquisition(monkeypatch, tmp_path,
 def test_legacy_cli_rejects_removed_country_directory_before_execution(monkeypatch, tmp_path):
     config_file = tmp_path / "legacy.ini"
     _fixedbasis_config(config_file)
-    monkeypatch.setattr(run_hbmcmc, "run_rhime", lambda **kwargs: pytest.fail("must reject before execution"))
+    monkeypatch.setattr(run_hbmcmc, "run_standard", lambda **kwargs: pytest.fail("must reject before execution"))
     monkeypatch.setattr(run_hbmcmc, "_copy_config_file", lambda *args, **kwargs: pytest.fail("must reject before writes"))
     with pytest.raises(ValueError, match="country_directory.*removed in 0.8"):
         run_hbmcmc.main(["-c", str(config_file), "--kwargs", '{"country_directory": "old"}'])

@@ -11,6 +11,7 @@ import xarray as xr
 
 from openghg_inversions.inversion_data import RhimeMergedData
 from openghg_inversions.rhime.params import RhimeConfig
+from openghg_inversions.postprocessing.inversion_output import InversionOutput
 
 from examples.rhime_customisation import likelihoods
 from examples.rhime_customisation import runner as custom_runner
@@ -26,12 +27,12 @@ def test_short_and_full_examples_share_likelihood_and_supported_output(
     expected = object()
     seen: dict[str, Any] = {}
 
-    def run_rhime(**kwargs: Any) -> Any:
+    def run_standard(**kwargs: Any) -> Any:
         """Capture the preferred one-call example without executing RHIME."""
         seen.update(kwargs)
         return expected
 
-    monkeypatch.setattr(short_runner, "run", run_rhime)
+    monkeypatch.setattr(short_runner, "run", run_standard)
     result = short_runner.run_with_likelihood(
         config_file=config_file,
         output_format="none",
@@ -80,9 +81,12 @@ def test_custom_runner_uses_supported_stages_for_acquisition(
         averaging_period=("1h",),
         basis_artifact_source="test-basis",
     )
-    build_result = object()
-    idata = object()
-    expected_result = object()
+    output_contract = object()
+    build_result = SimpleNamespace(output_contract=output_contract)
+    idata = xr.DataTree()
+    model_inputs = prepared.inv_inputs
+    priors = {"x": {"pdf": "normal", "mu": 1.0, "sigma": 0.2}}
+    expected_result = InversionOutput(trace=idata, inv_inputs=prepared.inv_inputs, basis_functions=basis)
     calls: list[str] = []
 
     def parse_config(actual_config: str | Path) -> dict[str, Any]:
@@ -144,10 +148,18 @@ def test_custom_runner_uses_supported_stages_for_acquisition(
         return prepared
 
 
-    def build(actual: Any, model_spec: Any, **kwargs: Any) -> Any:
-        """Record the project-owned Student-t likelihood at the shared model boundary."""
+    def materialize(actual: Any, model_spec: Any) -> Any:
+        """Keep selected numerical inputs and priors at the explicit boundary."""
         assert actual is prepared
         assert model_spec is config.model
+        calls.append("materialize")
+        return model_inputs, priors
+
+    def build(actual: Any, model_spec: Any, **kwargs: Any) -> Any:
+        """Record the eager model boundary after project preparation."""
+        assert actual is model_inputs
+        assert model_spec is config.model
+        assert kwargs["priors"] is priors
         assert kwargs["likelihood_builder"] is custom_runner.likelihood_builder
         calls.append("build")
         return build_result
@@ -159,23 +171,31 @@ def test_custom_runner_uses_supported_stages_for_acquisition(
         calls.append("sample")
         return idata
 
-    def make_result(**kwargs: Any) -> Any:
-        """Record the supported output stage and its complete handoff."""
-        assert kwargs["prepared"] is prepared
-        assert kwargs["run_spec"].sites == ("MHD",)
-        assert kwargs["run_spec"].model is config.model
-        assert kwargs["sampler"] is sampler
-        assert kwargs["model_build_result"] is build_result
-        assert kwargs["idata"] is idata
+    def annotate(actual: Any, posterior: Any, **kwargs: Any) -> None:
+        """Record prior and custom-likelihood provenance once after sampling."""
+        assert actual is build_result
+        assert posterior is idata
         assert kwargs["likelihood_builder"] is custom_runner.likelihood_builder
-        assert kwargs["build_and_sample_seconds"] >= 0.0
+        calls.append("annotate")
+
+    def make_result(**kwargs: Any) -> InversionOutput:
+        """Construct the scientific view without output policy or live references."""
+        assert kwargs["prepared"] is prepared
+        assert kwargs["model_spec"] is config.model
+        assert kwargs["posterior"] is idata
+        assert kwargs["output_contract"] is output_contract
+        assert kwargs["start_date"] == config.data.start_date
+        assert kwargs["end_date"] == config.data.end_date
+        assert kwargs["actual_inference"] == sampler.describe()
+        assert "run_spec" not in kwargs
+        assert "sampler" not in kwargs
         calls.append("result")
         return expected_result
 
-    def make_outputs(**kwargs: Any) -> None:
-        assert kwargs == {"result": expected_result, "prepared": prepared}
-        calls.append("outputs")
-        return kwargs["result"]
+    def write_outputs(actual: InversionOutput, output_spec: Any) -> None:
+        assert actual is expected_result
+        assert output_spec is config.output
+        calls.append("output")
 
     monkeypatch.setattr(custom_runner, "read_rhime_ini", parse_config)
     monkeypatch.setattr(custom_runner.RhimeConfig, "from_params", classmethod(resolve))
@@ -185,10 +205,13 @@ def test_custom_runner_uses_supported_stages_for_acquisition(
     monkeypatch.setattr(custom_runner, "prepare_basis", build_basis)
     monkeypatch.setattr(custom_runner, "build_sensitivities", build_sensitivities)
     monkeypatch.setattr(custom_runner, "assemble_rhime_inputs", assemble)
-    monkeypatch.setattr(custom_runner, "build_standard", build)
+    monkeypatch.setattr(custom_runner, "materialize_standard_inputs", materialize)
+    monkeypatch.setattr(custom_runner, "build_standard_model", build)
     monkeypatch.setattr(custom_runner, "sample_rhime_model", sample)
-    monkeypatch.setattr(custom_runner, "make_standard_rhime_result", make_result)
-    monkeypatch.setattr(custom_runner, "make_standard_rhime_outputs", make_outputs)
+    monkeypatch.setattr(custom_runner, "annotate_sample_trace", annotate)
+    monkeypatch.setattr(custom_runner, "make_standard_output", make_result)
+    monkeypatch.setattr(custom_runner, "write_standard_outputs", write_outputs)
+    monkeypatch.setattr(custom_runner, "standard_artifact_paths", lambda *args: (None, None))
 
     result = custom_runner.run_custom_rhime(config_file=config_file, **overrides)
 
@@ -201,10 +224,12 @@ def test_custom_runner_uses_supported_stages_for_acquisition(
         "basis",
         "sensitivities",
         "assemble",
+        "materialize",
         "build",
         "sample",
+        "annotate",
         "result",
-        "outputs",
+        "output",
     ]
 
 

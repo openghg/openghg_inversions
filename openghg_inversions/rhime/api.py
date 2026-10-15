@@ -17,14 +17,15 @@ def run(*, model: str = "standard", **kwargs: Any) -> Any:
             selection does not add acquisition or checkpoint routes.
 
     Returns:
-        The selected recipe's existing result. Standard, multisector and nested
-        return result records; CO2-family recipes return an inference DataTree.
+        The selected recipe's scientific result. Standard returns InversionOutput;
+        multisector and nested retain their result records, and CO2-family recipes
+        return an inference DataTree.
 
     Raises:
         ValueError: If the model name is unsupported.
         TypeError: If arguments do not match the selected recipe's interface.
 
-    Established ``run_rhime*`` imports remain available through the 0.9
+    Established ``run_standard*`` imports remain available through the 0.9
     compatibility cycle. See the concrete recipe for scientific options,
     ownership and output behavior.
     """

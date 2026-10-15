@@ -635,7 +635,7 @@ def test_diagnostics_reject_empty_check_stage_before_loading(tmp_path: Path) -> 
 
 @pytest.mark.parametrize("model", ["standard", "co2"])
 def test_diagnostics_accept_digest_free_sample_manifest(tmp_path: Path, model: str) -> None:
-    from openghg_inversions.rhime import _standard_stages as stages
+    from openghg_inversions.rhime._stage_artifacts import write_json
 
     posterior = make_trace(
         posterior=xr.Dataset({"x": (("chain", "draw"), np.ones((2, 4)))})
@@ -643,7 +643,7 @@ def test_diagnostics_accept_digest_free_sample_manifest(tmp_path: Path, model: s
     supplied_path = tmp_path / "supplied.nc"
     save_trace(posterior, supplied_path)
     manifest_path = tmp_path / "sample-manifest.json"
-    stages._write_json(
+    write_json(
         manifest_path,
         {
             "schema_version": 1,
@@ -682,7 +682,7 @@ def test_configuration_identity_does_not_visit_opaque_output_options():
 @pytest.mark.parametrize("absolute", [False, True])
 def test_resource_origins_match_full_requests(tmp_path, monkeypatch, use_override, absolute):
     from openghg_inversions.rhime.params import RhimeConfig
-    from openghg_inversions.rhime.requests import load_rhime_params
+    from openghg_inversions.rhime.requests import load_params
 
     config_dir = tmp_path / "configs"
     invocation = tmp_path / "invocation"
@@ -700,8 +700,8 @@ def test_resource_origins_match_full_requests(tmp_path, monkeypatch, use_overrid
     source.write_text(json.dumps(_params(**resources)))
     overrides = resources if use_override else None
     # The same file has the same resource meaning in both routes.
-    staged = load_rhime_params(params_file=source, overrides=overrides)
-    full = load_rhime_params(params_file=source, overrides=overrides)
+    staged = load_params(params_file=source, overrides=overrides)
+    full = load_params(params_file=source, overrides=overrides)
     def paths(loaded):
         return {name: {**loaded["data"], **loaded["output"]}[name] for name in resources}
     assert paths(staged) == {name: invocation / value
@@ -831,7 +831,9 @@ def test_multisector_sample_stage_saves_binding_and_manifest(tmp_path, monkeypat
 
     arguments = _saved_multisector_binding(tmp_path)
     trace = stages.load_trace(arguments["posterior"])
+    constructed_priors = {"x": {"pdf": "normal", "mu": 1.0, "sigma": 0.2}}
     monkeypatch.setattr(stages, "_build_prepared_model", lambda *a, **k: SimpleNamespace(
+        model=SimpleNamespace(_openghg_prior_records=constructed_priors),
         output_contract=OutputContract(variable_roles={"flux_scale": "x"}, supported_output_formats=("none",))))
     monkeypatch.setattr(stages, "sample_rhime_model", lambda *a, **k: trace)
     sampled = sample_rhime_stage(
@@ -841,3 +843,6 @@ def test_multisector_sample_stage_saves_binding_and_manifest(tmp_path, monkeypat
     assert sampled["schema_version"] == 2
     assert (tmp_path / "sample" / sampled["artifacts"]["output_binding"]).is_file()
     assert Path(sampled["manifest_path"]).is_file()
+
+    restored = stages.load_trace(sampled["artifacts"]["posterior"])
+    assert json.loads(restored.attrs["rhime_priors"]) == constructed_priors

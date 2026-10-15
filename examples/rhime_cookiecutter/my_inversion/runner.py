@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from openghg_inversions.rhime import RhimeResult, run_rhime
+from openghg_inversions.rhime import RhimeResult, run_standard
 
 from .likelihoods import likelihood_builder
 
@@ -28,7 +28,7 @@ def run(
         The library-owned RHIME result and any requested supported output.
     """
     kwargs["mismatch_model"] = None
-    return run_rhime(
+    return run_standard(
         config_file=config_file,
         likelihood_builder=likelihood_builder,
         **kwargs,

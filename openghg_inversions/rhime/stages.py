@@ -12,7 +12,7 @@ from collections.abc import Mapping
 
 from openghg_inversions.rhime._runner_compat import translate_rhime_aliases
 from . import _multisector_stages
-from ._standard_stages import prepare, sample, postprocess, prior_predictive, load_preparation, save_preparation, save_samples
+from ._standard_stages import prepare, sample, postprocess, prior_predictive, load_preparation, load_samples, save_preparation, save_samples
 from ._stage_checks import (
     CHECK_SCHEMA_VERSION,
     CONVERGENCE_CHECK_NAME,
@@ -21,7 +21,7 @@ from ._stage_checks import (
 )
 from .outputs import RhimeResult
 from .params import RhimeConfig
-from .requests import load_rhime_params
+from .requests import load_params
 
 if TYPE_CHECKING:
     from .co2.stages import Co2StageSetup
@@ -75,7 +75,7 @@ def load_stage_params(
         return load_co2_stage_params(config_file=config_file, params_file=params_file, overrides=overrides)
     if (config_file is None) == (params_file is None):
         raise ValueError("Pass exactly one of `config_file` or `params_file`.")
-    return load_rhime_params(config_file=config_file, params_file=params_file, overrides=overrides)
+    return load_params(config_file=config_file, params_file=params_file, overrides=overrides)
 
 
 def resolve_stage_setup(params: Mapping[str, Any], *, model: ModelKind) -> RhimeConfig | Co2StageSetup:
@@ -338,7 +338,7 @@ def postprocess_rhime_stage(
 
 __all__ = [
     "prepare", "sample", "postprocess", "prior_predictive",
-    "save_preparation", "load_preparation", "save_samples",
+    "save_preparation", "load_preparation", "save_samples", "load_samples",
     "CHECK_SCHEMA_VERSION",
     "CONVERGENCE_CHECK_NAME",
     "PREPARATION_CHECK_NAME",

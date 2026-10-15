@@ -12,7 +12,7 @@ from scipy.stats import multivariate_normal
 from openghg_inversions.models.coords import get_coord_registry, registered_model
 from openghg_inversions.models.site_sigma import add_site_sigma_gaussian_likelihood
 from openghg_inversions.observation_error import AggregationError, resolve_aggregation_error
-from openghg_inversions.rhime.standard import build_standard_rhime_model
+from tests.standard_model_helpers import build_standard_graph
 
 
 SITE_LABELS = np.array(["A", "B", "A"])
@@ -337,7 +337,7 @@ def test_standard_recipe_accepts_site_sigma_through_public_likelihood_seam() -> 
         coords={"nmeasure": observations.nmeasure, "region": ["r1"]},
     )
 
-    model = build_standard_rhime_model(
+    model = build_standard_graph(
         design,
         observations=data["mf"],
         observation_error=data["mf_error"],

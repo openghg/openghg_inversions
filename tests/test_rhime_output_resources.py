@@ -71,11 +71,13 @@ def test_reporting_routes_reject_before_work_or_output_directory(tmp_path, monke
     )
     if route == "staged":
         # Saved standard samples replay without a graph; only output choices change.
-        preparation = _standard_stages.save_preparation(_prepared(), data=config.data, output_dir=tmp_path / "prep")
+        preparation = _standard_stages.save_preparation(_prepared(), data_config=config.data, output_dir=tmp_path / "prep")
+        posterior = make_trace(posterior=xr.Dataset(
+            {"x": (("chain", "draw", "region"), [[[1.0]]])}, coords={"chain": [0], "draw": [0], "region": [0]},
+        ))
+        posterior.attrs["rhime_priors"] = "{}"
         sampled = _standard_stages.save_samples(
-            preparation, make_trace(posterior=xr.Dataset(
-                {"x": (("chain", "draw", "region"), [[[1.0]]])}, coords={"chain": [0], "draw": [0], "region": [0]},
-            )),
+            preparation, posterior,
             model=config.model, actual_inference=config.sampler.describe(),
             output_contract=OutputContract(variable_roles={"flux_scale": "x"}, supported_output_formats=("none", "paris")),
             build_and_sample_seconds=0.0, output_dir=tmp_path / "samples",
@@ -83,7 +85,7 @@ def test_reporting_routes_reject_before_work_or_output_directory(tmp_path, monke
     error = ValueError if country is None else FileNotFoundError
     with pytest.raises(error, match="country_file" if country is None else None):
         if route == "standard":
-            standard.run_rhime(config=config)
+            standard.run_standard(config=config)
         elif route == "multisector":
             multisector.run_rhime_multisector(config=config)
         elif route == "nested":
@@ -98,9 +100,15 @@ def test_reporting_routes_reject_before_work_or_output_directory(tmp_path, monke
                 inputs = replace(inputs, inv_inputs=inputs.inv_inputs.assign(
                     H=inputs.inv_inputs.H.expand_dims(source=["inventory", "ocean"]),
                 ))
-            prepared.run_rhime_from_prepared_inputs(
-                prepared_inputs=inputs, run_spec=config.retained_run_spec(inputs),
-            )
+            if is_multi:
+                prepared.run_rhime_from_prepared_inputs(
+                    prepared_inputs=inputs, run_spec=config.retained_run_spec(inputs),
+                )
+            else:
+                prepared.run_rhime_from_prepared_inputs(
+                    prepared_inputs=inputs, model_spec=config.model, output_spec=config.output,
+                    start_date=config.data.start_date, end_date=config.data.end_date,
+                )
         elif route == "prepared_nested":
             nested.run_rhime_nested_from_prepared_inputs(
                 prepared_inputs=None, run_spec=config.retained_run_spec(_prepared()),
@@ -112,8 +120,10 @@ def test_reporting_routes_reject_before_work_or_output_directory(tmp_path, monke
             if route == "output_nested":
                 nested._write_nested_paris_outputs(SimpleNamespace(rhime_result=result))
             else:
-                helper = outputs.make_standard_rhime_outputs if route == "output_standard" else outputs.make_multisector_rhime_outputs
-                helper(result=result, prepared=None)
+                if route == "output_standard":
+                    outputs.write_standard_outputs(None, config.output)
+                else:
+                    outputs.make_multisector_rhime_outputs(result=result, prepared=None)
     assert not destination.exists()
 
 

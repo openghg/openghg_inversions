@@ -28,7 +28,6 @@ runner.
    openghg_inversions.rhime.run_standard
    openghg_inversions.rhime.run_multisector
    openghg_inversions.rhime.run_nested
-   openghg_inversions.rhime.run_rhime
    openghg_inversions.rhime.run_rhime_multisector
    openghg_inversions.rhime.run_rhime_nested
    openghg_inversions.rhime.run_rhime_from_prepared_inputs
@@ -75,14 +74,17 @@ manifest lifetime, compatible model changes and graph-free product replay.
    openghg_inversions.rhime.stages.load_preparation
    openghg_inversions.rhime.stages.sample
    openghg_inversions.rhime.stages.save_samples
+   openghg_inversions.rhime.stages.load_samples
    openghg_inversions.rhime.stages.postprocess
    openghg_inversions.rhime.stages.prior_predictive
 
 Run specifications and results
 ------------------------------
 
-These objects describe the model, sampling, and output settings accepted by
-the RHIME runners. The sampler's former ``rhime`` imports remain compatible;
+Standard runners return ``InversionOutput``. ``RhimeResult`` and ``RhimeRunSpec``
+remain compatibility objects for multisector, nested and CO2 recipes until their
+separate handoff adoption. These objects describe model, sampling and output
+choices. The sampler's former ``rhime`` imports remain compatible;
 its implementation is owned by ``inference``.
 
 .. autosummary::
@@ -126,8 +128,9 @@ value and its unchanged version-1 schema live in
    openghg_inversions.rhime.preparation.resolve_basis_inputs
    openghg_inversions.rhime.preparation.acquire_merged_data
    openghg_inversions.rhime.preparation.export_basis
-   openghg_inversions.rhime.standard.build_standard
-   openghg_inversions.rhime.requests.load_rhime_params
+   openghg_inversions.rhime.standard.build_standard_model
+   openghg_inversions.rhime.standard.materialize_standard_inputs
+   openghg_inversions.rhime.requests.load_params
    openghg_inversions.rhime.params.retained_run_spec
    openghg_inversions.rhime.filter_observations
    openghg_inversions.rhime.prepare_observation_errors

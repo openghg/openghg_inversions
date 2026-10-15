@@ -66,6 +66,8 @@ def test_lazy_prior_values_coordinates_and_density_survive_sampling(tmp_path, fa
     trace = RhimeSampler(draws=4, tune=4, chains=1, sample_prior_predictive=False,
                         sample_posterior_predictive=False,
                         sample_kwargs={"cores": 1, "random_seed": 42}).sample(model)
+    assert "rhime_priors" not in trace.attrs
+    trace.attrs["rhime_priors"] = json.dumps(prior_records(model))
     save_trace(trace, tmp_path / "prior.nc")
     loaded = load_trace(tmp_path / "prior.nc")
     values = loaded["constant_data"][f"x_prior_{array_key}"]

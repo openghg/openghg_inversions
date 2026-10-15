@@ -60,6 +60,9 @@ def prior_predictive_check(
 ) -> dict[str, Any]:
     """Draw prior predictions and write the evidence and a readiness report.
 
+    The old report is invalidated before building or writing evidence, so a
+    failed overwrite cannot leave an earlier successful readiness claim.
+
     Args:
         build: Builds the model to check; its readiness errors become a failed check.
         draws: Positive number of prior-predictive draws.
@@ -73,6 +76,8 @@ def prior_predictive_check(
     Raises:
         OSError: If writing the evidence or report fails.
     """
+    report = _output_path(destination, check_output, "prior-predictive-readiness.json")
+    report.unlink(missing_ok=True)
     import pymc as pm
 
     from openghg_inversions.serialization import save_trace
@@ -107,7 +112,7 @@ def prior_predictive_check(
         measured_values={"draws": draws, "non_finite_values": non_finite},
         thresholds={"max_non_finite_values": 0}, message=message, artifact_paths=artifacts, stage=stage,
     )
-    _write_json(_output_path(destination, check_output, "prior-predictive-readiness.json"), result)
+    _write_json(report, result)
     return result
 
 

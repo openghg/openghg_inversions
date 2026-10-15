@@ -70,7 +70,7 @@ sys.meta_path.insert(0, BlockLegacy())
 from openghg_inversions.rhime import RhimeConfig
 from openghg_inversions.rhime.specs import make_output_spec
 from openghg_inversions.rhime.stages import prepare, resolve_stage_setup
-from openghg_inversions.rhime.standard import run_rhime
+from openghg_inversions.rhime.standard import run_standard
 from openghg_inversions.rhime.multisector import run_rhime_multisector
 from openghg_inversions.rhime.nested import run_nested
 from openghg_inversions.inversion_data import RhimeMergedData
@@ -88,9 +88,9 @@ config = RhimeConfig.from_params(options, multisector=False)
 resolve_stage_setup({**options, "flux_sources": ["a", "b"]}, model="multisector")
 make_output_spec(output_format="none", save_inversion_output=False, multisector=False)
 for call in (
-    lambda: run_rhime(config=config),
+    lambda: run_standard(config=config),
     lambda: prepare(config.data, output_dir=tempfile.mkdtemp() + "/prepared"),
-    lambda: run_rhime(**options),
+    lambda: run_standard(**options),
     lambda: run_rhime_multisector(**{**options, "flux_sources": ["a", "b"]}),
     lambda: run_nested(**options, inner_domain="inner"),
 ):

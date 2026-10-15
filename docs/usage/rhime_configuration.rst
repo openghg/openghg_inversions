@@ -66,9 +66,9 @@ its options again:
 
 .. code-block:: python
 
-   from openghg_inversions.rhime import run_rhime
+   from openghg_inversions.rhime import run_standard
 
-   result = run_rhime(config=config)
+   result = run_standard(config=config)
 
 For multisector requests, construct with ``multisector=True`` and use
 ``run_rhime_multisector(config=config)``. An explicit ``data.split_by_sectors``
@@ -121,7 +121,7 @@ passed to a runner without resolving again.
 
 ``RhimeConfig.from_params`` is the single construction entry point; the former
 ``resolve_rhime_config`` wrapper has been removed. Runner frontends, including
-``run_rhime`` and staged commands, translate supported deprecated names before
+``run_standard`` and staged commands, translate supported deprecated names before
 calling this constructor. They emit ``DeprecationWarning`` on devel and in 0.8;
 these aliases are removed in 0.9. For names such as ``xprior`` and ``outputname``,
 canonical names take precedence. Flux keyword deprecations follow the stricter
@@ -299,7 +299,7 @@ aligned values and checks their structural alignment. For example:
 Direct retrieval APIs retain their scalar shorthand without requiring model,
 output or sampler settings. The acquisition-and-preparation convenience function
 ``prepare_rhime_inputs`` has been removed. For a complete inversion, use
-``run_rhime``; for custom preparation, call ``acquire_merged_data`` (or
+``run_standard``; for custom preparation, call ``acquire_merged_data`` (or
 ``RhimeMergedData.from_options``) followed by ``prepare_observation_errors``,
 ``filter_observations``, ``openghg_inversions.basis.prepare_basis``,
 ``build_sensitivities`` and ``assemble_rhime_inputs``. These steps take the
@@ -325,7 +325,7 @@ in-memory acquisition and :doc:`rhime` for saving and loading prepared inputs.
 The requested configuration contains no acquired/prepared handoff or
 ``RhimeRunSpec``.
 Merged and prepared handoffs describe the sites retained by acquisition and
-filtering. Ordinary runners create the execution ``RhimeRunSpec`` after
+filtering. Deferred-family runners create their execution ``RhimeRunSpec`` after
 preparation: it combines those retained sites and periods with the requested
 date bounds and resolved model/output choices. If only TAC remains from a
 TAC/MHD request, the configuration continues to name both sites while the run

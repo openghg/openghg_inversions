@@ -273,9 +273,32 @@ handoff SHALL retain its authoritative options and no-acquisition behavior.
 - **THEN** it preserves those options, performs no acquisition and continues
   preparation without replacing them with requested defaults
 
+### Requirement: Explicit 0.8 standard API migration
+
+The Python `run_rhime` API SHALL be removed in 0.8 with a helpful import error
+pointing to `run_standard`. This explicitly supersedes earlier promises to
+preserve that Python entry point and its `RhimeResult` return. The `run-rhime`
+CLI command SHALL call `run_standard` directly and preserve its command name,
+written files, export defaults and logging.
+
+Standard full, prepared-input and saved postprocessing SHALL return
+`InversionOutput`, including with `output_format="none"`. The in-memory view SHALL
+borrow its numerical inputs; `none` SHALL suppress writes, not result construction.
+Its output metadata SHALL contain the actual inference description, without output
+format, destinations, naming, save flags, written paths or live PyMC references.
+`RhimeResult` and `RhimeRunSpec` SHALL remain only for families awaiting handoff
+adoption. The three standard builder entry points SHALL be replaced by one eager
+`build_standard_model`; materialization SHALL be explicit in its caller.
+New configuration helpers SHALL use `load_params`, `group_params` and
+`option_groups`; `read_rhime_ini` SHALL retain its established name.
+`RHIME_PREPARATION_OPTION_NAMES` SHALL be removed in favour of explicit owner
+selection. These migrations supersede prior signature/return preservation
+requirements for those named standard interfaces.
+
 ### Requirement: Compatible public adapters and scientific choices
 
-Except for the resource-I/O migrations removing `prepare_basis(output_path=...)`
+Except for the explicit standard API/result migration above and the resource-I/O
+migrations removing `prepare_basis(output_path=...)`
 and `country_directory` in 0.8 and replacing scientific BC case/directory inputs
 with resolved basis data, the legacy-only routing and namespace migration owned
 by the [HBMCMC isolation contract](https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/hbmcmc-isolation-retirement/spec.md),
@@ -402,8 +425,8 @@ Shared semantic/site-alignment helpers SHALL remain independent of file syntax.
 Historical fixedbasis translation SHALL be owned by HBMCMC entry points.
 Supported RHIME spelling and output-format aliases, including deprecated
 `emissions_*` flux selectors, SHALL be translated at runner/frontend boundaries
-outside HBMCMC after winning overrides. Existing `run_rhime` behavior SHALL
-remain supported on devel and in 0.8, with `DeprecationWarning` for deprecated
+outside HBMCMC after winning overrides. Supported runner option translation SHALL
+remain available through `run_standard` on devel and in 0.8, with `DeprecationWarning` for deprecated
 options, until their removal in 0.9. Canonical spelling precedence and the
 separate flux old/new conflict errors SHALL remain unchanged.
 `RhimeConfig.from_params` and canonical normalization SHALL know only canonical
@@ -443,7 +466,7 @@ modern runners. Its removal belongs to the HBMCMC retirement contract.
 
 #### Scenario: Construction translates deprecated spellings once
 
-- **WHEN** a caller supplies a supported deprecated spelling to `run_rhime`
+- **WHEN** a caller supplies a supported deprecated spelling to `run_standard`
 - **THEN** its frontend preserves the canonical value and established precedence,
   emitting a deprecation warning before canonical construction
 - **AND** canonical construction receives only canonical names and emits no alias warning

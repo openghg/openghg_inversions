@@ -17,7 +17,8 @@ Existing public selection and aliases follow the current
 [model-selection capability](https://github.com/openghg/openghg_inversions/blob/7269f50f09dc4b618766cb9d69abe260a564eebc/openspec/specs/rhime-model-selection/spec.md).
 Registered coordinates and the standard/multisector custom-likelihood seam
 follow the current [model-composition capability](https://github.com/openghg/openghg_inversions/blob/7269f50f09dc4b618766cb9d69abe260a564eebc/openspec/specs/rhime-model-composition/spec.md).
-This change adds route and handoff behavior without redefining those contracts.
+The explicit 0.8 standard entry-point/result and eager-builder migrations amend
+those contracts as recorded in the configuration and model-composition specs.
 
 These requirements describe pending implementation. Landed configuration and
 preparation foundations do not establish completion of the phase APIs or handoffs.
@@ -52,7 +53,8 @@ intermediate preparation states need not be serializable.
 Runners SHALL consume the resource-I/O contract's save and resource-resolution
 boundary supplied by #868.
 Direct scientific customization, signatures and numerical returns SHALL retain
-their contracts except for the explicit sampler-default migration below,
+their contracts except for the explicit 0.8 standard API/result and eager-builder
+migrations, the sampler-default migration below,
 #868's removal of the basis-preparation export argument, and the preparation
 steps' change from `MergedData` to per-site datasets and `SiteOptions`;
 staged/setup APIs and owned CO2 configuration conventions SHALL
@@ -88,7 +90,7 @@ owners without implying additional nested or linked checkpoint support.
 #### Scenario: Full and saved routes call the same step functions
 
 - **WHEN** a family supports both a full runner and saved phases
-- **THEN** both call the same acquisition, preparation, export, construction, sampling, result and product functions in the same order
+- **THEN** both reuse the same preparation and scientific construction, sampling and product operations, with explicit caller materialization and runner-owned exports
 - **AND** a saved phase adds only loading its input checkpoint and saving its output checkpoint
 - **AND** results are constructed from arguments rather than modified after construction
 
@@ -189,8 +191,9 @@ xarray and Dask objects.
 
 ### Requirement: Optional live samplers and descriptive replay metadata
 
-`RhimeResult.sampler` SHALL be optional and default to `None` without a sampler
-factory. Saved sampler provenance SHALL be plain metadata describing the actual
+Standard results SHALL be `InversionOutput` and SHALL NOT hold live samplers or
+models. Deferred-family `RhimeResult.sampler` SHALL remain optional and default
+to `None` without a sampler factory. Saved sampler provenance SHALL be plain metadata describing the actual
 inference invocation. Product replay and diagnosis SHALL NOT rebuild the
 producing model or execute inference. They MAY use existing configuration
 construction to inspect supplied or recorded choices; constructing a settings
@@ -219,8 +222,9 @@ execution graphs until an explicit assembly, model-input, serialization or
 eager-kernel boundary materializes the related arrays required there together.
 Preparation SHALL NOT be required to keep every array lazy across an explicit
 scientific execution boundary. Borrowed inputs SHALL remain unchanged.
-Built-in construction SHALL own its remaining model-specific materialization;
-the standard prepared-input route SHALL use the same construction operation as
+Standard callers SHALL explicitly materialize selected inputs and enabled priors
+together before calling the eager builder; the standard prepared-input route
+SHALL use the same construction operation as
 full and saved execution, receiving model choices without output configuration.
 Its complete-model-builder hook SHALL be rejected; its custom-likelihood seam
 SHALL remain available. Retained multisector complete-model builders SHALL receive
@@ -240,6 +244,28 @@ arrays, and own any further materialization their implementation requires.
 - **THEN** the route forwards its resolved scientific arguments and prepared
   inputs, including remaining lazy arrays, without imposing the built-in model's
   additional construction boundary
+
+### Requirement: Standard scientific results and explicit exports
+
+Standard full, prepared-input and postprocessing routes SHALL build an
+`InversionOutput` view, write requested products/exports, and return that view.
+They SHALL NOT construct an intermediate `RhimeResult` or thread an output-bearing
+`RhimeRunSpec` through scientific operations. Dates SHALL come from the data
+configuration or explicit prepared-input arguments; retained selectors SHALL come
+from the prepared inputs. Derived products MAY be generated/written through their
+existing owners. The runner SHALL explicitly save the optional self-contained
+inversion-output artifact, trace and basis through shared naming/path policy.
+Exporting the basis SHALL NOT replace the scientific value to record a receipt;
+original source provenance SHALL remain intact. Requested export destinations
+belong to configuration or run/checkpoint metadata. Existing export defaults,
+formats and overwrite behaviour SHALL remain unchanged.
+
+#### Scenario: Scientific result with optional exports
+
+- **WHEN** a standard full, prepared-input or postprocessing invocation completes
+- **THEN** it returns an `InversionOutput` borrowing the prepared scientific arrays and trace
+- **AND** `output_format="none"` suppresses file writes while retaining that scientific return value
+- **AND** requested basis, trace and inversion-output exports are explicit runner operations that preserve the scientific inputs and existing export defaults
 
 ### Requirement: One consumed output policy per invocation
 

@@ -43,6 +43,17 @@ def resolve_predictive_names(
 
     Concrete names remain valid. The historical default concentration name is
     redirected only when absent and an explicit concentration role is supplied.
+
+    Args:
+        names: Concrete model variable names or semantic role names to predict.
+        available: Variables available in the constructed model.
+        variable_roles: Explicit semantic role-to-variable mapping.
+
+    Returns:
+        Concrete variable names in requested order, with duplicates removed.
+
+    Raises:
+        ValueError: If any resolved variable is absent from the model.
     """
     roles = dict(variable_roles or {})
     concentration = DEFAULT_VARIABLE_ROLES["concentration"]
@@ -129,6 +140,12 @@ class OutputContract:
         Predictive evidence is optional. A contract advertising products must
         retain its declared flux scales, boundary scales and observation offsets
         in the posterior, even when the current invocation requests no products.
+
+        Args:
+            trace: Externally supplied or loaded samples to validate.
+
+        Raises:
+            ValueError: If a declared reconstruction state is absent from the posterior.
         """
         if set(self.supported_output_formats) == {"none"}:
             return

@@ -92,6 +92,9 @@ revalidate the same scientific trace. Necessary external-input validation SHALL
 remain at its owning loading or construction boundary. General
 deterministic reconstruction and compact-storage policy remain with the issues
 indexed by [#850](https://github.com/openghg/openghg_inversions/issues/850).
+One `load_samples`/`save_samples` owner SHALL decode/encode the referenced
+scientific result core, including the preparation generation. Replay orchestration
+SHALL consume that decoder rather than reconstruct domain records inline.
 The record SHALL NOT require a separate output-binding
 sidecar or persistence of live models, samplers or steps. Ordinary saves,
 manifest-last completion and dependencies SHALL follow the prepared-recipe-handoff

@@ -1,7 +1,7 @@
 """Named scientific preparation stages for RHIME recipes.
 
 The functions in this module form the backend-neutral preparation spine used
-by :func:`openghg_inversions.rhime.run_rhime` and copied project runners:
+by :func:`openghg_inversions.rhime.run_standard` and copied project runners:
 
 ``observation errors -> filter -> basis -> sensitivities -> labelled assembly``.
 

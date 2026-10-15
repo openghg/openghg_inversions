@@ -175,7 +175,7 @@ def test_multisector_tutorial_runs_to_sector_diagnostics(
 @pytest.mark.parametrize(
     ("subcommand", "config", "target"),
     [
-        ("run-rhime", _STANDARD_CONFIG, "openghg_inversions.rhime.run_rhime"),
+        ("run-rhime", _STANDARD_CONFIG, "openghg_inversions.rhime.run_standard"),
         (
             "run-rhime-multisector",
             _MULTISECTOR_CONFIG,

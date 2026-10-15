@@ -117,7 +117,7 @@ def test_invalid_active_choices_fail_before_acquisition(
         rhime_params.RhimeConfig.from_params(request, multisector=multisector_mode)
 
     recipe = multisector if multisector_mode else standard
-    runner = recipe.run_rhime_multisector if multisector_mode else recipe.run_rhime
+    runner = recipe.run_rhime_multisector if multisector_mode else recipe.run_standard
     acquire = Mock(side_effect=AssertionError("invalid configuration must fail before acquisition"))
     monkeypatch.setattr(recipe.RhimeMergedData, "from_options", acquire)
     if from_ini:
@@ -483,7 +483,7 @@ def test_invalid_minimum_error_fails_before_acquisition(monkeypatch, value, mult
         pytest.fail("invalid minimum error reached acquisition")
     monkeypatch.setattr(RhimeMergedData, "from_options", forbidden)
     recipe = multisector if multisector_mode else standard
-    runner = recipe.run_rhime_multisector if multisector_mode else recipe.run_rhime
+    runner = recipe.run_rhime_multisector if multisector_mode else recipe.run_standard
     with pytest.raises(ValueError, match="min_error"):
         runner(**_request(min_error=value, flux_sources=["one", "two"] if multisector_mode else ["one"]))
 
@@ -543,19 +543,19 @@ def test_canonical_flux_defaults_and_explicit_source_domain():
 
 def test_preparation_only_ignores_unselected_group_values(monkeypatch):
     request = _request(draws="invalid", x_prior=False, output_format="invalid")
-    sections = rhime_params.group_rhime_params(request)
+    sections = rhime_params.group_params(request)
     monkeypatch.setattr(RhimeSampler, "__init__", lambda *a, **kw: pytest.fail("sampler constructed"))
     prepared = rhime_params.DataConfig.from_params(sections["data"])
     assert prepared.site_options.sites == ("TAC", "MHD")
     with pytest.raises(ValueError, match="draws"):
         rhime_params.DataConfig.from_params({**sections["data"], "draws": 2})
     with pytest.raises(ValueError, match="typo"):
-        rhime_params.group_rhime_params({**request, "typo": 1})
+        rhime_params.group_params({**request, "typo": 1})
 
 
 @pytest.mark.parametrize("multisector", [False, True])
 def test_data_layout_agrees_with_explicit_recipe(multisector):
-    options = rhime_params.group_rhime_params(_request())["data"]
+    options = rhime_params.group_params(_request())["data"]
     options["flux_sources"] = ["first", "second"] if multisector else ["first"]
     for recorded in ({}, {"split_by_sectors": multisector}):
         data = rhime_params.DataConfig.from_params({**options, **recorded}, multisector=multisector)
@@ -568,7 +568,7 @@ def test_data_layout_agrees_with_explicit_recipe(multisector):
 
 @pytest.mark.parametrize("use_bc", [False, True])
 def test_grouped_full_and_phase_resolution_share_owners(use_bc):
-    sections = rhime_params.group_rhime_params(_request(use_bc=use_bc))
+    sections = rhime_params.group_params(_request(use_bc=use_bc))
     full = rhime_params.RhimeConfig.from_params(sections, multisector=False)
     data = rhime_params.DataConfig.from_params(sections["data"])
     assert full.data == data
@@ -578,7 +578,7 @@ def test_grouped_full_and_phase_resolution_share_owners(use_bc):
 
 
 def test_model_bc_policy_binds_preparation_without_reinterpreting_frequency():
-    sections = rhime_params.group_rhime_params(_request(bc_freq="monthly"))
+    sections = rhime_params.group_params(_request(bc_freq="monthly"))
     sections["model"]["use_bc"] = False
     full = rhime_params.RhimeConfig.from_params(sections, multisector=False)
     assert full.data.use_bc is True
@@ -597,7 +597,7 @@ def test_model_bc_policy_binds_preparation_without_reinterpreting_frequency():
 
 def test_model_defaults_and_repeated_facts_use_saved_preparation():
     data = rhime_params.DataConfig.from_params(
-        rhime_params.group_rhime_params(_request(start_date="2020-05-01"))["data"]
+        rhime_params.group_params(_request(start_date="2020-05-01"))["data"]
     )
     model = rhime_params.resolve_model_options({"mismatch_model": "pollution_event"}, data=data)
     assert model.likelihood.sigma_freq_anchor == "2020-05-01"
@@ -609,7 +609,7 @@ def test_model_defaults_and_repeated_facts_use_saved_preparation():
 
 def test_repeated_boundary_frequency_accepts_equivalent_fixed_duration():
     data = rhime_params.DataConfig.from_params(
-        rhime_params.group_rhime_params(_request(bc_freq="24h"))["data"]
+        rhime_params.group_params(_request(bc_freq="24h"))["data"]
     )
     assert rhime_params.resolve_model_options({"bc_freq": "1D"}, data=data).use_bc
     with pytest.raises(ValueError, match="bc_freq"):
@@ -803,7 +803,7 @@ def test_canonical_configuration_rejects_aliases_without_warnings(name):
             rhime_params.RhimeConfig.from_params(_request(**{name: "old"}), multisector=False)
 
 
-@pytest.mark.parametrize("runner", [rhime.run_rhime, rhime.run_rhime_multisector])
+@pytest.mark.parametrize("runner", [rhime.run_standard, rhime.run_rhime_multisector])
 @pytest.mark.parametrize("grouped", [False, True])
 def test_runner_translates_before_canonical_configuration(monkeypatch, runner, grouped):
     """Compatibility warnings belong to the runner, before config construction."""
@@ -826,7 +826,7 @@ def test_runner_translates_before_canonical_configuration(monkeypatch, runner, g
     if runner is rhime.run_rhime_multisector:
         params["flux_sources"] = ["anthro", "natural"]
     if grouped:
-        canonical = rhime_params.group_rhime_params({
+        canonical = rhime_params.group_params({
             name: value for name, value in params.items()
             if name not in {"emissions_store", "outputname", "xprior"}
         })
@@ -868,12 +868,12 @@ def test_data_group_has_no_unshipped_preparation_alias():
     assert not hasattr(config, "preparation")
     assert not hasattr(rhime_params, "PreparationConfig")
     with pytest.raises(ValueError, match="preparation"):
-        rhime_params.group_rhime_params({"preparation": {}})
+        rhime_params.group_params({"preparation": {}})
 
 
 def test_grouped_unknown_names_are_reported_together():
     with pytest.raises(ValueError) as raised:
-        rhime_params.group_rhime_params({"data": {"unknown_data": 1}, "model": {"unknown_model": 2}})
+        rhime_params.group_params({"data": {"unknown_data": 1}, "model": {"unknown_model": 2}})
     assert "unknown_data" in str(raised.value)
     assert "unknown_model" in str(raised.value)
 
@@ -881,7 +881,7 @@ def test_grouped_unknown_names_are_reported_together():
 def test_data_resolver_rejects_alias_without_translation():
     import warnings
 
-    options = rhime_params.group_rhime_params(_request())["data"]
+    options = rhime_params.group_params(_request())["data"]
     with warnings.catch_warnings():
         warnings.simplefilter("error", DeprecationWarning)
         with pytest.raises(ValueError, match="emissions_name"):
@@ -891,7 +891,7 @@ def test_data_resolver_rejects_alias_without_translation():
 def test_canonical_grouped_configuration_rejects_aliases_without_warnings():
     import warnings
 
-    params = rhime_params.group_rhime_params(_request())
+    params = rhime_params.group_params(_request())
     params["model"]["xprior"] = {"pdf": "normal", "mu": 1, "sigma": 1}
     with warnings.catch_warnings():
         warnings.simplefilter("error", DeprecationWarning)

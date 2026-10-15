@@ -30,7 +30,7 @@ def _config(multisector_mode, **overrides):
 def test_resolved_request_reaches_acquisition_without_resolution(monkeypatch, multisector_mode):
     config = _config(multisector_mode)
     recipe = multisector if multisector_mode else standard
-    runner = recipe.run_rhime_multisector if multisector_mode else recipe.run_rhime
+    runner = recipe.run_rhime_multisector if multisector_mode else recipe.run_standard
 
     def unexpected_resolution(*args, **kwargs):
         pytest.fail("A resolved request must not be parsed or resolved again")
@@ -54,7 +54,7 @@ def test_resolved_request_reaches_acquisition_without_resolution(monkeypatch, mu
 @pytest.mark.parametrize("overrides", [{"config_file": "missing.ini"}, {"species": "co2"}])
 def test_resolved_request_rejects_ambiguous_overrides(monkeypatch, multisector_mode, overrides):
     recipe = multisector if multisector_mode else standard
-    runner = recipe.run_rhime_multisector if multisector_mode else recipe.run_rhime
+    runner = recipe.run_rhime_multisector if multisector_mode else recipe.run_standard
     config = _config(multisector_mode)
     monkeypatch.setattr(recipe.RhimeMergedData, "from_options", lambda **kwargs: pytest.fail("Unexpected acquisition"))
     with pytest.raises(ValueError, match="either resolved"):
@@ -64,7 +64,7 @@ def test_resolved_request_rejects_ambiguous_overrides(monkeypatch, multisector_m
 @pytest.mark.parametrize("multisector_mode", [False, True])
 def test_resolved_request_checks_recipe_and_likelihood_before_acquisition(monkeypatch, multisector_mode):
     recipe = multisector if multisector_mode else standard
-    runner = recipe.run_rhime_multisector if multisector_mode else recipe.run_rhime
+    runner = recipe.run_rhime_multisector if multisector_mode else recipe.run_standard
     monkeypatch.setattr(recipe.RhimeMergedData, "from_options", lambda **kwargs: pytest.fail("Unexpected acquisition"))
     with pytest.raises(ValueError, match="different sector layout"):
         runner(config=_config(not multisector_mode))
@@ -76,7 +76,7 @@ def test_resolved_request_checks_recipe_and_likelihood_before_acquisition(monkey
 def test_ini_runner_merges_before_one_resolution_and_alias_translation(monkeypatch, tmp_path, multisector_mode):
     """Runners translate winning options before the single canonical factory call."""
     recipe = multisector if multisector_mode else standard
-    runner = recipe.run_rhime_multisector if multisector_mode else recipe.run_rhime
+    runner = recipe.run_rhime_multisector if multisector_mode else recipe.run_standard
     sources = ["inventory", "ocean"] if multisector_mode else ["inventory"]
     path = tmp_path / "request.ini"
     path.write_text(
@@ -129,7 +129,7 @@ def test_supplied_data_reaches_filtering_without_acquisition(monkeypatch, multis
     config = _config(multisector_mode)
     supplied = from_legacy_fp_all({"TAC": xr.Dataset({"mf_error": ("time", [1.0]), "mf_repeatability": ("time", [0.0]), "mf_variability": ("time", [0.0])}), ".split_by_sectors": multisector_mode}, config.data.site_options)
     recipe = multisector if multisector_mode else standard
-    runner = recipe.run_rhime_multisector if multisector_mode else recipe.run_rhime
+    runner = recipe.run_rhime_multisector if multisector_mode else recipe.run_standard
     def forbidden(*args, **kwargs):
         pytest.fail("supplied data must bypass both acquisition factories")
     class ReachedFiltering(Exception):
@@ -149,7 +149,7 @@ def test_supplied_layout_is_checked_before_filtering(monkeypatch, multisector_mo
     config = _config(multisector_mode)
     supplied = from_legacy_fp_all({"TAC": xr.Dataset(), ".split_by_sectors": not multisector_mode}, config.data.site_options)
     recipe = multisector if multisector_mode else standard
-    runner = recipe.run_rhime_multisector if multisector_mode else recipe.run_rhime
+    runner = recipe.run_rhime_multisector if multisector_mode else recipe.run_standard
     monkeypatch.setattr(recipe, "filter_observations", lambda *a, **kw: pytest.fail("layout not checked"))
     with pytest.raises(ValueError, match="incompatible.*layout"):
         runner(config=config, merged_data=supplied)
@@ -182,7 +182,7 @@ def test_acquired_data_binding_preserves_selectors_and_rejects_conflicts(
         "basis_algorithm": "quadtree",
     }
     recipe = multisector if multisector_mode else standard
-    runner = recipe.run_rhime_multisector if multisector_mode else recipe.run_rhime
+    runner = recipe.run_rhime_multisector if multisector_mode else recipe.run_standard
     reached = []
 
     class ReachedFiltering(Exception):

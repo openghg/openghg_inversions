@@ -13,6 +13,7 @@ import xarray as xr
 
 from openghg_inversions.inversion_data import RhimeMergedData, SiteOptions
 from openghg_inversions.rhime.params import RhimeConfig
+from openghg_inversions.postprocessing.inversion_output import InversionOutput
 
 from openghg_inversions.basis.basis_functions import BasisFunctions
 
@@ -85,9 +86,12 @@ def test_custom_basis_runner_replaces_only_basis_stage(
         averaging_period=("1h",),
         basis_artifact_source=basis.basis_artifact_source,
     )
-    build_result = object()
-    idata = object()
-    expected_result = object()
+    output_contract = object()
+    build_result = SimpleNamespace(output_contract=output_contract)
+    idata = xr.DataTree()
+    model_inputs = prepared.inv_inputs
+    priors = {"x": {"pdf": "normal", "mu": 1.0, "sigma": 0.2}}
+    expected_result = InversionOutput(trace=idata, inv_inputs=prepared.inv_inputs, basis_functions=basis)
     calls: list[str] = []
 
     def parse_config(actual_config: str | Path) -> dict[str, Any]:
@@ -147,10 +151,18 @@ def test_custom_basis_runner_replaces_only_basis_stage(
 
 
 
-    def build(actual: Any, model_spec: Any) -> Any:
-        """Record the shared standard model boundary after custom preparation."""
+    def materialize(actual: Any, model_spec: Any) -> Any:
+        """Keep selected numerical inputs and priors at the explicit boundary."""
         assert actual is prepared
         assert model_spec is config.model
+        calls.append("materialize")
+        return model_inputs, priors
+
+    def build(actual: Any, model_spec: Any, **kwargs: Any) -> Any:
+        """Record the eager model boundary after project preparation."""
+        assert actual is model_inputs
+        assert model_spec is config.model
+        assert kwargs["priors"] is priors
         calls.append("build")
         return build_result
 
@@ -161,31 +173,31 @@ def test_custom_basis_runner_replaces_only_basis_stage(
         calls.append("sample")
         return idata
 
-    def make_result(**kwargs: Any) -> Any:
-        """Record the supported output stage and retained custom basis."""
+    def annotate(actual: Any, posterior: Any, **kwargs: Any) -> None:
+        """Record prior and custom-likelihood provenance once after sampling."""
+        assert actual is build_result
+        assert posterior is idata
+        assert kwargs["likelihood_builder"] is None
+        calls.append("annotate")
+
+    def make_result(**kwargs: Any) -> InversionOutput:
+        """Construct the scientific view without output policy or live references."""
         assert kwargs["prepared"] is prepared
-        assert kwargs["prepared"].basis_functions is basis
-        assert kwargs["run_spec"].sites == ("MHD",)
-        assert kwargs["run_spec"].model is config.model
-        assert kwargs["sampler"] is sampler
-        assert kwargs["model_build_result"] is build_result
-        assert kwargs["idata"] is idata
-        assert kwargs["build_and_sample_seconds"] >= 0.0
-        assert set(kwargs) == {
-            "prepared",
-            "run_spec",
-            "sampler",
-            "model_build_result",
-            "idata",
-            "build_and_sample_seconds",
-        }
+        assert kwargs["model_spec"] is config.model
+        assert kwargs["posterior"] is idata
+        assert kwargs["output_contract"] is output_contract
+        assert kwargs["start_date"] == config.data.start_date
+        assert kwargs["end_date"] == config.data.end_date
+        assert kwargs["actual_inference"] == sampler.describe()
+        assert "run_spec" not in kwargs
+        assert "sampler" not in kwargs
         calls.append("result")
         return expected_result
 
-    def make_outputs(**kwargs: Any) -> None:
-        assert kwargs == {"result": expected_result, "prepared": prepared}
-        calls.append("outputs")
-        return kwargs["result"]
+    def write_outputs(actual: InversionOutput, output_spec: Any) -> None:
+        assert actual is expected_result
+        assert output_spec is config.output
+        calls.append("output")
 
     monkeypatch.setattr(custom_basis_runner, "read_rhime_ini", parse_config)
     monkeypatch.setattr(custom_basis_runner.RhimeConfig, "from_params", classmethod(resolve))
@@ -194,10 +206,13 @@ def test_custom_basis_runner_replaces_only_basis_stage(
     monkeypatch.setattr(custom_basis_runner, "build_project_basis", build_project_basis)
     monkeypatch.setattr(custom_basis_runner, "build_sensitivities", build_sensitivities)
     monkeypatch.setattr(custom_basis_runner, "assemble_rhime_inputs", assemble)
-    monkeypatch.setattr(custom_basis_runner, "build_standard", build)
+    monkeypatch.setattr(custom_basis_runner, "materialize_standard_inputs", materialize)
+    monkeypatch.setattr(custom_basis_runner, "build_standard_model", build)
     monkeypatch.setattr(custom_basis_runner, "sample_rhime_model", sample)
-    monkeypatch.setattr(custom_basis_runner, "make_standard_rhime_result", make_result)
-    monkeypatch.setattr(custom_basis_runner, "make_standard_rhime_outputs", make_outputs)
+    monkeypatch.setattr(custom_basis_runner, "annotate_sample_trace", annotate)
+    monkeypatch.setattr(custom_basis_runner, "make_standard_output", make_result)
+    monkeypatch.setattr(custom_basis_runner, "write_standard_outputs", write_outputs)
+    monkeypatch.setattr(custom_basis_runner, "standard_artifact_paths", lambda *args: (None, None))
 
     result = custom_basis_runner.run_custom_rhime(
         config_file=config_file,
@@ -213,10 +228,12 @@ def test_custom_basis_runner_replaces_only_basis_stage(
         "project-basis",
         "sensitivities",
         "assemble",
+        "materialize",
         "build",
         "sample",
+        "annotate",
         "result",
-        "outputs",
+        "output",
     ]
 
 

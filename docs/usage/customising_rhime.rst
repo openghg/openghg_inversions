@@ -21,7 +21,7 @@ documented interfaces.
 
 Choose the smallest starting point that fits the change:
 
-* To change only the likelihood, pass a Python function to ``run_rhime``.
+* To change only the likelihood, pass a Python function to ``run_standard``.
 * To run the matched fixed-tau Ornstein--Uhlenbeck (OU) CO₂ model with inferred
   site amplitudes, use :ref:`the package-supported cached-sigma CO₂ recipe
   <co2-cached-sigma-recipe>` in
@@ -44,12 +44,12 @@ The cached-sigma CO₂ recipe documentation moved to the
 Resume from external scientific data
 ----------------------------------------------
 
-``run_rhime`` and ``run_rhime_multisector`` accept ``merged_data`` as a
+``run_standard`` and ``run_rhime_multisector`` accept ``merged_data`` as a
 Python-only handoff. It bypasses OpenGHG acquisition,
 checks the recorded scientific facts and single- or multi-sector layout, and
 then re-enters the visible recipe at observation-error preparation::
 
-   result = run_rhime(
+   result = run_standard(
        config_file="config.ini",
        merged_data=my_merged_data,
    )
@@ -89,7 +89,6 @@ labelled arrays:
 
    from openghg_inversions.basis import prepare_basis
    from openghg_inversions.basis.support import load_bc_basis
-   from openghg_inversions.basis.basis_functions import BASIS_ARTIFACT_PATH_ATTR
    from openghg_inversions.native_flux import resolve_runtime_flux
    from openghg_inversions.rhime.preparation import (
        acquire_merged_data, filter_observations, prepare_observation_errors,
@@ -130,14 +129,12 @@ labelled arrays:
    )
    if config.data.basis_output_path is not None:
        basis.save(config.data.basis_output_path)
-       basis = basis.with_metadata(
-           {BASIS_ARTIFACT_PATH_ATTR: str(config.data.basis_output_path)}
-       )
 
 A selected ``basis_path`` reuses saved geometry with current merged flux;
 otherwise preparation generates a partition from the filtered observations.
 The runner optionally saves the returned basis at ``basis_output_path`` and
-attaches export metadata without mutating the prepared basis. ``prepare_basis``
+preserves the existing basis value and its original source provenance. The
+requested export path belongs to configuration, not a rewritten scientific value. ``prepare_basis``
 accepts no export destination and performs no export write. Sensitivity construction
 and input assembly consume the returned ``BasisFunctions``. Pass ``bc_basis`` to
 ``build_sensitivities``; ``None`` uses NESW without any BC basis-file I/O.
@@ -165,7 +162,7 @@ site order. Normalize scalar or per-site inputs once, then acquire an in-memory
 merged handoff::
 
    from openghg_inversions.inversion_data import RhimeMergedData, SiteOptions
-   from openghg_inversions.rhime import run_rhime
+   from openghg_inversions.rhime import run_standard
 
    selectors = SiteOptions.from_inputs(
        sites=["TAC", "MHD"], averaging_period="4h", inlet=["185m", "10m"],
@@ -237,7 +234,7 @@ Change the likelihood with a Python function
 --------------------------------------------
 
 For an ordinary likelihood variation, keep RHIME's complete
-acquisition-to-output workflow and pass one Python function to ``run_rhime``.
+acquisition-to-output workflow and pass one Python function to ``run_standard``.
 The function is deliberately unavailable to INI files: it is
 not imported from configuration or stored in a run or model specification.
 
@@ -246,9 +243,9 @@ The complete integration is one named argument:
 .. code-block:: python
 
    from my_project.likelihoods import likelihood_builder
-   from openghg_inversions.rhime import run_rhime
+   from openghg_inversions.rhime import run_standard
 
-   result = run_rhime(
+   result = run_standard(
        config_file="config.ini",
        mismatch_model=None,
        likelihood_builder=likelihood_builder,
@@ -266,7 +263,7 @@ Options owned only by a custom likelihood can be supplied separately with
 ``likelihood_kwargs``. RHIME expands that mapping into the callable without
 hiding the common scientific arrays in an opaque object::
 
-   result = run_rhime(
+   result = run_standard(
        config_file="config.ini",
        mismatch_model=None,
        likelihood_builder=likelihood_builder,
@@ -316,7 +313,7 @@ custom-callback contract. In particular,
 ``models.additive_sigma.add_additive_sigma_likelihood`` adds an absolute
 concentration-scale variance, while ``models.pollution_event`` owns the
 pollution-enhancement-scaled equation. Select the absolute additive equation
-directly with ``mismatch_model="additive_sigma"`` in ``run_rhime`` or
+directly with ``mismatch_model="additive_sigma"`` in ``run_standard`` or
 ``run_rhime_multisector``; ``sigma_prior``, ``sigma_freq``, and
 ``sigma_per_site`` then configure its scale. Additive sigma does not load the
 historical ``min_error`` floor unless
@@ -334,9 +331,9 @@ The model-owned
 within-site Ornstein--Uhlenbeck mismatch covariance. For example::
 
    from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
-   from openghg_inversions.rhime import run_rhime
+   from openghg_inversions.rhime import run_standard
 
-   result = run_rhime(
+   result = run_standard(
        ...,
        likelihood_builder=add_fixed_ou_gaussian_likelihood,
        likelihood_kwargs={
@@ -463,7 +460,8 @@ or deliberately starting from a different preparation graph while retaining
 the standard model operations.
 
 The deliberate change is the likelihood passed to
-``build_standard_rhime_model_result``: the example selects the same project-owned
+``build_standard_model`` after explicit numerical materialization: the example
+selects the same project-owned
 Student-t builder as the preferred form. Acquisition, filtering, basis
 construction, labelled input assembly, conversion of delayed arrays for PyMC,
 sampling, predictive selection, filenames, and output handling remain
@@ -606,7 +604,7 @@ integration tests and rendered here, so the documentation and runnable example
 cannot drift apart.
 
 This guarded composition is intentionally project-specific and is not yet a
-common, stable strategy that warrants another lower-ceremony ``run_rhime``
+common, stable strategy that warrants another lower-ceremony ``run_standard``
 option.
 
 .. literalinclude:: ../../examples/rhime_customisation/custom_basis_runner.py

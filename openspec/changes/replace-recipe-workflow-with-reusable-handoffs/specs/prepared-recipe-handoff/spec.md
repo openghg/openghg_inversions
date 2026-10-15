@@ -74,6 +74,20 @@ NOT add a Zarr rejection or conversion requirement solely for content hashing.
 - **THEN** the reader reports the problem before inference or product writes
 - **AND** it does not substitute another file found through configuration, working directory or environment defaults
 
+### Requirement: Bind samples to the preparation generation
+
+Each preparation save SHALL assign a generation identifier. Sample records SHALL
+capture that identifier, and loading samples SHALL reject a replacement preparation
+at the same reference whose generation differs. This check SHALL bind checkpoint
+replacement, not authenticate arbitrary numerical payload contents. It SHALL NOT
+require content hashes or recursive artifact scans.
+
+#### Scenario: Preparation replaced after sampling
+
+- **WHEN** samples reference a preparation generation and a later save replaces that preparation at the same path
+- **THEN** loading those samples rejects the different preparation generation before reconstructing products
+- **AND** the check does not claim to detect arbitrary numerical payload modifications within a generation
+
 ### Requirement: Caller-selected destinations and manifest-last completion
 
 Saved scientific operations SHALL accept caller-selected destinations, including
@@ -83,6 +97,10 @@ full runner overwrite behaviour. Normal filesystem errors SHALL propagate.
 Ordinary numerical saves
 SHALL complete before the final manifest is written. The final manifest SHALL be
 the completion marker; a failed save SHALL NOT leave one claiming completion.
+Concrete checkpoint payload and manifest targets, including prior-predictive
+evidence, SHALL be checked for redirects outside the selected destination and
+aliases to referenced preparation files. These checks SHALL NOT require fresh
+directories or recursive scanning.
 Files owned by the checkpoint writer SHALL remain under the explicit checkpoint
 destination, and dependency references SHALL NOT authorize writes elsewhere or
 overwriting referenced artifacts.

@@ -2,7 +2,7 @@
 
 This entry point preserves the historical ``run_hbmcmc.py`` command-line
 surface for old INI files, but translates supported fixedbasis-style parameter
-names and calls the modern ``run_rhime`` pathway.
+names and calls the modern ``run_standard`` pathway.
 
 Run as:
     $ python -m openghg_inversions.hbmcmc.run_hbmcmc [start end] -c config.ini
@@ -29,7 +29,7 @@ from openghg_inversions._timing import log_timing, timed, timer_seconds, timer_s
 from openghg_inversions.config import config
 from openghg_inversions.hbmcmc import compatibility
 from openghg_inversions.models.additive_sigma import DEFAULT_ADDITIVE_SIGMA_PRIOR
-from openghg_inversions.rhime import RhimeConfig, run_rhime
+from openghg_inversions.rhime import RhimeConfig, run_standard
 
 
 _ADDITIVE_SIGMA_LIKELIHOOD = "additive_sigma"
@@ -245,7 +245,7 @@ def main(argv: list[str] | None = None) -> None:
     param = hbmcmc_extract_param(config_file, **command_line_args)
     log_timing("run_hbmcmc.config_extract", timer_seconds(timing_start))
 
-    print("Routing fixedbasis-style config to run_rhime(...)")
+    print("Routing fixedbasis-style config to run_standard(...)")
 
     with timed("run_hbmcmc.fixedbasis_to_rhime_translation"):
         rhime_params = compatibility.fixedbasis_params_to_rhime(param)
@@ -276,7 +276,7 @@ def main(argv: list[str] | None = None) -> None:
     with timed("run_hbmcmc.config_copy"):
         _copy_config_file(config_file, param=param, **command_line_args)
 
-    run_rhime(config=resolved_config)
+    run_standard(config=resolved_config)
 
 
 if __name__ == "__main__":

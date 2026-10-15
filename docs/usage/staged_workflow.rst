@@ -3,14 +3,13 @@ Staged RHIME workflows
 
 The standard recipe can prepare once, sample compatible models into separate
 locations, and produce different outputs from saved samples. ``run_standard``
-and ``run_rhime_from_prepared_inputs`` use the same scientific operations as
-the saved phases. Full and saved execution call the same step functions
-(``acquire_merged_data``,
-``prepare_standard``, ``export_basis``, ``build_standard``,
-``sample_rhime_model``, ``make_standard_rhime_result`` and
-``make_standard_rhime_outputs``) in the same order. A saved phase only adds
-loading its input checkpoint before those calls and saving its output after
-them; full execution needs no intermediate saves.
+and standard ``run_rhime_from_prepared_inputs`` use the same scientific operations
+as the saved phases: prepare inputs, explicitly materialize selected arrays and
+enabled priors where needed, build one eager model, sample, construct an
+``InversionOutput`` view, then write requested products and exports. Checkpoints
+add loading and saving at those boundaries; full execution needs no intermediate
+saves. Model construction accepts no output configuration and performs no hidden
+materialization.
 
 Standard saved phases
 ---------------------
@@ -34,10 +33,11 @@ available. Omitted model ``use_bc`` inherits the preparation choice; explicit
 the baked policy, even when the selected model ignores BCs. Changing acquired
 data, filters, basis, native flux or baked numerical policy needs new preparation.
 
-``postprocess`` takes the sample manifest and current output choices. It loads
+``load_samples`` decodes the sample manifest to ``InversionOutput``.
+``postprocess`` uses that reader with current output choices. It loads
 the recorded model meaning, output contract, inference metadata, prepared inputs
-and samples without building a graph or running inference. Its returned
-``RhimeResult`` has ``sampler=None``. Missing descriptive metadata stays
+and samples without building a graph or running inference. It returns
+``InversionOutput`` without a live model or sampler. Missing descriptive metadata stays
 unavailable. Output naming, destination and supported formats can change;
 scientific choices cannot relabel saved samples. Default sampling retains
 scientific ``x``, including when it is a deterministic transform of ``x_latent``.
@@ -59,7 +59,7 @@ in nested outputs.
 
 Related lazy prior inputs, including supported zero-dimensional numerical
 inputs and auxiliary coordinates, are materialized together with selected model
-inputs at construction. An enabled prior may be computed before sensitivity
+inputs at the explicit caller materialization boundary before construction. An enabled prior may be computed before sensitivity
 evaluation finds that its states have no effect on observations and fixes them
 instead of sampling them; such a prior contributes no constructed-prior record.
 Disabled BC and offset components are excluded before this computation.
@@ -69,9 +69,11 @@ parameters retain their graph dependencies. Ordinary and reparameterized
 lognormal construction share the same symbolic moment conversion, preserving
 the supplied arithmetic or log-space parameterization in metadata.
 
-Use ``RhimeSampler.sample`` or the ordinary RHIME sampling routes before calling
-``save_samples`` directly: they attach the constructed-prior records to the
-trace. Required array references are checked when saving and reloading samples;
+Ordinary standard sampling routes attach constructed-prior records and callable
+provenance to the trace once after sampling. When composing these operations
+directly, call ``annotate_sample_trace`` from ``rhime.outputs`` with the build
+result and posterior before ``save_samples``; the generic sampler does not own
+RHIME scientific metadata. Required array references are checked when saving and reloading samples;
 missing values fail before completing a sample handoff or writing products.
 
 A selected saved basis supplies its operator while new preparation binds current
@@ -117,6 +119,11 @@ files use existing codecs, and manifests use JSON without mandatory content
 hashes or full-configuration equality gates. Missing or malformed files fail at
 loading; incompatible scientific inputs fail at their owning operation.
 
+Each preparation save assigns a generation identifier. A sample manifest records
+that identifier and rejects replay against a replacement preparation at the same
+path. This binds checkpoint generations, not arbitrary payload contents; it does
+not provide content-integrity or tamper detection.
+
 Callers choose checkpoint locations and own collision avoidance and run isolation.
 A simple layout is ``run/prepare``, ``run/sample`` and ``run/products``; explicit
 locations are supported, including existing directories. Numerical files are saved
@@ -125,7 +132,10 @@ can leave partial files but no completed manifest. Checkpoint-owned payload and
 manifest targets must stay within the chosen destination and must not alias
 referenced preparation artifacts. Postprocessing uses the same
 product writer and overwrite behaviour as full execution; in-memory products
-require no destination. Normal filesystem errors propagate.
+require no destination. Normal filesystem errors propagate. Concrete payload and manifest targets are
+checked for redirects outside their destination or aliases to prepared inputs;
+prior-predictive saves use the same target checks. This does not require fresh
+directories or recursive directory scanning.
 ``basis_output_path`` is an exact destination and may be outside the checkpoint
 directory. It is resolved at the frontend and forwarded unchanged to the runner's
 optional basis export.

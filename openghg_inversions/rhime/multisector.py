@@ -71,6 +71,7 @@ from .builders import (
 
 from .materialization import materialize_pymc_inputs
 from .outputs import (
+    annotate_sample_trace,
     RhimeResult,
     annotate_likelihood_trace,
     make_multisector_rhime_outputs,
@@ -808,6 +809,7 @@ def run_multisector(
         model_build_result,
         sampler,
     )
+    annotate_sample_trace(model_build_result, idata)
     # 5. Bind the samples to durable scientific output information.
     result = make_multisector_rhime_result(
         prepared=prepared,

@@ -166,13 +166,15 @@ because a separate sampler argument was omitted. Keep the existing rejection of
 a complete resolved configuration combined with additional raw overrides.
 
 ```python
-def sample(prepared_manifest, *, model, sampler="default", output_dir):
-    # Load prepared inputs and bind the scientific choices before inference.
-    ...
-
-sample(prepared_manifest, model=model_a, output_dir="runs/a")
-sample(prepared_manifest, model=model_b, sampler="default", output_dir="runs/b")
-# Advanced callers can instead pass their configured RhimeSampler.
+def sample(preparation_manifest, *, model, sampler="default", output_dir):
+    prepared, data_config = load_preparation(preparation_manifest)
+    model_spec = resolve_model_options(model, data_config=data_config)
+    invocation = resolve_sampler(sampler)
+    inputs, priors = materialize_standard_inputs(prepared, model_spec)
+    built = build_standard_model(inputs, model_spec, priors=priors)
+    posterior = sample_rhime_model(built, invocation)
+    # Record constructed priors and callable provenance once on the trace.
+    return save_samples(...)
 ```
 
 `"default"` requests live behavior; it is not recorded as the settings actually
@@ -211,33 +213,14 @@ Leave model-dependent argument validation to PyMC. Configuration may hold the ex
 unbound sampler: strict separation into several settings/runtime classes is not
 needed to achieve these guarantees.
 
-A result is a record of what happened, not a request to execute defaults:
-
-```python
-# Proposed field in the existing result type; no default factory.
-sampler: RhimeSampler | None = None
-
-# Live result: the sampler's own description is recorded at construction.
-result = make_result(..., sampler=invocation_sampler)
-# Replay result: sampler stays None; the recorded description is an argument.
-result = make_result(..., sampler=None, sampler_metadata=saved_sampler_metadata)
-```
-
-Keep live sampler access available for existing direct callers. Shared outputs
-consume the descriptive metadata in either route. `RhimeSampler` owns the small
-explicit description of its actual settings; save that snapshot and reuse it.
-Missing descriptive metadata remains unavailable rather than acquiring today's
-defaults. It does not gate scientific postprocessing, and needs no strict-metadata
-flag or separate parser for hypothetical future sampler options. Result/replay
-construction never resolves `"default"` or performs inference. Ordinary parsing of
-the associated run configuration is allowed; forbidding configuration-object
-construction is not an acceptance criterion. Remove the existing `RhimeResult`
-sampler default factory and adapt
-the concrete result factories and output adapter together.
-The old factory only constructs an unbound object; it does not sample or build a
-model. Its problem is that omitting a result's sampler manufactures default
-settings that need not describe the saved inference. A factory on a requested
-configuration may still be appropriate because that object requests future work.
+Standard results use the existing `InversionOutput` scientific view, including
+when no files are requested. Its inference description records what happened;
+no live model/sampler or output policy is retained. Model inspection uses the
+eager builder directly. Deferred families keep their existing `RhimeResult`
+compatibility shape until their own adoption slices. This supersedes the earlier
+proposal to preserve the standard result envelope or a deprecated `run_rhime`
+wrapper. The Python `run_rhime` name is removed in 0.8 with import guidance;
+`run-rhime` remains the unchanged CLI spelling and calls `run_standard`.
 
 ### 3. Keep scientific order visible; save only at explicit boundaries
 
@@ -294,27 +277,21 @@ before and saving one after (see decision 8). Saved sampling uses the same
 concrete scientific operations:
 
 ```python
-def sample(prepared_manifest, *, model, sampler="default", output_dir, run_context=None):
-    record, paths, context = load_preparation_record(prepared_manifest, run_context)
-    prepared = load_prepared(paths.prepared)
-    resolved_model = resolve_model_options(model, facts=context.preparation)
-    invocation = resolve_invocation_sampler(sampler, recipe="standard")
-    # Construction combines the prepared arrays with the selected model choices.
-    built = build_standard_model(prepared, resolved_model)
-    posterior = sample_standard_model(built, invocation)
-    return save_samples(
-        output_dir, prepared_manifest, posterior, built.output_contract,
-        run_config=paths.run_config,
-        actual_inference=describe_invocation(resolved_model, invocation),
-    )
+def sample(preparation_manifest, *, model, sampler="default", output_dir):
+    prepared, data_config = load_preparation(preparation_manifest)
+    model_spec = resolve_model_options(model, data_config=data_config)
+    inputs, priors = materialize_standard_inputs(prepared, model_spec)
+    built = build_standard_model(inputs, model_spec, priors=priors)
+    posterior = sample_rhime_model(built, resolve_sampler(sampler))
+    return save_samples(...)
 ```
 
 Validate declared model coordinates/output roles even when no products are requested.
 Default traces retain scientific output states such as `x`, including when they
-are named deterministics derived from `_latent` variables. An explicit selection
-omitting a required state needs a supported reconstruction route or a clear error
-before completing the saved handoff. General reconstruction remains with #850.
-A custom model supporting only `none` is valid; it cannot claim unsupported replay
+are named deterministics derived from `_latent` variables. Posterior `var_names` overrides are
+rejected at the sampler boundary; intentional predictive selection remains
+supported. General reconstruction remains with #850.
+A retained multisector custom model supporting only `none` is valid; it cannot claim unsupported replay
 products. Product-specific requirements are checked when products are requested.
 Use the model's existing variable roles/output contract as the shared source for
 predictive sampling and postprocessing, rather than have the sampler infer a
@@ -447,21 +424,11 @@ available timing metadata, package version and Git revision when available; an
 unknown revision does not prevent execution. CO2 keeps its trace/affine meaning.
 
 ```python
-def postprocess(sample_manifest, *, output, run_context=None):
-    sample, paths, context = load_sample_record(sample_manifest, run_context)
-    prepared = load_prepared(paths.prepared)
-    posterior = load_trace(paths.posterior)
-    contract = decode_output_contract(sample.output_contract)
-    validate_requested_products(output, prepared, contract)
-    preflight_product_destinations(output)
-    result = make_standard_result(
-        prepared=prepared, posterior=posterior, contract=contract,
-        requested_window=context.requested_window,
-        inference_metadata=sample.inference_metadata,
-        sampler=None, output=output,
-    )
-    make_standard_outputs(result, prepared)
-    return result
+def postprocess(sample_manifest, *, output):
+    inv_out = load_samples(sample_manifest)  # decode the borrowed scientific view
+    write_standard_outputs(inv_out, output)
+    # The runner explicitly saves requested inversion-output and trace exports.
+    return inv_out
 ```
 
 The loader owns supported-format and required-content checks. Existing scientific
@@ -502,45 +469,55 @@ and signed flux. CO2's native prior moments, effective operator, affine intercep
 and unresolved covariance remain one coherent preparation; replacing one array
 with matching labels cannot establish compatibility.
 
-### 8. Full and saved routes share one step sequence
+### 8. Standard runners visibly compose the same scientific operations
 
-*Amendment from the #866 review, October 2026.* The routes must visibly do the
-same thing, so they call the same step functions with the same objects:
+Revised on 15 October 2026 following the eager-builder and standard-result
+maintainer decisions. This supersedes the earlier three-builder chain,
+`RhimeResult` return/compatibility-wrapper recommendations and replay sketch.
+
+Full and staged execution share preparation, one eager construction operation,
+inference and scientific output construction. Callers explicitly materialize
+selected inputs and enabled prior parameters together where needed; saved
+preparation is already eager, but direct Python priors may remain lazy until this
+call. No mandatory prior-materialization stage or new CLI command is introduced.
 
 ```python
-merged   = acquire_merged_data(config.data, merged_data)
-prepared = prepare_standard(merged, ...)   # sub-pipeline over site datasets + SiteOptions
-prepared = <export_basis(prepared.basis_functions, config.data.basis_output_path)>
-built    = build_standard(prepared, model_spec, likelihood_builder=...)
-idata    = sample_rhime_model(built, sampler)
-result   = make_standard_rhime_result(..., sampler_metadata=..., provenance=...)
-result   = make_standard_rhime_outputs(result=result, prepared=prepared)  # returns, never mutates
+prepared = prepare_inputs(data_config, merged_data)
+# Optional basis export saves this value without rewriting its source metadata.
+inputs, priors = materialize_standard_inputs(prepared, model_spec)
+built = build_standard_model(inputs, model_spec, priors=priors, likelihood_builder=...)
+posterior = sample_rhime_model(built, sampler)
+inv_out = make_standard_output(...)
+write_standard_outputs(inv_out, output_spec)
+# Optional inversion-output and trace exports are explicit runner operations.
+return inv_out
 ```
 
-- `prepare` runs the first three calls and saves; `sample` loads the preparation
-  (prepared inputs plus the recorded `DataConfig`) and runs the next two;
-  `postprocess` loads the samples and runs the last two. `prior_predictive` and
-  `run_rhime_from_prepared_inputs` build through `build_standard` too.
-- "Small repeated orchestration" (decision 3) means repeated calls, never copied
-  bodies between routes of one family.
-- Checkpoints reload the objects the full runner passes: the preparation records
-  `DataConfig.to_params()` and reloads it with `DataConfig.from_params`; the sample
-  record encodes model choices with `RhimeModelSpec.to_record`; constructed prior
-  scalars stay inline, and array parameters use registered model data saved with
-  the trace. Metadata writing does not execute borrowed prior graphs.
-- Results are constructed from arguments; product makers return what they make;
-  replay uses the full runner product overwrite behaviour.
-- One request loader (`load_rhime_params`) serves standard full runs and every phase;
-  relative configuration resource and output paths resolve from the invocation
-  working directory in both routes.
-- `MergedData` holds acquired data only. Preparation steps pass per-site datasets
-  and `SiteOptions`; filtering keeps dropped-site reporting via `retain_sites`.
-- The multisector-only pre-handoff envelope lives in `_multisector_stages.py`
-  until §2 replaces it; later families follow decision 8, not the envelope.
-
-Settled: full and saved routes share invocation-relative configuration paths and
-the full runner final-product overwrite behaviour. Checkpoint allocation and run
-isolation belong to the caller; manifest references remain manifest-relative.
+- `prepare` uses the common preparation operation and `save_preparation`.
+  `sample` loads preparation, materializes where needed, builds, samples and saves.
+  `postprocess` uses one `load_samples` decoder returning the scientific view and
+  writes requested products/exports. Standard prepared-input execution uses the
+  same post-preparation operations.
+- `InversionOutput` is returned even with `output_format="none"`; no files are
+  written in that case. Its output metadata holds only the inference description.
+  In-memory products can be recomputed through existing product functions.
+- The runner owns optional self-contained inversion-output, trace and basis
+  exports. Derived-product generation/writing may retain its existing owner.
+  Existing CLI export defaults, filenames, overwrite behaviour and logs remain.
+  Deprecation of the self-contained file export remains a separate proposal.
+- Preparation and sample persistence use their existing codecs and explicit
+  records. Preparation generation identifiers detect replacement at the same
+  reference, without claiming payload integrity. Manifest-last completion and
+  concrete-target checks apply without fresh-directory or recursive-scan policy.
+- Prior scalars remain inline; array parameters use registered model data saved
+  with the trace. Metadata writing does not execute borrowed prior graphs.
+- Configuration helpers use `load_params`, `group_params` and `option_groups`.
+  Configuration paths are invocation-relative; checkpoint references remain
+  manifest-relative. `data_config` names the owner, separate from numerical data.
+- `MergedData` remains acquired-only. Deferred families retain their interfaces
+  and results until their adoption slices; this is not a family-wide migration.
+- Human readability acceptance remains failed/pending renewed review. Passing
+  tests or this amended plan do not mark task 1.11 complete.
 
 ## Migration Plan
 

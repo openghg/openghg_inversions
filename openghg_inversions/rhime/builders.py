@@ -65,6 +65,7 @@ class RhimeModelBuildResult:
     variable_roles: Mapping[str, str]
     supported_output_formats: tuple[OutputFormat, ...] = ("none",)
     metadata: Mapping[str, Any] = field(default_factory=dict)
+    _output_contract: OutputContract = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         """Copy and validate the serializable portion of the result."""
@@ -73,19 +74,20 @@ class RhimeModelBuildResult:
                 f"`RhimeModelBuildResult.model` must be a `pymc.Model`; got {type(self.model).__name__}."
             )
 
-        contract = self.output_contract
-        object.__setattr__(self, "variable_roles", dict(contract.variable_roles))
-        object.__setattr__(self, "supported_output_formats", contract.supported_output_formats)
-        object.__setattr__(self, "metadata", dict(contract.metadata))
-
-    @property
-    def output_contract(self) -> OutputContract:
-        """Expose durable output information without retaining the model graph."""
-        return OutputContract(
+        contract = OutputContract(
             variable_roles=self.variable_roles,
             supported_output_formats=self.supported_output_formats,
             metadata=self.metadata,
         )
+        object.__setattr__(self, "_output_contract", contract)
+        object.__setattr__(self, "variable_roles", contract.variable_roles)
+        object.__setattr__(self, "supported_output_formats", contract.supported_output_formats)
+        object.__setattr__(self, "metadata", contract.metadata)
+
+    @property
+    def output_contract(self) -> OutputContract:
+        """Expose durable output information without retaining the model graph."""
+        return self._output_contract
 
     def validate_requested_output(self, output_format: str) -> None:
         """Reject an output this model contract does not support."""

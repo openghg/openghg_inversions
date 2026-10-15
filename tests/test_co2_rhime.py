@@ -431,6 +431,7 @@ def test_public_co2_runner_persists_fixed_mismatch_manifest(
     np.testing.assert_allclose(sampled_models[0]["fixed_model_mismatch"].eval(), 1.0)
     roles = json.loads(result.attrs["rhime_variable_roles"])
     metadata = json.loads(result.attrs["rhime_model_metadata"])
+    assert isinstance(json.loads(result.attrs["rhime_priors"]), dict)
     assert roles["coherent_prior_contribution"] == "fixed_prior_contribution"
     assert roles["emissions_sensitivity"] == "co2_sensitivity"
     assert roles["flux_scale"] == "flux_scaling"
@@ -456,6 +457,7 @@ def test_public_co2_runner_persists_fixed_mismatch_manifest(
     save_trace(result, path)
     restored = load_trace(path)
     assert json.loads(restored.attrs["rhime_model_metadata"])["recipe"] == "co2"
+    assert restored.attrs["rhime_priors"] == result.attrs["rhime_priors"]
     assert restored.posterior["flux_scaling"].attrs["units"] == "1"
     assert restored.constant_data["fixed_prior_contribution"].attrs["units"] == "ppm"
 

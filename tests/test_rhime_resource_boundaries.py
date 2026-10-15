@@ -31,7 +31,8 @@ def test_bc_resource_loading_precedes_acquisition(tmp_path, monkeypatch, route, 
     if selection != "nesw":
         options["bc_basis_paths"] = paths
     loaded = []
-    real_load = module.load_bc_basis
+    resource_owner = import_module("openghg_inversions.rhime.standard") if route == "staged" else module
+    real_load = resource_owner.load_bc_basis
 
     def load(selected):
         value = real_load(selected)
@@ -49,8 +50,8 @@ def test_bc_resource_loading_precedes_acquisition(tmp_path, monkeypatch, route, 
             assert not loaded
         raise Acquired
 
-    monkeypatch.setattr(module, "load_bc_basis", load)
-    monkeypatch.setattr(module.RhimeMergedData, "from_options", acquire)
+    monkeypatch.setattr(resource_owner, "load_bc_basis", load)
+    monkeypatch.setattr(resource_owner.RhimeMergedData, "from_options", acquire)
 
     def run():
         if route in ("staged", "nested"):
@@ -64,7 +65,7 @@ def test_bc_resource_loading_precedes_acquisition(tmp_path, monkeypatch, route, 
         elif route in ("example", "custom_basis"):
             module.run_custom_rhime(**options)
         else:
-            module.run_rhime(**options)
+            module.run_standard(**options)
 
     with pytest.raises(FileNotFoundError if selection == "missing" else Acquired):
         run()
@@ -126,7 +127,7 @@ def test_modern_routes_reject_historical_resource_selectors_before_acquisition(m
     with pytest.raises(ValueError, match="Historical resource selectors.*HBMCMC"):
         if route == "staged":
             # The standard prepare phase loads its request through the single loader.
-            module.load_rhime_params(overrides=options, phase_groups={"data"})
+            module.load_params(overrides=options, phase_groups={"data"})
         elif route == "nested":
             module.run_nested(**options, inner_domain="inner")
         elif route == "multisector":
@@ -134,4 +135,4 @@ def test_modern_routes_reject_historical_resource_selectors_before_acquisition(m
         elif route in ("example", "custom_basis"):
             module.run_custom_rhime(**options)
         else:
-            module.run_rhime(**options)
+            module.run_standard(**options)

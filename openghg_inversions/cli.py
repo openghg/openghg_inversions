@@ -44,9 +44,9 @@ def _run_command(args: argparse.Namespace) -> None:
 
 def _run_rhime_command(args: argparse.Namespace) -> None:
     """Run the standard RHIME command with lazy imports for fast help output."""
-    from openghg_inversions.rhime import run_rhime
+    from openghg_inversions.rhime import run_standard
 
-    run_rhime(config_file=args.config, **_command_kwargs(args))
+    run_standard(config_file=args.config, **_command_kwargs(args))
 
 
 def _run_rhime_multisector_command(args: argparse.Namespace) -> None:
@@ -108,9 +108,9 @@ def _stage_output_dir(args: argparse.Namespace) -> Path:
 
 def _standard_phase_options(args: argparse.Namespace, *, phase: str) -> dict[str, dict[str, Any]]:
     """Load the owner groups one standard phase uses from its explicit request."""
-    from openghg_inversions.rhime.requests import load_rhime_params
+    from openghg_inversions.rhime.requests import load_params
 
-    return load_rhime_params(
+    return load_params(
         config_file=args.config, params_file=args.params_file, overrides=args.kwargs,
         phase_groups={"prepare": {"data"}, "sample": {"model", "sampler"},
                       "prior": {"model"}, "postprocess": {"output"}}[phase],

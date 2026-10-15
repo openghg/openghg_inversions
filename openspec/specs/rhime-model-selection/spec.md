@@ -74,14 +74,22 @@ They are not supported override keys.
 ### Requirement: Retain established public aliases
 
 During the documented compatibility period through the 0.9 cycle, the established
-runner aliases SHALL refer to their current implementations:
-`run_rhime` to `run_standard`, `run_rhime_multisector` to `run_multisector`, and
+runner aliases SHALL refer to their current implementations, except for the
+explicit 0.8 removal of Python `run_rhime` with import guidance to `run_standard`.
+This supersedes the earlier alias-preservation promise for that name.
+`run_rhime_multisector` SHALL refer to `run_multisector`, and
 `run_rhime_nested` to `run_nested`. The corresponding shared aliases SHALL remain
 `RhimeMergedData` to `MergedData`, `RhimePreparedInputs` to `PreparedInputs`,
 `assemble_rhime_inputs` to `assemble_inputs`, and `with_prepared_rhime_sites` to
 `with_prepared_sites`.
 
-#### Scenario: Import an established public name
+#### Scenario: Removed standard Python alias
+
+- **WHEN** a caller imports `run_rhime` in 0.8
+- **THEN** it receives a helpful import error directing it to `run_standard`
+- **AND** the `run-rhime` CLI command preserves its written files and logging
+
+#### Scenario: Import a retained established public name
 
 - **WHEN** a caller imports one of these established names and its current name
 - **THEN** both names refer to the same implementation or handoff type

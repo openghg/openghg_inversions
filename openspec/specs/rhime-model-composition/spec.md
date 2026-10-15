@@ -87,14 +87,19 @@ meaning and dimensions of `epsilon`. The custom callable owns those guarantees.
 Standard and multisector requests SHALL reject a custom `likelihood_builder`
 combined with configured built-in mismatch/likelihood settings before acquisition
 in ordinary runners or materialization in the prepared-input runner. The
-standard result-building stage `build_standard_rhime_model_result` SHALL take
-`RhimeModelSpec` without output configuration and SHALL NOT accept `model_builder`.
+standard builder `build_standard_model` SHALL take eager numerical inputs,
+`RhimeModelSpec` and materialized prior parameters without output configuration
+and SHALL NOT accept `model_builder`. Materialization SHALL be an explicit
+runner/caller operation; a shared helper MAY compute selected related inputs and
+enabled priors jointly to preserve shared Dask execution. Construction SHALL NOT
+compute lazy payloads, rebuild the model spec solely to replace prior values, or
+introduce lazy/eager builder variants or another saved-workflow phase.
 The standard `run_rhime_from_prepared_inputs` route SHALL reject that hook and use
 the same scientific operations as full and saved execution. The retained
 multisector `build_multisector_rhime_model_result` compatibility stage SHALL reject
 simultaneous `model_builder` and `likelihood_builder` inputs before either
 callable runs. The lower-level
-`build_standard_rhime_model` and `build_multisector_rhime_model` functions do not
+`build_standard_model` and `build_multisector_rhime_model` functions do not
 accept `model_builder`.
 
 #### Scenario: Reject competing likelihood selections

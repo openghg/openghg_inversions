@@ -12,6 +12,7 @@ import xarray as xr
 
 from openghg_inversions.inversion_data import RhimeMergedData
 from openghg_inversions.rhime.params import RhimeConfig
+from openghg_inversions.postprocessing.inversion_output import InversionOutput
 
 from examples.rhime_cookiecutter.my_inversion import likelihoods
 from examples.rhime_cookiecutter.my_inversion import runner as consumer_runner
@@ -57,9 +58,12 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
         averaging_period=("1h",),
         basis_artifact_source="controlled-test-basis",
     )
-    build_result = object()
-    idata = object()
-    expected = object()
+    output_contract = object()
+    build_result = SimpleNamespace(output_contract=output_contract)
+    idata = xr.DataTree()
+    model_inputs = prepared.inv_inputs
+    priors = {"x": {"pdf": "normal", "mu": 1.0, "sigma": 0.2}}
+    expected = InversionOutput(trace=idata, inv_inputs=prepared.inv_inputs, basis_functions=basis)
     calls: list[str] = []
 
     def resolve(cls, params: dict[str, Any], *, multisector: bool) -> Any:
@@ -112,14 +116,19 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
 
 
 
-    def build(actual: Any, model_spec: Any, **kwargs: Any) -> Any:
-        """Record the shared model boundary and project likelihood."""
+    def materialize(actual: Any, model_spec: Any) -> Any:
+        """Keep selected numerical inputs and priors at the explicit boundary."""
         assert actual is prepared
         assert model_spec is config.model
-        assert kwargs == {
-            "likelihood_builder": likelihoods.likelihood_builder,
-            "likelihood_kwargs": None,
-        }
+        calls.append("materialize")
+        return model_inputs, priors
+
+    def build(actual: Any, model_spec: Any, **kwargs: Any) -> Any:
+        """Record the eager model boundary after project preparation."""
+        assert actual is model_inputs
+        assert model_spec is config.model
+        assert kwargs["priors"] is priors
+        assert kwargs["likelihood_builder"] is likelihoods.likelihood_builder
         calls.append("build")
         return build_result
 
@@ -129,18 +138,31 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
         calls.append("sample")
         return idata
 
-    def make_result(**kwargs: Any) -> Any:
-        assert kwargs["run_spec"].output.output_format == "inv_out"
+    def annotate(actual: Any, posterior: Any, **kwargs: Any) -> None:
+        """Record prior and custom-likelihood provenance once after sampling."""
+        assert actual is build_result
+        assert posterior is idata
         assert kwargs["likelihood_builder"] is likelihoods.likelihood_builder
-        assert kwargs["model_build_result"] is build_result
-        assert kwargs["idata"] is idata
+        calls.append("annotate")
+
+    def make_result(**kwargs: Any) -> InversionOutput:
+        """Construct the scientific view without output policy or live references."""
+        assert kwargs["prepared"] is prepared
+        assert kwargs["model_spec"] is config.model
+        assert kwargs["posterior"] is idata
+        assert kwargs["output_contract"] is output_contract
+        assert kwargs["start_date"] == config.data.start_date
+        assert kwargs["end_date"] == config.data.end_date
+        assert kwargs["actual_inference"] == sampler.describe()
+        assert "run_spec" not in kwargs
+        assert "sampler" not in kwargs
         calls.append("result")
         return expected
 
-    def make_outputs(**kwargs: Any) -> None:
-        assert kwargs == {"result": expected, "prepared": prepared}
+    def write_outputs(actual: InversionOutput, output_spec: Any) -> None:
+        assert actual is expected
+        assert output_spec is config.output
         calls.append("output")
-        return kwargs["result"]
 
     monkeypatch.setattr(rhime_runner.RhimeConfig, "from_params", classmethod(resolve))
     monkeypatch.setattr(rhime_runner.RhimeMergedData, "from_options", retrieve)
@@ -148,10 +170,13 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
     monkeypatch.setattr(rhime_runner, "prepare_basis", build_basis)
     monkeypatch.setattr(rhime_runner, "build_sensitivities", build_sensitivities)
     monkeypatch.setattr(rhime_runner, "assemble_rhime_inputs", assemble)
-    monkeypatch.setattr(rhime_runner, "build_standard", build)
+    monkeypatch.setattr(rhime_runner, "materialize_standard_inputs", materialize)
+    monkeypatch.setattr(rhime_runner, "build_standard_model", build)
     monkeypatch.setattr(rhime_runner, "sample_rhime_model", sample)
-    monkeypatch.setattr(rhime_runner, "make_standard_rhime_result", make_result)
-    monkeypatch.setattr(rhime_runner, "make_standard_rhime_outputs", make_outputs)
+    monkeypatch.setattr(rhime_runner, "annotate_sample_trace", annotate)
+    monkeypatch.setattr(rhime_runner, "make_standard_output", make_result)
+    monkeypatch.setattr(rhime_runner, "write_standard_outputs", write_outputs)
+    monkeypatch.setattr(rhime_runner, "standard_artifact_paths", lambda *args: (None, None))
 
     result = consumer_runner.run(species="ch4", output_format="inv_out")
 
@@ -163,8 +188,10 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
         "basis",
         "sensitivities",
         "assemble",
+        "materialize",
         "build",
         "sample",
+        "annotate",
         "result",
         "output",
     ]

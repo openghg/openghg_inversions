@@ -158,10 +158,13 @@ def add_configured_pollution_event_likelihood(
     minimum_error: xr.DataArray | None,
     output_dim: str,
     sigma_alignment: SigmaAlignment | None = None,
+    sigma_prior: PriorArgs | None = None,
+    power: Mapping[str, Any] | float | None = None,
 ) -> TensorVariable:
     """Resolve pollution-event settings into the direct PyMC component."""
     if minimum_error is None:
         raise ValueError("Pollution-event likelihood requires `minimum_error`.")
+    sigma_prior = settings.sigma_prior if sigma_prior is None else sigma_prior
     resolved_alignment = sigma_alignment
     if resolved_alignment is None:
         resolved_alignment = SigmaAlignment.from_observations(
@@ -181,10 +184,10 @@ def add_configured_pollution_event_likelihood(
         sigma_alignment=resolved_alignment,
         sigma_prior=dict(
             DEFAULT_POLLUTION_EVENT_SIGMA_PRIOR
-            if settings.sigma_prior is None
-            else settings.sigma_prior
+            if sigma_prior is None
+            else sigma_prior
         ),
-        power=settings.power,
+        power=settings.power if power is None else power,
         pollution_events_from_obs=settings.pollution_events_from_obs,
         no_model_error=False,
         output_dim=output_dim,
@@ -201,6 +204,7 @@ def add_configured_additive_sigma_likelihood(
     minimum_error: xr.DataArray | None,
     output_dim: str,
     sigma_alignment: SigmaAlignment | None = None,
+    sigma_prior: PriorArgs | None = None,
 ) -> TensorVariable:
     """Resolve additive-sigma settings into the direct PyMC component."""
     if settings.use_minimum_error_floor and minimum_error is None:
@@ -208,7 +212,7 @@ def add_configured_additive_sigma_likelihood(
     alignment, prior = prepare_additive_sigma_inputs(
         observations,
         sigma_alignment=sigma_alignment,
-        sigma_prior=settings.sigma_prior,
+        sigma_prior=settings.sigma_prior if sigma_prior is None else sigma_prior,
         sigma_freq=settings.sigma_freq,
         sigma_per_site=settings.sigma_per_site,
         sigma_freq_anchor=settings.sigma_freq_anchor,
@@ -253,8 +257,10 @@ def _add_builtin_likelihood(
     minimum_error: xr.DataArray | None,
     output_dim: str,
     sigma_alignment: SigmaAlignment | None = None,
+    prior_parameters: Mapping[str, PriorArgs] | None = None,
 ) -> TensorVariable:
     """Dispatch one resolved built-in likelihood with explicit scientific inputs."""
+    prior_parameters = prior_parameters or {}
     if isinstance(settings, PollutionEventSettings):
         return add_configured_pollution_event_likelihood(
             settings,
@@ -265,6 +271,8 @@ def _add_builtin_likelihood(
             minimum_error=minimum_error,
             output_dim=output_dim,
             sigma_alignment=sigma_alignment,
+            sigma_prior=prior_parameters.get("sigma"),
+            power=prior_parameters.get("power"),
         )
     if isinstance(settings, AdditiveSigmaSettings):
         return add_configured_additive_sigma_likelihood(
@@ -276,6 +284,7 @@ def _add_builtin_likelihood(
             minimum_error=minimum_error,
             output_dim=output_dim,
             sigma_alignment=sigma_alignment,
+            sigma_prior=prior_parameters.get("sigma"),
         )
     if isinstance(settings, FixedErrorSettings):
         return add_configured_fixed_error_likelihood(
@@ -301,6 +310,7 @@ def add_rhime_likelihood(
     minimum_error: xr.DataArray | None,
     output_dim: str,
     sigma_alignment: SigmaAlignment | None = None,
+    prior_parameters: Mapping[str, PriorArgs] | None = None,
 ) -> TensorVariable:
     """Add exactly one built-in or custom likelihood to a concrete recipe."""
     if settings is None:
@@ -326,6 +336,7 @@ def add_rhime_likelihood(
         minimum_error=minimum_error,
         output_dim=output_dim,
         sigma_alignment=sigma_alignment,
+        prior_parameters=prior_parameters,
     )
 
 

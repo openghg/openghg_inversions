@@ -20,7 +20,8 @@ from openghg_inversions.rhime import stages as handoffs
 from openghg_inversions.rhime.params import DataConfig, RhimeConfig
 from openghg_inversions.rhime.sampling import RhimeSampler
 from openghg_inversions.rhime.specs import RhimeOutputSpec
-from openghg_inversions.rhime.standard import run_standard
+from openghg_inversions.rhime.standard import build_standard_model, materialize_standard_inputs, run_standard
+from openghg_inversions.postprocessing.make_outputs import basic_output
 
 
 def synthetic_inputs(destination: Path, *, multiple_sources: bool = False) -> tuple:
@@ -91,21 +92,22 @@ def run_example(destination: Path, *, multiple_sources: bool = False) -> None:
                                           "output_path": str(destination / f"full-{index}"),
                                           "save_inversion_output": False, "save_trace": False}, multisector=False)
         full = run_standard(config=config, merged_data=merged)
-        xr.testing.assert_allclose(replay.idata["posterior"].to_dataset(), full.idata["posterior"].to_dataset())
-        xr.testing.assert_allclose(replay.outputs["basic"], full.outputs["basic"])
+        xr.testing.assert_allclose(replay.trace["posterior"].to_dataset(), full.trace["posterior"].to_dataset())
+        xr.testing.assert_allclose(basic_output(replay, country_file=country_path),
+                                   basic_output(full, country_file=country_path))
         assert manifest.read_bytes() == preparation_bytes
-        assert replay.run_spec.start_date == "2019-01-01"
-        assert replay.run_spec.end_date == "2019-02-01"
-        assert replay.sampler is None and replay.model is None
-        assert saved.inv_out is not None
-        np.testing.assert_allclose(saved.inv_out.basis_functions.flux.squeeze(), flux)
-        scales = saved.idata["posterior"]["x"]
-        reconstructed = saved.inv_out.basis_functions.state_to_flux(scales)
+        assert replay.run_metadata["start_date"] == "2019-01-01"
+        assert replay.run_metadata["end_date"] == "2019-02-01"
+        np.testing.assert_allclose(saved.basis_functions.flux.squeeze(), flux)
+        scales = saved.trace["posterior"]["x"]
+        reconstructed = saved.basis_functions.state_to_flux(scales)
         expected = scales.squeeze("state", drop=True) * flux
         xr.testing.assert_allclose(reconstructed, expected.transpose(*reconstructed.dims))
         # Independent Normal prior + observation likelihood, at varied states.
         # Absolute tolerance covers the configured float32 PyTensor arithmetic.
-        logp = full.model.compile_logp()
+        model_inputs, priors = materialize_standard_inputs(prepared, config.model)
+        built = build_standard_model(model_inputs, config.model, priors=priors)
+        logp = built.model.compile_logp()
         for state in (.7, 1., 1.4):
             reference = norm.logpdf(state, 1., width) + norm.logpdf(y, h * state, .1).sum()
             np.testing.assert_allclose(logp({"x": np.array([state])}), reference, rtol=1e-6, atol=1e-5)

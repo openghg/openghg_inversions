@@ -83,16 +83,14 @@ from openghg_inversions.rhime import (
     RhimeSampler,
     SectorSpec,
     resolve_flux_sources,
-    run_rhime,
+    run_standard,
     run_rhime_from_prepared_inputs,
     run_rhime_multisector,
 )
 from openghg_inversions.rhime.multisector import (
     build_multisector_rhime_model as _build_rhime_multisector_model,
 )
-from openghg_inversions.rhime.standard import (
-    build_standard_rhime_model as _build_rhime_model,
-)
+from tests.standard_model_helpers import build_standard_graph as _build_rhime_model
 from openghg_inversions.sigma import SigmaAlignment
 from openghg_inversions.hbmcmc.compatibility import params_from_config
 from openghg_inversions.hbmcmc.legacy_data import (
@@ -600,6 +598,24 @@ def _result_for_outputs(
         inv_inputs=xr.Dataset(),
         idata=idata,
         model_build_result=build_result,
+    )
+
+
+def _prepared_arguments(run_spec: RhimeRunSpec) -> dict[str, Any]:
+    """Select the modern standard or retained multisector prepared-call contract."""
+    if run_spec.split_by_sectors:
+        return {"run_spec": run_spec}
+    return {"model_spec": run_spec.model, "output_spec": run_spec.output,
+            "start_date": run_spec.start_date, "end_date": run_spec.end_date}
+
+
+def _make_standard_fixture_output(result: RhimeResult, prepared: RhimePreparedInputs) -> InversionOutput:
+    """Bind output fixtures directly through the standard scientific view owner."""
+    return rhime_outputs.make_standard_output(
+        prepared=prepared, model_spec=result.model_spec, posterior=result.idata,
+        output_contract=result.output_contract,
+        start_date=result.run_spec.start_date, end_date=result.run_spec.end_date,
+        provenance={"package": "unit-test"},
     )
 
 
@@ -1608,9 +1624,10 @@ def test_non_default_sigma_owner_does_not_construct_sigma_alignment(
     else:
         names = rhime_standard.standard_model_input_names(prepared, model_spec)
         materialized = rhime_public.materialize_pymc_inputs(prepared, variable_names=names)
-        result = rhime_standard.build_standard_rhime_model_result(
+        result = rhime_standard.build_standard_model(
             model_inputs=materialized,
             model_spec=run_spec.model,
+            priors={"x": run_spec.model.sectors[0].x_prior},
             likelihood_builder=likelihood_builder,
         )
 
@@ -1640,9 +1657,10 @@ def test_custom_likelihood_does_not_construct_builtin_sigma(
     )
     names = rhime_standard.standard_model_input_names(prepared, model_spec)
     model_inputs = rhime_public.materialize_pymc_inputs(prepared, variable_names=names)
-    result = rhime_standard.build_standard_rhime_model_result(
+    result = rhime_standard.build_standard_model(
         model_inputs=model_inputs,
         model_spec=run_spec.model,
+        priors={"x": run_spec.model.sectors[0].x_prior},
         likelihood_builder=example_likelihoods.likelihood_builder,
     )
 
@@ -1651,8 +1669,8 @@ def test_custom_likelihood_does_not_construct_builtin_sigma(
 
 
 @pytest.mark.parametrize("multisector", [False, True])
-def test_flux_component_rejects_reordered_observation_coordinates(multisector: bool) -> None:
-    """The explicit flux input cannot silently use positional observation order."""
+def test_flux_inputs_align_or_reject_reordered_observation_coordinates(multisector: bool) -> None:
+    """Labelled dataset inputs align; independent component inputs reject conflicting order."""
     observations = xr.DataArray(
         [10.0, 11.0],
         dims=("nmeasure",),
@@ -1673,6 +1691,15 @@ def test_flux_component_rejects_reordered_observation_coordinates(multisector: b
         dims=("nmeasure",),
         coords={"nmeasure": [0, 1]},
     )
+
+    if not multisector:
+        inputs = xr.Dataset({"mf": observations, "mf_error": xr.ones_like(observations), "H": flux_sensitivity})
+        spec, _, _ = _minimal_output_specs(output_format="none")
+        spec = replace(spec, use_bc=False, likelihood=FixedErrorSettings())
+        built = rhime_standard.build_standard_model(inputs, spec, priors={"x": spec.sectors[0].x_prior})
+        np.testing.assert_array_equal(built.model["hx"].get_value(), [[2.5], [4.]])
+        np.testing.assert_array_equal(built.model.rvs_to_values[built.model["y"]].eval(), [10., 11.])
+        return
 
     with pytest.raises(
         ValueError,
@@ -1791,20 +1818,21 @@ def test_external_cached_sensitivity_stays_lazy_until_standard_flux_boundary(
     assert materialized["project_diagnostic"].data is original_extension
     assert materialized["H"].attrs["provenance"].startswith("verification-games")
 
-    real_builder = rhime_standard.build_standard_rhime_model
+    real_builder = rhime_standard.build_standard_model
     received: list[xr.DataArray] = []
 
     def recording_builder(
-        flux_sensitivity: xr.DataArray,
+        model_inputs: xr.Dataset, model_spec: RhimeModelSpec,
         **kwargs: Any,
-    ) -> pm.Model:
-        received.append(flux_sensitivity)
-        return real_builder(flux_sensitivity, **kwargs)
+    ) -> RhimeModelBuildResult:
+        received.append(model_inputs["H"])
+        return real_builder(model_inputs, model_spec, **kwargs)
 
-    monkeypatch.setattr(rhime_standard, "build_standard_rhime_model", recording_builder)
-    cached_result = rhime_standard.build_standard_rhime_model_result(
+    monkeypatch.setattr(rhime_standard, "build_standard_model", recording_builder)
+    cached_result = rhime_standard.build_standard_model(
         model_inputs=materialized,
         model_spec=run_spec.model,
+        priors={"x": run_spec.model.sectors[0].x_prior},
     )
 
     fresh_inputs = vg_inputs(expected)
@@ -1817,9 +1845,10 @@ def test_external_cached_sensitivity_stays_lazy_until_standard_flux_boundary(
         fresh_prepared,
         variable_names=rhime_standard.standard_model_input_names(fresh_prepared, model_spec),
     )
-    fresh_result = rhime_standard.build_standard_rhime_model_result(
+    fresh_result = rhime_standard.build_standard_model(
         model_inputs=fresh_model_inputs,
         model_spec=run_spec.model,
+        priors={"x": run_spec.model.sectors[0].x_prior},
     )
 
     assert received[0].variable is materialized["H"].variable
@@ -1934,19 +1963,20 @@ def test_prepared_replay_computes_selected_error_only_at_pymc_boundary(
     build_result = RhimeModelBuildResult(model=pm.Model(), variable_roles={"concentration": "y"})
     expected = cast(RhimeResult, SimpleNamespace(route="dense-replay"))
 
-    def build(**kwargs: Any) -> RhimeModelBuildResult:
+    def build(model_inputs, model_spec, **kwargs: Any) -> RhimeModelBuildResult:
         """Assert the selected representation is eager at the built-in builder handoff."""
-        assert not isinstance(kwargs["model_inputs"]["aggregation_error_covariance"].data, da.Array)
+        assert not isinstance(model_inputs["aggregation_error_covariance"].data, da.Array)
         assert executions == ["covariance"]
         return build_result
 
     monkeypatch.setattr(rhime_prepared, "select_aggregation_error_mode", select_without_computing)
-    monkeypatch.setattr(rhime_standard, "build_standard_rhime_model_result", build)
+    monkeypatch.setattr(rhime_prepared, "build_standard_model", build)
     monkeypatch.setattr(rhime_prepared, "sample_rhime_model", lambda *args, **kwargs: _minimal_output_idata())
-    monkeypatch.setattr(rhime_prepared, "make_standard_rhime_result", lambda **kwargs: expected)
-    monkeypatch.setattr(rhime_prepared, "make_standard_rhime_outputs", lambda **kwargs: kwargs["result"])
+    monkeypatch.setattr(rhime_prepared, "make_standard_output", lambda **kwargs: expected)
+    monkeypatch.setattr(rhime_prepared, "write_standard_outputs", lambda *args: {})
+    monkeypatch.setattr(rhime_prepared, "standard_artifact_paths", lambda *args: (None, None))
 
-    result = run_rhime_from_prepared_inputs(prepared_inputs=prepared, run_spec=run_spec)
+    result = run_rhime_from_prepared_inputs(prepared_inputs=prepared, **_prepared_arguments(run_spec))
 
     assert result is expected
     assert selection_snapshots == [()]
@@ -2609,14 +2639,14 @@ def test_build_rhime_multisector_model_requires_multiple_sectors(
 
 
 def test_concrete_rhime_builders_are_owned_by_recipe_modules() -> None:
-    assert _build_rhime_model.__module__ == "openghg_inversions.rhime.standard"
+    assert rhime_public.build_standard_model.__module__ == "openghg_inversions.rhime.standard"
     assert _build_rhime_multisector_model.__module__ == "openghg_inversions.rhime.multisector"
-    assert rhime_public.build_standard_rhime_model is _build_rhime_model
+    assert rhime_public.build_standard_model is rhime_standard.build_standard_model
     assert rhime_public.build_multisector_rhime_model is _build_rhime_multisector_model
 
-    for builder in (_build_rhime_model, _build_rhime_multisector_model):
+    for builder in (rhime_standard.build_standard_model, _build_rhime_multisector_model):
         parameters = inspect.signature(builder).parameters
-        assert next(iter(parameters)) == "flux_sensitivity"
+        assert next(iter(parameters)) == ("model_inputs" if builder is rhime_standard.build_standard_model else "flux_sensitivity")
         assert "inv_inputs" not in parameters
         assert all(parameter.kind is not inspect.Parameter.VAR_KEYWORD for parameter in parameters.values())
 
@@ -2800,13 +2830,14 @@ def test_run_rhime_from_prepared_inputs_routes_without_preparation(
         stage_calls.append("materialize")
         return model_inputs
 
-    def build(**kwargs: Any) -> RhimeModelBuildResult:
+    def build(*args: Any, **kwargs: Any) -> RhimeModelBuildResult:
         """Record replay's selected public build stage."""
         if sector_count > 1:
             assert kwargs["prepared"] is replay_context["prepared"]
         else:
-            assert kwargs["model_spec"].sectors == model_spec.sectors
-        assert kwargs["model_inputs"] is model_inputs
+            assert args == (model_inputs, model_spec)
+        if sector_count > 1:
+            assert kwargs["model_inputs"] is model_inputs
         stage_calls.append("build")
         return build_result
 
@@ -2819,46 +2850,53 @@ def test_run_rhime_from_prepared_inputs_routes_without_preparation(
     def make_result(**kwargs: Any) -> RhimeResult:
         """Record replay's selected public result stage."""
         assert kwargs["prepared"] is replay_context["prepared"]
-        assert kwargs["model_build_result"] is build_result
-        assert kwargs["idata"] is idata
+        if sector_count == 1:
+            assert kwargs["output_contract"] is build_result.output_contract
+            assert kwargs["posterior"] is idata
+        else:
+            assert kwargs["model_build_result"] is build_result
+            assert kwargs["idata"] is idata
         stage_calls.append("result")
         return expected_result
 
-    def make_outputs(**kwargs: Any) -> None:
+    def make_outputs(*args: Any, **kwargs: Any) -> None:
         """Record replay's selected public output stage."""
-        assert kwargs["result"] is expected_result
-        assert kwargs["prepared"] is replay_context["prepared"]
+        if sector_count == 1:
+            assert args == (expected_result, output_spec)
+        else:
+            assert kwargs["result"] is expected_result
+            assert kwargs["prepared"] is replay_context["prepared"]
         stage_calls.append("outputs")
-        return kwargs["result"]
+        return expected_result
 
     # The standard branch builds through the shared ``standard.build_standard``.
-    build_module = rhime_standard if sector_count == 1 else rhime_prepared
+    build_module = rhime_prepared
     if sector_count == 1:
-        monkeypatch.setattr(build_module, "_materialize_pymc_inputs_and_priors",
+        monkeypatch.setattr(rhime_standard, "_materialize_pymc_inputs_and_priors",
                             lambda value, *, variable_names, prior_parameters:
                             (materialize(value, variable_names=variable_names), prior_parameters))
     else:
         monkeypatch.setattr(build_module, "materialize_pymc_inputs", materialize)
     monkeypatch.setattr(
         build_module,
-        "build_standard_rhime_model_result" if sector_count == 1 else "build_multisector_rhime_model_result",
+        "build_standard_model" if sector_count == 1 else "build_multisector_rhime_model_result",
         build,
     )
     monkeypatch.setattr(rhime_prepared, "sample_rhime_model", sample)
     monkeypatch.setattr(
         rhime_prepared,
-        "make_standard_rhime_result" if sector_count == 1 else "make_multisector_rhime_result",
+        "make_standard_output" if sector_count == 1 else "make_multisector_rhime_result",
         make_result,
     )
     monkeypatch.setattr(
         rhime_prepared,
-        "make_standard_rhime_outputs" if sector_count == 1 else "make_multisector_rhime_outputs",
+        "write_standard_outputs" if sector_count == 1 else "make_multisector_rhime_outputs",
         make_outputs,
     )
 
     result = run_rhime_from_prepared_inputs(
         prepared_inputs=prepared,
-        run_spec=run_spec,
+        **_prepared_arguments(run_spec),
         sampler=sampler,
     )
 
@@ -2876,9 +2914,9 @@ def test_run_rhime_from_prepared_inputs_routes_without_preparation(
         "external_data",
     ),
     [
-        ("run_rhime", "build_standard_rhime_model_result", "make_standard_rhime_result", False, False, False),
-        ("run_rhime", "build_standard_rhime_model_result", "make_standard_rhime_result", False, False, True),
-        ("run_rhime", "build_standard_rhime_model_result", "make_standard_rhime_result", False, True, False),
+        ("run_standard", "build_standard_model", "make_standard_output", False, False, False),
+        ("run_standard", "build_standard_model", "make_standard_output", False, False, True),
+        ("run_standard", "build_standard_model", "make_standard_output", False, True, False),
         (
             "run_rhime_multisector",
             "build_multisector_rhime_model_result",
@@ -3037,7 +3075,7 @@ def test_public_rhime_runners_follow_named_stage_order(
         calls.append("materialize")
         return model_inputs
 
-    def build(**kwargs: Any) -> RhimeModelBuildResult:
+    def build(*args: Any, **kwargs: Any) -> RhimeModelBuildResult:
         """Record the recipe-specific public model build."""
         expected_builder = example_likelihoods.likelihood_builder if custom_likelihood else None
         assert kwargs["likelihood_builder"] is expected_builder
@@ -3046,7 +3084,7 @@ def test_public_rhime_runners_follow_named_stage_order(
         if multisector:
             assert kwargs["run_spec"] == run_spec
         else:
-            assert kwargs["model_spec"] == run_spec.model
+            assert args == (model_inputs, run_spec.model)
         calls.append("build")
         return build_result
 
@@ -3059,16 +3097,21 @@ def test_public_rhime_runners_follow_named_stage_order(
 
     def result(**kwargs: Any) -> RhimeResult:
         """Record the recipe-specific public result stage."""
-        expected_builder = example_likelihoods.likelihood_builder if custom_likelihood else None
-        assert kwargs["likelihood_builder"] is expected_builder
-        expected_options = {"project_option": 42} if custom_likelihood else None
-        assert kwargs["likelihood_kwargs"] == expected_options
+        if multisector:
+            expected_builder = example_likelihoods.likelihood_builder if custom_likelihood else None
+            assert kwargs["likelihood_builder"] is expected_builder
+        else:
+            assert kwargs["posterior"] is idata
+            assert kwargs["output_contract"] is build_result.output_contract
         calls.append("result")
         return expected
 
-    def outputs(**kwargs: Any) -> None:
+    def outputs(*args: Any, **kwargs: Any) -> None:
         """Record the recipe-specific public output stage."""
-        assert kwargs == {"result": expected, "prepared": prepared}
+        if multisector:
+            assert kwargs == {"result": expected, "prepared": prepared}
+        else:
+            assert args == (expected, config.output)
         calls.append("outputs")
         return expected
 
@@ -3090,7 +3133,7 @@ def test_public_rhime_runners_follow_named_stage_order(
     monkeypatch.setattr(recipe_module, result_stage, result)
     monkeypatch.setattr(
         recipe_module,
-        "make_multisector_rhime_outputs" if multisector else "make_standard_rhime_outputs",
+        "make_multisector_rhime_outputs" if multisector else "write_standard_outputs",
         outputs,
     )
 
@@ -3103,7 +3146,7 @@ def test_public_rhime_runners_follow_named_stage_order(
     actual = getattr(recipe_module, runner_name)(**runner_kwargs)
 
     assert actual is expected
-    assert calls == [
+    expected_calls = [
         "resolve",
         *([] if external_data else ["retrieve"]),
         "filter",
@@ -3117,9 +3160,12 @@ def test_public_rhime_runners_follow_named_stage_order(
         "result",
         "outputs",
     ]
+    if not multisector:
+        expected_calls.remove("align")
+    assert calls == expected_calls
 
 
-@pytest.mark.parametrize("runner", [run_rhime, run_rhime_multisector])
+@pytest.mark.parametrize("runner", [run_standard, run_rhime_multisector])
 def test_ordinary_runners_expose_keyword_only_likelihood_builder(runner: Callable[..., Any]) -> None:
     """Ordinary runners expose Python-only handoffs and omit model_builder."""
     parameters = inspect.signature(runner).parameters
@@ -3130,7 +3176,7 @@ def test_ordinary_runners_expose_keyword_only_likelihood_builder(runner: Callabl
     assert "model_builder" not in parameters
 
 
-@pytest.mark.parametrize("runner", [run_rhime, run_rhime_multisector])
+@pytest.mark.parametrize("runner", [run_standard, run_rhime_multisector])
 def test_ordinary_runner_docstrings_explain_public_handoffs(runner: Callable[..., Any]) -> None:
     """Public help retains details hidden behind the keyword option surface."""
     docstring = inspect.getdoc(runner)
@@ -3147,7 +3193,7 @@ def test_ordinary_runner_docstrings_explain_public_handoffs(runner: Callable[...
     assert "Raises:" in docstring
 
 
-@pytest.mark.parametrize("runner", [run_rhime, run_rhime_multisector])
+@pytest.mark.parametrize("runner", [run_standard, run_rhime_multisector])
 def test_ordinary_runners_reject_orphaned_likelihood_options_before_config(
     monkeypatch: pytest.MonkeyPatch,
     runner: Callable[..., RhimeResult],
@@ -3156,7 +3202,7 @@ def test_ordinary_runners_reject_orphaned_likelihood_options_before_config(
     recipe_module = rhime_multisector if runner is run_rhime_multisector else rhime_standard
     monkeypatch.setattr(
         recipe_module,
-        "read_rhime_ini" if runner is run_rhime_multisector else "load_rhime_params",
+        "read_rhime_ini" if runner is run_rhime_multisector else "load_params",
         lambda *args, **kwargs: pytest.fail("orphaned options must fail before configuration"),
     )
 
@@ -3164,7 +3210,7 @@ def test_ordinary_runners_reject_orphaned_likelihood_options_before_config(
         runner(config_file=Path("unused.ini"), likelihood_kwargs={"degrees_of_freedom": 7.0})
 
 
-@pytest.mark.parametrize("runner", [run_rhime, run_rhime_multisector])
+@pytest.mark.parametrize("runner", [run_standard, run_rhime_multisector])
 @pytest.mark.parametrize("mismatch_model", ["pollution_event", "additive_sigma"])
 def test_ordinary_runners_reject_custom_likelihood_with_configured_mismatch(
     monkeypatch: pytest.MonkeyPatch,
@@ -3186,7 +3232,7 @@ def test_ordinary_runners_reject_custom_likelihood_with_configured_mismatch(
         )
 
 
-@pytest.mark.parametrize("runner", [run_rhime, run_rhime_multisector])
+@pytest.mark.parametrize("runner", [run_standard, run_rhime_multisector])
 def test_grouped_likelihood_conflict_fails_before_acquisition(monkeypatch, runner):
     monkeypatch.setattr(RhimeMergedData, "from_options", lambda **kwargs: pytest.fail("acquisition"))
     with pytest.raises(ValueError, match="custom likelihood.*built-in mismatch"):
@@ -3205,6 +3251,7 @@ def test_prepared_complete_model_rejects_orphaned_likelihood_options_before_vali
 ) -> None:
     """A complete-model builder cannot silently consume likelihood-only options."""
     _, _, run_spec = _minimal_output_specs(output_format="none")
+    run_spec = replace(run_spec, split_by_sectors=True)
     prepared = RhimePreparedInputs(
         inv_inputs=_minimal_output_inv_inputs(),
         basis_functions=_fake_basis_functions(),
@@ -3220,7 +3267,7 @@ def test_prepared_complete_model_rejects_orphaned_likelihood_options_before_vali
     with pytest.raises(ValueError, match="likelihood_kwargs.*likelihood_builder"):
         run_rhime_from_prepared_inputs(
             prepared_inputs=prepared,
-            run_spec=run_spec,
+            **_prepared_arguments(run_spec),
             model_builder=lambda context: pytest.fail("complete builder must not run"),
             likelihood_kwargs={"degrees_of_freedom": 7.0},
         )
@@ -3238,11 +3285,12 @@ def test_rhime_public_package_exports_supported_orchestration_stages() -> None:
         "assemble_rhime_inputs",
         "with_prepared_rhime_sites",
         "materialize_pymc_inputs",
-        "build_standard_rhime_model_result",
+        "build_standard_model",
         "build_multisector_rhime_model_result",
         "sample_rhime_model",
         "make_standard_rhime_result",
-        "make_standard_rhime_outputs",
+        "make_standard_output",
+        "write_standard_outputs",
         "make_multisector_rhime_result",
         "make_multisector_rhime_outputs",
     )
@@ -3256,7 +3304,7 @@ def test_rhime_public_package_exports_supported_orchestration_stages() -> None:
 
 def test_standard_and_multisector_runners_are_owned_by_readable_recipe_modules() -> None:
     """The public runners are owned directly by readable recipe modules."""
-    assert run_rhime.__module__ == "openghg_inversions.rhime.standard"
+    assert run_standard.__module__ == "openghg_inversions.rhime.standard"
     assert run_rhime_multisector.__module__ == "openghg_inversions.rhime.multisector"
     assert run_rhime_from_prepared_inputs.__module__ == "openghg_inversions.rhime.prepared"
 
@@ -3353,30 +3401,21 @@ def test_public_stages_compose_as_complete_external_runner(monkeypatch: pytest.M
         domain=setup.data.domain, start_date=setup.data.start_date, bc_freq=setup.data.bc_freq,
         min_error=setup.data.min_error, min_error_options=setup.data.min_error_options, use_bc=setup.data.use_bc,
     )
-    run_spec = setup.retained_run_spec(prepared)
-    model_inputs = rhime_public.materialize_pymc_inputs(
-        prepared,
-        variable_names=rhime_public.standard_model_input_names(prepared, run_spec.model),
-    )
-    build_result = rhime_public.build_standard_rhime_model_result(
-        model_inputs=model_inputs,
-        model_spec=run_spec.model,
-    )
+    model_inputs, priors = rhime_public.materialize_standard_inputs(prepared, setup.model)
+    build_result = rhime_public.build_standard_model(model_inputs, setup.model, priors=priors)
     sampled = rhime_public.sample_rhime_model(build_result, setup.sampler)
-    result = rhime_public.make_standard_rhime_result(
-        prepared=prepared,
-        run_spec=run_spec,
-        sampler=setup.sampler,
-        model_build_result=build_result,
-        idata=sampled,
-        build_and_sample_seconds=0.0,
+    rhime_outputs.annotate_sample_trace(build_result, sampled)
+    result = rhime_public.make_standard_output(
+        prepared=prepared, model_spec=setup.model, posterior=sampled,
+        output_contract=build_result.output_contract,
+        start_date=setup.data.start_date, end_date=setup.data.end_date,
+        actual_inference=setup.sampler.describe(),
     )
-
+    assert isinstance(result, InversionOutput)
     assert result.inv_inputs is prepared.inv_inputs
-    assert result.model_build_result is build_result
+    assert all(result.variable_name(role) == name for role, name in build_result.variable_roles.items())
     assert "y" in build_result.model.named_vars
-    assert result.idata is idata
-
+    assert result.trace is idata
 
 
 def test_standard_prepared_run_rejects_complete_model_builder() -> None:
@@ -3387,10 +3426,10 @@ def test_standard_prepared_run_rejects_complete_model_builder() -> None:
         basis_functions=_fake_basis_functions(),
         site_metadata=_prepared_site_metadata(),
     )
-    with pytest.raises(ValueError, match="Standard prepared runs no longer accept `model_builder`"):
+    with pytest.raises(ValueError, match="Standard prepared execution rejects model_builder"):
         run_rhime_from_prepared_inputs(
             prepared_inputs=prepared,
-            run_spec=run_spec,
+            **_prepared_arguments(run_spec),
             model_builder=lambda context: pytest.fail("standard complete builder must not execute"),
         )
 
@@ -3462,7 +3501,7 @@ def test_run_rhime_from_prepared_inputs_accepts_complete_model_builder(
     monkeypatch.setattr(rhime_prepared, "materialize_pymc_inputs", fail_materialization)
     result = run_rhime_from_prepared_inputs(
         prepared_inputs=prepared,
-        run_spec=run_spec,
+        **_prepared_arguments(run_spec),
         sampler=RhimeSampler(sample_prior_predictive=False),
         model_builder=custom_model_builder,
     )
@@ -3540,7 +3579,7 @@ def test_complete_model_builder_owns_lazy_aggregation_error_inputs(
     )
     result = run_rhime_from_prepared_inputs(
         prepared_inputs=prepared,
-        run_spec=run_spec,
+        **_prepared_arguments(run_spec),
         model_builder=custom_model_builder,
     )
 
@@ -3615,13 +3654,13 @@ def test_modern_additive_mismatch_uses_model_spec_without_minimum_error(
 
     result = run_rhime_from_prepared_inputs(
         prepared_inputs=prepared,
-        run_spec=run_spec,
+        **_prepared_arguments(run_spec),
     )
 
     assert len(direct_calls) == 1
     assert direct_calls[0]["minimum_error_floor"] is None
-    assert isinstance(result.model_spec.likelihood, AdditiveSigmaSettings)
-    assert "minimum_error" not in result.model_build_result.variable_roles
+    assert result.model_metadata["likelihood"]["use_minimum_error_floor"] is False
+    assert "minimum_error" not in result.model_metadata["variable_roles"]
 
 
 def test_multisector_additive_mismatch_does_not_require_minimum_error(
@@ -3686,14 +3725,13 @@ def test_custom_likelihood_prepared_run_does_not_require_minimum_error(
 
     result = run_rhime_from_prepared_inputs(
         prepared_inputs=prepared,
-        run_spec=run_spec,
+        **_prepared_arguments(run_spec),
         likelihood_builder=example_likelihoods.likelihood_builder,
     )
 
-    assert result.model is not None
-    assert {"epsilon", "y"} <= set(result.model.named_vars)
-    assert "min_error" not in result.model.named_vars
-    assert "minimum_error" not in result.model_build_result.variable_roles
+    assert isinstance(result, InversionOutput)
+    assert result.variable_name("concentration") == "y"
+    assert "minimum_error" not in result.model_metadata["variable_roles"]
 
 
 @pytest.mark.parametrize("mismatch_model", ["pollution_event", "additive_sigma"])
@@ -3735,7 +3773,7 @@ def test_prepared_runner_rejects_custom_likelihood_with_builtin_selection_before
     with pytest.raises(ValueError, match="custom likelihood.*built-in likelihood"):
         run_rhime_from_prepared_inputs(
             prepared_inputs=prepared,
-            run_spec=run_spec,
+            **_prepared_arguments(run_spec),
             likelihood_builder=example_likelihoods.likelihood_builder,
         )
 
@@ -3743,7 +3781,7 @@ def test_prepared_runner_rejects_custom_likelihood_with_builtin_selection_before
 @pytest.mark.parametrize(
     "build_stage",
     [
-        rhime_standard.build_standard_rhime_model_result,
+        rhime_standard.build_standard_model,
         rhime_multisector.build_multisector_rhime_model_result,
     ],
 )
@@ -3759,8 +3797,8 @@ def test_public_build_stages_reject_orphaned_likelihood_options(
     )
 
     build_options = (
-        {"model_spec": run_spec.model}
-        if build_stage is rhime_standard.build_standard_rhime_model_result
+        {"model_spec": run_spec.model, "priors": {"x": run_spec.model.sectors[0].x_prior}}
+        if build_stage is rhime_standard.build_standard_model
         else {"prepared": prepared, "run_spec": run_spec}
     )
     with pytest.raises(ValueError, match="likelihood_kwargs.*likelihood_builder"):
@@ -3813,21 +3851,19 @@ def test_likelihood_builder_provenance_is_saved_with_result_metadata(
     monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
     result = run_rhime_from_prepared_inputs(
         prepared_inputs=prepared,
-        run_spec=run_spec,
+        **_prepared_arguments(run_spec),
         sampler=RhimeSampler(sample_prior_predictive=False),
         likelihood_builder=verification_gaussian,
         likelihood_kwargs={"degrees_of_freedom": 7.0},
     )
 
-    assert result.output_metadata["likelihood_builder"]["qualname"].endswith("verification_gaussian")
-    assert result.model_build_result is not None
-    assert result.inv_out is not None
-    saved_builder = result.inv_out.model_metadata["builder"]
-    assert saved_builder["likelihood_builder"] == result.output_metadata["likelihood_builder"]
-    assert result.output_metadata["likelihood_kwargs"] == {"degrees_of_freedom": 7.0}
-    assert saved_builder["likelihood_kwargs"] == result.output_metadata["likelihood_kwargs"]
+    identity = json.loads(result.trace.attrs["rhime_likelihood_builder"])
+    assert identity["qualname"].endswith("verification_gaussian")
+    saved_builder = result.model_metadata["builder"]
+    assert saved_builder["likelihood_builder"] == identity
+    assert saved_builder["likelihood_kwargs"] == {"degrees_of_freedom": 7.0}
     output_path = tmp_path / "custom-likelihood.nc"
-    result.inv_out.save(output_path)
+    result.save(output_path)
     reloaded = InversionOutput.load(output_path)
     assert reloaded.model_metadata["builder"]["likelihood_kwargs"] == {"degrees_of_freedom": 7.0}
 
@@ -3876,7 +3912,7 @@ def test_custom_model_builder_rejects_undeclared_output_before_sampling(
     with pytest.raises(ValueError, match="does not declare output_format='inv_out' compatible"):
         run_rhime_from_prepared_inputs(
             prepared_inputs=prepared,
-            run_spec=run_spec,
+            **_prepared_arguments(run_spec),
             model_builder=sampling_only_builder,
         )
     assert not any(tmp_path.iterdir())
@@ -3947,7 +3983,7 @@ def test_run_rhime_rejects_noncanonical_custom_likelihood_before_sampling(
     monkeypatch.setattr(RhimeSampler, "sample", fail_sample)
 
     with pytest.raises(ValueError, match="must name its observed concentration variable `y`"):
-        run_rhime(species="ch4", likelihood_builder=noncanonical_likelihood)
+        run_standard(species="ch4", likelihood_builder=noncanonical_likelihood)
 
 
 @pytest.mark.parametrize(
@@ -3992,12 +4028,12 @@ def test_run_rhime_from_prepared_inputs_rejects_layout_mode_mismatch_before_exec
     def fail_execution(*args: Any, **kwargs: Any) -> None:
         raise AssertionError("layout validation must precede model building and sampling")
 
-    monkeypatch.setattr(rhime_standard, "build_standard_rhime_model", fail_execution)
+    monkeypatch.setattr(rhime_standard, "build_standard_model", fail_execution)
     monkeypatch.setattr(rhime_multisector, "build_multisector_rhime_model", fail_execution)
     monkeypatch.setattr(RhimeSampler, "sample", fail_execution)
 
-    with pytest.raises(ValueError, match="split_by_sectors.*must agree"):
-        run_rhime_from_prepared_inputs(prepared_inputs=prepared, run_spec=run_spec)
+    with pytest.raises(ValueError, match="split_by_sectors.*must agree|requires exactly one model sector"):
+        run_rhime_from_prepared_inputs(prepared_inputs=prepared, **_prepared_arguments(run_spec))
 
 
 @pytest.mark.parametrize("sector_count", [1, 2])
@@ -4044,12 +4080,12 @@ def test_run_rhime_from_prepared_inputs_rejects_flag_h_layout_mismatch_before_ex
     def fail_execution(*args: Any, **kwargs: Any) -> None:
         raise AssertionError("H layout validation must precede model building and sampling")
 
-    monkeypatch.setattr(rhime_standard, "build_standard_rhime_model", fail_execution)
+    monkeypatch.setattr(rhime_standard, "build_standard_model", fail_execution)
     monkeypatch.setattr(rhime_multisector, "build_multisector_rhime_model", fail_execution)
     monkeypatch.setattr(RhimeSampler, "sample", fail_execution)
 
-    with pytest.raises(ValueError, match="split_by_sectors.*prepared `H` layout"):
-        run_rhime_from_prepared_inputs(prepared_inputs=prepared, run_spec=run_spec)
+    with pytest.raises(ValueError, match="prepared H layout conflicts"):
+        run_rhime_from_prepared_inputs(prepared_inputs=prepared, **_prepared_arguments(run_spec))
 
 
 @pytest.mark.rhime_contract
@@ -4098,14 +4134,13 @@ def test_run_rhime_from_prepared_inputs_defaults_sampler_and_skips_none_output_w
     monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
 
     result = run_rhime_from_prepared_inputs(
-        prepared_inputs=prepared, run_spec=run_spec, **sampler_request
+        prepared_inputs=prepared, **_prepared_arguments(run_spec), **sampler_request
     )
 
     assert len(sampled_with) == 1
-    assert sampled_with[0] is result.sampler
-    assert result.sampler == RhimeSampler()
-    assert result.outputs == {}
-    assert result.inv_out is None
+    assert isinstance(result, InversionOutput)
+    assert result.output_metadata["sampler"] == sampled_with[0].describe()
+    assert sampled_with[0] == RhimeSampler()
     assert list(tmp_path.iterdir()) == []
 
 
@@ -4165,12 +4200,12 @@ def test_run_rhime_from_prepared_inputs_validates_output_before_execution(
     def fail_execution(*args: Any, **kwargs: Any) -> None:
         raise AssertionError("output validation must precede model building and sampling")
 
-    monkeypatch.setattr(rhime_standard, "build_standard_rhime_model", fail_execution)
+    monkeypatch.setattr(rhime_standard, "build_standard_model", fail_execution)
     monkeypatch.setattr(rhime_multisector, "build_multisector_rhime_model", fail_execution)
     monkeypatch.setattr(RhimeSampler, "sample", fail_execution)
 
     with pytest.raises(ValueError, match=expected_error):
-        run_rhime_from_prepared_inputs(prepared_inputs=prepared, run_spec=run_spec)
+        run_rhime_from_prepared_inputs(prepared_inputs=prepared, **_prepared_arguments(run_spec))
     assert not any(tmp_path.iterdir())
 
 
@@ -4191,8 +4226,8 @@ def test_run_rhime_from_prepared_inputs_rejects_empty_model() -> None:
         site_metadata=_prepared_site_metadata(),
     )
 
-    with pytest.raises(ValueError, match="must contain at least one sector; found 0"):
-        run_rhime_from_prepared_inputs(prepared_inputs=prepared, run_spec=run_spec)
+    with pytest.raises(ValueError, match="requires exactly one model sector"):
+        run_rhime_from_prepared_inputs(prepared_inputs=prepared, **_prepared_arguments(run_spec))
 
 
 def test_run_rhime_from_prepared_inputs_is_publicly_reexported() -> None:
@@ -4403,7 +4438,7 @@ def test_configuration_requires_explicit_likelihood_selection() -> None:
     assert setup.model.likelihood is None
 
 
-@pytest.mark.parametrize("runner", [run_rhime, run_rhime_multisector])
+@pytest.mark.parametrize("runner", [run_standard, run_rhime_multisector])
 def test_ordinary_runner_rejects_omitted_likelihood_before_retrieval(
     monkeypatch: pytest.MonkeyPatch,
     runner: Callable[..., RhimeResult],
@@ -4489,60 +4524,36 @@ def test_rhime_normalises_legacy_output_format_aliases(
     assert params["output_format"] == expected_output_format
 
 
-def test_standard_model_result_resolves_explicit_inputs_from_spec(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Spec resolution calls the one concrete builder with named scientific inputs."""
-    sentinel = pm.Model()
-    seen: dict[str, Any] = {}
-    flux_activity = StateActivity(fixed_groups=("outer",))
-    bc_activity = StateActivity(active=False)
+def test_standard_model_result_resolves_explicit_inputs_from_spec(monkeypatch) -> None:
+    """The eager recipe passes explicit arrays and computed priors to ordinary components."""
+    inputs = _minimal_output_inv_inputs()
+    activity = StateActivity(active=False, fixed_value=2.)
+    model_spec, _, _ = _minimal_output_specs(output_format="none")
+    model_spec = replace(model_spec, use_bc=False, state_activity=activity)
+    seen = {}
+    real_linear = rhime_standard.add_linear_component
+    real_likelihood = rhime_standard.add_rhime_likelihood
 
-    def fake_build_rhime_model(
-        flux_sensitivity: xr.DataArray,
-        **kwargs: Any,
-    ) -> pm.Model:
-        seen["flux_sensitivity"] = flux_sensitivity
-        seen["kwargs"] = kwargs
-        return sentinel
+    def linear(sensitivity, **kwargs):
+        seen["linear"] = kwargs
+        return real_linear(sensitivity, **kwargs)
 
-    monkeypatch.setattr(rhime_standard, "build_standard_rhime_model", fake_build_rhime_model)
-    inv_inputs = _minimal_output_inv_inputs()
-    model_spec = RhimeModelSpec(
-        species="ch4",
-        domain="EUROPE",
-        likelihood=PollutionEventSettings(),
-        sectors=(
-            SectorSpec(
-                name="FF",
-                flux_source="ff-inventory",
-                x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.2},
-                variable_suffix="ff",
-                state_activity=flux_activity,
-            ),
-        ),
-        use_bc=False,
-        bc_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.1},
-        bc_state_activity=bc_activity,
-    )
+    def likelihood(**kwargs):
+        seen["likelihood"] = kwargs
+        return real_likelihood(**kwargs)
 
-    result = rhime_standard.build_standard_rhime_model_result(
-        model_inputs=inv_inputs,
-        model_spec=model_spec,
-    )
-
-    assert result.model is sentinel
-    assert seen["flux_sensitivity"].variable is inv_inputs["H"].variable
-    assert seen["kwargs"]["observations"].variable is inv_inputs["mf"].variable
-    assert seen["kwargs"]["observation_error"].variable is inv_inputs["mf_error"].variable
-    assert seen["kwargs"]["aggregation_error"].mode == "none"
-    assert seen["kwargs"]["x_prior"] == {"pdf": "normal", "mu": 1.0, "sigma": 0.2}
-    assert seen["kwargs"]["state_activity"] is flux_activity
-    assert seen["kwargs"]["bc_state_activity"] is bc_activity
-    assert seen["kwargs"]["likelihood_builder"] is None
-    assert seen["kwargs"]["likelihood_settings"] is model_spec.likelihood
-    assert seen["kwargs"]["minimum_error"].variable is inv_inputs["min_error"].variable
-    assert "model_inputs" not in seen["kwargs"]
+    monkeypatch.setattr(rhime_standard, "add_linear_component", linear)
+    monkeypatch.setattr(rhime_standard, "add_rhime_likelihood", likelihood)
+    prior = {"pdf": "normal", "mu": 1.5, "sigma": .1}
+    built = rhime_standard.build_standard_model(inputs, model_spec, priors={"x": prior})
+    assert seen["linear"]["prior_args"] == prior
+    assert seen["linear"]["state_activity"] is activity
+    assert seen["likelihood"]["observations"].variable is inputs["mf"].variable
+    assert seen["likelihood"]["observation_error"].variable is inputs["mf_error"].variable
+    assert seen["likelihood"]["settings"] is model_spec.likelihood
+    assert seen["likelihood"]["minimum_error"].variable is inputs["min_error"].variable
+    assert "hbc" not in built.model.named_vars
+    assert "y" in built.model.named_vars
 
 
 def test_standard_model_result_requires_one_sector() -> None:
@@ -4558,9 +4569,10 @@ def test_standard_model_result_requires_one_sector() -> None:
     )
 
     with pytest.raises(ValueError, match="exactly one sector"):
-        rhime_standard.build_standard_rhime_model_result(
+        rhime_standard.build_standard_model(
             model_inputs=inv_inputs,
             model_spec=model_spec,
+            priors={"x": model_spec.sectors[0].x_prior},
         )
 
 
@@ -5261,7 +5273,7 @@ def test_run_rhime_rejects_string_prior_before_data_preparation(
     monkeypatch.setattr(rhime_standard.RhimeMergedData, "from_options", fail_prepare)
 
     with pytest.raises(ValueError, match="x_prior"):
-        run_rhime(
+        run_standard(
             species="ch4",
             sites=["TAC"],
             averaging_period=["1h"],
@@ -5295,7 +5307,7 @@ def test_run_rhime_rejects_malformed_min_error_options_before_data_preparation(
     monkeypatch.setattr(rhime_standard.RhimeMergedData, "from_options", fail_prepare)
 
     with pytest.raises(ValueError, match="min_error_options"):
-        run_rhime(
+        run_standard(
             species="ch4",
             sites=["TAC"],
             averaging_period=["1h"],
@@ -5320,7 +5332,7 @@ def test_run_rhime_rejects_malformed_power_before_data_preparation(
     monkeypatch.setattr(rhime_standard.RhimeMergedData, "from_options", fail_prepare)
 
     with pytest.raises(ValueError, match="power"):
-        run_rhime(
+        run_standard(
             species="ch4",
             sites=["TAC"],
             averaging_period=["1h"],
@@ -5703,7 +5715,7 @@ def test_prepared_multisector_runner_accepts_gathered_source_specific_basis_layo
         lambda **kwargs: None,
     )
 
-    result = run_rhime_from_prepared_inputs(prepared_inputs=loaded, run_spec=run_spec)
+    result = run_rhime_from_prepared_inputs(prepared_inputs=loaded, **_prepared_arguments(run_spec))
 
     xr.testing.assert_identical(loaded.inv_inputs, loaded_before_run)
     assert result.model.named_vars_to_dims["x_ff"] == ("region_ff",)
@@ -6393,7 +6405,7 @@ def test_run_rhime_resolves_scalar_averaging_period_before_acquisition(
     monkeypatch.setattr(rhime_standard.RhimeMergedData, "from_options", fake_retrieve)
 
     with pytest.raises(RuntimeError, match="stop after data argument capture"):
-        run_rhime(
+        run_standard(
             species="ch4",
             sites=["TAC", "MHD"],
             domain="EUROPE",
@@ -7074,7 +7086,7 @@ output_name = "test"
 
     monkeypatch.setattr(rhime_standard.RhimeMergedData, "from_options", fail_retrieval)
     with pytest.raises(ValueError, match="likelihood_builder"):
-        run_rhime(config_file=config_file)
+        run_standard(config_file=config_file)
 
 
 @pytest.mark.rhime_contract
@@ -7094,7 +7106,7 @@ def test_run_rhime_rejects_unknown_parameter_before_data_preparation(tmp_path: P
     }
 
     with pytest.raises(ValueError, match="Unsupported RHIME parameter"):
-        run_rhime(**args)
+        run_standard(**args)
 
 
 @pytest.mark.rhime_contract
@@ -7114,7 +7126,7 @@ def test_run_rhime_rejects_unsupported_output_format(tmp_path: Path) -> None:
     }
 
     with pytest.raises(ValueError, match="Unsupported RHIME output_format"):
-        run_rhime(**args)
+        run_standard(**args)
 
 
 def test_run_rhime_can_validate_output_format_without_output_path() -> None:
@@ -7131,7 +7143,7 @@ def test_run_rhime_can_validate_output_format_without_output_path() -> None:
     }
 
     with pytest.raises(ValueError, match="Unsupported RHIME output_format"):
-        run_rhime(**args)
+        run_standard(**args)
 
 
 def test_required_parameter_validation_allows_missing_output_path_for_in_memory_runs() -> None:
@@ -7352,15 +7364,17 @@ def test_make_standard_outputs_attach_products_to_result() -> None:
     )
 
     bundle = _result_for_outputs(run_spec, _minimal_output_idata(), model_spec=model_spec)
-    bundle = rhime_outputs.make_standard_rhime_outputs(result=bundle, prepared=prepared)
+    output_spec = bundle.output_spec
+    bundle = _make_standard_fixture_output(bundle, prepared)
+    products = rhime_outputs.write_standard_outputs(bundle, output_spec)
 
-    assert isinstance(bundle.inv_out, InversionOutput)
-    xr.testing.assert_identical(bundle.inv_out.inv_inputs.release_lat, inv_inputs.release_lat)
-    xr.testing.assert_identical(bundle.inv_out.inv_inputs.release_lon, inv_inputs.release_lon)
-    assert "site_lats" not in bundle.inv_out.run_metadata
-    assert "site_lons" not in bundle.inv_out.run_metadata
-    assert bundle.outputs == {"inversion_output": bundle.inv_out}
-    assert bundle.output_metadata == {"inversion_output_contract": "modern"}
+    assert isinstance(bundle, InversionOutput)
+    xr.testing.assert_identical(bundle.inv_inputs.release_lat, inv_inputs.release_lat)
+    xr.testing.assert_identical(bundle.inv_inputs.release_lon, inv_inputs.release_lon)
+    assert "site_lats" not in bundle.run_metadata
+    assert "site_lons" not in bundle.run_metadata
+    assert products == {}
+    assert products == {}
 
 
 def test_standard_postprocessing_failure_precedes_output_writes(
@@ -7397,7 +7411,9 @@ def test_standard_postprocessing_failure_precedes_output_writes(
     )
 
     with pytest.raises(ValueError, match="invalid PARIS options"):
-        result = rhime_outputs.make_standard_rhime_outputs(result=result, prepared=prepared)
+        output_spec = result.output_spec
+        result = _make_standard_fixture_output(result, prepared)
+        rhime_outputs.write_standard_outputs(result, output_spec)
     assert not any(tmp_path.iterdir())
 
 
@@ -7420,10 +7436,12 @@ def test_output_bundle_serializes_state_activity_spec() -> None:
     )
 
     bundle = _result_for_outputs(run_spec, _minimal_output_idata(), model_spec=model_spec)
-    bundle = rhime_outputs.make_standard_rhime_outputs(result=bundle, prepared=prepared)
+    output_spec = bundle.output_spec
+    bundle = _make_standard_fixture_output(bundle, prepared)
+    rhime_outputs.write_standard_outputs(bundle, output_spec)
 
-    assert bundle.inv_out is not None
-    policy = bundle.inv_out.model_metadata["sectors"][0]["state_activity"]
+    assert bundle is not None
+    policy = bundle.model_metadata["sectors"][0]["state_activity"]
     assert policy["active"] is False
     assert policy["fixed_value"] == 2.0
 
@@ -7665,18 +7683,20 @@ def test_default_model_inversion_output_save_load_roundtrip(tmp_path: Path) -> N
     idata.attrs["burn"] = 1000
     cast(Any, idata).posterior.attrs["burn"] = 1000
     bundle = _result_for_outputs(run_spec, idata, model_spec=model_spec)
-    bundle = rhime_outputs.make_standard_rhime_outputs(result=bundle, prepared=prepared)
-    assert bundle.inv_out is not None
+    output_spec = bundle.output_spec
+    bundle = _make_standard_fixture_output(bundle, prepared)
+    rhime_outputs.write_standard_outputs(bundle, output_spec)
+    assert bundle is not None
 
     output_file = tmp_path / "default_model_inv_out.nc"
-    bundle.inv_out.save(output_file)
+    bundle.save(output_file)
     reloaded = InversionOutput.load(output_file)
 
     assert reloaded.species == "ch4"
     assert reloaded.domain == "EUROPE"
     assert reloaded.run_metadata["basis_artifact_source"] == "unit-test"
-    assert reloaded.provenance["basis_representation"] == "operator-backed"
-    assert reloaded.output_metadata["output_format"] == "inv_out"
+    assert reloaded.provenance == {"package": "unit-test"}
+    assert reloaded.output_metadata == {"sampler": None}
     assert "builder_strategy" not in reloaded.model_metadata
     assert reloaded.trace.attrs["burn"] == 1000
     assert cast(Any, reloaded.trace).posterior.attrs["burn"] == 1000
@@ -7703,8 +7723,10 @@ def test_legacy_model_error_metadata_uses_writer_likelihood() -> None:
     idata = _minimal_output_idata()
     idata.attrs["rhime_priors"] = json.dumps({"sigma": prior})
     result = _result_for_outputs(run_spec, idata, model_spec=model_spec)
-    result = rhime_outputs.make_standard_rhime_outputs(result=result, prepared=prepared)
-    attrs = _legacy_hbmcmc_attrs(result.inv_out)
+    output_spec = result.output_spec
+    result = _make_standard_fixture_output(result, prepared)
+    rhime_outputs.write_standard_outputs(result, output_spec)
+    attrs = _legacy_hbmcmc_attrs(result)
     assert attrs["Error for each site"] == "False"
     assert attrs["Model error Prior"] == "pdf,uniform,lower,0.1,upper,1.0"
 
@@ -7754,11 +7776,13 @@ def test_modern_inversion_output_save_load_roundtrip(tmp_path: Path) -> None:
     idata.attrs["burn"] = 1000
     cast(Any, idata).posterior.attrs["burn"] = 1000
     bundle = _result_for_outputs(run_spec, idata, model_spec=model_spec)
-    bundle = rhime_outputs.make_standard_rhime_outputs(result=bundle, prepared=prepared)
-    assert bundle.inv_out is not None
+    output_spec = bundle.output_spec
+    bundle = _make_standard_fixture_output(bundle, prepared)
+    rhime_outputs.write_standard_outputs(bundle, output_spec)
+    assert bundle is not None
 
     output_file = tmp_path / "modern_inv_out.nc"
-    bundle.inv_out.save(output_file)
+    bundle.save(output_file)
     reloaded = InversionOutput.load(output_file)
 
     assert reloaded.species == "ch4"
@@ -7768,8 +7792,8 @@ def test_modern_inversion_output_save_load_roundtrip(tmp_path: Path) -> None:
     assert reloaded.run_metadata["basis_artifact_source"] == "unit-test"
     assert reloaded.run_metadata["basis_artifact_path"] == basis_artifact_path
     assert reloaded.basis_functions.basis_artifact_path == basis_artifact_path
-    assert reloaded.provenance["basis_representation"] == "operator-backed"
-    assert reloaded.output_metadata["output_format"] == "inv_out"
+    assert reloaded.provenance == {"package": "unit-test"}
+    assert reloaded.output_metadata == {"sampler": None}
     assert "builder_strategy" not in reloaded.model_metadata
     saved_activity = reloaded.model_metadata["sectors"][0]["state_activity"]
     assert saved_activity["active"] == {
@@ -7805,10 +7829,12 @@ def test_modern_inversion_output_restores_bytes_multiindex_metadata() -> None:
         site_metadata=_prepared_site_metadata(),
     )
     bundle = _result_for_outputs(run_spec, _minimal_output_idata(), model_spec=model_spec)
-    bundle = rhime_outputs.make_standard_rhime_outputs(result=bundle, prepared=prepared)
-    assert bundle.inv_out is not None
+    output_spec = bundle.output_spec
+    bundle = _make_standard_fixture_output(bundle, prepared)
+    rhime_outputs.write_standard_outputs(bundle, output_spec)
+    assert bundle is not None
 
-    dt = bundle.inv_out.to_datatree()
+    dt = bundle.to_datatree()
     inv_inputs_dt = dt["inv_inputs"]
     inv_inputs_dt.attrs[inversion_output_module.MULTIINDEX_DIMS_ATTR] = inv_inputs_dt.attrs[
         inversion_output_module.MULTIINDEX_DIMS_ATTR
@@ -7850,10 +7876,12 @@ def test_modern_inversion_output_roundtrips_trace_multiindex() -> None:
         make_trace(posterior=posterior, posterior_predictive=posterior_predictive),
         model_spec=model_spec,
     )
-    bundle = rhime_outputs.make_standard_rhime_outputs(result=bundle, prepared=prepared)
-    assert bundle.inv_out is not None
+    output_spec = bundle.output_spec
+    bundle = _make_standard_fixture_output(bundle, prepared)
+    rhime_outputs.write_standard_outputs(bundle, output_spec)
+    assert bundle is not None
 
-    reloaded = InversionOutput.from_datatree(bundle.inv_out.to_datatree())
+    reloaded = InversionOutput.from_datatree(bundle.to_datatree())
 
     reloaded_posterior_predictive = cast(Any, reloaded.trace).posterior_predictive
     index = reloaded_posterior_predictive.indexes["nmeasure"]
@@ -7881,10 +7909,12 @@ def test_modern_inversion_output_ignores_malformed_multiindex_metadata(raw_multi
         site_metadata=_prepared_site_metadata(),
     )
     bundle = _result_for_outputs(run_spec, _minimal_output_idata(), model_spec=model_spec)
-    bundle = rhime_outputs.make_standard_rhime_outputs(result=bundle, prepared=prepared)
-    assert bundle.inv_out is not None
+    output_spec = bundle.output_spec
+    bundle = _make_standard_fixture_output(bundle, prepared)
+    rhime_outputs.write_standard_outputs(bundle, output_spec)
+    assert bundle is not None
 
-    dt = bundle.inv_out.to_datatree()
+    dt = bundle.to_datatree()
     dt["inv_inputs"].attrs[inversion_output_module.MULTIINDEX_DIMS_ATTR] = raw_multiindex_dims
 
     reloaded = InversionOutput.from_datatree(dt)
@@ -7919,11 +7949,13 @@ def test_modern_inversion_output_supports_flux_outputs() -> None:
         ),
         model_spec=model_spec,
     )
-    bundle = rhime_outputs.make_standard_rhime_outputs(result=bundle, prepared=prepared)
-    assert bundle.inv_out is not None
+    output_spec = bundle.output_spec
+    bundle = _make_standard_fixture_output(bundle, prepared)
+    rhime_outputs.write_standard_outputs(bundle, output_spec)
+    assert bundle is not None
 
     modern_flux = make_flux_outputs(
-        bundle.inv_out,
+        bundle,
         include_scale_factors=False,
         report_flux_on_inversion_grid=False,
     )
@@ -8081,13 +8113,15 @@ def test_observation_inputs_for_outputs_stay_dataset_based() -> None:
         site_metadata=_prepared_site_metadata(),
     )
     bundle = _result_for_outputs(run_spec, _minimal_output_idata(), model_spec=model_spec)
-    bundle = rhime_outputs.make_standard_rhime_outputs(result=bundle, prepared=prepared)
-    assert bundle.inv_out is not None
+    output_spec = bundle.output_spec
+    bundle = _make_standard_fixture_output(bundle, prepared)
+    rhime_outputs.write_standard_outputs(bundle, output_spec)
+    assert bundle is not None
 
-    obs_inputs = observation_inputs_for_outputs(bundle.inv_out)
+    obs_inputs = observation_inputs_for_outputs(bundle)
 
-    assert not hasattr(bundle.inv_out, "obs")
-    assert not hasattr(bundle.inv_out, "obs_err")
+    assert not hasattr(bundle, "obs")
+    assert not hasattr(bundle, "obs_err")
     assert set(obs_inputs.data_vars) == {
         "y_obs",
         "y_obs_error",
@@ -8508,14 +8542,15 @@ def test_standard_basic_output_uses_modern_postprocessing_without_legacy_adapter
         model_spec=model_spec,
         country_file=str(europe_country_file),
     )
-    bundle = rhime_outputs.make_standard_rhime_outputs(result=bundle, prepared=prepared)
+    output_spec = bundle.output_spec
+    bundle = _make_standard_fixture_output(bundle, prepared)
+    products = rhime_outputs.write_standard_outputs(bundle, output_spec)
 
-    assert isinstance(bundle.inv_out, InversionOutput)
-    assert captured["inv_out"] is bundle.inv_out
+    assert isinstance(bundle, InversionOutput)
+    assert captured["inv_out"] is bundle
     assert captured["country_file"] == str(europe_country_file)
-    assert bundle.output_metadata["inversion_output_contract"] == "modern"
-    assert bundle.output_metadata["postprocessing_input_contract"] == "modern_inversion_output"
-    assert "basic" in bundle.outputs
+    assert products["postprocessing_input_contract"] == "modern_inversion_output"
+    assert "basic" in products
 
 
 def test_standard_products_and_archived_trace_use_all_chains(
@@ -8550,13 +8585,12 @@ def test_standard_products_and_archived_trace_use_all_chains(
 
     monkeypatch.setattr("openghg_inversions.postprocessing.make_outputs.basic_output", fake_basic_output)
 
-    bundle = rhime_outputs.make_standard_rhime_outputs(
-        result=bundle,
-        prepared=prepared,
-    )
+    output_spec = bundle.output_spec
+    bundle = _make_standard_fixture_output(bundle, prepared)
+    rhime_outputs.write_standard_outputs(bundle, output_spec)
 
-    assert bundle.inv_out is not None
-    assert bundle.inv_out.trace.posterior.sizes["chain"] == 2
+    assert bundle is not None
+    assert bundle.trace.posterior.sizes["chain"] == 2
     assert captured["inv_out"].trace.posterior.sizes["chain"] == 2
 
 
@@ -8601,22 +8635,23 @@ def test_standard_paris_output_uses_modern_postprocessing_without_legacy_adapter
         model_spec=model_spec,
         country_file=str(europe_country_file),
     )
-    bundle = rhime_outputs.make_standard_rhime_outputs(result=bundle, prepared=prepared)
+    output_spec = bundle.output_spec
+    bundle = _make_standard_fixture_output(bundle, prepared)
+    products = rhime_outputs.write_standard_outputs(bundle, output_spec)
 
-    assert isinstance(bundle.inv_out, InversionOutput)
-    assert captured["inv_out"] is bundle.inv_out
+    assert isinstance(bundle, InversionOutput)
+    assert captured["inv_out"] is bundle
     assert captured["country_file"] == str(europe_country_file)
     assert captured["domain"] == "EUROPE"
     assert captured["obs_avg_period"] == "1h"
-    assert bundle.inv_out.model_metadata["footprint_provenance"]["TAC"] == {
+    assert bundle.model_metadata["footprint_provenance"]["TAC"] == {
         "transport_model": "FLEXPART",
         "transport_model_version": "",
         "met_model": "ECMWF IFS HRES",
     }
-    assert bundle.output_metadata["inversion_output_contract"] == "modern"
-    assert bundle.output_metadata["postprocessing_input_contract"] == "modern_inversion_output"
-    assert "paris_flux" in bundle.outputs
-    assert "paris_concentration" in bundle.outputs
+    assert products["postprocessing_input_contract"] == "modern_inversion_output"
+    assert "paris_flux" in products
+    assert "paris_concentration" in products
 
 
 def test_standard_latest_paris_output_writes_index_as_unlimited_dimension(
@@ -8652,12 +8687,14 @@ def test_standard_latest_paris_output_writes_index_as_unlimited_dimension(
     bundle = _result_for_outputs(
         run_spec, _minimal_output_idata(), model_spec=model_spec, country_file=str(europe_country_file),
     )
-    bundle = rhime_outputs.make_standard_rhime_outputs(result=bundle, prepared=prepared)
+    output_spec = bundle.output_spec
+    bundle = _make_standard_fixture_output(bundle, prepared)
+    products = rhime_outputs.write_standard_outputs(bundle, output_spec)
 
-    with xr.open_dataset(bundle.output_metadata["paris_concentration_path"]) as saved_concentration:
+    with xr.open_dataset(products["paris_concentration_path"]) as saved_concentration:
         assert saved_concentration.encoding["unlimited_dims"] == {"index"}
         assert saved_concentration.time.dims == ("index",)
-    with xr.open_dataset(bundle.output_metadata["paris_flux_path"]) as saved_flux:
+    with xr.open_dataset(products["paris_flux_path"]) as saved_flux:
         assert saved_flux.encoding["unlimited_dims"] == {"time"}
 
 
@@ -8707,17 +8744,19 @@ def test_standard_legacy_output_uses_modern_inversion_output(
         model_spec=model_spec,
         country_file=str(europe_country_file),
     )
-    bundle = rhime_outputs.make_standard_rhime_outputs(result=bundle, prepared=prepared)
+    output_spec = bundle.output_spec
+    bundle = _make_standard_fixture_output(bundle, prepared)
+    products = rhime_outputs.write_standard_outputs(bundle, output_spec)
 
-    assert isinstance(bundle.inv_out, InversionOutput)
-    assert bundle.output_metadata["postprocessing_input_contract"] == "modern_inversion_output"
-    assert "legacy" in bundle.outputs
-    legacy_output = bundle.outputs["legacy"]
+    assert isinstance(bundle, InversionOutput)
+    assert products["postprocessing_input_contract"] == "modern_inversion_output"
+    assert "legacy" in products
+    legacy_output = products["legacy"]
     for variable in ("Yobs", "Ymodmean", "fluxmode", "countrymean", "xtrace", "sigtrace"):
         assert variable in legacy_output
     expected_path = tmp_path / "legacy_test_ch4_EUROPE_2019-01-01.nc"
     assert expected_path.exists()
-    assert bundle.output_metadata["legacy_output_path"] == str(expected_path)
+    assert products["legacy_output_path"] == str(expected_path)
     with xr.open_dataset(expected_path) as reloaded:
         assert reloaded.sizes["nmeasure"] == legacy_output.sizes["nmeasure"]
         assert "fluxmode" in reloaded
@@ -8754,7 +8793,7 @@ def test_run_rhime_rejects_multiple_flux_sources(tac_ch4_data_args, tmp_path: Pa
     args.pop("emissions_name")
 
     with pytest.raises(ValueError, match="exactly one flux source"):
-        run_rhime(**args)
+        run_standard(**args)
 
 
 def test_run_rhime_multisector_rejects_single_flux_source(tac_ch4_data_args, tmp_path: Path) -> None:
@@ -8818,6 +8857,11 @@ def test_run_rhime_api_smoke(
         assert self.draws == 1
         assert variable_roles is not None
         assert variable_roles["concentration"] == "y"
+        assert model.named_vars_to_dims["x"] == ("region",)
+        x_owner = model["x"].owner
+        assert x_owner is not None and type(x_owner.op).__name__ == "NormalRV"
+        np.testing.assert_allclose(pm.draw(x_owner.inputs[-2]), 1.25)
+        np.testing.assert_allclose(pm.draw(x_owner.inputs[-1]), 0.125)
         return _posterior_only_idata(model, ("x", "bc", "mu"))
 
     monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
@@ -8827,27 +8871,21 @@ def test_run_rhime_api_smoke(
         args.pop("sigma_prior")
         args["mismatch_model"] = None
         runner_kwargs["likelihood_builder"] = ordinary_fixed_error
-    result = run_rhime(**args, **runner_kwargs)
+    result = run_standard(**args, **runner_kwargs)
 
-    assert isinstance(result, RhimeResult)
-    assert result.model is not None
+    assert isinstance(result, InversionOutput)
+    assert not hasattr(result, "model")
     assert isinstance(result.basis_functions, BasisFunctions)
     assert not hasattr(result, "basis_objects")
-    posterior = cast(Any, result.idata).posterior
+    posterior = cast(Any, result.trace).posterior
     assert "x" in posterior
     assert "mu" in posterior
-    assert result.run_spec.split_by_sectors is False
-    assert result.model_spec.sectors[0].x_prior == {
+    assert result.is_multisector is False
+    assert result.model_metadata["sectors"][0]["x_prior"] == {
         "pdf": "normal",
         "mu": 1.25,
         "sigma": 0.125,
     }
-    assert result.model.named_vars_to_dims["x"] == ("region",)
-    x_owner = result.model["x"].owner
-    assert x_owner is not None
-    assert type(x_owner.op).__name__ == "NormalRV"
-    np.testing.assert_allclose(pm.draw(x_owner.inputs[-2]), 1.25)
-    np.testing.assert_allclose(pm.draw(x_owner.inputs[-1]), 0.125)
     assert result.inv_inputs["H"].dims == ("region", "nmeasure")
     assert result.inv_inputs.sizes["region"] == 4
     assert result.inv_inputs.sizes["nmeasure"] == 24
@@ -8864,14 +8902,11 @@ def test_run_rhime_api_smoke(
     assert isinstance(nmeasure_index, pd.MultiIndex)
     assert nmeasure_index.names == ["site", "time"]
     assert nmeasure_index.get_level_values("site").unique().tolist() == ["TAC"]
-    assert "inversion_output" in result.outputs
-    assert isinstance(result.inv_out, InversionOutput)
-    assert result.output_metadata["inversion_output_contract"] == "modern"
-    assert result.model_build_result is not None
+    builder_metadata = result.model_metadata["builder"]
     if custom_likelihood:
-        assert result.output_metadata["likelihood_builder"]["qualname"].endswith("ordinary_fixed_error")
+        assert builder_metadata["likelihood_builder"]["qualname"].endswith("ordinary_fixed_error")
     else:
-        assert "likelihood_builder" not in result.output_metadata
+        assert "likelihood_builder" not in builder_metadata
     output_file = tmp_path / "rhime_test2019-01-01_inversion_output.nc"
     assert output_file.exists()
     reloaded = InversionOutput.load(output_file)
@@ -8881,12 +8916,12 @@ def test_run_rhime_api_smoke(
     if custom_likelihood:
         assert (
             reloaded.model_metadata["builder"]["likelihood_builder"]
-            == result.output_metadata["likelihood_builder"]
+            == builder_metadata["likelihood_builder"]
         )
     else:
         assert "likelihood_builder" not in reloaded.model_metadata["builder"]
     xr.testing.assert_identical(reloaded.inv_inputs, result.inv_inputs)
-    xr.testing.assert_identical(reloaded.trace.posterior, result.idata.posterior)
+    xr.testing.assert_identical(reloaded.trace.posterior, result.trace.posterior)
 
     timing_output = capsys.readouterr().out
     previous_position = -1
@@ -9094,15 +9129,14 @@ output_format = "inv_out"
     build_result = RhimeModelBuildResult(model=pm.Model(), variable_roles={"concentration": "y"})
     idata = _minimal_output_idata()
 
-    def fake_build(**kwargs: Any) -> RhimeModelBuildResult:
+    def fake_build(model_inputs, model_spec, **kwargs: Any) -> RhimeModelBuildResult:
         """Capture the model stage inputs after config merging."""
-        seen["execution"] = kwargs
+        seen["execution"] = {"model_inputs": model_inputs, "model_spec": model_spec, **kwargs}
         return build_result
 
     def fake_result(**kwargs: Any) -> RhimeResult:
         """Capture the terminal public stage after config merging."""
-        seen["sampler"] = kwargs["sampler"]
-        seen["run_spec"] = kwargs["run_spec"]
+        seen["view"] = kwargs
         return cast(RhimeResult, SimpleNamespace())
 
     monkeypatch.setattr(rhime_standard.RhimeMergedData, "from_options",
@@ -9118,15 +9152,10 @@ output_format = "inv_out"
     )
     monkeypatch.setattr(rhime_standard, "assemble_rhime_inputs", fake_assemble)
     monkeypatch.setattr(rhime_params, "normalise_rhime_params", track_normalise)
-    monkeypatch.setattr(
-        rhime_standard,
-        "materialize_pymc_inputs",
-        lambda value, *, variable_names: value.inv_inputs,
-    )
-    monkeypatch.setattr(rhime_standard, "build_standard_rhime_model_result", fake_build)
+    monkeypatch.setattr(rhime_standard, "build_standard_model", fake_build)
     monkeypatch.setattr(rhime_standard, "sample_rhime_model", lambda *args, **kwargs: idata)
-    monkeypatch.setattr(rhime_standard, "make_standard_rhime_result", fake_result)
-    monkeypatch.setattr(rhime_standard, "make_standard_rhime_outputs", lambda **kwargs: kwargs["result"])
+    monkeypatch.setattr(rhime_standard, "make_standard_output", fake_result)
+    monkeypatch.setattr(rhime_standard, "write_standard_outputs", lambda value, output: seen.update(output=output))
 
     main(
         [
@@ -9161,24 +9190,20 @@ output_format = "inv_out"
 
     execution = seen["execution"]
     assert execution["model_inputs"].equals(prepared.inv_inputs)
-    run_spec = seen["run_spec"]
-    assert execution["model_spec"] == run_spec.model
-    assert run_spec.start_date == "2019-01-01"
-    assert run_spec.end_date == "2019-01-02"
-    assert run_spec.sites == ("TAC",)
-    assert run_spec.averaging_period == ("1h",)
-    assert run_spec.model.species == "ch4"
-    assert run_spec.model.domain == "DIRECT-DOMAIN"
-    assert run_spec.model.sectors[0].flux_source == "direct-source"
-    assert run_spec.model.sectors[0].x_prior == {
-        "pdf": "normal",
-        "mu": 1.25,
-        "sigma": 0.125,
-    }
-    assert seen["sampler"].draws == 7
-    assert run_spec.output.output_path == tmp_path
-    assert run_spec.output.output_name == "direct-name"
-    assert run_spec.output.output_format == "none"
+    view = seen["view"]
+    assert execution["model_spec"] is view["model_spec"]
+    assert view["start_date"] == "2019-01-01"
+    assert view["end_date"] == "2019-01-02"
+    assert view["prepared"].sites == ("TAC",)
+    assert view["prepared"].averaging_period == ("1h",)
+    assert view["model_spec"].species == "ch4"
+    assert view["model_spec"].domain == "DIRECT-DOMAIN"
+    assert view["model_spec"].sectors[0].flux_source == "direct-source"
+    assert execution["priors"]["x"] == {"pdf": "normal", "mu": 1.25, "sigma": .125}
+    assert view["actual_inference"]["draws"] == 7
+    assert seen["output"].output_path == tmp_path
+    assert seen["output"].output_name == "direct-name"
+    assert seen["output"].output_format == "none"
     normalized_names = [name for options in normalise_calls for name in options]
     assert len(normalized_names) == len(set(normalized_names))
     assert {"species", "x_prior", "draws"}.issubset(normalized_names)
@@ -9303,4 +9328,4 @@ def test_standard_rejects_removed_compatibility_options_before_acquisition(monke
         lambda **kwargs: pytest.fail("removed option reached acquisition"),
     )
     with pytest.raises(ValueError, match=f"Unsupported RHIME parameter.*{option}"):
-        run_rhime(**{option: True})
+        run_standard(**{option: True})

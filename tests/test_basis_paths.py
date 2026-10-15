@@ -84,7 +84,7 @@ def test_missing_selected_resource_fails_before_acquisition(tmp_path, monkeypatc
     monkeypatch.setattr(standard.RhimeMergedData, "from_options", lambda **kwargs: pytest.fail("acquired"))
     with pytest.raises(FileNotFoundError):
         if route == "standard":
-            standard.run_rhime(config=config)
+            standard.run_standard(config=config)
         elif route == "multisector":
             multisector.run_rhime_multisector(config=config)
         elif route == "nested":
@@ -136,7 +136,7 @@ def test_conflicting_explicit_basis_inputs_fail_before_acquisition(monkeypatch):
                                      multisector=False)
     monkeypatch.setattr(standard.RhimeMergedData, "from_options", lambda **kwargs: pytest.fail("acquired"))
     with pytest.raises(ValueError, match="Supply either"):
-        standard.run_rhime(config=config)
+        standard.run_standard(config=config)
 
 
 @pytest.mark.parametrize("outer_backend", ["dask", "sparse_dask"])
@@ -274,7 +274,7 @@ def test_runners_export_returned_basis_without_mutating_inputs(tmp_path, monkeyp
         elif route == "multisector":
             module.run_rhime_multisector(config=config)
         else:
-            module.run_rhime(config=config)
+            module.run_standard(config=config)
     assert sources["a"].flux.data is borrowed
     assert config.data.basis_output_path == (tmp_path / options["basis_output_path"] if suffix else None)
     if suffix is None:
@@ -345,7 +345,7 @@ def test_full_ini_resources_keep_invocation_directory_convention(tmp_path, monke
     monkeypatch.setattr(standard, "resolve_basis_inputs", resources)
     monkeypatch.setattr(standard.RhimeMergedData, "from_options", lambda **kwargs: pytest.fail("acquired"))
     with pytest.raises(BeforeAcquisition):
-        standard.run_rhime(config_file=source, basis_output_path="override.nc")
+        standard.run_standard(config_file=source, basis_output_path="override.nc")
 
 
 def test_plural_partition_paths_use_sorted_coordinate_reference(tmp_path):

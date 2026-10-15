@@ -49,3 +49,13 @@ def test_sampling_only_model_rejects_invalid_declared_role() -> None:
     result = RhimeModelBuildResult(model=model, variable_roles={"concentration": "absent"})
     with pytest.raises(ValueError, match="concentration='absent'"):
         validate_model_build_result(result, context=_sampling_only_context())
+
+
+def test_build_result_retains_one_validated_contract():
+    with registered_model() as model:
+        pm.Normal("y")
+    roles = {"concentration": "y"}
+    result = RhimeModelBuildResult(model=model, variable_roles=roles)
+    roles["concentration"] = "changed"
+    assert result.output_contract is result.output_contract
+    assert result.output_contract.variable_roles == {"concentration": "y"}
