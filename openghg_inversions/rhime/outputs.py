@@ -163,7 +163,7 @@ def _structured_metadata(value: Any) -> Any:
 
 
 def _resolve_output_path(
-    save_setting: str | Path | bool, output_path: str | None, filename: str
+    save_setting: str | Path | bool, output_path: str | Path | None, filename: str
 ) -> Path | None:
     """Resolve an optional output path from a bool/path save setting."""
     if not save_setting:
