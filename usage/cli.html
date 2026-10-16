@@ -457,6 +457,15 @@ guide. New configuration files should use the RHIME vocabulary documented in
 validated production-shape examples are used by
 <a class="reference internal" href="rhime_standard_tutorial.html"><span class="doc">Standard RHIME tutorial</span></a> and <a class="reference internal" href="rhime_multisector_tutorial.html"><span class="doc">Multisector RHIME tutorial</span></a>.</p>
 </section>
+<section id="saved-standard-phases">
+<h2>Saved standard phases<a class="headerlink" href="#saved-standard-phases" title="Link to this heading">#</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">rhime</span> <span class="pre">prepare</span></code> resolves preparation choices and prints one manifest path.
+<code class="docutils literal notranslate"><span class="pre">rhime</span> <span class="pre">sample</span> <span class="pre">--preparation-manifest</span> <span class="pre">...</span></code> accepts current model/sampler
+choices; <code class="docutils literal notranslate"><span class="pre">rhime</span> <span class="pre">postprocess</span> <span class="pre">--sample-manifest</span> <span class="pre">...</span></code> accepts current output
+choices. Sampling and postprocessing do not require a full configuration file.
+See <a class="reference internal" href="staged_workflow.html"><span class="doc">Staged RHIME workflows</span></a> for the complete preparation/two-model/two-output
+sequence and the separate multisector/CO2 interfaces.</p>
+</section>
 <section id="python-model-selection-and-compatibility">
 <h2>Python model selection and compatibility<a class="headerlink" href="#python-model-selection-and-compatibility" title="Link to this heading">#</a></h2>
 <p>The public Python selector is <a class="reference internal" href="../reference/openghg_inversions.rhime.html#openghg_inversions.rhime.run" title="openghg_inversions.rhime.run"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.run()</span></code></a>:</p>
@@ -475,7 +484,7 @@ Existing CO2 staged commands retain their current support boundaries.</p>
 <p><code class="docutils literal notranslate"><span class="pre">openghg-inversions</span></code> and its <code class="docutils literal notranslate"><span class="pre">run-rhime</span></code>, <code class="docutils literal notranslate"><span class="pre">run-rhime-multisector</span></code> and
 <code class="docutils literal notranslate"><span class="pre">run-rhime-nested</span></code> subcommands remain supported through the 0.9 compatibility
 cycle. Both executables expose the same command set. The existing runner imports and
-shared handoff/assembly names listed here remain aliases to their implementations: <code class="docutils literal notranslate"><span class="pre">run_rhime</span></code> is
+shared handoff/assembly names listed here remain aliases to their implementations: <code class="docutils literal notranslate"><span class="pre">run_standard</span></code> is
 <code class="docutils literal notranslate"><span class="pre">run_standard</span></code>, <code class="docutils literal notranslate"><span class="pre">run_rhime_multisector</span></code> is <code class="docutils literal notranslate"><span class="pre">run_multisector</span></code>, and
 <code class="docutils literal notranslate"><span class="pre">run_rhime_nested</span></code> is <code class="docutils literal notranslate"><span class="pre">run_nested</span></code>. No argument conversion or warning is
 added to these aliases. Shared <code class="docutils literal notranslate"><span class="pre">MergedData</span></code> and <code class="docutils literal notranslate"><span class="pre">PreparedInputs</span></code> retain the
@@ -656,6 +665,7 @@ contract.</p>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#standard-multisector-and-nested-runs">Standard, multisector, and nested runs</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#saved-standard-phases">Saved standard phases</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#python-model-selection-and-compatibility">Python model selection and compatibility</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#translating-the-older-batch-example">Translating the older batch example</a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#alternative-environment-blocks">Alternative environment blocks</a></li>

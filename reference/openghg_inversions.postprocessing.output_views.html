@@ -425,6 +425,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.params.html">openghg_inversions.rhime.params</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.preparation.html">openghg_inversions.rhime.preparation</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.prepared.html">openghg_inversions.rhime.prepared</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.requests.html">openghg_inversions.rhime.requests</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.sampling.html">openghg_inversions.rhime.sampling</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.specs.html">openghg_inversions.rhime.specs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.stages.html">openghg_inversions.rhime.stages</a></li>
@@ -554,8 +555,8 @@ contract state mappings and builder metadata also take precedence.</p></li>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>An ordinary <code class="docutils literal notranslate"><span class="pre">InversionOutput</span></code> consumed by reconstruction and product
-writers. Numerical validation and labelled state normalization remain
-owned by that value; the caller’s arrays and metadata are not mutated.
+writers. The trace is trusted from sampling or its external loading
+boundary; the caller’s arrays and metadata are not mutated.
 Matching prepared and trace artifact identities is the caller’s
 responsibility; this factory does not authenticate saved artifacts.</p>
 </dd>

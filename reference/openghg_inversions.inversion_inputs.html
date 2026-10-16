@@ -425,6 +425,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.params.html">openghg_inversions.rhime.params</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.preparation.html">openghg_inversions.rhime.preparation</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.prepared.html">openghg_inversions.rhime.prepared</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.requests.html">openghg_inversions.rhime.requests</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.sampling.html">openghg_inversions.rhime.sampling</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.specs.html">openghg_inversions.rhime.specs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.stages.html">openghg_inversions.rhime.stages</a></li>
@@ -571,6 +572,27 @@ explicit empty selection is an error.</p>
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.inversion_inputs.normalise_frequency">
+<span class="sig-name descname"><span class="pre">normalise_frequency</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">value</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inversion_inputs.normalise_frequency" title="Link to this definition">#</a></dt>
+<dd><p>Resolve calendar periods or a positive fixed duration without observations.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>value</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – <code class="docutils literal notranslate"><span class="pre">None</span></code> for one period, <code class="docutils literal notranslate"><span class="pre">&quot;monthly&quot;</span></code> for calendar months, or a
+pandas duration string. Bare units and uppercase <code class="docutils literal notranslate"><span class="pre">H</span></code> are accepted.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The unchanged single/calendar-period policy or a positive fixed duration.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If a fixed duration is malformed, nonfinite, zero or negative.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.15)"><em>Literal</em></a>[‘monthly’] | ~pandas._libs.tslibs.timedeltas.Timedelta | None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.inversion_inputs.add_min_error">
 <span class="sig-name descname"><span class="pre">add_min_error</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ds</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fp_data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_error</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_error_per_site</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inversion_inputs.add_min_error" title="Link to this definition">#</a></dt>
 <dd><p>Add a prepared, observation-aligned minimum error to a dataset.</p>
@@ -700,6 +722,7 @@ from being discarded.</p></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_inputs.xr_factorize"><code class="docutils literal notranslate"><span class="pre">xr_factorize()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_inputs.make_site_indicator"><code class="docutils literal notranslate"><span class="pre">make_site_indicator()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_inputs.make_site_names"><code class="docutils literal notranslate"><span class="pre">make_site_names()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_inputs.normalise_frequency"><code class="docutils literal notranslate"><span class="pre">normalise_frequency()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_inputs.add_min_error"><code class="docutils literal notranslate"><span class="pre">add_min_error()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_inputs.add_site_indicator"><code class="docutils literal notranslate"><span class="pre">add_site_indicator()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_inputs.make_inv_inputs"><code class="docutils literal notranslate"><span class="pre">make_inv_inputs()</span></code></a></li>

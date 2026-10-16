@@ -528,7 +528,6 @@ tails:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>openghg-inversions<span class="w"> </span>prior-predictive<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--config<span class="w"> </span><span class="s2">"</span><span class="nv">$CONFIG</span><span class="s2">"</span><span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--model<span class="w"> </span>standard<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--prepared-inputs<span class="w"> </span><span class="s2">"</span><span class="nv">$RUN</span><span class="s2">/prepare/prepared-inputs.nc"</span><span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--preparation-manifest<span class="w"> </span><span class="s2">"</span><span class="nv">$RUN</span><span class="s2">/prepare/prepare-manifest.json"</span><span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--draws<span class="w"> </span><span class="m">500</span><span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--output-dir<span class="w"> </span><span class="s2">"</span><span class="nv">$RUN</span><span class="s2">/prior-predictive"</span><span class="w"> </span><span class="se">\</span>
@@ -553,7 +552,6 @@ are scientifically plausible.</p>
 <div class="cell_input code_cell docutils container">
 <div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="k">with</span> <span class="n">as_file</span><span class="p">(</span><span class="n">resource</span><span class="p">)</span> <span class="k">as</span> <span class="n">config</span><span class="p">:</span>
     <span class="n">stage</span><span class="p">(</span><span class="s2">"prior-predictive"</span><span class="p">,</span> <span class="s2">"--config"</span><span class="p">,</span> <span class="n">config</span><span class="p">,</span> <span class="s2">"--model"</span><span class="p">,</span> <span class="s2">"standard"</span><span class="p">,</span>
-          <span class="s2">"--prepared-inputs"</span><span class="p">,</span> <span class="n">prepared_path</span><span class="p">,</span>
           <span class="s2">"--preparation-manifest"</span><span class="p">,</span> <span class="n">preparation_manifest</span><span class="p">,</span>
           <span class="s2">"--draws"</span><span class="p">,</span> <span class="mi">500</span><span class="p">,</span> <span class="s2">"--output-dir"</span><span class="p">,</span> <span class="n">run</span> <span class="o">/</span> <span class="s2">"prior-predictive"</span><span class="p">,</span> <span class="s2">"--strict"</span><span class="p">)</span>
 <span class="n">readiness</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">((</span><span class="n">run</span> <span class="o">/</span> <span class="s2">"prior-predictive/prior-predictive-readiness.json"</span><span class="p">)</span><span class="o">.</span><span class="n">read_text</span><span class="p">())</span>
@@ -764,10 +762,13 @@ checks every implication of a model.</p>
 <section id="revise-and-repeat">
 <h2>Revise and repeat<a class="headerlink" href="#revise-and-repeat" title="Link to this heading">#</a></h2>
 <p>If the simulations are implausible, change the relevant prior or model option
-in the configuration and repeat both <code class="docutils literal notranslate"><span class="pre">prepare</span></code> and <code class="docutils literal notranslate"><span class="pre">prior-predictive</span></code> in a
-new output directory. Prior settings are part of the preparation manifest’s
-configuration identity, so a manifest from the previous configuration is
-intentionally rejected. Record why each change is scientifically justified;
+in the configuration and rerun <code class="docutils literal notranslate"><span class="pre">prior-predictive</span></code> with the same preparation
+manifest when the revised model is compatible with the prepared inputs.
+Standard preparation supports compatible graph-time prior and likelihood changes;
+it does not require full-configuration equality. Repeat <code class="docutils literal notranslate"><span class="pre">prepare</span></code> when changing
+acquired data, filtering or averaging, basis or sensitivities, or another baked
+preparation policy. See <a class="reference internal" href="staged_workflow.html"><span class="doc">Staged RHIME workflows</span></a> for compatibility details.
+Record why each change is scientifically justified;
 repeatedly tuning a prior only to mimic the observed series turns the exercise
 into data-dependent model fitting.</p>
 </section>
@@ -779,12 +780,12 @@ and manifest to the posterior stage:</p>
 two chains, and disabled convergence checks. Those settings demonstrate the
 workflow but are not adequate for scientific interpretation. Increase the
 sampler settings and enable convergence checks for a scientific run.
-Sampler-only changes do not invalidate the prepared artifact; changes to the
-scientific preparation, model, or prior settings require a new preparation.</p>
+Sampler-only changes and compatible graph-time model or prior changes reuse the
+prepared artifact. Changes to acquired data, filtering or averaging, basis or
+sensitivities, or other baked preparation policies require new preparation.</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>openghg-inversions<span class="w"> </span>sample<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--config<span class="w"> </span><span class="s2">"</span><span class="nv">$CONFIG</span><span class="s2">"</span><span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--model<span class="w"> </span>standard<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--prepared-inputs<span class="w"> </span><span class="s2">"</span><span class="nv">$RUN</span><span class="s2">/prepare/prepared-inputs.nc"</span><span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--preparation-manifest<span class="w"> </span><span class="s2">"</span><span class="nv">$RUN</span><span class="s2">/prepare/prepare-manifest.json"</span><span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--output-dir<span class="w"> </span><span class="s2">"</span><span class="nv">$RUN</span><span class="s2">/sample"</span>
 </pre></div>
@@ -798,7 +799,6 @@ graph from the prior-predictive process.</p>
 <div class="cell_input code_cell docutils container">
 <div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="k">with</span> <span class="n">as_file</span><span class="p">(</span><span class="n">resource</span><span class="p">)</span> <span class="k">as</span> <span class="n">config</span><span class="p">:</span>
     <span class="n">stage</span><span class="p">(</span><span class="s2">"sample"</span><span class="p">,</span> <span class="s2">"--config"</span><span class="p">,</span> <span class="n">config</span><span class="p">,</span> <span class="s2">"--model"</span><span class="p">,</span> <span class="s2">"standard"</span><span class="p">,</span>
-          <span class="s2">"--prepared-inputs"</span><span class="p">,</span> <span class="n">prepared_path</span><span class="p">,</span>
           <span class="s2">"--preparation-manifest"</span><span class="p">,</span> <span class="n">preparation_manifest</span><span class="p">,</span>
           <span class="s2">"--output-dir"</span><span class="p">,</span> <span class="n">run</span> <span class="o">/</span> <span class="s2">"sample"</span><span class="p">)</span>
 <span class="n">posterior</span> <span class="o">=</span> <span class="n">load_trace</span><span class="p">(</span><span class="n">run</span> <span class="o">/</span> <span class="s2">"sample/posterior.nc"</span><span class="p">)</span>

@@ -21,7 +21,7 @@ documented interfaces.
 
 Choose the smallest starting point that fits the change:
 
-* To change only the likelihood, pass a Python function to ``run_rhime``.
+* To change only the likelihood, pass a Python function to ``run_standard``.
 * To run the matched fixed-tau Ornstein--Uhlenbeck (OU) CO₂ model with inferred
   site amplitudes, use :ref:`the package-supported cached-sigma CO₂ recipe
   <co2-cached-sigma-recipe>` in
@@ -30,8 +30,10 @@ Choose the smallest starting point that fits the change:
   fluxes, pass a borrowed ``RhimeMergedData`` object as ``merged_data``.
 * To change a preparation stage such as basis construction, copy the visible
   runner and replace that stage.
-* To start from prepared data or replace the complete model, use
-  ``run_rhime_from_prepared_inputs``.
+* To start from alternative or cached prepared data with the standard model, use
+  ``run_standard(prepared=prepared, config=config)``. To replace the complete standard graph,
+  construct and sample a PyMC model directly; the complete-builder hook remains
+  available only for multisector compatibility.
 
 .. _cached-sigma-co2-recipe:
 .. _run-the-production-cached-sigma-co2-recipe:
@@ -42,19 +44,19 @@ The cached-sigma CO₂ recipe documentation moved to the
 Resume from external scientific data
 ----------------------------------------------
 
-``run_rhime`` and ``run_rhime_multisector`` accept ``merged_data`` as a
+``run_standard`` and ``run_rhime_multisector`` accept ``merged_data`` as a
 Python-only handoff. It bypasses OpenGHG acquisition,
 checks the recorded scientific facts and single- or multi-sector layout, and
 then re-enters the visible recipe at observation-error preparation::
 
-   result = run_rhime(
+   result = run_standard(
        config_file="config.ini",
        merged_data=my_merged_data,
    )
 
 The supplied ``RhimeMergedData`` and its xarray or Dask arrays remain borrowed.
-Filtering returns a replacement handoff when it changes observations; basis
-construction and labelled assembly consume that result without mutating the
+Filtering returns retained per-site datasets and aligned ``SiteOptions``; basis
+construction and labelled assembly consume those values without mutating the
 external object.
 
 Before preparation, ``RhimeMergedData.validate_for_preparation`` checks known
@@ -68,11 +70,12 @@ later priors and sampling choices do not determine acquisition compatibility.
 Missing historical facts remain unknown and are not filled from the new
 request. Validation neither selects observations nor executes lazy arrays.
 
-When a custom preparation step retains or replaces site datasets, use
-``merged.with_site_data(site_data)``. The mapping order sets
-the retained site order; the owner selects matching ``SiteOptions`` and input
-provenance together. It returns new metadata while borrowing the numerical
-arrays. The caller owns any files backing supplied datasets.
+Preparation steps pass per-site datasets between them, not ``MergedData``:
+``MergedData`` holds acquired data only. When a custom step drops sites, keep
+the selectors aligned with ``site_options.retain_sites(tuple(site_data), context=...)``,
+as ``filter_observations`` does, and pass the retained ``SiteOptions`` to
+``assemble_inputs``. Numerical arrays stay borrowed; the caller owns any files
+backing supplied datasets.
 
 Follow the modern preparation spine
 ------------------------------------
@@ -86,46 +89,52 @@ labelled arrays:
 
    from openghg_inversions.basis import prepare_basis
    from openghg_inversions.basis.support import load_bc_basis
-   from openghg_inversions.basis.basis_functions import BASIS_ARTIFACT_PATH_ATTR
    from openghg_inversions.native_flux import resolve_runtime_flux
-   from openghg_inversions.rhime.preparation import resolve_basis_inputs
+   from openghg_inversions.rhime.preparation import (
+       acquire_merged_data, filter_observations, prepare_observation_errors,
+       resolve_basis_inputs,
+   )
    from openghg_inversions.rhime import validate_output_resources
 
    # config was constructed from external options with RhimeConfig.from_params.
    # For a complete run that will produce outputs:
    validate_output_resources(config.output)
-   basis_inputs = resolve_basis_inputs(config)
+   basis_inputs = resolve_basis_inputs(config.data)
    bc_basis = (
-       load_bc_basis(config.bc_basis_paths)
-       if config.use_bc and config.bc_basis_paths is not None else None
+       load_bc_basis(config.data.bc_basis_paths)
+       if config.data.use_bc and config.data.bc_basis_paths is not None else None
    )
-   # Acquire merged data, prepare errors and filter observations here.
+   merged = acquire_merged_data(config.data)
+   with_errors = prepare_observation_errors(
+       merged.site_data, averaging_error=config.data.averaging_error,
+   )
+   filtered, site_options = filter_observations(
+       with_errors, merged.site_options, filters=config.data.filters,
+   )
    runtime_flux = resolve_runtime_flux(
-       filtered.flux_data, split_by_sectors=filtered.split_by_sectors,
+       merged.flux_data, split_by_sectors=merged.split_by_sectors,
    )
-   weighting_source = config.flux_sources[0] if config.flux_sources else next(iter(filtered.flux_data))
-   weighting_flux = filtered.flux_data[weighting_source]["flux"]
+   weighting_source = config.data.flux_sources[0] if config.data.flux_sources else next(iter(merged.flux_data))
+   weighting_flux = merged.flux_data[weighting_source]["flux"]
    basis = prepare_basis(
-       site_data=filtered.site_data,
+       site_data=filtered,
        runtime_flux=runtime_flux,
        weighting_flux=weighting_flux,
-       domain=config.domain,
-       start_date=config.start_date,
-       nbasis=config.nbasis,
-       basis_algorithm=config.basis_algorithm,
-       fix_outer_regions=config.fix_basis_outer_regions,
+       domain=config.data.domain,
+       start_date=config.data.start_date,
+       nbasis=config.data.nbasis,
+       basis_algorithm=config.data.basis_algorithm,
+       fix_outer_regions=config.data.fix_basis_outer_regions,
        **basis_inputs,
    )
-   if config.basis_output_path is not None:
-       basis.save(config.basis_output_path)
-       basis = basis.with_metadata(
-           {BASIS_ARTIFACT_PATH_ATTR: str(config.basis_output_path)}
-       )
+   if config.data.basis_output_path is not None:
+       basis.save(config.data.basis_output_path)
 
 A selected ``basis_path`` reuses saved geometry with current merged flux;
 otherwise preparation generates a partition from the filtered observations.
 The runner optionally saves the returned basis at ``basis_output_path`` and
-attaches export metadata without mutating the prepared basis. ``prepare_basis``
+preserves the existing basis value and its original source provenance. The
+requested export path belongs to configuration, not a rewritten scientific value. ``prepare_basis``
 accepts no export destination and performs no export write. Sensitivity construction
 and input assembly consume the returned ``BasisFunctions``. Pass ``bc_basis`` to
 ``build_sensitivities``; ``None`` uses NESW without any BC basis-file I/O.
@@ -153,7 +162,7 @@ site order. Normalize scalar or per-site inputs once, then acquire an in-memory
 merged handoff::
 
    from openghg_inversions.inversion_data import RhimeMergedData, SiteOptions
-   from openghg_inversions.rhime import run_rhime
+   from openghg_inversions.rhime import run_standard
 
    selectors = SiteOptions.from_inputs(
        sites=["TAC", "MHD"], averaging_period="4h", inlet=["185m", "10m"],
@@ -225,7 +234,7 @@ Change the likelihood with a Python function
 --------------------------------------------
 
 For an ordinary likelihood variation, keep RHIME's complete
-acquisition-to-output workflow and pass one Python function to ``run_rhime``.
+acquisition-to-output workflow and pass one Python function to ``run_standard``.
 The function is deliberately unavailable to INI files: it is
 not imported from configuration or stored in a run or model specification.
 
@@ -234,9 +243,9 @@ The complete integration is one named argument:
 .. code-block:: python
 
    from my_project.likelihoods import likelihood_builder
-   from openghg_inversions.rhime import run_rhime
+   from openghg_inversions.rhime import run_standard
 
-   result = run_rhime(
+   result = run_standard(
        config_file="config.ini",
        mismatch_model=None,
        likelihood_builder=likelihood_builder,
@@ -254,7 +263,7 @@ Options owned only by a custom likelihood can be supplied separately with
 ``likelihood_kwargs``. RHIME expands that mapping into the callable without
 hiding the common scientific arrays in an opaque object::
 
-   result = run_rhime(
+   result = run_standard(
        config_file="config.ini",
        mismatch_model=None,
        likelihood_builder=likelihood_builder,
@@ -304,7 +313,7 @@ custom-callback contract. In particular,
 ``models.additive_sigma.add_additive_sigma_likelihood`` adds an absolute
 concentration-scale variance, while ``models.pollution_event`` owns the
 pollution-enhancement-scaled equation. Select the absolute additive equation
-directly with ``mismatch_model="additive_sigma"`` in ``run_rhime`` or
+directly with ``mismatch_model="additive_sigma"`` in ``run_standard`` or
 ``run_rhime_multisector``; ``sigma_prior``, ``sigma_freq``, and
 ``sigma_per_site`` then configure its scale. Additive sigma does not load the
 historical ``min_error`` floor unless
@@ -322,9 +331,9 @@ The model-owned
 within-site Ornstein--Uhlenbeck mismatch covariance. For example::
 
    from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
-   from openghg_inversions.rhime import run_rhime
+   from openghg_inversions.rhime import run_standard
 
-   result = run_rhime(
+   result = run_standard(
        ...,
        likelihood_builder=add_fixed_ou_gaussian_likelihood,
        likelihood_kwargs={
@@ -446,12 +455,13 @@ Copy the complete runner
 The copied runner below is an advanced, version-coupled escape hatch for
 scientific changes beyond the likelihood seam. It makes the major stages
 visible while importing their implementations from the supported public RHIME
-API. Prefer ``run_rhime_from_prepared_inputs`` when replaying prepared inputs,
-replacing the complete model, or deliberately starting from a different
-preparation graph.
+API. Prefer ``run_standard(prepared=prepared, config=config)`` when replaying
+prepared inputs or starting from a different preparation graph while retaining
+the standard model operations.
 
 The deliberate change is the likelihood passed to
-``build_standard_rhime_model_result``: the example selects the same project-owned
+``build_standard_model`` after explicit numerical materialization: the example
+selects the same project-owned
 Student-t builder as the preferred form. Acquisition, filtering, basis
 construction, labelled input assembly, conversion of delayed arrays for PyMC,
 sampling, predictive selection, filenames, and output handling remain
@@ -594,7 +604,7 @@ integration tests and rendered here, so the documentation and runnable example
 cannot drift apart.
 
 This guarded composition is intentionally project-specific and is not yet a
-common, stable strategy that warrants another lower-ceremony ``run_rhime``
+common, stable strategy that warrants another lower-ceremony ``run_standard``
 option.
 
 .. literalinclude:: ../../examples/rhime_customisation/custom_basis_runner.py

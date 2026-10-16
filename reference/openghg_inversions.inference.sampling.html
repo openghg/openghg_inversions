@@ -425,6 +425,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.params.html">openghg_inversions.rhime.params</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.preparation.html">openghg_inversions.rhime.preparation</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.prepared.html">openghg_inversions.rhime.prepared</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.requests.html">openghg_inversions.rhime.requests</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.sampling.html">openghg_inversions.rhime.sampling</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.specs.html">openghg_inversions.rhime.specs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.stages.html">openghg_inversions.rhime.stages</a></li>
@@ -540,7 +541,7 @@ borrowed xarray or Dask values retain their identity.</p>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#TypeError" title="(in Python v3.15)"><strong>TypeError</strong></a> – If the request is neither a sampler nor <code class="docutils literal notranslate"><span class="pre">&quot;default&quot;</span></code>.</p></li>
-<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If default sampler options override model coordinate registration.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If default options override posterior storage or model coordinates.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -582,8 +583,9 @@ borrowed xarray or Dask values retain their identity.</p>
 <li><p><strong>sample_kwargs</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>] </em><em>| </em><em>None</em>) – Extra keyword arguments forwarded to <code class="docutils literal notranslate"><span class="pre">pm.sample</span></code>.
 Nested containers and NumPy option arrays are copied; opaque
 runtime objects and xarray/Dask values are borrowed.
-<code class="docutils literal notranslate"><span class="pre">idata_kwargs.coords</span></code> and <code class="docutils literal notranslate"><span class="pre">dims</span></code> are invalid because model
-registration owns coordinates and dimensions.
+Posterior <code class="docutils literal notranslate"><span class="pre">var_names</span></code> overrides are invalid because sampling
+retains the complete posterior. <code class="docutils literal notranslate"><span class="pre">idata_kwargs.coords</span></code> and <code class="docutils literal notranslate"><span class="pre">dims</span></code>
+are invalid because model registration owns coordinates and dimensions.
 Its <code class="docutils literal notranslate"><span class="pre">random_seed</span></code> also seeds independent prior and posterior
 predictive streams without consuming a caller-owned generator.</p></li>
 <li><p><strong>sample_prior_predictive</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.15)"><em>int</em></a>) – Whether to append prior predictive draws.</p></li>
@@ -597,8 +599,8 @@ unseeded posterior prediction.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Raises<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If the NUTS backend is unknown or inference coordinates
-    override model registration.</p>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If the NUTS backend is unknown, posterior variable selection
+    is overridden, or inference coordinates override model registration.</p>
 </dd>
 </dl>
 <dl class="py method">

@@ -53,9 +53,9 @@ The resource-I/O and HBMCMC entries were updated the same day for the accepted
    * - Requested configuration and preparation ownership
      - :download:`Resolve RHIME configuration
        <../../openspec/specs/rhime-configuration/spec.md>`
-     - Delivered flat configuration. Pending :download:`grouped/phase amendments
+     - Delivered baseline with :download:`grouped/phase amendments
        <../../openspec/changes/group-rhime-configuration-by-owner/proposal.md>`
-       are coordinated with `PR 866 <https://github.com/openghg/openghg_inversions/pull/866>`_.
+       implemented in `PR 866 <https://github.com/openghg/openghg_inversions/pull/866>`_.
        Current usage: :doc:`/usage/rhime_configuration`.
        Configuration serialization/INI writing remains with `issue 814
        <https://github.com/openghg/openghg_inversions/issues/814>`_.
@@ -91,9 +91,9 @@ The resource-I/O and HBMCMC entries were updated the same day for the accepted
      - :download:`Reusable handoff proposal
        <../../openspec/changes/replace-recipe-workflow-with-reusable-handoffs/proposal.md>`
        in `PR 802 <https://github.com/openghg/openghg_inversions/pull/802>`_
-     - Approved implementation plan; full phase interfaces remain outstanding.
-       PR 843 implements a sampler/result slice without completing the handoff
-       delivery. Current routes are documented in
+     - Standard prepared/sample interfaces are implemented, including graph-free
+       replay and the two-model/two-output parity example. Multisector and CO2
+       adoption remain outstanding in the active change. Current routes are documented in
        :doc:`/usage/staged_workflow` and the family pages.
 
 The older :download:`workflow configuration proposal

@@ -417,43 +417,87 @@
                   
   <section id="staged-rhime-workflows">
 <h1>Staged RHIME workflows<a class="headerlink" href="#staged-rhime-workflows" title="Link to this heading">#</a></h1>
-<p><code class="docutils literal notranslate"><span class="pre">openghg-inversions</span></code> exposes file-backed stages for schedulers such as
-<code class="docutils literal notranslate"><span class="pre">openghg-run</span></code>. The interface composes the same configuration resolver,
-preparation functions, model recipes, sampler and output functions used by
-the corresponding Python runners. It is not a second scientific configuration
-system, and OpenGHG Inversions does not depend on <code class="docutils literal notranslate"><span class="pre">openghg-run</span></code>.</p>
-<p>The supported recipes are <code class="docutils literal notranslate"><span class="pre">standard</span></code>, <code class="docutils literal notranslate"><span class="pre">multisector</span></code> and <code class="docutils literal notranslate"><span class="pre">co2</span></code>. Recipe
-selection is always explicit with <code class="docutils literal notranslate"><span class="pre">--model</span></code>.  It is not inferred from
-<code class="docutils literal notranslate"><span class="pre">species</span></code>, <code class="docutils literal notranslate"><span class="pre">fp_model</span></code> or <code class="docutils literal notranslate"><span class="pre">met_model</span></code>: CH4 and CO2 need not use the same
-model, while several F-gases may use the same standard recipe.  The distinct
-CO2 recipe accepts an existing coherent prepared-input artifact and supports
-ordinary and cached fixed-OU execution. Linked CO2/O2 staging remains separate
-follow-up work. See <a class="reference internal" href="co2_model_family.html"><span class="doc">CO₂ model family</span></a> for CO2 prerequisites, commands and
-output capabilities.</p>
-<section id="configuration-inputs">
-<h2>Configuration inputs<a class="headerlink" href="#configuration-inputs" title="Link to this heading">#</a></h2>
-<p>For <code class="docutils literal notranslate"><span class="pre">--model</span> <span class="pre">standard</span></code> and <code class="docutils literal notranslate"><span class="pre">--model</span> <span class="pre">multisector</span></code>, every scientific stage
-except <code class="docutils literal notranslate"><span class="pre">diagnose</span></code> accepts exactly one of:</p>
-<ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">--config</span> <span class="pre">/absolute/path/run.ini</span></code>, using the existing RHIME INI vocabulary;</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">--params-file</span> <span class="pre">/absolute/path/ogi-params.json</span></code>, containing one JSON object
-with the same keyword names accepted by <code class="docutils literal notranslate"><span class="pre">run_rhime</span></code>.</p></li>
-</ul>
-<p><code class="docutils literal notranslate"><span class="pre">--kwargs</span> <span class="pre">'{...}'</span></code> can explicitly override either source. The JSON form
-supports <code class="docutils literal notranslate"><span class="pre">openghg-run</span></code> cases that do not declare an INI <code class="docutils literal notranslate"><span class="pre">CONFIG_FILE</span></code>; it
-does not add new scientific keys. Both routes construct the same complete
-<code class="docutils literal notranslate"><span class="pre">RhimeConfig</span></code> through the RHIME resolver, applying overrides before defaults
-and site shorthand.  The staged commands deliberately do not
-read ambient <code class="docutils literal notranslate"><span class="pre">CONFIG_FILE</span></code>.  <code class="docutils literal notranslate"><span class="pre">OUTPUT_DIR</span></code> is the only automatic path
-default, and the effective <code class="docutils literal notranslate"><span class="pre">openghg-run</span></code> <code class="docutils literal notranslate"><span class="pre">STAGE</span></code> is the default check-stage
-label.
-Relative filesystem values inside an INI or JSON parameter file are resolved
-against that file’s directory. This includes <code class="docutils literal notranslate"><span class="pre">output_path</span></code> and explicit
-<code class="docutils literal notranslate"><span class="pre">save_trace</span></code> / <code class="docutils literal notranslate"><span class="pre">save_inversion_output</span></code> filenames: staged output destinations
-now follow the same file-relative rule as resource inputs. Ordinary full-run
-INI values remain relative to the invocation directory. Explicit <code class="docutils literal notranslate"><span class="pre">--kwargs</span></code>
-path overrides resolve from the invocation working directory; absolute paths
-keep their destination.
+<p>The standard recipe can prepare once, sample compatible models into separate
+locations, and produce different outputs from saved samples. <code class="docutils literal notranslate"><span class="pre">run_standard</span></code>
+with or without <code class="docutils literal notranslate"><span class="pre">prepared=...</span></code> uses the same scientific operations
+as the saved phases: prepare inputs, explicitly materialize selected arrays and
+enabled priors where needed, build one eager model, sample, construct an
+<code class="docutils literal notranslate"><span class="pre">InversionOutput</span></code> view, then write requested products and exports. Checkpoints
+add loading and saving at those boundaries; full execution needs no intermediate
+saves. Model construction accepts no output configuration and performs no hidden
+materialization.</p>
+<section id="standard-saved-phases">
+<h2>Standard saved phases<a class="headerlink" href="#standard-saved-phases" title="Link to this heading">#</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">prepare</span></code> returns one absolute path to <code class="docutils literal notranslate"><span class="pre">prepare-manifest.json</span></code>. It references
+prepared numerical inputs and records the <code class="docutils literal notranslate"><span class="pre">DataConfig</span></code> that produced them in
+its external option form; <code class="docutils literal notranslate"><span class="pre">load_preparation</span></code> returns the prepared inputs and
+that <code class="docutils literal notranslate"><span class="pre">DataConfig</span></code> and its generation identifier. The recorded configuration
+is validated exactly as a full-run request is. Retained sites and their averaging
+periods come from the
+numerical artifact, including when acquisition or filtering drops a site.
+Observation errors are established before filtering, then basis construction,
+sensitivities and assembly run in scientific order. No filtered checkpoint is
+written.</p>
+<p><code class="docutils literal notranslate"><span class="pre">sample</span></code> takes that manifest and current model and sampler choices, returning
+one absolute path to <code class="docutils literal notranslate"><span class="pre">sample-manifest.json</span></code>. A Python <code class="docutils literal notranslate"><span class="pre">likelihood_builder</span></code>
+(with <code class="docutils literal notranslate"><span class="pre">likelihood_kwargs</span></code>) may replace the built-in likelihood, as in
+<code class="docutils literal notranslate"><span class="pre">run_standard</span></code>. Compatible graph-time priors and
+likelihoods reuse the preparation. Required BC and minimum-error arrays must be
+available. Omitted model <code class="docutils literal notranslate"><span class="pre">use_bc</span></code> inherits the preparation choice; explicit
+<code class="docutils literal notranslate"><span class="pre">False</span></code> may ignore available BC inputs. A repeated <code class="docutils literal notranslate"><span class="pre">bc_freq</span></code> must agree with
+the baked policy, even when the selected model ignores BCs. Changing acquired
+data, filters, basis, native flux or baked numerical policy needs new preparation.</p>
+<p><code class="docutils literal notranslate"><span class="pre">load_samples</span></code> decodes the sample manifest to <code class="docutils literal notranslate"><span class="pre">InversionOutput</span></code>.
+<code class="docutils literal notranslate"><span class="pre">postprocess</span></code> uses that reader with current output choices, calls
+<code class="docutils literal notranslate"><span class="pre">postprocess_standard_outputs</span></code> to compute and write requested PARIS or legacy
+products, then calls <code class="docutils literal notranslate"><span class="pre">save_standard_artifacts</span></code> for optional exports. It loads
+the recorded model meaning, output contract, inference metadata, prepared inputs
+and samples without building a graph or running inference. It returns
+<code class="docutils literal notranslate"><span class="pre">InversionOutput</span></code> without a live model or sampler. Missing descriptive metadata stays
+unavailable. Output naming, destination and supported formats can change;
+scientific choices cannot relabel saved samples. Default sampling retains
+scientific <code class="docutils literal notranslate"><span class="pre">x</span></code>, including when it is a deterministic transform of <code class="docutils literal notranslate"><span class="pre">x_latent</span></code>.
+Posterior <code class="docutils literal notranslate"><span class="pre">sample_kwargs[&quot;var_names&quot;]</span></code> overrides are rejected by the sampler;
+intentional posterior-predictive variable selection remains supported.</p>
+<p>Prior parameters in saved samples describe the priors actually constructed.
+Numerical scalars are retained inline in model metadata. Array-valued parameters
+are registered as model data and saved in the trace’s <code class="docutils literal notranslate"><span class="pre">constant_data</span></code> group,
+with their scientific dimensions and coordinates; metadata references those
+arrays rather than embedding numerical arrays in JSON. Disabled components
+contribute no prior metadata or references. Modern inversion outputs retain
+records captured by shared prior construction in
+<code class="docutils literal notranslate"><span class="pre">model_metadata[&quot;constructed_priors&quot;]</span></code>, keyed by their concrete model variable
+names. Directly constructed PyMC priors are not automatically captured, and
+<code class="docutils literal notranslate"><span class="pre">Interpolated</span></code> persistence remains excluded. Sector associations use the output
+contract’s variable roles, including separate outer and inner state variables
+in nested outputs.</p>
+<p>Related lazy prior inputs, including supported zero-dimensional numerical
+inputs and auxiliary coordinates, are materialized together with selected model
+inputs at the explicit caller materialization boundary before construction. An enabled prior may be computed before sensitivity
+evaluation finds that its states have no effect on observations and fixes them
+instead of sampling them; such a prior contributes no constructed-prior record.
+Disabled BC and offset components are excluded before this computation.
+Metadata writing uses the captured scalar values and registered arrays, without
+executing the original caller’s lazy prior graph again. Scalar-shaped symbolic
+parameters retain their graph dependencies. Ordinary and reparameterized
+lognormal construction share the same symbolic moment conversion, preserving
+the supplied arithmetic or log-space parameterization in metadata.</p>
+<p>Ordinary standard sampling routes attach constructed-prior records and callable
+provenance to the trace once after sampling. When composing these operations
+directly, call the public <code class="docutils literal notranslate"><span class="pre">annotate_sample_trace</span></code> with the build
+result and posterior before <code class="docutils literal notranslate"><span class="pre">save_samples</span></code>; pass the generation returned by
+<code class="docutils literal notranslate"><span class="pre">load_preparation</span></code> as <code class="docutils literal notranslate"><span class="pre">preparation_generation</span></code>. The generic sampler does not
+own RHIME scientific metadata. Required array references are checked when saving
+and reloading samples;
+missing values fail before completing a sample handoff or writing products.</p>
+<p>A selected saved basis supplies its operator while new preparation binds current
+native flux. Saved preparation and replay retain that flux and do not reacquire
+it. Species-dependent mass conversion belongs to postprocessing.</p>
+<p>Relative filesystem values inside an INI or JSON parameter file resolve from
+the invocation working directory, in both full and staged execution. This includes
+resource inputs, <code class="docutils literal notranslate"><span class="pre">output_path</span></code> and explicit <code class="docutils literal notranslate"><span class="pre">save_trace</span></code> /
+<code class="docutils literal notranslate"><span class="pre">save_inversion_output</span></code> filenames. Explicit <code class="docutils literal notranslate"><span class="pre">--kwargs</span></code> path overrides follow
+the same rule; absolute paths keep their destination.
 Filesystem annotations identify the fields to convert: resolved configuration
 uses <code class="docutils literal notranslate"><span class="pre">Path</span></code> values, including tuples of paths, while parameter JSON and stage
 manifests store paths as strings and path collections as JSON arrays. Scientific
@@ -477,12 +521,54 @@ fixed outer regions. Required preparation maps default to packaged files for the
 exact requested domain; explicit paths win and missing resources fail without
 fallback. Reporting country files remain explicit and independent of these
 preparation defaults. See <a class="reference internal" href="legacy_and_migration.html"><span class="doc">Migrate from HBMCMC to RHIME</span></a> for the migration schedule.</p>
-<p><code class="docutils literal notranslate"><span class="pre">openghg-run</span></code>’s <code class="docutils literal notranslate"><span class="pre">EFFECTIVE_CONFIG</span></code> is a stage-specific TOML envelope, not
-an OpenGHG Inversions scientific parameter file, so do not pass it to
-<code class="docutils literal notranslate"><span class="pre">--params-file</span></code>. It remains orchestration provenance. A no-INI campaign
-should explicitly copy or provide a canonical OpenGHG Inversions JSON
-parameter file and pass that path (for example beneath <code class="docutils literal notranslate"><span class="pre">SOURCE_DIR</span></code> or
-<code class="docutils literal notranslate"><span class="pre">RUN_ROOT/scripts</span></code>).</p>
+<p>Keep each manifest and its referenced files available for later phases. References
+resolve relative to the declaring manifest; absolute shared-cache references are
+also accepted. No environment variable locates replacement artifacts. Numerical
+files use existing codecs, and manifests use JSON without mandatory content
+hashes or full-configuration equality gates. Missing or malformed files fail at
+loading; incompatible scientific inputs fail at their owning operation.</p>
+<p>The public <code class="docutils literal notranslate"><span class="pre">load_preparation</span></code> returns <code class="docutils literal notranslate"><span class="pre">(prepared,</span> <span class="pre">data_config,</span> <span class="pre">generation)</span></code>.
+External <code class="docutils literal notranslate"><span class="pre">save_samples</span></code> calls must supply that exact <code class="docutils literal notranslate"><span class="pre">preparation_generation</span></code>;
+the writer does not silently bind an old posterior to whichever preparation is
+currently stored at a path.</p>
+<p>Each preparation save assigns a generation identifier. A sample manifest records
+that identifier and rejects replay against a replacement preparation at the same
+path. This binds checkpoint generations, not arbitrary payload contents; it does
+not provide content-integrity or tamper detection.</p>
+<p>Standard <code class="docutils literal notranslate"><span class="pre">output_format=&quot;basic&quot;</span></code> returns the scientific view without computing
+an unused summary. For in-memory reporting, call <code class="docutils literal notranslate"><span class="pre">basic_output(inv_out,</span>
+<span class="pre">country_file=...)</span></code> yourself. PARIS and legacy products require <code class="docutils literal notranslate"><span class="pre">output_path</span></code>;
+missing destinations fail before sampling in a full run or before loading samples
+in staged postprocessing. <code class="docutils literal notranslate"><span class="pre">save_standard_artifacts</span></code> only exports the scientific
+result and trace; it does not compute derived products.</p>
+<p>Choose saved artifacts by what you need to reuse:</p>
+<ul class="simple">
+<li><p>Preparation and sample checkpoints preserve phase inputs and execution records.
+A sample checkpoint references its preparation, so keep that dependency with it.</p></li>
+<li><p>A self-contained <code class="docutils literal notranslate"><span class="pre">InversionOutput</span></code> export carries the prepared scientific
+values, basis and trace needed for later reporting without the checkpoint manifests.</p></li>
+<li><p>A trace export carries sampled variables and diagnostics; it does not replace
+the prepared inputs and output contract required for scientific reconstruction.</p></li>
+<li><p>An optional basis export preserves the basis for inspection or reuse. It does
+not contain the observations and posterior of an inversion.</p></li>
+</ul>
+<p>Full execution needs no checkpoints, so these optional exports remain useful.
+Their defaults and formats are unchanged.</p>
+<p>Callers choose checkpoint locations and own collision avoidance and run isolation.
+A simple layout is <code class="docutils literal notranslate"><span class="pre">run/prepare</span></code>, <code class="docutils literal notranslate"><span class="pre">run/sample</span></code> and <code class="docutils literal notranslate"><span class="pre">run/products</span></code>; explicit
+locations are supported, including existing directories. Numerical files are saved
+first and the manifest is written last as the completion marker. A failed payload save
+can leave partial files but no completed manifest. Checkpoint-owned payload and
+manifest targets must stay within the chosen destination and must not alias
+referenced preparation artifacts. Postprocessing uses the same
+product writer and overwrite behaviour as full execution; in-memory products
+require no destination. Normal filesystem errors propagate. Concrete payload and manifest targets are
+checked for redirects outside their destination or aliases to prepared inputs;
+prior-predictive saves use the same target checks. This does not require fresh
+directories or recursive directory scanning.
+<code class="docutils literal notranslate"><span class="pre">basis_output_path</span></code> is an exact destination and may be outside the checkpoint
+directory. It is resolved at the frontend and forwarded unchanged to the runner’s
+optional basis export.</p>
 <p>Legacy fixedbasis-style PARIS INIs contain options such as <code class="docutils literal notranslate"><span class="pre">nit</span></code>, <code class="docutils literal notranslate"><span class="pre">nchain</span></code>,
 <code class="docutils literal notranslate"><span class="pre">xprior</span></code> and <code class="docutils literal notranslate"><span class="pre">mcmc_type</span></code>. Fixedbasis policy such as <code class="docutils literal notranslate"><span class="pre">nit</span></code>, <code class="docutils literal notranslate"><span class="pre">nchain</span></code> and
 <code class="docutils literal notranslate"><span class="pre">mcmc_type</span></code> belongs to the temporary <code class="docutils literal notranslate"><span class="pre">run_hbmcmc</span></code> route in 0.8. Modern name
@@ -492,281 +578,94 @@ new files. Translation happens before <code class="docutils literal notranslate"
 canonical names only and emits no alias warnings. Migrate fixedbasis policy and
 resource discovery to canonical RHIME options before using staged commands.
 The entire HBMCMC subpackage and its entry points are removed in 0.9.</p>
-<p>For <code class="docutils literal notranslate"><span class="pre">--model</span> <span class="pre">co2</span></code>, pass <code class="docutils literal notranslate"><span class="pre">--config</span> <span class="pre">co2.toml</span></code> using the CO2-family TOML
-vocabulary, or a <code class="docutils literal notranslate"><span class="pre">--params-file</span></code> JSON object with the same nested structure.
-The CO2 resolver validates the recipe; the optional <code class="docutils literal notranslate"><span class="pre">[outputs]</span></code> table selects
-staged products. Relative artifact paths resolve from the configuration file.
-CO2 stage manifests require an identifiable installed Git revision from a VCS
-installation or source checkout; see <a class="reference internal" href="co2_model_family.html"><span class="doc">CO₂ model family</span></a>.</p>
 </section>
-<section id="configuration-flow">
-<h2>Configuration flow<a class="headerlink" href="#configuration-flow" title="Link to this heading">#</a></h2>
-<p>For standard and multisector recipes, the existing RHIME configuration supports
-gas-, site-, transport-, model-, year-, month- and prior-specific choices
-directly:</p>
-<ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">species</span></code>, <code class="docutils literal notranslate"><span class="pre">start_date</span></code> and <code class="docutils literal notranslate"><span class="pre">end_date</span></code> select gas and period;</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">sites</span></code> and the aligned <code class="docutils literal notranslate"><span class="pre">averaging_period</span></code>, <code class="docutils literal notranslate"><span class="pre">inlet</span></code>, <code class="docutils literal notranslate"><span class="pre">instrument</span></code>,
-<code class="docutils literal notranslate"><span class="pre">fp_height</span></code>, <code class="docutils literal notranslate"><span class="pre">obs_data_level</span></code>, <code class="docutils literal notranslate"><span class="pre">met_model</span></code>, <code class="docutils literal notranslate"><span class="pre">platform</span></code> and
-<code class="docutils literal notranslate"><span class="pre">max_level</span></code> values select site-specific observations and footprints;</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">fp_model</span></code> selects footprint transport, independently of <code class="docutils literal notranslate"><span class="pre">--model</span></code>;</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">flux_sources</span></code> selects OpenGHG prior flux identities.  Multisector runs may
-additionally use <code class="docutils literal notranslate"><span class="pre">sector_sources</span></code> and <code class="docutils literal notranslate"><span class="pre">sector_priors</span></code>;</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">x_prior</span></code>, <code class="docutils literal notranslate"><span class="pre">bc_prior</span></code>, <code class="docutils literal notranslate"><span class="pre">sigma_prior</span></code> and the selected mismatch model
-define mathematical priors and likelihood policy.</p></li>
-</ul>
-<p>All requested choices and the exact stage-contained preparation choices that
-were executed are written to <code class="docutils literal notranslate"><span class="pre">prepare-manifest.json</span></code>.  Its
-<code class="docutils literal notranslate"><span class="pre">configuration_identity</span></code> is a SHA-256 digest of the resolved preparation,
-period, model and prior settings.  Sampling and output-only changes do not
-invalidate reusable prepared inputs; cache locations and preparation artifact
-destinations are likewise excluded. Consequently a gas, period, site, source,
-transport or prior change produces a different identity. Downstream scientific commands
-require <code class="docutils literal notranslate"><span class="pre">--preparation-manifest</span></code> and reject a mismatched configuration
-before model construction. Preparation also treats every configured site as
-required and fails with the gas and period
-named if the existing acquisition layer could not produce it.</p>
-<div class="admonition important">
-<p class="admonition-title">Important</p>
-<p>Staged artifacts produced by 0.7.x are not guaranteed to be readable by
-0.8.x; use 0.7.x to consume those artifacts. Removing the unused
-<code class="docutils literal notranslate"><span class="pre">use_tracer=False</span></code> field from resolved preparation options changes the
-configuration hash even when scientific settings are unchanged.
-Resolved configuration also expands site shorthand and applies defaults;
-staged identity uses those canonical choices rather than reconstructing raw
-input forms to preserve an older hash.</p>
-</div>
-<p>The staged effective-configuration mapping records preparation choices,
-<code class="docutils literal notranslate"><span class="pre">model_spec</span></code>, output policy and sampler settings. It contains no requested-site
-execution run specification: <code class="docutils literal notranslate"><span class="pre">RhimeRunSpec</span></code> is created from retained prepared
-metadata. This mapping is owned by staged manifests, not a serialization API
-for <code class="docutils literal notranslate"><span class="pre">RhimeConfig</span></code>. The resolved representation changes staged configuration
-identity; historical hash equality is not a compatibility guarantee. Existing
-configuration-equality checks still apply.</p>
-<p>Stages consume trusted, matched run files and configuration. Stage records do
-not write or require content digests for their dependencies. Readers check
-record formats, required contents and file references; numerical consumers
-check scientific compatibility, including CO2 affine associations.
-Keep the original scientific configuration with the run and use current output
-settings only to select products and destinations. The configuration-equality
-restrictions described above remain until the corresponding workflow changes
-provide their replacement context routing.</p>
-</section>
-<section id="commands-and-artifacts">
-<h2>Commands and artifacts<a class="headerlink" href="#commands-and-artifacts" title="Link to this heading">#</a></h2>
-<p>Stage-owned artifacts are written below <code class="docutils literal notranslate"><span class="pre">--output-dir</span></code> (or
-<code class="docutils literal notranslate"><span class="pre">openghg-run</span></code>’s <code class="docutils literal notranslate"><span class="pre">OUTPUT_DIR</span></code>). An explicitly configured
-<code class="docutils literal notranslate"><span class="pre">basis_output_path</span></code> keeps its exact destination; preparation does not replace
-it with a stage directory. Relative configured paths resolve from the INI or
-JSON file as described above; explicit overrides and <code class="docutils literal notranslate"><span class="pre">--output-dir</span></code> resolve
-from the invocation working directory. The runner saves the basis separately
-from checkpoint-owned files using the existing basis codec. Commands reject
-pre-existing symlinks beneath a stage output directory.</p>
-<p>Preparation resolves selected basis, BC basis and support resources before
-acquisition. Country reporting
-resources are checked by <code class="docutils literal notranslate"><span class="pre">postprocess</span></code> before creating its output directory;
-<code class="docutils literal notranslate"><span class="pre">prepare</span></code> and <code class="docutils literal notranslate"><span class="pre">sample</span></code> do not require them.</p>
-<dl class="simple">
-<dt><code class="docutils literal notranslate"><span class="pre">prepare</span></code></dt><dd><p>Retrieves merged data, filters observations, constructs basis and
-sensitivities, assembles canonical inputs, and writes <code class="docutils literal notranslate"><span class="pre">prepared-inputs.nc</span></code>
-and <code class="docutils literal notranslate"><span class="pre">prepare-manifest.json</span></code>. It never builds a PyMC graph or samples a
-posterior. The NetCDF is a versioned <code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code> artifact and is
-independently inspectable/loadable. Later stages consume this artifact;
-preparation does not write a filtered merged-data snapshot.
-Native runtime flux is resolved once from the filtered source datasets; basis
-design weights use the first requested source. A selected saved basis reuses
-its operator with current runtime flux. The prepared artifact retains that
-bound prior for later reconstruction, which needs no reacquisition.
-For <code class="docutils literal notranslate"><span class="pre">co2</span></code>, preparation validates and copies the configured
-<code class="docutils literal notranslate"><span class="pre">Co2PreparedInputs</span></code> artifact and optional bound affine reconstruction,
-without re-encoding them; it does not acquire observation data. The numerical
-affine binder still checks its association with the prepared artifact.</p>
-</dd>
-<dt><code class="docutils literal notranslate"><span class="pre">prior-predictive</span></code></dt><dd><p>Loads <code class="docutils literal notranslate"><span class="pre">--prepared-inputs</span></code>, validates its layout against the explicit
-configuration, builds the selected model, draws from its prior predictive,
-and writes <code class="docutils literal notranslate"><span class="pre">prior-predictive.nc</span></code> plus a readiness CheckResult.  It never
-runs posterior sampling.  <code class="docutils literal notranslate"><span class="pre">--strict</span></code> converts a readiness <code class="docutils literal notranslate"><span class="pre">fail</span></code> to a
-nonzero process exit when a scheduler policy wants that behavior. The
-readiness result checks construction and finite values; it does not assess
-scientific plausibility. Follow <a class="reference internal" href="prior_predictive_checking.html"><span class="doc">Prior predictive checking tutorial</span></a> to inspect
-the artifact and then sample the posterior from the same prepared data.</p>
-</dd>
-<dt><code class="docutils literal notranslate"><span class="pre">sample</span></code></dt><dd><p>Standard and multisector workflows load the prepared artifact, build the
-selected model, sample it with the resolved <code class="docutils literal notranslate"><span class="pre">RhimeSampler</span></code>, and write
-<code class="docutils literal notranslate"><span class="pre">posterior.nc</span></code>, <code class="docutils literal notranslate"><span class="pre">output-binding.json</span></code>, and <code class="docutils literal notranslate"><span class="pre">sample-manifest.json</span></code>. The sample manifest
-uses schema version 2 and records the effective sampling configuration and
-file references.
-The binding stores variable roles, supported formats, provenance, and any
-explicit state-dimension mapping. Keep the binding beside its sample
-manifest when moving a run.
-CO2 writes <code class="docutils literal notranslate"><span class="pre">posterior.nc</span></code> and a schema-version-1 sample manifest, retaining
-saved trace roles. Affine reconstruction compatibility is checked by its
-existing numerical owner.
-No family silently invokes preparation.</p>
-</dd>
-<dt><code class="docutils literal notranslate"><span class="pre">diagnose</span></code></dt><dd><p>Loads <code class="docutils literal notranslate"><span class="pre">--posterior</span></code>, writes <code class="docutils literal notranslate"><span class="pre">posterior-diagnostics.nc</span></code> and emits the
-<code class="docutils literal notranslate"><span class="pre">sampler-convergence</span></code> CheckResult.  Scientific failure exits zero by
-default, keeping scheduler status separate from scientific health.
-<code class="docutils literal notranslate"><span class="pre">--sample-manifest</span></code> optionally supplies descriptive run context; it does
-not authenticate the supplied posterior. Persisted posteriors can also be
-diagnosed without a manifest. <code class="docutils literal notranslate"><span class="pre">--strict</span></code> is available only for an explicitly
-chosen process policy.</p>
-</dd>
-<dt><code class="docutils literal notranslate"><span class="pre">postprocess</span></code></dt><dd><p>Standard and multisector workflows load matched prepared inputs, posterior,
-and the saved output binding, then invoke the existing RHIME output
-implementation without constructing a PyMC model. A missing, malformed or
-unsupported binding fails loading; it does not cause a model rebuild.
-Genuine standard/multisector schema-version-1 sample manifests retain the
-older graph-building compatibility route because they did not store output
-bindings. CO2 schema-version-1 replay remains graph-free, using roles in the
-saved trace and any scientifically compatible bound affine artifact.
-CO2 postprocessing rejects other sample-manifest versions before replay.
-New posterior predictive calculations still require a separate explicit
-model-building route. The standard/multisector configuration’s
-<code class="docutils literal notranslate"><span class="pre">output_format</span></code> controls <code class="docutils literal notranslate"><span class="pre">inv_out</span></code>, <code class="docutils literal notranslate"><span class="pre">basic</span></code>, <code class="docutils literal notranslate"><span class="pre">paris</span></code> or <code class="docutils literal notranslate"><span class="pre">legacy</span></code>
-products; explicit save paths in configuration are replaced so every product
-remains beneath the stage output directory. For the same
-reason, staged postprocessing requires safe filename components and both the
-preparation and sample manifests. Their scientific configuration-equality
-checks remain in this workflow. The sampler settings
-retained in result metadata come from that sample manifest; sampler values
-in the postprocessing configuration cannot relabel an existing posterior.
-Replay returns <code class="docutils literal notranslate"><span class="pre">result.sampler</span> <span class="pre">is</span> <span class="pre">None</span></code> and forwards descriptive sampler
-metadata without running inference. Existing sampler settings may be
-constructed to describe recorded values. Missing or unparseable descriptions
-remain unavailable, without blocking products or selecting current defaults.
-Modern derived <code class="docutils literal notranslate"><span class="pre">basic</span></code> and PARIS products use every retained posterior
-chain. Derived trace quantities preserve their <code class="docutils literal notranslate"><span class="pre">chain</span></code> and <code class="docutils literal notranslate"><span class="pre">draw</span></code>
-identity until an explicitly requested statistic or covariance combines the
-samples. <code class="docutils literal notranslate"><span class="pre">postprocess-manifest.json</span></code> is always written; the otherwise
-in-memory <code class="docutils literal notranslate"><span class="pre">basic</span></code> product is written as <code class="docutils literal notranslate"><span class="pre">basic.nc</span></code>.
-CO2 supports <code class="docutils literal notranslate"><span class="pre">none</span></code>, <code class="docutils literal notranslate"><span class="pre">basic</span></code> and constrained <code class="docutils literal notranslate"><span class="pre">paris</span></code> products. Its
-native-flux and country outputs require an exact bound affine reconstruction
-and saved prior/posterior state draws, and retain conditional uncertainty
-scope. The output consumer checks those draws; the current sampler’s
-<code class="docutils literal notranslate"><span class="pre">sample_prior_predictive</span></code> setting does not gate replay. The complete
-supported CO2 contract is documented in <a class="reference internal" href="co2_model_family.html"><span class="doc">CO₂ model family</span></a>.</p>
-</dd>
-</dl>
-</section>
-<section id="checkresult-contract">
-<h2>CheckResult contract<a class="headerlink" href="#checkresult-contract" title="Link to this heading">#</a></h2>
-<p>Both checks use the schema version 1 understood by <code class="docutils literal notranslate"><span class="pre">openghg-run</span></code> and producer
-<code class="docutils literal notranslate"><span class="pre">openghg_inversions</span></code>.  <code class="docutils literal notranslate"><span class="pre">--check-output</span></code> chooses the JSON path and
-<code class="docutils literal notranslate"><span class="pre">--check-stage</span></code> chooses the producing <code class="docutils literal notranslate"><span class="pre">openghg-run</span></code> stage name.</p>
-<dl class="simple">
-<dt><code class="docutils literal notranslate"><span class="pre">prior-predictive-readiness</span></code></dt><dd><p>Status is <code class="docutils literal notranslate"><span class="pre">pass</span></code> when model construction succeeds, prior and
-prior-predictive variables are produced, and all sampled values are finite.
-It reports <code class="docutils literal notranslate"><span class="pre">draws</span></code> and <code class="docutils literal notranslate"><span class="pre">non_finite_values</span></code> against
-<code class="docutils literal notranslate"><span class="pre">max_non_finite_values</span> <span class="pre">=</span> <span class="pre">0</span></code>.  Construction, input and sampling exceptions
-become a readable <code class="docutils literal notranslate"><span class="pre">fail</span></code> result for standard and multisector recipes. CO2
-handoff, construction and sampling errors reject the command before a
-readiness check is written; non-finite predictive values produce a <code class="docutils literal notranslate"><span class="pre">fail</span></code>
-check.</p>
-</dd>
-</dl>
-<dl class="simple" id="staged-convergence-check">
-<dt><code class="docutils literal notranslate"><span class="pre">sampler-convergence</span></code></dt><dd><p>Reports retained chain and draw counts, maximum R-hat and its variable,
-minimum bulk ESS and its variable, minimum tail ESS and its variable, total
-divergences, divergences per chain, and labels for unassessable R-hat/ESS
-elements.  Defaults are maximum R-hat 1.01,
-minimum bulk ESS 400, minimum tail ESS 400, and maximum divergences 0.
-Thresholds have CLI options.  The result is <code class="docutils literal notranslate"><span class="pre">unknown</span></code> when a signal is not
-assessable (for example R-hat from one chain), <code class="docutils literal notranslate"><span class="pre">fail</span></code> when an available
-signal exceeds policy, and <code class="docutils literal notranslate"><span class="pre">pass</span></code> otherwise.  This is the machine-visible
-convergence outcome requested by issues #656/#667; <code class="docutils literal notranslate"><span class="pre">openghg-run</span></code> does not
-import ArviZ or PyMC.</p>
-</dd>
-</dl>
-</section>
-<section id="minimal-command-sequence">
-<h2>Minimal command sequence<a class="headerlink" href="#minimal-command-sequence" title="Link to this heading">#</a></h2>
-<p>The following is a complete run using a canonical JSON parameter file. An INI
-can be substituted with <code class="docutils literal notranslate"><span class="pre">--config</span></code>. Set <code class="docutils literal notranslate"><span class="pre">OGI_PARAMS_FILE</span></code> to the path of
-that OpenGHG Inversions JSON parameter file before running the commands.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>openghg-inversions<span class="w"> </span>prepare<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--params-file<span class="w"> </span><span class="s2">"</span><span class="nv">$OGI_PARAMS_FILE</span><span class="s2">"</span><span class="w"> </span>--model<span class="w"> </span>standard<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--output-dir<span class="w"> </span><span class="s2">"</span><span class="nv">$OUTPUT_DIR</span><span class="s2">/prepare"</span>
+<section id="configuration-and-cli">
+<h2>Configuration and CLI<a class="headerlink" href="#configuration-and-cli" title="Link to this heading">#</a></h2>
+<p>Preparation accepts <code class="docutils literal notranslate"><span class="pre">--config</span> <span class="pre">run.ini</span></code> or <code class="docutils literal notranslate"><span class="pre">--params-file</span> <span class="pre">choices.json</span></code>.
+Sampling and postprocessing optionally accept either source; a shared full
+configuration contributes only the active phase’s choices. JSON can contain
+flat options or <code class="docutils literal notranslate"><span class="pre">data</span></code>, <code class="docutils literal notranslate"><span class="pre">model</span></code>, <code class="docutils literal notranslate"><span class="pre">sampler</span></code> and <code class="docutils literal notranslate"><span class="pre">output</span></code> mappings.
+Unknown names remain errors, while known inactive values are not resolved.
+Explicit <code class="docutils literal notranslate"><span class="pre">--kwargs</span></code> overrides for another phase and unsupported names are
+reported together in one error. Raw file options and overrides are combined
+before alias translation; a canonical spelling wins over its deprecated alias. Relative input
+paths resolve from the invocation working directory. <code class="docutils literal notranslate"><span class="pre">CONFIG_FILE</span></code> is not an automatic
+source; <code class="docutils literal notranslate"><span class="pre">OUTPUT_DIR</span></code> is an optional destination default.</p>
+<p>For example, with preparation settings in <code class="docutils literal notranslate"><span class="pre">preparation.json</span></code>:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>rhime<span class="w"> </span>prepare<span class="w"> </span>--params-file<span class="w"> </span>preparation.json<span class="w"> </span>--output-dir<span class="w"> </span>run/prepare
 
-openghg-inversions<span class="w"> </span>prior-predictive<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--params-file<span class="w"> </span><span class="s2">"</span><span class="nv">$OGI_PARAMS_FILE</span><span class="s2">"</span><span class="w"> </span>--model<span class="w"> </span>standard<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--prepared-inputs<span class="w"> </span><span class="s2">"</span><span class="nv">$OUTPUT_DIR</span><span class="s2">/prepare/prepared-inputs.nc"</span><span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--preparation-manifest<span class="w"> </span><span class="s2">"</span><span class="nv">$OUTPUT_DIR</span><span class="s2">/prepare/prepare-manifest.json"</span><span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--output-dir<span class="w"> </span><span class="s2">"</span><span class="nv">$OUTPUT_DIR</span><span class="s2">/prior-predictive"</span><span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--check-output<span class="w"> </span><span class="s2">"</span><span class="nv">$OUTPUT_DIR</span><span class="s2">/prior-predictive/prior-ready.json"</span>
+rhime<span class="w"> </span>sample<span class="w"> </span>--preparation-manifest<span class="w"> </span>run/prepare/prepare-manifest.json<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--kwargs<span class="w"> </span><span class="s1">'{"x_prior":{"pdf":"normal","mu":1,"sigma":0.2}}'</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--output-dir<span class="w"> </span>run/model-a
 
-openghg-run<span class="w"> </span>record-check<span class="w"> </span><span class="s2">"</span><span class="nv">$RUN_ROOT</span><span class="s2">"</span><span class="w"> </span><span class="se">\</span>
-<span class="w">  </span><span class="s2">"</span><span class="nv">$OUTPUT_DIR</span><span class="s2">/prior-predictive/prior-ready.json"</span><span class="w"> </span>--strict
+rhime<span class="w"> </span>sample<span class="w"> </span>--preparation-manifest<span class="w"> </span>run/prepare/prepare-manifest.json<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--kwargs<span class="w"> </span><span class="s1">'{"x_prior":{"pdf":"normal","mu":1,"sigma":0.5}}'</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--output-dir<span class="w"> </span>run/model-b
 
-openghg-inversions<span class="w"> </span>sample<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--params-file<span class="w"> </span><span class="s2">"</span><span class="nv">$OGI_PARAMS_FILE</span><span class="s2">"</span><span class="w"> </span>--model<span class="w"> </span>standard<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--prepared-inputs<span class="w"> </span><span class="s2">"</span><span class="nv">$OUTPUT_DIR</span><span class="s2">/prepare/prepared-inputs.nc"</span><span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--preparation-manifest<span class="w"> </span><span class="s2">"</span><span class="nv">$OUTPUT_DIR</span><span class="s2">/prepare/prepare-manifest.json"</span><span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--output-dir<span class="w"> </span><span class="s2">"</span><span class="nv">$OUTPUT_DIR</span><span class="s2">/sample"</span>
+rhime<span class="w"> </span>postprocess<span class="w"> </span>--sample-manifest<span class="w"> </span>run/model-a/sample-manifest.json<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--kwargs<span class="w"> </span><span class="s1">'{"output_format":"inv_out"}'</span><span class="w"> </span>--output-dir<span class="w"> </span>run/inversion-output
 
-openghg-inversions<span class="w"> </span>diagnose<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--posterior<span class="w"> </span><span class="s2">"</span><span class="nv">$OUTPUT_DIR</span><span class="s2">/sample/posterior.nc"</span><span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--sample-manifest<span class="w"> </span><span class="s2">"</span><span class="nv">$OUTPUT_DIR</span><span class="s2">/sample/sample-manifest.json"</span><span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--output-dir<span class="w"> </span><span class="s2">"</span><span class="nv">$OUTPUT_DIR</span><span class="s2">/diagnose"</span><span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--check-output<span class="w"> </span><span class="s2">"</span><span class="nv">$OUTPUT_DIR</span><span class="s2">/diagnose/convergence.json"</span>
-
-openghg-run<span class="w"> </span>record-check<span class="w"> </span><span class="s2">"</span><span class="nv">$RUN_ROOT</span><span class="s2">"</span><span class="w"> </span><span class="se">\</span>
-<span class="w">  </span><span class="s2">"</span><span class="nv">$OUTPUT_DIR</span><span class="s2">/diagnose/convergence.json"</span>
-
-openghg-inversions<span class="w"> </span>postprocess<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--params-file<span class="w"> </span><span class="s2">"</span><span class="nv">$OGI_PARAMS_FILE</span><span class="s2">"</span><span class="w"> </span>--model<span class="w"> </span>standard<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--prepared-inputs<span class="w"> </span><span class="s2">"</span><span class="nv">$OUTPUT_DIR</span><span class="s2">/prepare/prepared-inputs.nc"</span><span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--preparation-manifest<span class="w"> </span><span class="s2">"</span><span class="nv">$OUTPUT_DIR</span><span class="s2">/prepare/prepare-manifest.json"</span><span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--posterior<span class="w"> </span><span class="s2">"</span><span class="nv">$OUTPUT_DIR</span><span class="s2">/sample/posterior.nc"</span><span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--sample-manifest<span class="w"> </span><span class="s2">"</span><span class="nv">$OUTPUT_DIR</span><span class="s2">/sample/sample-manifest.json"</span><span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--output-dir<span class="w"> </span><span class="s2">"</span><span class="nv">$OUTPUT_DIR</span><span class="s2">/postprocess"</span>
+rhime<span class="w"> </span>postprocess<span class="w"> </span>--sample-manifest<span class="w"> </span>run/model-a/sample-manifest.json<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--kwargs<span class="w"> </span><span class="s1">'{"output_format":"paris","country_file":"/data/countries.nc"}'</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--output-dir<span class="w"> </span>run/paris
 </pre></div>
 </div>
-</section>
-<section id="openghg-run-campaign-stages">
-<h2><code class="docutils literal notranslate"><span class="pre">openghg-run</span></code> campaign stages<a class="headerlink" href="#openghg-run-campaign-stages" title="Link to this heading">#</a></h2>
-<p>A campaign can place the same commands directly in named stages and declare
-their output directories.  No hand-authored SLURM script is required:</p>
-<div class="highlight-toml notranslate"><div class="highlight"><pre><span></span><span class="k">[[stage]]</span>
-<span class="n">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"prepare"</span>
-<span class="n">command</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'''openghg-inversions prepare --config "$CONFIG_FILE" --model standard --output-dir "$OUTPUT_DIR/prepare"'''</span>
-<span class="n">outputs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">"outputs/prepare"</span><span class="p">]</span>
+<p><code class="docutils literal notranslate"><span class="pre">--model</span> <span class="pre">standard</span></code> is the default for these commands. A manifest’s family must
+match the selected route. Full-run <code class="docutils literal notranslate"><span class="pre">rhime</span> <span class="pre">run</span></code> choices and aliases are
+unchanged; saved-phase selection does not add CO2 configuration-file support to
+the full-run command.</p>
+<p>Python callers can use the same handoffs:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="n">DataConfig</span><span class="p">,</span> <span class="n">RhimeOutputSpec</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.stages</span><span class="w"> </span><span class="kn">import</span> <span class="n">prepare</span><span class="p">,</span> <span class="n">sample</span><span class="p">,</span> <span class="n">postprocess</span>
 
-<span class="k">[[stage]]</span>
-<span class="n">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"prior-predictive"</span>
-<span class="n">depends_on</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">"prepare"</span><span class="p">]</span>
-<span class="n">command</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'''openghg-inversions prior-predictive --config "$CONFIG_FILE" --model standard --prepared-inputs "$OUTPUT_DIR/prepare/prepared-inputs.nc" --preparation-manifest "$OUTPUT_DIR/prepare/prepare-manifest.json" --output-dir "$OUTPUT_DIR/prior-predictive" --check-output "$OUTPUT_DIR/prior-predictive/prior-ready.json" &amp;&amp; openghg-run record-check "$RUN_ROOT" "$OUTPUT_DIR/prior-predictive/prior-ready.json"'''</span>
-<span class="n">outputs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">"outputs/prior-predictive"</span><span class="p">]</span>
-
-<span class="k">[[stage]]</span>
-<span class="n">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"sample"</span>
-<span class="n">depends_on</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">"prior-predictive"</span><span class="p">]</span>
-<span class="n">required_checks</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">"prior-predictive-readiness"</span><span class="p">]</span>
-<span class="n">command</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'''openghg-inversions sample --config "$CONFIG_FILE" --model standard --prepared-inputs "$OUTPUT_DIR/prepare/prepared-inputs.nc" --preparation-manifest "$OUTPUT_DIR/prepare/prepare-manifest.json" --output-dir "$OUTPUT_DIR/sample"'''</span>
-<span class="n">outputs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">"outputs/sample"</span><span class="p">]</span>
-
-<span class="k">[[stage]]</span>
-<span class="n">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"diagnose"</span>
-<span class="n">depends_on</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">"sample"</span><span class="p">]</span>
-<span class="n">command</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'''openghg-inversions diagnose --posterior "$OUTPUT_DIR/sample/posterior.nc" --sample-manifest "$OUTPUT_DIR/sample/sample-manifest.json" --output-dir "$OUTPUT_DIR/diagnose" --check-output "$OUTPUT_DIR/diagnose/convergence.json" &amp;&amp; openghg-run record-check "$RUN_ROOT" "$OUTPUT_DIR/diagnose/convergence.json"'''</span>
-<span class="n">outputs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">"outputs/diagnose"</span><span class="p">]</span>
-
-<span class="k">[[stage]]</span>
-<span class="n">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"postprocess"</span>
-<span class="n">depends_on</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">"prepare"</span><span class="p">,</span><span class="w"> </span><span class="s2">"sample"</span><span class="p">,</span><span class="w"> </span><span class="s2">"diagnose"</span><span class="p">]</span>
-<span class="n">command</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'''openghg-inversions postprocess --config "$CONFIG_FILE" --model standard --prepared-inputs "$OUTPUT_DIR/prepare/prepared-inputs.nc" --preparation-manifest "$OUTPUT_DIR/prepare/prepare-manifest.json" --posterior "$OUTPUT_DIR/sample/posterior.nc" --sample-manifest "$OUTPUT_DIR/sample/sample-manifest.json" --output-dir "$OUTPUT_DIR/postprocess"'''</span>
-<span class="n">outputs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">"outputs/postprocess"</span><span class="p">]</span>
+<span class="n">preparation</span> <span class="o">=</span> <span class="n">DataConfig</span><span class="o">.</span><span class="n">from_params</span><span class="p">(</span><span class="n">preparation_options</span><span class="p">)</span>
+<span class="n">prepared_manifest</span> <span class="o">=</span> <span class="n">prepare</span><span class="p">(</span><span class="n">preparation</span><span class="p">,</span> <span class="n">output_dir</span><span class="o">=</span><span class="s2">"run/prepare"</span><span class="p">)</span>
+<span class="n">sample_manifest</span> <span class="o">=</span> <span class="n">sample</span><span class="p">(</span>
+    <span class="n">prepared_manifest</span><span class="p">,</span>
+    <span class="n">model</span><span class="o">=</span><span class="p">{</span><span class="s2">"x_prior"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"pdf"</span><span class="p">:</span> <span class="s2">"normal"</span><span class="p">,</span> <span class="s2">"mu"</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">"sigma"</span><span class="p">:</span> <span class="mf">0.2</span><span class="p">}},</span>
+    <span class="n">output_dir</span><span class="o">=</span><span class="s2">"run/model-a"</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">postprocess</span><span class="p">(</span>
+    <span class="n">sample_manifest</span><span class="p">,</span>
+    <span class="n">output</span><span class="o">=</span><span class="n">RhimeOutputSpec</span><span class="p">(</span><span class="n">output_path</span><span class="o">=</span><span class="s2">"run/products"</span><span class="p">),</span>
+<span class="p">)</span>
 </pre></div>
 </div>
-<p><code class="docutils literal notranslate"><span class="pre">openghg-run</span></code> owns campaign matrices, selected tasks, dependencies, scheduler
-state, declared-output hashing, continuation manifests, check recording and
-gates. OpenGHG Inversions owns data preparation, model selection, sampling,
-scientific products, check calculations and their threshold policy.
-<code class="docutils literal notranslate"><span class="pre">STAGE_INPUTS_MANIFEST</span></code> may be used
-by application code to discover continued parent outputs, but it is not needed
-for full-graph submission and is not implicitly interpreted by OpenGHG
-Inversions. The
-predictable explicit paths above work in both modes.</p>
+<p>For a runnable synthetic scientific parity example, see
+<a class="reference download internal" download="" href="../_downloads/148e99c9eca9bcd9a6f9a9c399a4a5c5/standard_handoffs.py"><code class="xref download docutils literal notranslate"><span class="pre">standard_handoffs.py</span></code></a>.</p>
+</section>
+<section id="readiness-and-independent-diagnosis">
+<h2>Readiness and independent diagnosis<a class="headerlink" href="#readiness-and-independent-diagnosis" title="Link to this heading">#</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">rhime</span> <span class="pre">prior-predictive</span> <span class="pre">--preparation-manifest</span> <span class="pre">...</span> <span class="pre">--output-dir</span> <span class="pre">...</span></code> builds
+the selected model and draws prior predictions without posterior inference.
+<code class="docutils literal notranslate"><span class="pre">--draws</span></code> controls its sample count. Loading and serialization errors
+propagate; supported model/input failures produce a readiness <code class="docutils literal notranslate"><span class="pre">fail</span></code> result.
+Readiness checks finite evidence, not scientific plausibility. See
+<a class="reference internal" href="prior_predictive_checking.html"><span class="doc">Prior predictive checking tutorial</span></a> for interpreting predictions.</p>
+<p id="staged-convergence-check"><code class="docutils literal notranslate"><span class="pre">rhime</span> <span class="pre">diagnose</span> <span class="pre">--posterior</span> <span class="pre">posterior.nc</span> <span class="pre">--output-dir</span> <span class="pre">...</span></code> independently
+reports maximum R-hat, minimum bulk/tail ESS, divergences and unassessable
+variables. <code class="docutils literal notranslate"><span class="pre">--sample-manifest</span></code> optionally supplies descriptive run context.
+Defaults are maximum R-hat 1.01, minimum bulk/tail ESS 400 and zero divergences.
+Available metrics exceeding a threshold yield <code class="docutils literal notranslate"><span class="pre">fail</span></code>; missing metrics yield
+<code class="docutils literal notranslate"><span class="pre">unknown</span></code> when none fails; otherwise the result is <code class="docutils literal notranslate"><span class="pre">pass</span></code>. Neither check
+repairs missing evidence or performs posterior inference. <code class="docutils literal notranslate"><span class="pre">--strict</span></code> makes
+<code class="docutils literal notranslate"><span class="pre">fail</span></code> exit nonzero. Both write schema-version-1 check JSON with producer
+<code class="docutils literal notranslate"><span class="pre">openghg_inversions</span></code>; <code class="docutils literal notranslate"><span class="pre">--check-output</span></code> and <code class="docutils literal notranslate"><span class="pre">--check-stage</span></code> select its path
+and stage label.</p>
+</section>
+<section id="other-families-and-migration">
+<h2>Other families and migration<a class="headerlink" href="#other-families-and-migration" title="Link to this heading">#</a></h2>
+<p>Multisector and CO2 retain their existing staged interfaces pending separate
+handoff adoption. They require explicit <code class="docutils literal notranslate"><span class="pre">--model</span></code>, a full configuration and
+<code class="docutils literal notranslate"><span class="pre">--prepared-inputs</span></code>/<code class="docutils literal notranslate"><span class="pre">--preparation-manifest</span></code> for sampling. Postprocessing also
+requires <code class="docutils literal notranslate"><span class="pre">--posterior</span></code> and <code class="docutils literal notranslate"><span class="pre">--sample-manifest</span></code>. Multisector retains its
+configuration restriction and output-binding record. CO2 takes an existing
+coherent preparation; see <a class="reference internal" href="co2_model_family.html"><span class="doc">CO₂ model family</span></a> for its supported outputs.
+Linked CO2/O2 staging remains separate work.</p>
+<p>The new standard handoff format replaces historical standard staged envelopes
+and multi-artifact argument lists. Regenerate those handoffs with 0.8, or use the
+original package version to consume them. Existing numerical codecs, scientific
+Python APIs and final product formats retain their contracts.</p>
 </section>
 </section>
 
@@ -817,12 +716,10 @@ predictable explicit paths above work in both modes.</p>
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#configuration-inputs">Configuration inputs</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#configuration-flow">Configuration flow</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#commands-and-artifacts">Commands and artifacts</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#checkresult-contract">CheckResult contract</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#minimal-command-sequence">Minimal command sequence</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg-run-campaign-stages"><code class="docutils literal notranslate"><span class="pre">openghg-run</span></code> campaign stages</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#standard-saved-phases">Standard saved phases</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#configuration-and-cli">Configuration and CLI</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#readiness-and-independent-diagnosis">Readiness and independent diagnosis</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#other-families-and-migration">Other families and migration</a></li>
 </ul>
   </nav></div>
 

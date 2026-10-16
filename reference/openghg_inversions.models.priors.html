@@ -425,6 +425,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.params.html">openghg_inversions.rhime.params</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.preparation.html">openghg_inversions.rhime.preparation</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.prepared.html">openghg_inversions.rhime.prepared</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.requests.html">openghg_inversions.rhime.requests</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.sampling.html">openghg_inversions.rhime.sampling</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.specs.html">openghg_inversions.rhime.specs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.stages.html">openghg_inversions.rhime.stages</a></li>
@@ -559,7 +560,7 @@ lognormal distribution.</p></li>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.models.priors.parse_prior">
-<span class="sig-name descname"><span class="pre">parse_prior</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prior_params</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.priors.parse_prior" title="Link to this definition">#</a></dt>
+<span class="sig-name descname"><span class="pre">parse_prior</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prior_params</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">active_indices</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">record_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.priors.parse_prior" title="Link to this definition">#</a></dt>
 <dd><p>Create a continuous PyMC prior from a prior-parameter dictionary.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -567,6 +568,8 @@ lognormal distribution.</p></li>
 <li><p><strong>name</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Name of the user-facing PyMC variable to create.</p></li>
 <li><p><strong>prior_params</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>]</em>) – Prior specification including <code class="docutils literal notranslate"><span class="pre">pdf</span></code> and any distribution
 parameters accepted by the chosen PyMC distribution.</p></li>
+<li><p><strong>active_indices</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a><em> | </em><em>None</em>) – Optional graph selection from canonical registered arrays.</p></li>
+<li><p><strong>record_name</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Scientific variable name owning an active-only prior record.</p></li>
 <li><p><strong>**kwargs</strong> – Additional keyword arguments forwarded to the created PyMC
 variable, such as <code class="docutils literal notranslate"><span class="pre">dims</span></code>.</p></li>
 </ul>
@@ -576,7 +579,8 @@ variable, such as <code class="docutils literal notranslate"><span class="pre">d
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If <code class="docutils literal notranslate"><span class="pre">prior_params[&quot;pdf&quot;]</span></code> does not name a supported PyMC
-    continuous distribution.</p>
+    continuous distribution, or parameter labels, dimensions or fixed
+    array values are incompatible.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><em>TensorVariable</em></p>
@@ -584,6 +588,36 @@ variable, such as <code class="docutils literal notranslate"><span class="pre">d
 </dl>
 <p>This helper must be called inside an active <code class="docutils literal notranslate"><span class="pre">pm.Model</span></code> context because it
 registers the created variable with the current model.</p>
+<p>Borrowed numerical arrays and their auxiliary coordinates are materialized
+together here. Labelled parameters align to registered scientific indexes
+and broadcast by dimension; positional parameters use trailing model axes.
+Arrays become named model data, while resolved numerical scalars stay inline
+in construction metadata. Symbolic parameters retain their dependencies.
+<code class="docutils literal notranslate"><span class="pre">registered_model</span></code> supplies scientific-coordinate restoration; ordinary
+<code class="docutils literal notranslate"><span class="pre">pm.Model</span></code> contexts retain their existing numerical construction support.
+RHIME-resolved defaults are captured; implicit PyMC defaults remain implicit.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.models.priors.prior_records">
+<span class="sig-name descname"><span class="pre">prior_records</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.priors.prior_records" title="Link to this definition">#</a></dt>
+<dd><p>Return construction-owned, JSON-compatible descriptions of used priors.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>, <a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>, <a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a>]]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.models.priors.trace_prior_records">
+<span class="sig-name descname"><span class="pre">trace_prior_records</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">trace</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.priors.trace_prior_records" title="Link to this definition">#</a></dt>
+<dd><p>Read constructed prior metadata and validate its required array references.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>, <a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>, <a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a>]]</p>
+</dd>
+</dl>
 </dd></dl>
 
 </section>
@@ -638,6 +672,8 @@ registers the created variable with the current model.</p>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.priors.lognormal_mu_sigma"><code class="docutils literal notranslate"><span class="pre">lognormal_mu_sigma()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.priors.positive_prior_args"><code class="docutils literal notranslate"><span class="pre">positive_prior_args()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.priors.parse_prior"><code class="docutils literal notranslate"><span class="pre">parse_prior()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.priors.prior_records"><code class="docutils literal notranslate"><span class="pre">prior_records()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.priors.trace_prior_records"><code class="docutils literal notranslate"><span class="pre">trace_prior_records()</span></code></a></li>
 </ul>
   </nav></div>
 

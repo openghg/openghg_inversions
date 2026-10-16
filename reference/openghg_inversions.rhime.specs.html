@@ -425,6 +425,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.params.html">openghg_inversions.rhime.params</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.preparation.html">openghg_inversions.rhime.preparation</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.prepared.html">openghg_inversions.rhime.prepared</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.requests.html">openghg_inversions.rhime.requests</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.sampling.html">openghg_inversions.rhime.sampling</a></li>
 <li class="toctree-l3 current active"><a class="current reference internal" href="#">openghg_inversions.rhime.specs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.stages.html">openghg_inversions.rhime.stages</a></li>
@@ -722,6 +723,82 @@ flux sectors. The default retains exact-zero pruning.</p></li>
 </ul>
 </dd>
 </dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.specs.RhimeModelSpec.describe">
+<span class="sig-name descname"><span class="pre">describe</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">priors</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.specs.RhimeModelSpec.describe" title="Link to this definition">#</a></dt>
+<dd><p>Describe structural choices and construction-owned prior parameters.</p>
+<p><code class="docutils literal notranslate"><span class="pre">priors</span></code> contains inline numerical scalars and registered-array
+references captured while constructing the model. Unused configured
+prior mappings are never traversed or materialized here. Omitting
+<code class="docutils literal notranslate"><span class="pre">priors</span></code> omits prior parameter values from the record.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>priors</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>]</em><em>] </em><em>| </em><em>None</em>) – Construction-owned descriptions of used prior parameters.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Scientific choices and prior descriptions, independent of output policy.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>, <a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a>]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.specs.RhimeModelSpec.validate_recordable">
+<span class="sig-name descname"><span class="pre">validate_recordable</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.specs.RhimeModelSpec.validate_recordable" title="Link to this definition">#</a></dt>
+<dd><p>Reject activity policies unsupported by the saved model format.</p>
+<dl class="field-list simple">
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.specs.RhimeModelSpec.to_record">
+<span class="sig-name descname"><span class="pre">to_record</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">trace</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_config</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.specs.RhimeModelSpec.to_record" title="Link to this definition">#</a></dt>
+<dd><p>Encode replayable model choices using construction-owned trace priors.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>trace</strong> (<em>Any</em>) – Sampled trace with explicit constructed-prior metadata.</p></li>
+<li><p><strong>data_config</strong> (<a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.DataConfig" title="openghg_inversions.rhime.DataConfig"><em>DataConfig</em></a>) – Preparation configuration owning species, domain and sources.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Model choices without preparation-owned facts or numerical arrays.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If activity policies cannot be recorded, trace prior metadata
+    is missing, or the model contradicts the preparation.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>, Any]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.specs.RhimeModelSpec.from_record">
+<span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">from_record</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">record</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_config</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trace</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.specs.RhimeModelSpec.from_record" title="Link to this definition">#</a></dt>
+<dd><p>Decode <a class="reference internal" href="#openghg_inversions.rhime.specs.RhimeModelSpec.to_record" title="openghg_inversions.rhime.specs.RhimeModelSpec.to_record"><code class="xref py py-meth docutils literal notranslate"><span class="pre">to_record()</span></code></a> output without executing saved callables.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>record</strong> (<em>Any</em>) – Structural model choices and construction-owned prior records.</p></li>
+<li><p><strong>trace</strong> (<em>Any</em>) – Saved inference data supplying any referenced <code class="docutils literal notranslate"><span class="pre">constant_data</span></code>
+arrays. Scalar-only prior records need no trace lookup.</p></li>
+<li><p><strong>data_config</strong> (<a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.DataConfig" title="openghg_inversions.rhime.DataConfig"><em>DataConfig</em></a>) – Preparation configuration supplying species, domain and sources.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If the record is incomplete, names an unknown likelihood,
+    or references a missing registered prior array.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#openghg_inversions.rhime.specs.RhimeModelSpec" title="openghg_inversions.rhime.specs.RhimeModelSpec">RhimeModelSpec</a></p>
+</dd>
+</dl>
+</dd></dl>
+
 </dd></dl>
 
 <dl class="py class">
@@ -1013,7 +1090,13 @@ this flag records the prepared data layout.</p></li>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.specs.make_likelihood_settings"><code class="docutils literal notranslate"><span class="pre">make_likelihood_settings()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.specs.SectorSpec"><code class="docutils literal notranslate"><span class="pre">SectorSpec</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.specs.RhimeModelSpec"><code class="docutils literal notranslate"><span class="pre">RhimeModelSpec</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.specs.RhimeModelSpec"><code class="docutils literal notranslate"><span class="pre">RhimeModelSpec</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.specs.RhimeModelSpec.describe"><code class="docutils literal notranslate"><span class="pre">RhimeModelSpec.describe()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.specs.RhimeModelSpec.validate_recordable"><code class="docutils literal notranslate"><span class="pre">RhimeModelSpec.validate_recordable()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.specs.RhimeModelSpec.to_record"><code class="docutils literal notranslate"><span class="pre">RhimeModelSpec.to_record()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.specs.RhimeModelSpec.from_record"><code class="docutils literal notranslate"><span class="pre">RhimeModelSpec.from_record()</span></code></a></li>
+</ul>
+</li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.specs.RhimeOutputSpec"><code class="docutils literal notranslate"><span class="pre">RhimeOutputSpec</span></code></a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.specs.RhimeOutputSpec.option_names"><code class="docutils literal notranslate"><span class="pre">RhimeOutputSpec.option_names()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.specs.RhimeOutputSpec.from_params"><code class="docutils literal notranslate"><span class="pre">RhimeOutputSpec.from_params()</span></code></a></li>

@@ -425,6 +425,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.params.html">openghg_inversions.rhime.params</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.preparation.html">openghg_inversions.rhime.preparation</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.prepared.html">openghg_inversions.rhime.prepared</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.requests.html">openghg_inversions.rhime.requests</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.sampling.html">openghg_inversions.rhime.sampling</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.specs.html">openghg_inversions.rhime.specs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.stages.html">openghg_inversions.rhime.stages</a></li>
@@ -675,23 +676,6 @@ RHIME outputs without exposing model-runner implementation details.</p>
 </dd>
 </dl>
 <dl class="py method">
-<dt class="sig sig-object py" id="openghg_inversions.postprocessing.inversion_output.InversionOutput.select_chain">
-<span class="sig-name descname"><span class="pre">select_chain</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">index</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.postprocessing.inversion_output.InversionOutput.select_chain" title="Link to this definition">#</a></dt>
-<dd><p>Return a derived-output view containing one chain.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>index</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.15)"><em>int</em></a>) – Zero-based chain position to retain.</p>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>A shallowly replaced output whose trace retains only that chain.</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Self" title="(in Python v3.15)"><em>Self</em></a></p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
 <dt class="sig sig-object py" id="openghg_inversions.postprocessing.inversion_output.InversionOutput.trace_group">
 <span class="sig-name descname"><span class="pre">trace_group</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.postprocessing.inversion_output.InversionOutput.trace_group" title="Link to this definition">#</a></dt>
 <dd><p>Return one exact, direct trace group as a Dataset.</p>
@@ -929,7 +913,6 @@ metadata. Absent optional metadata mappings default to empty mappings.</p>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.postprocessing.inversion_output.merge_trace_groups"><code class="docutils literal notranslate"><span class="pre">merge_trace_groups()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.postprocessing.inversion_output.convert_idata_to_dataset"><code class="docutils literal notranslate"><span class="pre">convert_idata_to_dataset()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.postprocessing.inversion_output.InversionOutput"><code class="docutils literal notranslate"><span class="pre">InversionOutput</span></code></a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.postprocessing.inversion_output.InversionOutput.select_chain"><code class="docutils literal notranslate"><span class="pre">InversionOutput.select_chain()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.postprocessing.inversion_output.InversionOutput.trace_group"><code class="docutils literal notranslate"><span class="pre">InversionOutput.trace_group()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.postprocessing.inversion_output.InversionOutput.start_date"><code class="docutils literal notranslate"><span class="pre">InversionOutput.start_date</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.postprocessing.inversion_output.InversionOutput.end_date"><code class="docutils literal notranslate"><span class="pre">InversionOutput.end_date</span></code></a></li>

@@ -430,9 +430,9 @@ acquisition. Use <code class="docutils literal notranslate"><span class="pre">Rh
 retrieving observations, building a model or sampling.
 The returned <code class="docutils literal notranslate"><span class="pre">RhimeConfig</span></code> is the complete requested configuration:</p>
 <ul class="simple">
-<li><p>Acquisition and preparation choices are direct fields, including
+<li><p><code class="docutils literal notranslate"><span class="pre">data</span></code> is one <code class="docutils literal notranslate"><span class="pre">DataConfig</span></code> containing
 <code class="docutils literal notranslate"><span class="pre">species</span></code>, <code class="docutils literal notranslate"><span class="pre">domain</span></code>, dates, stores, basis, filtering and error settings.
-<code class="docutils literal notranslate"><span class="pre">site_options</span></code> is one public <code class="docutils literal notranslate"><span class="pre">SiteOptions</span></code> record containing complete
+<code class="docutils literal notranslate"><span class="pre">data.site_options</span></code> is one public <code class="docutils literal notranslate"><span class="pre">SiteOptions</span></code> record containing complete
 aligned tuples of requested sites and their selectors.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">model</span></code> is the existing <code class="docutils literal notranslate"><span class="pre">RhimeModelSpec</span></code> containing sectors, priors,
 likelihood and other scientific model choices.</p></li>
@@ -445,7 +445,9 @@ lives in <code class="docutils literal notranslate"><span class="pre">inference.
 <p>Sampler options cannot override model-owned coordinates: <code class="docutils literal notranslate"><span class="pre">coords</span></code> and <code class="docutils literal notranslate"><span class="pre">dims</span></code>
 inside <code class="docutils literal notranslate"><span class="pre">sample_kwargs[&quot;idata_kwargs&quot;]</span></code> or
 <code class="docutils literal notranslate"><span class="pre">posterior_predictive_kwargs[&quot;idata_kwargs&quot;]</span></code> are rejected, even if empty. Register
-coordinates and dimensions when constructing the model instead. This rule also
+coordinates and dimensions when constructing the model instead. Posterior
+<code class="docutils literal notranslate"><span class="pre">sample_kwargs[&quot;var_names&quot;]</span></code> overrides are also rejected at the sampler boundary;
+posterior-predictive variable selection remains supported. This rule also
 applies when constructing or directly invoking <code class="docutils literal notranslate"><span class="pre">RhimeSampler</span></code>.</p>
 <p>For example, a scalar period broadcasts across the effective requested sites:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="n">RhimeConfig</span>
@@ -463,8 +465,8 @@ applies when constructing or directly invoking <code class="docutils literal not
     <span class="s2">"mismatch_model"</span><span class="p">:</span> <span class="s2">"fixed_error"</span><span class="p">,</span>
 <span class="p">}</span>
 <span class="n">config</span> <span class="o">=</span> <span class="n">RhimeConfig</span><span class="o">.</span><span class="n">from_params</span><span class="p">(</span><span class="n">options</span><span class="p">,</span> <span class="n">multisector</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
-<span class="k">assert</span> <span class="n">config</span><span class="o">.</span><span class="n">site_options</span><span class="o">.</span><span class="n">sites</span> <span class="o">==</span> <span class="p">(</span><span class="s2">"TAC"</span><span class="p">,</span> <span class="s2">"MHD"</span><span class="p">)</span>
-<span class="k">assert</span> <span class="n">config</span><span class="o">.</span><span class="n">site_options</span><span class="o">.</span><span class="n">averaging_period</span> <span class="o">==</span> <span class="p">(</span><span class="s2">"1h"</span><span class="p">,</span> <span class="s2">"1h"</span><span class="p">)</span>
+<span class="k">assert</span> <span class="n">config</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">site_options</span><span class="o">.</span><span class="n">sites</span> <span class="o">==</span> <span class="p">(</span><span class="s2">"TAC"</span><span class="p">,</span> <span class="s2">"MHD"</span><span class="p">)</span>
+<span class="k">assert</span> <span class="n">config</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">site_options</span><span class="o">.</span><span class="n">averaging_period</span> <span class="o">==</span> <span class="p">(</span><span class="s2">"1h"</span><span class="p">,</span> <span class="s2">"1h"</span><span class="p">)</span>
 </pre></div>
 </div>
 <p>The constructor accepts canonical option names and applies established defaults,
@@ -472,13 +474,16 @@ validation and site expansion beside the configuration it creates. It does not
 translate deprecated spellings or emit their deprecation warnings. Pass an
 inspected configuration to the matching runner to execute it without resolving
 its options again:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="n">run_rhime</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="n">run_standard</span>
 
-<span class="n">result</span> <span class="o">=</span> <span class="n">run_rhime</span><span class="p">(</span><span class="n">config</span><span class="o">=</span><span class="n">config</span><span class="p">)</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">run_standard</span><span class="p">(</span><span class="n">config</span><span class="o">=</span><span class="n">config</span><span class="p">)</span>
 </pre></div>
 </div>
 <p>For multisector requests, construct with <code class="docutils literal notranslate"><span class="pre">multisector=True</span></code> and use
-<code class="docutils literal notranslate"><span class="pre">run_rhime_multisector(config=config)</span></code>. A resolved <code class="docutils literal notranslate"><span class="pre">config</span></code> cannot be
+<code class="docutils literal notranslate"><span class="pre">run_rhime_multisector(config=config)</span></code>. An explicit <code class="docutils literal notranslate"><span class="pre">data.split_by_sectors</span></code>
+value must match the selected recipe; omitted values inherit it. Saved standard
+preparations with a conflicting recorded layout are rejected before numerical
+inputs are loaded. A resolved <code class="docutils literal notranslate"><span class="pre">config</span></code> cannot be
 combined with <code class="docutils literal notranslate"><span class="pre">config_file</span></code> or raw configuration keyword arguments. Python
 execution inputs such as <code class="docutils literal notranslate"><span class="pre">merged_data</span></code> and a custom <code class="docutils literal notranslate"><span class="pre">likelihood_builder</span></code>
 remain separate arguments; a custom likelihood still requires the resolved
@@ -489,6 +494,12 @@ before acquisition. Optional selectors retain their existing meanings:
 <code class="docutils literal notranslate"><span class="pre">time_resolved=None</span></code> remains unspecified for each site, and supported inlet
 slices are preserved. Empty or case-insensitively duplicate site requests and
 incorrect selector lengths are rejected at resolution.</p>
+<p><code class="docutils literal notranslate"><span class="pre">DataConfig.from_params</span></code> resolves acquisition/preparation choices independently.
+Grouped mappings use <code class="docutils literal notranslate"><span class="pre">data</span></code>, <code class="docutils literal notranslate"><span class="pre">model</span></code>, <code class="docutils literal notranslate"><span class="pre">sampler</span></code> and <code class="docutils literal notranslate"><span class="pre">output</span></code>; the unshipped
+<code class="docutils literal notranslate"><span class="pre">preparation</span></code> group is not an alias. Runners select acquisition arguments from
+<code class="docutils literal notranslate"><span class="pre">config.data</span></code> and pass the acquired handoff with separately selected named
+arguments to scientific preparation. Preparation never retrieves data or exports
+a basis itself.</p>
 </section>
 <section id="ini-files-and-overrides">
 <h2>INI files and overrides<a class="headerlink" href="#ini-files-and-overrides" title="Link to this heading">#</a></h2>
@@ -512,7 +523,7 @@ resolution expands the final values together. The resulting <code class="docutil
 passed to a runner without resolving again.</p>
 <p><code class="docutils literal notranslate"><span class="pre">RhimeConfig.from_params</span></code> is the single construction entry point; the former
 <code class="docutils literal notranslate"><span class="pre">resolve_rhime_config</span></code> wrapper has been removed. Runner frontends, including
-<code class="docutils literal notranslate"><span class="pre">run_rhime</span></code> and staged commands, translate supported deprecated names before
+<code class="docutils literal notranslate"><span class="pre">run_standard</span></code> and staged commands, translate supported deprecated names before
 calling this constructor. They emit <code class="docutils literal notranslate"><span class="pre">DeprecationWarning</span></code> on devel and in 0.8;
 these aliases are removed in 0.9. For names such as <code class="docutils literal notranslate"><span class="pre">xprior</span></code> and <code class="docutils literal notranslate"><span class="pre">outputname</span></code>,
 canonical names take precedence. Flux keyword deprecations follow the stricter
@@ -565,7 +576,8 @@ inner preparation has the equivalent mutually exclusive <code class="docutils li
 <code class="docutils literal notranslate"><span class="pre">inner_basis_partition_path</span></code> and <code class="docutils literal notranslate"><span class="pre">inner_basis_partition_paths</span></code> options.</p>
 <p><code class="docutils literal notranslate"><span class="pre">basis_output_path</span></code> is an optional
 exact destination, including the filename; it is not an output directory or an
-enable flag. Staged preparation preserves this destination too.</p>
+enable flag. Full and staged runners preserve this destination, including paths
+outside a preparation checkpoint directory.</p>
 <p>A selected retained artifact supplies its operator and metadata to new
 preparation. The runner resolves current native prior flux once after filtering
 and binds it with <code class="docutils literal notranslate"><span class="pre">BasisFunctions.reuse_operator</span></code>; the saved flux payload is
@@ -583,7 +595,7 @@ arrays to <code class="docutils literal notranslate"><span class="pre">prepare_b
 writing an export and no longer accepts <code class="docutils literal notranslate"><span class="pre">output_path</span></code>. Runners explicitly
 save it through <code class="docutils literal notranslate"><span class="pre">BasisFunctions.save</span></code> when <code class="docutils literal notranslate"><span class="pre">basis_output_path</span></code> is requested,
 then retain the selected export path in metadata. The application helper
-<code class="docutils literal notranslate"><span class="pre">rhime.preparation.resolve_basis_inputs(config)</span></code> loads these scientific inputs.
+<code class="docutils literal notranslate"><span class="pre">rhime.preparation.resolve_basis_inputs(config.data)</span></code> loads these scientific inputs.
 Historical case/directory selections are accepted only by the temporary HBMCMC
 entry points in 0.8, which translate winning selections before calling modern
 APIs. Modern runners reject <code class="docutils literal notranslate"><span class="pre">fp_basis_case</span></code>, <code class="docutils literal notranslate"><span class="pre">basis_directory</span></code>,
@@ -604,11 +616,16 @@ do not require its packaged resource.</p>
 </div>
 <p>These resources support basis construction. Country reporting is a separate
 operation: supply <code class="docutils literal notranslate"><span class="pre">country_file</span></code> for <code class="docutils literal notranslate"><span class="pre">basic</span></code> or <code class="docutils literal notranslate"><span class="pre">paris</span></code> country reporting.
-Complete runs call <code class="docutils literal notranslate"><span class="pre">rhime.validate_output_resources(config.output)</span></code> before
-acquisition or inference; output helpers check again before creating products.
-Preparation-only workflows do not require reporting resources. Staged
-postprocessing checks them before creating its output directory. Packaged tutorial
-fixtures remain usable when explicitly selected.</p>
+Standard full runs call
+<code class="docutils literal notranslate"><span class="pre">rhime.validate_standard_output_resources(config.output)</span></code> before acquisition or
+inference. This checks country resources and requires <code class="docutils literal notranslate"><span class="pre">output_path</span></code> for PARIS
+and legacy products. Staged standard postprocessing applies the same check before
+loading samples. Direct callers of <code class="docutils literal notranslate"><span class="pre">postprocess_standard_outputs</span></code> must perform
+this check first. Multisector and nested routes retain
+<code class="docutils literal notranslate"><span class="pre">rhime.validate_output_resources</span></code>, which checks country resources without
+requiring a written-product destination. Preparation-only workflows do not
+require reporting resources. Packaged tutorial fixtures remain usable when
+explicitly selected.</p>
 <p>For devel/0.8, saving a basis uses the retained modern artifact by default.
 For historical callers, <code class="docutils literal notranslate"><span class="pre">basis.compatibility.make_basis_functions</span></code> accepts
 <code class="docutils literal notranslate"><span class="pre">basis_output_format=&quot;legacy&quot;</span></code> as explicit opt-in. This is an adapter option,
@@ -670,10 +687,12 @@ aligned values and checks their structural alignment. For example:</p>
 <p>Direct retrieval APIs retain their scalar shorthand without requiring model,
 output or sampler settings. The acquisition-and-preparation convenience function
 <code class="docutils literal notranslate"><span class="pre">prepare_rhime_inputs</span></code> has been removed. For a complete inversion, use
-<code class="docutils literal notranslate"><span class="pre">run_rhime</span></code>; for custom preparation, call <code class="docutils literal notranslate"><span class="pre">RhimeMergedData.from_options</span></code> followed by
-<code class="docutils literal notranslate"><span class="pre">prepare_observation_errors</span></code>, <code class="docutils literal notranslate"><span class="pre">filter_observations</span></code>,
-<code class="docutils literal notranslate"><span class="pre">openghg_inversions.basis.prepare_basis</span></code>,
-<code class="docutils literal notranslate"><span class="pre">build_sensitivities</span></code> and <code class="docutils literal notranslate"><span class="pre">assemble_rhime_inputs</span></code>. The explicit legacy function
+<code class="docutils literal notranslate"><span class="pre">run_standard</span></code>; for custom preparation, call <code class="docutils literal notranslate"><span class="pre">acquire_merged_data</span></code> (or
+<code class="docutils literal notranslate"><span class="pre">RhimeMergedData.from_options</span></code>) followed by <code class="docutils literal notranslate"><span class="pre">prepare_observation_errors</span></code>,
+<code class="docutils literal notranslate"><span class="pre">filter_observations</span></code>, <code class="docutils literal notranslate"><span class="pre">openghg_inversions.basis.prepare_basis</span></code>,
+<code class="docutils literal notranslate"><span class="pre">build_sensitivities</span></code> and <code class="docutils literal notranslate"><span class="pre">assemble_rhime_inputs</span></code>. These steps take the
+acquired per-site datasets and <code class="docutils literal notranslate"><span class="pre">SiteOptions</span></code> and return new mappings; the
+acquired <code class="docutils literal notranslate"><span class="pre">MergedData</span></code> never carries derived errors or filtered data. The explicit legacy function
 <code class="docutils literal notranslate"><span class="pre">openghg_inversions.hbmcmc.legacy_data.retrieve_inversion_data</span></code> performs
 fresh surface or column acquisition and returns its established six-tuple of
 merged data and retained metadata lists. The former
@@ -693,7 +712,7 @@ in-memory acquisition and <a class="reference internal" href="rhime.html"><span 
 <p>The requested configuration contains no acquired/prepared handoff or
 <code class="docutils literal notranslate"><span class="pre">RhimeRunSpec</span></code>.
 Merged and prepared handoffs describe the sites retained by acquisition and
-filtering. Ordinary runners create the execution <code class="docutils literal notranslate"><span class="pre">RhimeRunSpec</span></code> after
+filtering. Deferred-family runners create their execution <code class="docutils literal notranslate"><span class="pre">RhimeRunSpec</span></code> after
 preparation: it combines those retained sites and periods with the requested
 date bounds and resolved model/output choices. If only TAC remains from a
 TAC/MHD request, the configuration continues to name both sites while the run
@@ -707,13 +726,17 @@ values for an ordinary keyword call:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="n">filter_observations</span><span class="p">,</span> <span class="n">prepare_observation_errors</span>
 
 <span class="n">merged</span><span class="o">.</span><span class="n">validate_for_preparation</span><span class="p">(</span>
-    <span class="o">**</span><span class="n">config</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="s2">"species"</span><span class="p">,</span> <span class="s2">"domain"</span><span class="p">,</span> <span class="s2">"start_date"</span><span class="p">,</span> <span class="s2">"end_date"</span><span class="p">,</span> <span class="s2">"split_by_sectors"</span><span class="p">)</span>
+    <span class="o">**</span><span class="n">config</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="s2">"species"</span><span class="p">,</span> <span class="s2">"domain"</span><span class="p">,</span> <span class="s2">"start_date"</span><span class="p">,</span> <span class="s2">"end_date"</span><span class="p">,</span> <span class="s2">"split_by_sectors"</span><span class="p">)</span>
 <span class="p">)</span>
-<span class="n">merged</span> <span class="o">=</span> <span class="n">prepare_observation_errors</span><span class="p">(</span><span class="n">merged</span><span class="p">,</span> <span class="n">averaging_error</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">averaging_error</span><span class="p">)</span>
-<span class="n">filtered</span> <span class="o">=</span> <span class="n">filter_observations</span><span class="p">(</span><span class="n">merged</span><span class="p">,</span> <span class="o">**</span><span class="n">config</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="s2">"filters"</span><span class="p">))</span>
+<span class="n">with_errors</span> <span class="o">=</span> <span class="n">prepare_observation_errors</span><span class="p">(</span><span class="n">merged</span><span class="o">.</span><span class="n">site_data</span><span class="p">,</span> <span class="n">averaging_error</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">averaging_error</span><span class="p">)</span>
+<span class="n">filtered</span><span class="p">,</span> <span class="n">site_options</span> <span class="o">=</span> <span class="n">filter_observations</span><span class="p">(</span>
+    <span class="n">with_errors</span><span class="p">,</span> <span class="n">merged</span><span class="o">.</span><span class="n">site_options</span><span class="p">,</span> <span class="o">**</span><span class="n">config</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="s2">"filters"</span><span class="p">)</span>
+<span class="p">)</span>
 </pre></div>
 </div>
-<p><code class="docutils literal notranslate"><span class="pre">config.select(*names)</span></code> returns a fresh dictionary of the named attributes.
+<p><code class="docutils literal notranslate"><span class="pre">config.data.select(*names)</span></code> returns a fresh dictionary of the named attributes.
+Use <code class="docutils literal notranslate"><span class="pre">config.model</span></code> and <code class="docutils literal notranslate"><span class="pre">config.output</span></code> for their separate owners;
+<code class="docutils literal notranslate"><span class="pre">RhimeConfig</span></code> has no global <code class="docutils literal notranslate"><span class="pre">select</span></code> API.
 Values are borrowed: mutable mappings and objects are shared with <code class="docutils literal notranslate"><span class="pre">config</span></code>.
 Selection does not normalize, validate, copy nested values or serialize settings;
 an unknown attribute raises <code class="docutils literal notranslate"><span class="pre">AttributeError</span></code>. Scientific stages still accept
@@ -734,16 +757,15 @@ remain mutable. Resolution leaves caller options unchanged, and retained-site
 selection leaves the requested configuration unchanged. Configuration
 serialization and an INI writer are deferred to
 <a class="reference external" href="https://github.com/openghg/openghg_inversions/issues/814">Issue 814</a>.
-Equal resolved scalar/list choices do not guarantee equal historical
-configuration hashes.
+Standard saved sampling checks scientific compatibility with preparation,
+allowing compatible model choices to change without full-configuration equality.
 For persisted workflows, see <a class="reference internal" href="staged_workflow.html"><span class="doc">Staged RHIME workflows</span></a>: version 0.8 does not
 support staged artifacts produced by 0.7; consume them with 0.7 or regenerate
-them with 0.8. Ordinary paths remain relative to the working directory and
-staged file resources retain their configuration-file-relative convention.
-Explicit staged path overrides resolve from the invocation working directory.
-Runners forward absolute resource and export paths downstream; absolute inputs
-keep their destinations. Ordinary full-run INI values retain the invocation
-working directory convention. Filesystem fields are declared as <code class="docutils literal notranslate"><span class="pre">Path</span></code> types,
+them with 0.8. Configuration resource and output paths resolve from the invocation
+working directory in both full and staged execution, including INI/JSON values
+and explicit overrides. Runners forward absolute resource and export paths
+downstream; absolute inputs keep their destinations. Manifest dependency references
+remain relative to the declaring manifest. Filesystem fields are declared as <code class="docutils literal notranslate"><span class="pre">Path</span></code> types,
 including optional paths and collections such as <code class="docutils literal notranslate"><span class="pre">bc_basis_paths</span></code>. Frontends
 accept path strings and convert only these annotated fields; domain names and
 scientific selectors remain ordinary strings. Each configuration owner supplies

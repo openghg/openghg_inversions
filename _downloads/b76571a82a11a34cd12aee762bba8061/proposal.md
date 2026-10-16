@@ -114,7 +114,7 @@ The three new capabilities live under this active change as proposed deltas.
 The durable configuration and resource-I/O capabilities describe delivered behavior;
 their pending amendments remain in the separate active changes linked above.
 `openspec/changes/archive/` retains completed or superseded history.
-This replacement remains active with all implementation tasks unchecked. Its
+This replacement remains active; implementation evidence is recorded in [tasks.md](tasks.md). Its
 deltas SHALL NOT be synced merely because planning is approved.
 
 ## Reconciled lifecycle baseline
@@ -166,10 +166,11 @@ the optional save into runners using the returned basis and its existing codec.
 This change consumes that boundary; it does not deliver the prerequisite or
 redefine #840's exact-destination guarantee.
 
-Planning only: [design.md](design.md) gives the concrete API sketches, metadata
+[design.md](design.md) gives the concrete API sketches, metadata
 inventory, scientific order and saving semantics; [tasks.md](tasks.md) defines four
-implementation delivery phases and their acceptance gates. All implementation
-checkboxes remain unchecked. No runtime code, new file format or dependency ships.
+implementation delivery phases and their acceptance gates. PR #866 implements
+the standard route and records validation in the tasks; later family adoption
+and final promotion remain outstanding.
 
 Reuse merged #773/#774, #822–#826, #830, #832 and #834–#837.
 #840 implements #838's explicit basis

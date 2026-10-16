@@ -425,6 +425,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.params.html">openghg_inversions.rhime.params</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.preparation.html">openghg_inversions.rhime.preparation</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.prepared.html">openghg_inversions.rhime.prepared</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.requests.html">openghg_inversions.rhime.requests</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.sampling.html">openghg_inversions.rhime.sampling</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.specs.html">openghg_inversions.rhime.specs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.stages.html">openghg_inversions.rhime.stages</a></li>
@@ -547,7 +548,6 @@ RHIME’s general likelihood-builder seam.</p>
 <dd><em class="sig-param"><span class="n"><span class="pre">power</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">pollution_events_from_obs</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">no_model_error</span></span></em>,</dd>
-<dd><em class="sig-param"><span class="n"><span class="pre">retain_unused_sigma</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
 <dd><em class="sig-param"><span class="n"><span class="pre">output_dim</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'nmeasure'</span></span></em>,</dd>
 </dl>
 
@@ -566,14 +566,12 @@ scaling when <code class="docutils literal notranslate"><span class="pre">pollut
 <li><p><strong>pollution_event_baseline</strong> (<em>TensorVariable</em><em> | </em><em>None</em>) – Modelled baseline removed from observations
 when <code class="docutils literal notranslate"><span class="pre">pollution_events_from_obs</span></code> is true.</p></li>
 <li><p><strong>sigma_alignment</strong> (<a class="reference internal" href="openghg_inversions.sigma.html#openghg_inversions.sigma.SigmaAlignment" title="openghg_inversions.sigma.SigmaAlignment"><em>SigmaAlignment</em></a><em> | </em><em>None</em>) – Observation alignment for mismatch parameters when
-model error is enabled or unused sigma is retained.</p></li>
+model error is enabled.</p></li>
 <li><p><strong>sigma_prior</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>]</em>) – Prior specification for mismatch parameters.</p></li>
 <li><p><strong>power</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.15)"><em>Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>] </em><em>| </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.15)"><em>float</em></a>) – Exponent or prior specification used in mismatch scaling.</p></li>
 <li><p><strong>pollution_events_from_obs</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Whether observed rather than modelled
 pollution enhancements control mismatch scaling.</p></li>
 <li><p><strong>no_model_error</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Whether to omit inferred mismatch error.</p></li>
-<li><p><strong>retain_unused_sigma</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Whether to retain the historical disconnected
-<code class="docutils literal notranslate"><span class="pre">sigma</span></code> variable when model error is disabled.</p></li>
 <li><p><strong>output_dim</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Observation dimension name.</p></li>
 </ul>
 </dd>

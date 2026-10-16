@@ -426,10 +426,12 @@ recipe need only implement the entry points and products it actually supports.</
 <li><p>Construct the concrete model in mathematical and scientific order.</p></li>
 <li><p>Use scientifically meaningful names, explicit inputs, and ordinary callable
 components. Configuration is a convenience for selecting resolved values.</p></li>
-<li><p>Accept small duplication when it keeps alternative scientific recipes clear.</p></li>
+<li><p>Accept small duplication when it keeps alternative scientific recipes clear.
+Within one recipe, full and saved routes call the same step functions with the
+same objects; a saved route only loads a checkpoint before and saves one after.</p></li>
 <li><p>Use dataclasses for concrete scientific concepts or durable handoffs.</p></li>
 <li><p>Normalize configuration at its owning boundary and forward named values
-explicitly, including an explicit <code class="docutils literal notranslate"><span class="pre">config.select(&quot;name&quot;,</span> <span class="pre">...)</span></code> selection
+explicitly, including an explicit <code class="docutils literal notranslate"><span class="pre">config.data.select(&quot;name&quot;,</span> <span class="pre">...)</span></code> selection
 where useful.</p></li>
 <li><p>Keep helpers close to their scientific owner. Tiny registries can serve
 homogeneous families such as filters without controlling the whole model.</p></li>
@@ -541,9 +543,12 @@ described in <a class="reference internal" href="../usage/rhime_configuration.ht
 own constructor and resolution details. The request precedes preparation;
 retained-site execution facts become known later. Frozen records do not imply
 recursive immutability of borrowed arrays or caller-owned containers.</p>
-<p>Configuration grouping and reusable handoffs are being reconsidered in
-<a class="reference external" href="https://github.com/openghg/openghg_inversions/pull/802">PR 802</a>. Check its
-current proposal and implementation status before adopting those interfaces.
+<p>Configuration groups acquisition and preparation choices under
+<code class="docutils literal notranslate"><span class="pre">RhimeConfig.data:</span> <span class="pre">DataConfig</span></code>. The runner acquires data separately and passes
+it into scientific preparation. <code class="docutils literal notranslate"><span class="pre">MergedData</span></code> holds acquired data only;
+preparation steps pass per-site datasets and <code class="docutils literal notranslate"><span class="pre">SiteOptions</span></code> between them. The standard recipe supports reusable preparation and sample manifests; see
+<a class="reference internal" href="../usage/staged_workflow.html"><span class="doc">Staged RHIME workflows</span></a>. The remaining family adoption tasks from
+<a class="reference external" href="https://github.com/openghg/openghg_inversions/pull/802">PR 802</a> remain active.
 This guide does not fix private module locations, configuration class layout,
 or future manifest structure. Existing templates and complete option listings
 belong with their recipes and usage references.</p>

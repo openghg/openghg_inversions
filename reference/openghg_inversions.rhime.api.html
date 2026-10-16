@@ -425,6 +425,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.params.html">openghg_inversions.rhime.params</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.preparation.html">openghg_inversions.rhime.preparation</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.prepared.html">openghg_inversions.rhime.prepared</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.requests.html">openghg_inversions.rhime.requests</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.sampling.html">openghg_inversions.rhime.sampling</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.specs.html">openghg_inversions.rhime.specs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.stages.html">openghg_inversions.rhime.stages</a></li>
@@ -536,8 +537,9 @@ selection does not add acquisition or checkpoint routes.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>The selected recipe’s existing result. Standard, multisector and nested
-return result records; CO2-family recipes return an inference DataTree.</p>
+<dd class="field-even"><p>The selected recipe’s scientific result. Standard returns InversionOutput;
+multisector and nested retain their result records, and CO2-family recipes
+return an inference DataTree.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -549,9 +551,8 @@ return result records; CO2-family recipes return an inference DataTree.</p>
 <dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a></p>
 </dd>
 </dl>
-<p>Established <code class="docutils literal notranslate"><span class="pre">run_rhime*</span></code> imports remain available through the 0.9
-compatibility cycle. See the concrete recipe for scientific options,
-ownership and output behavior.</p>
+<p>See the concrete recipe for scientific options, ownership and output
+behavior. Standard callers may supply <code class="docutils literal notranslate"><span class="pre">prepared</span></code> to skip preparation.</p>
 </dd></dl>
 
 </section>

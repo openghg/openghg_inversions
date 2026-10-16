@@ -546,22 +546,22 @@ an existing compatible uv environment.</p>
 <span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
 
-<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="n">run</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="n">run_standard</span>
 
 <span class="n">tutorial_output_path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"OPENGHG_TUTORIAL_OUTPUT_PATH"</span><span class="p">,</span> <span class="s2">"outputs"</span><span class="p">))</span>
 <span class="n">resource</span> <span class="o">=</span> <span class="n">files</span><span class="p">(</span><span class="s2">"openghg_inversions.rhime"</span><span class="p">)</span><span class="o">.</span><span class="n">joinpath</span><span class="p">(</span><span class="s2">"config/standard_tutorial.ini"</span><span class="p">)</span>
 <span class="k">with</span> <span class="n">as_file</span><span class="p">(</span><span class="n">resource</span><span class="p">)</span> <span class="k">as</span> <span class="n">config</span><span class="p">:</span>
-    <span class="n">result</span> <span class="o">=</span> <span class="n">run</span><span class="p">(</span><span class="n">model</span><span class="o">=</span><span class="s2">"standard"</span><span class="p">,</span> <span class="n">config_file</span><span class="o">=</span><span class="n">config</span><span class="p">,</span> <span class="n">output_path</span><span class="o">=</span><span class="n">tutorial_output_path</span><span class="p">)</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="n">run_standard</span><span class="p">(</span><span class="n">config_file</span><span class="o">=</span><span class="n">config</span><span class="p">,</span> <span class="n">output_path</span><span class="o">=</span><span class="n">tutorial_output_path</span><span class="p">)</span>
 
 <span class="p">{</span>
     <span class="s2">"OpenGHG Inversions commit"</span><span class="p">:</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span>
         <span class="s2">"OPENGHG_TUTORIAL_CODE_REF"</span><span class="p">,</span> <span class="s2">"local checkout"</span>
     <span class="p">),</span>
     <span class="s2">"tutorial data"</span><span class="p">:</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"OPENGHG_TUTORIAL_DATA_TAG"</span><span class="p">,</span> <span class="s2">"v1.0.0"</span><span class="p">),</span>
-    <span class="s2">"sites"</span><span class="p">:</span> <span class="nb">list</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">run_spec</span><span class="o">.</span><span class="n">sites</span><span class="p">),</span>
+    <span class="s2">"sites"</span><span class="p">:</span> <span class="nb">list</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">site_names</span><span class="p">),</span>
     <span class="s2">"observations"</span><span class="p">:</span> <span class="n">result</span><span class="o">.</span><span class="n">inv_inputs</span><span class="o">.</span><span class="n">sizes</span><span class="p">[</span><span class="s2">"nmeasure"</span><span class="p">],</span>
     <span class="s2">"posterior samples"</span><span class="p">:</span> <span class="p">{</span>
-        <span class="n">name</span><span class="p">:</span> <span class="n">result</span><span class="o">.</span><span class="n">idata</span><span class="o">.</span><span class="n">posterior</span><span class="o">.</span><span class="n">sizes</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">"chain"</span><span class="p">,</span> <span class="s2">"draw"</span><span class="p">)</span>
+        <span class="n">name</span><span class="p">:</span> <span class="n">result</span><span class="o">.</span><span class="n">trace</span><span class="o">.</span><span class="n">posterior</span><span class="o">.</span><span class="n">sizes</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">"chain"</span><span class="p">,</span> <span class="s2">"draw"</span><span class="p">)</span>
     <span class="p">},</span>
 <span class="p">}</span>
 </pre></div>
@@ -582,23 +582,22 @@ values such as <code class="docutils literal notranslate"><span class="pre">outp
 </section>
 <section id="inspect-and-interpret-the-result">
 <h2>Inspect and interpret the result<a class="headerlink" href="#inspect-and-interpret-the-result" title="Link to this heading">#</a></h2>
-<p><code class="docutils literal notranslate"><span class="pre">RhimeResult</span></code> keeps the resolved scientific and output specifications,
-canonical labelled arrays, the xarray <code class="docutils literal notranslate"><span class="pre">DataTree</span></code> trace, and generated
-products together:</p>
+<p><code class="docutils literal notranslate"><span class="pre">InversionOutput</span></code> holds the canonical labelled arrays, retained basis, trace,
+scientific metadata and output roles. Requested files are written by the runner;
+product functions can derive in-memory summaries from this scientific result:</p>
 <div class="jupyter_cell jupyter_container docutils container">
 <div class="cell_input code_cell docutils container">
 <div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">measurement_index</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">inv_inputs</span><span class="o">.</span><span class="n">indexes</span><span class="p">[</span><span class="s2">"nmeasure"</span><span class="p">]</span>
 <span class="p">{</span>
-    <span class="s2">"period"</span><span class="p">:</span> <span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">run_spec</span><span class="o">.</span><span class="n">start_date</span><span class="p">,</span> <span class="n">result</span><span class="o">.</span><span class="n">run_spec</span><span class="o">.</span><span class="n">end_date</span><span class="p">),</span>
+    <span class="s2">"period"</span><span class="p">:</span> <span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">run_metadata</span><span class="p">[</span><span class="s2">"start_date"</span><span class="p">],</span> <span class="n">result</span><span class="o">.</span><span class="n">run_metadata</span><span class="p">[</span><span class="s2">"end_date"</span><span class="p">]),</span>
     <span class="s2">"sectors"</span><span class="p">:</span> <span class="p">[</span>
-        <span class="p">(</span><span class="n">sector</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="n">sector</span><span class="o">.</span><span class="n">flux_source</span><span class="p">)</span> <span class="k">for</span> <span class="n">sector</span> <span class="ow">in</span> <span class="n">result</span><span class="o">.</span><span class="n">model_spec</span><span class="o">.</span><span class="n">sectors</span>
+        <span class="p">(</span><span class="n">sector</span><span class="p">[</span><span class="s2">"name"</span><span class="p">],</span> <span class="n">sector</span><span class="p">[</span><span class="s2">"flux_source"</span><span class="p">])</span> <span class="k">for</span> <span class="n">sector</span> <span class="ow">in</span> <span class="n">result</span><span class="o">.</span><span class="n">model_metadata</span><span class="p">[</span><span class="s2">"sectors"</span><span class="p">]</span>
     <span class="p">],</span>
     <span class="s2">"H dimensions"</span><span class="p">:</span> <span class="n">result</span><span class="o">.</span><span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"H"</span><span class="p">]</span><span class="o">.</span><span class="n">dims</span><span class="p">,</span>
     <span class="s2">"input sizes"</span><span class="p">:</span> <span class="nb">dict</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">inv_inputs</span><span class="o">.</span><span class="n">sizes</span><span class="p">),</span>
     <span class="s2">"measurement sites"</span><span class="p">:</span> <span class="n">measurement_index</span><span class="o">.</span><span class="n">get_level_values</span><span class="p">(</span><span class="s2">"site"</span><span class="p">)</span><span class="o">.</span><span class="n">unique</span><span class="p">()</span><span class="o">.</span><span class="n">tolist</span><span class="p">(),</span>
-    <span class="s2">"x dimensions"</span><span class="p">:</span> <span class="n">result</span><span class="o">.</span><span class="n">idata</span><span class="p">[</span><span class="s2">"posterior"</span><span class="p">][</span><span class="s2">"x"</span><span class="p">]</span><span class="o">.</span><span class="n">dims</span><span class="p">,</span>
-    <span class="s2">"variable roles"</span><span class="p">:</span> <span class="n">result</span><span class="o">.</span><span class="n">model_build_result</span><span class="o">.</span><span class="n">variable_roles</span><span class="p">,</span>
-    <span class="s2">"output products"</span><span class="p">:</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">outputs</span><span class="p">),</span>
+    <span class="s2">"x dimensions"</span><span class="p">:</span> <span class="n">result</span><span class="o">.</span><span class="n">trace</span><span class="p">[</span><span class="s2">"posterior"</span><span class="p">][</span><span class="s2">"x"</span><span class="p">]</span><span class="o">.</span><span class="n">dims</span><span class="p">,</span>
+    <span class="s2">"variable roles"</span><span class="p">:</span> <span class="n">result</span><span class="o">.</span><span class="n">variable_roles</span><span class="p">,</span>
 <span class="p">}</span>
 </pre></div>
 </div>
@@ -629,8 +628,7 @@ products together:</p>
   'boundary': 'mu_bc',
   'baseline_scale': 'bc',
   'baseline_sensitivity': 'hbc',
-  'baseline': 'mu_bc'},
- 'output products': ['inversion_output']}
+  'baseline': 'mu_bc'}}
 </pre></div>
 </div>
 </div>
@@ -649,11 +647,11 @@ array position. The complete role and model-variable contract is described in
 <div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">arviz</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">az</span>
 
 <span class="n">summary</span> <span class="o">=</span> <span class="n">az</span><span class="o">.</span><span class="n">summary</span><span class="p">(</span>
-    <span class="n">result</span><span class="o">.</span><span class="n">idata</span><span class="p">,</span>
+    <span class="n">result</span><span class="o">.</span><span class="n">trace</span><span class="p">,</span>
     <span class="n">var_names</span><span class="o">=</span><span class="p">[</span><span class="s2">"x"</span><span class="p">,</span> <span class="s2">"bc"</span><span class="p">,</span> <span class="s2">"sigma"</span><span class="p">],</span>
     <span class="n">kind</span><span class="o">=</span><span class="s2">"diagnostics"</span><span class="p">,</span>
 <span class="p">)</span>
-<span class="n">summary</span><span class="p">[</span><span class="s2">"divergences"</span><span class="p">]</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">idata</span><span class="o">.</span><span class="n">sample_stats</span><span class="p">[</span><span class="s2">"diverging"</span><span class="p">]</span><span class="o">.</span><span class="n">sum</span><span class="p">())</span>
+<span class="n">summary</span><span class="p">[</span><span class="s2">"divergences"</span><span class="p">]</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">trace</span><span class="o">.</span><span class="n">sample_stats</span><span class="p">[</span><span class="s2">"diverging"</span><span class="p">]</span><span class="o">.</span><span class="n">sum</span><span class="p">())</span>
 <span class="n">summary</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>
 </pre></div>
 </div>
@@ -678,16 +676,16 @@ sigma[1, 0]        0.11     0.09       4.0      13.0   1.52            0
 Increase chains, tuning, and retained draws; require acceptable R-hat,
 effective sample sizes, trace behaviour, divergences, and posterior-predictive
 fit before drawing conclusions.</p>
-<p>The configured <code class="docutils literal notranslate"><span class="pre">inv_out</span></code> product is available in memory and on disk:</p>
+<p>The returned scientific result is also saved by the configured <code class="docutils literal notranslate"><span class="pre">inv_out</span></code> export.
+The filename follows the output policy; it is not stored on the returned result:</p>
 <div class="jupyter_cell jupyter_container docutils container">
 <div class="cell_input code_cell docutils container">
 <div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.postprocessing.inversion_output</span><span class="w"> </span><span class="kn">import</span> <span class="n">InversionOutput</span>
 
-<span class="n">inv_out</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">outputs</span><span class="p">[</span><span class="s2">"inversion_output"</span><span class="p">]</span>
-<span class="n">saved</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">output_metadata</span><span class="p">[</span><span class="s2">"inversion_output_path"</span><span class="p">])</span>
+<span class="n">inv_out</span> <span class="o">=</span> <span class="n">result</span>
+<span class="n">saved</span> <span class="o">=</span> <span class="n">tutorial_output_path</span> <span class="o">/</span> <span class="s2">"standard_tutorial2020-01-01_inversion_output.nc"</span>
 <span class="n">reloaded</span> <span class="o">=</span> <span class="n">InversionOutput</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">saved</span><span class="p">)</span>
 <span class="p">{</span>
-    <span class="s2">"provenance contract"</span><span class="p">:</span> <span class="n">reloaded</span><span class="o">.</span><span class="n">provenance</span><span class="p">[</span><span class="s2">"contract"</span><span class="p">],</span>
     <span class="s2">"basis artifact source"</span><span class="p">:</span> <span class="n">reloaded</span><span class="o">.</span><span class="n">run_metadata</span><span class="p">[</span><span class="s2">"basis_artifact_source"</span><span class="p">],</span>
     <span class="s2">"split by sectors"</span><span class="p">:</span> <span class="n">reloaded</span><span class="o">.</span><span class="n">run_metadata</span><span class="p">[</span><span class="s2">"split_by_sectors"</span><span class="p">],</span>
     <span class="s2">"saved file"</span><span class="p">:</span> <span class="n">saved</span><span class="o">.</span><span class="n">name</span><span class="p">,</span>
@@ -699,8 +697,7 @@ fit before drawing conclusions.</p>
 </div>
 </div>
 <div class="cell_output docutils container">
-<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>{'provenance contract': 'modern_rhime_inversion_output',
- 'basis artifact source': 'generated',
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>{'basis artifact source': 'generated',
  'split by sectors': False,
  'saved file': 'standard_tutorial2020-01-01_inversion_output.nc',
  'posterior variables': ['bc', 'epsilon', 'mu', 'mu_bc', 'sigma', 'x'],
@@ -718,15 +715,16 @@ fit before drawing conclusions.</p>
 </div>
 <p>The file retains the trace, canonical inputs, basis functions, run/model/output
 metadata, and provenance needed by supported postprocessing. It is not a
-legacy fixedbasis NetCDF file. <code class="docutils literal notranslate"><span class="pre">provenance[&quot;contract&quot;]</span></code> identifies this
-modern product, while <code class="docutils literal notranslate"><span class="pre">run_metadata[&quot;basis_artifact_source&quot;]</span></code> records how the
-basis entered preparation and <code class="docutils literal notranslate"><span class="pre">output_metadata[&quot;sampler&quot;]</span></code> records the
+legacy fixedbasis NetCDF file. <code class="docutils literal notranslate"><span class="pre">provenance</span></code> describes the installed package
+version and available source revision at sampling. <code class="docutils literal notranslate"><span class="pre">run_metadata[&quot;basis_artifact_source&quot;]</span></code>
+records how the basis entered preparation and <code class="docutils literal notranslate"><span class="pre">output_metadata[&quot;sampler&quot;]</span></code> records the
 resolved sampling options. It does not snapshot the OpenGHG object store or
 guarantee that the original acquisition query can be replayed unchanged.
 Supported <code class="docutils literal notranslate"><span class="pre">basic</span></code> and PARIS postprocessing uses every retained chain in this
 artifact, preserving <code class="docutils literal notranslate"><span class="pre">chain</span></code> and <code class="docutils literal notranslate"><span class="pre">draw</span></code> identity until a statistic or
-covariance is calculated. The <a class="reference internal" href="legacy_and_migration.html"><span class="doc">Migrate from HBMCMC to RHIME</span></a> page describes the
-chain-0 default of the older <code class="docutils literal notranslate"><span class="pre">run_hbmcmc.py</span></code> compatibility command.
+covariance is calculated. The 0.8 <code class="docutils literal notranslate"><span class="pre">run_hbmcmc.py</span></code> compatibility command also
+uses all retained chains; see <a class="reference internal" href="legacy_and_migration.html"><span class="doc">Migrate from HBMCMC to RHIME</span></a> for historical
+reproduction with OpenGHG Inversions 0.7.
 The companion-data tag is likewise not added to this output automatically:
 record <code class="docutils literal notranslate"><span class="pre">v1.0.0</span></code> with the run so the file-level manifest can be matched to the
 inversion.</p>

@@ -425,6 +425,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.params.html">openghg_inversions.rhime.params</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.preparation.html">openghg_inversions.rhime.preparation</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.prepared.html">openghg_inversions.rhime.prepared</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.requests.html">openghg_inversions.rhime.requests</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.sampling.html">openghg_inversions.rhime.sampling</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.specs.html">openghg_inversions.rhime.specs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.stages.html">openghg_inversions.rhime.stages</a></li>
@@ -1216,7 +1217,7 @@ and auxiliary coordinates restored onto its xarray groups.</p>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.models.parse_prior">
-<span class="sig-name descname"><span class="pre">parse_prior</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prior_params</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.parse_prior" title="Link to this definition">#</a></dt>
+<span class="sig-name descname"><span class="pre">parse_prior</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prior_params</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">active_indices</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">record_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.parse_prior" title="Link to this definition">#</a></dt>
 <dd><p>Create a continuous PyMC prior from a prior-parameter dictionary.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -1224,6 +1225,8 @@ and auxiliary coordinates restored onto its xarray groups.</p>
 <li><p><strong>name</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a>) – Name of the user-facing PyMC variable to create.</p></li>
 <li><p><strong>prior_params</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>]</em>) – Prior specification including <code class="docutils literal notranslate"><span class="pre">pdf</span></code> and any distribution
 parameters accepted by the chosen PyMC distribution.</p></li>
+<li><p><strong>active_indices</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><em>ndarray</em></a><em> | </em><em>None</em>) – Optional graph selection from canonical registered arrays.</p></li>
+<li><p><strong>record_name</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Scientific variable name owning an active-only prior record.</p></li>
 <li><p><strong>**kwargs</strong> – Additional keyword arguments forwarded to the created PyMC
 variable, such as <code class="docutils literal notranslate"><span class="pre">dims</span></code>.</p></li>
 </ul>
@@ -1233,7 +1236,8 @@ variable, such as <code class="docutils literal notranslate"><span class="pre">d
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If <code class="docutils literal notranslate"><span class="pre">prior_params[&quot;pdf&quot;]</span></code> does not name a supported PyMC
-    continuous distribution.</p>
+    continuous distribution, or parameter labels, dimensions or fixed
+    array values are incompatible.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><em>TensorVariable</em></p>
@@ -1241,6 +1245,14 @@ variable, such as <code class="docutils literal notranslate"><span class="pre">d
 </dl>
 <p>This helper must be called inside an active <code class="docutils literal notranslate"><span class="pre">pm.Model</span></code> context because it
 registers the created variable with the current model.</p>
+<p>Borrowed numerical arrays and their auxiliary coordinates are materialized
+together here. Labelled parameters align to registered scientific indexes
+and broadcast by dimension; positional parameters use trailing model axes.
+Arrays become named model data, while resolved numerical scalars stay inline
+in construction metadata. Symbolic parameters retain their dependencies.
+<code class="docutils literal notranslate"><span class="pre">registered_model</span></code> supplies scientific-coordinate restoration; ordinary
+<code class="docutils literal notranslate"><span class="pre">pm.Model</span></code> contexts retain their existing numerical construction support.
+RHIME-resolved defaults are captured; implicit PyMC defaults remain implicit.</p>
 </dd></dl>
 
 <dl class="py function">
@@ -1356,19 +1368,23 @@ that will consume the cache.</p></li>
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.models.add_model_data">
 <span class="sig-name descname"><span class="pre">add_model_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.add_model_data" title="Link to this definition">#</a></dt>
-<dd><p>Add labelled xarray data to the active PyMC model.</p>
+<dd><p>Register labelled numerical data on the active registered model.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>data</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Xarray data to register as <code class="docutils literal notranslate"><span class="pre">pm.Data</span></code>.</p></li>
-<li><p><strong>name</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Optional PyMC variable name. If omitted, <code class="docutils literal notranslate"><span class="pre">data.name</span></code> is used.</p></li>
+<li><p><strong>data</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.9.0)"><em>DataArray</em></a>) – Borrowed array, materialized here with its coordinates.</p></li>
+<li><p><strong>name</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Model variable name; defaults to <code class="docutils literal notranslate"><span class="pre">data.name</span></code>.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>The registered <code class="docutils literal notranslate"><span class="pre">pm.Data</span></code> tensor for <code class="docutils literal notranslate"><span class="pre">data</span></code>.</p>
+<dd class="field-even"><p>The registered tensor, or the existing variable with the same name.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If no name can be determined for the data variable.</p>
+<dd class="field-odd"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If neither an explicit name nor <code class="docutils literal notranslate"><span class="pre">data.name</span></code> is available.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#RuntimeError" title="(in Python v3.15)"><strong>RuntimeError</strong></a> – If the model lacks the coordinate registry installed by
+    <a class="reference internal" href="#openghg_inversions.models.registered_model" title="openghg_inversions.models.registered_model"><code class="xref py py-func docutils literal notranslate"><span class="pre">registered_model()</span></code></a>.</p></li>
+</ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><em>TensorVariable</em></p>
@@ -1710,28 +1726,32 @@ when several independent offset components share one model.</p></li>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.models.active_prior_args">
-<span class="sig-name descname"><span class="pre">active_prior_args</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">prior_args</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">activity</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.active_prior_args" title="Link to this definition">#</a></dt>
-<dd><p>Return prior arguments sliced to active states in canonical order.</p>
-<p>Scalar parameters are retained. One-dimensional NumPy state parameters are
-interpreted in canonical order and must describe the full state vector.
-Labelled xarray parameters are first aligned by the canonical state
-coordinate and then subset, allowing input label order to differ safely.
-Array-backed parameters are materialized at this model-building boundary.
-The support arrays of an <code class="docutils literal notranslate"><span class="pre">Interpolated</span></code> prior are preserved rather than
-interpreted as state-valued parameters.</p>
+<span class="sig-name descname"><span class="pre">active_prior_args</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">prior_args</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">activity</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">select_active</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.active_prior_args" title="Link to this definition">#</a></dt>
+<dd><p>Align prior parameters to canonical state order and optionally select active states.</p>
+<p>Scalar parameters broadcast without state selection; symbolic parameters
+pass through unchanged. Labelled state
+vectors are aligned by their state coordinate; positional vectors must use
+canonical full-state order. Lazy state arrays remain lazy. Interpolated-prior
+support arrays are instead materialized, checked for finite values and kept
+intact because they describe a distribution rather than individual states.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>prior_args</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>]</em>) – PyMC prior specification.</p></li>
-<li><p><strong>activity</strong> (<a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.ResolvedStateActivity" title="openghg_inversions.models.state_activity.ResolvedStateActivity"><em>ResolvedStateActivity</em></a>) – Resolved activity contract in canonical state order.</p></li>
+<li><p><strong>prior_args</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>]</em>) – PyMC prior specification with scalar or full-state parameters.</p></li>
+<li><p><strong>activity</strong> (<a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.ResolvedStateActivity" title="openghg_inversions.models.state_activity.ResolvedStateActivity"><em>ResolvedStateActivity</em></a>) – Resolved state activity and canonical state labels.</p></li>
+<li><p><strong>select_active</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Select only active states, by default. Set to <code class="docutils literal notranslate"><span class="pre">False</span></code>
+to retain full-state arrays for model-data registration before
+graph-level active-state selection.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>A copy of <code class="docutils literal notranslate"><span class="pre">prior_args</span></code> containing scalar or active-state parameters.</p>
+<dd class="field-even"><p>A new prior mapping with scalar parameters, borrowed symbolic values,
+and state arrays aligned and optionally sliced to the active states.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If an array-valued distribution parameter is not scalar or
-    full-state one-dimensional data.</p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If state arrays have incompatible dimensions or labels,
+    positional vectors have the wrong length, or eager state vectors
+    or Interpolated support arrays contain nonfinite entries.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>, <a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a>]</p>
@@ -1850,7 +1870,6 @@ before calling this function.</p>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.components.html#openghg_inversions.models.components.CorrelatedStateResult"><code class="docutils literal notranslate"><span class="pre">CorrelatedStateResult</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.components.html#openghg_inversions.models.components.get_model_latent"><code class="docutils literal notranslate"><span class="pre">get_model_latent()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.components.html#openghg_inversions.models.components.resolve_model_variable"><code class="docutils literal notranslate"><span class="pre">resolve_model_variable()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.components.html#openghg_inversions.models.components.add_model_data"><code class="docutils literal notranslate"><span class="pre">add_model_data()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.components.html#openghg_inversions.models.components.add_linear_component"><code class="docutils literal notranslate"><span class="pre">add_linear_component()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.components.html#openghg_inversions.models.components.apply_linear_sensitivity"><code class="docutils literal notranslate"><span class="pre">apply_linear_sensitivity()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.components.html#openghg_inversions.models.components.add_linked_linear_component"><code class="docutils literal notranslate"><span class="pre">add_linked_linear_component()</span></code></a></li>
@@ -1864,6 +1883,7 @@ before calling this function.</p>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="openghg_inversions.models.coords.html">openghg_inversions.models.coords</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.coords.html#openghg_inversions.models.coords.add_model_data"><code class="docutils literal notranslate"><span class="pre">add_model_data()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.coords.html#openghg_inversions.models.coords.sanitize_coords_for_pymc"><code class="docutils literal notranslate"><span class="pre">sanitize_coords_for_pymc()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.coords.html#openghg_inversions.models.coords.CoordRegistry"><code class="docutils literal notranslate"><span class="pre">CoordRegistry</span></code></a><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.coords.html#openghg_inversions.models.coords.CoordRegistry.add"><code class="docutils literal notranslate"><span class="pre">CoordRegistry.add()</span></code></a></li>
@@ -1907,6 +1927,8 @@ before calling this function.</p>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.priors.html#openghg_inversions.models.priors.lognormal_mu_sigma"><code class="docutils literal notranslate"><span class="pre">lognormal_mu_sigma()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.priors.html#openghg_inversions.models.priors.positive_prior_args"><code class="docutils literal notranslate"><span class="pre">positive_prior_args()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.priors.html#openghg_inversions.models.priors.parse_prior"><code class="docutils literal notranslate"><span class="pre">parse_prior()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.priors.html#openghg_inversions.models.priors.prior_records"><code class="docutils literal notranslate"><span class="pre">prior_records()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.priors.html#openghg_inversions.models.priors.trace_prior_records"><code class="docutils literal notranslate"><span class="pre">trace_prior_records()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="openghg_inversions.models.scalar_sigma.html">openghg_inversions.models.scalar_sigma</a><ul>

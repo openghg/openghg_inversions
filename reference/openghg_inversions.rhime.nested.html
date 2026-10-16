@@ -425,6 +425,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.params.html">openghg_inversions.rhime.params</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.preparation.html">openghg_inversions.rhime.preparation</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.prepared.html">openghg_inversions.rhime.prepared</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.requests.html">openghg_inversions.rhime.requests</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.sampling.html">openghg_inversions.rhime.sampling</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.specs.html">openghg_inversions.rhime.specs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.stages.html">openghg_inversions.rhime.stages</a></li>
@@ -736,7 +737,7 @@ inner-domain array. Exact matching is the default; nearest selection is
 site-local and requires an explicit tolerance.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference internal" href="openghg_inversions.inversion_data.acquisition.html#openghg_inversions.inversion_data.acquisition.MergedData" title="openghg_inversions.inversion_data.acquisition.MergedData"><em>MergedData</em></a></p>
+<dd class="field-odd"><p><em>_DomainData</em></p>
 </dd>
 </dl>
 </dd></dl>
@@ -792,13 +793,13 @@ otherwise the durable metadata records that the mask was caller supplied.</p>
 <dt class="sig sig-object py" id="openghg_inversions.rhime.nested.mask_outer_merged_for_inner_domain">
 <span class="sig-name descname"><span class="pre">mask_outer_merged_for_inner_domain</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">outer</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inner</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.nested.mask_outer_merged_for_inner_domain" title="Link to this definition">#</a></dt>
 <dd><p>Mask outer footprint response and prior flux over the inner extent.</p>
-<p>The returned datasets are shallow copies and <code class="docutils literal notranslate"><span class="pre">where</span></code> preserves Dask
-laziness.  The borrowed outer and inner merged-data objects are not
-modified.  The union of all retained inner site extents is applied to the
+<p>The returned preparation record holds shallow dataset copies and
+<code class="docutils literal notranslate"><span class="pre">where</span></code> preserves Dask laziness. Acquired <code class="docutils literal notranslate"><span class="pre">MergedData</span></code> inputs remain
+borrowed and unmodified; masked values are never wrapped in that type.  The union of all retained inner site extents is applied to the
 retained outer flux used by basis generation and post-run reconstruction.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference internal" href="openghg_inversions.inversion_data.acquisition.html#openghg_inversions.inversion_data.acquisition.MergedData" title="openghg_inversions.inversion_data.acquisition.MergedData"><em>MergedData</em></a></p>
+<dd class="field-odd"><p><em>_NestedDomainData</em></p>
 </dd>
 </dl>
 </dd></dl>
@@ -870,10 +871,10 @@ removed in 0.9. Supplying both spellings is an error.</p></li>
 <li><p><strong>inner_basis_algorithm</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><em>None</em>) – Inner basis algorithm; defaults to <code class="docutils literal notranslate"><span class="pre">quadtree</span></code>
 when no saved inner basis is selected.</p></li>
 <li><p><strong>inner_nbasis</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.15)"><em>int</em></a><em> | </em><em>None</em>) – Explicit inner basis-region count. When omitted and
-neither grid uses a saved basis, <code class="docutils literal notranslate"><span class="pre">config.nbasis</span></code> is a shared
+neither grid uses a saved basis, <code class="docutils literal notranslate"><span class="pre">config.data.nbasis</span></code> is a shared
 total budget split by the square-root sensitivity ratio, with an
 inner share bounded to 35–60 percent. Otherwise the inner count
-defaults to <code class="docutils literal notranslate"><span class="pre">config.nbasis</span></code>.</p></li>
+defaults to <code class="docutils literal notranslate"><span class="pre">config.data.nbasis</span></code>.</p></li>
 <li><p><strong>inner_basis_path</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.15)"><em>Path</em></a><em> | </em><em>None</em>) – Exact retained inner basis artifact path.</p></li>
 <li><p><strong>inner_basis_partition_path</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.15)"><em>Path</em></a><em> | </em><em>None</em>) – Exact labelled inner partition file.</p></li>
 <li><p><strong>inner_basis_partition_paths</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.15)"><em>tuple</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.15)"><em>Path</em></a><em>, </em><em>...</em><em>] </em><em>| </em><em>None</em>) – Explicit collection of labelled inner partition files.</p></li>
@@ -931,7 +932,7 @@ required for preparation.</p>
 <span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.nested.run_rhime_nested" title="Link to this definition">#</a></dt>
 <dd><p>Run a standard one-source RHIME inversion on nested native grids.</p>
 <p>Nested options may be supplied directly or in the INI file. Ordinary
-options use the same modern vocabulary as <code class="xref py py-func docutils literal notranslate"><span class="pre">run_rhime()</span></code>.
+options use the same modern vocabulary as <code class="xref py py-func docutils literal notranslate"><span class="pre">run_standard()</span></code>.
 <code class="docutils literal notranslate"><span class="pre">output_format='none'</span></code> returns the sampled result without formatted
 products; <code class="docutils literal notranslate"><span class="pre">output_format='paris'</span></code> creates separate native-grid flux
 products and one shared concentration product.</p>

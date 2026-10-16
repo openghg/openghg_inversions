@@ -425,6 +425,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.params.html">openghg_inversions.rhime.params</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.preparation.html">openghg_inversions.rhime.preparation</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.prepared.html">openghg_inversions.rhime.prepared</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.requests.html">openghg_inversions.rhime.requests</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.sampling.html">openghg_inversions.rhime.sampling</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.specs.html">openghg_inversions.rhime.specs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.stages.html">openghg_inversions.rhime.stages</a></li>
@@ -534,8 +535,8 @@ columns, and retains the full-state mapping. <code class="docutils literal notra
 combines that mapping with a policy to produce the canonical
 <code class="docutils literal notranslate"><span class="pre">ResolvedStateActivity</span></code>;
 <code class="docutils literal notranslate"><span class="pre">active_prior_args</span></code> then aligns and subsets state-valued prior parameters.
-Finite checks, exact-zero reductions, and state-vector alignment are explicit
-eager-compute boundaries for lazy or Dask-backed inputs during model building.</p>
+Sensitivity checks and exact-zero reductions are explicit eager boundaries.
+Prior alignment preserves laziness until the owning PyMC construction boundary.</p>
 <dl class="py data">
 <dt class="sig sig-object py" id="openghg_inversions.models.state_activity.ActivityValue">
 <span class="sig-name descname"><span class="pre">ActivityValue</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">bool</span> <span class="pre">|</span> <span class="pre">numpy.ndarray</span> <span class="pre">|</span> <span class="pre">xarray.core.dataarray.DataArray</span></span><a class="headerlink" href="#openghg_inversions.models.state_activity.ActivityValue" title="Link to this definition">#</a></dt>
@@ -718,28 +719,32 @@ before calling this function.</p>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.models.state_activity.active_prior_args">
-<span class="sig-name descname"><span class="pre">active_prior_args</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">prior_args</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">activity</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.state_activity.active_prior_args" title="Link to this definition">#</a></dt>
-<dd><p>Return prior arguments sliced to active states in canonical order.</p>
-<p>Scalar parameters are retained. One-dimensional NumPy state parameters are
-interpreted in canonical order and must describe the full state vector.
-Labelled xarray parameters are first aligned by the canonical state
-coordinate and then subset, allowing input label order to differ safely.
-Array-backed parameters are materialized at this model-building boundary.
-The support arrays of an <code class="docutils literal notranslate"><span class="pre">Interpolated</span></code> prior are preserved rather than
-interpreted as state-valued parameters.</p>
+<span class="sig-name descname"><span class="pre">active_prior_args</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">prior_args</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">activity</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">select_active</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.state_activity.active_prior_args" title="Link to this definition">#</a></dt>
+<dd><p>Align prior parameters to canonical state order and optionally select active states.</p>
+<p>Scalar parameters broadcast without state selection; symbolic parameters
+pass through unchanged. Labelled state
+vectors are aligned by their state coordinate; positional vectors must use
+canonical full-state order. Lazy state arrays remain lazy. Interpolated-prior
+support arrays are instead materialized, checked for finite values and kept
+intact because they describe a distribution rather than individual states.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>prior_args</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>]</em>) – PyMC prior specification.</p></li>
-<li><p><strong>activity</strong> (<a class="reference internal" href="#openghg_inversions.models.state_activity.ResolvedStateActivity" title="openghg_inversions.models.state_activity.ResolvedStateActivity"><em>ResolvedStateActivity</em></a>) – Resolved activity contract in canonical state order.</p></li>
+<li><p><strong>prior_args</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a><em>]</em>) – PyMC prior specification with scalar or full-state parameters.</p></li>
+<li><p><strong>activity</strong> (<a class="reference internal" href="#openghg_inversions.models.state_activity.ResolvedStateActivity" title="openghg_inversions.models.state_activity.ResolvedStateActivity"><em>ResolvedStateActivity</em></a>) – Resolved state activity and canonical state labels.</p></li>
+<li><p><strong>select_active</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.15)"><em>bool</em></a>) – Select only active states, by default. Set to <code class="docutils literal notranslate"><span class="pre">False</span></code>
+to retain full-state arrays for model-data registration before
+graph-level active-state selection.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>A copy of <code class="docutils literal notranslate"><span class="pre">prior_args</span></code> containing scalar or active-state parameters.</p>
+<dd class="field-even"><p>A new prior mapping with scalar parameters, borrowed symbolic values,
+and state arrays aligned and optionally sliced to the active states.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If an array-valued distribution parameter is not scalar or
-    full-state one-dimensional data.</p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.15)"><strong>ValueError</strong></a> – If state arrays have incompatible dimensions or labels,
+    positional vectors have the wrong length, or eager state vectors
+    or Interpolated support arrays contain nonfinite entries.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.15)">dict</a>[<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)">str</a>, <a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.15)"><em>Any</em></a>]</p>
