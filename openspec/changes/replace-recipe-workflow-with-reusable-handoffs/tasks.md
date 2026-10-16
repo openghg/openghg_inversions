@@ -448,6 +448,25 @@ direct document targets resolve. Full compatibility/type/docs checks must run
 on the new fixed revision; earlier green GitHub evidence at `f900d539` remains
 labelled with that revision rather than claimed for the consolidation.
 
+Slurm `19451784` completed all seven environments at `9348c610`. Python 3.12
+and 3.13 locked runs each report **3,019 passed / 8 skipped**, and OpenGHG devel
+reports **3,015 passed / 12 skipped**, with exactly two failures in each: the
+preserved CO2 installed-stage tests require a Git revision, while the validation
+archive deliberately contained no `.git` and returned `revision=None`. This is
+a validation-context failure, not evidence of a scientific change; compatibility
+must be rerun from a detached Git checkout with the fixed revision. Lower-bound
+PyMC and borrowed-reference typing environments pass.
+
+Mypy reports **162 errors in 50 files**, against baseline **164 in 52**, with
+zero introduced normalized diagnostics. Strict docs report **309 warnings**,
+against baseline **318**: one new heading underline warning is fixed; two
+existing external TensorVariable-reference warnings relocate to the new stage
+page while six disappear elsewhere, and six old RhimeConfig ambiguity warnings
+disappear. No baseline warning suppression was added. A fresh strict-docs run
+must confirm the fix; comparison artifacts retain location-aware and diagnostic
+content counts. The retry uses a detached local clone, with generated API docs
+outside that checkout to keep scientific provenance stable during tests.
+
 ## 3. Ordinary CO2 reusable-handoff adoption
 
 - [ ] 3.1 Resolve owned CO2 phase choices consistently for configured full and

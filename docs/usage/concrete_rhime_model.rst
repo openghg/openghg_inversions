@@ -471,7 +471,7 @@ Inversions' aggregation-error and Gaussian likelihood machinery.
 .. _rhime-complete-model-composition:
 
 Compose a complete model directly
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Standard and multisector prepared execution use the same construction,
 sampling and output operations as their full and saved routes. A complete-model
