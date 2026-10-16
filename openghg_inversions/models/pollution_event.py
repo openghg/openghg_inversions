@@ -63,18 +63,13 @@ def _build_pollution_event_error(
     power: Mapping[str, Any] | float,
     pollution_events_from_obs: bool,
     no_model_error: bool,
-    retain_unused_sigma: bool = False,
     output_dim: str = "nmeasure",
 ) -> _PollutionEventErrorState:
     """Build the historical pollution-event error terms.
 
     ``pollution_mean`` is the modelled pollution contribution.
     ``pollution_event_baseline`` is the complete modelled baseline removed when
-    deriving pollution events from observations. Compatibility adapters may
-    explicitly supply a narrower historical term.
-
-    ``retain_unused_sigma`` exists only for compatibility with graphs that
-    stored ``sigma`` even when ``no_model_error`` made it irrelevant.
+    deriving pollution events from observations.
 
     Args:
         observations: Observed mole fractions.
@@ -86,14 +81,12 @@ def _build_pollution_event_error(
         pollution_event_baseline: Baseline removed when mismatch scaling uses
             observed enhancements.
         sigma_alignment: Observation alignment for mismatch parameters when
-            model error is enabled or unused sigma is retained.
+            model error is enabled.
         sigma_prior: Prior specification for mismatch parameters.
         power: Exponent or prior specification for mismatch scaling.
         pollution_events_from_obs: Whether observed enhancements control
             mismatch scaling.
         no_model_error: Whether to omit inferred mismatch error.
-        retain_unused_sigma: Whether to preserve the historical disconnected
-            ``sigma`` variable when model error is disabled.
         output_dim: Observation dimension name.
 
     Returns:
@@ -110,13 +103,10 @@ def _build_pollution_event_error(
         owner="Pollution-event likelihood",
         output_dim=output_dim,
     )
-    needs_sigma = not no_model_error or retain_unused_sigma
-    if needs_sigma:
-        if sigma_alignment is None:
-            raise ValueError(
-                "Pollution-event likelihood requires `sigma_alignment` when "
-                "model error is enabled or unused sigma is retained."
-            )
+    if not no_model_error and sigma_alignment is None:
+        raise ValueError(
+            "Pollution-event likelihood requires `sigma_alignment` when model error is enabled."
+        )
     observed = add_model_data(observations.transpose(output_dim), "Y")
     reported_error = add_model_data(observation_error.transpose(output_dim), "error")
     minimum_error_data = add_model_data(minimum_error.transpose(output_dim), "min_error")
@@ -126,7 +116,7 @@ def _build_pollution_event_error(
         output_dim=output_dim,
     )
     sigma = None
-    if needs_sigma:
+    if not no_model_error:
         assert sigma_alignment is not None
         sigma = add_sigma_component(sigma_alignment, prior_args=dict(sigma_prior))
 
@@ -194,7 +184,6 @@ def add_pollution_event_likelihood(
     power: Mapping[str, Any] | float,
     pollution_events_from_obs: bool,
     no_model_error: bool,
-    retain_unused_sigma: bool = False,
     output_dim: str = "nmeasure",
 ) -> TensorVariable:
     """Build RHIME's pollution-event-scaled Gaussian likelihood.
@@ -210,14 +199,12 @@ def add_pollution_event_likelihood(
         pollution_event_baseline: Modelled baseline removed from observations
             when ``pollution_events_from_obs`` is true.
         sigma_alignment: Observation alignment for mismatch parameters when
-            model error is enabled or unused sigma is retained.
+            model error is enabled.
         sigma_prior: Prior specification for mismatch parameters.
         power: Exponent or prior specification used in mismatch scaling.
         pollution_events_from_obs: Whether observed rather than modelled
             pollution enhancements control mismatch scaling.
         no_model_error: Whether to omit inferred mismatch error.
-        retain_unused_sigma: Whether to retain the historical disconnected
-            ``sigma`` variable when model error is disabled.
         output_dim: Observation dimension name.
 
     Returns:
@@ -236,7 +223,6 @@ def add_pollution_event_likelihood(
         power=power,
         pollution_events_from_obs=pollution_events_from_obs,
         no_model_error=no_model_error,
-        retain_unused_sigma=retain_unused_sigma,
         output_dim=output_dim,
     )
     return add_gaussian_observation_likelihood(

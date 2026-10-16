@@ -86,11 +86,21 @@ meaning and dimensions of `epsilon`. The custom callable owns those guarantees.
 
 Standard and multisector requests SHALL reject a custom `likelihood_builder`
 combined with configured built-in mismatch/likelihood settings before acquisition
-in ordinary runners or materialization in the prepared-input runner. Their
-public result-building stages, `build_standard_rhime_model_result` and
-`build_multisector_rhime_model_result`, SHALL reject simultaneous `model_builder`
-and `likelihood_builder` inputs before either callable runs. The lower-level
-`build_standard_rhime_model` and `build_multisector_rhime_model` functions do not
+in ordinary runners or materialization in the prepared-input runner. The
+standard builder `build_standard_model` SHALL take eager numerical inputs,
+`RhimeModelSpec` and materialized prior parameters without output configuration
+and SHALL NOT accept `model_builder`. Materialization SHALL be an explicit
+runner/caller operation; a shared helper MAY compute selected related inputs and
+enabled priors jointly to preserve shared Dask execution. Construction SHALL NOT
+compute lazy payloads, rebuild the model spec solely to replace prior values, or
+introduce lazy/eager builder variants or another saved-workflow phase.
+Standard `run_standard(prepared=...)` SHALL use the same scientific operations
+as acquired-data and saved execution without a complete-model-builder hook.
+`run_rhime_from_prepared_inputs` SHALL retain only its multisector contract. The retained
+multisector `build_multisector_rhime_model_result` compatibility stage SHALL reject
+simultaneous `model_builder` and `likelihood_builder` inputs before either
+callable runs. The lower-level
+`build_standard_model` and `build_multisector_rhime_model` functions do not
 accept `model_builder`.
 
 #### Scenario: Reject competing likelihood selections
@@ -101,8 +111,7 @@ accept `model_builder`.
 
 #### Scenario: Reject competing builder ownership
 
-- **WHEN** `build_standard_rhime_model_result` or
-  `build_multisector_rhime_model_result` receives both a complete-model builder
+- **WHEN** `build_multisector_rhime_model_result` receives both a complete-model builder
   and a likelihood builder
 - **THEN** it raises `ValueError` before either builder executes
 

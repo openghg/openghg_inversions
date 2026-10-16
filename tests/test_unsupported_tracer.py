@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from openghg_inversions.rhime import run_rhime, run_rhime_multisector
+from openghg_inversions.rhime import run_standard, run_rhime_multisector
 from openghg_inversions.rhime.params import RhimeConfig
 from openghg_inversions.hbmcmc.compatibility import params_from_config
 from openghg_inversions.hbmcmc.compatibility import translate_rhime_aliases
@@ -60,7 +60,7 @@ def test_false_or_omitted_tracer_is_not_forwarded_after_resolution(tracer_option
     assert params == original
 
 
-@pytest.mark.parametrize("runner", [run_rhime, run_rhime_multisector])
+@pytest.mark.parametrize("runner", [run_standard, run_rhime_multisector])
 @pytest.mark.parametrize("supplied_merged_data", [False, True])
 def test_rhime_runner_rejects_tracer_before_acquisition(runner, supplied_merged_data):
     merged = SimpleNamespace(fp_all={}) if supplied_merged_data else None

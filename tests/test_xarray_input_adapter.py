@@ -11,6 +11,7 @@ import pytest
 import xarray as xr
 
 import openghg_inversions.rhime.prepared as rhime_prepared
+import openghg_inversions.rhime.standard as rhime_standard
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.inversion_data import prepare_rhime_inputs_from_xarray
 from openghg_inversions.rhime import (
@@ -21,6 +22,8 @@ from openghg_inversions.rhime import (
     RhimeSampler,
     SectorSpec,
     run_rhime_from_prepared_inputs,
+    run_standard,
+    RhimeConfig,
 )
 from tests.helpers import make_trace
 
@@ -804,39 +807,42 @@ def test_adapter_output_executes_through_prepared_runner_without_openghg(
         basis_functions=basis_functions,
         averaging_period="1h",
     )
-    model_spec = RhimeModelSpec(
-        species="co2",
-        domain="EUROPE",
-        sectors=(
-            SectorSpec(
-                name="total",
-                flux_source="total-inventory",
-                x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.2},
-                variable_suffix="total",
-            ),
-        ),
-        use_bc=False,
-        likelihood=PollutionEventSettings(
-            sigma_prior={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
-        ),
+    config = RhimeConfig.from_params(
+        {
+            "species": "co2", "domain": "EUROPE",
+            "start_date": "2021-01-01", "end_date": "2021-01-02",
+            "sites": ["stale"], "averaging_period": "1h",
+            "flux_sources": ["total-inventory"], "use_bc": False,
+            "x_prior": {"pdf": "normal", "mu": 1.0, "sigma": 0.2},
+            "mismatch_model": "pollution_event",
+            "sigma_prior": {"pdf": "uniform", "lower": 0.1, "upper": 1.0},
+            "output_format": "none", "output_name": "rhime", "save_inversion_output": False,
+        },
+        multisector=False,
     )
-    run_spec = RhimeRunSpec(
-        start_date="2021-01-01",
-        end_date="2021-01-02",
-        sites=("stale",),
-        averaging_period=(None,),
-        model=model_spec,
-        output=RhimeOutputSpec(output_format="none", save_inversion_output=False),
-    )
+    monkeypatch.setattr(rhime_standard, "prepare_standard",
+                        lambda *args, **kwargs: pytest.fail("repeated acquisition/preparation"))
+    models = []
+    original_builder = rhime_standard.build_standard_model
 
-    monkeypatch.setattr(RhimeSampler, "sample", lambda self, model, **kwargs: make_trace())
+    def build(*args, **kwargs):
+        model = original_builder(*args, **kwargs)
+        models.append(model)
+        return model
 
-    result = run_rhime_from_prepared_inputs(prepared_inputs=prepared, run_spec=run_spec)
+    monkeypatch.setattr(rhime_standard, "build_standard_model", build)
+
+    sampled = make_trace(posterior=xr.Dataset({
+        "x": (("chain", "draw", "region"), np.ones((1, 1, prepared.inv_inputs.sizes["region"]))),
+    }, coords={"region": prepared.inv_inputs.region}))
+    monkeypatch.setattr(RhimeSampler, "sample", lambda self, model, **kwargs: sampled)
+
+    result = run_standard(prepared=prepared, config=config)
+    assert len(models) == 1
 
     xr.testing.assert_identical(result.inv_inputs, prepared.inv_inputs)
-    assert result.run_spec.sites == ("TAC",)
-    assert result.model is not None
-    assert {"x", "y"}.issubset(result.model.named_vars)
+    assert tuple(result.run_metadata["sites"]) == ("TAC",)
+    assert "x" in result.trace["posterior"]
 
 
 @pytest.mark.parametrize("suffix", [".nc", ".zarr"])

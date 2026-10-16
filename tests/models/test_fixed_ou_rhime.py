@@ -16,8 +16,8 @@ from openghg_inversions.observation_error import resolve_aggregation_error
 from openghg_inversions.rhime.multisector import build_multisector_rhime_model
 from openghg_inversions.rhime.outputs import annotate_likelihood_trace
 from openghg_inversions.serialization import load_trace, save_trace
-from openghg_inversions.rhime.specs import SectorSpec
-from openghg_inversions.rhime.standard import build_standard_rhime_model
+from openghg_inversions.rhime.specs import RhimeModelSpec, SectorSpec
+from openghg_inversions.rhime.standard import build_standard_model
 
 
 def _ou_inputs(*, low_rank: bool = True, zero_base: bool = False) -> xr.Dataset:
@@ -305,11 +305,16 @@ def test_standard_recipes_accept_installed_fixed_ou_likelihood(
             **common,
         )
     else:
-        model = build_standard_rhime_model(
-            design,
-            x_prior={"pdf": "normal", "mu": 1.0, "sigma": 1.0},
-            **common,
+        prior = {"pdf": "normal", "mu": 1.0, "sigma": 1.0}
+        model_spec = RhimeModelSpec(
+            species="ch4", domain="EUROPE", use_bc=False,
+            sectors=(SectorSpec("total", "inventory", prior, "total"),),
         )
+        model = build_standard_model(
+            data.assign(H=design), model_spec, priors={"x": prior},
+            likelihood_builder=add_fixed_ou_gaussian_likelihood,
+            likelihood_kwargs=common["likelihood_kwargs"],
+        ).model
 
     assert {"y", "epsilon", "ou_site_amplitude", "ou_tau_hours"} <= set(
         model.named_vars

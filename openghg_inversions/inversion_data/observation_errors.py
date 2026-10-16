@@ -2,21 +2,18 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from collections.abc import Mapping
 import logging
 
 import numpy as np
 import xarray as xr
 
-if TYPE_CHECKING:
-    from openghg_inversions.inversion_data.acquisition import RhimeMergedData
-
 logger = logging.getLogger(__name__)
 
 
 def prepare_observation_errors(
-    merged: RhimeMergedData, *, averaging_error: bool = True,
-) -> RhimeMergedData:
+    site_data: Mapping[str, xr.Dataset], *, averaging_error: bool = True,
+) -> dict[str, xr.Dataset]:
     """Derive missing ``mf_error`` on owned datasets before temporal filtering.
 
     Combine repeatability and variability in quadrature when ``averaging_error``
@@ -28,16 +25,16 @@ def prepare_observation_errors(
     NaN errors keep the existing missing-value policy.
 
     Args:
-        merged: Borrowed acquired data before filtering
+        site_data: Borrowed acquired per-site datasets before filtering
             or temporal aggregation. Existing custom ``mf_error`` is retained
             unchanged, including its labels and metadata. Missing diagnostic
             components are supplied as zero arrays for gathered assembly.
         averaging_error: Whether variability contributes to derived errors.
 
     Returns:
-        A merged handoff. Datasets needing derived errors or missing diagnostic
-        components use shallow owned containers. All numerical inputs remain
-        borrowed; complete existing-error datasets are returned unchanged.
+        A new per-site mapping. Datasets needing derived errors or missing
+        diagnostic components use shallow owned containers. All numerical inputs
+        remain borrowed; complete existing-error datasets are passed through.
         Error diagnostics and zero replacement may compute derived arrays.
 
     Raises:
@@ -45,8 +42,7 @@ def prepare_observation_errors(
     """
     # TODO: do we want to fill missing values in repeatability or variability?
     result = {}
-    for site in merged.sites:
-        borrowed = merged.site_data[site]
+    for site, borrowed in site_data.items():
         if "mf_error" in borrowed:
             missing_components = [name for name in ("mf_repeatability", "mf_variability") if name not in borrowed]
             if missing_components:
@@ -126,6 +122,4 @@ def prepare_observation_errors(
             )
             logger.info(info_msg)
 
-    if all(result[site] is dataset for site, dataset in merged.site_data.items()):
-        return merged
-    return merged.with_site_data(result, context="Observation error preparation")
+    return result

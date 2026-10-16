@@ -19,7 +19,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-from openghg_inversions.rhime import RhimeResult, run
+from openghg_inversions.rhime import run
+from openghg_inversions.postprocessing.inversion_output import InversionOutput
 
 from .likelihoods import likelihood_builder
 
@@ -28,7 +29,7 @@ def run_with_likelihood(
     *,
     config_file: str | Path | None = None,
     **kwargs: Any,
-) -> RhimeResult:
+) -> InversionOutput:
     """Run standard RHIME with a project-owned Student-t likelihood.
 
     Args:
@@ -37,7 +38,7 @@ def run_with_likelihood(
             ``config_file``.
 
     Returns:
-        The sampled result and any outputs requested by the RHIME options.
+        The sampled scientific view; requested files are written by the runner.
 
     Raises:
         TypeError: If the likelihood builder does not return a PyTensor
@@ -81,7 +82,7 @@ def _json_object(value: str) -> dict[str, Any]:
     return parsed
 
 
-def main(argv: Sequence[str] | None = None) -> RhimeResult:
+def main(argv: Sequence[str] | None = None) -> InversionOutput:
     """Parse command-line options and run the customized RHIME workflow.
 
     Args:

@@ -338,10 +338,10 @@ def adapt_resource_params(
     from openghg_inversions._flux_options import normalise_flux_aliases
     from openghg_inversions.config.paths import Paths
     from openghg_inversions.rhime._resources import resolve_resource_paths
-    from openghg_inversions.rhime.params import RhimeConfig
+    from openghg_inversions.rhime.params import DataConfig
     from openghg_inversions.rhime.specs import RhimeOutputSpec
 
-    annotations = get_type_hints(RhimeConfig) | get_type_hints(RhimeOutputSpec)
+    annotations = get_type_hints(DataConfig) | get_type_hints(RhimeOutputSpec)
 
     invocation_dir = Path.cwd()
     file_base = invocation_dir if base_dir is None else base_dir

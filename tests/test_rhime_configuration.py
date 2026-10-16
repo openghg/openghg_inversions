@@ -66,8 +66,8 @@ def test_scalar_and_expanded_requests_resolve_equally(multisector):
     )
 
     assert scalar == expanded
-    assert scalar.site_options.sites == ("TAC", "MHD")
-    assert scalar.site_options.time_resolved == (None, None)
+    assert scalar.data.site_options.sites == ("TAC", "MHD")
+    assert scalar.data.site_options.time_resolved == (None, None)
     assert isinstance(scalar.sampler, RhimeSampler)
     assert scalar.sampler.draws == 1000
     assert scalar.sampler.sample_posterior_predictive == ("y",)
@@ -117,7 +117,7 @@ def test_invalid_active_choices_fail_before_acquisition(
         rhime_params.RhimeConfig.from_params(request, multisector=multisector_mode)
 
     recipe = multisector if multisector_mode else standard
-    runner = recipe.run_rhime_multisector if multisector_mode else recipe.run_rhime
+    runner = recipe.run_rhime_multisector if multisector_mode else recipe.run_standard
     acquire = Mock(side_effect=AssertionError("invalid configuration must fail before acquisition"))
     monkeypatch.setattr(recipe.RhimeMergedData, "from_options", acquire)
     if from_ini:
@@ -148,7 +148,7 @@ def test_invalid_active_choices_fail_before_acquisition(
 )
 def test_valid_finite_choices_are_preserved(option, value):
     config = rhime_params.RhimeConfig.from_params(_request(**{option: value}), multisector=False)
-    owner = config.model if option == "aggregation_error_mode" else config
+    owner = config.model if option == "aggregation_error_mode" else config.data
     assert getattr(owner, option) == value
 
 
@@ -157,14 +157,14 @@ def test_saved_basis_path_takes_precedence_during_resolution(algorithm):
     config = rhime_params.RhimeConfig.from_params(
         _request(basis_path="saved.nc", basis_algorithm=algorithm), multisector=False
     )
-    assert config.basis_path == Path.cwd() / "saved.nc"
-    assert config.basis_algorithm == algorithm
+    assert config.data.basis_path == Path.cwd() / "saved.nc"
+    assert config.data.basis_algorithm == algorithm
 
 
 @pytest.mark.parametrize("algorithm", ("quadtree", "weighted", "region_constrained"))
 def test_builtin_basis_algorithms_resolve(algorithm):
     config = rhime_params.RhimeConfig.from_params(_request(basis_algorithm=algorithm), multisector=False)
-    assert config.basis_algorithm == algorithm
+    assert config.data.basis_algorithm == algorithm
 
 
 def test_basis_resolution_is_independent_of_legacy_registry(monkeypatch):
@@ -195,7 +195,7 @@ def test_file_overrides_precede_site_expansion(tmp_path: Path, replace_periods):
     direct = rhime_params.RhimeConfig.from_params({**configured, **overrides}, multisector=False)
 
     assert config == direct
-    assert config.site_options.averaging_period == ("1h", "1h", "1h")
+    assert config.data.site_options.averaging_period == ("1h", "1h", "1h")
     assert raw["sites"] == ["tac", "MHD"]
     assert raw["averaging_period"] == configured["averaging_period"]
 
@@ -215,8 +215,8 @@ def test_ini_decoding_precedes_recipe_defaults_and_overrides(tmp_path: Path, mul
     overrides = {"start_date": "2020-02-01"}
     updated = rhime_params.RhimeConfig.from_params({**raw, **overrides}, multisector=multisector)
 
-    assert initial.start_date == "2019-01-01"
-    assert updated.start_date == updated.model.likelihood.sigma_freq_anchor == "2020-02-01"
+    assert initial.data.start_date == "2019-01-01"
+    assert updated.data.start_date == updated.model.likelihood.sigma_freq_anchor == "2020-02-01"
     assert updated == rhime_params.RhimeConfig.from_params({**configured, **overrides}, multisector=multisector)
     assert overrides == {"start_date": "2020-02-01"}
 
@@ -260,7 +260,7 @@ def test_resolution_preserves_caller_containers_and_lazy_keywords(monkeypatch, i
         else:
             config = rhime_params.RhimeConfig.from_params(original, multisector=False)
             assert config.sampler.sample_kwargs["opaque_value"] is lazy
-            assert config.site_options.inlet == (slice("10m", "100m"), None)
+            assert config.data.site_options.inlet == (slice("10m", "100m"), None)
             assert config.model.sectors[0].x_prior == before["x_prior"]
             assert config.sampler.sample_kwargs["idata_kwargs"] is not original["sample_kwargs"]["idata_kwargs"]
             assert config.sampler.sample_kwargs["random_seed"] is not original["sample_kwargs"]["random_seed"]
@@ -280,8 +280,8 @@ def test_retained_run_uses_prepared_metadata_without_changing_request():
 
     run = config.retained_run_spec(prepared)
 
-    assert config.site_options.sites == ("TAC", "MHD")
-    assert config.site_options.averaging_period == ("1h", "2h")
+    assert config.data.site_options.sites == ("TAC", "MHD")
+    assert config.data.site_options.averaging_period == ("1h", "2h")
     assert run.sites == ("MHD",)
     assert run.averaging_period == ("2h",)
     assert (run.start_date, run.end_date) == ("2019-01-01", "2019-02-01")
@@ -293,12 +293,12 @@ def test_resolved_choices_are_available_without_a_preparation_record():
     request = _request(use_bc=False, mismatch_model=None, draws="7", time_resolved=True)
     config = rhime_params.RhimeConfig.from_params(request, multisector=False)
 
-    assert config.use_bc is config.model.use_bc is False
+    assert config.data.use_bc is config.model.use_bc is False
     assert config.sampler.draws == 7
-    assert config.site_options.time_resolved == (True, True)
-    assert config.obs_store == "user"
-    assert config.basis_algorithm == "weighted"
-    assert not hasattr(config, "preparation")
+    assert config.data.site_options.time_resolved == (True, True)
+    assert config.data.obs_store == "user"
+    assert config.data.basis_algorithm == "weighted"
+    assert not hasattr(config, "site_options")
     assert not hasattr(config, "as_data_args")
     assert not hasattr(config, "use_tracer")
 
@@ -316,28 +316,31 @@ def test_minimum_error_none_resolves_to_numeric_default():
     explicit = rhime_params.RhimeConfig.from_params(_request(min_error=0.0), multisector=False)
 
     assert unspecified == explicit
-    assert unspecified.min_error == 0.0
+    assert unspecified.data.min_error == 0.0
 
 
 def test_filtering_preserves_typed_filter_request():
     """The legacy filtering function can normalize a copy of owned choices."""
     request = _request(filters={"TAC": "six_hr_mean", "MHD": None})
     config = rhime_params.RhimeConfig.from_params(request, multisector=False)
-    before = deepcopy(config.filters)
+    before = deepcopy(config.data.filters)
     data = xr.Dataset(
         {"mf": ("time", [1.0, 3.0])},
         coords={"time": [datetime(2019, 1, 1, 12), datetime(2019, 1, 1, 13)]},
     )
     merged = from_legacy_fp_all(
-        fp_all={"TAC": data, "MHD": data}, site_options=config.site_options
+        fp_all={"TAC": data, "MHD": data}, site_options=config.data.site_options
     )
 
-    filtered = rhime.filter_observations(merged, filters=config.filters)
+    filtered, site_options = rhime.filter_observations(
+        merged.site_data, merged.site_options, filters=config.data.filters,
+    )
 
-    assert to_legacy_fp_all(filtered)["TAC"].sizes["time"] == 1
-    assert to_legacy_fp_all(filtered)["TAC"].mf.item() == 2.0
-    assert to_legacy_fp_all(filtered)["MHD"].sizes["time"] == 2
-    assert config.filters == before
+    assert site_options == config.data.site_options
+    assert filtered["TAC"].sizes["time"] == 1
+    assert filtered["TAC"].mf.item() == 2.0
+    assert filtered["MHD"].sizes["time"] == 2
+    assert config.data.filters == before
     assert request["filters"] == before
     assert to_legacy_fp_all(merged)["TAC"].sizes["time"] == 2
 
@@ -346,9 +349,9 @@ def test_configuration_api_is_public():
     assert rhime.RhimeConfig is rhime_params.RhimeConfig
     assert rhime.read_rhime_ini is read_rhime_ini
     config = rhime_params.RhimeConfig.from_params(_request(), multisector=False)
-    assert isinstance(config.site_options, SiteOptions)
+    assert isinstance(config.data.site_options, SiteOptions)
     for name in (
-        "RhimePreparationConfig", "RhimeRunnerSetup", "make_rhime_runner_setup",
+        "RhimeDataConfig", "RhimeRunnerSetup", "make_rhime_runner_setup",
         "resolve_rhime_options", "load_rhime_config", "resolve_rhime_config",
     ):
         assert not hasattr(rhime_params, name)
@@ -368,19 +371,19 @@ def test_multisector_preparation_selects_sources_from_typed_request():
     )
     merged = from_legacy_fp_all(
         {"TAC": sensitivity.sum("region").rename("fp_x_flux_sectoral").to_dataset()},
-        config.site_options,
+        config.data.site_options,
     )
     basis = SimpleNamespace(sensitivity=lambda values: sensitivity)
 
     site_data = rhime.build_sensitivities(
-        merged, basis, flux_sources=config.flux_sources,
-        use_bc=config.use_bc, bc_basis=None, multisector=True,
+        merged.site_data, basis, flux_sources=config.data.flux_sources,
+        use_bc=config.data.use_bc, bc_basis=None, multisector=True,
     )
 
     # Assignment preserves the merged dataset's labelled source axis.
     assert site_data["TAC"].H.source.values.tolist() == ["first", "second"]
     assert site_data["TAC"].H.sel(source="second").item() == 2.0
-    assert config.flux_sources == ("second", "first")
+    assert config.data.flux_sources == ("second", "first")
 
 
 def test_class_factory_preserves_inputs():
@@ -389,8 +392,8 @@ def test_class_factory_preserves_inputs():
 
     resolved = rhime_params.RhimeConfig.from_params(request, multisector=False)
     assert request == before
-    assert resolved.filters is not request["filters"]
-    assert resolved.filters["TAC"] is not request["filters"]["TAC"]
+    assert resolved.data.filters is not request["filters"]
+    assert resolved.data.filters["TAC"] is not request["filters"]["TAC"]
 
 
 def test_config_selection_borrows_values_and_rejects_unknown_attributes():
@@ -398,15 +401,15 @@ def test_config_selection_borrows_values_and_rejects_unknown_attributes():
         _request(filters={"TAC": ["six_hr_mean"]}), multisector=False,
     )
 
-    selected = config.select("site_options", "species", "filters")
+    selected = config.data.select("site_options", "species", "filters")
 
     assert tuple(selected) == ("site_options", "species", "filters")
-    assert selected["site_options"] is config.site_options
-    assert selected["filters"] is config.filters
+    assert selected["site_options"] is config.data.site_options
+    assert selected["filters"] is config.data.filters
     selected["species"] = "co2"
-    assert config.species == "ch4"
+    assert config.data.species == "ch4"
     with pytest.raises(AttributeError, match="misspelled"):
-        config.select("misspelled")
+        config.data.select("misspelled")
 
 
 def test_configuration_uses_the_sampler_owning_defaults(monkeypatch):
@@ -480,7 +483,7 @@ def test_invalid_minimum_error_fails_before_acquisition(monkeypatch, value, mult
         pytest.fail("invalid minimum error reached acquisition")
     monkeypatch.setattr(RhimeMergedData, "from_options", forbidden)
     recipe = multisector if multisector_mode else standard
-    runner = recipe.run_rhime_multisector if multisector_mode else recipe.run_rhime
+    runner = recipe.run_rhime_multisector if multisector_mode else recipe.run_standard
     with pytest.raises(ValueError, match="min_error"):
         runner(**_request(min_error=value, flux_sources=["one", "two"] if multisector_mode else ["one"]))
 
@@ -490,7 +493,7 @@ def test_minimum_error_owns_any_mapping_without_requiring_dropped_sites():
     values = UserDict({"TAC": 0.5})
     config = rhime_params.RhimeConfig.from_params(_request(min_error=values), multisector=False)
     values["TAC"] = 99.0
-    assert config.min_error == {"TAC": 0.5}
+    assert config.data.min_error == {"TAC": 0.5}
 
 
 @pytest.mark.parametrize(("old", "new", "value"), [
@@ -506,7 +509,7 @@ def test_runner_flux_deprecation_exports_canonical_configuration(old, new, value
     request = _request(**{old: value})
     with pytest.warns(DeprecationWarning, match=r"removed in 0\.9"):
         config = rhime_params.RhimeConfig.from_params(translate_rhime_aliases(request), multisector=False)
-    assert getattr(config, new) == value
+    assert getattr(config.data, new) == value
     assert old not in asdict(config)
     assert old not in config.supported_option_names()
     assert new in config.supported_option_names()
@@ -528,14 +531,98 @@ def test_runner_flux_deprecation_rejects_explicit_equal_conflicts(old, new, valu
 
 def test_canonical_flux_defaults_and_explicit_source_domain():
     default = rhime_params.RhimeConfig.from_params(_request(), multisector=False)
-    assert default.flux_store == "user"
-    assert default.flux_domain is None
+    assert default.data.flux_store == "user"
+    assert default.data.flux_domain is None
     selected = rhime_params.RhimeConfig.from_params(
         _request(flux_store="coarse-store", flux_domain="COARSE"), multisector=False
     )
-    assert selected.flux_store == "coarse-store"
-    assert selected.flux_domain == "COARSE"
-    assert selected.domain == "EUROPE"
+    assert selected.data.flux_store == "coarse-store"
+    assert selected.data.flux_domain == "COARSE"
+    assert selected.data.domain == "EUROPE"
+
+
+def test_preparation_only_ignores_unselected_group_values(monkeypatch):
+    request = _request(draws="invalid", x_prior=False, output_format="invalid")
+    sections = rhime_params.group_params(request)
+    monkeypatch.setattr(RhimeSampler, "__init__", lambda *a, **kw: pytest.fail("sampler constructed"))
+    prepared = rhime_params.DataConfig.from_params(sections["data"])
+    assert prepared.site_options.sites == ("TAC", "MHD")
+    with pytest.raises(ValueError, match="draws"):
+        rhime_params.DataConfig.from_params({**sections["data"], "draws": 2})
+    with pytest.raises(ValueError, match="typo"):
+        rhime_params.group_params({**request, "typo": 1})
+
+
+@pytest.mark.parametrize("multisector", [False, True])
+def test_data_layout_agrees_with_explicit_recipe(multisector):
+    options = rhime_params.group_params(_request())["data"]
+    options["flux_sources"] = ["first", "second"] if multisector else ["first"]
+    for recorded in ({}, {"split_by_sectors": multisector}):
+        data = rhime_params.DataConfig.from_params({**options, **recorded}, multisector=multisector)
+        assert data.split_by_sectors is multisector
+    with pytest.raises(ValueError, match="split_by_sectors.*conflicts with the selected recipe"):
+        rhime_params.DataConfig.from_params(
+            {**options, "split_by_sectors": not multisector}, multisector=multisector
+        )
+
+
+@pytest.mark.parametrize("use_bc", [False, True])
+def test_grouped_full_and_phase_resolution_share_owners(use_bc):
+    sections = rhime_params.group_params(_request(use_bc=use_bc))
+    full = rhime_params.RhimeConfig.from_params(sections, multisector=False)
+    data = rhime_params.DataConfig.from_params(sections["data"])
+    assert full.data == data
+    assert full.model == rhime_params.resolve_model_options(sections["model"], data_config=data)
+    assert full.model.use_bc is use_bc
+    assert not hasattr(full, "select")
+
+
+def test_model_bc_policy_binds_preparation_without_reinterpreting_frequency():
+    sections = rhime_params.group_params(_request(bc_freq="monthly"))
+    sections["model"]["use_bc"] = False
+    full = rhime_params.RhimeConfig.from_params(sections, multisector=False)
+    assert full.data.use_bc is True
+    assert full.model.use_bc is False
+    for claim in (None, "daily"):
+        with pytest.raises(ValueError, match="bc_freq"):
+            rhime_params.resolve_model_options({"use_bc": False, "bc_freq": claim}, data_config=full.data)
+    assert not rhime_params.resolve_model_options(
+        {"use_bc": False, "bc_freq": "monthly"}, data_config=full.data,
+    ).use_bc
+    sections["data"]["use_bc"] = False
+    sections["model"]["use_bc"] = True
+    with pytest.raises(ValueError, match="BC inputs"):
+        rhime_params.RhimeConfig.from_params(sections, multisector=False)
+
+
+def test_model_defaults_and_repeated_facts_use_saved_preparation():
+    data = rhime_params.DataConfig.from_params(
+        rhime_params.group_params(_request(start_date="2020-05-01"))["data"]
+    )
+    model = rhime_params.resolve_model_options({"mismatch_model": "pollution_event"}, data_config=data)
+    assert model.likelihood.sigma_freq_anchor == "2020-05-01"
+    for name, value in (("species", "co2"), ("domain", "OTHER"), ("flux_sources", ["other"])):
+        with pytest.raises(ValueError, match=name) as error:
+            rhime_params.resolve_model_options({name: value}, data_config=data)
+        assert f"claimed {value!r}, expected {getattr(data, name)!r}" in str(error.value)
+
+
+@pytest.mark.parametrize(("frequency", "equivalent"), [("24h", "1D"), ("H", "1h"), ("3H", "180min")])
+def test_repeated_boundary_frequency_accepts_equivalent_fixed_duration(frequency, equivalent):
+    data = rhime_params.DataConfig.from_params(
+        rhime_params.group_params(_request(bc_freq=frequency))["data"]
+    )
+    assert rhime_params.resolve_model_options({"bc_freq": equivalent}, data_config=data).use_bc
+    with pytest.raises(ValueError, match="bc_freq"):
+        rhime_params.resolve_model_options({"bc_freq": "monthly"}, data_config=data)
+    with pytest.raises(ValueError, match="bc_freq"):
+        rhime_params.resolve_model_options({"bc_freq": "invalid"}, data_config=data)
+
+
+def test_scalar_site_shorthand_stays_one_site():
+    config = rhime_params.RhimeConfig.from_params(_request(sites="TAC", time_resolved=True), multisector=False)
+    assert config.data.site_options.sites == ("TAC",)
+    assert config.data.site_options.time_resolved == (True,)
 
 
 def test_resource_paths_follow_annotations_and_preserve_origins(tmp_path, monkeypatch):
@@ -552,10 +639,10 @@ def test_resource_paths_follow_annotations_and_preserve_origins(tmp_path, monkey
         overrides={"basis_path": "override.nc", "save_trace": True},
     )
     config = rhime_params.RhimeConfig.from_params(options, multisector=False)
-    assert config.basis_path == invocation / "override.nc"
+    assert config.data.basis_path == invocation / "override.nc"
     assert config.output.country_file == saved / "country.nc"
-    assert config.bc_basis_paths == (saved / "bc.nc",)
-    assert config.domain == "EUROPE"
+    assert config.data.bc_basis_paths == (saved / "bc.nc",)
+    assert config.data.domain == "EUROPE"
     assert config.output.save_trace is True
     assert not {"fp_basis_case", "basis_directory", "bc_basis_case", "bc_basis_directory", "country_directory"} & {
         field.name for field in fields(config)
@@ -616,8 +703,8 @@ def test_canonical_path_construction_does_not_load_resources(tmp_path, monkeypat
         _request(basis_path="missing.nc", bc_basis_paths=["missing-bc.nc"], country_file="missing-country.nc"),
         multisector=False,
     )
-    assert config.basis_path == tmp_path / "missing.nc"
-    assert config.bc_basis_paths == (tmp_path / "missing-bc.nc",)
+    assert config.data.basis_path == tmp_path / "missing.nc"
+    assert config.data.bc_basis_paths == (tmp_path / "missing-bc.nc",)
     assert config.output.country_file == tmp_path / "missing-country.nc"
 
 
@@ -665,8 +752,8 @@ def test_canonical_paths_are_forwarded_without_conversion(tmp_path, monkeypatch)
         config = rhime_params.RhimeConfig.from_params(
             _request(basis_path=path, bc_basis_paths=paths, country_file=path), multisector=False,
         )
-    assert config.basis_path is path
-    assert config.bc_basis_paths is paths
+    assert config.data.basis_path is path
+    assert config.data.bc_basis_paths is paths
     assert config.output.country_file is path
 
 
@@ -704,7 +791,7 @@ def test_modern_templates_construct_without_legacy_translation(template):
     path = Path(__file__).resolve().parents[1] / "openghg_inversions/config/templates" / template
     decoded = read_rhime_ini(path)
     config = rhime_params.RhimeConfig.from_params({**decoded, **_request(sites=["TAC"])}, multisector=False)
-    assert config.bc_basis_paths is None
+    assert config.data.bc_basis_paths is None
 
 
 @pytest.mark.parametrize("name", ["xprior", "outputpath", "emissions_name", "emissions_store", "emissions_domain", "country_directory", "use_tracer"])
@@ -717,8 +804,9 @@ def test_canonical_configuration_rejects_aliases_without_warnings(name):
             rhime_params.RhimeConfig.from_params(_request(**{name: "old"}), multisector=False)
 
 
-@pytest.mark.parametrize("runner", [rhime.run_rhime, rhime.run_rhime_multisector])
-def test_runner_translates_before_canonical_configuration(monkeypatch, runner):
+@pytest.mark.parametrize("runner", [rhime.run_standard, rhime.run_rhime_multisector])
+@pytest.mark.parametrize("grouped", [False, True])
+def test_runner_translates_before_canonical_configuration(monkeypatch, runner, grouped):
     """Compatibility warnings belong to the runner, before config construction."""
     import warnings
 
@@ -738,9 +826,20 @@ def test_runner_translates_before_canonical_configuration(monkeypatch, runner):
     params = _request(emissions_store="archive", outputname="old", xprior={"pdf": "normal", "mu": 1, "sigma": 1})
     if runner is rhime.run_rhime_multisector:
         params["flux_sources"] = ["anthro", "natural"]
+    if grouped:
+        canonical = rhime_params.group_params({
+            name: value for name, value in params.items()
+            if name not in {"emissions_store", "outputname", "xprior"}
+        })
+        canonical["data"]["emissions_store"] = params["emissions_store"]
+        canonical["model"]["xprior"] = params["xprior"]
+        canonical["output"]["outputname"] = params["outputname"]
+        params = canonical
+    before = deepcopy(params)
     with pytest.warns(DeprecationWarning), pytest.raises(ConfigReached):
         runner(**params)
-    assert seen[0].flux_store == "archive"
+    assert params == before
+    assert seen[0].data.flux_store == "archive"
     assert seen[0].model.sectors[0].x_prior["mu"] == 1
 
 
@@ -762,3 +861,40 @@ def test_configuration_does_not_import_compatibility_owners():
     for node in ast.walk(source):
         if isinstance(node, ast.ImportFrom):
             assert not any(name in (node.module or "") for name in ("_runner_compat", "_flux_options", "hbmcmc"))
+
+
+def test_data_group_has_no_unshipped_preparation_alias():
+    config = rhime_params.RhimeConfig.from_params(_request(), multisector=False)
+    assert isinstance(config.data, rhime_params.DataConfig)
+    assert not hasattr(config, "preparation")
+    assert not hasattr(rhime_params, "PreparationConfig")
+    with pytest.raises(ValueError, match="preparation"):
+        rhime_params.group_params({"preparation": {}})
+
+
+def test_grouped_unknown_names_are_reported_together():
+    with pytest.raises(ValueError) as raised:
+        rhime_params.group_params({"data": {"unknown_data": 1}, "model": {"unknown_model": 2}})
+    assert "unknown_data" in str(raised.value)
+    assert "unknown_model" in str(raised.value)
+
+
+def test_data_resolver_rejects_alias_without_translation():
+    import warnings
+
+    options = rhime_params.group_params(_request())["data"]
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", DeprecationWarning)
+        with pytest.raises(ValueError, match="emissions_name"):
+            rhime_params.DataConfig.from_params({**options, "emissions_name": ["old"]})
+
+
+def test_canonical_grouped_configuration_rejects_aliases_without_warnings():
+    import warnings
+
+    params = rhime_params.group_params(_request())
+    params["model"]["xprior"] = {"pdf": "normal", "mu": 1, "sigma": 1}
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", DeprecationWarning)
+        with pytest.raises(ValueError, match="model.xprior"):
+            rhime_params.RhimeConfig.from_params(params, multisector=False)

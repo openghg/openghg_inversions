@@ -11,15 +11,18 @@ defaults; scientific callable signatures do not define the external schema.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import MISSING, dataclass, field, fields
+from dataclasses import MISSING, dataclass, field, fields, replace
 from pathlib import Path
-from typing import Any, ClassVar, cast, get_args, get_type_hints
+from typing import Any, get_args, get_type_hints
+
+import pandas as pd
 
 from openghg_inversions.rhime._resources import resolve_resource_paths
 from openghg_inversions.flux_sanitization import FluxNonFiniteCheck
 from openghg_inversions.inversion_data._site_options import SiteOptions
 from openghg_inversions.model_error import MinErrorConfig
 from openghg_inversions.inversion_data.prepared_inputs import RhimePreparedInputs
+from openghg_inversions.inversion_inputs import normalise_frequency
 from openghg_inversions.model_error import normalise_min_error, normalise_min_error_options
 from openghg_inversions.models._flux import safe_pymc_name
 from openghg_inversions.observation_error import AggregationErrorMode
@@ -42,25 +45,12 @@ from openghg_inversions.rhime.specs import (
 
 
 @dataclass(frozen=True, kw_only=True)
-class RhimeConfig:
-    """Complete resolved requested configuration before scientific data access.
+class DataConfig:
+    """Resolved acquisition and preparation choices, independent of inference.
 
-    Acquisition and preparation choices are direct fields. ``site_options``
-    holds complete requested selectors; ``model`` holds scientific recipe
-    choices, ``output`` final-product policy and ``sampler`` sampling settings.
-    Inference executes only when the sampler receives a constructed model.
-
-    Use :meth:`from_params` for canonical external options. It owns ordinary
-    configuration containers and borrows opaque numerical values. Runner
-    frontends translate deprecated spellings before construction; this class
-    has no alias vocabulary and emits no alias deprecation warnings.
-    Canonical requests retain only exact typed paths; resource loading belongs
-    to runners.
-    Direct construction and dataclass replacement expect
-    already-resolved values and do not copy them.
-    A frozen record does not make contained mappings or the sampler immutable.
-    Acquisition and filtering leave the requested choices intact. The record
-    contains no scientific inputs, raw options or retained execution description.
+    External options enter through ``from_params``. Ordinary option containers
+    are owned; numerical payloads remain borrowed. Direct construction expects
+    resolved values and does not copy or execute scientific work.
     """
 
     site_options: SiteOptions
@@ -68,7 +58,6 @@ class RhimeConfig:
     domain: str
     start_date: str
     end_date: str
-    output_name: str
     flux_sources: tuple[str, ...]
     split_by_sectors: bool = False
     bc_store: str = "user"
@@ -98,245 +87,334 @@ class RhimeConfig:
     min_error_options: dict[str, bool] = field(default_factory=lambda: normalise_min_error_options(None))
     flux_non_finite_check: FluxNonFiniteCheck = "lazy"
 
-    model: RhimeModelSpec
-    output: RhimeOutputSpec
-    sampler: RhimeSampler
-
-    _COMPOSED_FIELDS: ClassVar[frozenset[str]] = frozenset({"site_options", "model", "output", "sampler"})
 
     @classmethod
-    def preparation_option_names(cls) -> frozenset[str]:
-        """Declare external preparation choices through their concrete owners."""
-        return frozenset(setting.name for setting in fields(cls)) - cls._COMPOSED_FIELDS | frozenset(
-            setting.name for setting in fields(SiteOptions)
+    def option_names(cls) -> frozenset[str]:
+        """External names declared by data and site-selector owners."""
+        return frozenset(f.name for f in fields(cls) if f.name != "site_options") | frozenset(
+            f.name for f in fields(SiteOptions)
         )
 
     @classmethod
     def required_option_names(cls) -> frozenset[str]:
-        """Declare required raw values before translating composed settings.
-
-        Sources keep their own validation and layout comes from the recipe;
-        neither replaces the required site shorthand or ordinary request values.
-        """
+        """Required data choices before site shorthand resolution."""
         return frozenset(
-            setting.name for setting in fields(cls)
-            if setting.default is MISSING and setting.default_factory is MISSING
-            and setting.name not in cls._COMPOSED_FIELDS | {"flux_sources"}
+            f.name for f in fields(cls)
+            if f.default is MISSING and f.default_factory is MISSING
+            and f.name not in {"site_options", "flux_sources"}
         ) | frozenset(SiteOptions.REQUIRED_INPUT_NAMES)
 
     @classmethod
-    def supported_option_names(cls) -> frozenset[str]:
-        """Combine advertised external choices without exposing internal fields."""
-        return (
-            cls.preparation_option_names()
-            | frozenset(RhimeModelSpec.CONFIG_OPTION_NAMES)
-            | LIKELIHOOD_OPTION_NAMES
-            | RhimeOutputSpec.option_names()
-            | frozenset(RhimeSampler.CONFIG_OPTION_NAMES)
-        )
+    def from_params(cls, params: Mapping[str, Any], *, multisector: bool = False) -> DataConfig:
+        """Resolve acquisition and preparation options without constructing other groups.
 
-    @classmethod
-    def from_params(
-        cls,
-        params: Mapping[str, Any],
-        *,
-        multisector: bool,
-    ) -> RhimeConfig:
-        """Resolve external options into the complete requested run.
-
-        Relative filesystem paths resolve from the invocation working directory;
-        already resolved absolute paths pass through unchanged. File frontends
-        must supply paths resolved against their own documented file base.
+        Unknown or wrong-phase names fail. An explicit ``split_by_sectors``
+        must agree with the selected ``multisector`` recipe. Select the data mapping from
+        ``group_params`` first when consuming a shared configuration file.
 
         Args:
-            params: Python or decoded file options after winning overrides.
-                Only canonical option names are accepted.
+            params: Canonical acquisition/preparation options, including site selectors.
+            multisector: Explicit recipe selection; omitted layout values inherit it.
+
+        Returns:
+            Resolved data choices with owned option containers and borrowed arrays.
+
+        Raises:
+            ValueError: If required options are missing, values are invalid, or an
+                explicit layout conflicts with the selected recipe.
+        """
+        remaining = normalise_rhime_params(params)
+        remaining = resolve_resource_paths(remaining, annotations=get_type_hints(cls), base_dir=Path.cwd())
+        unsupported = sorted(set(remaining) - cls.option_names())
+        if unsupported:
+            raise ValueError(f"Unsupported data parameter(s): {unsupported!r}")
+        if "split_by_sectors" in remaining and remaining["split_by_sectors"] != multisector:
+            raise ValueError(
+                f"`split_by_sectors={remaining['split_by_sectors']!r}` conflicts with "
+                f"the selected recipe (multisector={multisector!r})."
+            )
+        missing = sorted(name for name in cls.required_option_names()
+                         if name not in remaining or is_missing_required_value(remaining[name]))
+        if missing:
+            raise ValueError(f"Required RHIME parameter(s) missing: {missing!r}")
+        flux_sources = resolve_flux_sources(flux_sources=remaining.pop("flux_sources", None))
+        if multisector and len(flux_sources) < 2:
+            raise ValueError("`run_rhime_multisector` requires at least two flux sources.")
+        if not multisector and len(flux_sources) != 1:
+            raise ValueError("`run_standard` requires exactly one flux source.")
+        check = remaining.get("flux_non_finite_check", cls.flux_non_finite_check)
+        if check not in get_args(FluxNonFiniteCheck):
+            raise ValueError(f"Invalid `flux_non_finite_check`: {check!r}.")
+        basis_algorithm = remaining.get("basis_algorithm", cls.basis_algorithm)
+        allowed = ("quadtree", "weighted", "region_constrained")
+        if (remaining.get("basis_path") is None and remaining.get("basis_partition_path") is None
+                and remaining.get("basis_partition_paths") is None and basis_algorithm not in allowed):
+            raise ValueError(f"`basis_algorithm` must be one of {allowed!r}; got {basis_algorithm!r}.")
+        _bc_frequency_policy(remaining.get("bc_freq", cls.bc_freq))
+        remaining["sites"] = as_list(remaining["sites"])
+        site_options = SiteOptions.from_inputs(**{
+            f.name: remaining.pop(f.name) for f in fields(SiteOptions) if f.name in remaining
+        })
+        remaining["filters"] = _copy_option_containers(remaining.get("filters", cls.filters))
+        remaining["min_error"] = normalise_min_error(remaining.get("min_error", cls.min_error))
+        remaining["min_error_options"] = normalise_min_error_options(remaining.get("min_error_options"))
+        remaining["split_by_sectors"] = multisector
+        return cls(site_options=site_options, flux_sources=tuple(flux_sources), **remaining)
+
+    def select(self, *names: str) -> dict[str, Any]:
+        """Return named direct attributes in a new dictionary, borrowing values."""
+        return {name: getattr(self, name) for name in names}
+
+    def to_params(self) -> dict[str, Any]:
+        """Return these choices as external options that :meth:`from_params` reads back.
+
+        Site selectors are flattened to their option names; values are borrowed.
+        """
+        site_names = {f.name for f in fields(SiteOptions)}
+        params = {name: getattr(self, name) for name in self.option_names() - site_names}
+        params.update({name: getattr(self.site_options, name) for name in site_names})
+        return params
+
+
+def retained_run_spec(
+    data: DataConfig, prepared: RhimePreparedInputs, *, model: RhimeModelSpec, output: RhimeOutputSpec,
+) -> RhimeRunSpec:
+    """Compose the sites retained by preparation with the requested dates and choices.
+
+    Multisector and nested execution retain this transitional run envelope.
+    Standard execution passes the separate choices and prepared inputs directly.
+
+    Args:
+        data: Data choices that produced ``prepared``.
+        prepared: Prepared inputs whose retained sites and averaging periods are recorded.
+        model: Resolved model choices.
+        output: Requested output choices.
+
+    Returns:
+        The run specification used by model construction, results and products.
+    """
+    return RhimeRunSpec(
+        start_date=data.start_date, end_date=data.end_date,
+        sites=tuple(prepared.sites), averaging_period=tuple(prepared.averaging_period),
+        model=model, output=output, split_by_sectors=data.split_by_sectors,
+    )
+
+
+@dataclass(frozen=True, kw_only=True)
+class RhimeConfig:
+    """Complete requested configuration with one authoritative owner per group."""
+
+    data: DataConfig
+    model: RhimeModelSpec
+    output: RhimeOutputSpec
+    sampler: RhimeSampler
+
+    @classmethod
+    def supported_option_names(cls) -> frozenset[str]:
+        """Combine external choices declared by concrete owners."""
+        return (DataConfig.option_names() | frozenset(RhimeModelSpec.CONFIG_OPTION_NAMES)
+                | LIKELIHOOD_OPTION_NAMES | RhimeOutputSpec.option_names()
+                | frozenset(RhimeSampler.CONFIG_OPTION_NAMES))
+
+    @classmethod
+    def from_params(cls, params: Mapping[str, Any], *, multisector: bool) -> RhimeConfig:
+        """Resolve flat or grouped requests once before acquisition.
+
+        Group mappings permit a model to omit BC terms while preparation keeps
+        BC inputs available. Flat options retain their established precedence.
+
+        Args:
+            params: Canonical flat options or mappings grouped by their owners.
             multisector: Whether to resolve the multisector recipe.
 
         Returns:
-            Direct acquisition/preparation fields, scientific model, output and
-            existing sampler choices.
-            Site shorthand is completely expanded before this returns. No data
-            access, model construction or sampling is performed.
+            Acquisition, model, sampler and output configuration without scientific I/O.
 
         Raises:
-            ValueError: If options are missing, unsupported, malformed, or
-                incompatible with the selected runner mode.
+            ValueError: If required options are missing, unsupported, inconsistent or invalid.
         """
-        normalized = normalise_rhime_params(params)
-        normalized = resolve_resource_paths(normalized, annotations=get_type_hints(cls), base_dir=Path.cwd())
-        validate_supported_params(normalized)
-        validate_required_params(normalized)
-
-        for name, choices in (
-            ("flux_non_finite_check", get_args(FluxNonFiniteCheck)),
-            ("aggregation_error_mode", get_args(AggregationErrorMode)),
-        ):
-            if name in normalized and normalized[name] not in choices:
-                raise ValueError(f"`{name}` must be one of {choices!r}; got {normalized[name]!r}.")
-
-        remaining = normalized
-        flux_sources = resolve_flux_sources(flux_sources=remaining.pop("flux_sources", None))
-        sector_sources = normalise_sector_sources(remaining.pop("sector_sources", None))
-        if not multisector and sector_sources is not None:
-            raise ValueError("`sector_sources` is only supported by `run_rhime_multisector`.")
-        data_flux_sources = (
-            _validate_sector_source_mapping(flux_sources, sector_sources)
-            if sector_sources is not None
-            else flux_sources
-        )
-        if multisector and len(data_flux_sources) < 2:
-            raise ValueError("`run_rhime_multisector` requires at least two flux sources.")
-        if not multisector and len(flux_sources) != 1:
-            raise ValueError("`run_rhime` requires exactly one flux source.")
-
-        species = remaining.pop("species")
-        sites = as_list(remaining.pop("sites")) or []
-        domain = remaining.pop("domain")
-        averaging_period = remaining.pop("averaging_period")
-        start_date = remaining.pop("start_date")
-        end_date = remaining.pop("end_date")
-        output_name = remaining.pop("output_name")
-
-        x_prior = remaining.pop("x_prior", None)
-        bc_prior = normalise_optional_mapping(remaining.pop("bc_prior", None))
-        offset_prior = normalise_optional_mapping(remaining.pop("offset_prior", None))
-        raw_sector_priors = remaining.pop("sector_priors", None)
-        sector_priors = None if raw_sector_priors is None else {
-            str(sector): prior for sector, prior in raw_sector_priors.items()
-        }
-        if multisector:
-            validate_multisector_x_prior(x_prior)
-        offset_args = normalise_optional_mapping(remaining.pop("offset_args", None))
-
-        use_bc = remaining.get("use_bc", cls.use_bc)
-        if use_bc and bc_prior is None:
-            bc_prior = dict(DEFAULT_BC_PRIOR)
-        mismatch_model = remaining.pop("mismatch_model", None)
-        likelihood = _make_likelihood_settings(
-            remaining,
-            mismatch_model=mismatch_model,
-            start_date=start_date,
-        )
-        add_offset = remaining.pop("add_offset", RhimeModelSpec.add_offset)
-        if add_offset and offset_prior is None:
-            offset_prior = dict(DEFAULT_OFFSET_PRIOR)
-        aggregation_error_mode = cast(
-            AggregationErrorMode,
-            remaining.pop("aggregation_error_mode", RhimeModelSpec.aggregation_error_mode),
-        )
-
-        sampler_options = {
-            name: remaining.pop(name) for name in RhimeSampler.CONFIG_OPTION_NAMES if name in remaining
-        }
-        for name in RhimeSampler.MAPPING_OPTION_NAMES:
-            if name in sampler_options:
-                sampler_options[name] = normalise_optional_mapping(sampler_options[name])
-        sampler = RhimeSampler(**sampler_options)
-        output_options = {
-            name: remaining.pop(name) for name in RhimeOutputSpec.option_names() if name in remaining
-        }
-        output_spec = RhimeOutputSpec.from_params(
-            {**output_options, "output_name": output_name}, multisector=multisector,
-        )
-        model_spec = _make_model_spec(
-            species=species,
-            domain=domain,
-            flux_sources=flux_sources,
-            x_prior=x_prior,
-            sector_priors=sector_priors,
-            sector_sources=sector_sources,
-            bc_prior=bc_prior,
-            offset_prior=offset_prior,
-            use_bc=use_bc,
-            likelihood=likelihood,
-            add_offset=add_offset,
-            offset_args=offset_args,
-            aggregation_error_mode=aggregation_error_mode,
-        )
-        basis_algorithm = remaining.get("basis_algorithm", cls.basis_algorithm)
-        allowed_basis_algorithms = ("quadtree", "weighted", "region_constrained")
-        if (
-            remaining.get("basis_path") is None
-            and remaining.get("basis_partition_path") is None
-            and remaining.get("basis_partition_paths") is None
-            and basis_algorithm not in allowed_basis_algorithms
-        ):
-            raise ValueError(
-                f"`basis_algorithm` must be one of {allowed_basis_algorithms!r} when no saved basis "
-                f"is supplied; got {basis_algorithm!r}."
-            )
-        min_error = normalise_min_error(remaining.pop("min_error", cls.min_error))
-        min_error_options = normalise_min_error_options(remaining.pop("min_error_options", None))
-        site_options = SiteOptions.from_inputs(
-            sites=sites,
-            averaging_period=averaging_period,
-            **{
-                setting.name: remaining.pop(setting.name)
-                for setting in fields(SiteOptions)
-                if setting.name in remaining
-            },
-        )
-        filters = _copy_option_containers(remaining.pop("filters", cls.filters))
-        # Recipe mode owns the resolved layout, preserving its precedence over
-        # the legacy duplicate raw flag. Everything left is a direct field.
-        remaining.pop("split_by_sectors", None)
+        sections = group_params(params)
+        if is_missing_required_value(sections["output"].get("output_name")):
+            raise ValueError("Required RHIME parameter(s) missing: ['output_name']")
+        # Preserve routing errors before the recipe's source-count check.
+        sector_sources = sections["model"].get("sector_sources")
+        if multisector and isinstance(sector_sources, Mapping):
+            source_names = as_list(sections["data"].get("flux_sources")) or []
+            if len(source_names) < 2:
+                _validate_sector_source_mapping(source_names, normalise_sector_sources(sector_sources) or {})
+        data = DataConfig.from_params(sections["data"], multisector=multisector)
+        model = resolve_model_options(sections["model"], data_config=data)
+        # Multisector source routing owns the retained source order.
+        if multisector and sections["model"].get("sector_sources") is not None:
+            data = replace(data, flux_sources=tuple(s.flux_source for s in model.sectors))
         return cls(
-            site_options=site_options,
-            species=species,
-            domain=domain,
-            start_date=start_date,
-            end_date=end_date,
-            output_name=output_name,
-            flux_sources=tuple(data_flux_sources),
-            split_by_sectors=multisector,
-            model=model_spec,
-            output=output_spec,
-            sampler=sampler,
-            filters=filters,
-            min_error=min_error,
-            min_error_options=min_error_options,
-            **remaining,
+            data=data, model=model,
+            sampler=resolve_sampler_options(sections["sampler"]),
+            output=RhimeOutputSpec.from_params(sections["output"], multisector=multisector),
         )
-
-    def select(self, *names: str) -> dict[str, Any]:
-        """Select named resolved attributes for an explicit scientific call.
-
-        Args:
-            *names: Attribute names to forward, written at the call site.
-
-        Returns:
-            A new dictionary containing the selected values by reference.
-            Selection does not copy containers or numerical arrays, resolve
-            defaults, or apply overrides.
-
-        Raises:
-            AttributeError: If a requested attribute does not exist.
-        """
-        return {name: getattr(self, name) for name in names}
 
     def retained_run_spec(self, prepared: RhimePreparedInputs) -> RhimeRunSpec:
-        """Describe execution using prepared sites and requested date bounds.
-
-        Args:
-            prepared: Canonical model inputs with authoritative retained sites
-                and averaging periods. Its numerical arrays remain borrowed.
-
-        Returns:
-            Run metadata composed with the resolved model and output choices.
-        """
-        return RhimeRunSpec(
-            start_date=self.start_date,
-            end_date=self.end_date,
-            sites=tuple(prepared.sites),
-            averaging_period=tuple(prepared.averaging_period),
-            model=self.model,
-            output=self.output,
-            split_by_sectors=self.split_by_sectors,
-        )
+        """Compose retained sites with this request; see :func:`retained_run_spec`."""
+        return retained_run_spec(self.data, prepared, model=self.model, output=self.output)
 
 
-RHIME_PREPARATION_OPTION_NAMES = RhimeConfig.preparation_option_names()
+# Data facts a model request may repeat; each must agree with the data configuration.
+REQUEST_CLAIM_NAMES = (
+    "species", "domain", "flux_sources", "start_date", "end_date", "split_by_sectors", "bc_freq", "use_bc",
+)
+
+
+def option_groups() -> dict[str, frozenset[str]]:
+    """Expose canonical option names from their existing concrete owners."""
+    return {
+        "data": DataConfig.option_names(),
+        "model": frozenset(RhimeModelSpec.CONFIG_OPTION_NAMES) | LIKELIHOOD_OPTION_NAMES | set(REQUEST_CLAIM_NAMES),
+        "sampler": frozenset(RhimeSampler.CONFIG_OPTION_NAMES),
+        "output": RhimeOutputSpec.option_names(),
+    }
+
+
+def group_params(params: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
+    """Group canonical flat options without validating inactive values or defaults.
+
+    Already grouped mappings are accepted as well. Names are checked even for
+    inactive groups; each selected resolver owns its value validation.
+
+    Args:
+        params: Canonical flat options or data/model/sampler/output group mappings.
+
+    Returns:
+        New dictionaries grouped by their explicit owners, borrowing option values.
+
+    Raises:
+        ValueError: If a group is not a mapping or an option name is unsupported.
+    """
+    owners = option_groups()
+    if set(params) & owners.keys():
+        unknown = list(set(params) - owners.keys())
+        result = {}
+        for group, names in owners.items():
+            values = params.get(group, {})
+            if not isinstance(values, Mapping):
+                raise ValueError(f"`{group}` must be a mapping.")
+            values = dict(values)
+            unknown.extend(f"{group}.{name}" for name in set(values) - names)
+            result[group] = values
+        if unknown:
+            raise ValueError(f"Unsupported grouped RHIME parameter(s): {sorted(unknown)!r}")
+        return result
+    normalized = dict(params)
+    validate_supported_params(normalized)
+    result = {group: {} for group in owners}
+    for name, value in normalized.items():
+        for group, names in owners.items():
+            if name in names:
+                result[group][name] = value
+                break
+    return result
+
+
+def resolve_sampler_options(params: Mapping[str, Any]) -> RhimeSampler:
+    """Resolve only sampler choices using the existing sampler's defaults.
+
+    Args:
+        params: Canonical sampler options; omitted options retain sampler defaults.
+
+    Returns:
+        A fresh sampler configuration without executing inference.
+
+    Raises:
+        ValueError: If an option is unsupported or has an invalid value.
+    """
+    remaining = normalise_rhime_params(params)
+    unknown = sorted(set(remaining) - set(RhimeSampler.CONFIG_OPTION_NAMES))
+    if unknown:
+        raise ValueError(f"Unsupported sampler parameter(s): {unknown!r}")
+    for name in RhimeSampler.MAPPING_OPTION_NAMES:
+        if name in remaining:
+            remaining[name] = normalise_optional_mapping(remaining[name])
+    return RhimeSampler(**remaining)
+
+
+def _bc_frequency_policy(value: str | None) -> str | pd.Timedelta | None:
+    """Report the configuration key when the shared frequency policy is invalid."""
+    try:
+        return normalise_frequency(value)
+    except ValueError as exc:
+        raise ValueError(f"Invalid `bc_freq`: {value!r}.") from exc
+
+
+def resolve_model_options(params: Mapping[str, Any], *, data_config: DataConfig) -> RhimeModelSpec:
+    """Bind raw model choices to authoritative acquisition and preparation choices.
+
+    Omitted BC use inherits the data configuration. Explicit BC use requires prepared BC
+    inputs; repeated temporal or source facts must agree with the data configuration.
+
+    Args:
+        params: External model options and any repeated data facts.
+        data_config: Resolved acquisition and preparation choices that own those facts.
+
+    Returns:
+        Model choices bound to the data configuration.
+
+    Raises:
+        ValueError: If options are unsupported or invalid, repeated data facts
+            conflict, or the model requires unavailable BC inputs.
+    """
+    remaining = normalise_rhime_params(params)
+    facts = tuple(name for name in REQUEST_CLAIM_NAMES if name != "use_bc")
+    unknown = sorted(set(remaining) - set(RhimeModelSpec.CONFIG_OPTION_NAMES)
+                     - LIKELIHOOD_OPTION_NAMES - set(facts) - {"use_bc"})
+    if unknown:
+        raise ValueError(f"Unsupported model parameter(s): {unknown!r}")
+    for name in facts:
+        if name in remaining:
+            claimed = remaining.pop(name)
+            claim = claimed
+            if name == "flux_sources":
+                claim = tuple(as_list(claim) or ())
+            expected = getattr(data_config, name)
+            matches = (
+                _bc_frequency_policy(claim) == _bc_frequency_policy(expected)
+                if name == "bc_freq" else claim == expected
+            )
+            if not matches:
+                raise ValueError(f"`{name}` conflicts with data: claimed {claimed!r}, expected {expected!r}.")
+    use_bc = remaining.pop("use_bc", data_config.use_bc)
+    if use_bc and not data_config.use_bc:
+        raise ValueError("Model `use_bc=True` requires data configured with BC inputs.")
+    flux_sources = list(data_config.flux_sources)
+    sector_sources = normalise_sector_sources(remaining.pop("sector_sources", None))
+    if sector_sources is not None:
+        if not data_config.split_by_sectors:
+            raise ValueError("`sector_sources` is only supported by `run_rhime_multisector`.")
+        _validate_sector_source_mapping(flux_sources, sector_sources)
+    x_prior = remaining.pop("x_prior", None)
+    if data_config.split_by_sectors:
+        validate_multisector_x_prior(x_prior)
+    sector_priors = remaining.pop("sector_priors", None)
+    if sector_priors is not None:
+        sector_priors = {str(name): prior for name, prior in sector_priors.items()}
+    bc_prior = normalise_optional_mapping(remaining.pop("bc_prior", None))
+    if use_bc and bc_prior is None:
+        bc_prior = dict(DEFAULT_BC_PRIOR)
+    add_offset = remaining.pop("add_offset", RhimeModelSpec.add_offset)
+    offset_prior = normalise_optional_mapping(remaining.pop("offset_prior", None))
+    if add_offset and offset_prior is None:
+        offset_prior = dict(DEFAULT_OFFSET_PRIOR)
+    offset_args = normalise_optional_mapping(remaining.pop("offset_args", None))
+    aggregation = remaining.pop("aggregation_error_mode", RhimeModelSpec.aggregation_error_mode)
+    if aggregation not in get_args(AggregationErrorMode):
+        raise ValueError(f"Invalid `aggregation_error_mode`: {aggregation!r}.")
+    likelihood = _make_likelihood_settings(
+        remaining, mismatch_model=remaining.pop("mismatch_model", None), start_date=data_config.start_date,
+    )
+    return _make_model_spec(
+        species=data_config.species, domain=data_config.domain, flux_sources=flux_sources,
+        x_prior=x_prior, sector_priors=sector_priors, sector_sources=sector_sources,
+        bc_prior=bc_prior, offset_prior=offset_prior, use_bc=use_bc, likelihood=likelihood,
+        add_offset=add_offset, offset_args=offset_args, aggregation_error_mode=aggregation,
+    )
 
 
 def as_list(value: str | Sequence[str] | None) -> list[str] | None:
@@ -473,7 +551,7 @@ def validate_multisector_x_prior(x_prior: Mapping[str, Any] | None) -> None:
         return
     raise ValueError(
         "Invalid RHIME config value for `x_prior`: multi-sector source-keyed priors are not "
-        "supported via `x_prior`; use `sector_priors` keyed by sector name, or provide "
+        "supported via `xprior`/`x_prior`; use `sector_priors` keyed by sector name, or provide "
         "a single shared prior dict with top-level `pdf`."
     )
 
@@ -498,11 +576,6 @@ def normalise_sector_sources(
     return normalized
 
 
-def required_run_params() -> set[str]:
-    """Return external requirements declared by the requested configuration."""
-    return set(RhimeConfig.required_option_names())
-
-
 def is_missing_required_value(value: Any) -> bool:
     """Return true when a required RHIME parameter has no usable value."""
     if value is None:
@@ -512,17 +585,6 @@ def is_missing_required_value(value: Any) -> bool:
     if isinstance(value, Sequence) and not isinstance(value, str | bytes) and len(value) == 0:
         return True
     return False
-
-
-def validate_required_params(params: Mapping[str, Any]) -> None:
-    """Raise if normalized run parameters are missing required values."""
-    missing = [
-        name
-        for name in sorted(required_run_params())
-        if name not in params or is_missing_required_value(params[name])
-    ]
-    if missing:
-        raise ValueError(f"Required RHIME parameter(s) missing: {missing!r}")
 
 
 def validate_supported_params(params: Mapping[str, Any]) -> None:

@@ -11,17 +11,14 @@ from openghg_inversions.rhime import (
     run,
     run_multisector,
     run_nested,
-    run_rhime,
     run_rhime_multisector,
     run_rhime_nested,
-    run_standard,
     with_prepared_rhime_sites,
     with_prepared_sites,
 )
 
 
 def test_established_imports_are_same_implementations():
-    assert run_rhime is run_standard
     assert run_rhime_multisector is run_multisector
     assert run_rhime_nested is run_nested
     assert RhimeMergedData is MergedData

@@ -15,8 +15,10 @@ from typing import Any, Literal
 
 import xarray as xr
 
+from openghg_inversions.postprocessing.contracts import OutputContract
+
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
-from openghg_inversions.models.priors import PriorArgs
+from openghg_inversions.models.priors import PriorArgs, prior_records
 from openghg_inversions.models.scalar_sigma import (
     ScalarSigmaEigenbasis,
     add_scalar_sigma_eigen_likelihood,
@@ -71,8 +73,9 @@ def annotate_co2_trace(
     Returns:
         The annotated trace.
     """
-    roles = dict(built.variable_roles)
-    metadata = dict(built.metadata)
+    trace.attrs["rhime_priors"] = json.dumps(prior_records(built.model))
+    roles = dict(built.output_contract.variable_roles)
+    metadata = dict(built.output_contract.metadata)
     trace.attrs["rhime_variable_roles"] = json.dumps(roles, sort_keys=True)
     trace.attrs["rhime_model_metadata"] = json.dumps(metadata, sort_keys=True)
 
@@ -414,14 +417,16 @@ def build_rhime_co2(
             variable_roles[role] = name
     built = RhimeModelBuildResult(
         model=model,
-        variable_roles=variable_roles,
-        metadata={
-            "recipe": "co2",
-            "kind": "builtin",
-            "prior": "correlated arithmetic-moment lognormal",
-            "basis_artifact_source": getattr(prepared, "basis_artifact_source", "unknown"),
-            "basis_artifact_path": getattr(prepared, "basis_artifact_path", None),
-        },
+        output_contract=OutputContract(
+            variable_roles=variable_roles,
+            metadata={
+                "recipe": "co2",
+                "kind": "builtin",
+                "prior": "correlated arithmetic-moment lognormal",
+                "basis_artifact_source": getattr(prepared, "basis_artifact_source", "unknown"),
+                "basis_artifact_path": getattr(prepared, "basis_artifact_path", None),
+            },
+        ),
     )
     return built
 

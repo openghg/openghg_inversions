@@ -52,9 +52,11 @@ The core principles for new RHIME work are:
 * Use scientifically meaningful names, explicit inputs, and ordinary callable
   components. Configuration is a convenience for selecting resolved values.
 * Accept small duplication when it keeps alternative scientific recipes clear.
+  Within one recipe, full and saved routes call the same step functions with the
+  same objects; a saved route only loads a checkpoint before and saves one after.
 * Use dataclasses for concrete scientific concepts or durable handoffs.
 * Normalize configuration at its owning boundary and forward named values
-  explicitly, including an explicit ``config.select("name", ...)`` selection
+  explicitly, including an explicit ``config.data.select("name", ...)`` selection
   where useful.
 * Keep helpers close to their scientific owner. Tiny registries can serve
   homogeneous families such as filters without controlling the whole model.
@@ -183,9 +185,12 @@ own constructor and resolution details. The request precedes preparation;
 retained-site execution facts become known later. Frozen records do not imply
 recursive immutability of borrowed arrays or caller-owned containers.
 
-Configuration grouping and reusable handoffs are being reconsidered in
-`PR 802 <https://github.com/openghg/openghg_inversions/pull/802>`_. Check its
-current proposal and implementation status before adopting those interfaces.
+Configuration groups acquisition and preparation choices under
+``RhimeConfig.data: DataConfig``. The runner acquires data separately and passes
+it into scientific preparation. ``MergedData`` holds acquired data only;
+preparation steps pass per-site datasets and ``SiteOptions`` between them. The standard recipe supports reusable preparation and sample manifests; see
+:doc:`/usage/staged_workflow`. The remaining family adoption tasks from
+`PR 802 <https://github.com/openghg/openghg_inversions/pull/802>`_ remain active.
 This guide does not fix private module locations, configuration class layout,
 or future manifest structure. Existing templates and complete option listings
 belong with their recipes and usage references.

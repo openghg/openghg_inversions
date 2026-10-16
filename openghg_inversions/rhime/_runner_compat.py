@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import warnings
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from typing import Any
 
 from openghg_inversions._flux_options import normalise_flux_aliases
@@ -24,21 +24,49 @@ _OUTPUT_FORMAT_ALIASES = {
 }
 
 
-def normalise_param_aliases(params: Mapping[str, Any]) -> dict[str, Any]:
-    """Normalize legacy config spellings to modern snake-case names."""
-    normalized = dict(params)
-    if "country_directory" in normalized:
-        raise ValueError(
+# Deprecated spellings recognised when classifying request names by owner.
+REQUEST_ALIASES = {**_ALIASES, "emissions_store": "flux_store", "emissions_domain": "flux_domain"}
+
+_REMOVED_OPTIONS = {
+    "calculate_min_error": "`calculate_min_error` is not supported by RHIME runners; use `min_error`.",
+    "reparameterise_log_normal": (
+        "`reparameterise_log_normal` is not supported by RHIME runners; "
+        "set `reparameterise` in the relevant prior dictionary if needed."
+    ),
+    "mcmc_type": "`mcmc_type` is not supported by RHIME runners; use `nuts_sampler` if needed.",
+}
+
+
+def migration_errors(names: Iterable[str]) -> list[str]:
+    """Explain every removed option among ``names`` at frontend validation boundaries."""
+    names = set(names)
+    return resource_migration_errors(names) + [message for name, message in _REMOVED_OPTIONS.items() if name in names]
+
+
+def resource_migration_errors(names: Iterable[str]) -> list[str]:
+    """Explain removed resource selectors at frontend validation boundaries."""
+    names = set(names)
+    errors = []
+    if "country_directory" in names:
+        errors.append(
             "`country_directory` was removed in 0.8; use `country_file` for reporting, "
             "`landsea_path` for land/sea classes, or `outer_regions_path` for outer regions."
         )
-    historical = {"fp_basis_case", "basis_directory", "bc_basis_case", "bc_basis_directory"} & normalized.keys()
+    historical = {"fp_basis_case", "basis_directory", "bc_basis_case", "bc_basis_directory"} & names
     if historical:
-        raise ValueError(
+        errors.append(
             f"Historical resource selectors {sorted(historical)!r} belong to the temporary HBMCMC route. "
             "Use `basis_path`, `basis_partition_path`/`basis_partition_paths`, or `bc_basis_paths` "
             "in modern RHIME requests."
         )
+    return errors
+
+
+def normalise_param_aliases(params: Mapping[str, Any]) -> dict[str, Any]:
+    """Normalize legacy config spellings to modern snake-case names."""
+    normalized = dict(params)
+    if errors := resource_migration_errors(normalized):
+        raise ValueError(" ".join(errors))
     for old, new in _ALIASES.items():
         if old not in normalized:
             continue
@@ -66,15 +94,9 @@ def normalise_param_aliases(params: Mapping[str, Any]) -> dict[str, Any]:
             stacklevel=3,
         )
 
-    if "calculate_min_error" in normalized:
-        raise ValueError("`calculate_min_error` is not supported by RHIME runners; use `min_error`.")
-    if "reparameterise_log_normal" in normalized:
-        raise ValueError(
-            "`reparameterise_log_normal` is not supported by RHIME runners; "
-            "set `reparameterise` in the relevant prior dictionary if needed."
-        )
-    if "mcmc_type" in normalized:
-        raise ValueError("`mcmc_type` is not supported by RHIME runners; use `nuts_sampler` if needed.")
+    for name, message in _REMOVED_OPTIONS.items():
+        if name in normalized:
+            raise ValueError(message)
 
     return normalized
 
@@ -100,7 +122,7 @@ def translate_rhime_aliases(params: Mapping[str, Any]) -> dict[str, Any]:
     """Translate deprecated request spellings before canonical construction.
 
     Args:
-        params: Raw external options after the entrypoint applies overrides.
+        params: Flat or grouped external options after the entrypoint applies overrides.
 
     Returns:
         A fresh shallow mapping for the runner to pass to canonical configuration. When both an alias
@@ -114,7 +136,12 @@ def translate_rhime_aliases(params: Mapping[str, Any]) -> dict[str, Any]:
     ``outer_region_definition_file`` is a deprecated RHIME spelling rather than
     a fixedbasis scientific switch and is translated at the same boundary.
     """
+    from .params import option_groups
+
     translated = normalise_flux_aliases(normalise_param_aliases(params))
+    for group in option_groups():
+        if isinstance(translated.get(group), Mapping):
+            translated[group] = translate_rhime_aliases(translated[group])
     normalise_output_format_alias(translated)
     return translated
 

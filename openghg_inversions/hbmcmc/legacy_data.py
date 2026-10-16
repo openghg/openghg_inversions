@@ -849,7 +849,11 @@ def retrieve_inversion_data(
         flux_non_finite_check=flux_non_finite_check,
     )
 
-    merged = prepare_observation_errors(merged, averaging_error=averagingerror)
+    # The historical fp_all tuple carries derived errors with the merged data.
+    merged = merged.with_site_data(
+        prepare_observation_errors(merged.site_data, averaging_error=averagingerror),
+        context="Observation error preparation",
+    )
 
     # Keep the historical public tuple and its mapping layout at this adapter.
     legacy = to_legacy_fp_all(merged)

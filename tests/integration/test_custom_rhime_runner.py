@@ -11,6 +11,9 @@ import xarray as xr
 
 from openghg_inversions.inversion_data import RhimeMergedData
 from openghg_inversions.rhime.params import RhimeConfig
+from openghg_inversions.rhime.requests import load_params
+from openghg_inversions.postprocessing.inversion_output import InversionOutput
+from openghg_inversions.postprocessing.contracts import OutputContract
 
 from examples.rhime_customisation import likelihoods
 from examples.rhime_customisation import runner as custom_runner
@@ -26,12 +29,12 @@ def test_short_and_full_examples_share_likelihood_and_supported_output(
     expected = object()
     seen: dict[str, Any] = {}
 
-    def run_rhime(**kwargs: Any) -> Any:
+    def run_standard(**kwargs: Any) -> Any:
         """Capture the preferred one-call example without executing RHIME."""
         seen.update(kwargs)
         return expected
 
-    monkeypatch.setattr(short_runner, "run", run_rhime)
+    monkeypatch.setattr(short_runner, "run", run_standard)
     result = short_runner.run_with_likelihood(
         config_file=config_file,
         output_format="none",
@@ -66,11 +69,12 @@ def test_custom_runner_uses_supported_stages_for_acquisition(
     sampler = config.sampler
 
     merged = RhimeMergedData(
-        site_data={site: xr.Dataset({"mf_error": ("time", [1.0]), "mf_repeatability": ("time", [0.0]), "mf_variability": ("time", [0.0])}) for site in config.site_options.sites},
+        site_data={site: xr.Dataset({"mf_error": ("time", [1.0]), "mf_repeatability": ("time", [0.0]), "mf_variability": ("time", [0.0])}) for site in config.data.site_options.sites},
         flux_data={"inventory": xr.Dataset({"flux": (("lat", "lon"), [[2.]])},
-                                           coords={"lat": [50.], "lon": [0.]})}, site_options=config.site_options,
+                                           coords={"lat": [50.], "lon": [0.]})}, site_options=config.data.site_options,
     )
-    filtered = merged
+    filtered = {"MHD": merged.site_data["MHD"]}
+    filtered_options = object()
     basis = object()
     site_data = object()
     prepared = SimpleNamespace(
@@ -79,10 +83,12 @@ def test_custom_runner_uses_supported_stages_for_acquisition(
         averaging_period=("1h",),
         basis_artifact_source="test-basis",
     )
-    model_inputs = xr.Dataset({"mf": ("nmeasure", [1.0])})
-    build_result = object()
-    idata = object()
-    expected_result = object()
+    output_contract = OutputContract(variable_roles={"flux_scale": "x"}, supported_output_formats=("none", "inv_out"))
+    build_result = SimpleNamespace(output_contract=output_contract)
+    idata = xr.DataTree()
+    model_inputs = prepared.inv_inputs
+    priors = {"x": {"pdf": "normal", "mu": 1.0, "sigma": 0.2}}
+    expected_result = InversionOutput(trace=idata, inv_inputs=prepared.inv_inputs, basis_functions=basis)
     calls: list[str] = []
 
     def parse_config(actual_config: str | Path) -> dict[str, Any]:
@@ -90,7 +96,7 @@ def test_custom_runner_uses_supported_stages_for_acquisition(
         return {"output_format": "none"}
 
     def resolve(cls, params: dict[str, Any], *, multisector: bool) -> Any:
-        assert params == {"output_format": "none", **overrides, "mismatch_model": None}
+        assert params == load_params(overrides={"output_format": "none", **overrides, "mismatch_model": None})
         assert multisector is False
         calls.append("resolve")
         return config
@@ -98,27 +104,28 @@ def test_custom_runner_uses_supported_stages_for_acquisition(
     resolved_basis = {"landsea_classes": object(), "outer_regions": None}
 
     def resolve_basis_inputs(actual: RhimeConfig) -> dict[str, Any]:
-        assert actual == config
+        assert actual == config.data
         calls.append("basis-inputs")
         return resolved_basis
 
     def retrieve(**kwargs: Any) -> Any:
-        assert kwargs["site_options"] is config.site_options
+        assert kwargs["site_options"] is config.data.site_options
         assert kwargs["split_by_sectors"] is False
         assert "project_basis_path" not in kwargs
         calls.append("retrieve")
         return merged
 
-    def filter_observations(actual: Any, *, filters: Any) -> Any:
-        assert actual is merged
-        assert filters is config.filters
+    def filter_observations(actual: Any, site_options: Any, *, filters: Any) -> Any:
+        assert actual.keys() == merged.site_data.keys()
+        assert site_options is merged.site_options
+        assert filters is config.data.filters
         calls.append("filter")
-        return filtered
+        return filtered, filtered_options
 
     def build_basis(**kwargs: Any) -> Any:
-        assert kwargs["site_data"] is filtered.site_data
-        assert kwargs["domain"] == config.domain
-        assert kwargs["nbasis"] == config.nbasis
+        assert kwargs["site_data"] is filtered
+        assert kwargs["domain"] == config.data.domain
+        assert kwargs["nbasis"] == config.data.nbasis
         assert kwargs["landsea_classes"] is resolved_basis["landsea_classes"]
         assert "output_path" not in kwargs
         calls.append("basis")
@@ -128,35 +135,33 @@ def test_custom_runner_uses_supported_stages_for_acquisition(
         assert actual is filtered
         assert actual_basis is basis
         assert kwargs["bc_basis"] is None
-        assert kwargs["flux_sources"] == config.flux_sources
+        assert kwargs["flux_sources"] == config.data.flux_sources
         assert kwargs["multisector"] is False
         calls.append("sensitivities")
         return site_data
 
-    def assemble(actual: Any, actual_basis: Any, actual_site_data: Any, **kwargs: Any) -> Any:
-        assert actual is filtered
+    def assemble(actual: Any, actual_basis: Any, **kwargs: Any) -> Any:
+        assert actual is site_data
         assert actual_basis is basis
-        assert actual_site_data is site_data
-        assert kwargs["min_error_options"] == config.min_error_options
-        assert kwargs["start_date"] == config.start_date
+        assert kwargs["site_options"] is filtered_options
+        assert kwargs["min_error_options"] == config.data.min_error_options
+        assert kwargs["start_date"] == config.data.start_date
         calls.append("assemble")
         return prepared
 
 
-    def materialize(actual: Any, *, variable_names: tuple[str, ...]) -> xr.Dataset:
-        """Record the explicit eager model-input boundary."""
+    def materialize(actual: Any, model_spec: Any) -> Any:
+        """Keep selected numerical inputs and priors at the explicit boundary."""
         assert actual is prepared
-        assert set(variable_names) >= {"H", "mf", "mf_error"}
-        assert "min_error" not in variable_names
+        assert model_spec is config.model
         calls.append("materialize")
-        return model_inputs
+        return model_inputs, priors
 
-    def build(**kwargs: Any) -> Any:
-        """Record the project-owned Student-t likelihood handoff."""
-        assert kwargs["prepared"] is prepared
-        assert kwargs["model_inputs"] is model_inputs
-        assert kwargs["run_spec"].sites == ("MHD",)
-        assert kwargs["run_spec"].model is config.model
+    def build(actual: Any, model_spec: Any, **kwargs: Any) -> Any:
+        """Record the eager model boundary after project preparation."""
+        assert actual is model_inputs
+        assert model_spec is config.model
+        assert kwargs["priors"] is priors
         assert kwargs["likelihood_builder"] is custom_runner.likelihood_builder
         calls.append("build")
         return build_result
@@ -168,41 +173,46 @@ def test_custom_runner_uses_supported_stages_for_acquisition(
         calls.append("sample")
         return idata
 
-    def make_result(**kwargs: Any) -> Any:
-        """Record the supported output stage and its complete handoff."""
-        assert kwargs["prepared"] is prepared
-        assert kwargs["run_spec"].sites == ("MHD",)
-        assert kwargs["run_spec"].model is config.model
-        assert kwargs["sampler"] is sampler
-        assert kwargs["model_build_result"] is build_result
-        assert kwargs["idata"] is idata
+    def annotate(actual: Any, posterior: Any, **kwargs: Any) -> None:
+        """Record prior and custom-likelihood provenance once after sampling."""
+        assert actual is build_result
+        assert posterior is idata
         assert kwargs["likelihood_builder"] is custom_runner.likelihood_builder
-        assert kwargs["build_and_sample_seconds"] >= 0.0
+        calls.append("annotate")
+
+    def make_result(**kwargs: Any) -> InversionOutput:
+        """Construct the scientific view without output policy or live references."""
+        assert kwargs["prepared"] is prepared
+        assert kwargs["model_spec"] is config.model
+        assert kwargs["posterior"] is idata
+        assert kwargs["output_contract"] is output_contract
+        assert kwargs["start_date"] == config.data.start_date
+        assert kwargs["end_date"] == config.data.end_date
+        assert kwargs["actual_inference"] == sampler.describe()
+        assert "run_spec" not in kwargs
+        assert "sampler" not in kwargs
         calls.append("result")
         return expected_result
 
-    def make_outputs(**kwargs: Any) -> None:
-        assert kwargs == {"result": expected_result, "prepared": prepared}
-        calls.append("outputs")
+    def write_outputs(actual: InversionOutput, output_spec: Any) -> None:
+        assert actual is expected_result
+        assert output_spec is config.output
+        calls.append("output")
 
     monkeypatch.setattr(custom_runner, "read_rhime_ini", parse_config)
     monkeypatch.setattr(custom_runner.RhimeConfig, "from_params", classmethod(resolve))
     monkeypatch.setattr(custom_runner, "resolve_basis_inputs", resolve_basis_inputs)
-    monkeypatch.setattr(custom_runner.RhimeMergedData, "from_options", retrieve)
+    monkeypatch.setattr(RhimeMergedData, "from_options", retrieve)
     monkeypatch.setattr(custom_runner, "filter_observations", filter_observations)
     monkeypatch.setattr(custom_runner, "prepare_basis", build_basis)
     monkeypatch.setattr(custom_runner, "build_sensitivities", build_sensitivities)
     monkeypatch.setattr(custom_runner, "assemble_rhime_inputs", assemble)
-    monkeypatch.setattr(
-        custom_runner,
-        "standard_model_input_names",
-        lambda _actual, _model: ("H", "mf", "mf_error"),
-    )
-    monkeypatch.setattr(custom_runner, "materialize_pymc_inputs", materialize)
-    monkeypatch.setattr(custom_runner, "build_standard_rhime_model_result", build)
+    monkeypatch.setattr(custom_runner, "materialize_standard_inputs", materialize)
+    monkeypatch.setattr(custom_runner, "build_standard_model", build)
     monkeypatch.setattr(custom_runner, "sample_rhime_model", sample)
-    monkeypatch.setattr(custom_runner, "make_standard_rhime_result", make_result)
-    monkeypatch.setattr(custom_runner, "make_standard_rhime_outputs", make_outputs)
+    monkeypatch.setattr(custom_runner, "annotate_sample_trace", annotate)
+    monkeypatch.setattr(custom_runner, "make_standard_output", make_result)
+    monkeypatch.setattr(custom_runner, "save_standard_artifacts", write_outputs)
 
     result = custom_runner.run_custom_rhime(config_file=config_file, **overrides)
 
@@ -218,8 +228,9 @@ def test_custom_runner_uses_supported_stages_for_acquisition(
         "materialize",
         "build",
         "sample",
+        "annotate",
         "result",
-        "outputs",
+        "output",
     ]
 
 

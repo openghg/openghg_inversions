@@ -36,7 +36,7 @@ from pytensor.tensor.variable import TensorVariable
 
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.inversion_inputs import make_freq_indicator, make_site_indicator
-from openghg_inversions.models.coords import add_coords
+from openghg_inversions.models.coords import add_coords, add_model_data as add_model_data
 from openghg_inversions.models.priors import parse_prior
 from openghg_inversions.models.state_activity import (
     PreparedLinearSensitivity,
@@ -139,33 +139,6 @@ def resolve_model_variable(model: pm.Model, base_name: str) -> TensorVariable | 
     if base_name in model.named_vars:
         return cast(TensorVariable, model.named_vars[base_name])
     return None
-
-
-def add_model_data(data: xr.DataArray, name: str | None = None) -> TensorVariable:
-    """Add labelled xarray data to the active PyMC model.
-
-    Args:
-        data: Xarray data to register as ``pm.Data``.
-        name: Optional PyMC variable name. If omitted, ``data.name`` is used.
-
-    Returns:
-        The registered ``pm.Data`` tensor for ``data``.
-
-    Raises:
-        ValueError: If no name can be determined for the data variable.
-    """
-    name = name or (str(data.name) if data.name is not None else None)
-    if name is None:
-        raise ValueError("Data must have a name if a name is not provided.")
-
-    model = pm.modelcontext(None)
-    if name in model:
-        return model[name]
-
-    materialized = data.compute()
-    dims = tuple(str(dim) for dim in materialized.dims)
-    add_coords(materialized.coords, model_dims=dims)
-    return cast(TensorVariable, pm.Data(name, materialized.values, dims=dims))
 
 
 def add_linear_component(
@@ -350,10 +323,9 @@ def add_state_vector(
     state_dim = activity.state_dim
     state_coord = activity.zero_sensitivity.coords[state_dim]
     add_coords(activity.zero_sensitivity.coords, model_dims=(state_dim,))
-    parsed_prior_args = active_prior_args(prior_args, activity)
 
     if activity.n_active == activity.n_state:
-        state = parse_prior(var_name, parsed_prior_args, dims=state_dim)
+        state = parse_prior(var_name, active_prior_args(prior_args, activity, select_active=False), dims=state_dim)
         return StateVectorResult(
             latent=get_model_latent(state, var_name),
             state=state,
@@ -385,8 +357,10 @@ def add_state_vector(
         add_coords(active_coords, model_dims=(active_dim,))
         active_state = parse_prior(
             f"{var_name}_active",
-            parsed_prior_args,
+            active_prior_args(prior_args, activity, select_active=False),
             dims=active_dim,
+            active_indices=active_indices,
+            record_name=var_name,
         )
         latent = get_model_latent(active_state, f"{var_name}_active")
 

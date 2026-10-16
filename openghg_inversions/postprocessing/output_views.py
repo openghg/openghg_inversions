@@ -40,8 +40,8 @@ def make_inversion_output(
 
     Returns:
         An ordinary ``InversionOutput`` consumed by reconstruction and product
-        writers. Numerical validation and labelled state normalization remain
-        owned by that value; the caller's arrays and metadata are not mutated.
+        writers. The trace is trusted from sampling or its external loading
+        boundary; the caller's arrays and metadata are not mutated.
         Matching prepared and trace artifact identities is the caller's
         responsibility; this factory does not authenticate saved artifacts.
     """
@@ -55,6 +55,7 @@ def make_inversion_output(
         for site in prepared.sites
     }
     model_metadata["variable_roles"] = dict(contract.variable_roles)
+    model_metadata["supported_output_formats"] = list(contract.supported_output_formats)
     if contract.state_dimension_mapping:
         model_metadata["state_dimension_mapping"] = dict(contract.state_dimension_mapping)
     if contract.metadata:

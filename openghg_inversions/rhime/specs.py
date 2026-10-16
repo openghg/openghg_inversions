@@ -5,14 +5,17 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field, fields
 from pathlib import Path
-from typing import Any, ClassVar, Literal, cast, get_args, get_type_hints
+from typing import Any, ClassVar, Literal, TYPE_CHECKING, cast, get_args, get_type_hints
 
 from openghg_inversions.inversion_inputs import DatetimeLike
 from openghg_inversions.rhime._resources import resolve_resource_paths
-from openghg_inversions.models.priors import PriorArgs
+from openghg_inversions.models.priors import PriorArgs, trace_prior_records
 from openghg_inversions.models.additive_sigma import DEFAULT_ADDITIVE_SIGMA_PRIOR
 from openghg_inversions.models.state_activity import StateActivity
 from openghg_inversions.observation_error import AggregationErrorMode
+
+if TYPE_CHECKING:
+    from openghg_inversions.rhime.params import DataConfig
 
 OutputFormat = Literal["none", "inv_out", "basic", "paris", "legacy"]
 OutputFilenameConvention = Literal["rhime", "legacy"]
@@ -162,11 +165,7 @@ def make_likelihood_settings(
                 f"{unused!r}. Pass custom options through `likelihood_kwargs`."
             )
         return None
-    settings_type = {
-        "pollution_event": PollutionEventSettings,
-        "additive_sigma": AdditiveSigmaSettings,
-        "fixed_error": FixedErrorSettings,
-    }.get(mismatch_model) if isinstance(mismatch_model, str) else None
+    settings_type = _LIKELIHOOD_SETTINGS.get(mismatch_model) if isinstance(mismatch_model, str) else None
     if settings_type is None:
         raise ValueError(
             "`mismatch_model` must be None, 'pollution_event', 'additive_sigma', or "
@@ -268,6 +267,146 @@ class RhimeModelSpec:
     offset_args: dict[str, Any] | None = None
     bc_state_activity: StateActivity | None = field(default=None, kw_only=True)
     state_activity: StateActivity | None = field(default=None, kw_only=True)
+
+    def describe(self, *, priors: Mapping[str, PriorArgs] | None = None) -> dict[str, Any]:
+        """Describe structural choices and construction-owned prior parameters.
+
+        ``priors`` contains inline numerical scalars and registered-array
+        references captured while constructing the model. Unused configured
+        prior mappings are never traversed or materialized here. Omitting
+        ``priors`` omits prior parameter values from the record.
+
+        Args:
+            priors: Construction-owned descriptions of used prior parameters.
+
+        Returns:
+            Scientific choices and prior descriptions, independent of output policy.
+        """
+        priors = priors or {}
+        likelihood = None
+        if self.likelihood is not None:
+            kind = next(name for name, cls in _LIKELIHOOD_SETTINGS.items() if isinstance(self.likelihood, cls))
+            option_names = tuple(setting.name for setting in fields(self.likelihood))
+            options = {name: getattr(self.likelihood, name) for name in option_names
+                       if name != "sigma_prior"}
+            if "sigma_prior" in option_names:
+                options["sigma_prior"] = priors.get("sigma")
+            if isinstance(options.get("power"), Mapping):
+                options["power"] = priors.get("power")
+            likelihood = {"kind": kind, "options": options}
+        return {
+            **{name: getattr(self, name) for name in _MODEL_RECORD_FIELDS
+               if name not in {"bc_prior", "offset_prior"}},
+            "bc_prior": priors.get("bc"),
+            "offset_prior": priors.get("offset_latent"),
+            "sectors": [{"name": sector.name, "flux_source": sector.flux_source,
+                         "x_prior": priors.get("x" if len(self.sectors) == 1 and "x" in priors else f"x_{sector.variable_suffix}"),
+                         "variable_suffix": sector.variable_suffix}
+                        for sector in self.sectors],
+            "likelihood": likelihood,
+        }
+
+    def validate_recordable(self) -> None:
+        """Reject activity policies unsupported by the saved model format."""
+        if (self.state_activity is not None or self.bc_state_activity is not None
+                or any(sector.state_activity is not None for sector in self.sectors)):
+            raise ValueError(
+                "Saved sample records cannot represent `state_activity`, `bc_state_activity` "
+                "or `SectorSpec.state_activity`; run these models in memory."
+            )
+
+    def to_record(self, *, trace: Any, data_config: DataConfig) -> dict[str, Any]:
+        """Encode replayable model choices using construction-owned trace priors.
+
+        Args:
+            trace: Sampled trace with explicit constructed-prior metadata.
+            data_config: Preparation configuration owning species, domain and sources.
+
+        Returns:
+            Model choices without preparation-owned facts or numerical arrays.
+
+        Raises:
+            ValueError: If activity policies cannot be recorded, trace prior metadata
+                is missing, or the model contradicts the preparation.
+        """
+        self.validate_recordable()
+        if (self.species != data_config.species or self.domain != data_config.domain
+                or tuple(sector.flux_source for sector in self.sectors) != data_config.flux_sources
+                or (self.use_bc and not data_config.use_bc)):
+            raise ValueError("Sample model conflicts with its preparation.")
+        record = self.describe(priors=trace_prior_records(trace))
+        record.pop("species")
+        record.pop("domain")
+        for sector in record["sectors"]:
+            sector.pop("flux_source")
+        return record
+
+    @classmethod
+    def from_record(cls, record: Any, *, data_config: DataConfig, trace: Any = None) -> RhimeModelSpec:
+        """Decode :meth:`to_record` output without executing saved callables.
+
+        Args:
+            record: Structural model choices and construction-owned prior records.
+            trace: Saved inference data supplying any referenced ``constant_data``
+                arrays. Scalar-only prior records need no trace lookup.
+            data_config: Preparation configuration supplying species, domain and sources.
+
+        Raises:
+            ValueError: If the record is incomplete, names an unknown likelihood,
+                or references a missing registered prior array.
+        """
+        expected = (set(_MODEL_RECORD_FIELDS) - {"species", "domain"}) | {"sectors", "likelihood"}
+        if not isinstance(record, Mapping) or set(record) != expected:
+            missing = sorted(expected - set(record)) if isinstance(record, Mapping) else sorted(expected)
+            raise ValueError(f"Saved model record must contain exactly {sorted(expected)}; missing {missing}.")
+        def resolve(value: Any) -> Any:
+            if isinstance(value, Mapping):
+                if set(value) == {"data"}:
+                    name = value["data"]
+                    if trace is None or "constant_data" not in trace or name not in trace["constant_data"]:
+                        raise ValueError(f"Missing registered prior data {name!r}.")
+                    return trace["constant_data"][name]
+                return {key: resolve(item) for key, item in value.items()}
+            if isinstance(value, list):
+                return [resolve(item) for item in value]
+            return value
+
+        values = resolve(record)
+        values["species"] = data_config.species
+        values["domain"] = data_config.domain
+        likelihood = values["likelihood"]
+        try:
+            if likelihood is not None:
+                settings_type = _LIKELIHOOD_SETTINGS[likelihood["kind"]]
+                option_names = tuple(setting.name for setting in fields(settings_type))
+                if set(likelihood["options"]) != set(option_names):
+                    raise ValueError(
+                        f"Saved {likelihood['kind']!r} likelihood options must be {sorted(option_names)}."
+                    )
+                values["likelihood"] = settings_type(**likelihood["options"])
+            if len(values["sectors"]) != len(data_config.flux_sources):
+                raise ValueError("Saved model sector count conflicts with its preparation.")
+            values["sectors"] = tuple(
+                SectorSpec(**sector, flux_source=source)
+                for sector, source in zip(values["sectors"], data_config.flux_sources, strict=True)
+            )
+            if values["use_bc"] and not data_config.use_bc:
+                raise ValueError("Saved model requires unavailable prepared BC inputs.")
+            return cls(**values)
+        except (KeyError, TypeError) as exc:
+            raise ValueError(f"Saved model record is invalid: {exc}") from exc
+
+
+_MODEL_RECORD_FIELDS = (
+    "species", "domain", "use_bc", "add_offset", "aggregation_error_mode",
+    "bc_prior", "offset_prior", "offset_args",
+)
+_LIKELIHOOD_SETTINGS = {
+    "fixed_error": FixedErrorSettings,
+    "additive_sigma": AdditiveSigmaSettings,
+    "pollution_event": PollutionEventSettings,
+}
+
 
 @dataclass(frozen=True)
 class RhimeOutputSpec:

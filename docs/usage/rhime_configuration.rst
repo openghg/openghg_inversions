@@ -16,9 +16,9 @@ acquisition. Use ``RhimeConfig.from_params`` to inspect the same choices without
 retrieving observations, building a model or sampling.
 The returned ``RhimeConfig`` is the complete requested configuration:
 
-* Acquisition and preparation choices are direct fields, including
+* ``data`` is one ``DataConfig`` containing
   ``species``, ``domain``, dates, stores, basis, filtering and error settings.
-  ``site_options`` is one public ``SiteOptions`` record containing complete
+  ``data.site_options`` is one public ``SiteOptions`` record containing complete
   aligned tuples of requested sites and their selectors.
 * ``model`` is the existing ``RhimeModelSpec`` containing sectors, priors,
   likelihood and other scientific model choices.
@@ -31,7 +31,9 @@ The returned ``RhimeConfig`` is the complete requested configuration:
 Sampler options cannot override model-owned coordinates: ``coords`` and ``dims``
 inside ``sample_kwargs["idata_kwargs"]`` or
 ``posterior_predictive_kwargs["idata_kwargs"]`` are rejected, even if empty. Register
-coordinates and dimensions when constructing the model instead. This rule also
+coordinates and dimensions when constructing the model instead. Posterior
+``sample_kwargs["var_names"]`` overrides are also rejected at the sampler boundary;
+posterior-predictive variable selection remains supported. This rule also
 applies when constructing or directly invoking ``RhimeSampler``.
 
 For example, a scalar period broadcasts across the effective requested sites:
@@ -53,8 +55,8 @@ For example, a scalar period broadcasts across the effective requested sites:
        "mismatch_model": "fixed_error",
    }
    config = RhimeConfig.from_params(options, multisector=False)
-   assert config.site_options.sites == ("TAC", "MHD")
-   assert config.site_options.averaging_period == ("1h", "1h")
+   assert config.data.site_options.sites == ("TAC", "MHD")
+   assert config.data.site_options.averaging_period == ("1h", "1h")
 
 The constructor accepts canonical option names and applies established defaults,
 validation and site expansion beside the configuration it creates. It does not
@@ -64,12 +66,15 @@ its options again:
 
 .. code-block:: python
 
-   from openghg_inversions.rhime import run_rhime
+   from openghg_inversions.rhime import run_standard
 
-   result = run_rhime(config=config)
+   result = run_standard(config=config)
 
 For multisector requests, construct with ``multisector=True`` and use
-``run_rhime_multisector(config=config)``. A resolved ``config`` cannot be
+``run_rhime_multisector(config=config)``. An explicit ``data.split_by_sectors``
+value must match the selected recipe; omitted values inherit it. Saved standard
+preparations with a conflicting recorded layout are rejected before numerical
+inputs are loaded. A resolved ``config`` cannot be
 combined with ``config_file`` or raw configuration keyword arguments. Python
 execution inputs such as ``merged_data`` and a custom ``likelihood_builder``
 remain separate arguments; a custom likelihood still requires the resolved
@@ -81,6 +86,13 @@ before acquisition. Optional selectors retain their existing meanings:
 ``time_resolved=None`` remains unspecified for each site, and supported inlet
 slices are preserved. Empty or case-insensitively duplicate site requests and
 incorrect selector lengths are rejected at resolution.
+
+``DataConfig.from_params`` resolves acquisition/preparation choices independently.
+Grouped mappings use ``data``, ``model``, ``sampler`` and ``output``; the unshipped
+``preparation`` group is not an alias. Runners select acquisition arguments from
+``config.data`` and pass the acquired handoff with separately selected named
+arguments to scientific preparation. Preparation never retrieves data or exports
+a basis itself.
 
 INI files and overrides
 -----------------------
@@ -109,7 +121,7 @@ passed to a runner without resolving again.
 
 ``RhimeConfig.from_params`` is the single construction entry point; the former
 ``resolve_rhime_config`` wrapper has been removed. Runner frontends, including
-``run_rhime`` and staged commands, translate supported deprecated names before
+``run_standard`` and staged commands, translate supported deprecated names before
 calling this constructor. They emit ``DeprecationWarning`` on devel and in 0.8;
 these aliases are removed in 0.9. For names such as ``xprior`` and ``outputname``,
 canonical names take precedence. Flux keyword deprecations follow the stricter
@@ -168,7 +180,8 @@ inner preparation has the equivalent mutually exclusive ``inner_basis_path``,
 
 ``basis_output_path`` is an optional
 exact destination, including the filename; it is not an output directory or an
-enable flag. Staged preparation preserves this destination too.
+enable flag. Full and staged runners preserve this destination, including paths
+outside a preparation checkpoint directory.
 
 A selected retained artifact supplies its operator and metadata to new
 preparation. The runner resolves current native prior flux once after filtering
@@ -188,7 +201,7 @@ arrays to ``prepare_basis``. This function returns the scientific basis without
 writing an export and no longer accepts ``output_path``. Runners explicitly
 save it through ``BasisFunctions.save`` when ``basis_output_path`` is requested,
 then retain the selected export path in metadata. The application helper
-``rhime.preparation.resolve_basis_inputs(config)`` loads these scientific inputs.
+``rhime.preparation.resolve_basis_inputs(config.data)`` loads these scientific inputs.
 Historical case/directory selections are accepted only by the temporary HBMCMC
 entry points in 0.8, which translate winning selections before calling modern
 APIs. Modern runners reject ``fp_basis_case``, ``basis_directory``,
@@ -212,11 +225,16 @@ To select a packaged resource explicitly from Python:
 
 These resources support basis construction. Country reporting is a separate
 operation: supply ``country_file`` for ``basic`` or ``paris`` country reporting.
-Complete runs call ``rhime.validate_output_resources(config.output)`` before
-acquisition or inference; output helpers check again before creating products.
-Preparation-only workflows do not require reporting resources. Staged
-postprocessing checks them before creating its output directory. Packaged tutorial
-fixtures remain usable when explicitly selected.
+Standard full runs call
+``rhime.validate_standard_output_resources(config.output)`` before acquisition or
+inference. This checks country resources and requires ``output_path`` for PARIS
+and legacy products. Staged standard postprocessing applies the same check before
+loading samples. Direct callers of ``postprocess_standard_outputs`` must perform
+this check first. Multisector and nested routes retain
+``rhime.validate_output_resources``, which checks country resources without
+requiring a written-product destination. Preparation-only workflows do not
+require reporting resources. Packaged tutorial fixtures remain usable when
+explicitly selected.
 
 For devel/0.8, saving a basis uses the retained modern artifact by default.
 For historical callers, ``basis.compatibility.make_basis_functions`` accepts
@@ -286,10 +304,12 @@ aligned values and checks their structural alignment. For example:
 Direct retrieval APIs retain their scalar shorthand without requiring model,
 output or sampler settings. The acquisition-and-preparation convenience function
 ``prepare_rhime_inputs`` has been removed. For a complete inversion, use
-``run_rhime``; for custom preparation, call ``RhimeMergedData.from_options`` followed by
-``prepare_observation_errors``, ``filter_observations``,
-``openghg_inversions.basis.prepare_basis``,
-``build_sensitivities`` and ``assemble_rhime_inputs``. The explicit legacy function
+``run_standard``; for custom preparation, call ``acquire_merged_data`` (or
+``RhimeMergedData.from_options``) followed by ``prepare_observation_errors``,
+``filter_observations``, ``openghg_inversions.basis.prepare_basis``,
+``build_sensitivities`` and ``assemble_rhime_inputs``. These steps take the
+acquired per-site datasets and ``SiteOptions`` and return new mappings; the
+acquired ``MergedData`` never carries derived errors or filtered data. The explicit legacy function
 ``openghg_inversions.hbmcmc.legacy_data.retrieve_inversion_data`` performs
 fresh surface or column acquisition and returns its established six-tuple of
 merged data and retained metadata lists. The former
@@ -310,7 +330,7 @@ in-memory acquisition and :doc:`rhime` for saving and loading prepared inputs.
 The requested configuration contains no acquired/prepared handoff or
 ``RhimeRunSpec``.
 Merged and prepared handoffs describe the sites retained by acquisition and
-filtering. Ordinary runners create the execution ``RhimeRunSpec`` after
+filtering. Deferred-family runners create their execution ``RhimeRunSpec`` after
 preparation: it combines those retained sites and periods with the requested
 date bounds and resolved model/output choices. If only TAC remains from a
 TAC/MHD request, the configuration continues to name both sites while the run
@@ -328,12 +348,16 @@ values for an ordinary keyword call:
    from openghg_inversions.rhime import filter_observations, prepare_observation_errors
 
    merged.validate_for_preparation(
-       **config.select("species", "domain", "start_date", "end_date", "split_by_sectors")
+       **config.data.select("species", "domain", "start_date", "end_date", "split_by_sectors")
    )
-   merged = prepare_observation_errors(merged, averaging_error=config.averaging_error)
-   filtered = filter_observations(merged, **config.select("filters"))
+   with_errors = prepare_observation_errors(merged.site_data, averaging_error=config.data.averaging_error)
+   filtered, site_options = filter_observations(
+       with_errors, merged.site_options, **config.data.select("filters")
+   )
 
-``config.select(*names)`` returns a fresh dictionary of the named attributes.
+``config.data.select(*names)`` returns a fresh dictionary of the named attributes.
+Use ``config.model`` and ``config.output`` for their separate owners;
+``RhimeConfig`` has no global ``select`` API.
 Values are borrowed: mutable mappings and objects are shared with ``config``.
 Selection does not normalize, validate, copy nested values or serialize settings;
 an unknown attribute raises ``AttributeError``. Scientific stages still accept
@@ -356,16 +380,15 @@ remain mutable. Resolution leaves caller options unchanged, and retained-site
 selection leaves the requested configuration unchanged. Configuration
 serialization and an INI writer are deferred to
 `Issue 814 <https://github.com/openghg/openghg_inversions/issues/814>`_.
-Equal resolved scalar/list choices do not guarantee equal historical
-configuration hashes.
+Standard saved sampling checks scientific compatibility with preparation,
+allowing compatible model choices to change without full-configuration equality.
 For persisted workflows, see :doc:`staged_workflow`: version 0.8 does not
 support staged artifacts produced by 0.7; consume them with 0.7 or regenerate
-them with 0.8. Ordinary paths remain relative to the working directory and
-staged file resources retain their configuration-file-relative convention.
-Explicit staged path overrides resolve from the invocation working directory.
-Runners forward absolute resource and export paths downstream; absolute inputs
-keep their destinations. Ordinary full-run INI values retain the invocation
-working directory convention. Filesystem fields are declared as ``Path`` types,
+them with 0.8. Configuration resource and output paths resolve from the invocation
+working directory in both full and staged execution, including INI/JSON values
+and explicit overrides. Runners forward absolute resource and export paths
+downstream; absolute inputs keep their destinations. Manifest dependency references
+remain relative to the declaring manifest. Filesystem fields are declared as ``Path`` types,
 including optional paths and collections such as ``bc_basis_paths``. Frontends
 accept path strings and convert only these annotated fields; domain names and
 scientific selectors remain ordinary strings. Each configuration owner supplies

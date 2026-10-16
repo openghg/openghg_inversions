@@ -273,6 +273,24 @@ def test_add_offset_component_derives_frequency_indicator() -> None:
     np.testing.assert_array_equal(model["offset_freq_indicator"].eval(), [0, 0, 1, 1])
 
 
+@pytest.mark.parametrize("frequency", ["0h", "-1h", "NaT", "nan", "inf"])
+@pytest.mark.filterwarnings("error")
+def test_offset_frequency_rejects_invalid_duration(frequency: str) -> None:
+    observations = xr.DataArray(
+        np.ones(2), dims="nmeasure",
+        coords={
+            "site": ("nmeasure", ["MHD", "MHD"]),
+            "time": ("nmeasure", pd.date_range("2020-01-01", periods=2, freq="h")),
+        },
+    )
+    with pm.Model(coords={"nmeasure": np.arange(2)}):
+        with pytest.raises(ValueError, match="Invalid frequency"):
+            add_offset_component(
+                observations, prior_args={"pdf": "normal", "mu": 0.0, "sigma": 1.0},
+                offset_freq=frequency,
+            )
+
+
 def test_add_offset_component_requires_time_for_frequency() -> None:
     """Frequency-based offsets require an observation-aligned time coordinate."""
     observations = xr.DataArray(

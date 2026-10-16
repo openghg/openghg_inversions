@@ -96,21 +96,22 @@ defaults SHALL have concrete owners rather than independent duplicate schemas.
 
 ### Requirement: Explicit shallow selection for scientific keyword calls
 
-`RhimeConfig.select(*names)` and `DataConfig.select(*names)` SHALL return a new dictionary containing the
+`DataConfig.select(*names)` SHALL return a new dictionary containing the
 explicitly named attributes. Selected values SHALL remain borrowed, including
 mutable containers and opaque objects. Selection SHALL NOT copy nested values,
 resolve defaults, inspect consumer signatures, execute scientific work or define
 a serialization schema. An unknown attribute SHALL raise `AttributeError`. Grouping SHALL NOT introduce
 implicit flattened attribute lookup; selection addresses the owning record's
-direct attributes.
+direct attributes. `RhimeConfig` SHALL expose `data`, `model`, `output` and
+`sampler` explicitly without a global `select` API.
 Scientific stage functions SHALL retain named inputs and remain callable without
 configuration. A private orchestration helper MAY receive resolved configuration
 when composing several stages.
 
 #### Scenario: Forward selected resolved values
 
-- **WHEN** a caller unpacks `config.select("model")` into model construction
-- **THEN** the function receives the same resolved value as `model=config.model`
+- **WHEN** a caller unpacks `config.data.select("filters")` into observation filtering
+- **THEN** the function receives the same resolved value as `filters=config.data.filters`
 - **AND** changing the selection dictionary does not change the configuration
 - **AND** mutable values inside the dictionary retain their existing identity
 
@@ -229,6 +230,40 @@ share their owners with complete requests.
 - **THEN** execution retains the established prepared-input API and alignment
   behavior without requiring the complete requested-run configuration
 
+### Requirement: Explicit 0.8 standard API migration
+
+The Python `run_rhime` API SHALL be removed in 0.8 with a helpful import error
+pointing to `run_standard`. This explicitly supersedes earlier promises to
+preserve that Python entry point and its `RhimeResult` return. The `run-rhime`
+CLI command SHALL call `run_standard` directly and preserve its command name,
+written files, export defaults and logging.
+
+Standard prepared execution SHALL use `run_standard(prepared=..., config=...)`,
+skipping acquisition/preparation and then using the ordinary scientific pipeline.
+`prepared` and `merged_data` SHALL be mutually exclusive. The former standard
+`run_rhime_from_prepared_inputs`/one-sector `RhimeRunSpec` call SHALL be removed;
+that entry point SHALL retain only its multisector compatibility contract.
+
+Standard full, prepared-input and saved postprocessing SHALL return
+`InversionOutput`, including with `output_format="none"`. The in-memory view SHALL
+borrow its numerical inputs; `none` SHALL suppress writes, not result construction.
+Its output metadata SHALL contain the actual inference description, without output
+format, destinations, naming, save flags, written paths or live PyMC references.
+`RhimeResult` and `RhimeRunSpec` SHALL remain only for families awaiting handoff
+adoption. The three standard builder entry points SHALL be replaced by one eager
+`build_standard_model`; materialization SHALL be explicit in its caller.
+New configuration helpers SHALL use `load_params`, `group_params` and
+`option_groups`; `read_rhime_ini` SHALL retain its established name.
+`RHIME_PREPARATION_OPTION_NAMES` SHALL be removed in favour of explicit owner
+selection. These migrations supersede prior signature/return preservation
+requirements for those named standard interfaces.
+
+#### Scenario: Migrate the Python entry point without changing the CLI
+
+- **WHEN** a caller imports the removed Python `run_rhime` API in 0.8
+- **THEN** the import error directs the caller to `run_standard`, which returns `InversionOutput`
+- **AND** the retained `run-rhime` CLI command calls `run_standard` directly with unchanged command naming, written files, export defaults and logging
+
 ### Requirement: Compatible public adapters and scientific choices
 
 Except for the explicit sampler-default migration, the prerequisite #868 resource-I/O
@@ -249,7 +284,9 @@ and flux-source routing SHALL retain consistent existing meanings across data
 preparation and model construction. Current INI section interpretation, path
 conventions, file vocabulary, scientific calculations and sampling defaults
 SHALL remain unchanged except for the path and legacy-resource migrations specified by
-[rhime-resource-io](https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/rhime-resource-io/spec.md).
+[rhime-resource-io](https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/rhime-resource-io/spec.md)
+and the 0.8 historical scientific-quirk and chain-policy removals specified by
+[hbmcmc-isolation-retirement](https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/hbmcmc-isolation-retirement/spec.md).
 
 Established selector and shared-handoff aliases in the current
 [model-selection capability](https://github.com/openghg/openghg_inversions/blob/7269f50f09dc4b618766cb9d69abe260a564eebc/openspec/specs/rhime-model-selection/spec.md)
@@ -324,8 +361,8 @@ Shared semantic/site-alignment helpers SHALL remain independent of file syntax.
 Historical fixedbasis translation SHALL be owned by HBMCMC entry points.
 Supported RHIME spelling and output-format aliases, including deprecated
 `emissions_*` flux selectors, SHALL be translated at runner/frontend boundaries
-outside HBMCMC after winning overrides. Existing `run_rhime` behavior SHALL
-remain supported on devel and in 0.8, with `DeprecationWarning` for deprecated
+outside HBMCMC after winning overrides. Supported runner option translation SHALL
+remain available through `run_standard` on devel and in 0.8, with `DeprecationWarning` for deprecated
 options, until their removal in 0.9. Canonical spelling precedence and the
 separate flux old/new conflict errors SHALL remain unchanged.
 `RhimeConfig.from_params` and canonical normalization SHALL know only canonical
@@ -366,7 +403,7 @@ modern runners. Its removal belongs to the HBMCMC retirement contract.
 
 #### Scenario: Construction translates deprecated spellings once
 
-- **WHEN** a caller supplies a supported deprecated spelling to `run_rhime`
+- **WHEN** a caller supplies a supported deprecated spelling to `run_standard`
 - **THEN** its frontend preserves the canonical value and established precedence,
   emitting a deprecation warning before canonical construction
 - **AND** canonical construction receives only canonical names and emits no alias warning

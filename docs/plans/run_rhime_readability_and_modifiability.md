@@ -14,6 +14,14 @@ standard-only policy. This selective naming delivery does not perform #776's
 recipe relocation or complete #802 route parity. Preserve procedural recipes
 and do not introduce a universal workflow engine.
 
+> **15 October 2026 supersession (#866).** The compatibility promise above is
+> superseded for the standard Python API: `run_rhime` is removed in 0.8. Use
+> `run_standard(prepared=prepared, config=resolved_config)` for cached standard
+> inputs; `run_rhime_from_prepared_inputs` now supports multisector runs only.
+> The `run-rhime` CLI command remains available. See the
+> [0.8 migration guidance](../usage/legacy_and_migration.rst) for the current
+> contracts; the original programme below remains a historical record.
+
 
 Recorded original status: approved delivery plan, P0 / highest project priority
 Date: 2026-08-15

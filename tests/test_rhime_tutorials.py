@@ -111,7 +111,7 @@ def test_standard_tutorial_runs_to_persisted_output(
     monkeypatch.setattr(
         RhimeSampler,
         "sample",
-        lambda self, model, **kwargs: _deterministic_trace(model, ("x", "mu")),
+        lambda self, model, **kwargs: _deterministic_trace(model, ("x", "mu", "bc")),
     )
     result = run(
         config_file=_STANDARD_CONFIG,
@@ -119,12 +119,15 @@ def test_standard_tutorial_runs_to_persisted_output(
     )
 
     assert result.inv_inputs["H"].dims == ("region", "nmeasure")
-    assert result.model_build_result is not None
-    assert result.model_build_result.variable_roles["flux_scale"] == "x"
-    output_path = Path(result.output_metadata["inversion_output_path"])
+    assert isinstance(result, InversionOutput)
+    assert result.variable_roles["flux_scale"] == "x"
+    output_path = tmp_path / f"standard_tutorial{result.run_metadata['start_date']}_inversion_output.nc"
     assert output_path.is_file()
     reloaded = InversionOutput.load(output_path)
-    assert reloaded.provenance["contract"] == "modern_rhime_inversion_output"
+    assert reloaded.provenance == result.provenance
+    assert set(reloaded.output_metadata) == {"sampler"}
+    np.testing.assert_array_equal(reloaded.trace["posterior"]["x"], result.trace["posterior"]["x"])
+    assert reloaded.variable_roles == result.variable_roles
     assert reloaded.run_metadata["split_by_sectors"] is False
 
 
@@ -138,7 +141,7 @@ def test_multisector_tutorial_runs_to_sector_diagnostics(
     monkeypatch.setattr(
         RhimeSampler,
         "sample",
-        lambda self, model, **kwargs: _deterministic_trace(model, ("x_ff", "x_ocean")),
+        lambda self, model, **kwargs: _deterministic_trace(model, ("x_ff", "x_ocean", "bc")),
     )
     overrides = _test_store_overrides(tac_ch4_data_args, tmp_path)
     overrides.update(
@@ -175,7 +178,7 @@ def test_multisector_tutorial_runs_to_sector_diagnostics(
 @pytest.mark.parametrize(
     ("subcommand", "config", "target"),
     [
-        ("run-rhime", _STANDARD_CONFIG, "openghg_inversions.rhime.run_rhime"),
+        ("run-rhime", _STANDARD_CONFIG, "openghg_inversions.rhime.run_standard"),
         (
             "run-rhime-multisector",
             _MULTISECTOR_CONFIG,

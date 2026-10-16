@@ -225,43 +225,36 @@ def convert_old_multisector_H_to_gathered(
 
 def prepare_inputs(**params):
     """Compose canonical RHIME stages for scientific regression fixtures."""
-    from openghg_inversions.inversion_data import RhimeMergedData
     from openghg_inversions.rhime.params import RhimeConfig
     from openghg_inversions.rhime import preparation
     from openghg_inversions.basis.support import load_bc_basis
-    from openghg_inversions.basis.basis_functions import BASIS_ARTIFACT_PATH_ATTR
 
     config = RhimeConfig.from_params({"output_format": "none", **params},
                                      multisector=params.get("split_by_sectors", False))
-    basis_inputs = preparation.resolve_basis_inputs(config)
-    bc_basis = load_bc_basis(config.bc_basis_paths) if config.use_bc and config.bc_basis_paths is not None else None
-    merged = RhimeMergedData.from_options(**config.select(
-        "site_options", "species", "domain", "start_date", "end_date",
-        "flux_sources", "split_by_sectors", "bc_store", "obs_store", "footprint_store",
-        "flux_store", "flux_domain", "fp_model", "fp_species", "calibration_scale",
-        "use_bc", "bc_input", "flux_non_finite_check",
-    ))
-    merged = preparation.prepare_observation_errors(merged, averaging_error=config.averaging_error)
-    filtered = preparation.filter_observations(merged, filters=config.filters)
+    basis_inputs = preparation.resolve_basis_inputs(config.data)
+    bc_basis = load_bc_basis(config.data.bc_basis_paths) if config.data.use_bc and config.data.bc_basis_paths is not None else None
+    merged = preparation.acquire_merged_data(config.data)
+    with_errors = preparation.prepare_observation_errors(merged.site_data, averaging_error=config.data.averaging_error)
+    filtered, site_options = preparation.filter_observations(
+        with_errors, merged.site_options, filters=config.data.filters,
+    )
     from openghg_inversions.native_flux import resolve_runtime_flux
 
-    runtime_flux = resolve_runtime_flux(filtered.flux_data, split_by_sectors=filtered.split_by_sectors)
+    runtime_flux = resolve_runtime_flux(merged.flux_data, split_by_sectors=merged.split_by_sectors)
     basis = prepare_basis(
-        site_data=filtered.site_data,
+        site_data=filtered,
         runtime_flux=runtime_flux,
-        weighting_flux=filtered.flux_data[config.flux_sources[0]]["flux"],
-        **config.select(
+        weighting_flux=merged.flux_data[config.data.flux_sources[0]]["flux"],
+        **config.data.select(
             "domain", "start_date", "basis_algorithm", "nbasis",
         ),
-        fix_outer_regions=config.fix_basis_outer_regions,
+        fix_outer_regions=config.data.fix_basis_outer_regions,
         **basis_inputs,
     )
-    if config.basis_output_path is not None:
-        basis.save(config.basis_output_path)
-        basis = basis.with_metadata({BASIS_ARTIFACT_PATH_ATTR: str(config.basis_output_path)})
-    sites = preparation.build_sensitivities(filtered, basis, **config.select(
+    basis = preparation.export_basis(basis, config.data.basis_output_path)
+    sites = preparation.build_sensitivities(filtered, basis, **config.data.select(
         "flux_sources", "use_bc",
-    ), bc_basis=bc_basis, multisector=config.split_by_sectors)
-    return preparation.assemble_rhime_inputs(filtered, basis, sites, **config.select(
+    ), bc_basis=bc_basis, multisector=config.data.split_by_sectors)
+    return preparation.assemble_rhime_inputs(sites, basis, site_options=site_options, **config.data.select(
         "domain", "start_date", "bc_freq", "min_error", "min_error_options", "use_bc",
     ))

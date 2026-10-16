@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -35,6 +36,7 @@ from openghg_inversions.rhime.nested import (
     mask_outer_merged_for_inner_domain,
 )
 from openghg_inversions.rhime.materialization import materialize_pymc_inputs
+from openghg_inversions.models.priors import prior_records
 from openghg_inversions.rhime.outputs import RhimeResult
 from openghg_inversions.hbmcmc.compatibility import translate_rhime_aliases
 from openghg_inversions.rhime.params import RhimeConfig
@@ -281,11 +283,13 @@ def test_mask_outer_merged_zeroes_overlap_lazily_without_mutating_inputs() -> No
 
     masked = mask_outer_merged_for_inner_domain(outer, inner)
 
-    assert isinstance(to_legacy_fp_all(masked)["TAC"]["fp"].data, da.Array)
-    assert isinstance(to_legacy_fp_all(masked)[".flux"]["inventory"].data["flux"].data, da.Array)
-    assert float(to_legacy_fp_all(masked)["TAC"]["fp"].isel(time=0, lat=1, lon=1).compute()) == 0.0
-    assert float(to_legacy_fp_all(masked)["TAC"]["fp"].isel(time=0, lat=0, lon=0).compute()) == 1.0
-    assert float(to_legacy_fp_all(masked)[".flux"]["inventory"].data["flux"].isel(time=0, lat=1, lon=1).compute()) == 0.0
+    assert not isinstance(masked, type(outer))
+    assert masked.site_options is outer.site_options
+    assert isinstance(masked.site_data["TAC"]["fp"].data, da.Array)
+    assert isinstance(masked.flux_data["inventory"]["flux"].data, da.Array)
+    assert float(masked.site_data["TAC"]["fp"].isel(time=0, lat=1, lon=1).compute()) == 0.0
+    assert float(masked.site_data["TAC"]["fp"].isel(time=0, lat=0, lon=0).compute()) == 1.0
+    assert float(masked.flux_data["inventory"]["flux"].isel(time=0, lat=1, lon=1).compute()) == 0.0
     assert float(to_legacy_fp_all(outer)["TAC"]["fp"].isel(time=0, lat=1, lon=1).compute()) == 1.0
 
 
@@ -407,10 +411,10 @@ def test_nested_model_uses_two_labelled_state_blocks_and_shared_likelihood() -> 
         model.named_vars
     )
 
-    assert result.variable_roles["flux_scale:outer"] == "x_outer"
-    assert result.variable_roles["flux_scale:inner"] == "x_inner"
-    assert result.variable_roles["concentration"] == "y"
-    assert result.supported_output_formats == ("none", "paris")
+    assert result.output_contract.variable_roles["flux_scale:outer"] == "x_outer"
+    assert result.output_contract.variable_roles["flux_scale:inner"] == "x_inner"
+    assert result.output_contract.variable_roles["concentration"] == "y"
+    assert result.output_contract.supported_output_formats == ("none", "paris")
 
 
 def test_nested_materialization_computes_both_sensitivities_at_named_boundary() -> None:
@@ -491,20 +495,22 @@ def test_nested_preparation_uses_native_inner_domain_and_safe_basis_default(
             "output_format": output_format,
         }, multisector=False)
     retrieval_args: list[dict[str, object]] = []
-    preparation_configs: list[rhime_params.RhimeConfig] = []
+    preparation_configs: list[rhime_params.DataConfig] = []
 
     def fake_retrieve(**kwargs):
         assert kwargs["split_by_sectors"] is False
         retrieval_args.append(kwargs)
         return merged
 
-    def fake_prepare(domain_merged, *, config, allow_empty_inner_region=False, basis_support_maps=None, bc_basis=None):
+    def fake_prepare(domain_merged, *, data, allow_empty_inner_region=False, basis_support_maps=None, bc_basis=None):
         assert domain_merged.sites == ("TAC",)
-        preparation_configs.append(config)
+        preparation_configs.append(data)
         return prepared
 
     monkeypatch.setattr(nested_module.RhimeMergedData, "from_options", fake_retrieve)
-    monkeypatch.setattr(nested_module, "filter_observations", lambda value, **kwargs: value)
+    monkeypatch.setattr(
+        nested_module, "filter_observations", lambda value, site_options, **kwargs: (value, site_options),
+    )
     monkeypatch.setattr(
         nested_module,
         "align_inner_merged_to_outer_observations",
@@ -532,9 +538,8 @@ def test_nested_preparation_uses_native_inner_domain_and_safe_basis_default(
     assert inner_args["flux_domain"] == "EUROPE"
     assert inner_args["use_bc"] is False
     assert preparation_configs[1].basis_algorithm == "quadtree"
-    assert preparation_configs[1].model.domain == preparation_configs[1].domain == "EUROPE-6km"
-    assert preparation_configs[1].model.use_bc is preparation_configs[1].use_bc is False
-    assert preparation_configs[1].output.output_name == preparation_configs[1].output_name == "nested-test_inner"
+    assert preparation_configs[1].domain == "EUROPE-6km"
+    assert preparation_configs[1].use_bc is False
     assert preparation_configs[1].nbasis == 40
     assert preparation_configs[1].basis_path is None
     assert preparation_configs[1].basis_partition_paths is None
@@ -543,7 +548,7 @@ def test_nested_preparation_uses_native_inner_domain_and_safe_basis_default(
     assert preparation_configs[1].basis_algorithm == "quadtree"
     assert nested.outer_overlap_mask_policy.startswith("outer_footprint_and_flux_zeroed")
 
-    assert setup.nbasis == 100
+    assert setup.data.nbasis == 100
 
 
 def test_nested_automatic_basis_budget_uses_bounded_sensitivity_share() -> None:
@@ -601,7 +606,7 @@ def test_nested_preparation_routes_automatic_basis_budget(monkeypatch) -> None:
             "nbasis": 100,
             "output_format": "none",
         }, multisector=False)
-    preparation_configs: list[rhime_params.RhimeConfig] = []
+    preparation_configs: list[rhime_params.DataConfig] = []
 
     def fake_retrieve(**kwargs):
         assert kwargs["split_by_sectors"] is False
@@ -612,12 +617,14 @@ def test_nested_preparation_routes_automatic_basis_budget(monkeypatch) -> None:
         )
         return from_legacy_fp_all(fp_all={"TAC": dataset}, site_options=_site_options())
 
-    def fake_prepare(domain_merged, *, config, allow_empty_inner_region=False, basis_support_maps=None, bc_basis=None):
-        preparation_configs.append(config)
+    def fake_prepare(domain_merged, *, data, allow_empty_inner_region=False, basis_support_maps=None, bc_basis=None):
+        preparation_configs.append(data)
         return prepared
 
     monkeypatch.setattr(nested_module.RhimeMergedData, "from_options", fake_retrieve)
-    monkeypatch.setattr(nested_module, "filter_observations", lambda value, **kwargs: value)
+    monkeypatch.setattr(
+        nested_module, "filter_observations", lambda value, site_options, **kwargs: (value, site_options),
+    )
     monkeypatch.setattr(
         nested_module,
         "align_inner_merged_to_outer_observations",
@@ -631,7 +638,7 @@ def test_nested_preparation_routes_automatic_basis_budget(monkeypatch) -> None:
     assert preparation_configs[0].nbasis == 40
     assert preparation_configs[1].nbasis == 60
 
-    assert setup.nbasis == 100
+    assert setup.data.nbasis == 100
 
 
 def test_legacy_outer_region_definition_name_normalizes_to_modern_path() -> None:
@@ -658,7 +665,7 @@ def test_outer_regions_path_routes_through_modern_rhime_setup() -> None:
         multisector=False,
     )
 
-    assert setup.outer_regions_path == Path("/data/EUHROB.nc")
+    assert setup.data.outer_regions_path == Path("/data/EUHROB.nc")
 
 
 def test_domain_variable_roles_strips_tag_and_keeps_shared_roles() -> None:
@@ -787,6 +794,7 @@ def test_make_nested_inversion_outputs_builds_per_domain_views(retain_graph: boo
         prepared=prepared,
         model_inputs=prepared.combined.inv_inputs,
         run_spec=run_spec,
+        inner_x_prior={"pdf": "normal", "mu": 2.0, "sigma": 0.4},
     )
 
     result = RhimeResult(
@@ -817,9 +825,16 @@ def test_make_nested_inversion_outputs_builds_per_domain_views(retain_graph: boo
         output_contract=OutputContract.from_dict(build_result.output_contract.to_dict()),
         sampler=RhimeSampler(),
     )
+    records = prior_records(build_result.model)
+    assert records["x_outer"]["mu"] == 1.0
+    assert records["x_inner"]["mu"] == 2.0
+    result.idata.attrs["rhime_priors"] = json.dumps(records)
     nested_result = NestedRhimeResult(rhime_result=result, prepared_inputs=prepared)
 
     outer_inv_out, inner_inv_out = make_nested_inversion_outputs(nested_result)
+    assert outer_inv_out.model_metadata["sectors"][0]["x_prior"] == records["x_outer"]
+    assert inner_inv_out.model_metadata["sectors"][0]["x_prior"] == records["x_inner"]
+    assert inner_inv_out.model_metadata["constructed_priors"] == records
 
     assert outer_inv_out.variable_name("flux_scale") == "x_outer"
     assert inner_inv_out.variable_name("flux_scale") == "x_inner"
@@ -857,6 +872,8 @@ def test_make_nested_inversion_outputs_builds_per_domain_views(retain_graph: boo
     assert len(inner_nested["inner_grid"]["coordinate_sha256"]) == 64
 
     reloaded_inner = InversionOutput.from_datatree(inner_inv_out.to_datatree())
+    assert reloaded_inner.model_metadata["constructed_priors"] == records
+    assert reloaded_inner.model_metadata["sectors"][0]["x_prior"] == records["x_inner"]
     assert reloaded_inner.output_metadata["nested_domain"] == inner_nested
     assert reloaded_inner.state_dimension_mapping == {"trace": "inner_region", "basis": "region"}
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 from numbers import Integral, Real
 from pathlib import Path
 from typing import Any
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 
 from openghg_inversions.inference.diagnostics import posterior_summary
 import numpy as np
@@ -36,7 +36,6 @@ def _check_result(
     artifact_paths: list[str],
     stage: str,
 ) -> dict[str, Any]:
-    stage = _check_stage(stage)
     return {
         "schema_version": CHECK_SCHEMA_VERSION,
         "name": name,
@@ -48,6 +47,77 @@ def _check_result(
         "artifact_paths": artifact_paths,
         "stage": stage,
     }
+
+
+def prior_predictive_check(
+    build: Callable[[], Any],
+    *,
+    draws: int,
+    destination: Path,
+    report: Path,
+    stage: str,
+) -> dict[str, Any]:
+    """Draw prior predictions and write the evidence and a readiness report.
+
+    The old report is invalidated before building or writing evidence, so a
+    failed overwrite cannot leave an earlier successful readiness claim.
+
+    Args:
+        build: Builds the model to check; its readiness errors become a failed check.
+        draws: Positive number of prior-predictive draws.
+        destination: Existing check directory receiving the evidence and report.
+        report: Resolved report path selected and checked by the caller.
+        stage: Validated stage label.
+
+    Returns:
+        The readiness check written to the report.
+
+    Raises:
+        OSError: If writing the evidence or report fails.
+    """
+    report.unlink(missing_ok=True)
+    import pymc as pm
+
+    from openghg_inversions.serialization import save_trace
+
+    try:
+        built = build()
+        with built.model:
+            prior = pm.sample_prior_predictive(draws, built.model)
+    except (KeyError, ValueError) as exc:
+        non_finite, status, artifacts = None, "fail", []
+        message = f"Prior-predictive readiness failed: {type(exc).__name__}: {exc}"
+    else:
+        concentration = built.output_contract.variable_roles.get("concentration")
+        predictive = prior.children.get("prior_predictive")
+        values = [np.asarray(group[name].values) for group in prior.children.values() for name in group.data_vars]
+        non_finite = sum(int(np.size(value) - np.isfinite(value).sum()) for value in values)
+        status = "fail"
+        if predictive is None or concentration not in predictive:
+            message = "Prior prediction is missing the declared concentration draws."
+        elif predictive[concentration].size == 0:
+            message = "Prior prediction contains no concentration draws."
+        elif non_finite:
+            message = f"Prior predictive contains {non_finite} non-finite values."
+        else:
+            status = "pass"
+            message = f"Prior predictive produced {draws} finite draws."
+        prior_path = destination / "prior-predictive.nc"
+        save_trace(prior, prior_path)
+        artifacts = [str(prior_path)]
+    result = _check_result(
+        name=PREPARATION_CHECK_NAME, status=status,
+        measured_values={"draws": draws, "non_finite_values": non_finite},
+        thresholds={"max_non_finite_values": 0}, message=message, artifact_paths=artifacts, stage=stage,
+    )
+    _write_json(report, result)
+    return result
+
+
+def _check_draws(draws: Any) -> None:
+    """Reject non-positive or non-integer prior-predictive draw counts."""
+    if isinstance(draws, bool) or not isinstance(draws, Integral) or draws <= 0:
+        raise ValueError(f"Prior-predictive draws must be a positive integer; got {draws!r}.")
 
 
 def _check_stage(stage: str) -> str:

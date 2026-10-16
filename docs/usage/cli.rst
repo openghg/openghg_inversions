@@ -48,6 +48,16 @@ guide. New configuration files should use the RHIME vocabulary documented in
 validated production-shape examples are used by
 :doc:`rhime_standard_tutorial` and :doc:`rhime_multisector_tutorial`.
 
+Saved standard phases
+----------------------
+
+``rhime prepare`` resolves preparation choices and prints one manifest path.
+``rhime sample --preparation-manifest ...`` accepts current model/sampler
+choices; ``rhime postprocess --sample-manifest ...`` accepts current output
+choices. Sampling and postprocessing do not require a full configuration file.
+See :doc:`staged_workflow` for the complete preparation/two-model/two-output
+sequence and the separate multisector/CO2 interfaces.
+
 Python model selection and compatibility
 ----------------------------------------
 
@@ -70,7 +80,7 @@ Existing CO2 staged commands retain their current support boundaries.
 ``openghg-inversions`` and its ``run-rhime``, ``run-rhime-multisector`` and
 ``run-rhime-nested`` subcommands remain supported through the 0.9 compatibility
 cycle. Both executables expose the same command set. The existing runner imports and
-shared handoff/assembly names listed here remain aliases to their implementations: ``run_rhime`` is
+shared handoff/assembly names listed here remain aliases to their implementations: ``run_standard`` is
 ``run_standard``, ``run_rhime_multisector`` is ``run_multisector``, and
 ``run_rhime_nested`` is ``run_nested``. No argument conversion or warning is
 added to these aliases. Shared ``MergedData`` and ``PreparedInputs`` retain the

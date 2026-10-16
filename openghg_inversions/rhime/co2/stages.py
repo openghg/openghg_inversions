@@ -33,7 +33,7 @@ from openghg_inversions.rhime._stage_artifacts import (
     artifact_path as _artifact_path,
     json_value as _json_value,
     write_json as _write_json,
-    _filename_component,
+    _validate_filename_component,
     _output_path,
     _stage_output_directory,
 )
@@ -148,7 +148,7 @@ def resolve_co2_stage_setup(params: Mapping[str, Any]) -> Co2StageSetup:
         raise ValueError(f"Unknown CO2 output option(s): {sorted(unknown)!r}.")
     output = RhimeOutputSpec(output_format="basic", save_inversion_output=False)
     output = RhimeOutputSpec(**{**asdict(output), **outputs})
-    _filename_component("output_name", output.output_name)
+    _validate_filename_component("output_name", output.output_name)
     validate_co2_output_spec(output, has_reconstruction=reconstruction is not None)
     if output.output_format == "paris" and not output.country_file:
         raise ValueError("Staged CO2 PARIS outputs require an explicit outputs.country_file.")

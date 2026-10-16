@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 import xarray as xr
 
+from openghg_inversions.inversion_data import RhimeMergedData
 from openghg_inversions.rhime.params import RhimeConfig
 from tests.test_bc_basis_resources import _basis
 from tests.test_staged_workflow import _params
@@ -50,13 +51,13 @@ def test_bc_resource_loading_precedes_acquisition(tmp_path, monkeypatch, route, 
         raise Acquired
 
     monkeypatch.setattr(module, "load_bc_basis", load)
-    monkeypatch.setattr(module.RhimeMergedData, "from_options", acquire)
+    monkeypatch.setattr(RhimeMergedData, "from_options", acquire)
 
     def run():
         if route in ("staged", "nested"):
             config = RhimeConfig.from_params(options, multisector=False)
             if route == "staged":
-                module.prepare_rhime_stage(setup=config, model="standard", output_dir="stage")
+                module.prepare(config.data, output_dir="stage")
             else:
                 module.prepare_nested_rhime_inputs(config, inner_domain="6km")
         elif route == "multisector":
@@ -64,7 +65,7 @@ def test_bc_resource_loading_precedes_acquisition(tmp_path, monkeypatch, route, 
         elif route in ("example", "custom_basis"):
             module.run_custom_rhime(**options)
         else:
-            module.run_rhime(**options)
+            module.run_standard(**options)
 
     with pytest.raises(FileNotFoundError if selection == "missing" else Acquired):
         run()
@@ -79,25 +80,25 @@ def test_packaged_preparation_defaults_are_independent_of_reporting(tmp_path):
 
     config = RhimeConfig.from_params(_params(basis_algorithm="weighted", country_file=tmp_path / "report.nc"),
                                      multisector=False)
-    selected = resolve_basis_inputs(config)
+    selected = resolve_basis_inputs(config.data)
     expected = load_basis_support_map(packaged_basis_support_path("landsea", "EUROPE"), "country")
     xr.testing.assert_equal(selected["landsea_classes"], expected)
     assert config.output.country_file == tmp_path / "report.nc"
-    assert config.landsea_path is None
+    assert config.data.landsea_path is None
     explicit = tmp_path / "classes.nc"
     xr.Dataset({"country": (("lat", "lon"), [[7]])}, coords={"lat": [50.0], "lon": [0.0]}).to_netcdf(explicit)
     from dataclasses import replace
 
-    overridden = resolve_basis_inputs(replace(config, landsea_path=explicit))
+    overridden = resolve_basis_inputs(replace(config.data, landsea_path=explicit))
     assert overridden["landsea_classes"].item() == 7
     with pytest.raises(FileNotFoundError):
-        resolve_basis_inputs(replace(config, landsea_path=tmp_path / "missing.nc"))
+        resolve_basis_inputs(replace(config.data, landsea_path=tmp_path / "missing.nc"))
     with pytest.raises(FileNotFoundError):
-        resolve_basis_inputs(replace(config, domain="NO-SUCH-PACKAGED-DOMAIN"))
-    assert resolve_basis_inputs(replace(config, domain="NO-SUCH-PACKAGED-DOMAIN", basis_algorithm="quadtree")) == {
+        resolve_basis_inputs(replace(config.data, domain="NO-SUCH-PACKAGED-DOMAIN"))
+    assert resolve_basis_inputs(replace(config.data, domain="NO-SUCH-PACKAGED-DOMAIN", basis_algorithm="quadtree")) == {
         "landsea_classes": None, "outer_regions": None,
     }
-    outer_config = replace(config, domain="EUHROB", basis_algorithm="quadtree", fix_basis_outer_regions=True)
+    outer_config = replace(config.data, domain="EUHROB", basis_algorithm="quadtree", fix_basis_outer_regions=True)
     selected_outer = resolve_basis_inputs(outer_config)["outer_regions"]
     xr.testing.assert_equal(selected_outer, load_basis_support_map(
         packaged_basis_support_path("outer_regions", "EUHROB"), "region"))
@@ -125,7 +126,8 @@ def test_modern_routes_reject_historical_resource_selectors_before_acquisition(m
     monkeypatch.setattr("openghg_inversions.inversion_data.RhimeMergedData.from_options", unexpected_acquisition)
     with pytest.raises(ValueError, match="Historical resource selectors.*HBMCMC"):
         if route == "staged":
-            module.resolve_stage_setup(options, model="standard")
+            # The standard prepare phase loads its request through the single loader.
+            module.load_params(overrides=options, phase_groups={"data"})
         elif route == "nested":
             module.run_nested(**options, inner_domain="inner")
         elif route == "multisector":
@@ -133,4 +135,4 @@ def test_modern_routes_reject_historical_resource_selectors_before_acquisition(m
         elif route in ("example", "custom_basis"):
             module.run_custom_rhime(**options)
         else:
-            module.run_rhime(**options)
+            module.run_standard(**options)

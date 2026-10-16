@@ -20,8 +20,11 @@ coordinates and labels, scientific source/state layout, units, retained basis
 and flux. Consumers SHALL derive these retained facts from the numerical
 artifacts rather than require duplicate arrays or labels in the manifest.
 Requested preparation choices SHALL remain distinguishable from retained facts.
-The manifest need not embed a whole configuration or every fact needed by later
-operations. It SHALL NOT depend on a runtime dataclass layout or imply that later
+The manifest SHALL record the data choices that produced the preparation in their
+external option form, and loading it SHALL return the same `DataConfig` type the
+full runner passes to model resolution, validated by its owner. A saved-route-only
+facts mapping, or a configuration reconstructed with defaults, SHALL NOT replace it.
+It SHALL NOT depend on a runtime dataclass layout or imply that later
 model, sampler or output choices were already executed or fixed by preparation.
 
 #### Scenario: Preparation with a retained subset
@@ -71,12 +74,36 @@ NOT add a Zarr rejection or conversion requirement solely for content hashing.
 - **THEN** the reader reports the problem before inference or product writes
 - **AND** it does not substitute another file found through configuration, working directory or environment defaults
 
-### Requirement: Fresh destinations and manifest-last completion
+### Requirement: Bind samples to the preparation generation
 
-Saved scientific operations SHALL use a fresh caller-selected destination and
-reject an existing destination before owned writes. Ordinary numerical saves
+Each preparation save SHALL assign a generation identifier. Sample records SHALL
+capture that identifier. Public preparation loading SHALL return it alongside
+the prepared inputs and data configuration; public sample saving SHALL require
+that identifier from the caller rather than adopt a current replacement.
+Loading samples SHALL reject a replacement preparation
+at the same reference whose generation differs. This check SHALL bind checkpoint
+replacement, not authenticate arbitrary numerical payload contents. It SHALL NOT
+require content hashes or recursive artifact scans.
+
+#### Scenario: Preparation replaced after sampling
+
+- **WHEN** samples reference a preparation generation and a later save replaces that preparation at the same path
+- **THEN** loading those samples rejects the different preparation generation before reconstructing products
+- **AND** the check does not claim to detect arbitrary numerical payload modifications within a generation
+
+### Requirement: Caller-selected destinations and manifest-last completion
+
+Saved scientific operations SHALL accept caller-selected destinations, including
+existing directories. Callers/orchestrators SHALL own directory allocation,
+collision avoidance and run isolation. Final-product writing SHALL follow the
+full runner overwrite behaviour. Normal filesystem errors SHALL propagate.
+Ordinary numerical saves
 SHALL complete before the final manifest is written. The final manifest SHALL be
 the completion marker; a failed save SHALL NOT leave one claiming completion.
+Concrete checkpoint payload and manifest targets, including prior-predictive
+evidence, SHALL be checked for redirects outside the selected destination and
+aliases to referenced preparation files. These checks SHALL NOT require fresh
+directories or recursive scanning.
 Files owned by the checkpoint writer SHALL remain under the explicit checkpoint
 destination, and dependency references SHALL NOT authorize writes elsewhere or
 overwriting referenced artifacts.
@@ -95,11 +122,12 @@ action.
 - **THEN** the operation reports the error without leaving a final completion manifest
 - **AND** any incomplete files do not constitute an accepted handoff
 
-#### Scenario: Shared preparation and protected saves
+#### Scenario: Shared preparation and caller isolation
 
 - **WHEN** two inference runs use one completed preparation and distinct new destinations
 - **THEN** both reference the same preparation without an implicit copy
-- **AND** attempting to save into an existing destination fails without altering its completed handoff or referenced artifacts
+- **AND** callers may choose existing directories without a freshness restriction
+- **AND** an interrupted replacement does not leave a manifest claiming the incomplete checkpoint is complete
 
 ### Requirement: Preparation owns filtering and retained-site alignment
 

@@ -161,3 +161,13 @@ def test_direct_sampling_protects_reused_sampler_options(monkeypatch: pytest.Mon
     sampler.sample(model)
     assert sampler.sample_kwargs["random_seed"] == [2, 3]
     assert sampler.posterior_predictive_kwargs == {"compile_kwargs": {"nested": []}}
+
+
+def test_posterior_selection_rejected_without_restricting_prediction() -> None:
+    """Posterior storage belongs to sampling; prediction remains selectable."""
+    with pytest.raises(ValueError, match="var_names"):
+        RhimeSampler(sample_kwargs={"var_names": ["x_latent"]})
+    sampler = RhimeSampler(posterior_predictive_kwargs={"var_names": ["y"]})
+    sampler.sample_kwargs = {"var_names": ["x_latent"]}
+    with pytest.raises(ValueError, match="var_names"):
+        sampler.sample(pm.Model())

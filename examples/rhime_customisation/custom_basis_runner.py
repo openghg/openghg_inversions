@@ -24,13 +24,11 @@ import argparse
 from collections.abc import Sequence
 import json
 from pathlib import Path
-from time import perf_counter
 from typing import Any
 
 import numpy as np
 import xarray as xr
 
-from openghg_inversions.rhime._runner_compat import translate_rhime_aliases
 from openghg_inversions.basis import (
     BasisFunctions,
     basis_functions_from_flat_basis,
@@ -47,25 +45,26 @@ from openghg_inversions.basis.algorithms import (
     MaxChildPCAEccentricity,
     region_constrained_basis,
 )
-from openghg_inversions.inversion_data import RhimeMergedData
 from openghg_inversions.native_flux import resolve_runtime_flux
 from openghg_inversions.basis.support import load_bc_basis
 from openghg_inversions.rhime import (
     RhimeConfig,
-    RhimeResult,
+    make_standard_output,
+    postprocess_standard_outputs,
+    save_standard_artifacts,
+    annotate_sample_trace,
     assemble_rhime_inputs,
     build_sensitivities,
-    build_standard_rhime_model_result,
     filter_observations,
     prepare_observation_errors,
-    make_standard_rhime_result,
-    make_standard_rhime_outputs,
-    validate_output_resources,
-    materialize_pymc_inputs,
+    validate_standard_output_resources,
     read_rhime_ini,
     sample_rhime_model,
-    standard_model_input_names,
 )
+from openghg_inversions.rhime.standard import build_standard_model, materialize_standard_inputs
+from openghg_inversions.rhime.requests import load_params
+from openghg_inversions.rhime.preparation import acquire_merged_data
+from openghg_inversions.postprocessing.inversion_output import InversionOutput
 
 
 DEFAULT_MAX_CHILD_PCA_ECCENTRICITY = 10.0
@@ -236,7 +235,7 @@ def run_custom_rhime(
     project_basis_path: str | Path | None = None,
     max_child_pca_eccentricity: float | None = None,
     **kwargs: Any,
-) -> RhimeResult:
+) -> InversionOutput:
     """Run standard single-sector RHIME with a project-owned basis stage.
 
     Args:
@@ -253,7 +252,7 @@ def run_custom_rhime(
             before standard configuration resolution.
 
     Returns:
-        The sampled result and any outputs requested by the RHIME options.
+        The sampled scientific view; requested files are written before return.
 
     Raises:
         OSError: If configured artifact, input, or output I/O fails.
@@ -263,7 +262,8 @@ def run_custom_rhime(
     Notes:
         This workflow acquires data, may eagerly fit or load a
         basis, eagerly materializes PyMC model inputs, runs sampling, and writes
-        outputs requested by the resolved RHIME options.
+        outputs requested by the resolved RHIME options. Supported outputs are
+        checked against the built model contract before posterior sampling.
     """
     params = read_rhime_ini(config_file) if config_file is not None else {}
     params.update(kwargs)
@@ -280,88 +280,80 @@ def run_custom_rhime(
     # A built-in algorithm choice is irrelevant to this copied recipe.
     params.pop("basis_algorithm", None)
     params.pop("basis_path", None)
-    config = RhimeConfig.from_params(translate_rhime_aliases(params), multisector=False)
-    validate_output_resources(config.output)
-    bc_basis = load_bc_basis(config.bc_basis_paths) if config.use_bc and config.bc_basis_paths is not None else None
+    config = RhimeConfig.from_params(load_params(overrides=params), multisector=False)
+    validate_standard_output_resources(config.output)
+    bc_basis = load_bc_basis(config.data.bc_basis_paths) if config.data.use_bc and config.data.bc_basis_paths is not None else None
 
     # This project selects and loads its scientific class map before acquisition.
     region_classes = None
     if project_basis_path is None:
-        class_path = config.landsea_path or packaged_basis_support_path("landsea", config.domain)
+        class_path = config.data.landsea_path or packaged_basis_support_path("landsea", config.data.domain)
         region_classes = load_basis_support_map(class_path, "country")
     if project_basis_path is not None and not Path(project_basis_path).exists():
         raise FileNotFoundError(project_basis_path)
-    merged = RhimeMergedData.from_options(
-        **config.select(
-            "site_options", "species", "domain", "start_date",
-            "end_date",  "flux_sources", "split_by_sectors",
-            "bc_store", "obs_store", "footprint_store", "flux_store",
-            "flux_domain", "fp_model", "fp_species", "calibration_scale",
-            "use_bc", "bc_input",
-            "flux_non_finite_check",
-        ),
-    )
-    # 2. Keep the scientific preparation order visible in this recipe.
-    merged = prepare_observation_errors(merged, averaging_error=config.averaging_error)
-    filtered = filter_observations(merged, filters=config.filters)
+    merged = acquire_merged_data(config.data)
+
+    # Keep the scientific preparation order visible; ``merged`` stays acquired data.
+    with_errors = prepare_observation_errors(merged.site_data, averaging_error=config.data.averaging_error)
+    filtered, site_options = filter_observations(with_errors, merged.site_options, filters=config.data.filters)
+
     runtime_flux = resolve_runtime_flux(
-        filtered.flux_data, split_by_sectors=filtered.split_by_sectors,
+        merged.flux_data, split_by_sectors=merged.split_by_sectors,
     )
-    weighting_source = config.flux_sources[0] if config.flux_sources else next(iter(filtered.flux_data))
-    weighting_flux = filtered.flux_data[weighting_source]["flux"]
+    weighting_source = config.data.flux_sources[0] if config.data.flux_sources else next(iter(merged.flux_data))
+    weighting_flux = merged.flux_data[weighting_source]["flux"]
     # Replace only basis construction; subsequent scientific stages stay visible.
     basis_functions = build_project_basis(
-        site_data=filtered.site_data,
+        site_data=filtered,
         runtime_flux=runtime_flux,
         weighting_flux=weighting_flux,
-        **config.select("domain", "nbasis"),
+        **config.data.select("domain", "nbasis"),
         region_classes=region_classes,
         project_basis_path=project_basis_path,
         max_child_pca_eccentricity=max_child_pca_eccentricity,
     )
-    site_data = build_sensitivities(
+    if config.data.basis_output_path is not None:
+        Path(config.data.basis_output_path).parent.mkdir(parents=True, exist_ok=True)
+        basis_functions.save(config.data.basis_output_path)
+
+    sensitivities = build_sensitivities(
         filtered,
         basis_functions,
-        **config.select(
+        **config.data.select(
             "flux_sources", "use_bc",
         ),
         bc_basis=bc_basis,
         multisector=False,
     )
+
     prepared = assemble_rhime_inputs(
-        filtered,
+        sensitivities,
         basis_functions,
-        site_data,
-        **config.select(
+        site_options=site_options,
+        **config.data.select(
             "domain", "start_date", "bc_freq", "min_error",
             "min_error_options", "use_bc",
         ),
     )
-    run_spec = config.retained_run_spec(prepared)
 
-    # Cross the explicit eager PyMC boundary without changing canonical inputs.
-    model_inputs = materialize_pymc_inputs(
-        prepared,
-        variable_names=standard_model_input_names(prepared, run_spec.model),
+    model_inputs, priors = materialize_standard_inputs(prepared, config.model)
+    model_build_result = build_standard_model(
+        model_inputs, config.model, priors=priors,
     )
-    build_and_sample_start = perf_counter()
-    model_build_result = build_standard_rhime_model_result(
-        prepared=prepared,
-        model_inputs=model_inputs,
-        run_spec=run_spec,
-    )
+    model_build_result.output_contract.validate_requested_output(config.output.output_format)
+
     idata = sample_rhime_model(model_build_result, config.sampler)
 
-    result = make_standard_rhime_result(
-        prepared=prepared,
-        run_spec=run_spec,
-        sampler=config.sampler,
-        model_build_result=model_build_result,
-        idata=idata,
-        build_and_sample_seconds=perf_counter() - build_and_sample_start,
+    annotate_sample_trace(model_build_result, idata, likelihood_builder=None)
+    inv_out = make_standard_output(
+        prepared=prepared, model_spec=config.model, posterior=idata,
+        output_contract=model_build_result.output_contract,
+        start_date=config.data.start_date, end_date=config.data.end_date,
+        actual_inference=config.sampler.describe(),
     )
-    make_standard_rhime_outputs(result=result, prepared=prepared)
-    return result
+    postprocess_standard_outputs(inv_out, config.output)
+    save_standard_artifacts(inv_out, config.output)
+    return inv_out
 
 
 def _json_object(value: str) -> dict[str, Any]:
@@ -386,7 +378,7 @@ def _json_object(value: str) -> dict[str, Any]:
     return parsed
 
 
-def main(argv: Sequence[str] | None = None) -> RhimeResult:
+def main(argv: Sequence[str] | None = None) -> InversionOutput:
     """Parse command-line options and run the custom-basis RHIME workflow.
 
     Args:

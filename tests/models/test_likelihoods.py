@@ -28,7 +28,6 @@ def _add_pollution_event_likelihood(
     power: dict[str, Any] | float = 1.99,
     pollution_events_from_obs: bool = False,
     no_model_error: bool = False,
-    retain_unused_sigma: bool = False,
     aggregation_error_mode: Any = "none",
 ) -> None:
     """Compose the ordinary mean and add the built-in error and distribution."""
@@ -49,7 +48,6 @@ def _add_pollution_event_likelihood(
         power=power,
         pollution_events_from_obs=pollution_events_from_obs,
         no_model_error=no_model_error,
-        retain_unused_sigma=retain_unused_sigma,
     )
 
 
@@ -218,8 +216,8 @@ def test_min_error_is_a_floor_on_total_marginal_sd(mode: str) -> None:
     assert "model_error" not in model.named_vars
 
 
-def test_no_model_error_retains_legacy_sigma_graph_and_observation_error_floor() -> None:
-    """Disabling model error preserves the legacy graph but epsilon uses only data error."""
+def test_no_model_error_uses_reported_error_without_sigma_or_minimum_floor() -> None:
+    """Disabling model error uses reported errors and excludes unused sigma variables."""
     data = _base_data()
     data["mf_error"] = ("nmeasure", np.array([0.0, 0.3, 0.4]))
     data["min_error"] = ("nmeasure", np.full(3, 20.0))
@@ -235,19 +233,17 @@ def test_no_model_error_retains_legacy_sigma_graph_and_observation_error_floor()
             sigprior={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
             sigma_alignment=sigma_alignment,
             no_model_error=True,
-            retain_unused_sigma=True,
         )
 
     small_amount = 1e-12 * np.nanmean(data["mf"].values)
     expected = np.maximum(np.abs(data["mf_error"].values), small_amount)
     np.testing.assert_allclose(model.named_vars["epsilon"].eval(), expected)
     assert "model_error" not in model.named_vars
-    assert model["sigma"] in model.free_RVs
-    assert {"sigma", "sigma_site_index", "sigma_period_index"}.issubset(model.named_vars)
+    assert not {"sigma", "sigma_site_index", "sigma_period_index"}.intersection(model.named_vars)
 
 
 def test_no_model_error_omits_unused_sigma_by_default() -> None:
-    """The ordinary component keeps compatibility-only variables out of the graph."""
+    """The ordinary component omits sigma when model error is disabled."""
     data = _base_data()
     sigma_alignment = SigmaAlignment.from_frequency(
         data["site_indicator"], frequency=None, per_site=False
