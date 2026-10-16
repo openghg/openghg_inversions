@@ -424,6 +424,26 @@ Validation before Slurm:
   `sw-20261016T094109Z-3cc04fbfe0e2`. The three final preflight checks passed.
   Terminal comparison remains pending; this does not clear task 3.6.
 
+Broader Slurm 19448969 terminal evidence at `ccffce5f`: both full locked
+Python suites reached 3,105 passes and eight skips, with the same single failure
+in a stale CO2 documentation-reader assertion. Scientific, coherent, likelihood,
+affine and product checks passed. The assertion now describes the delivered
+ordinary manifests and separate cached/linked boundaries; six documentation tests
+pass locally. This is a failed run, not a full-suite pass.
+
+Mypy reported 173 diagnostics versus baseline 164. Normalized comparison found
+eight new heterogeneous-options inference errors in `co2_runner` and two new
+CLI local-variable errors. Explicit dictionary annotations and a distinct cached
+preparation local fix these without changing scientific operations. The PyMC
+missing-stubs diagnostic moved from retired `co2/stages.py` ownership to
+`co2/handoffs.py`; it remains baseline debt without suppression. The prior
+`fixed_ou.expand_mapping` error is removed. The expected next count is 163,
+subject to Slurm confirmation. Strict docs reported 321 warnings versus baseline
+318; all three additions were unresolved short function references and now use
+fully qualified targets verified in Sphinx's inventory. Broader confirmation
+remains pending. Peak memory was `21525080K` for the combined job, supporting
+24 GiB for the same concurrent rerun.
+
 Concrete cached handoff: consume `load_preparation` (coherent inputs, bound
 companion and generation), keep the matched cached construction/step owner and
 PyMC backend, save through `save_samples(actual_inference=...,

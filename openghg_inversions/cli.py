@@ -175,9 +175,9 @@ def _prepare_command(args: argparse.Namespace) -> None:
         if params.get("variant", "ordinary") == "ordinary":
             print(prepare_co2(**resolve_co2_preparation(params), output_dir=_stage_output_dir(args)))
         else:
-            manifest = prepare_rhime_stage(setup=_stage_setup(args), model=args.model,
-                                           output_dir=_stage_output_dir(args))
-            print(manifest["manifest_path"])
+            cached_preparation = prepare_rhime_stage(setup=_stage_setup(args), model=args.model,
+                                                     output_dir=_stage_output_dir(args))
+            print(cached_preparation["manifest_path"])
     else:
         manifest = prepare_rhime_stage(setup=_stage_setup(args), model=args.model,
                                        output_dir=_stage_output_dir(args))

@@ -102,7 +102,8 @@ def run_co2_from_config(
 
     This configured product entry point consumes ``model``, ``likelihood``,
     ``sampling`` and ``outputs`` without intermediate manifests. The direct
-    :func:`run_rhime_co2` retains its numerical trace return. Supplied canonical
+    :func:`~openghg_inversions.rhime.co2.co2_runner.run_rhime_co2` retains its
+    numerical trace return. Supplied canonical
     inputs and their coherent reduction are prepared together; an existing
     preparation is reused unchanged. Imported runs must supply requested dates
     and domain explicitly or retain them in preparation provenance.

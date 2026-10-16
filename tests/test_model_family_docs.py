@@ -81,7 +81,7 @@ def test_standard_reader_path_avoids_detailed_co2_material() -> None:
 
 
 def test_advanced_co2_reader_path_exposes_current_boundaries() -> None:
-    """A CO₂ reader can identify installed replay and linked-route boundaries."""
+    """A CO₂ reader can find configured runs, handoffs and deferred family routes."""
     chooser = _source("model_recipes.rst")
     family = _source("co2_model_family.rst")
     recipes = _source("co2_models.rst")
@@ -96,14 +96,25 @@ def test_advanced_co2_reader_path_exposes_current_boundaries() -> None:
     workflow = family.split("   * - Staged workflow\n", 1)[1].split(
         "   * - Outputs and postprocessing\n", 1
     )[0]
-    assert "Installed ``--model co2`` stages support ordinary and cached fixed-OU" in workflow
+    workflow = " ".join(workflow.split())
+    assert "Ordinary ``--model co2``" in workflow and "manifest" in workflow
+    assert "Cached fixed-OU" in workflow and "separate staged interface" in workflow
     assert "Not supported by the staged CLI" in workflow
+    ordinary, cached = family.split("Cached and linked boundaries\n", 1)
+    assert "rhime run --model co2" in ordinary
+    assert "``rhime run-co2`` remains an alias" in ordinary
+    assert "run_co2_from_config" in ordinary
     for stage in ("prepare", "prior-predictive", "sample", "postprocess"):
-        assert f"openghg-inversions {stage} --model co2" in family
-    assert "openghg-inversions diagnose" in family
-    assert "Linked CO₂/O₂ staged routing is tracked separately in OPE-165" in family
+        assert f"rhime {stage} --model co2" in ordinary
+    assert "rhime diagnose --posterior" in ordinary
+    assert ordinary.count("--preparation-manifest run/prepare/prepare-manifest.json") == 2
+    assert ordinary.count("--sample-manifest run/sample/sample-manifest.json") == 2
+    assert "--prepared-inputs run/" not in ordinary
+    assert '``variant = "cached_fixed_ou"``' in cached
+    assert "--prepared-inputs" in cached and "--posterior" in cached
+    assert "ordinary handoff format" in cached
+    assert "Linked CO₂/O₂" in cached and "OPE-165" in cached
     assert "packaged TOML template" in family
-    assert "reuse the existing TOML configuration boundary and prepared-input Python runners" in family
     assert "scientist acceptance" in family
     assert "Scientist acceptance remains future work" in family
     assert "CO2 coherent-reduction model" in recipes

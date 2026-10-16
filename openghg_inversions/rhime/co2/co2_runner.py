@@ -361,7 +361,9 @@ def materialize_co2_inputs(
     model_inputs, computed = _materialize_pymc_inputs_and_priors(
         backend_inputs, variable_names=names, prior_parameters=priors,
     )
-    options = {name: value for name, value in computed.items() if not name.startswith("likelihood:")}
+    options: dict[str, Any] = {
+        name: value for name, value in computed.items() if not name.startswith("likelihood:")
+    }
     if likelihood_priors:
         options["likelihood_kwargs"] = {
             **(likelihood_kwargs or {}),
@@ -516,8 +518,10 @@ def build_rhime_co2(
 ) -> RhimeModelBuildResult:
     """Materialize and build the CO2 coherent-reduction model without sampling.
 
-    This convenience API composes :func:`materialize_co2_inputs` and
-    :func:`build_co2_from_materialized` for an already validated
+    This convenience API composes
+    :func:`~openghg_inversions.rhime.co2.co2_runner.materialize_co2_inputs` and
+    :func:`~openghg_inversions.rhime.co2.co2_runner.build_co2_from_materialized`
+    for an already validated
     :class:`Co2PreparedInputs` artifact. Configured full execution and saved
     inference call these two scientific operations explicitly.
     Saved product replay uses the recorded trace and does not call this operation.
@@ -559,7 +563,7 @@ def build_rhime_co2(
             prepared inputs are missing, inconsistent, or fail model
             construction.
     """
-    options = dict(
+    options: dict[str, Any] = dict(
         sigma_alignment=sigma_alignment, sigma_prior=sigma_prior,
         fixed_model_mismatch=fixed_model_mismatch, likelihood_builder=likelihood_builder,
         likelihood_kwargs=likelihood_kwargs, no_model_error=no_model_error,
