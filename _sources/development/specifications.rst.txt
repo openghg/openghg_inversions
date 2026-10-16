@@ -53,8 +53,7 @@ The resource-I/O and HBMCMC entries were updated the same day for the accepted
    * - Requested configuration and preparation ownership
      - :download:`Resolve RHIME configuration
        <../../openspec/specs/rhime-configuration/spec.md>`
-     - Delivered baseline with :download:`grouped/phase amendments
-       <../../openspec/changes/group-rhime-configuration-by-owner/proposal.md>`
+     - Delivered grouped configuration and independent phase resolution,
        implemented in `PR 866 <https://github.com/openghg/openghg_inversions/pull/866>`_.
        Current usage: :doc:`/usage/rhime_configuration`.
        Configuration serialization/INI writing remains with `issue 814
