@@ -1,0 +1,6 @@
+openghg\_inversions.cli
+=======================
+
+.. automodule:: openghg_inversions.cli
+   :members:
+   :show-inheritance:

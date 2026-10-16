@@ -1,0 +1,6 @@
+openghg\_inversions.models.fixed\_error
+=======================================
+
+.. automodule:: openghg_inversions.models.fixed_error
+   :members:
+   :show-inheritance:

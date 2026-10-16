@@ -1,0 +1,284 @@
+Staged RHIME workflows
+======================
+
+The standard recipe can prepare once, sample compatible models into separate
+locations, and produce different outputs from saved samples. ``run_standard``
+with or without ``prepared=...`` uses the same scientific operations
+as the saved phases: prepare inputs, explicitly materialize selected arrays and
+enabled priors where needed, build one eager model, sample, construct an
+``InversionOutput`` view, then write requested products and exports. Checkpoints
+add loading and saving at those boundaries; full execution needs no intermediate
+saves. Model construction accepts no output configuration and performs no hidden
+materialization.
+
+Standard saved phases
+---------------------
+
+``prepare`` returns one absolute path to ``prepare-manifest.json``. It references
+prepared numerical inputs and records the ``DataConfig`` that produced them in
+its external option form; ``load_preparation`` returns the prepared inputs and
+that ``DataConfig`` and its generation identifier. The recorded configuration
+is validated exactly as a full-run request is. Retained sites and their averaging
+periods come from the
+numerical artifact, including when acquisition or filtering drops a site.
+Observation errors are established before filtering, then basis construction,
+sensitivities and assembly run in scientific order. No filtered checkpoint is
+written.
+
+``sample`` takes that manifest and current model and sampler choices, returning
+one absolute path to ``sample-manifest.json``. A Python ``likelihood_builder``
+(with ``likelihood_kwargs``) may replace the built-in likelihood, as in
+``run_standard``. Compatible graph-time priors and
+likelihoods reuse the preparation. Required BC and minimum-error arrays must be
+available. Omitted model ``use_bc`` inherits the preparation choice; explicit
+``False`` may ignore available BC inputs. A repeated ``bc_freq`` must agree with
+the baked policy, even when the selected model ignores BCs. Changing acquired
+data, filters, basis, native flux or baked numerical policy needs new preparation.
+
+``load_samples`` decodes the sample manifest to ``InversionOutput``.
+``postprocess`` uses that reader with current output choices, calls
+``postprocess_standard_outputs`` to compute and write requested PARIS or legacy
+products, then calls ``save_standard_artifacts`` for optional exports. It loads
+the recorded model meaning, output contract, inference metadata, prepared inputs
+and samples without building a graph or running inference. It returns
+``InversionOutput`` without a live model or sampler. Missing descriptive metadata stays
+unavailable. Output naming, destination and supported formats can change;
+scientific choices cannot relabel saved samples. Default sampling retains
+scientific ``x``, including when it is a deterministic transform of ``x_latent``.
+Posterior ``sample_kwargs["var_names"]`` overrides are rejected by the sampler;
+intentional posterior-predictive variable selection remains supported.
+
+Prior parameters in saved samples describe the priors actually constructed.
+Numerical scalars are retained inline in model metadata. Array-valued parameters
+are registered as model data and saved in the trace's ``constant_data`` group,
+with their scientific dimensions and coordinates; metadata references those
+arrays rather than embedding numerical arrays in JSON. Disabled components
+contribute no prior metadata or references. Modern inversion outputs retain
+records captured by shared prior construction in
+``model_metadata["constructed_priors"]``, keyed by their concrete model variable
+names. Directly constructed PyMC priors are not automatically captured, and
+``Interpolated`` persistence remains excluded. Sector associations use the output
+contract's variable roles, including separate outer and inner state variables
+in nested outputs.
+
+Related lazy prior inputs, including supported zero-dimensional numerical
+inputs and auxiliary coordinates, are materialized together with selected model
+inputs at the explicit caller materialization boundary before construction. An enabled prior may be computed before sensitivity
+evaluation finds that its states have no effect on observations and fixes them
+instead of sampling them; such a prior contributes no constructed-prior record.
+Disabled BC and offset components are excluded before this computation.
+Metadata writing uses the captured scalar values and registered arrays, without
+executing the original caller's lazy prior graph again. Scalar-shaped symbolic
+parameters retain their graph dependencies. Ordinary and reparameterized
+lognormal construction share the same symbolic moment conversion, preserving
+the supplied arithmetic or log-space parameterization in metadata.
+
+Ordinary standard sampling routes attach constructed-prior records and callable
+provenance to the trace once after sampling. When composing these operations
+directly, call the public ``annotate_sample_trace`` with the build
+result and posterior before ``save_samples``; pass the generation returned by
+``load_preparation`` as ``preparation_generation``. The generic sampler does not
+own RHIME scientific metadata. Required array references are checked when saving
+and reloading samples;
+missing values fail before completing a sample handoff or writing products.
+
+A selected saved basis supplies its operator while new preparation binds current
+native flux. Saved preparation and replay retain that flux and do not reacquire
+it. Species-dependent mass conversion belongs to postprocessing.
+
+Relative filesystem values inside an INI or JSON parameter file resolve from
+the invocation working directory, in both full and staged execution. This includes
+resource inputs, ``output_path`` and explicit ``save_trace`` /
+``save_inversion_output`` filenames. Explicit ``--kwargs`` path overrides follow
+the same rule; absolute paths keep their destination.
+Filesystem annotations identify the fields to convert: resolved configuration
+uses ``Path`` values, including tuples of paths, while parameter JSON and stage
+manifests store paths as strings and path collections as JSON arrays. Scientific
+strings such as domain names are unchanged; configuration construction does not
+load scientific resources. Each owner converts its declared fields once; later
+configured execution and identity encoding forward canonical paths.
+
+For file-backed boundary conditions, specify exact files, for example
+``"bc_basis_paths": ["bc/january.nc", "bc/february.nc"]`` in the parameter JSON.
+``prepare`` loads all selected files before acquisition and passes their labelled
+data to sensitivity construction, preserving time combination and alignment.
+Missing or unreadable selected files fail before acquisition. Omit
+``bc_basis_paths`` for NESW: it uses acquired directional contributions without
+reading a BC basis file. Disabled BCs load no BC basis resources. Staged commands
+reject historical ``fp_basis_case``, ``basis_directory``, ``bc_basis_case`` and
+``bc_basis_directory`` options. Use explicit modern paths. During 0.8, only the
+HBMCMC entry route translates those historical selectors after winning overrides;
+on that route, an NESW directory warns that it is unused without any lookup.
+
+
+``country_directory`` is removed in 0.8. Use ``country_file`` for reporting,
+``landsea_path`` for preparation land/sea classes, or ``outer_regions_path`` for
+fixed outer regions. Required preparation maps default to packaged files for the
+exact requested domain; explicit paths win and missing resources fail without
+fallback. Reporting country files remain explicit and independent of these
+preparation defaults. See :doc:`legacy_and_migration` for the migration schedule.
+
+Keep each manifest and its referenced files available for later phases. References
+resolve relative to the declaring manifest; absolute shared-cache references are
+also accepted. No environment variable locates replacement artifacts. Numerical
+files use existing codecs, and manifests use JSON without mandatory content
+hashes or full-configuration equality gates. Missing or malformed files fail at
+loading; incompatible scientific inputs fail at their owning operation.
+
+The public ``load_preparation`` returns ``(prepared, data_config, generation)``.
+External ``save_samples`` calls must supply that exact ``preparation_generation``;
+the writer does not silently bind an old posterior to whichever preparation is
+currently stored at a path.
+
+Each preparation save assigns a generation identifier. A sample manifest records
+that identifier and rejects replay against a replacement preparation at the same
+path. This binds checkpoint generations, not arbitrary payload contents; it does
+not provide content-integrity or tamper detection.
+
+Standard ``output_format="basic"`` returns the scientific view without computing
+an unused summary. For in-memory reporting, call ``basic_output(inv_out,
+country_file=...)`` yourself. PARIS and legacy products require ``output_path``;
+missing destinations fail before sampling in a full run or before loading samples
+in staged postprocessing. ``save_standard_artifacts`` only exports the scientific
+result and trace; it does not compute derived products.
+
+Choose saved artifacts by what you need to reuse:
+
+* Preparation and sample checkpoints preserve phase inputs and execution records.
+  A sample checkpoint references its preparation, so keep that dependency with it.
+* A self-contained ``InversionOutput`` export carries the prepared scientific
+  values, basis and trace needed for later reporting without the checkpoint manifests.
+* A trace export carries sampled variables and diagnostics; it does not replace
+  the prepared inputs and output contract required for scientific reconstruction.
+* An optional basis export preserves the basis for inspection or reuse. It does
+  not contain the observations and posterior of an inversion.
+
+Full execution needs no checkpoints, so these optional exports remain useful.
+Their defaults and formats are unchanged.
+
+Callers choose checkpoint locations and own collision avoidance and run isolation.
+A simple layout is ``run/prepare``, ``run/sample`` and ``run/products``; explicit
+locations are supported, including existing directories. Numerical files are saved
+first and the manifest is written last as the completion marker. A failed payload save
+can leave partial files but no completed manifest. Checkpoint-owned payload and
+manifest targets must stay within the chosen destination and must not alias
+referenced preparation artifacts. Postprocessing uses the same
+product writer and overwrite behaviour as full execution; in-memory products
+require no destination. Normal filesystem errors propagate. Concrete payload and manifest targets are
+checked for redirects outside their destination or aliases to prepared inputs;
+prior-predictive saves use the same target checks. This does not require fresh
+directories or recursive directory scanning.
+``basis_output_path`` is an exact destination and may be outside the checkpoint
+directory. It is resolved at the frontend and forwarded unchanged to the runner's
+optional basis export.
+
+Legacy fixedbasis-style PARIS INIs contain options such as ``nit``, ``nchain``,
+``xprior`` and ``mcmc_type``. Fixedbasis policy such as ``nit``, ``nchain`` and
+``mcmc_type`` belongs to the temporary ``run_hbmcmc`` route in 0.8. Modern name
+aliases such as ``xprior`` remain supported at the staged frontend until 0.9
+with deprecation warnings and their existing precedence; prefer ``x_prior`` in
+new files. Translation happens before ``RhimeConfig.from_params``, which accepts
+canonical names only and emits no alias warnings. Migrate fixedbasis policy and
+resource discovery to canonical RHIME options before using staged commands.
+The entire HBMCMC subpackage and its entry points are removed in 0.9.
+
+Configuration and CLI
+---------------------
+
+Preparation accepts ``--config run.ini`` or ``--params-file choices.json``.
+Sampling and postprocessing optionally accept either source; a shared full
+configuration contributes only the active phase's choices. JSON can contain
+flat options or ``data``, ``model``, ``sampler`` and ``output`` mappings.
+Unknown names remain errors, while known inactive values are not resolved.
+Explicit ``--kwargs`` overrides for another phase and unsupported names are
+reported together in one error. Raw file options and overrides are combined
+before alias translation; a canonical spelling wins over its deprecated alias. Relative input
+paths resolve from the invocation working directory. ``CONFIG_FILE`` is not an automatic
+source; ``OUTPUT_DIR`` is an optional destination default.
+
+For example, with preparation settings in ``preparation.json``:
+
+.. code-block:: bash
+
+   rhime prepare --params-file preparation.json --output-dir run/prepare
+
+   rhime sample --preparation-manifest run/prepare/prepare-manifest.json \
+     --kwargs '{"x_prior":{"pdf":"normal","mu":1,"sigma":0.2}}' \
+     --output-dir run/model-a
+
+   rhime sample --preparation-manifest run/prepare/prepare-manifest.json \
+     --kwargs '{"x_prior":{"pdf":"normal","mu":1,"sigma":0.5}}' \
+     --output-dir run/model-b
+
+   rhime postprocess --sample-manifest run/model-a/sample-manifest.json \
+     --kwargs '{"output_format":"inv_out"}' --output-dir run/inversion-output
+
+   rhime postprocess --sample-manifest run/model-a/sample-manifest.json \
+     --kwargs '{"output_format":"paris","country_file":"/data/countries.nc"}' \
+     --output-dir run/paris
+
+``--model standard`` is the default for these commands. A manifest's family must
+match the selected route. Full-run ``rhime run`` choices and aliases are
+unchanged; saved-phase selection does not add CO2 configuration-file support to
+the full-run command.
+
+Python callers can use the same handoffs:
+
+.. code-block:: python
+
+   from openghg_inversions.rhime import DataConfig, RhimeOutputSpec
+   from openghg_inversions.rhime.stages import prepare, sample, postprocess
+
+   preparation = DataConfig.from_params(preparation_options)
+   prepared_manifest = prepare(preparation, output_dir="run/prepare")
+   sample_manifest = sample(
+       prepared_manifest,
+       model={"x_prior": {"pdf": "normal", "mu": 1, "sigma": 0.2}},
+       output_dir="run/model-a",
+   )
+   result = postprocess(
+       sample_manifest,
+       output=RhimeOutputSpec(output_path="run/products"),
+   )
+
+For a runnable synthetic scientific parity example, see
+:download:`standard_handoffs.py <../../examples/standard_handoffs.py>`.
+
+Readiness and independent diagnosis
+-----------------------------------
+
+``rhime prior-predictive --preparation-manifest ... --output-dir ...`` builds
+the selected model and draws prior predictions without posterior inference.
+``--draws`` controls its sample count. Loading and serialization errors
+propagate; supported model/input failures produce a readiness ``fail`` result.
+Readiness checks finite evidence, not scientific plausibility. See
+:doc:`prior_predictive_checking` for interpreting predictions.
+
+.. _staged-convergence-check:
+
+``rhime diagnose --posterior posterior.nc --output-dir ...`` independently
+reports maximum R-hat, minimum bulk/tail ESS, divergences and unassessable
+variables. ``--sample-manifest`` optionally supplies descriptive run context.
+Defaults are maximum R-hat 1.01, minimum bulk/tail ESS 400 and zero divergences.
+Available metrics exceeding a threshold yield ``fail``; missing metrics yield
+``unknown`` when none fails; otherwise the result is ``pass``. Neither check
+repairs missing evidence or performs posterior inference. ``--strict`` makes
+``fail`` exit nonzero. Both write schema-version-1 check JSON with producer
+``openghg_inversions``; ``--check-output`` and ``--check-stage`` select its path
+and stage label.
+
+Other families and migration
+----------------------------
+
+Multisector and CO2 retain their existing staged interfaces pending separate
+handoff adoption. They require explicit ``--model``, a full configuration and
+``--prepared-inputs``/``--preparation-manifest`` for sampling. Postprocessing also
+requires ``--posterior`` and ``--sample-manifest``. Multisector retains its
+configuration restriction and output-binding record. CO2 takes an existing
+coherent preparation; see :doc:`co2_model_family` for its supported outputs.
+Linked CO2/O2 staging remains separate work.
+
+The new standard handoff format replaces historical standard staged envelopes
+and multi-artifact argument lists. Regenerate those handoffs with 0.8, or use the
+original package version to consume them. Existing numerical codecs, scientific
+Python APIs and final product formats retain their contracts.

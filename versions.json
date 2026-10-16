@@ -4,5 +4,10 @@
     "version": "v0.7.4",
     "url": "https://openghg.github.io/openghg_inversions/v0.7.4/",
     "preferred": true
+  },
+  {
+    "name": "devel (unreleased)",
+    "version": "devel",
+    "url": "https://openghg.github.io/openghg_inversions/devel/"
   }
 ]

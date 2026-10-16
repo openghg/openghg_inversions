@@ -1,0 +1,6 @@
+openghg\_inversions.rhime.params
+================================
+
+.. automodule:: openghg_inversions.rhime.params
+   :members:
+   :show-inheritance:

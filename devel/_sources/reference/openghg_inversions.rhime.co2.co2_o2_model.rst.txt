@@ -1,0 +1,6 @@
+openghg\_inversions.rhime.co2.co2\_o2\_model
+============================================
+
+.. automodule:: openghg_inversions.rhime.co2.co2_o2_model
+   :members:
+   :show-inheritance:

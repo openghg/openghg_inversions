@@ -1,0 +1,6 @@
+openghg\_inversions.models.priors
+=================================
+
+.. automodule:: openghg_inversions.models.priors
+   :members:
+   :show-inheritance:

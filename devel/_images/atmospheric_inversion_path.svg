@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 620" role="img" aria-labelledby="title desc">
+  <title id="title">Atmospheric inversion path from observations and scientific inputs to posterior products</title>
+  <desc id="desc">Observed mole fractions and their reported uncertainty enter a likelihood. Footprints, a prior flux, and a basis representation define state-space sensitivity for the forward model; boundary conditions and state parameters from prior distributions also enter the model. Prior distributions and the likelihood produce a posterior. Posterior samples and retained scientific inputs produce derived products.</desc>
+  <metadata>
+    Project-authored OpenGHG Inversions documentation schematic, 2026-09-15.
+    Scientific structure follows Seibert and Frank (2004), doi:10.5194/acp-4-51-2004,
+    and Ganesan et al. (2014), doi:10.5194/acp-14-3855-2014.
+  </metadata>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#25344f"/>
+    </marker>
+    <style>
+      .box { fill: #f6f8fb; stroke: #25344f; stroke-width: 3; rx: 14; }
+      .input { fill: #e9f3fb; }
+      .inference { fill: #f7efe2; }
+      .result { fill: #e8f4e8; }
+      .line { fill: none; stroke: #25344f; stroke-width: 3; marker-end: url(#arrow); }
+      .retained { fill: none; stroke: #25344f; stroke-width: 3; stroke-dasharray: 10 8; marker-end: url(#arrow); }
+      .label { fill: #172033; font-family: Arial, Helvetica, sans-serif; font-size: 23px; text-anchor: middle; }
+      .small { font-size: 18px; }
+      .heading { fill: #172033; font-family: Arial, Helvetica, sans-serif; font-size: 20px; font-weight: bold; text-anchor: middle; }
+    </style>
+  </defs>
+
+  <rect width="1200" height="620" fill="#ffffff"/>
+
+  <text class="heading" x="230" y="36">Scientific inputs</text>
+  <text class="heading" x="655" y="36">Inference</text>
+  <text class="heading" x="1045" y="36">Interpretation</text>
+
+  <rect class="box input" x="45" y="70" width="260" height="82"/>
+  <text class="label" x="175" y="88"><tspan x="175">Observed</tspan><tspan x="175" dy="25">mole fractions y</tspan><tspan class="small" x="175" dy="24">+ reported uncertainty</tspan></text>
+
+  <rect class="box input" x="45" y="205" width="260" height="82"/>
+  <text class="label" x="175" y="238"><tspan x="175">Transport</tspan><tspan x="175" dy="28">footprints</tspan></text>
+
+  <rect class="box input" x="45" y="340" width="260" height="82"/>
+  <text class="label" x="175" y="373"><tspan x="175">Prior flux +</tspan><tspan x="175" dy="28">basis functions</tspan></text>
+
+  <rect class="box input" x="45" y="475" width="260" height="82"/>
+  <text class="label" x="175" y="508"><tspan x="175">Boundary</tspan><tspan x="175" dy="28">conditions</tspan></text>
+
+  <rect class="box" x="380" y="252" width="250" height="104"/>
+  <text class="label" x="505" y="289"><tspan x="505">State-space</tspan><tspan x="505" dy="28">sensitivity H</tspan></text>
+
+  <rect class="box inference" x="705" y="365" width="250" height="104"/>
+  <text class="label" x="830" y="405"><tspan x="830">Forward model</tspan><tspan class="small" x="830" dy="28">predicted mole</tspan><tspan class="small" x="830" dy="23">fractions μ</tspan></text>
+
+  <rect class="box inference" x="705" y="115" width="250" height="104"/>
+  <text class="label" x="830" y="155"><tspan x="830">Likelihood</tspan><tspan class="small" x="830" dy="28">observations given</tspan><tspan class="small" x="830" dy="23">prediction + error</tspan></text>
+
+  <rect class="box inference" x="705" y="500" width="250" height="70"/>
+  <text class="label" x="830" y="529"><tspan x="830">Prior distributions</tspan><tspan class="small" x="830" dy="25">p(state, other parameters)</tspan></text>
+
+  <rect class="box result" x="1000" y="220" width="165" height="104"/>
+  <text class="label" x="1082" y="263"><tspan x="1082">Posterior</tspan><tspan class="small" x="1082" dy="28">conditioned</tspan><tspan class="small" x="1082" dy="23">state</tspan></text>
+
+  <rect class="box result" x="1000" y="405" width="165" height="104"/>
+  <text class="label" x="1082" y="447"><tspan x="1082">Derived</tspan><tspan x="1082" dy="28">products</tspan></text>
+
+  <path class="line" d="M 305 246 L 380 281"/>
+  <path class="line" d="M 305 381 L 380 327"/>
+  <path class="line" d="M 630 304 L 705 400"/>
+  <path class="line" d="M 305 516 L 705 443"/>
+  <path class="line" d="M 305 111 L 705 150"/>
+  <path class="line" d="M 830 365 L 830 219"/>
+  <path class="line" d="M 955 167 L 1000 246"/>
+  <path class="line" d="M 800 500 L 800 469"/>
+  <path class="line" d="M 955 520 C 980 500, 980 330, 1000 300"/>
+  <path class="line" d="M 1082 324 L 1082 405"/>
+  <path class="retained" d="M 305 400 C 500 590, 900 590, 980 575 L 1000 485"/>
+
+  <text class="small" x="650" y="610" fill="#172033" font-family="Arial, Helvetica, sans-serif" text-anchor="middle">Arrows show information flow; the dashed arrow marks retained inputs used in reconstruction.</text>
+</svg>

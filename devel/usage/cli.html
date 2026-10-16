@@ -1,0 +1,795 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Running RHIME from the command line &#8212; OpenGHG Inversions</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../_static/styles/theme.css?digest=cb8930eaaf36d9849b67" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=cb8930eaaf36d9849b67" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../_static/jupyter-sphinx.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/thebelab.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=5f08cb77" />
+  
+  <!-- So that users can add custom icons -->
+  <script defer src="../_static/scripts/fontawesome.js?digest=cb8930eaaf36d9849b67"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=cb8930eaaf36d9849b67" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=cb8930eaaf36d9849b67" />
+
+    <script src="../_static/documentation_options.js?v=1dba82e2"></script>
+    <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../_static/thebelab-helper.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'usage/cli';</script>
+    <script>
+        DOCUMENTATION_OPTIONS.theme_version = '0.21.0';
+        DOCUMENTATION_OPTIONS.theme_switcher_json_url = 'https://openghg.github.io/openghg_inversions/versions.json';
+        DOCUMENTATION_OPTIONS.theme_switcher_version_match = 'devel';
+        DOCUMENTATION_OPTIONS.show_version_warning_banner =
+            false;
+        </script>
+    <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Customising RHIME" href="customising_rhime.html" />
+    <link rel="prev" title="Advanced RHIME configuration" href="rhime_configuration.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="devel" />
+  
+    
+    <script src="../_static/searchtools.js"></script>
+    <script src="../_static/language_data.js"></script>
+    <script src="../searchindex.js"></script>
+  
+  </head>
+  <body data-default-mode="">
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+  
+  
+  
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+<aside class="bd-header-announcement" aria-label="Announcement">
+  <div class="bd-header-announcement__content">Unreleased development documentation; use <a href="https://openghg.github.io/openghg_inversions/stable/">stable</a> for supported releases. <a href="https://openghg.github.io/openghg_inversions/versions/">All documentation versions</a>.</div>
+</aside>
+
+  
+    <header id="pst-header" class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+  
+    <p class="title logo__title">OpenGHG Inversions</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="usage.html">
+    Using OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../development/index.html">
+    Developing OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../experimental/index.html">
+    Experimental code
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../reference/index.html">
+    API reference
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+      
+        <div class="navbar-item">
+<div class="version-switcher__container dropdown pst-js-only">
+  <button id="pst-version-switcher-button-2"
+    type="button"
+    class="version-switcher__button btn btn-sm dropdown-toggle"
+    data-bs-toggle="dropdown"
+    aria-haspopup="listbox"
+    aria-controls="pst-version-switcher-list-2"
+    aria-label="Version switcher list"
+  >
+    Choose version  <!-- this text may get changed later by javascript -->
+    <span class="caret"></span>
+  </button>
+  <div id="pst-version-switcher-list-2"
+    class="version-switcher__menu dropdown-menu list-group-flush py-0"
+    role="listbox" aria-labelledby="pst-version-switcher-button-2">
+    <!-- dropdown will be populated by javascript on page load -->
+  </div>
+</div></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+    <button class="pst-navbar-icon sidebar-toggle secondary-toggle" aria-label="On this page">
+      <span class="fa-solid fa-outdent"></span>
+    </button>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          
+          
+            <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="usage.html">
+    Using OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../development/index.html">
+    Developing OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../experimental/index.html">
+    Experimental code
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../reference/index.html">
+    API reference
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+          
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+        
+          <div class="navbar-item">
+<div class="version-switcher__container dropdown pst-js-only">
+  <button id="pst-version-switcher-button-3"
+    type="button"
+    class="version-switcher__button btn btn-sm dropdown-toggle"
+    data-bs-toggle="dropdown"
+    aria-haspopup="listbox"
+    aria-controls="pst-version-switcher-list-3"
+    aria-label="Version switcher list"
+  >
+    Choose version  <!-- this text may get changed later by javascript -->
+    <span class="caret"></span>
+  </button>
+  <div id="pst-version-switcher-list-3"
+    class="version-switcher__menu dropdown-menu list-group-flush py-0"
+    role="listbox" aria-labelledby="pst-version-switcher-button-3">
+    <!-- dropdown will be populated by javascript on page load -->
+  </div>
+</div></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item pst-sidebar-collapse"><button id="pst-collapse-sidebar-button" aria-expanded="true" aria-controls="pst-primary-sidebar">
+  <svg class="pst-icon" role="img" aria-hidden="true" focusable="false" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+    <path fill="currentColor" d="M3 15.5C2.36232 15.5 1.74874 15.2564 1.28478 14.8189C0.820828 14.3815 0.541576 13.7832 0.504167 13.1467L0.5 13L0.5 3C0.499965 2.36232 0.743605 1.74874 1.18107 1.28478C1.61854 0.820828 2.21676 0.541576 2.85333 0.504167L3 0.5L13 0.5C13.6377 0.499965 14.2513 0.743605 14.7152 1.18107C15.1792 1.61854 15.4584 2.21676 15.4958 2.85333L15.5 3L15.5 13C15.5 13.6377 15.2564 14.2513 14.8189 14.7152C14.3815 15.1792 13.7832 15.4584 13.1467 15.4958L13 15.5L3 15.5ZM3 13.8333L10.5 13.8333L10.5 2.16667L3 2.16667C2.79589 2.16669 2.59889 2.24163 2.44636 2.37726C2.29383 2.5129 2.19638 2.69979 2.1725 2.9025L2.16667 3L2.16667 13C2.16669 13.2041 2.24163 13.4011 2.37726 13.5536C2.5129 13.7062 2.69979 13.8036 2.9025 13.8275L3 13.8333ZM6.65583 10.325L6.5775 10.2558L4.91083 8.58917C4.76735 8.44567 4.68116 8.25476 4.66843 8.05223C4.65569 7.84971 4.71729 7.6495 4.84167 7.48917L4.91083 7.41083L6.5775 5.74417C6.72747 5.59471 6.9287 5.50794 7.14032 5.50148C7.35194 5.49502 7.55809 5.56935 7.7169 5.70937C7.8757 5.8494 7.97525 6.04463 7.99533 6.25539C8.01541 6.46616 7.95451 6.67667 7.825 6.84417L7.75583 6.9225L6.67917 8L7.75583 9.0775C7.89931 9.22099 7.98551 9.41191 7.99824 9.61443C8.01097 9.81695 7.94938 10.0172 7.825 10.1775L7.75583 10.2558C7.61234 10.3993 7.42142 10.4855 7.2189 10.4982C7.01638 10.511 6.81617 10.4494 6.65583 10.325Z"/>
+  </svg>
+  <span class="pst-collapse-sidebar-label">Collapse Sidebar</span>
+  <span class="pst-expand-sidebar-label">Expand Sidebar</span>
+</button></div>
+        <div class="sidebar-primary-item">
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Section Navigation">
+  <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
+  <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Install and set up OpenGHG Inversions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="getting_started.html">Getting started with OpenGHG Inversions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="conceptual_inversion.html">How an Atmospheric Inversion Works</a></li>
+<li class="toctree-l1"><a class="reference internal" href="model_recipes.html">Choose a RHIME model recipe</a></li>
+<li class="toctree-l1 current active has-children"><a class="reference internal" href="standard_model_family.html">Standard RHIME model family</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="rhime_standard_tutorial.html">Standard RHIME tutorial</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rhime_multisector_tutorial.html">Multisector RHIME tutorial</a></li>
+<li class="toctree-l2"><a class="reference internal" href="multisector_inversions.html">Site and satellite multisector inversions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="concrete_rhime_model.html">Standard and multisector RHIME models</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rhime.html">RHIME terminology and prepared-input reference</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rhime_configuration.html">Advanced RHIME configuration</a></li>
+<li class="toctree-l2 current active"><a class="current reference internal" href="#">Running RHIME from the command line</a></li>
+<li class="toctree-l2"><a class="reference internal" href="customising_rhime.html">Customising RHIME</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="nested_domain_model_family.html">Nested-domain model family</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="nested_domains.html">Run a nested-domain RHIME inversion</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="co2_model_family.html">CO₂ model family</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="co2_models.html">CO₂ model recipes</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="running_and_validating.html">Running and validating inversions</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="staged_workflow.html">Staged RHIME workflows</a></li>
+<li class="toctree-l2"><a class="reference internal" href="prior_predictive_checking.html">Prior predictive checking tutorial</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="shared_scientific_concepts.html">Shared scientific concepts</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="grouped_basis_layout.html">Grouped basis and state metadata</a></li>
+<li class="toctree-l2"><a class="reference internal" href="native_covariance.html">Native Covariance Projection</a></li>
+<li class="toctree-l2"><a class="reference internal" href="retained_state_reconstruction.html">Linear retained-state reconstruction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="affine_flux_map.html">Affine native-flux reconstruction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="coherent_reduction.html">Coherent Gaussian Reduction</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1"><a class="reference internal" href="legacy_and_migration.html">Migrate from HBMCMC to RHIME</a></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+      <div class="sidebar-primary-item">
+<div id="ethical-ad-placement"
+      class="flat"
+      data-ea-publisher="readthedocs"
+      data-ea-type="readthedocs-sidebar"
+      data-ea-manual="true">
+</div></div>
+  </div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="usage.html" class="nav-link">Using OpenGHG Inversions</a></li>
+    
+    
+    <li class="breadcrumb-item"><a href="standard_model_family.html" class="nav-link">Standard RHIME model family</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Running RHIME from the command line</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="running-rhime-from-the-command-line">
+<h1>Running RHIME from the command line<a class="headerlink" href="#running-rhime-from-the-command-line" title="Link to this heading">#</a></h1>
+<p>The <code class="docutils literal notranslate"><span class="pre">rhime</span></code> command is the recommended entry point for running
+RHIME from a terminal or a batch scheduler. It is installed with
+<code class="docutils literal notranslate"><span class="pre">openghg_inversions</span></code>, so a run does not need to know where the package source
+code is located.</p>
+<section id="standard-multisector-and-nested-runs">
+<h2>Standard, multisector, and nested runs<a class="headerlink" href="#standard-multisector-and-nested-runs" title="Link to this heading">#</a></h2>
+<p>Use <code class="docutils literal notranslate"><span class="pre">rhime</span> <span class="pre">run</span></code> for a standard inversion (the default). Select
+<code class="docutils literal notranslate"><span class="pre">--model</span> <span class="pre">multisector</span></code> for shared-basis multisector inversion or
+<code class="docutils literal notranslate"><span class="pre">--model</span> <span class="pre">nested</span></code> to combine independent outer and inner spatial grids:</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>rhime<span class="w"> </span>run<span class="w"> </span><span class="m">2019</span>-01-01<span class="w"> </span><span class="m">2019</span>-02-01<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--config<span class="w"> </span>/path/to/rhime.ini<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--output-path<span class="w"> </span>/path/to/outputs
+
+<span class="gp">$ </span>rhime<span class="w"> </span>run<span class="w"> </span>--model<span class="w"> </span>multisector<span class="w"> </span><span class="m">2019</span>-01-01<span class="w"> </span><span class="m">2019</span>-02-01<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--config<span class="w"> </span>/path/to/rhime_multisector.ini<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--output-path<span class="w"> </span>/path/to/outputs
+
+<span class="gp">$ </span>rhime<span class="w"> </span>run<span class="w"> </span>--model<span class="w"> </span>nested<span class="w"> </span><span class="m">2019</span>-01-01<span class="w"> </span><span class="m">2019</span>-02-01<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--config<span class="w"> </span>/path/to/rhime_nested.ini
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">--config</span></code> (or <code class="docutils literal notranslate"><span class="pre">-c</span></code>) is required. The start and end dates are optional
+positional arguments; when supplied, they override <code class="docutils literal notranslate"><span class="pre">start_date</span></code> and
+<code class="docutils literal notranslate"><span class="pre">end_date</span></code> in the INI file. Likewise, <code class="docutils literal notranslate"><span class="pre">--output-path</span></code> overrides the
+configured output directory. Other RHIME keyword arguments can be overridden
+with a JSON object passed to <code class="docutils literal notranslate"><span class="pre">--kwargs</span></code>:</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>rhime<span class="w"> </span>run<span class="w"> </span>-c<span class="w"> </span>rhime.ini<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--kwargs<span class="w"> </span><span class="s1">'{"draws": 2000, "tune": 1000, "chains": 4}'</span>
+</pre></div>
+</div>
+<p>Keep the JSON in single quotes so the shell passes it as one argument. Run
+<code class="docutils literal notranslate"><span class="pre">rhime</span> <span class="pre">run</span> <span class="pre">--help</span></code> or
+<code class="docutils literal notranslate"><span class="pre">rhime</span> <span class="pre">run</span> <span class="pre">--model</span> <span class="pre">multisector</span> <span class="pre">--help</span></code> for the complete ordinary
+command syntax. See the <a class="reference internal" href="nested_domain_model_family.html"><span class="doc">nested-domain model family</span></a> for its support boundary and configuration
+guide. New configuration files should use the RHIME vocabulary documented in
+<a class="reference internal" href="rhime.html"><span class="doc">RHIME terminology and prepared-input reference</span></a>; the packaged starting point is
+<code class="docutils literal notranslate"><span class="pre">openghg_inversions/config/templates/rhime_template.ini</span></code>. Complete,
+validated production-shape examples are used by
+<a class="reference internal" href="rhime_standard_tutorial.html"><span class="doc">Standard RHIME tutorial</span></a> and <a class="reference internal" href="rhime_multisector_tutorial.html"><span class="doc">Multisector RHIME tutorial</span></a>.</p>
+</section>
+<section id="saved-standard-phases">
+<h2>Saved standard phases<a class="headerlink" href="#saved-standard-phases" title="Link to this heading">#</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">rhime</span> <span class="pre">prepare</span></code> resolves preparation choices and prints one manifest path.
+<code class="docutils literal notranslate"><span class="pre">rhime</span> <span class="pre">sample</span> <span class="pre">--preparation-manifest</span> <span class="pre">...</span></code> accepts current model/sampler
+choices; <code class="docutils literal notranslate"><span class="pre">rhime</span> <span class="pre">postprocess</span> <span class="pre">--sample-manifest</span> <span class="pre">...</span></code> accepts current output
+choices. Sampling and postprocessing do not require a full configuration file.
+See <a class="reference internal" href="staged_workflow.html"><span class="doc">Staged RHIME workflows</span></a> for the complete preparation/two-model/two-output
+sequence and the separate multisector/CO2 interfaces.</p>
+</section>
+<section id="python-model-selection-and-compatibility">
+<h2>Python model selection and compatibility<a class="headerlink" href="#python-model-selection-and-compatibility" title="Link to this heading">#</a></h2>
+<p>The public Python selector is <a class="reference internal" href="../reference/openghg_inversions.rhime.html#openghg_inversions.rhime.run" title="openghg_inversions.rhime.run"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.run()</span></code></a>:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="n">run</span>
+
+<span class="n">result</span> <span class="o">=</span> <span class="n">run</span><span class="p">(</span><span class="n">config_file</span><span class="o">=</span><span class="s2">"rhime.ini"</span><span class="p">)</span>  <span class="c1"># model="standard" by default</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">run</span><span class="p">(</span><span class="n">model</span><span class="o">=</span><span class="s2">"multisector"</span><span class="p">,</span> <span class="n">config_file</span><span class="o">=</span><span class="s2">"rhime_multisector.ini"</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>The <code class="docutils literal notranslate"><span class="pre">co2</span></code>, <code class="docutils literal notranslate"><span class="pre">co2_cached_sigma</span></code>, <code class="docutils literal notranslate"><span class="pre">co2_o2</span></code> and <code class="docutils literal notranslate"><span class="pre">co2_o2_cached_sigma</span></code> Python
+choices call their existing prepared-input recipes. They require the appropriate
+<code class="docutils literal notranslate"><span class="pre">prepared_inputs</span></code> object and preserve each recipe’s arguments and return type;
+selection does not provide a new acquisition or checkpoint route. These families
+are therefore not choices for the configuration-driven <code class="docutils literal notranslate"><span class="pre">rhime</span> <span class="pre">run</span></code> command.
+Existing CO2 staged commands retain their current support boundaries.</p>
+<p><code class="docutils literal notranslate"><span class="pre">openghg-inversions</span></code> and its <code class="docutils literal notranslate"><span class="pre">run-rhime</span></code>, <code class="docutils literal notranslate"><span class="pre">run-rhime-multisector</span></code> and
+<code class="docutils literal notranslate"><span class="pre">run-rhime-nested</span></code> subcommands remain supported through the 0.9 compatibility
+cycle. Both executables expose the same command set. The existing runner imports and
+shared handoff/assembly names listed here remain aliases to their implementations: <code class="docutils literal notranslate"><span class="pre">run_standard</span></code> is
+<code class="docutils literal notranslate"><span class="pre">run_standard</span></code>, <code class="docutils literal notranslate"><span class="pre">run_rhime_multisector</span></code> is <code class="docutils literal notranslate"><span class="pre">run_multisector</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">run_rhime_nested</span></code> is <code class="docutils literal notranslate"><span class="pre">run_nested</span></code>. No argument conversion or warning is
+added to these aliases. Shared <code class="docutils literal notranslate"><span class="pre">MergedData</span></code> and <code class="docutils literal notranslate"><span class="pre">PreparedInputs</span></code> retain the
+<code class="docutils literal notranslate"><span class="pre">RhimeMergedData</span></code> and <code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code> aliases and unchanged serialized
+schemas. <code class="docutils literal notranslate"><span class="pre">assemble_inputs</span></code> and <code class="docutils literal notranslate"><span class="pre">with_prepared_sites</span></code> retain their former
+<code class="docutils literal notranslate"><span class="pre">assemble_rhime_inputs</span></code> and <code class="docutils literal notranslate"><span class="pre">with_prepared_rhime_sites</span></code> imports.</p>
+<p>Package naming, the recipe-module relocation proposed in #764/#776 and complete
+workflow parity remain separate changes.</p>
+</section>
+<section id="translating-the-older-batch-example">
+<h2>Translating the older batch example<a class="headerlink" href="#translating-the-older-batch-example" title="Link to this heading">#</a></h2>
+<p>The older documentation launched an internal Python file directly:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nv">INI_FILE</span><span class="o">=</span>/user/home/example/my_inversions/my_hbmcmc_inputs.ini
+python<span class="w"> </span>/user/home/example/openghg_inversions/openghg_inversions/hbmcmc/run_hbmcmc.py<span class="w"> </span>-c<span class="w"> </span><span class="s2">"</span><span class="nv">$INI_FILE</span><span class="s2">"</span>
+</pre></div>
+</div>
+<p>With a modern RHIME config, replace those two lines with the installed CLI.
+The following updated version uses the repository’s Pixi environment. Pixi is
+recommended for inversion jobs that read NetCDF/HDF5 data because the workspace
+keeps the compiled HDF5 and NetCDF stack together on conda-forge; see
+<a class="reference internal" href="installation.html"><span class="doc">Install and set up OpenGHG Inversions</span></a> for the package constraints and smoke check.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="ch">#!/bin/bash</span>
+<span class="c1">#SBATCH --job-name=my_inv</span>
+<span class="c1">#SBATCH --output=openghg_inversions.out</span>
+<span class="c1">#SBATCH --error=openghg_inversions.err</span>
+<span class="c1">#SBATCH --nodes=1</span>
+<span class="c1">#SBATCH --ntasks-per-node=1</span>
+<span class="c1">#SBATCH --cpus-per-task=4</span>
+<span class="c1">#SBATCH --time=04:00:00</span>
+<span class="c1">#SBATCH --mem=30gb</span>
+<span class="c1">#SBATCH --account=dept123456</span>
+
+module<span class="w"> </span>--force<span class="w"> </span>purge
+module<span class="w"> </span>load<span class="w"> </span>git/2.45.1
+
+<span class="nv">REPOSITORY</span><span class="o">=</span>/user/home/example/openghg_inversions
+<span class="nb">cd</span><span class="w"> </span><span class="s2">"</span><span class="nv">$REPOSITORY</span><span class="s2">"</span>
+
+<span class="nv">INI_FILE</span><span class="o">=</span>/user/home/example/my_inversions/rhime.ini
+<span class="nv">OUTPUT_DIR</span><span class="o">=</span>/user/home/example/my_inversions/outputs
+
+pixi<span class="w"> </span>run<span class="w"> </span>--locked<span class="w"> </span>-e<span class="w"> </span>dev<span class="w"> </span>rhime<span class="w"> </span>run<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span><span class="m">2019</span>-01-01<span class="w"> </span><span class="m">2019</span>-02-01<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--config<span class="w"> </span><span class="s2">"</span><span class="nv">$INI_FILE</span><span class="s2">"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--output-path<span class="w"> </span><span class="s2">"</span><span class="nv">$OUTPUT_DIR</span><span class="s2">"</span>
+</pre></div>
+</div>
+<p>Submit the saved script in the same way as before, for example
+<code class="docutils literal notranslate"><span class="pre">sbatch</span> <span class="pre">my_inversion_script.sh</span></code>. <code class="docutils literal notranslate"><span class="pre">pixi</span> <span class="pre">run</span> <span class="pre">--locked</span></code> checks that
+<code class="docutils literal notranslate"><span class="pre">pixi.lock</span></code> agrees with the workspace and installs the selected environment
+when necessary. Install Pixi and create the environment on the login node
+before the first submission if compute nodes do not have network access:</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span><span class="nb">cd</span><span class="w"> </span>/user/home/example/openghg_inversions
+<span class="gp">$ </span>pixi<span class="w"> </span>install<span class="w"> </span>--locked<span class="w"> </span>-e<span class="w"> </span>dev
+</pre></div>
+</div>
+<section id="alternative-environment-blocks">
+<h3>Alternative environment blocks<a class="headerlink" href="#alternative-environment-blocks" title="Link to this heading">#</a></h3>
+<p>If the repository was installed with <code class="docutils literal notranslate"><span class="pre">uv</span></code>, replace the <code class="docutils literal notranslate"><span class="pre">pixi</span> <span class="pre">run</span> <span class="pre">...</span></code> line
+with the following command, still running it from <code class="docutils literal notranslate"><span class="pre">$REPOSITORY</span></code>:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>run<span class="w"> </span>--locked<span class="w"> </span>rhime<span class="w"> </span>run<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span><span class="m">2019</span>-01-01<span class="w"> </span><span class="m">2019</span>-02-01<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--config<span class="w"> </span><span class="s2">"</span><span class="nv">$INI_FILE</span><span class="s2">"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--output-path<span class="w"> </span><span class="s2">"</span><span class="nv">$OUTPUT_DIR</span><span class="s2">"</span>
+</pre></div>
+</div>
+<p>Prepare the environment on the login node with <code class="docutils literal notranslate"><span class="pre">uv</span> <span class="pre">sync</span> <span class="pre">--locked</span></code> when
+compute nodes cannot download packages. <code class="docutils literal notranslate"><span class="pre">uv</span></code> uses the repository’s
+<code class="docutils literal notranslate"><span class="pre">uv.lock</span></code>, but its PyPI wheels do not provide the same single conda-forge
+HDF5/NetCDF stack as Pixi. Prefer Pixi if a <code class="docutils literal notranslate"><span class="pre">uv</span></code> environment reports HDF5,
+<code class="docutils literal notranslate"><span class="pre">h5py</span></code>, <code class="docutils literal notranslate"><span class="pre">h5netcdf</span></code>, or <code class="docutils literal notranslate"><span class="pre">netCDF4</span></code> binary errors.</p>
+<p>An existing conda environment remains usable too. Replace the Pixi setup and
+command with:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">eval</span><span class="w"> </span><span class="s2">"</span><span class="k">$(</span>conda<span class="w"> </span>shell.bash<span class="w"> </span>hook<span class="k">)</span><span class="s2">"</span>
+conda<span class="w"> </span>activate<span class="w"> </span>pymc_env
+
+rhime<span class="w"> </span>run<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span><span class="m">2019</span>-01-01<span class="w"> </span><span class="m">2019</span>-02-01<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--config<span class="w"> </span><span class="s2">"</span><span class="nv">$INI_FILE</span><span class="s2">"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--output-path<span class="w"> </span><span class="s2">"</span><span class="nv">$OUTPUT_DIR</span><span class="s2">"</span>
+</pre></div>
+</div>
+<p>In every case, invoke the installed command rather than an internal
+<code class="docutils literal notranslate"><span class="pre">openghg_inversions/hbmcmc/run_hbmcmc.py</span></code> path.</p>
+<p>For a multisector batch run, only the config and subcommand need to change:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nv">INI_FILE</span><span class="o">=</span>/user/home/example/my_inversions/rhime_multisector.ini
+<span class="nv">OUTPUT_DIR</span><span class="o">=</span>/user/home/example/my_inversions/outputs
+
+pixi<span class="w"> </span>run<span class="w"> </span>--locked<span class="w"> </span>-e<span class="w"> </span>dev<span class="w"> </span>rhime<span class="w"> </span>run<span class="w"> </span>--model<span class="w"> </span>multisector<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span><span class="m">2019</span>-01-01<span class="w"> </span><span class="m">2019</span>-02-01<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--config<span class="w"> </span><span class="s2">"</span><span class="nv">$INI_FILE</span><span class="s2">"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--output-path<span class="w"> </span><span class="s2">"</span><span class="nv">$OUTPUT_DIR</span><span class="s2">"</span>
+</pre></div>
+</div>
+<p>The historical <code class="docutils literal notranslate"><span class="pre">run_hbmcmc.py</span></code> entry point remains a compatibility wrapper
+for supported older fixedbasis-style INI files. It does not turn such a file
+into a multisector configuration. For new batch jobs, start from the RHIME
+template, use <code class="docutils literal notranslate"><span class="pre">flux_sources</span></code> for standard runs, and configure the sector
+sources described in <a class="reference internal" href="rhime.html"><span class="doc">RHIME terminology and prepared-input reference</span></a> before selecting
+<code class="docutils literal notranslate"><span class="pre">run-rhime-multisector</span></code>.</p>
+</section>
+</section>
+<section id="merging-paris-outputs">
+<h2>Merging PARIS outputs<a class="headerlink" href="#merging-paris-outputs" title="Link to this heading">#</a></h2>
+<p>Merge sequential annual or sub-annual PARIS NetCDF files with the installed
+CLI. The command detects legacy and latest PARIS concentration and flux
+templates from their schema:</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>openghg-inversions<span class="w"> </span>merge-paris-outputs<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>SF6_EUROPE_PARIS_flux_2019-01-01.nc<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>SF6_EUROPE_PARIS_flux_2020-01-01.nc<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--output<span class="w"> </span>SF6_EUROPE_PARIS_flux_2019-2020.nc
+</pre></div>
+</div>
+<p>Use <code class="docutils literal notranslate"><span class="pre">--type</span> <span class="pre">flux</span></code> or <code class="docutils literal notranslate"><span class="pre">--type</span> <span class="pre">concentration</span></code> (also accepted as <code class="docutils literal notranslate"><span class="pre">conc</span></code>) to
+select one product when a broad input glob matches both. Inputs selected for
+one invocation must use the same template version; run the command separately
+for legacy and latest products because their variable contracts differ.</p>
+</section>
+<section id="staged-execution">
+<h2>Staged execution<a class="headerlink" href="#staged-execution" title="Link to this heading">#</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">prepare</span></code>, <code class="docutils literal notranslate"><span class="pre">prior-predictive</span></code>, <code class="docutils literal notranslate"><span class="pre">sample</span></code>, <code class="docutils literal notranslate"><span class="pre">diagnose</span></code> and <code class="docutils literal notranslate"><span class="pre">postprocess</span></code>
+separate a run into persisted handoffs. Select <code class="docutils literal notranslate"><span class="pre">--model</span> <span class="pre">standard</span></code>,
+<code class="docutils literal notranslate"><span class="pre">--model</span> <span class="pre">multisector</span></code> or <code class="docutils literal notranslate"><span class="pre">--model</span> <span class="pre">co2</span></code> explicitly on scientific stages;
+<code class="docutils literal notranslate"><span class="pre">diagnose</span></code> reads the posterior independently of the recipe. See
+<a class="reference internal" href="staged_workflow.html"><span class="doc">Staged RHIME workflows</span></a> for the shared stage interface and
+<a class="reference internal" href="co2_model_family.html"><span class="doc">CO₂ model family</span></a> for ordinary and cached fixed-OU CO2 TOML examples.
+The CO2 route starts from a saved coherent prepared-input artifact and requires
+an identifiable installed Git revision; it uses its own constrained output
+contract.</p>
+</section>
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="rhime_configuration.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">Advanced RHIME configuration</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="customising_rhime.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">Customising RHIME</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <dialog id="pst-secondary-sidebar-modal"></dialog>
+                <div id="pst-secondary-sidebar" class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#standard-multisector-and-nested-runs">Standard, multisector, and nested runs</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#saved-standard-phases">Saved standard phases</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#python-model-selection-and-compatibility">Python model selection and compatibility</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#translating-the-older-batch-example">Translating the older batch example</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#alternative-environment-blocks">Alternative environment blocks</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#merging-paris-outputs">Merging PARIS outputs</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#staged-execution">Staged execution</a></li>
+</ul>
+  </nav></div>
+
+  <div class="sidebar-secondary-item">
+
+  <div class="tocsection sourcelink">
+    <a href="../_sources/usage/cli.rst.txt">
+      <i class="fa-solid fa-file-lines"></i> Show Source
+    </a>
+  </div>
+</div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../_static/scripts/bootstrap.js?digest=cb8930eaaf36d9849b67"></script>
+<script defer src="../_static/scripts/pydata-sphinx-theme.js?digest=cb8930eaaf36d9849b67"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 2025, Eric Saboya and Brendan Murphy.
+      <br/>
+    
+  </p>
+</div>
+      
+        <div class="footer-item">
+
+  <p class="sphinx-version">
+    Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 9.1.0.
+    <br/>
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  <!-- # L10n: Setting the PST URL as an argument as this does not need to be localized -->
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.21.0.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+  </body>
+</html>
