@@ -159,8 +159,8 @@ return the generation, and external sample saves must provide it. Relative
 preparation references and required/used manifest fields replace the earlier
 absolute-reference and unused-timing records. This supersedes the intermediate
 shapes described in the dated validation history above.
-Task 1.11 is failed/pending implementation revision and actual maintainer review,
-not an administrative tick. No passing test marks that readability gate complete.
+At that revision, task 1.11 remained pending actual maintainer review.
+The acceptance recorded below supersedes that status.
 
 No multisector/CO2 adoption, final integrated-family gate, or spec promotion is
 claimed by this standard delivery. CI verifies the pushed integration's full
@@ -263,7 +263,7 @@ suite, supported Python versions, typing and documentation.
   add no 0.7 staged compatibility adapters.
   Cover canonical file options versus deprecated overrides, one error naming all
   unsuitable keys, and the shared invocation-relative configuration path base and manifest-relative references.
-- [ ] 1.11 Clear the standard gate with a runnable preparation/two-model/two-product
+- [x] 1.11 Clear the standard gate with a runnable preparation/two-model/two-product
   example, distinct sample destinations and real prior or likelihood
   calculations checked against an independent calculation or existing regression
   reference. Demonstrate equivalent full execution with intermediate saves
@@ -360,7 +360,7 @@ suite, supported Python versions, typing and documentation.
 
 GitHub [#880](https://github.com/openghg/openghg_inversions/issues/880) mirrors
 OPE-207 and indexes the remaining family slices. The standard #866 readability
-corrections do not clear the maintainer acceptance gate. Deferred alignment
+corrections received maintainer readability acceptance on 16 October 2026. Deferred alignment
 ownership is [#876](https://github.com/openghg/openghg_inversions/issues/876)
 (OPE-105); durable input decisions and output consumer migration are
 [#877](https://github.com/openghg/openghg_inversions/issues/877) and
@@ -389,3 +389,17 @@ outside this change, with runner follow-up assigned to existing #408.
   Update remaining consumers and the developer contract map to the delivered
   capabilities when archiving; use the actual archive location for historical
   references. Verify links in promoted specs and remaining active changes.
+
+## Standard gate accepted — 16 October 2026
+
+The maintainer explicitly confirmed that readability is good and authorized an
+admin merge of #866. Task 1.11 is complete. Runtime head `da832a5a` passed both
+full locked Python 3.12/3.13 suites in Slurm 19436596. Strict documentation has
+318 warnings versus 321 at pre-review `460d993a`; Mypy has the identical 164
+diagnostics on both revisions. No introduced diagnostics; existing debt remains
+#679/#881. Earlier scientific parity evidence remains pinned to its recorded
+revision in #866. This acceptance record changes no runtime code.
+
+The standard gate permits the separately reviewed multisector and ordinary CO2
+slices to proceed. Remaining family tasks, integrated acceptance and capability
+promotion/archive remain open under OPE-207/#880.
