@@ -342,8 +342,9 @@ Draft [PR #886](https://github.com/openghg/openghg_inversions/pull/886),
 branch `codex/ope-207-ordinary-co2-handoffs`, starts from `devel` `208a21d9`,
 including merged standard #866 and configuration closeout #883. It owns ordinary
 CO2 tasks 3.1–3.6 and the ordinary entries of #808. Tasks 3.1 and 3.6 remain open
-for review corrections' broader validation, maintainer review and merged
-acceptance; no readability acceptance or programme completion is claimed.
+for maintainer review and merged acceptance; the review corrections' broader
+validation is recorded below. No readability acceptance or programme completion
+is claimed.
 
 The maintainer approved the review response and canonical runner simplification
 on 16 October (design decision 9). `co2.run_co2` returns `Co2Output` and is selected
@@ -429,10 +430,18 @@ Peak memory was `19515492K` for the combined job.
 The correction makes the missing-record return explicitly `None`, annotates the
 two decoded model mappings as `dict[str, Any]`, and fixes the two title underlines.
 These changes alter no numerical operations or CLI behavior. All 32 ordinary/
-standard CLI checks pass again. A fixed-revision `type,docs-strict` Slurm rerun
-will verify the introduced diagnostics are gone; the passing full suites are
+standard CLI checks pass again. Fixed-revision `type,docs-strict` Slurm 19456085
+at `3f1ed6a7` confirms all introduced diagnostics are gone. Mypy reports exactly
+the same normalized 163 diagnostics as prior-good 19450581, versus devel's 164
+with only the already recorded PyMC stub relocation and fixed-OU error removal.
+Strict docs has 313 warnings versus baseline 318: no introduced warnings and
+exactly five obsolete reference warnings removed. Two agents independently
+confirmed those diagnostic comparisons. The job returned nonzero solely for
+existing #679/#881 debt; it is not a clean type/docs pass. Peak memory was
+`4319364K` in an 8 GiB allocation. The passing full suites at `43f4ab03` are
 retained rather than rerun for annotations and underlines. Tasks 3.1/3.6 remain
-open for the corrected validation, maintainer review and merged acceptance.
+open for maintainer review and merged acceptance. Subsequent evidence-only
+commits change no runtime behavior; nothing is merged.
 
 Prior-head evidence, superseded for current review corrections: fixed-revision
 Slurm 19450581 at `cae92463` passed both full locked Python 3.12 and 3.13 suites.
