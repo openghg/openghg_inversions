@@ -254,3 +254,108 @@ def test_reduction_over_multiple_or_all_dimensions(sample_dim, specific):
     expected = module._calculate_stats(data, ["mean"], **options).compute()
     xr.testing.assert_identical(actual, expected)
     assert actual.x_mean.ndim == 0
+
+
+@pytest.mark.parametrize("argument", ["sample_dim", "mean__sample_dim"])
+def test_iterator_reduction_dimensions_are_reused_by_the_kernel(argument):
+    data = xr.Dataset({"x": (("draw", "state"), np.arange(258, dtype="float32").reshape(2, 129))})
+    actual = module.calculate_stats(data, ["mean"], **{argument: iter(("draw", "state"))})
+    expected = module._calculate_stats(data, ["mean"], **{argument: ("draw", "state")})
+    xr.testing.assert_identical(actual, expected)
+    assert actual.x_mean.item() == 128.5
+
+
+@pytest.mark.parametrize("generic", [False, True])
+def test_shared_reduction_iterator_is_consumed_once(generic):
+    data = xr.Dataset({"x": (("draw", "state"), np.arange(258, dtype="float32").reshape(2, 129))})
+    dimensions = iter(("draw", "state"))
+    options = {"mean__sample_dim": dimensions, "sample_dim" if generic else "stdev__sample_dim": dimensions}
+    actual = module.calculate_stats(data, ["mean", "stdev"], **options)
+    expected = module._calculate_stats(
+        data, ["mean", "stdev"], **{key: ("draw", "state") for key in options}
+    )
+    xr.testing.assert_identical(actual, expected)
+
+
+def test_unused_reduction_iterator_is_not_consumed():
+    data = xr.Dataset({"x": (("draw", "state"), np.arange(258, dtype="float32").reshape(2, 129))})
+    generic = iter(("draw",))
+    actual = module.calculate_stats(data, ["mean"], sample_dim=generic, mean__sample_dim=iter(("state",)))
+    expected = module._calculate_stats(data, ["mean"], mean__sample_dim="state")
+    xr.testing.assert_identical(actual, expected)
+    assert tuple(generic) == ("draw",)
+
+
+@pytest.mark.parametrize("registered_name", ["custom_mean", "mean"])
+@pytest.mark.parametrize("callable_instance", [False, True])
+def test_registered_default_reduction_keeps_the_complete_dataset(monkeypatch, registered_name, callable_instance):
+    monkeypatch.setattr(module, "stats_functions", dict(module.stats_functions))
+    calls = []
+
+    def custom_mean(data, sample_dim="state"):
+        calls.append(data.sizes)
+        return data.mean(sample_dim)
+
+    custom_mean.__name__ = registered_name
+    if callable_instance:
+        class CustomMean:
+            __hash__ = None
+            __name__ = registered_name
+
+            def __call__(self, data, sample_dim="state"):
+                return custom_mean(data, sample_dim)
+
+        module.register_stat(CustomMean())
+    else:
+        module.register_stat(custom_mean)
+    data = xr.Dataset({"x": (("draw", "state"), np.arange(258, dtype="float32").reshape(2, 129))})
+    actual = module.calculate_stats(data, [registered_name])
+    xr.testing.assert_identical(actual, data.mean("state"))
+    assert len(calls) == 1
+    assert calls[0]["state"] == 129
+
+
+def test_registered_cross_variable_statistic_receives_all_operands(monkeypatch):
+    monkeypatch.setattr(module, "stats_functions", dict(module.stats_functions))
+    calls = []
+
+    @module.register_stat
+    def cross_moment(data):
+        calls.append(tuple(data.data_vars))
+        return (data.x * data.y).mean("draw").to_dataset(name="cross_moment")
+
+    data = xr.Dataset(
+        {
+            "x": (("draw", "state"), np.arange(258, dtype="float32").reshape(2, 129)),
+            "y": ("draw", [2.0, 3.0]),
+        }
+    )
+    expected = module._calculate_stats(data, ["mean", "cross_moment"])
+    calls.clear()
+    actual = module.calculate_stats(data, ["mean", "cross_moment"])
+    xr.testing.assert_identical(actual, expected)
+    assert calls == [("x", "y")]
+
+
+@pytest.mark.parametrize("coordinate_state", ["absent", "indexed", "unindexed"])
+@pytest.mark.parametrize("scalar_value", [7.0, True])
+def test_scalar_groups_preserve_original_dimension_indexes(coordinate_state, scalar_value):
+    data = xr.Dataset(
+        {
+            "x": (("draw", "state", "point"), np.arange(3 * 2 * 129).reshape(3, 2, 129)),
+            "scalar": ((), scalar_value),
+        },
+        coords={"draw": [6, 4, 2], "state": [9, 3]} if coordinate_state != "absent" else None,
+    )
+    if coordinate_state == "unindexed":
+        data = data.drop_indexes(["draw", "state"])
+    original = data.copy(deep=True)
+    options = {"mean__sample_dim": "state", "quantiles__sample_dim": "draw"}
+    statistics = ["mean", "stdev"] if isinstance(scalar_value, bool) else ["mean", "stdev", "quantiles"]
+    expected = module._calculate_stats(data, statistics, **options)
+    actual = module.calculate_stats(data, statistics, **options)
+    xr.testing.assert_identical(actual, expected)
+    assert set(actual.indexes) == set(expected.indexes)
+    assert actual.scalar_mean.item() == scalar_value
+    assert actual.scalar_stdev.item() == 0.0
+    xr.testing.assert_identical(data, original)

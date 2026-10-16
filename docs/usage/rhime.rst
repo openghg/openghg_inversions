@@ -938,11 +938,15 @@ Postprocessing memory
 Standard flux products reduce samples in basis-state space before reconstructing
 the grid. Multisector totals first combine matching sector draws, then calculate
 their statistics; marginal sector intervals are not added together. Built-in
-bucket-basis reconstruction uses bounded spatial and flux-time chunks. Shared
+bucket-basis reconstruction uses bounded spatial and flux-time chunks. Built-in
 statistics complete one bounded non-sample block at a time, retaining all required
 samples and reusing its sources across requested summaries and HDI probabilities.
 The statistic kernels, missing-draw handling, and 0.7 first-chain selection are
 unchanged.
+
+Calls containing a custom registered statistic receive the complete dataset,
+preserving its reduction defaults and access to related variables. These calls
+do not inherit the built-in statistics' block memory bound.
 
 Multisector flux products retain the selected compact state samples for the duration
 of the product, preserving their sample chunks and reusing them for grid tiles and

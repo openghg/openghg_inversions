@@ -7,7 +7,7 @@ NetCDF serialisation.
 """
 
 from collections import namedtuple
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from typing import TypeVar, cast
 
 import arviz as az
@@ -323,6 +323,9 @@ def median(ds: xr.Dataset, sample_dim: str = "draw") -> xr.Dataset:
     return ds.median(dim=sample_dim)
 
 
+_BUILTIN_STAT_FUNCTIONS = frozenset((mean, stdev, median, quantiles, mode, mode_kde, hdi))
+
+
 def calculate_stats(
     ds: xr.Dataset,
     stats: list[str] = ["mean", "quantiles"],
@@ -342,6 +345,9 @@ def calculate_stats(
     across related variables may require a source chunk in adjacent blocks.
     Mixed eager/lazy groups may also split a source block beside a singleton
     edge to preserve the eager sample-reduction layout.
+    Calls containing a custom registered kernel use the complete dataset so
+    its defaults and cross-variable operands remain intact; that compatibility
+    fallback does not provide the built-in non-sample workspace bound.
 
     Args:
         ds: dataset to calculate stats on.
@@ -374,6 +380,28 @@ def calculate_stats(
         if stat not in stats_functions:
             raise ValueError(f"Statistic {stat} not available.")
 
+    # Normalize only effective arguments; aliases of one iterator share its
+    # tuple, and a completely overridden generic iterator remains untouched.
+    reduction_iterators = {}
+    for stat in stats:
+        key = f"{stat}__sample_dim" if f"{stat}__sample_dim" in kwargs else "sample_dim"
+        dimensions = kwargs.get(key)
+        if isinstance(dimensions, Iterator) and (
+            key != "sample_dim" or "sample_dim" in stats_functions[stat].params
+        ):
+            identity = id(dimensions)
+            if identity not in reduction_iterators:
+                reduction_iterators[identity] = tuple(dimensions)
+            kwargs[key] = reduction_iterators[identity]
+
+    if any(
+        all(stats_functions[stat].func is not builtin for builtin in _BUILTIN_STAT_FUNCTIONS)
+        for stat in stats
+    ):
+        with dask.config.set(scheduler="single-threaded"):
+            data = _prepare_block(ds) if _prepare_block is not None else ds
+            return _calculate_stats(data, stats, **kwargs).compute()
+
     sample_dims = {"chain"}
     for stat in stats:
         dimensions = kwargs.get(f"{stat}__sample_dim", kwargs.get("sample_dim", "draw"))
@@ -388,7 +416,7 @@ def calculate_stats(
         dimensions = tuple(dim for dim in ds.dims if dim in data.dims and dim not in sample_dims)
         groups.setdefault(dimensions, []).append(name)
 
-    def reduce_blocks(data: xr.Dataset, dimensions: tuple, chunks: dict) -> xr.Dataset:
+    def reduce_blocks(data: xr.Dataset, dimensions: tuple, chunks: dict, markers: list) -> xr.Dataset:
         if dimensions:
             dim, *remaining = dimensions
             if data.sizes[dim] > chunks[dim]:
@@ -434,17 +462,17 @@ def calculate_stats(
                         boundaries[-2] -= 1
                 return xr.concat(
                     [
-                        reduce_blocks(data.isel({dim: slice(start, stop)}), tuple(remaining), chunks)
+                        reduce_blocks(data.isel({dim: slice(start, stop)}), tuple(remaining), chunks, markers)
                         for start, stop in zip(boundaries[:-1], boundaries[1:])
                     ],
                     dim=dim,
                     combine_attrs="override",
                 )
-            return reduce_blocks(data, tuple(remaining), chunks)
+            return reduce_blocks(data, tuple(remaining), chunks, markers)
         if _prepare_block is not None:
             data = _prepare_block(data)
         # Joint computation preserves sharing and the Dask sample reduction order.
-        return _calculate_stats(data, stats, **kwargs).compute()
+        return _calculate_stats(data, stats, **kwargs).drop_vars(markers, errors="ignore").compute()
 
     with dask.config.set(scheduler="single-threaded"):
         results = []
@@ -452,10 +480,22 @@ def calculate_stats(
             data = ds[names]
             # Scalar variables still belong to a dataset with these reduction
             # dimensions; dropping all of them would make Dataset.mean/std fail.
-            data = data.assign_coords(
-                {dim: ds[dim] for dim in sample_dims if dim in ds.dims and dim not in data.dims}
-            )
-            results.append(reduce_blocks(data, dimensions, _bounded_chunk_sizes(data, sample_dims)))
+            markers = []
+            for dim in sample_dims:
+                if dim in ds.dims and dim not in data.dims:
+                    if dim in ds.coords:
+                        data = data.assign_coords(ds[[dim]].coords)
+                    else:
+                        # An auxiliary carrier supplies only the dimension size,
+                        # not axis labels or an index. Its scalar broadcast view
+                        # allocates no sample-sized payload and is removed before
+                        # computation. Unique keys cannot shadow borrowed names.
+                        marker = object()
+                        markers.append(marker)
+                        data = data.assign_coords(
+                            {marker: (dim, np.broadcast_to(np.uint8(0), (ds.sizes[dim],)))}
+                        )
+            results.append(reduce_blocks(data, dimensions, _bounded_chunk_sizes(data, sample_dims), markers))
     return xr.merge(results)
 
 
