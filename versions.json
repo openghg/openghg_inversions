@@ -6,6 +6,11 @@
     "preferred": true
   },
   {
+    "name": "0.6.0",
+    "version": "v0.6.0",
+    "url": "https://openghg.github.io/openghg_inversions/v0.6.0/"
+  },
+  {
     "name": "devel (unreleased)",
     "version": "devel",
     "url": "https://openghg.github.io/openghg_inversions/devel/"
