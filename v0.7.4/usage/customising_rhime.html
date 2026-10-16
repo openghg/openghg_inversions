@@ -1,0 +1,1905 @@
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Customising RHIME &#8212; OpenGHG Inversions</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../_static/styles/theme.css?digest=18bd87630a240e9c25be" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=18bd87630a240e9c25be" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../_static/jupyter-sphinx.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/thebelab.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=f8ac5af1" />
+  
+  <!-- So that users can add custom icons -->
+  <script defer src="../_static/scripts/fontawesome.js?digest=18bd87630a240e9c25be"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=18bd87630a240e9c25be" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=18bd87630a240e9c25be" />
+
+    <script src="../_static/documentation_options.js?v=020ce317"></script>
+    <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../_static/thebelab-helper.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'usage/customising_rhime';</script>
+    <script>
+        DOCUMENTATION_OPTIONS.theme_version = '0.23.0';
+        DOCUMENTATION_OPTIONS.theme_switcher_json_url = 'https://openghg.github.io/openghg_inversions/versions.json';
+        DOCUMENTATION_OPTIONS.theme_switcher_version_match = 'v0.7.4';
+        DOCUMENTATION_OPTIONS.show_version_warning_banner =
+            false;
+        </script>
+    <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="CO₂ model family" href="co2_model_family.html" />
+    <link rel="prev" title="Running RHIME from the command line" href="cli.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="color-scheme" content="light dark"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="0.7" />
+  
+    
+    <script src="../_static/searchtools.js"></script>
+    <script src="../_static/language_data.js"></script>
+    <script src="../searchindex.js"></script>
+  
+  </head>
+  <body data-default-mode="">
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+  
+  
+  
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+<aside class="bd-header-announcement" aria-label="Announcement">
+  <div class="bd-header-announcement__content">Documentation for release v0.7.4; use <a href="https://openghg.github.io/openghg_inversions/stable/">stable</a> for supported releases. <a href="https://openghg.github.io/openghg_inversions/versions/">All documentation versions</a>.</div>
+</aside>
+
+  
+    <header id="pst-header" class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button type="button" class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+  
+    <p class="title logo__title">OpenGHG Inversions</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="usage.html">
+    Using OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../development/index.html">
+    Developing OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../experimental/index.html">
+    Experimental code
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../reference/modules.html">
+    openghg_inversions
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button type="button" class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button type="button" class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button type="button" class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button type="button" class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button type="button" class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+      
+        <div class="navbar-item">
+<div class="version-switcher__container dropdown pst-js-only">
+  <button id="pst-version-switcher-button-2"
+    type="button"
+    class="version-switcher__button btn btn-sm dropdown-toggle"
+    data-bs-toggle="dropdown"
+    aria-haspopup="listbox"
+    aria-controls="pst-version-switcher-list-2"
+    aria-label="Version switcher list"
+  >
+    Choose version  <!-- this text may get changed later by javascript -->
+    <span class="caret"></span>
+  </button>
+  <div id="pst-version-switcher-list-2"
+    class="version-switcher__menu dropdown-menu list-group-flush py-0"
+    role="listbox" aria-labelledby="pst-version-switcher-button-2">
+    <!-- dropdown will be populated by javascript on page load -->
+  </div>
+</div></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button type="button" class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+    <button type="button" class="pst-navbar-icon sidebar-toggle secondary-toggle" aria-label="On this page">
+      <span class="fa-solid fa-outdent"></span>
+    </button>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          
+          
+            <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="usage.html">
+    Using OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../development/index.html">
+    Developing OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../experimental/index.html">
+    Experimental code
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../reference/modules.html">
+    openghg_inversions
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+          
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button type="button" class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button type="button" class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button type="button" class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button type="button" class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+        
+          <div class="navbar-item">
+<div class="version-switcher__container dropdown pst-js-only">
+  <button id="pst-version-switcher-button-3"
+    type="button"
+    class="version-switcher__button btn btn-sm dropdown-toggle"
+    data-bs-toggle="dropdown"
+    aria-haspopup="listbox"
+    aria-controls="pst-version-switcher-list-3"
+    aria-label="Version switcher list"
+  >
+    Choose version  <!-- this text may get changed later by javascript -->
+    <span class="caret"></span>
+  </button>
+  <div id="pst-version-switcher-list-3"
+    class="version-switcher__menu dropdown-menu list-group-flush py-0"
+    role="listbox" aria-labelledby="pst-version-switcher-button-3">
+    <!-- dropdown will be populated by javascript on page load -->
+  </div>
+</div></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item pst-sidebar-collapse"><button type="button" id="pst-collapse-sidebar-button" aria-expanded="true" aria-controls="pst-primary-sidebar">
+  <svg class="pst-icon" role="img" aria-hidden="true" focusable="false" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+    <path fill="currentColor" d="M3 15.5C2.36232 15.5 1.74874 15.2564 1.28478 14.8189C0.820828 14.3815 0.541576 13.7832 0.504167 13.1467L0.5 13L0.5 3C0.499965 2.36232 0.743605 1.74874 1.18107 1.28478C1.61854 0.820828 2.21676 0.541576 2.85333 0.504167L3 0.5L13 0.5C13.6377 0.499965 14.2513 0.743605 14.7152 1.18107C15.1792 1.61854 15.4584 2.21676 15.4958 2.85333L15.5 3L15.5 13C15.5 13.6377 15.2564 14.2513 14.8189 14.7152C14.3815 15.1792 13.7832 15.4584 13.1467 15.4958L13 15.5L3 15.5ZM3 13.8333L10.5 13.8333L10.5 2.16667L3 2.16667C2.79589 2.16669 2.59889 2.24163 2.44636 2.37726C2.29383 2.5129 2.19638 2.69979 2.1725 2.9025L2.16667 3L2.16667 13C2.16669 13.2041 2.24163 13.4011 2.37726 13.5536C2.5129 13.7062 2.69979 13.8036 2.9025 13.8275L3 13.8333ZM6.65583 10.325L6.5775 10.2558L4.91083 8.58917C4.76735 8.44567 4.68116 8.25476 4.66843 8.05223C4.65569 7.84971 4.71729 7.6495 4.84167 7.48917L4.91083 7.41083L6.5775 5.74417C6.72747 5.59471 6.9287 5.50794 7.14032 5.50148C7.35194 5.49502 7.55809 5.56935 7.7169 5.70937C7.8757 5.8494 7.97525 6.04463 7.99533 6.25539C8.01541 6.46616 7.95451 6.67667 7.825 6.84417L7.75583 6.9225L6.67917 8L7.75583 9.0775C7.89931 9.22099 7.98551 9.41191 7.99824 9.61443C8.01097 9.81695 7.94938 10.0172 7.825 10.1775L7.75583 10.2558C7.61234 10.3993 7.42142 10.4855 7.2189 10.4982C7.01638 10.511 6.81617 10.4494 6.65583 10.325Z"/>
+  </svg>
+  <span class="pst-collapse-sidebar-label">Collapse Sidebar</span>
+  <span class="pst-expand-sidebar-label">Expand Sidebar</span>
+</button></div>
+        <div class="sidebar-primary-item">
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Section Navigation">
+  <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
+  <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Install and set up OpenGHG Inversions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="conceptual_inversion.html">How an Atmospheric Inversion Works</a></li>
+<li class="toctree-l1"><a class="reference internal" href="model_recipes.html">Choose a RHIME model recipe</a></li>
+<li class="toctree-l1 current active has-children"><a class="reference internal" href="standard_model_family.html">Standard RHIME model family</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="rhime_standard_tutorial.html">Standard RHIME tutorial</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rhime_multisector_tutorial.html">Multisector RHIME tutorial</a></li>
+<li class="toctree-l2"><a class="reference internal" href="concrete_rhime_model.html">Standard and multisector RHIME models</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rhime.html">RHIME configuration and prepared-input reference</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cli.html">Running RHIME from the command line</a></li>
+<li class="toctree-l2 current active"><a aria-current="page" class="current reference internal" href="#">Customising RHIME</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="co2_model_family.html">CO₂ model family</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="co2_models.html">CO₂ model recipes</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="running_and_validating.html">Running and validating inversions</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="staged_workflow.html">Staged RHIME workflows</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="shared_scientific_concepts.html">Shared scientific concepts</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="grouped_basis_layout.html">Grouped basis and state metadata</a></li>
+<li class="toctree-l2"><a class="reference internal" href="native_covariance.html">Native Covariance Projection</a></li>
+<li class="toctree-l2"><a class="reference internal" href="coherent_reduction.html">Coherent Gaussian Reduction</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="legacy_and_migration.html">Legacy interfaces and migration</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html">Getting started with OpenGHG Inversions</a></li>
+</ul>
+</details></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+      <div class="sidebar-primary-item">
+<div id="ethical-ad-placement"
+      class="flat"
+      data-ea-publisher="readthedocs"
+      data-ea-type="readthedocs-sidebar"
+      data-ea-manual="true">
+</div></div>
+  </div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="usage.html" class="nav-link">Using OpenGHG Inversions</a></li>
+    
+    
+    <li class="breadcrumb-item"><a href="standard_model_family.html" class="nav-link">Standard RHIME model family</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Customising RHIME</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="customising-rhime">
+<h1>Customising RHIME<a class="headerlink" href="#customising-rhime" title="Link to this heading">#</a></h1>
+<p>RHIME is built from reusable functions for data preparation, basis
+construction, model construction, sampling, and output. This is a deliberate
+design choice: when the standard workflow does not express the science you
+need, you should be able to start from a working example and replace the
+smallest relevant part.</p>
+<p>The examples on this page use a procedural style. Data is passed from one
+function to the next in the order that the inversion runs, so readers do not
+need to design a new class hierarchy or framework before changing a model.
+Some library functions return structured objects that group related values,
+but the examples show how to use those objects directly.</p>
+<p>Reusing the components does not make every custom workflow automatic. A
+replacement function is responsible for the scientific choices it introduces,
+and a deeper change may also need different data preparation. The remaining
+RHIME stages can only validate the inputs and assumptions covered by their
+documented interfaces.</p>
+<p>Choose the smallest starting point that fits the change:</p>
+<ul class="simple">
+<li><p>To change only the likelihood, pass a Python function to <code class="docutils literal notranslate"><span class="pre">run_rhime</span></code>.</p></li>
+<li><p>To run the matched fixed-tau Ornstein–Uhlenbeck (OU) CO₂ model with inferred
+site amplitudes, use <a class="reference internal" href="co2_models.html#co2-cached-sigma-recipe"><span class="std std-ref">the package-supported cached-sigma CO₂ recipe</span></a> in
+the <a class="reference internal" href="co2_model_family.html"><span class="doc">CO₂ model family</span></a>.</p></li>
+<li><p>To resume from externally supplied merged observations, footprints, and
+fluxes, pass a borrowed <code class="docutils literal notranslate"><span class="pre">RhimeMergedData</span></code> object as <code class="docutils literal notranslate"><span class="pre">merged_data</span></code>.</p></li>
+<li><p>To change a preparation stage such as basis construction, copy the visible
+runner and replace that stage.</p></li>
+<li><p>To start from prepared data or replace the complete model, use
+<code class="docutils literal notranslate"><span class="pre">run_rhime_from_prepared_inputs</span></code>.</p></li>
+</ul>
+<p id="run-the-production-cached-sigma-co2-recipe"><span id="cached-sigma-co2-recipe"></span>The cached-sigma CO₂ recipe documentation moved to the
+<a class="reference internal" href="co2_models.html#co2-cached-sigma-recipe"><span class="std std-ref">package-supported cached-sigma recipe</span></a>.</p>
+<section id="resume-from-cached-or-external-scientific-data">
+<h2>Resume from cached or external scientific data<a class="headerlink" href="#resume-from-cached-or-external-scientific-data" title="Link to this heading">#</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">run_rhime</span></code> and <code class="docutils literal notranslate"><span class="pre">run_rhime_multisector</span></code> accept <code class="docutils literal notranslate"><span class="pre">merged_data</span></code> as a
+Python-only handoff.  It bypasses OpenGHG acquisition and merged-cache I/O,
+checks the single- or multi-sector layout, and then re-enters the visible
+recipe at filtering:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">result</span> <span class="o">=</span> <span class="n">run_rhime</span><span class="p">(</span>
+    <span class="n">config_file</span><span class="o">=</span><span class="s2">"config.ini"</span><span class="p">,</span>
+    <span class="n">merged_data</span><span class="o">=</span><span class="n">my_merged_data</span><span class="p">,</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p>The supplied <code class="docutils literal notranslate"><span class="pre">RhimeMergedData</span></code> and its xarray or Dask arrays remain borrowed.
+Filtering returns a replacement handoff when it changes observations; basis
+construction and labelled assembly consume that result without mutating the
+external object.  A normal <code class="docutils literal notranslate"><span class="pre">reload_merged_data</span></code> request instead belongs to
+the same retrieval stage and may read a configured artifact from disk.</p>
+</section>
+<section id="change-the-likelihood-with-a-python-function">
+<h2>Change the likelihood with a Python function<a class="headerlink" href="#change-the-likelihood-with-a-python-function" title="Link to this heading">#</a></h2>
+<p>For an ordinary likelihood variation, keep RHIME’s complete
+acquisition-to-output workflow and pass one Python function to <code class="docutils literal notranslate"><span class="pre">run_rhime</span></code>.
+The function is deliberately unavailable to INI files: it is
+not imported from configuration or stored in a run or model specification.</p>
+<p>The complete integration is one named argument:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">my_project.likelihoods</span><span class="w"> </span><span class="kn">import</span> <span class="n">likelihood_builder</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="n">run_rhime</span>
+
+<span class="n">result</span> <span class="o">=</span> <span class="n">run_rhime</span><span class="p">(</span>
+    <span class="n">config_file</span><span class="o">=</span><span class="s2">"config.ini"</span><span class="p">,</span>
+    <span class="n">mismatch_model</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+    <span class="n">likelihood_builder</span><span class="o">=</span><span class="n">likelihood_builder</span><span class="p">,</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p>RHIME calls the function with explicit keyword arguments while constructing
+the PyMC model: the prepared observations, completed forward-model mean,
+reported observation error, selected aggregation error, and output dimension.
+Pollution-event-only terms remain inside the built-in pollution-event
+component. The function adds <code class="docutils literal notranslate"><span class="pre">epsilon</span></code> and the canonical observed variable
+<code class="docutils literal notranslate"><span class="pre">y</span></code> to the active model and returns <code class="docutils literal notranslate"><span class="pre">y</span></code>. There is no framework context or
+likelihood-result record to construct.</p>
+<p>Options owned only by a custom likelihood can be supplied separately with
+<code class="docutils literal notranslate"><span class="pre">likelihood_kwargs</span></code>. RHIME expands that mapping into the callable without
+hiding the common scientific arrays in an opaque object:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">result</span> <span class="o">=</span> <span class="n">run_rhime</span><span class="p">(</span>
+    <span class="n">config_file</span><span class="o">=</span><span class="s2">"config.ini"</span><span class="p">,</span>
+    <span class="n">mismatch_model</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+    <span class="n">likelihood_builder</span><span class="o">=</span><span class="n">likelihood_builder</span><span class="p">,</span>
+    <span class="n">likelihood_kwargs</span><span class="o">=</span><span class="p">{</span><span class="s2">"degrees_of_freedom"</span><span class="p">:</span> <span class="mf">4.0</span><span class="p">},</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">mismatch_model=None</span></code> explicitly opts out of the built-in selected by the
+configuration template. Passing both a custom callable and either built-in
+selection is rejected as ambiguous.</p>
+<p>RHIME passes these options directly and records a JSON-compatible
+representation beside the likelihood identity in result metadata and any
+saved inversion output. NumPy and Python dates and times become ISO strings;
+timedeltas become strings. A non-empty mapping is rejected when no
+<code class="docutils literal notranslate"><span class="pre">likelihood_builder</span></code> is active.</p>
+<section id="editable-likelihood">
+<h3>Editable likelihood<a class="headerlink" href="#editable-likelihood" title="Link to this heading">#</a></h3>
+<p>The following example replaces RHIME’s Gaussian observation distribution with
+a Student-t distribution while reusing RHIME’s current mean and error
+construction:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos"> 1</span><span class="sd">"""Editable likelihoods using RHIME's explicit scientific inputs.</span>
+<span class="linenos"> 2</span>
+<span class="linenos"> 3</span><span class="sd">This project-owned function changes RHIME's observation distribution while</span>
+<span class="linenos"> 4</span><span class="sd">reusing its current mean and fixed-error construction.</span>
+<span class="linenos"> 5</span>
+<span class="linenos"> 6</span><span class="sd">``likelihood_builder`` is the exported runner seam. Importing this module does</span>
+<span class="linenos"> 7</span><span class="sd">not build a model, retrieve data, sample, or write outputs.</span>
+<span class="linenos"> 8</span><span class="sd">"""</span>
+<span class="linenos"> 9</span>
+<span class="linenos">10</span><span class="kn">import</span><span class="w"> </span><span class="nn">pymc</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pm</span>
+<span class="linenos">11</span><span class="kn">import</span><span class="w"> </span><span class="nn">pytensor.tensor</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pt</span>
+<span class="linenos">12</span><span class="kn">import</span><span class="w"> </span><span class="nn">xarray</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">xr</span>
+<span class="linenos">13</span><span class="kn">from</span><span class="w"> </span><span class="nn">pytensor.tensor.variable</span><span class="w"> </span><span class="kn">import</span> <span class="n">TensorVariable</span>
+<span class="linenos">14</span>
+<span class="linenos">15</span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.observation_error</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+<span class="linenos">16</span>    <span class="n">AggregationError</span><span class="p">,</span>
+<span class="linenos">17</span>    <span class="n">validate_observation_error_arrays</span><span class="p">,</span>
+<span class="linenos">18</span><span class="p">)</span>
+<span class="linenos">19</span>
+<span class="linenos">20</span>
+<span class="linenos">21</span><span class="k">def</span><span class="w"> </span><span class="nf">likelihood_builder</span><span class="p">(</span>
+<span class="linenos">22</span>    <span class="o">*</span><span class="p">,</span>
+<span class="linenos">23</span>    <span class="n">observations</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">,</span>
+<span class="linenos">24</span>    <span class="n">observation_error</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">,</span>
+<span class="linenos">25</span>    <span class="n">aggregation_error</span><span class="p">:</span> <span class="n">AggregationError</span><span class="p">,</span>
+<span class="linenos">26</span>    <span class="n">mean</span><span class="p">:</span> <span class="n">TensorVariable</span><span class="p">,</span>
+<span class="linenos">27</span>    <span class="n">output_dim</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<span class="linenos">28</span>    <span class="n">degrees_of_freedom</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">4.0</span><span class="p">,</span>
+<span class="linenos">29</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">TensorVariable</span><span class="p">:</span>
+<span class="linenos">30</span><span class="w">    </span><span class="sd">"""Build a fixed-error Student-t model from RHIME's common inputs.</span>
+<span class="linenos">31</span>
+<span class="linenos">32</span><span class="sd">    Degrees of freedom default to 4.0. RHIME's ``epsilon`` is passed as the</span>
+<span class="linenos">33</span><span class="sd">    Student-t scale, not its marginal standard deviation; at the default the</span>
+<span class="linenos">34</span><span class="sd">    marginal standard deviation is ``epsilon * sqrt(2)``.</span>
+<span class="linenos">35</span>
+<span class="linenos">36</span><span class="sd">    Args:</span>
+<span class="linenos">37</span><span class="sd">        observations: Observed mole fractions.</span>
+<span class="linenos">38</span><span class="sd">        observation_error: Reported observation-error standard deviations.</span>
+<span class="linenos">39</span><span class="sd">        aggregation_error: Validated fixed aggregation-error representation.</span>
+<span class="linenos">40</span><span class="sd">        mean: Completed forward-model concentration.</span>
+<span class="linenos">41</span><span class="sd">        output_dim: Observation dimension used by named PyMC variables.</span>
+<span class="linenos">42</span><span class="sd">        degrees_of_freedom: Positive Student-t degrees of freedom supplied as</span>
+<span class="linenos">43</span><span class="sd">            a custom likelihood option.</span>
+<span class="linenos">44</span>
+<span class="linenos">45</span><span class="sd">    Returns:</span>
+<span class="linenos">46</span><span class="sd">        The observed Student-t variable, named ``y``.</span>
+<span class="linenos">47</span>
+<span class="linenos">48</span><span class="sd">    Raises:</span>
+<span class="linenos">49</span><span class="sd">        ValueError: If dense or low-rank aggregation error would require a</span>
+<span class="linenos">50</span><span class="sd">            multivariate Student-t likelihood.</span>
+<span class="linenos">51</span>
+<span class="linenos">52</span><span class="sd">    Notes:</span>
+<span class="linenos">53</span><span class="sd">        On success, this adds RHIME's canonical observation-state nodes and</span>
+<span class="linenos">54</span><span class="sd">        ``y`` to the active PyMC model. It performs no sampling or output</span>
+<span class="linenos">55</span><span class="sd">        writes. Unsupported aggregation modes are rejected before any nodes</span>
+<span class="linenos">56</span><span class="sd">        are added.</span>
+<span class="linenos">57</span><span class="sd">    """</span>
+<span class="linenos">58</span>    <span class="k">if</span> <span class="n">aggregation_error</span><span class="o">.</span><span class="n">mode</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">{</span><span class="s2">"none"</span><span class="p">,</span> <span class="s2">"diagonal"</span><span class="p">}:</span>
+<span class="linenos">59</span>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"This Student-t model assumes independent observations."</span><span class="p">)</span>
+<span class="linenos">60</span>    <span class="k">if</span> <span class="n">degrees_of_freedom</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+<span class="linenos">61</span>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"Student-t degrees of freedom must be positive."</span><span class="p">)</span>
+<span class="linenos">62</span>    <span class="n">validate_observation_error_arrays</span><span class="p">(</span>
+<span class="linenos">63</span>        <span class="n">observations</span><span class="p">,</span>
+<span class="linenos">64</span>        <span class="n">observation_error</span><span class="p">,</span>
+<span class="linenos">65</span>        <span class="kc">None</span><span class="p">,</span>
+<span class="linenos">66</span>        <span class="n">owner</span><span class="o">=</span><span class="s2">"Custom Student-t likelihood"</span><span class="p">,</span>
+<span class="linenos">67</span>        <span class="n">output_dim</span><span class="o">=</span><span class="n">output_dim</span><span class="p">,</span>
+<span class="linenos">68</span>    <span class="p">)</span>
+<span class="linenos">69</span>    <span class="n">reported_error</span> <span class="o">=</span> <span class="n">pm</span><span class="o">.</span><span class="n">Data</span><span class="p">(</span>
+<span class="linenos">70</span>        <span class="s2">"error"</span><span class="p">,</span>
+<span class="linenos">71</span>        <span class="n">pm</span><span class="o">.</span><span class="n">floatX</span><span class="p">(</span><span class="n">observation_error</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="n">output_dim</span><span class="p">)</span><span class="o">.</span><span class="n">compute</span><span class="p">()</span><span class="o">.</span><span class="n">values</span><span class="p">),</span>
+<span class="linenos">72</span>        <span class="n">dims</span><span class="o">=</span><span class="n">output_dim</span><span class="p">,</span>
+<span class="linenos">73</span>    <span class="p">)</span>
+<span class="linenos">74</span>    <span class="n">aggregation_variance</span> <span class="o">=</span> <span class="n">pm</span><span class="o">.</span><span class="n">Data</span><span class="p">(</span>
+<span class="linenos">75</span>        <span class="s2">"aggregation_error_marginal_variance"</span><span class="p">,</span>
+<span class="linenos">76</span>        <span class="n">pm</span><span class="o">.</span><span class="n">floatX</span><span class="p">(</span><span class="n">aggregation_error</span><span class="o">.</span><span class="n">marginal_variance</span><span class="p">),</span>
+<span class="linenos">77</span>        <span class="n">dims</span><span class="o">=</span><span class="n">output_dim</span><span class="p">,</span>
+<span class="linenos">78</span>    <span class="p">)</span>
+<span class="linenos">79</span>    <span class="n">epsilon</span> <span class="o">=</span> <span class="n">pm</span><span class="o">.</span><span class="n">Deterministic</span><span class="p">(</span>
+<span class="linenos">80</span>        <span class="s2">"epsilon"</span><span class="p">,</span>
+<span class="linenos">81</span>        <span class="n">pt</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">reported_error</span><span class="o">**</span><span class="mi">2</span> <span class="o">+</span> <span class="n">aggregation_variance</span><span class="p">),</span>
+<span class="linenos">82</span>        <span class="n">dims</span><span class="o">=</span><span class="n">output_dim</span><span class="p">,</span>
+<span class="linenos">83</span>    <span class="p">)</span>
+<span class="linenos">84</span>    <span class="n">observed</span> <span class="o">=</span> <span class="n">pm</span><span class="o">.</span><span class="n">StudentT</span><span class="p">(</span>
+<span class="linenos">85</span>        <span class="s2">"y"</span><span class="p">,</span>
+<span class="linenos">86</span>        <span class="n">nu</span><span class="o">=</span><span class="n">degrees_of_freedom</span><span class="p">,</span>
+<span class="linenos">87</span>        <span class="n">mu</span><span class="o">=</span><span class="n">mean</span><span class="p">,</span>
+<span class="linenos">88</span>        <span class="n">sigma</span><span class="o">=</span><span class="n">epsilon</span><span class="p">,</span>
+<span class="linenos">89</span>        <span class="n">observed</span><span class="o">=</span><span class="n">pm</span><span class="o">.</span><span class="n">floatX</span><span class="p">(</span><span class="n">observations</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="n">output_dim</span><span class="p">)</span><span class="o">.</span><span class="n">compute</span><span class="p">()</span><span class="o">.</span><span class="n">values</span><span class="p">),</span>
+<span class="linenos">90</span>        <span class="n">dims</span><span class="o">=</span><span class="n">output_dim</span><span class="p">,</span>
+<span class="linenos">91</span>    <span class="p">)</span>
+<span class="linenos">92</span>    <span class="k">return</span> <span class="n">observed</span>
+<span class="linenos">93</span>
+<span class="linenos">94</span>
+<span class="linenos">95</span><span class="n">__all__</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"likelihood_builder"</span><span class="p">]</span>
+</pre></div>
+</div>
+<p>RHIME records the function’s module and name, together with its explicit
+<code class="docutils literal notranslate"><span class="pre">likelihood_kwargs</span></code>, in the result and in saved output.
+It does not copy the Python source code into the output, so a project should
+keep the source and environment used for an inversion. Ordinary likelihood
+builders retain the canonical <code class="docutils literal notranslate"><span class="pre">y</span></code> and <code class="docutils literal notranslate"><span class="pre">epsilon</span></code> names used by sampling and
+output code.</p>
+<p>The example rejects dense and low-rank aggregation covariance because it uses
+an independent Student-t distribution. Supporting those aggregation-error
+modes would require a multivariate likelihood.</p>
+<p>The package-supported scalar-sigma CO2 likelihood is a concrete CO2 model
+recipe rather than a Standard RHIME customization. See the <a class="reference internal" href="co2_models.html#co2-scalar-sigma-recipe"><span class="std std-ref">global
+scalar-sigma CO2 workflow</span></a> for its preparation, cache, units, and runner
+contract.</p>
+<p>Built-in mismatch equations are direct model components, not examples of this
+custom-callback contract. In particular,
+<code class="docutils literal notranslate"><span class="pre">models.additive_sigma.add_additive_sigma_likelihood</span></code> adds an absolute
+concentration-scale variance, while <code class="docutils literal notranslate"><span class="pre">models.pollution_event</span></code> owns the
+pollution-enhancement-scaled equation. Select the absolute additive equation
+directly with <code class="docutils literal notranslate"><span class="pre">mismatch_model=&quot;additive_sigma&quot;</span></code> in <code class="docutils literal notranslate"><span class="pre">run_rhime</span></code> or
+<code class="docutils literal notranslate"><span class="pre">run_rhime_multisector</span></code>; <code class="docutils literal notranslate"><span class="pre">sigma_prior</span></code>, <code class="docutils literal notranslate"><span class="pre">sigma_freq</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">sigma_per_site</span></code> then configure its scale. Additive sigma does not load the
+historical <code class="docutils literal notranslate"><span class="pre">min_error</span></code> floor unless
+<code class="docutils literal notranslate"><span class="pre">use_minimum_error_floor=True</span></code> is selected explicitly. A custom likelihood
+loads only <code class="docutils literal notranslate"><span class="pre">mf</span></code> and <code class="docutils literal notranslate"><span class="pre">mf_error</span></code> from the universal observation inputs and
+does not require <code class="docutils literal notranslate"><span class="pre">min_error</span></code>.</p>
+<p>Legacy <code class="docutils literal notranslate"><span class="pre">run_hbmcmc</span></code> additive configuration is translated at that script’s
+entry point into the same explicit likelihood settings. Parameter resolution
+stores built-in mismatch science in <code class="docutils literal notranslate"><span class="pre">RhimeModelSpec</span></code> before the standard or
+multisector recipe is called; the recipes themselves select no default.</p>
+<p>The model-owned
+<code class="docutils literal notranslate"><span class="pre">models.fixed_ou.add_fixed_ou_gaussian_likelihood</span></code> adds a fixed-timescale,
+within-site Ornstein–Uhlenbeck mismatch covariance. For example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.models.fixed_ou</span><span class="w"> </span><span class="kn">import</span> <span class="n">add_fixed_ou_gaussian_likelihood</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="n">run_rhime</span>
+
+<span class="n">result</span> <span class="o">=</span> <span class="n">run_rhime</span><span class="p">(</span>
+    <span class="o">...</span><span class="p">,</span>
+    <span class="n">likelihood_builder</span><span class="o">=</span><span class="n">add_fixed_ou_gaussian_likelihood</span><span class="p">,</span>
+    <span class="n">likelihood_kwargs</span><span class="o">=</span><span class="p">{</span>
+        <span class="s2">"tau_hours"</span><span class="p">:</span> <span class="mf">5.0</span><span class="p">,</span>
+        <span class="s2">"site_amplitude_prior"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"pdf"</span><span class="p">:</span> <span class="s2">"halfnormal"</span><span class="p">,</span> <span class="s2">"sigma"</span><span class="p">:</span> <span class="mf">0.75</span><span class="p">},</span>
+    <span class="p">},</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p>The residual covariance is
+<code class="docutils literal notranslate"><span class="pre">R</span> <span class="pre">=</span> <span class="pre">F</span> <span class="pre">F^T</span> <span class="pre">+</span> <span class="pre">diag(d)</span> <span class="pre">+</span> <span class="pre">direct_sum_s(a_s^2</span> <span class="pre">T_s(tau_s))</span></code>, where
+<code class="docutils literal notranslate"><span class="pre">T_s[i,</span> <span class="pre">j]</span> <span class="pre">=</span> <span class="pre">exp(-abs(t_i</span> <span class="pre">-</span> <span class="pre">t_j)</span> <span class="pre">/</span> <span class="pre">tau_s)</span></code>. The direct sum gives zero
+cross-site OU covariance. <code class="docutils literal notranslate"><span class="pre">F</span> <span class="pre">F^T</span> <span class="pre">+</span> <span class="pre">diag(d)</span></code> is the selected fixed
+aggregation covariance plus reported observation-error variance; this
+component does not apply the historical <code class="docutils literal notranslate"><span class="pre">min_error</span></code> floor.</p>
+<p><code class="docutils literal notranslate"><span class="pre">tau_hours</span></code> may instead be an exact mapping from retained site labels to
+fixed positive timescales. Pass <code class="docutils literal notranslate"><span class="pre">fixed_site_amplitudes</span></code> as a scalar or exact
+site mapping to use known amplitudes instead of the inferred prior. An inferred
+amplitude requires an explicit <code class="docutils literal notranslate"><span class="pre">site_amplitude_prior</span></code> in the same
+concentration units as the observations; no fixed default is assumed. Tau has
+units of hours. Observation rows may be interleaved or nonmonotonic in time;
+the component preserves their order and sets cross-site OU covariance exactly
+to zero.</p>
+<p>The component evaluates low-rank aggregation covariance with a fixed-OU
+generalized-eigen and Woodbury method without forming a dense observation
+covariance. Dense aggregation input is a full-rank fallback. It currently
+requires every generalized base-plus-OU mode variance to be strictly positive.
+An exact zero mode is rejected before applying the low-rank factor, even when
+that factor would make a materialized dense covariance positive definite; a
+positive OU amplitude can lift a zero base mode. The component currently
+requires PyMC’s native No-U-Turn Sampler (NUTS) backend. Sampled tau is a
+separate extension; the package-supported cached sampler is the matched recipe
+described in <a class="reference internal" href="co2_models.html#co2-cached-sigma-recipe"><span class="std std-ref">Run the package-supported cached-sigma CO2 runner</span></a>.</p>
+</section>
+<section id="optional-project-cli">
+<h3>Optional project CLI<a class="headerlink" href="#optional-project-cli" title="Link to this heading">#</a></h3>
+<p>The short wrapper below packages the same one-call integration as a reusable
+Python function and command-line entry point:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos">  1</span><span class="sd">"""Run ordinary RHIME with a project-owned Student-t likelihood.</span>
+<span class="linenos">  2</span>
+<span class="linenos">  3</span><span class="sd">This is the preferred low-ceremony customization route. It keeps RHIME's</span>
+<span class="linenos">  4</span><span class="sd">complete acquisition-to-output pipeline and changes only the direct-Python</span>
+<span class="linenos">  5</span><span class="sd">likelihood callable passed to :func:`openghg_inversions.rhime.run_rhime`.</span>
+<span class="linenos">  6</span><span class="sd">Use :func:`run_with_likelihood` from Python or :func:`main` from the command</span>
+<span class="linenos">  7</span><span class="sd">line with a normal RHIME configuration. The workflow may retrieve or reload</span>
+<span class="linenos">  8</span><span class="sd">data, materializes related model arrays together at the named PyMC boundary,</span>
+<span class="linenos">  9</span><span class="sd">samples, and writes requested outputs while canonical xarray/Dask inputs remain</span>
+<span class="linenos"> 10</span><span class="sd">borrowed.</span>
+<span class="linenos"> 11</span><span class="sd">"""</span>
+<span class="linenos"> 12</span>
+<span class="linenos"> 13</span><span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+<span class="linenos"> 14</span>
+<span class="linenos"> 15</span><span class="kn">import</span><span class="w"> </span><span class="nn">argparse</span>
+<span class="linenos"> 16</span><span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Sequence</span>
+<span class="linenos"> 17</span><span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="linenos"> 18</span><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="linenos"> 19</span><span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span>
+<span class="linenos"> 20</span>
+<span class="linenos"> 21</span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="n">RhimeResult</span><span class="p">,</span> <span class="n">run_rhime</span>
+<span class="linenos"> 22</span>
+<span class="linenos"> 23</span><span class="kn">from</span><span class="w"> </span><span class="nn">.likelihoods</span><span class="w"> </span><span class="kn">import</span> <span class="n">likelihood_builder</span>
+<span class="linenos"> 24</span>
+<span class="linenos"> 25</span>
+<span class="linenos"> 26</span><span class="k">def</span><span class="w"> </span><span class="nf">run_with_likelihood</span><span class="p">(</span>
+<span class="linenos"> 27</span>    <span class="o">*</span><span class="p">,</span>
+<span class="linenos"> 28</span>    <span class="n">config_file</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="linenos"> 29</span>    <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
+<span class="linenos"> 30</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">RhimeResult</span><span class="p">:</span>
+<span class="linenos"> 31</span><span class="w">    </span><span class="sd">"""Run standard RHIME with a project-owned Student-t likelihood.</span>
+<span class="linenos"> 32</span>
+<span class="linenos"> 33</span><span class="sd">    Args:</span>
+<span class="linenos"> 34</span><span class="sd">        config_file: Optional RHIME INI configuration file.</span>
+<span class="linenos"> 35</span><span class="sd">        **kwargs: Standard RHIME option names that override values from</span>
+<span class="linenos"> 36</span><span class="sd">            ``config_file``.</span>
+<span class="linenos"> 37</span>
+<span class="linenos"> 38</span><span class="sd">    Returns:</span>
+<span class="linenos"> 39</span><span class="sd">        The sampled result and any outputs requested by the RHIME options.</span>
+<span class="linenos"> 40</span>
+<span class="linenos"> 41</span><span class="sd">    Raises:</span>
+<span class="linenos"> 42</span><span class="sd">        TypeError: If the likelihood builder does not return a PyTensor</span>
+<span class="linenos"> 43</span><span class="sd">            variable.</span>
+<span class="linenos"> 44</span><span class="sd">        ValueError: If required options are missing, aggregation error is</span>
+<span class="linenos"> 45</span><span class="sd">            unsupported, or the likelihood omits canonical ``y`` or</span>
+<span class="linenos"> 46</span><span class="sd">            ``epsilon`` variables.</span>
+<span class="linenos"> 47</span>
+<span class="linenos"> 48</span><span class="sd">    Notes:</span>
+<span class="linenos"> 49</span><span class="sd">        This workflow may retrieve or reload data, materializes related model</span>
+<span class="linenos"> 50</span><span class="sd">        arrays together at the named PyMC boundary without mutating canonical</span>
+<span class="linenos"> 51</span><span class="sd">        prepared inputs, runs sampling, and writes configured outputs.</span>
+<span class="linenos"> 52</span><span class="sd">    """</span>
+<span class="linenos"> 53</span>    <span class="n">kwargs</span><span class="p">[</span><span class="s2">"mismatch_model"</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="linenos"> 54</span>    <span class="k">return</span> <span class="n">run_rhime</span><span class="p">(</span>
+<span class="linenos"> 55</span>        <span class="n">config_file</span><span class="o">=</span><span class="n">config_file</span><span class="p">,</span>
+<span class="linenos"> 56</span>        <span class="n">likelihood_builder</span><span class="o">=</span><span class="n">likelihood_builder</span><span class="p">,</span>
+<span class="linenos"> 57</span>        <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+<span class="linenos"> 58</span>    <span class="p">)</span>
+<span class="linenos"> 59</span>
+<span class="linenos"> 60</span>
+<span class="linenos"> 61</span><span class="k">def</span><span class="w"> </span><span class="nf">_json_object</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="linenos"> 62</span><span class="w">    </span><span class="sd">"""Parse one command-line JSON object containing RHIME option overrides.</span>
+<span class="linenos"> 63</span>
+<span class="linenos"> 64</span><span class="sd">    Args:</span>
+<span class="linenos"> 65</span><span class="sd">        value: JSON text to parse.</span>
+<span class="linenos"> 66</span>
+<span class="linenos"> 67</span><span class="sd">    Returns:</span>
+<span class="linenos"> 68</span><span class="sd">        The decoded JSON object.</span>
+<span class="linenos"> 69</span>
+<span class="linenos"> 70</span><span class="sd">    Raises:</span>
+<span class="linenos"> 71</span><span class="sd">        argparse.ArgumentTypeError: If the text is invalid JSON or decodes to</span>
+<span class="linenos"> 72</span><span class="sd">            a non-object value.</span>
+<span class="linenos"> 73</span><span class="sd">    """</span>
+<span class="linenos"> 74</span>    <span class="k">try</span><span class="p">:</span>
+<span class="linenos"> 75</span>        <span class="n">parsed</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+<span class="linenos"> 76</span>    <span class="k">except</span> <span class="n">json</span><span class="o">.</span><span class="n">JSONDecodeError</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+<span class="linenos"> 77</span>        <span class="k">raise</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentTypeError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"invalid JSON: </span><span class="si">{</span><span class="n">exc</span><span class="o">.</span><span class="n">msg</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">exc</span>
+<span class="linenos"> 78</span>    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">parsed</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+<span class="linenos"> 79</span>        <span class="k">raise</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentTypeError</span><span class="p">(</span><span class="s2">"--kwargs must decode to a JSON object"</span><span class="p">)</span>
+<span class="linenos"> 80</span>    <span class="k">return</span> <span class="n">parsed</span>
+<span class="linenos"> 81</span>
+<span class="linenos"> 82</span>
+<span class="linenos"> 83</span><span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">(</span><span class="n">argv</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">RhimeResult</span><span class="p">:</span>
+<span class="linenos"> 84</span><span class="w">    </span><span class="sd">"""Parse command-line options and run the customized RHIME workflow.</span>
+<span class="linenos"> 85</span>
+<span class="linenos"> 86</span><span class="sd">    Args:</span>
+<span class="linenos"> 87</span><span class="sd">        argv: Command-line tokens excluding the program name. ``None`` reads</span>
+<span class="linenos"> 88</span><span class="sd">            tokens from :data:`sys.argv`.</span>
+<span class="linenos"> 89</span>
+<span class="linenos"> 90</span><span class="sd">    Returns:</span>
+<span class="linenos"> 91</span><span class="sd">        The RHIME result returned by :func:`run_with_likelihood`.</span>
+<span class="linenos"> 92</span>
+<span class="linenos"> 93</span><span class="sd">    Raises:</span>
+<span class="linenos"> 94</span><span class="sd">        SystemExit: If argument parsing fails or help is requested.</span>
+<span class="linenos"> 95</span><span class="sd">    """</span>
+<span class="linenos"> 96</span>    <span class="n">parser</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">(</span><span class="n">description</span><span class="o">=</span><span class="vm">__doc__</span><span class="p">)</span>
+<span class="linenos"> 97</span>    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">"config_file"</span><span class="p">,</span> <span class="n">nargs</span><span class="o">=</span><span class="s2">"?"</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="n">Path</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">"RHIME INI configuration file"</span><span class="p">)</span>
+<span class="linenos"> 98</span>    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+<span class="linenos"> 99</span>        <span class="s2">"--kwargs"</span><span class="p">,</span>
+<span class="linenos">100</span>        <span class="nb">type</span><span class="o">=</span><span class="n">_json_object</span><span class="p">,</span>
+<span class="linenos">101</span>        <span class="n">default</span><span class="o">=</span><span class="p">{},</span>
+<span class="linenos">102</span>        <span class="n">metavar</span><span class="o">=</span><span class="s2">"JSON"</span><span class="p">,</span>
+<span class="linenos">103</span>        <span class="n">help</span><span class="o">=</span><span class="s2">"additional RHIME options as a JSON object"</span><span class="p">,</span>
+<span class="linenos">104</span>    <span class="p">)</span>
+<span class="linenos">105</span>    <span class="n">args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">parse_args</span><span class="p">(</span><span class="n">argv</span><span class="p">)</span>
+<span class="linenos">106</span>    <span class="k">return</span> <span class="n">run_with_likelihood</span><span class="p">(</span><span class="n">config_file</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">config_file</span><span class="p">,</span> <span class="o">**</span><span class="n">args</span><span class="o">.</span><span class="n">kwargs</span><span class="p">)</span>
+<span class="linenos">107</span>
+<span class="linenos">108</span>
+<span class="linenos">109</span><span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">"__main__"</span><span class="p">:</span>
+<span class="linenos">110</span>    <span class="n">main</span><span class="p">()</span>
+</pre></div>
+</div>
+<p>Run it with a normal RHIME configuration and optional JSON overrides:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">python</span> <span class="o">-</span><span class="n">m</span> <span class="n">package_name</span><span class="o">.</span><span class="n">run_with_likelihood</span> <span class="n">config</span><span class="o">.</span><span class="n">ini</span> \
+    <span class="o">--</span><span class="n">kwargs</span> <span class="s1">'{"output_path": "outputs", "output_format": "inv_out"}'</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">run_rhime_multisector</span></code> accepts the same Python-only builder contract. The
+standard multi-sector model retains sector flux components and roles, then
+passes their combined observation mean to the likelihood, so no special case
+or semantic compromise is required.</p>
+</section>
+</section>
+<section id="use-the-seam-from-a-generated-project">
+<h2>Use the seam from a generated project<a class="headerlink" href="#use-the-seam-from-a-generated-project" title="Link to this heading">#</a></h2>
+<p>Create a normal downstream package with the current <a class="reference external" href="https://github.com/openghg/openghg-project-cookiecutter">OpenGHG project
+cookiecutter</a>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">uvx</span> <span class="n">cookiecutter</span> <span class="n">gh</span><span class="p">:</span><span class="n">openghg</span><span class="o">/</span><span class="n">openghg</span><span class="o">-</span><span class="n">project</span><span class="o">-</span><span class="n">cookiecutter</span>
+</pre></div>
+</div>
+<p>The template already declares <code class="docutils literal notranslate"><span class="pre">openghg</span></code> and <code class="docutils literal notranslate"><span class="pre">openghg_inversions</span></code> as
+dependencies and creates a <code class="docutils literal notranslate"><span class="pre">src</span></code> layout. Add the project-owned files beside
+the generated package’s existing modules, without copying any OpenGHG
+Inversions implementation:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">src</span><span class="o">/</span><span class="n">my_inversion</span><span class="o">/</span>
+  <span class="fm">__init__</span><span class="o">.</span><span class="n">py</span>
+  <span class="n">likelihoods</span><span class="o">.</span><span class="n">py</span>
+  <span class="n">runner</span><span class="o">.</span><span class="n">py</span>
+<span class="n">tests</span><span class="o">/</span>
+  <span class="n">test_runner</span><span class="o">.</span><span class="n">py</span>
+</pre></div>
+</div>
+<p>Put only the scientific change in <code class="docutils literal notranslate"><span class="pre">likelihoods.py</span></code>:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos"> 1</span><span class="sd">"""Project-owned scientific variation for a cookiecutter-generated package."""</span>
+<span class="linenos"> 2</span>
+<span class="linenos"> 3</span><span class="kn">import</span><span class="w"> </span><span class="nn">pymc</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pm</span>
+<span class="linenos"> 4</span><span class="kn">import</span><span class="w"> </span><span class="nn">pytensor.tensor</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pt</span>
+<span class="linenos"> 5</span><span class="kn">import</span><span class="w"> </span><span class="nn">xarray</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">xr</span>
+<span class="linenos"> 6</span><span class="kn">from</span><span class="w"> </span><span class="nn">pytensor.tensor.variable</span><span class="w"> </span><span class="kn">import</span> <span class="n">TensorVariable</span>
+<span class="linenos"> 7</span>
+<span class="linenos"> 8</span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.observation_error</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+<span class="linenos"> 9</span>    <span class="n">AggregationError</span><span class="p">,</span>
+<span class="linenos">10</span>    <span class="n">validate_observation_error_arrays</span><span class="p">,</span>
+<span class="linenos">11</span><span class="p">)</span>
+<span class="linenos">12</span>
+<span class="linenos">13</span>
+<span class="linenos">14</span><span class="k">def</span><span class="w"> </span><span class="nf">likelihood_builder</span><span class="p">(</span>
+<span class="linenos">15</span>    <span class="o">*</span><span class="p">,</span>
+<span class="linenos">16</span>    <span class="n">observations</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">,</span>
+<span class="linenos">17</span>    <span class="n">observation_error</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">,</span>
+<span class="linenos">18</span>    <span class="n">aggregation_error</span><span class="p">:</span> <span class="n">AggregationError</span><span class="p">,</span>
+<span class="linenos">19</span>    <span class="n">mean</span><span class="p">:</span> <span class="n">TensorVariable</span><span class="p">,</span>
+<span class="linenos">20</span>    <span class="n">output_dim</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<span class="linenos">21</span>    <span class="n">degrees_of_freedom</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">4.0</span><span class="p">,</span>
+<span class="linenos">22</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">TensorVariable</span><span class="p">:</span>
+<span class="linenos">23</span><span class="w">    </span><span class="sd">"""Build an independent Student-t observation likelihood for RHIME.</span>
+<span class="linenos">24</span>
+<span class="linenos">25</span><span class="sd">    Args:</span>
+<span class="linenos">26</span><span class="sd">        observations: Observed mole fractions.</span>
+<span class="linenos">27</span><span class="sd">        observation_error: Reported observation-error standard deviations.</span>
+<span class="linenos">28</span><span class="sd">        aggregation_error: Validated fixed aggregation-error representation.</span>
+<span class="linenos">29</span><span class="sd">        mean: Completed forward-model concentration.</span>
+<span class="linenos">30</span><span class="sd">        output_dim: Observation dimension used by named PyMC variables.</span>
+<span class="linenos">31</span><span class="sd">        degrees_of_freedom: Positive Student-t degrees of freedom supplied as</span>
+<span class="linenos">32</span><span class="sd">            a custom likelihood option.</span>
+<span class="linenos">33</span>
+<span class="linenos">34</span><span class="sd">    Returns:</span>
+<span class="linenos">35</span><span class="sd">        The observed Student-t variable, named ``y``.</span>
+<span class="linenos">36</span>
+<span class="linenos">37</span><span class="sd">    Raises:</span>
+<span class="linenos">38</span><span class="sd">        ValueError: If aggregation error requires a multivariate likelihood.</span>
+<span class="linenos">39</span><span class="sd">    """</span>
+<span class="linenos">40</span>    <span class="k">if</span> <span class="n">aggregation_error</span><span class="o">.</span><span class="n">mode</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">{</span><span class="s2">"none"</span><span class="p">,</span> <span class="s2">"diagonal"</span><span class="p">}:</span>
+<span class="linenos">41</span>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"This Student-t model assumes independent observations."</span><span class="p">)</span>
+<span class="linenos">42</span>    <span class="k">if</span> <span class="n">degrees_of_freedom</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+<span class="linenos">43</span>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"Student-t degrees of freedom must be positive."</span><span class="p">)</span>
+<span class="linenos">44</span>
+<span class="linenos">45</span>    <span class="n">validate_observation_error_arrays</span><span class="p">(</span>
+<span class="linenos">46</span>        <span class="n">observations</span><span class="p">,</span>
+<span class="linenos">47</span>        <span class="n">observation_error</span><span class="p">,</span>
+<span class="linenos">48</span>        <span class="kc">None</span><span class="p">,</span>
+<span class="linenos">49</span>        <span class="n">owner</span><span class="o">=</span><span class="s2">"Custom Student-t likelihood"</span><span class="p">,</span>
+<span class="linenos">50</span>        <span class="n">output_dim</span><span class="o">=</span><span class="n">output_dim</span><span class="p">,</span>
+<span class="linenos">51</span>    <span class="p">)</span>
+<span class="linenos">52</span>    <span class="n">reported_error</span> <span class="o">=</span> <span class="n">pm</span><span class="o">.</span><span class="n">Data</span><span class="p">(</span>
+<span class="linenos">53</span>        <span class="s2">"error"</span><span class="p">,</span>
+<span class="linenos">54</span>        <span class="n">pm</span><span class="o">.</span><span class="n">floatX</span><span class="p">(</span><span class="n">observation_error</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="n">output_dim</span><span class="p">)</span><span class="o">.</span><span class="n">compute</span><span class="p">()</span><span class="o">.</span><span class="n">values</span><span class="p">),</span>
+<span class="linenos">55</span>        <span class="n">dims</span><span class="o">=</span><span class="n">output_dim</span><span class="p">,</span>
+<span class="linenos">56</span>    <span class="p">)</span>
+<span class="linenos">57</span>    <span class="n">aggregation_variance</span> <span class="o">=</span> <span class="n">pm</span><span class="o">.</span><span class="n">Data</span><span class="p">(</span>
+<span class="linenos">58</span>        <span class="s2">"aggregation_error_marginal_variance"</span><span class="p">,</span>
+<span class="linenos">59</span>        <span class="n">pm</span><span class="o">.</span><span class="n">floatX</span><span class="p">(</span><span class="n">aggregation_error</span><span class="o">.</span><span class="n">marginal_variance</span><span class="p">),</span>
+<span class="linenos">60</span>        <span class="n">dims</span><span class="o">=</span><span class="n">output_dim</span><span class="p">,</span>
+<span class="linenos">61</span>    <span class="p">)</span>
+<span class="linenos">62</span>    <span class="n">epsilon</span> <span class="o">=</span> <span class="n">pm</span><span class="o">.</span><span class="n">Deterministic</span><span class="p">(</span>
+<span class="linenos">63</span>        <span class="s2">"epsilon"</span><span class="p">,</span>
+<span class="linenos">64</span>        <span class="n">pt</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">reported_error</span><span class="o">**</span><span class="mi">2</span> <span class="o">+</span> <span class="n">aggregation_variance</span><span class="p">),</span>
+<span class="linenos">65</span>        <span class="n">dims</span><span class="o">=</span><span class="n">output_dim</span><span class="p">,</span>
+<span class="linenos">66</span>    <span class="p">)</span>
+<span class="linenos">67</span>    <span class="n">observed</span> <span class="o">=</span> <span class="n">pm</span><span class="o">.</span><span class="n">StudentT</span><span class="p">(</span>
+<span class="linenos">68</span>        <span class="s2">"y"</span><span class="p">,</span>
+<span class="linenos">69</span>        <span class="n">nu</span><span class="o">=</span><span class="n">degrees_of_freedom</span><span class="p">,</span>
+<span class="linenos">70</span>        <span class="n">mu</span><span class="o">=</span><span class="n">mean</span><span class="p">,</span>
+<span class="linenos">71</span>        <span class="n">sigma</span><span class="o">=</span><span class="n">epsilon</span><span class="p">,</span>
+<span class="linenos">72</span>        <span class="n">observed</span><span class="o">=</span><span class="n">pm</span><span class="o">.</span><span class="n">floatX</span><span class="p">(</span><span class="n">observations</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="n">output_dim</span><span class="p">)</span><span class="o">.</span><span class="n">compute</span><span class="p">()</span><span class="o">.</span><span class="n">values</span><span class="p">),</span>
+<span class="linenos">73</span>        <span class="n">dims</span><span class="o">=</span><span class="n">output_dim</span><span class="p">,</span>
+<span class="linenos">74</span>    <span class="p">)</span>
+<span class="linenos">75</span>    <span class="k">return</span> <span class="n">observed</span>
+<span class="linenos">76</span>
+<span class="linenos">77</span>
+<span class="linenos">78</span><span class="n">__all__</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"likelihood_builder"</span><span class="p">]</span>
+</pre></div>
+</div>
+<p>Keep project-level invocation in <code class="docutils literal notranslate"><span class="pre">runner.py</span></code>. Its one library call owns no
+retrieval, filtering, basis, input assembly, sampling, predictive selection,
+or output implementation:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos"> 1</span><span class="sd">"""Run RHIME from a cookiecutter-generated project package."""</span>
+<span class="linenos"> 2</span>
+<span class="linenos"> 3</span><span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+<span class="linenos"> 4</span>
+<span class="linenos"> 5</span><span class="kn">import</span><span class="w"> </span><span class="nn">argparse</span>
+<span class="linenos"> 6</span><span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Sequence</span>
+<span class="linenos"> 7</span><span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="linenos"> 8</span><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="linenos"> 9</span><span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span>
+<span class="linenos">10</span>
+<span class="linenos">11</span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="n">RhimeResult</span><span class="p">,</span> <span class="n">run_rhime</span>
+<span class="linenos">12</span>
+<span class="linenos">13</span><span class="kn">from</span><span class="w"> </span><span class="nn">.likelihoods</span><span class="w"> </span><span class="kn">import</span> <span class="n">likelihood_builder</span>
+<span class="linenos">14</span>
+<span class="linenos">15</span>
+<span class="linenos">16</span><span class="k">def</span><span class="w"> </span><span class="nf">run</span><span class="p">(</span>
+<span class="linenos">17</span>    <span class="o">*</span><span class="p">,</span>
+<span class="linenos">18</span>    <span class="n">config_file</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="linenos">19</span>    <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
+<span class="linenos">20</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">RhimeResult</span><span class="p">:</span>
+<span class="linenos">21</span><span class="w">    </span><span class="sd">"""Run ordinary RHIME with this project's likelihood.</span>
+<span class="linenos">22</span>
+<span class="linenos">23</span><span class="sd">    Args:</span>
+<span class="linenos">24</span><span class="sd">        config_file: Optional RHIME INI configuration file.</span>
+<span class="linenos">25</span><span class="sd">        **kwargs: Standard RHIME option names overriding the configuration.</span>
+<span class="linenos">26</span>
+<span class="linenos">27</span><span class="sd">    Returns:</span>
+<span class="linenos">28</span><span class="sd">        The library-owned RHIME result and any requested supported output.</span>
+<span class="linenos">29</span><span class="sd">    """</span>
+<span class="linenos">30</span>    <span class="n">kwargs</span><span class="p">[</span><span class="s2">"mismatch_model"</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="linenos">31</span>    <span class="k">return</span> <span class="n">run_rhime</span><span class="p">(</span>
+<span class="linenos">32</span>        <span class="n">config_file</span><span class="o">=</span><span class="n">config_file</span><span class="p">,</span>
+<span class="linenos">33</span>        <span class="n">likelihood_builder</span><span class="o">=</span><span class="n">likelihood_builder</span><span class="p">,</span>
+<span class="linenos">34</span>        <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+<span class="linenos">35</span>    <span class="p">)</span>
+<span class="linenos">36</span>
+<span class="linenos">37</span>
+<span class="linenos">38</span><span class="k">def</span><span class="w"> </span><span class="nf">_json_object</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="linenos">39</span><span class="w">    </span><span class="sd">"""Parse JSON command-line overrides as an object."""</span>
+<span class="linenos">40</span>    <span class="k">try</span><span class="p">:</span>
+<span class="linenos">41</span>        <span class="n">parsed</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+<span class="linenos">42</span>    <span class="k">except</span> <span class="n">json</span><span class="o">.</span><span class="n">JSONDecodeError</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+<span class="linenos">43</span>        <span class="k">raise</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentTypeError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"invalid JSON: </span><span class="si">{</span><span class="n">exc</span><span class="o">.</span><span class="n">msg</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">exc</span>
+<span class="linenos">44</span>    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">parsed</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+<span class="linenos">45</span>        <span class="k">raise</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentTypeError</span><span class="p">(</span><span class="s2">"--kwargs must decode to a JSON object"</span><span class="p">)</span>
+<span class="linenos">46</span>    <span class="k">return</span> <span class="n">parsed</span>
+<span class="linenos">47</span>
+<span class="linenos">48</span>
+<span class="linenos">49</span><span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">(</span><span class="n">argv</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">RhimeResult</span><span class="p">:</span>
+<span class="linenos">50</span><span class="w">    </span><span class="sd">"""Parse project CLI arguments and run the customized inversion."""</span>
+<span class="linenos">51</span>    <span class="n">parser</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">(</span><span class="n">description</span><span class="o">=</span><span class="vm">__doc__</span><span class="p">)</span>
+<span class="linenos">52</span>    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">"config_file"</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="n">Path</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">"RHIME INI configuration file"</span><span class="p">)</span>
+<span class="linenos">53</span>    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+<span class="linenos">54</span>        <span class="s2">"--kwargs"</span><span class="p">,</span>
+<span class="linenos">55</span>        <span class="nb">type</span><span class="o">=</span><span class="n">_json_object</span><span class="p">,</span>
+<span class="linenos">56</span>        <span class="n">default</span><span class="o">=</span><span class="p">{},</span>
+<span class="linenos">57</span>        <span class="n">metavar</span><span class="o">=</span><span class="s2">"JSON"</span><span class="p">,</span>
+<span class="linenos">58</span>        <span class="n">help</span><span class="o">=</span><span class="s2">"additional RHIME options as a JSON object"</span><span class="p">,</span>
+<span class="linenos">59</span>    <span class="p">)</span>
+<span class="linenos">60</span>    <span class="n">args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">parse_args</span><span class="p">(</span><span class="n">argv</span><span class="p">)</span>
+<span class="linenos">61</span>    <span class="k">return</span> <span class="n">run</span><span class="p">(</span><span class="n">config_file</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">config_file</span><span class="p">,</span> <span class="o">**</span><span class="n">args</span><span class="o">.</span><span class="n">kwargs</span><span class="p">)</span>
+<span class="linenos">62</span>
+<span class="linenos">63</span>
+<span class="linenos">64</span><span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">"__main__"</span><span class="p">:</span>
+<span class="linenos">65</span>    <span class="n">main</span><span class="p">()</span>
+</pre></div>
+</div>
+<p>After <code class="docutils literal notranslate"><span class="pre">uv</span> <span class="pre">sync</span> <span class="pre">--extra</span> <span class="pre">dev</span></code>, run the module with a normal RHIME INI file:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">uv</span> <span class="n">run</span> <span class="n">python</span> <span class="o">-</span><span class="n">m</span> <span class="n">my_inversion</span><span class="o">.</span><span class="n">runner</span> <span class="n">inversion</span><span class="o">.</span><span class="n">ini</span> \
+    <span class="o">--</span><span class="n">kwargs</span> <span class="s1">'{"output_path": "outputs", "output_format": "inv_out"}'</span>
+</pre></div>
+</div>
+<p>An optional console command can point directly at the same <code class="docutils literal notranslate"><span class="pre">main</span></code> function.
+Add this table to the generated <code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">[</span><span class="n">project</span><span class="o">.</span><span class="n">scripts</span><span class="p">]</span>
+<span class="n">my</span><span class="o">-</span><span class="n">inversion</span> <span class="o">=</span> <span class="s2">"my_inversion.runner:main"</span>
+</pre></div>
+</div>
+<p>Then the equivalent command is:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">uv</span> <span class="n">run</span> <span class="n">my</span><span class="o">-</span><span class="n">inversion</span> <span class="n">inversion</span><span class="o">.</span><span class="n">ini</span> \
+    <span class="o">--</span><span class="n">kwargs</span> <span class="s1">'{"output_path": "outputs", "output_format": "inv_out"}'</span>
+</pre></div>
+</div>
+<p>The generated runner uses documented names from <code class="docutils literal notranslate"><span class="pre">openghg_inversions.rhime</span></code>.
+Its likelihood module imports reusable components from their documented owner
+modules: <code class="docutils literal notranslate"><span class="pre">models.pollution_event</span></code>, <code class="docutils literal notranslate"><span class="pre">observation_error</span></code>, and <code class="docutils literal notranslate"><span class="pre">sigma</span></code>.
+The dependency direction is therefore the generated project to OpenGHG
+Inversions; OpenGHG Inversions does not import the consumer package. Pin the
+release or commit used for a scientific run in the downstream project’s
+lockfile. An optional RHIME recipe or generated-project CI in the generic
+cookiecutter would be a separate cross-repository change and is not required
+for this workflow.</p>
+</section>
+<section id="copy-the-complete-runner">
+<h2>Copy the complete runner<a class="headerlink" href="#copy-the-complete-runner" title="Link to this heading">#</a></h2>
+<p>The copied runner below is an advanced, version-coupled escape hatch for
+scientific changes beyond the likelihood seam. It makes the major stages
+visible while importing their implementations from the supported public RHIME
+API. Prefer <code class="docutils literal notranslate"><span class="pre">run_rhime_from_prepared_inputs</span></code> when replaying prepared inputs,
+replacing the complete model, or deliberately starting from a different
+preparation graph.</p>
+<p>The deliberate change is the likelihood passed to
+<code class="docutils literal notranslate"><span class="pre">build_standard_rhime_model_result</span></code>: the example selects the same project-owned
+Student-t builder as the preferred form. Acquisition, filtering, basis
+construction, labelled input assembly, conversion of delayed arrays for PyMC,
+sampling, predictive selection, filenames, and output handling remain
+library-owned.</p>
+<p>In a project created with the <a class="reference external" href="https://github.com/openghg/openghg-project-cookiecutter">OpenGHG project cookiecutter</a>, copy the preferred
+modules to <code class="docutils literal notranslate"><span class="pre">src/&lt;package_name&gt;/likelihoods.py</span></code> and
+<code class="docutils literal notranslate"><span class="pre">src/&lt;package_name&gt;/run_with_likelihood.py</span></code>. Copy the complete module below
+to <code class="docutils literal notranslate"><span class="pre">src/&lt;package_name&gt;/rhime_runner.py</span></code> only when the project needs to own a
+deeper orchestration change. Import scientific stage implementations from
+<code class="docutils literal notranslate"><span class="pre">openghg_inversions.rhime</span></code> rather than copying those implementations.</p>
+<p>Run it with a normal RHIME configuration and optional overrides:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">python</span> <span class="o">-</span><span class="n">m</span> <span class="n">package_name</span><span class="o">.</span><span class="n">rhime_runner</span> <span class="n">config</span><span class="o">.</span><span class="n">ini</span> \
+    <span class="o">--</span><span class="n">start</span><span class="o">-</span><span class="n">date</span> <span class="mi">2020</span><span class="o">-</span><span class="mi">01</span><span class="o">-</span><span class="mi">01</span> <span class="o">--</span><span class="n">end</span><span class="o">-</span><span class="n">date</span> <span class="mi">2020</span><span class="o">-</span><span class="mi">02</span><span class="o">-</span><span class="mi">01</span> \
+    <span class="o">--</span><span class="n">output</span><span class="o">-</span><span class="n">path</span> <span class="n">outputs</span> <span class="o">--</span><span class="n">draws</span> <span class="mi">1000</span> <span class="o">--</span><span class="n">tune</span> <span class="mi">1000</span> <span class="o">--</span><span class="n">chains</span> <span class="mi">4</span>
+</pre></div>
+</div>
+<p>Less common Python/config options can be supplied as a JSON object:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">python</span> <span class="o">-</span><span class="n">m</span> <span class="n">package_name</span><span class="o">.</span><span class="n">rhime_runner</span> <span class="n">config</span><span class="o">.</span><span class="n">ini</span> \
+    <span class="o">--</span><span class="n">kwargs</span> <span class="s1">'{"reload_merged_data": true, "output_format": "inv_out"}'</span>
+</pre></div>
+</div>
+<p>The test suite imports all three sources, exercises both runners, and validates
+the likelihood contract directly, so the documentation and runnable examples
+cannot drift apart.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos">  1</span><span class="sd">"""Advanced copy-and-modify runner for a standard RHIME inversion.</span>
+<span class="linenos">  2</span>
+<span class="linenos">  3</span><span class="sd">This example deliberately replaces RHIME's default likelihood with a</span>
+<span class="linenos">  4</span><span class="sd">project-owned Student-t builder. The orchestration is intentionally copied so</span>
+<span class="linenos">  5</span><span class="sd">that a project can make deeper scientific changes while continuing to reuse</span>
+<span class="linenos">  6</span><span class="sd">the supported acquisition, preparation, model, sampling, and output stages.</span>
+<span class="linenos">  7</span><span class="sd">Use :func:`run_custom_rhime` from Python or :func:`main` from the command line.</span>
+<span class="linenos">  8</span><span class="sd">The standard single-sector stages are preserved, model inputs materialize only</span>
+<span class="linenos">  9</span><span class="sd">at the explicit PyMC boundary, and a run may acquire or reload data, sample a</span>
+<span class="linenos"> 10</span><span class="sd">model, and write its configured outputs.</span>
+<span class="linenos"> 11</span><span class="sd">"""</span>
+<span class="linenos"> 12</span>
+<span class="linenos"> 13</span><span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+<span class="linenos"> 14</span>
+<span class="linenos"> 15</span><span class="kn">import</span><span class="w"> </span><span class="nn">argparse</span>
+<span class="linenos"> 16</span><span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Sequence</span>
+<span class="linenos"> 17</span><span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="linenos"> 18</span><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="linenos"> 19</span><span class="kn">from</span><span class="w"> </span><span class="nn">time</span><span class="w"> </span><span class="kn">import</span> <span class="n">perf_counter</span>
+<span class="linenos"> 20</span><span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span>
+<span class="linenos"> 21</span>
+<span class="linenos"> 22</span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+<span class="linenos"> 23</span>    <span class="n">RhimeResult</span><span class="p">,</span>
+<span class="linenos"> 24</span>    <span class="n">assemble_rhime_inputs</span><span class="p">,</span>
+<span class="linenos"> 25</span>    <span class="n">build_rhime_basis</span><span class="p">,</span>
+<span class="linenos"> 26</span>    <span class="n">build_rhime_sensitivities</span><span class="p">,</span>
+<span class="linenos"> 27</span>    <span class="n">build_standard_rhime_model_result</span><span class="p">,</span>
+<span class="linenos"> 28</span>    <span class="n">filter_rhime_observations</span><span class="p">,</span>
+<span class="linenos"> 29</span>    <span class="n">make_standard_rhime_result</span><span class="p">,</span>
+<span class="linenos"> 30</span>    <span class="n">make_standard_rhime_outputs</span><span class="p">,</span>
+<span class="linenos"> 31</span>    <span class="n">materialize_pymc_inputs</span><span class="p">,</span>
+<span class="linenos"> 32</span>    <span class="n">params_from_config</span><span class="p">,</span>
+<span class="linenos"> 33</span>    <span class="n">resolve_rhime_options</span><span class="p">,</span>
+<span class="linenos"> 34</span>    <span class="n">retrieve_or_reload_rhime_data</span><span class="p">,</span>
+<span class="linenos"> 35</span>    <span class="n">sample_rhime_model</span><span class="p">,</span>
+<span class="linenos"> 36</span>    <span class="n">standard_model_input_names</span><span class="p">,</span>
+<span class="linenos"> 37</span>    <span class="n">with_prepared_rhime_sites</span><span class="p">,</span>
+<span class="linenos"> 38</span><span class="p">)</span>
+<span class="linenos"> 39</span>
+<span class="linenos"> 40</span><span class="kn">from</span><span class="w"> </span><span class="nn">.likelihoods</span><span class="w"> </span><span class="kn">import</span> <span class="n">likelihood_builder</span>
+<span class="linenos"> 41</span>
+<span class="linenos"> 42</span>
+<span class="linenos"> 43</span><span class="k">def</span><span class="w"> </span><span class="nf">run_custom_rhime</span><span class="p">(</span>
+<span class="linenos"> 44</span>    <span class="o">*</span><span class="p">,</span>
+<span class="linenos"> 45</span>    <span class="n">config_file</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="linenos"> 46</span>    <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
+<span class="linenos"> 47</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">RhimeResult</span><span class="p">:</span>
+<span class="linenos"> 48</span><span class="w">    </span><span class="sd">"""Run standard RHIME with a project-owned Student-t likelihood.</span>
+<span class="linenos"> 49</span>
+<span class="linenos"> 50</span><span class="sd">    Args:</span>
+<span class="linenos"> 51</span><span class="sd">        config_file: Optional RHIME INI configuration file.</span>
+<span class="linenos"> 52</span><span class="sd">        **kwargs: Standard RHIME option names that override values from</span>
+<span class="linenos"> 53</span><span class="sd">            ``config_file``.</span>
+<span class="linenos"> 54</span>
+<span class="linenos"> 55</span><span class="sd">    Returns:</span>
+<span class="linenos"> 56</span><span class="sd">        The sampled result and any outputs requested by the RHIME options.</span>
+<span class="linenos"> 57</span>
+<span class="linenos"> 58</span><span class="sd">    Raises:</span>
+<span class="linenos"> 59</span><span class="sd">        TypeError: If the likelihood builder returns an invalid result type.</span>
+<span class="linenos"> 60</span><span class="sd">        ValueError: If required options are missing, aggregation or output is</span>
+<span class="linenos"> 61</span><span class="sd">            unsupported, or likelihood roles or metadata are invalid.</span>
+<span class="linenos"> 62</span>
+<span class="linenos"> 63</span><span class="sd">    Notes:</span>
+<span class="linenos"> 64</span><span class="sd">        This workflow may retrieve or reload data, materializes related model</span>
+<span class="linenos"> 65</span><span class="sd">        arrays together at the named PyMC boundary without mutating canonical</span>
+<span class="linenos"> 66</span><span class="sd">        prepared inputs, runs sampling, and writes outputs requested by the</span>
+<span class="linenos"> 67</span><span class="sd">        resolved RHIME options.</span>
+<span class="linenos"> 68</span><span class="sd">    """</span>
+<span class="linenos"> 69</span>    <span class="n">params</span> <span class="o">=</span> <span class="p">(</span>
+<span class="linenos"> 70</span>        <span class="n">params_from_config</span><span class="p">(</span><span class="n">config_file</span><span class="p">,</span> <span class="n">extra_kwargs</span><span class="o">=</span><span class="n">kwargs</span><span class="p">,</span> <span class="n">normalise</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+<span class="linenos"> 71</span>        <span class="k">if</span> <span class="n">config_file</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+<span class="linenos"> 72</span>        <span class="k">else</span> <span class="nb">dict</span><span class="p">(</span><span class="n">kwargs</span><span class="p">)</span>
+<span class="linenos"> 73</span>    <span class="p">)</span>
+<span class="linenos"> 74</span>    <span class="n">params</span><span class="p">[</span><span class="s2">"mismatch_model"</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="linenos"> 75</span>    <span class="n">setup</span> <span class="o">=</span> <span class="n">resolve_rhime_options</span><span class="p">(</span><span class="n">params</span><span class="o">=</span><span class="n">params</span><span class="p">,</span> <span class="n">multisector</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+<span class="linenos"> 76</span>
+<span class="linenos"> 77</span>    <span class="n">merged</span> <span class="o">=</span> <span class="n">retrieve_or_reload_rhime_data</span><span class="p">(</span><span class="n">setup</span><span class="o">.</span><span class="n">data_args</span><span class="p">,</span> <span class="n">multisector</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+<span class="linenos"> 78</span>    <span class="n">filtered</span> <span class="o">=</span> <span class="n">filter_rhime_observations</span><span class="p">(</span><span class="n">merged</span><span class="p">,</span> <span class="n">setup</span><span class="o">.</span><span class="n">data_args</span><span class="p">)</span>
+<span class="linenos"> 79</span>    <span class="n">basis_functions</span> <span class="o">=</span> <span class="n">build_rhime_basis</span><span class="p">(</span><span class="n">filtered</span><span class="p">,</span> <span class="n">setup</span><span class="o">.</span><span class="n">data_args</span><span class="p">)</span>
+<span class="linenos"> 80</span>    <span class="n">site_data</span> <span class="o">=</span> <span class="n">build_rhime_sensitivities</span><span class="p">(</span>
+<span class="linenos"> 81</span>        <span class="n">filtered</span><span class="p">,</span>
+<span class="linenos"> 82</span>        <span class="n">basis_functions</span><span class="p">,</span>
+<span class="linenos"> 83</span>        <span class="n">setup</span><span class="o">.</span><span class="n">data_args</span><span class="p">,</span>
+<span class="linenos"> 84</span>        <span class="n">multisector</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+<span class="linenos"> 85</span>    <span class="p">)</span>
+<span class="linenos"> 86</span>    <span class="n">prepared</span> <span class="o">=</span> <span class="n">assemble_rhime_inputs</span><span class="p">(</span><span class="n">filtered</span><span class="p">,</span> <span class="n">basis_functions</span><span class="p">,</span> <span class="n">site_data</span><span class="p">,</span> <span class="n">setup</span><span class="o">.</span><span class="n">data_args</span><span class="p">)</span>
+<span class="linenos"> 87</span>    <span class="n">run_spec</span> <span class="o">=</span> <span class="n">with_prepared_rhime_sites</span><span class="p">(</span><span class="n">setup</span><span class="o">.</span><span class="n">run_spec</span><span class="p">,</span> <span class="n">prepared</span><span class="p">)</span>
+<span class="linenos"> 88</span>
+<span class="linenos"> 89</span>    <span class="n">model_inputs</span> <span class="o">=</span> <span class="n">materialize_pymc_inputs</span><span class="p">(</span>
+<span class="linenos"> 90</span>        <span class="n">prepared</span><span class="p">,</span>
+<span class="linenos"> 91</span>        <span class="n">variable_names</span><span class="o">=</span><span class="n">standard_model_input_names</span><span class="p">(</span>
+<span class="linenos"> 92</span>            <span class="n">prepared</span><span class="p">,</span>
+<span class="linenos"> 93</span>            <span class="n">run_spec</span><span class="o">.</span><span class="n">model</span><span class="p">,</span>
+<span class="linenos"> 94</span>        <span class="p">),</span>
+<span class="linenos"> 95</span>    <span class="p">)</span>
+<span class="linenos"> 96</span>    <span class="n">build_and_sample_start</span> <span class="o">=</span> <span class="n">perf_counter</span><span class="p">()</span>
+<span class="linenos"> 97</span>    <span class="n">model_build_result</span> <span class="o">=</span> <span class="n">build_standard_rhime_model_result</span><span class="p">(</span>
+<span class="linenos"> 98</span>        <span class="n">prepared</span><span class="o">=</span><span class="n">prepared</span><span class="p">,</span>
+<span class="linenos"> 99</span>        <span class="n">model_inputs</span><span class="o">=</span><span class="n">model_inputs</span><span class="p">,</span>
+<span class="linenos">100</span>        <span class="n">run_spec</span><span class="o">=</span><span class="n">run_spec</span><span class="p">,</span>
+<span class="linenos">101</span>        <span class="c1"># This is the deliberate scientific replacement in the copied runner.</span>
+<span class="linenos">102</span>        <span class="n">likelihood_builder</span><span class="o">=</span><span class="n">likelihood_builder</span><span class="p">,</span>
+<span class="linenos">103</span>    <span class="p">)</span>
+<span class="linenos">104</span>    <span class="n">idata</span> <span class="o">=</span> <span class="n">sample_rhime_model</span><span class="p">(</span><span class="n">model_build_result</span><span class="p">,</span> <span class="n">setup</span><span class="o">.</span><span class="n">sampler</span><span class="p">)</span>
+<span class="linenos">105</span>
+<span class="linenos">106</span>    <span class="n">result</span> <span class="o">=</span> <span class="n">make_standard_rhime_result</span><span class="p">(</span>
+<span class="linenos">107</span>        <span class="n">prepared</span><span class="o">=</span><span class="n">prepared</span><span class="p">,</span>
+<span class="linenos">108</span>        <span class="n">run_spec</span><span class="o">=</span><span class="n">run_spec</span><span class="p">,</span>
+<span class="linenos">109</span>        <span class="n">sampler</span><span class="o">=</span><span class="n">setup</span><span class="o">.</span><span class="n">sampler</span><span class="p">,</span>
+<span class="linenos">110</span>        <span class="n">model_build_result</span><span class="o">=</span><span class="n">model_build_result</span><span class="p">,</span>
+<span class="linenos">111</span>        <span class="n">idata</span><span class="o">=</span><span class="n">idata</span><span class="p">,</span>
+<span class="linenos">112</span>        <span class="n">build_and_sample_seconds</span><span class="o">=</span><span class="n">perf_counter</span><span class="p">()</span> <span class="o">-</span> <span class="n">build_and_sample_start</span><span class="p">,</span>
+<span class="linenos">113</span>        <span class="n">likelihood_builder</span><span class="o">=</span><span class="n">likelihood_builder</span><span class="p">,</span>
+<span class="linenos">114</span>    <span class="p">)</span>
+<span class="linenos">115</span>    <span class="n">make_standard_rhime_outputs</span><span class="p">(</span><span class="n">result</span><span class="o">=</span><span class="n">result</span><span class="p">,</span> <span class="n">prepared</span><span class="o">=</span><span class="n">prepared</span><span class="p">)</span>
+<span class="linenos">116</span>    <span class="k">return</span> <span class="n">result</span>
+<span class="linenos">117</span>
+<span class="linenos">118</span>
+<span class="linenos">119</span><span class="k">def</span><span class="w"> </span><span class="nf">_json_object</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="linenos">120</span><span class="w">    </span><span class="sd">"""Parse one command-line JSON object containing additional RHIME options.</span>
+<span class="linenos">121</span>
+<span class="linenos">122</span><span class="sd">    Args:</span>
+<span class="linenos">123</span><span class="sd">        value: JSON text to parse.</span>
+<span class="linenos">124</span>
+<span class="linenos">125</span><span class="sd">    Returns:</span>
+<span class="linenos">126</span><span class="sd">        The decoded JSON object.</span>
+<span class="linenos">127</span>
+<span class="linenos">128</span><span class="sd">    Raises:</span>
+<span class="linenos">129</span><span class="sd">        argparse.ArgumentTypeError: If the text is invalid JSON or decodes to</span>
+<span class="linenos">130</span><span class="sd">            a non-object value.</span>
+<span class="linenos">131</span><span class="sd">    """</span>
+<span class="linenos">132</span>    <span class="k">try</span><span class="p">:</span>
+<span class="linenos">133</span>        <span class="n">parsed</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+<span class="linenos">134</span>    <span class="k">except</span> <span class="n">json</span><span class="o">.</span><span class="n">JSONDecodeError</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+<span class="linenos">135</span>        <span class="k">raise</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentTypeError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"invalid JSON: </span><span class="si">{</span><span class="n">exc</span><span class="o">.</span><span class="n">msg</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">exc</span>
+<span class="linenos">136</span>    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">parsed</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+<span class="linenos">137</span>        <span class="k">raise</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentTypeError</span><span class="p">(</span><span class="s2">"--kwargs must decode to a JSON object"</span><span class="p">)</span>
+<span class="linenos">138</span>    <span class="k">return</span> <span class="n">parsed</span>
+<span class="linenos">139</span>
+<span class="linenos">140</span>
+<span class="linenos">141</span><span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">(</span><span class="n">argv</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">RhimeResult</span><span class="p">:</span>
+<span class="linenos">142</span><span class="w">    </span><span class="sd">"""Parse command-line options and run the customized RHIME workflow.</span>
+<span class="linenos">143</span>
+<span class="linenos">144</span><span class="sd">    This performs the same acquisition, materialization, sampling, and output</span>
+<span class="linenos">145</span><span class="sd">    side effects as :func:`run_custom_rhime`.</span>
+<span class="linenos">146</span>
+<span class="linenos">147</span><span class="sd">    Args:</span>
+<span class="linenos">148</span><span class="sd">        argv: Command-line tokens excluding the program name. ``None`` reads</span>
+<span class="linenos">149</span><span class="sd">            tokens from :data:`sys.argv`.</span>
+<span class="linenos">150</span>
+<span class="linenos">151</span><span class="sd">    Returns:</span>
+<span class="linenos">152</span><span class="sd">        The RHIME result returned by :func:`run_custom_rhime`.</span>
+<span class="linenos">153</span>
+<span class="linenos">154</span><span class="sd">    Raises:</span>
+<span class="linenos">155</span><span class="sd">        SystemExit: If argument parsing fails or help is requested.</span>
+<span class="linenos">156</span><span class="sd">    """</span>
+<span class="linenos">157</span>    <span class="n">parser</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">(</span><span class="n">description</span><span class="o">=</span><span class="vm">__doc__</span><span class="p">)</span>
+<span class="linenos">158</span>    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">"config_file"</span><span class="p">,</span> <span class="n">nargs</span><span class="o">=</span><span class="s2">"?"</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="n">Path</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">"RHIME INI configuration file"</span><span class="p">)</span>
+<span class="linenos">159</span>    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">"--start-date"</span><span class="p">)</span>
+<span class="linenos">160</span>    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">"--end-date"</span><span class="p">)</span>
+<span class="linenos">161</span>    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">"--output-path"</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="n">Path</span><span class="p">)</span>
+<span class="linenos">162</span>    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">"--output-name"</span><span class="p">)</span>
+<span class="linenos">163</span>    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">"--draws"</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span>
+<span class="linenos">164</span>    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">"--tune"</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span>
+<span class="linenos">165</span>    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">"--chains"</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span>
+<span class="linenos">166</span>    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+<span class="linenos">167</span>        <span class="s2">"--kwargs"</span><span class="p">,</span>
+<span class="linenos">168</span>        <span class="nb">type</span><span class="o">=</span><span class="n">_json_object</span><span class="p">,</span>
+<span class="linenos">169</span>        <span class="n">default</span><span class="o">=</span><span class="p">{},</span>
+<span class="linenos">170</span>        <span class="n">metavar</span><span class="o">=</span><span class="s2">"JSON"</span><span class="p">,</span>
+<span class="linenos">171</span>        <span class="n">help</span><span class="o">=</span><span class="s2">"additional RHIME options as a JSON object"</span><span class="p">,</span>
+<span class="linenos">172</span>    <span class="p">)</span>
+<span class="linenos">173</span>    <span class="n">args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">parse_args</span><span class="p">(</span><span class="n">argv</span><span class="p">)</span>
+<span class="linenos">174</span>
+<span class="linenos">175</span>    <span class="n">overrides</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">kwargs</span><span class="p">)</span>
+<span class="linenos">176</span>    <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">"start_date"</span><span class="p">,</span> <span class="s2">"end_date"</span><span class="p">,</span> <span class="s2">"output_path"</span><span class="p">,</span> <span class="s2">"output_name"</span><span class="p">,</span> <span class="s2">"draws"</span><span class="p">,</span> <span class="s2">"tune"</span><span class="p">,</span> <span class="s2">"chains"</span><span class="p">):</span>
+<span class="linenos">177</span>        <span class="n">value</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">args</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
+<span class="linenos">178</span>        <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<span class="linenos">179</span>            <span class="n">overrides</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span>
+<span class="linenos">180</span>    <span class="k">return</span> <span class="n">run_custom_rhime</span><span class="p">(</span><span class="n">config_file</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">config_file</span><span class="p">,</span> <span class="o">**</span><span class="n">overrides</span><span class="p">)</span>
+<span class="linenos">181</span>
+<span class="linenos">182</span>
+<span class="linenos">183</span><span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">"__main__"</span><span class="p">:</span>
+<span class="linenos">184</span>    <span class="n">main</span><span class="p">()</span>
+</pre></div>
+</div>
+</section>
+<section id="compose-a-custom-basis-stage">
+<h2>Compose a custom basis stage<a class="headerlink" href="#compose-a-custom-basis-stage" title="Link to this heading">#</a></h2>
+<p>The second complete runner replaces one call in the preparation spine:
+<code class="docutils literal notranslate"><span class="pre">build_project_basis</span></code> replaces <code class="docutils literal notranslate"><span class="pre">build_rhime_basis</span></code>. The project function
+composes public basis primitives instead of selecting a built-in basis
+algorithm. It:</p>
+<ul class="simple">
+<li><p>derives and normalises a two-dimensional weight field with
+<code class="docutils literal notranslate"><span class="pre">basis_weights_from_fp_all</span></code>;</p></li>
+<li><p>loads the public country grid and reduces positive country codes to <code class="docutils literal notranslate"><span class="pre">land</span></code>
+and the remaining cells to <code class="docutils literal notranslate"><span class="pre">ocean</span></code>;</p></li>
+<li><p>creates physical north-south/east-west coordinates with
+<code class="docutils literal notranslate"><span class="pre">LatLonGridGeometry</span></code>;</p></li>
+<li><p>uses balanced inertial splits, decomposes every proposed child into
+four-neighbour connected components, and rejects splits whose children
+exceed the configured PCA eccentricity guard;</p></li>
+<li><p>generates class-safe labels with <code class="docutils literal notranslate"><span class="pre">region_constrained_basis</span></code>; and</p></li>
+<li><p>wraps the flat labels and current run flux in retained <code class="docutils literal notranslate"><span class="pre">BasisFunctions</span></code>
+with <code class="docutils literal notranslate"><span class="pre">basis_functions_from_fp_all_flat_basis</span></code>.</p></li>
+</ul>
+<p>The nested split strategy follows the latest selected-country guarded-basis
+variant in the <code class="docutils literal notranslate"><span class="pre">verification-games</span></code> project. That variant gives the UK,
+Ireland, France, Germany, Italy, Belgium, and the Netherlands separate classes,
+while remaining land and ocean form two more. This smaller example deliberately
+uses the land/ocean class variant so the composition stays readable. To adopt
+the selected-country policy, replace <code class="docutils literal notranslate"><span class="pre">_land_ocean_classes</span></code> with a project
+function that maps the loaded integer country codes or country names to those
+classes. Keep this classification outside OpenGHG Inversions unless it becomes
+a broadly supported policy.</p>
+<p>The weighting is deliberately not identical to that later verification-games
+preparation step. Verification-games sums absolute cached <code class="docutils literal notranslate"><span class="pre">fp_x_flux</span></code> after
+those sensitivities exist. At this earlier visible-runner basis boundary they
+have not been constructed yet, so the example uses the public
+<code class="docutils literal notranslate"><span class="pre">basis_weights_from_fp_all</span></code> field while preserving the guarded split strategy
+and class composition.</p>
+<p>The flat labels and retained object record namespaced provenance for the class
+policy, normalised weight source, connected balanced-inertial strategy,
+connectivity, and eccentricity threshold. Those fields travel with a saved
+<code class="docutils literal notranslate"><span class="pre">BasisFunctions</span></code> artifact and make the project choice inspectable later.</p>
+<p>Acquisition, filtering, sensitivity construction, labelled input assembly,
+the standard likelihood and model, conversion of delayed arrays for PyMC,
+sampling, predictive selection, filenames, and output handling remain
+library-owned.</p>
+<p>The project owns the scientific validity of its classification, coverage,
+region count, eccentricity threshold, and split policy. <code class="docutils literal notranslate"><span class="pre">BasisFunctions</span></code> and
+the unchanged downstream stages validate the grid, coordinates, sources, site
+alignment, state layout, and model inputs they consume; they cannot certify
+that the project’s scientific partition is appropriate. Malformed artifacts
+fail while loading; structurally valid artifacts fail later if they violate a
+downstream alignment contract.</p>
+<p>The example exposes <code class="docutils literal notranslate"><span class="pre">project_basis_path</span></code> separately from standard RHIME
+options. Point it at a self-contained <code class="docutils literal notranslate"><span class="pre">.nc</span></code> or <code class="docutils literal notranslate"><span class="pre">.zarr</span></code> artifact written by
+<code class="docutils literal notranslate"><span class="pre">BasisFunctions.save</span></code> to bypass fitting:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">python</span> <span class="o">-</span><span class="n">m</span> <span class="n">package_name</span><span class="o">.</span><span class="n">custom_basis_runner</span> <span class="n">config</span><span class="o">.</span><span class="n">ini</span> \
+    <span class="o">--</span><span class="n">project</span><span class="o">-</span><span class="n">basis</span><span class="o">-</span><span class="n">path</span> <span class="n">cache</span><span class="o">/</span><span class="n">project</span><span class="o">-</span><span class="n">basis</span><span class="o">.</span><span class="n">zarr</span>
+</pre></div>
+</div>
+<p>The eccentricity guard is also a visible project-owned option, rather than an
+opaque library default. It defaults to <code class="docutils literal notranslate"><span class="pre">10</span></code> and is removed before standard
+RHIME option resolution:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">python</span> <span class="o">-</span><span class="n">m</span> <span class="n">package_name</span><span class="o">.</span><span class="n">custom_basis_runner</span> <span class="n">config</span><span class="o">.</span><span class="n">ini</span> \
+    <span class="o">--</span><span class="nb">max</span><span class="o">-</span><span class="n">child</span><span class="o">-</span><span class="n">pca</span><span class="o">-</span><span class="n">eccentricity</span> <span class="mi">10</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">BasisFunctions.load</span></code> loads the saved operator, metadata, and flux into
+memory, then closes the artifact. The saved flux is deliberately retained. Use
+the standard public <code class="docutils literal notranslate"><span class="pre">load_basis_functions</span></code> helper instead when loading a
+named RHIME basis cache that should take its retained flux from the current
+<code class="docutils literal notranslate"><span class="pre">fp_all</span></code> acquisition.</p>
+<p>Without an artifact, the basis-building function computes the arrays needed by
+the splitting algorithm. Before that point, the filtered xarray objects may
+still defer their calculations with Dask. The function derives and normalises
+the two-dimensional weights, loads the country classes, constructs the
+geometry, and creates the region labels. It then combines the labels with the
+current run’s flux in a <code class="docutils literal notranslate"><span class="pre">BasisFunctions</span></code> object. That object flows unchanged
+through sensitivity construction and labelled assembly. The concrete recipe’s
+adjacent <code class="docutils literal notranslate"><span class="pre">standard_model_input_names</span></code> declaration selects the arrays it
+needs. <code class="docutils literal notranslate"><span class="pre">materialize_pymc_inputs</span></code> converts only those arrays, together,
+immediately before model construction; project-owned lazy extensions in
+<code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code> remain untouched.</p>
+<p>The customisation is concentrated in <code class="docutils literal notranslate"><span class="pre">_guarded_basis</span></code>. The runner’s one
+deliberate substitution is marked by an inline comment where
+<code class="docutils literal notranslate"><span class="pre">build_project_basis</span></code> replaces the standard <code class="docutils literal notranslate"><span class="pre">build_rhime_basis</span></code> call. The
+complete source remains below because the test suite executes the same file
+that the documentation displays.</p>
+<p>Copy <code class="docutils literal notranslate"><span class="pre">examples/rhime_customisation/custom_basis_runner.py</span></code> to
+<code class="docutils literal notranslate"><span class="pre">src/&lt;package_name&gt;/custom_basis_runner.py</span></code> and keep the project basis rule
+beside the copied orchestration spine. This source is imported and executed by
+integration tests and rendered here, so the documentation and runnable example
+cannot drift apart.</p>
+<p>This guarded composition is intentionally project-specific and is not yet a
+common, stable strategy that warrants another lower-ceremony <code class="docutils literal notranslate"><span class="pre">run_rhime</span></code>
+option.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos">  1</span><span class="sd">"""Run standard RHIME with project-owned emissions basis construction.</span>
+<span class="linenos">  2</span>
+<span class="linenos">  3</span><span class="sd">This copy-and-modify example keeps RHIME's supported acquisition, filtering,</span>
+<span class="linenos">  4</span><span class="sd">sensitivity, labelled-input, model, sampling, and output stages.  Only the</span>
+<span class="linenos">  5</span><span class="sd">emissions-basis stage is replaced by :func:`build_project_basis`.  The example</span>
+<span class="linenos">  6</span><span class="sd">either loads a self-contained retained ``BasisFunctions`` artifact or creates</span>
+<span class="linenos">  7</span><span class="sd">a guarded region-constrained basis whose regions stay within land/ocean</span>
+<span class="linenos">  8</span><span class="sd">classes, remain connected, and satisfy a project eccentricity threshold.</span>
+<span class="linenos">  9</span><span class="sd">The verification-games workflow weights that strategy with summed absolute</span>
+<span class="linenos"> 10</span><span class="sd">cached ``fp_x_flux``. At this earlier runner stage projected sensitivities do</span>
+<span class="linenos"> 11</span><span class="sd">not exist, so the example deliberately substitutes the public</span>
+<span class="linenos"> 12</span><span class="sd">``basis_weights_from_fp_all`` field while preserving the guarded strategy and</span>
+<span class="linenos"> 13</span><span class="sd">class composition.</span>
+<span class="linenos"> 14</span>
+<span class="linenos"> 15</span><span class="sd">Use :func:`run_custom_rhime` from Python or :func:`main` from the command line.</span>
+<span class="linenos"> 16</span><span class="sd">Acquired xarray objects are treated as borrowed.  Generated-basis fitting is</span>
+<span class="linenos"> 17</span><span class="sd">an explicit eager algorithm boundary, artifact loading materializes the saved</span>
+<span class="linenos"> 18</span><span class="sd">artifact, and model arrays materialize later at the named PyMC boundary.</span>
+<span class="linenos"> 19</span><span class="sd">"""</span>
+<span class="linenos"> 20</span>
+<span class="linenos"> 21</span><span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+<span class="linenos"> 22</span>
+<span class="linenos"> 23</span><span class="kn">import</span><span class="w"> </span><span class="nn">argparse</span>
+<span class="linenos"> 24</span><span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Mapping</span><span class="p">,</span> <span class="n">Sequence</span>
+<span class="linenos"> 25</span><span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="linenos"> 26</span><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="linenos"> 27</span><span class="kn">from</span><span class="w"> </span><span class="nn">time</span><span class="w"> </span><span class="kn">import</span> <span class="n">perf_counter</span>
+<span class="linenos"> 28</span><span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span>
+<span class="linenos"> 29</span>
+<span class="linenos"> 30</span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="linenos"> 31</span><span class="kn">import</span><span class="w"> </span><span class="nn">xarray</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">xr</span>
+<span class="linenos"> 32</span>
+<span class="linenos"> 33</span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.basis</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+<span class="linenos"> 34</span>    <span class="n">BasisFunctions</span><span class="p">,</span>
+<span class="linenos"> 35</span>    <span class="n">basis_functions_from_fp_all_flat_basis</span><span class="p">,</span>
+<span class="linenos"> 36</span>    <span class="n">basis_weights_from_fp_all</span><span class="p">,</span>
+<span class="linenos"> 37</span>    <span class="n">load_country_region_classes</span><span class="p">,</span>
+<span class="linenos"> 38</span><span class="p">)</span>
+<span class="linenos"> 39</span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.basis.algorithms</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+<span class="linenos"> 40</span>    <span class="n">ConnectedComponentPartitionStep</span><span class="p">,</span>
+<span class="linenos"> 41</span>    <span class="n">ConnectedComponentSplitStrategy</span><span class="p">,</span>
+<span class="linenos"> 42</span>    <span class="n">GreedySplitStrategy</span><span class="p">,</span>
+<span class="linenos"> 43</span>    <span class="n">InertialSplitStep</span><span class="p">,</span>
+<span class="linenos"> 44</span>    <span class="n">LatLonGridGeometry</span><span class="p">,</span>
+<span class="linenos"> 45</span>    <span class="n">MaxChildPCAEccentricity</span><span class="p">,</span>
+<span class="linenos"> 46</span>    <span class="n">region_constrained_basis</span><span class="p">,</span>
+<span class="linenos"> 47</span><span class="p">)</span>
+<span class="linenos"> 48</span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.inversion_data</span><span class="w"> </span><span class="kn">import</span> <span class="n">RhimeMergedData</span>
+<span class="linenos"> 49</span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+<span class="linenos"> 50</span>    <span class="n">RhimeResult</span><span class="p">,</span>
+<span class="linenos"> 51</span>    <span class="n">assemble_rhime_inputs</span><span class="p">,</span>
+<span class="linenos"> 52</span>    <span class="n">build_rhime_sensitivities</span><span class="p">,</span>
+<span class="linenos"> 53</span>    <span class="n">build_standard_rhime_model_result</span><span class="p">,</span>
+<span class="linenos"> 54</span>    <span class="n">filter_rhime_observations</span><span class="p">,</span>
+<span class="linenos"> 55</span>    <span class="n">make_standard_rhime_result</span><span class="p">,</span>
+<span class="linenos"> 56</span>    <span class="n">make_standard_rhime_outputs</span><span class="p">,</span>
+<span class="linenos"> 57</span>    <span class="n">materialize_pymc_inputs</span><span class="p">,</span>
+<span class="linenos"> 58</span>    <span class="n">params_from_config</span><span class="p">,</span>
+<span class="linenos"> 59</span>    <span class="n">resolve_rhime_options</span><span class="p">,</span>
+<span class="linenos"> 60</span>    <span class="n">retrieve_or_reload_rhime_data</span><span class="p">,</span>
+<span class="linenos"> 61</span>    <span class="n">sample_rhime_model</span><span class="p">,</span>
+<span class="linenos"> 62</span>    <span class="n">standard_model_input_names</span><span class="p">,</span>
+<span class="linenos"> 63</span>    <span class="n">with_prepared_rhime_sites</span><span class="p">,</span>
+<span class="linenos"> 64</span><span class="p">)</span>
+<span class="linenos"> 65</span>
+<span class="linenos"> 66</span>
+<span class="linenos"> 67</span><span class="n">DEFAULT_MAX_CHILD_PCA_ECCENTRICITY</span> <span class="o">=</span> <span class="mf">10.0</span>
+<span class="linenos"> 68</span>
+<span class="linenos"> 69</span>
+<span class="linenos"> 70</span><span class="k">def</span><span class="w"> </span><span class="nf">_land_ocean_classes</span><span class="p">(</span>
+<span class="linenos"> 71</span>    <span class="o">*</span><span class="p">,</span>
+<span class="linenos"> 72</span>    <span class="n">domain</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<span class="linenos"> 73</span>    <span class="n">country_directory</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="linenos"> 74</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">:</span>
+<span class="linenos"> 75</span><span class="w">    </span><span class="sd">"""Reduce the public country grid to the project's land/ocean classes.</span>
+<span class="linenos"> 76</span>
+<span class="linenos"> 77</span><span class="sd">    Args:</span>
+<span class="linenos"> 78</span><span class="sd">        domain: RHIME domain used to select the country grid.</span>
+<span class="linenos"> 79</span><span class="sd">        country_directory: Optional directory containing the domain country</span>
+<span class="linenos"> 80</span><span class="sd">            file.</span>
+<span class="linenos"> 81</span>
+<span class="linenos"> 82</span><span class="sd">    Returns:</span>
+<span class="linenos"> 83</span><span class="sd">        An eager object-valued ``(lat, lon)`` class grid preserving the loaded</span>
+<span class="linenos"> 84</span><span class="sd">        coordinates. Positive country codes are ``land``; null, zero, and</span>
+<span class="linenos"> 85</span><span class="sd">        negative codes are ``ocean``.</span>
+<span class="linenos"> 86</span>
+<span class="linenos"> 87</span><span class="sd">    Raises:</span>
+<span class="linenos"> 88</span><span class="sd">        FileNotFoundError: If the requested country grid does not exist.</span>
+<span class="linenos"> 89</span><span class="sd">        KeyError: If the country-grid artifact does not contain ``country``.</span>
+<span class="linenos"> 90</span><span class="sd">    """</span>
+<span class="linenos"> 91</span>    <span class="n">country_classes</span> <span class="o">=</span> <span class="n">load_country_region_classes</span><span class="p">(</span>
+<span class="linenos"> 92</span>        <span class="n">domain</span><span class="p">,</span>
+<span class="linenos"> 93</span>        <span class="n">country_directory</span><span class="p">,</span>
+<span class="linenos"> 94</span>    <span class="p">)</span>
+<span class="linenos"> 95</span>    <span class="k">return</span> <span class="n">xr</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">country_classes</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">,</span> <span class="s2">"land"</span><span class="p">,</span> <span class="s2">"ocean"</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">object</span><span class="p">)</span><span class="o">.</span><span class="n">rename</span><span class="p">(</span><span class="s2">"basis_class"</span><span class="p">)</span>
+<span class="linenos"> 96</span>
+<span class="linenos"> 97</span>
+<span class="linenos"> 98</span><span class="k">def</span><span class="w"> </span><span class="nf">_guarded_basis</span><span class="p">(</span>
+<span class="linenos"> 99</span>    <span class="n">merged</span><span class="p">:</span> <span class="n">RhimeMergedData</span><span class="p">,</span>
+<span class="linenos">100</span>    <span class="n">data_args</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span>
+<span class="linenos">101</span>    <span class="o">*</span><span class="p">,</span>
+<span class="linenos">102</span>    <span class="n">max_child_pca_eccentricity</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+<span class="linenos">103</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">BasisFunctions</span><span class="p">:</span>
+<span class="linenos">104</span><span class="w">    </span><span class="sd">"""Build the project's connected, eccentricity-guarded retained basis.</span>
+<span class="linenos">105</span>
+<span class="linenos">106</span><span class="sd">    The public weight adapter intentionally materializes a derived 2-D weight</span>
+<span class="linenos">107</span><span class="sd">    field from borrowed footprint and flux inputs here. The project then owns</span>
+<span class="linenos">108</span><span class="sd">    normalization, class composition, guarded splitting, and conversion of the</span>
+<span class="linenos">109</span><span class="sd">    flat labels to retained ``BasisFunctions`` without mutating ``merged``.</span>
+<span class="linenos">110</span>
+<span class="linenos">111</span><span class="sd">    Args:</span>
+<span class="linenos">112</span><span class="sd">        merged: Filtered, borrowed RHIME observations and flux data.</span>
+<span class="linenos">113</span><span class="sd">        data_args: Resolved standard RHIME data and basis options. This stage</span>
+<span class="linenos">114</span><span class="sd">            consumes required ``domain`` and optional ``flux_sources``,</span>
+<span class="linenos">115</span><span class="sd">            ``nbasis``, and ``country_directory``.</span>
+<span class="linenos">116</span><span class="sd">        max_child_pca_eccentricity: Project limit on each proposed child's</span>
+<span class="linenos">117</span><span class="sd">            physical-coordinate PCA eccentricity.</span>
+<span class="linenos">118</span>
+<span class="linenos">119</span><span class="sd">    Returns:</span>
+<span class="linenos">120</span><span class="sd">        Retained basis functions fitted within connected land/ocean regions.</span>
+<span class="linenos">121</span>
+<span class="linenos">122</span><span class="sd">    Raises:</span>
+<span class="linenos">123</span><span class="sd">        FileNotFoundError: If the requested country grid does not exist.</span>
+<span class="linenos">124</span><span class="sd">        KeyError: If ``domain`` or country-grid content is missing.</span>
+<span class="linenos">125</span><span class="sd">        ValueError: If zero-filled weights do not have a positive finite</span>
+<span class="linenos">126</span><span class="sd">            maximum, or geometry, allocation, or guarded splitting is invalid.</span>
+<span class="linenos">127</span><span class="sd">    """</span>
+<span class="linenos">128</span>    <span class="c1"># 1. Turn the filtered footprints and flux into one spatial importance map.</span>
+<span class="linenos">129</span>    <span class="n">weights</span> <span class="o">=</span> <span class="n">basis_weights_from_fp_all</span><span class="p">(</span>
+<span class="linenos">130</span>        <span class="n">merged</span><span class="o">.</span><span class="n">fp_all</span><span class="p">,</span>
+<span class="linenos">131</span>        <span class="n">data_args</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"flux_sources"</span><span class="p">),</span>
+<span class="linenos">132</span>        <span class="n">abs_flux</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<span class="linenos">133</span>    <span class="p">)</span>
+<span class="linenos">134</span>    <span class="n">finite_weights</span> <span class="o">=</span> <span class="n">weights</span><span class="o">.</span><span class="n">fillna</span><span class="p">(</span><span class="mf">0.0</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+<span class="linenos">135</span>    <span class="n">maximum</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">finite_weights</span><span class="o">.</span><span class="n">max</span><span class="p">())</span>
+<span class="linenos">136</span>    <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">maximum</span><span class="p">)</span> <span class="ow">or</span> <span class="n">maximum</span> <span class="o">&lt;=</span> <span class="mf">0.0</span><span class="p">:</span>
+<span class="linenos">137</span>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"Project basis weights must have a positive finite maximum."</span><span class="p">)</span>
+<span class="linenos">138</span>    <span class="n">normalized_weights</span> <span class="o">=</span> <span class="n">finite_weights</span> <span class="o">/</span> <span class="n">maximum</span>
+<span class="linenos">139</span>
+<span class="linenos">140</span>    <span class="c1"># 2. Define scientific boundaries that no basis region may cross.</span>
+<span class="linenos">141</span>    <span class="n">region_classes</span> <span class="o">=</span> <span class="n">_land_ocean_classes</span><span class="p">(</span>
+<span class="linenos">142</span>        <span class="n">domain</span><span class="o">=</span><span class="n">data_args</span><span class="p">[</span><span class="s2">"domain"</span><span class="p">],</span>
+<span class="linenos">143</span>        <span class="n">country_directory</span><span class="o">=</span><span class="n">data_args</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"country_directory"</span><span class="p">),</span>
+<span class="linenos">144</span>    <span class="p">)</span>
+<span class="linenos">145</span>    <span class="n">geometry</span> <span class="o">=</span> <span class="n">LatLonGridGeometry</span><span class="o">.</span><span class="n">from_dataarray</span><span class="p">(</span><span class="n">normalized_weights</span><span class="p">)</span>
+<span class="linenos">146</span>    <span class="c1"># 3. Compose the split algorithm and its shape/connectivity safeguards.</span>
+<span class="linenos">147</span>    <span class="n">strategy</span> <span class="o">=</span> <span class="n">ConnectedComponentSplitStrategy</span><span class="p">(</span>
+<span class="linenos">148</span>        <span class="n">split_strategy</span><span class="o">=</span><span class="n">GreedySplitStrategy</span><span class="p">(</span>
+<span class="linenos">149</span>            <span class="n">split_step</span><span class="o">=</span><span class="n">ConnectedComponentPartitionStep</span><span class="p">(</span>
+<span class="linenos">150</span>                <span class="n">split_step</span><span class="o">=</span><span class="n">InertialSplitStep</span><span class="p">(</span>
+<span class="linenos">151</span>                    <span class="n">balanced</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<span class="linenos">152</span>                    <span class="n">geometry</span><span class="o">=</span><span class="n">geometry</span><span class="p">,</span>
+<span class="linenos">153</span>                <span class="p">),</span>
+<span class="linenos">154</span>                <span class="n">connectivity</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+<span class="linenos">155</span>            <span class="p">),</span>
+<span class="linenos">156</span>            <span class="n">split_acceptance</span><span class="o">=</span><span class="n">MaxChildPCAEccentricity</span><span class="p">(</span>
+<span class="linenos">157</span>                <span class="n">max_child_pca_eccentricity</span><span class="o">=</span><span class="n">max_child_pca_eccentricity</span><span class="p">,</span>
+<span class="linenos">158</span>                <span class="n">geometry</span><span class="o">=</span><span class="n">geometry</span><span class="p">,</span>
+<span class="linenos">159</span>            <span class="p">),</span>
+<span class="linenos">160</span>        <span class="p">),</span>
+<span class="linenos">161</span>        <span class="n">connectivity</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+<span class="linenos">162</span>    <span class="p">)</span>
+<span class="linenos">163</span>    <span class="c1"># 4. Allocate and split regions within the land/ocean classes.</span>
+<span class="linenos">164</span>    <span class="n">basis_flat</span> <span class="o">=</span> <span class="p">(</span>
+<span class="linenos">165</span>        <span class="n">region_constrained_basis</span><span class="p">(</span>
+<span class="linenos">166</span>            <span class="n">normalized_weights</span><span class="p">,</span>
+<span class="linenos">167</span>            <span class="n">region_classes</span><span class="p">,</span>
+<span class="linenos">168</span>            <span class="nb">int</span><span class="p">(</span><span class="n">data_args</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"nbasis"</span><span class="p">,</span> <span class="mi">100</span><span class="p">)),</span>
+<span class="linenos">169</span>            <span class="n">allocation</span><span class="o">=</span><span class="s2">"weight"</span><span class="p">,</span>
+<span class="linenos">170</span>            <span class="n">min_regions_per_class</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+<span class="linenos">171</span>            <span class="n">split_strategy</span><span class="o">=</span><span class="n">strategy</span><span class="p">,</span>
+<span class="linenos">172</span>        <span class="p">)</span>
+<span class="linenos">173</span>        <span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">int16</span><span class="p">)</span>
+<span class="linenos">174</span>        <span class="o">.</span><span class="n">rename</span><span class="p">(</span><span class="s2">"basis"</span><span class="p">)</span>
+<span class="linenos">175</span>    <span class="p">)</span>
+<span class="linenos">176</span>    <span class="n">provenance</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span> <span class="o">|</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+<span class="linenos">177</span>        <span class="s2">"openghg_inversions:basis_artifact_source"</span><span class="p">:</span> <span class="s2">"project-guarded"</span><span class="p">,</span>
+<span class="linenos">178</span>        <span class="s2">"openghg_inversions:project_basis_strategy"</span><span class="p">:</span> <span class="s2">"connected_component_balanced_inertial"</span><span class="p">,</span>
+<span class="linenos">179</span>        <span class="s2">"openghg_inversions:project_basis_connectivity"</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+<span class="linenos">180</span>        <span class="s2">"openghg_inversions:project_basis_max_child_pca_eccentricity"</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">max_child_pca_eccentricity</span><span class="p">),</span>
+<span class="linenos">181</span>        <span class="s2">"openghg_inversions:project_basis_class_policy"</span><span class="p">:</span> <span class="s2">"land_ocean"</span><span class="p">,</span>
+<span class="linenos">182</span>        <span class="s2">"openghg_inversions:project_basis_weights"</span><span class="p">:</span> <span class="s2">"basis_weights_from_fp_all_abs_flux_normalized"</span><span class="p">,</span>
+<span class="linenos">183</span>    <span class="p">}</span>
+<span class="linenos">184</span>    <span class="n">basis_flat</span><span class="o">.</span><span class="n">attrs</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">provenance</span><span class="p">)</span>
+<span class="linenos">185</span>    <span class="c1"># 5. Attach the current flux so standard RHIME sensitivity code can use it.</span>
+<span class="linenos">186</span>    <span class="k">return</span> <span class="n">basis_functions_from_fp_all_flat_basis</span><span class="p">(</span>
+<span class="linenos">187</span>        <span class="n">fp_all</span><span class="o">=</span><span class="n">merged</span><span class="o">.</span><span class="n">fp_all</span><span class="p">,</span>
+<span class="linenos">188</span>        <span class="n">basis_flat</span><span class="o">=</span><span class="n">basis_flat</span><span class="p">,</span>
+<span class="linenos">189</span>        <span class="n">metadata</span><span class="o">=</span><span class="n">provenance</span><span class="p">,</span>
+<span class="linenos">190</span>    <span class="p">)</span>
+<span class="linenos">191</span>
+<span class="linenos">192</span>
+<span class="linenos">193</span><span class="k">def</span><span class="w"> </span><span class="nf">build_project_basis</span><span class="p">(</span>
+<span class="linenos">194</span>    <span class="n">merged</span><span class="p">:</span> <span class="n">RhimeMergedData</span><span class="p">,</span>
+<span class="linenos">195</span>    <span class="n">data_args</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span>
+<span class="linenos">196</span>    <span class="o">*</span><span class="p">,</span>
+<span class="linenos">197</span>    <span class="n">project_basis_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="linenos">198</span>    <span class="n">max_child_pca_eccentricity</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">DEFAULT_MAX_CHILD_PCA_ECCENTRICITY</span><span class="p">,</span>
+<span class="linenos">199</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">BasisFunctions</span><span class="p">:</span>
+<span class="linenos">200</span><span class="w">    </span><span class="sd">"""Return the project-selected retained emissions basis.</span>
+<span class="linenos">201</span>
+<span class="linenos">202</span><span class="sd">    Args:</span>
+<span class="linenos">203</span><span class="sd">        merged: Filtered, borrowed RHIME observations and flux data.</span>
+<span class="linenos">204</span><span class="sd">        data_args: Resolved standard RHIME data and basis options.</span>
+<span class="linenos">205</span><span class="sd">        project_basis_path: Optional ``.nc`` or ``.zarr`` artifact previously</span>
+<span class="linenos">206</span><span class="sd">            written by :meth:`BasisFunctions.save`.  The artifact is</span>
+<span class="linenos">207</span><span class="sd">            self-contained, so its serialized operator, metadata, and flux are</span>
+<span class="linenos">208</span><span class="sd">            retained rather than replaced with flux from ``merged``.</span>
+<span class="linenos">209</span><span class="sd">        max_child_pca_eccentricity: Project limit passed to the guarded split</span>
+<span class="linenos">210</span><span class="sd">            policy when generating a basis. Defaults to ``10`` and is ignored</span>
+<span class="linenos">211</span><span class="sd">            when ``project_basis_path`` is supplied.</span>
+<span class="linenos">212</span>
+<span class="linenos">213</span><span class="sd">    Returns:</span>
+<span class="linenos">214</span><span class="sd">        Loaded or newly fitted retained basis functions.</span>
+<span class="linenos">215</span>
+<span class="linenos">216</span><span class="sd">    Raises:</span>
+<span class="linenos">217</span><span class="sd">        OSError: If the requested artifact cannot be opened.</span>
+<span class="linenos">218</span><span class="sd">        KeyError: If required artifact content or generated-basis options are</span>
+<span class="linenos">219</span><span class="sd">            missing.</span>
+<span class="linenos">220</span><span class="sd">        ValueError: If the artifact or generated-basis configuration is</span>
+<span class="linenos">221</span><span class="sd">            invalid.</span>
+<span class="linenos">222</span>
+<span class="linenos">223</span><span class="sd">    Notes:</span>
+<span class="linenos">224</span><span class="sd">        Loading eagerly materializes the artifact so no open file handle is</span>
+<span class="linenos">225</span><span class="sd">        retained.  Without a path, project basis fitting is the named eager</span>
+<span class="linenos">226</span><span class="sd">        basis-generation boundary.</span>
+<span class="linenos">227</span><span class="sd">    """</span>
+<span class="linenos">228</span>    <span class="k">if</span> <span class="n">project_basis_path</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<span class="linenos">229</span>        <span class="k">return</span> <span class="n">BasisFunctions</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">project_basis_path</span><span class="p">)</span>
+<span class="linenos">230</span>    <span class="k">return</span> <span class="n">_guarded_basis</span><span class="p">(</span>
+<span class="linenos">231</span>        <span class="n">merged</span><span class="p">,</span>
+<span class="linenos">232</span>        <span class="n">data_args</span><span class="p">,</span>
+<span class="linenos">233</span>        <span class="n">max_child_pca_eccentricity</span><span class="o">=</span><span class="n">max_child_pca_eccentricity</span><span class="p">,</span>
+<span class="linenos">234</span>    <span class="p">)</span>
+<span class="linenos">235</span>
+<span class="linenos">236</span>
+<span class="linenos">237</span><span class="k">def</span><span class="w"> </span><span class="nf">run_custom_rhime</span><span class="p">(</span>
+<span class="linenos">238</span>    <span class="o">*</span><span class="p">,</span>
+<span class="linenos">239</span>    <span class="n">config_file</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="linenos">240</span>    <span class="n">project_basis_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="linenos">241</span>    <span class="n">max_child_pca_eccentricity</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="linenos">242</span>    <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
+<span class="linenos">243</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">RhimeResult</span><span class="p">:</span>
+<span class="linenos">244</span><span class="w">    </span><span class="sd">"""Run standard single-sector RHIME with a project-owned basis stage.</span>
+<span class="linenos">245</span>
+<span class="linenos">246</span><span class="sd">    Args:</span>
+<span class="linenos">247</span><span class="sd">        config_file: Optional RHIME INI configuration file.</span>
+<span class="linenos">248</span><span class="sd">        project_basis_path: Optional self-contained ``BasisFunctions`` artifact</span>
+<span class="linenos">249</span><span class="sd">            to use instead of fitting the project guarded basis.</span>
+<span class="linenos">250</span><span class="sd">        max_child_pca_eccentricity: Optional project split-policy threshold.</span>
+<span class="linenos">251</span><span class="sd">            When omitted, the merged config/keyword value is used, falling back</span>
+<span class="linenos">252</span><span class="sd">            to ``10``. This option is removed before standard RHIME resolution.</span>
+<span class="linenos">253</span><span class="sd">        **kwargs: Standard RHIME option names that override values from</span>
+<span class="linenos">254</span><span class="sd">            ``config_file``.</span>
+<span class="linenos">255</span>
+<span class="linenos">256</span><span class="sd">    Returns:</span>
+<span class="linenos">257</span><span class="sd">        The sampled result and any outputs requested by the RHIME options.</span>
+<span class="linenos">258</span>
+<span class="linenos">259</span><span class="sd">    Raises:</span>
+<span class="linenos">260</span><span class="sd">        OSError: If configured artifact, input, or output I/O fails.</span>
+<span class="linenos">261</span><span class="sd">        ValueError: If RHIME options, the custom basis, or prepared inputs are</span>
+<span class="linenos">262</span><span class="sd">            invalid.</span>
+<span class="linenos">263</span>
+<span class="linenos">264</span><span class="sd">    Notes:</span>
+<span class="linenos">265</span><span class="sd">        This workflow may retrieve or reload data, may eagerly fit or load a</span>
+<span class="linenos">266</span><span class="sd">        basis, eagerly materializes PyMC model inputs, runs sampling, and writes</span>
+<span class="linenos">267</span><span class="sd">        outputs requested by the resolved RHIME options.</span>
+<span class="linenos">268</span><span class="sd">    """</span>
+<span class="linenos">269</span>    <span class="n">params</span> <span class="o">=</span> <span class="p">(</span>
+<span class="linenos">270</span>        <span class="n">params_from_config</span><span class="p">(</span><span class="n">config_file</span><span class="p">,</span> <span class="n">extra_kwargs</span><span class="o">=</span><span class="n">kwargs</span><span class="p">,</span> <span class="n">normalise</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+<span class="linenos">271</span>        <span class="k">if</span> <span class="n">config_file</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+<span class="linenos">272</span>        <span class="k">else</span> <span class="nb">dict</span><span class="p">(</span><span class="n">kwargs</span><span class="p">)</span>
+<span class="linenos">273</span>    <span class="p">)</span>
+<span class="linenos">274</span>    <span class="n">configured_project_basis_path</span> <span class="o">=</span> <span class="n">params</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">"project_basis_path"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+<span class="linenos">275</span>    <span class="k">if</span> <span class="n">project_basis_path</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<span class="linenos">276</span>        <span class="n">project_basis_path</span> <span class="o">=</span> <span class="n">configured_project_basis_path</span>
+<span class="linenos">277</span>    <span class="n">configured_eccentricity</span> <span class="o">=</span> <span class="n">params</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span>
+<span class="linenos">278</span>        <span class="s2">"max_child_pca_eccentricity"</span><span class="p">,</span>
+<span class="linenos">279</span>        <span class="n">DEFAULT_MAX_CHILD_PCA_ECCENTRICITY</span><span class="p">,</span>
+<span class="linenos">280</span>    <span class="p">)</span>
+<span class="linenos">281</span>    <span class="k">if</span> <span class="n">max_child_pca_eccentricity</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<span class="linenos">282</span>        <span class="n">max_child_pca_eccentricity</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">configured_eccentricity</span><span class="p">)</span>
+<span class="linenos">283</span>    <span class="n">setup</span> <span class="o">=</span> <span class="n">resolve_rhime_options</span><span class="p">(</span><span class="n">params</span><span class="o">=</span><span class="n">params</span><span class="p">,</span> <span class="n">multisector</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+<span class="linenos">284</span>
+<span class="linenos">285</span>    <span class="n">merged</span> <span class="o">=</span> <span class="n">retrieve_or_reload_rhime_data</span><span class="p">(</span><span class="n">setup</span><span class="o">.</span><span class="n">data_args</span><span class="p">,</span> <span class="n">multisector</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+<span class="linenos">286</span>    <span class="n">filtered</span> <span class="o">=</span> <span class="n">filter_rhime_observations</span><span class="p">(</span><span class="n">merged</span><span class="p">,</span> <span class="n">setup</span><span class="o">.</span><span class="n">data_args</span><span class="p">)</span>
+<span class="linenos">287</span>
+<span class="linenos">288</span>    <span class="c1"># CUSTOMISATION POINT: the standard runner calls build_rhime_basis here.</span>
+<span class="linenos">289</span>    <span class="c1"># This project function either loads a saved basis or composes the guarded</span>
+<span class="linenos">290</span>    <span class="c1"># basis-building tools above. Every stage after this call is standard RHIME.</span>
+<span class="linenos">291</span>    <span class="n">basis_functions</span> <span class="o">=</span> <span class="n">build_project_basis</span><span class="p">(</span>
+<span class="linenos">292</span>        <span class="n">filtered</span><span class="p">,</span>
+<span class="linenos">293</span>        <span class="nb">dict</span><span class="p">(</span><span class="n">setup</span><span class="o">.</span><span class="n">data_args</span><span class="p">),</span>
+<span class="linenos">294</span>        <span class="n">project_basis_path</span><span class="o">=</span><span class="n">project_basis_path</span><span class="p">,</span>
+<span class="linenos">295</span>        <span class="n">max_child_pca_eccentricity</span><span class="o">=</span><span class="n">max_child_pca_eccentricity</span><span class="p">,</span>
+<span class="linenos">296</span>    <span class="p">)</span>
+<span class="linenos">297</span>    <span class="n">site_data</span> <span class="o">=</span> <span class="n">build_rhime_sensitivities</span><span class="p">(</span>
+<span class="linenos">298</span>        <span class="n">filtered</span><span class="p">,</span>
+<span class="linenos">299</span>        <span class="n">basis_functions</span><span class="p">,</span>
+<span class="linenos">300</span>        <span class="n">setup</span><span class="o">.</span><span class="n">data_args</span><span class="p">,</span>
+<span class="linenos">301</span>        <span class="n">multisector</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+<span class="linenos">302</span>    <span class="p">)</span>
+<span class="linenos">303</span>    <span class="n">prepared</span> <span class="o">=</span> <span class="n">assemble_rhime_inputs</span><span class="p">(</span><span class="n">filtered</span><span class="p">,</span> <span class="n">basis_functions</span><span class="p">,</span> <span class="n">site_data</span><span class="p">,</span> <span class="n">setup</span><span class="o">.</span><span class="n">data_args</span><span class="p">)</span>
+<span class="linenos">304</span>    <span class="n">run_spec</span> <span class="o">=</span> <span class="n">with_prepared_rhime_sites</span><span class="p">(</span><span class="n">setup</span><span class="o">.</span><span class="n">run_spec</span><span class="p">,</span> <span class="n">prepared</span><span class="p">)</span>
+<span class="linenos">305</span>
+<span class="linenos">306</span>    <span class="c1"># Cross the explicit eager PyMC boundary without changing canonical inputs.</span>
+<span class="linenos">307</span>    <span class="n">model_inputs</span> <span class="o">=</span> <span class="n">materialize_pymc_inputs</span><span class="p">(</span>
+<span class="linenos">308</span>        <span class="n">prepared</span><span class="p">,</span>
+<span class="linenos">309</span>        <span class="n">variable_names</span><span class="o">=</span><span class="n">standard_model_input_names</span><span class="p">(</span><span class="n">prepared</span><span class="p">,</span> <span class="n">run_spec</span><span class="o">.</span><span class="n">model</span><span class="p">),</span>
+<span class="linenos">310</span>    <span class="p">)</span>
+<span class="linenos">311</span>    <span class="n">build_and_sample_start</span> <span class="o">=</span> <span class="n">perf_counter</span><span class="p">()</span>
+<span class="linenos">312</span>    <span class="n">model_build_result</span> <span class="o">=</span> <span class="n">build_standard_rhime_model_result</span><span class="p">(</span>
+<span class="linenos">313</span>        <span class="n">prepared</span><span class="o">=</span><span class="n">prepared</span><span class="p">,</span>
+<span class="linenos">314</span>        <span class="n">model_inputs</span><span class="o">=</span><span class="n">model_inputs</span><span class="p">,</span>
+<span class="linenos">315</span>        <span class="n">run_spec</span><span class="o">=</span><span class="n">run_spec</span><span class="p">,</span>
+<span class="linenos">316</span>    <span class="p">)</span>
+<span class="linenos">317</span>    <span class="n">idata</span> <span class="o">=</span> <span class="n">sample_rhime_model</span><span class="p">(</span><span class="n">model_build_result</span><span class="p">,</span> <span class="n">setup</span><span class="o">.</span><span class="n">sampler</span><span class="p">)</span>
+<span class="linenos">318</span>
+<span class="linenos">319</span>    <span class="n">result</span> <span class="o">=</span> <span class="n">make_standard_rhime_result</span><span class="p">(</span>
+<span class="linenos">320</span>        <span class="n">prepared</span><span class="o">=</span><span class="n">prepared</span><span class="p">,</span>
+<span class="linenos">321</span>        <span class="n">run_spec</span><span class="o">=</span><span class="n">run_spec</span><span class="p">,</span>
+<span class="linenos">322</span>        <span class="n">sampler</span><span class="o">=</span><span class="n">setup</span><span class="o">.</span><span class="n">sampler</span><span class="p">,</span>
+<span class="linenos">323</span>        <span class="n">model_build_result</span><span class="o">=</span><span class="n">model_build_result</span><span class="p">,</span>
+<span class="linenos">324</span>        <span class="n">idata</span><span class="o">=</span><span class="n">idata</span><span class="p">,</span>
+<span class="linenos">325</span>        <span class="n">build_and_sample_seconds</span><span class="o">=</span><span class="n">perf_counter</span><span class="p">()</span> <span class="o">-</span> <span class="n">build_and_sample_start</span><span class="p">,</span>
+<span class="linenos">326</span>    <span class="p">)</span>
+<span class="linenos">327</span>    <span class="n">make_standard_rhime_outputs</span><span class="p">(</span><span class="n">result</span><span class="o">=</span><span class="n">result</span><span class="p">,</span> <span class="n">prepared</span><span class="o">=</span><span class="n">prepared</span><span class="p">)</span>
+<span class="linenos">328</span>    <span class="k">return</span> <span class="n">result</span>
+<span class="linenos">329</span>
+<span class="linenos">330</span>
+<span class="linenos">331</span><span class="k">def</span><span class="w"> </span><span class="nf">_json_object</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="linenos">332</span><span class="w">    </span><span class="sd">"""Parse one command-line JSON object containing additional RHIME options.</span>
+<span class="linenos">333</span>
+<span class="linenos">334</span><span class="sd">    Args:</span>
+<span class="linenos">335</span><span class="sd">        value: JSON text to parse.</span>
+<span class="linenos">336</span>
+<span class="linenos">337</span><span class="sd">    Returns:</span>
+<span class="linenos">338</span><span class="sd">        The decoded JSON object.</span>
+<span class="linenos">339</span>
+<span class="linenos">340</span><span class="sd">    Raises:</span>
+<span class="linenos">341</span><span class="sd">        argparse.ArgumentTypeError: If the text is invalid JSON or decodes to</span>
+<span class="linenos">342</span><span class="sd">            a non-object value.</span>
+<span class="linenos">343</span><span class="sd">    """</span>
+<span class="linenos">344</span>    <span class="k">try</span><span class="p">:</span>
+<span class="linenos">345</span>        <span class="n">parsed</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+<span class="linenos">346</span>    <span class="k">except</span> <span class="n">json</span><span class="o">.</span><span class="n">JSONDecodeError</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+<span class="linenos">347</span>        <span class="k">raise</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentTypeError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"invalid JSON: </span><span class="si">{</span><span class="n">exc</span><span class="o">.</span><span class="n">msg</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">exc</span>
+<span class="linenos">348</span>    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">parsed</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+<span class="linenos">349</span>        <span class="k">raise</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentTypeError</span><span class="p">(</span><span class="s2">"--kwargs must decode to a JSON object"</span><span class="p">)</span>
+<span class="linenos">350</span>    <span class="k">return</span> <span class="n">parsed</span>
+<span class="linenos">351</span>
+<span class="linenos">352</span>
+<span class="linenos">353</span><span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">(</span><span class="n">argv</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">RhimeResult</span><span class="p">:</span>
+<span class="linenos">354</span><span class="w">    </span><span class="sd">"""Parse command-line options and run the custom-basis RHIME workflow.</span>
+<span class="linenos">355</span>
+<span class="linenos">356</span><span class="sd">    Args:</span>
+<span class="linenos">357</span><span class="sd">        argv: Command-line tokens excluding the program name. ``None`` reads</span>
+<span class="linenos">358</span><span class="sd">            tokens from :data:`sys.argv`.</span>
+<span class="linenos">359</span>
+<span class="linenos">360</span><span class="sd">    Returns:</span>
+<span class="linenos">361</span><span class="sd">        The RHIME result returned by :func:`run_custom_rhime`.</span>
+<span class="linenos">362</span>
+<span class="linenos">363</span><span class="sd">    Raises:</span>
+<span class="linenos">364</span><span class="sd">        SystemExit: If argument parsing fails or help is requested.</span>
+<span class="linenos">365</span>
+<span class="linenos">366</span><span class="sd">    Notes:</span>
+<span class="linenos">367</span><span class="sd">        Data access, eager basis and model materialization, sampling, and</span>
+<span class="linenos">368</span><span class="sd">        requested output writes are delegated to :func:`run_custom_rhime`; its</span>
+<span class="linenos">369</span><span class="sd">        exceptions propagate unchanged.</span>
+<span class="linenos">370</span><span class="sd">    """</span>
+<span class="linenos">371</span>    <span class="n">parser</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">(</span><span class="n">description</span><span class="o">=</span><span class="vm">__doc__</span><span class="p">)</span>
+<span class="linenos">372</span>    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">"config_file"</span><span class="p">,</span> <span class="n">nargs</span><span class="o">=</span><span class="s2">"?"</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="n">Path</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">"RHIME INI configuration file"</span><span class="p">)</span>
+<span class="linenos">373</span>    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+<span class="linenos">374</span>        <span class="s2">"--project-basis-path"</span><span class="p">,</span>
+<span class="linenos">375</span>        <span class="nb">type</span><span class="o">=</span><span class="n">Path</span><span class="p">,</span>
+<span class="linenos">376</span>        <span class="n">help</span><span class="o">=</span><span class="s2">"self-contained BasisFunctions .nc or .zarr artifact"</span><span class="p">,</span>
+<span class="linenos">377</span>    <span class="p">)</span>
+<span class="linenos">378</span>    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+<span class="linenos">379</span>        <span class="s2">"--max-child-pca-eccentricity"</span><span class="p">,</span>
+<span class="linenos">380</span>        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+<span class="linenos">381</span>        <span class="n">help</span><span class="o">=</span><span class="s2">"project guarded-basis threshold (default: 10)"</span><span class="p">,</span>
+<span class="linenos">382</span>    <span class="p">)</span>
+<span class="linenos">383</span>    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">"--start-date"</span><span class="p">)</span>
+<span class="linenos">384</span>    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">"--end-date"</span><span class="p">)</span>
+<span class="linenos">385</span>    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">"--output-path"</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="n">Path</span><span class="p">)</span>
+<span class="linenos">386</span>    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">"--output-name"</span><span class="p">)</span>
+<span class="linenos">387</span>    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">"--draws"</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span>
+<span class="linenos">388</span>    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">"--tune"</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span>
+<span class="linenos">389</span>    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">"--chains"</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span>
+<span class="linenos">390</span>    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+<span class="linenos">391</span>        <span class="s2">"--kwargs"</span><span class="p">,</span>
+<span class="linenos">392</span>        <span class="nb">type</span><span class="o">=</span><span class="n">_json_object</span><span class="p">,</span>
+<span class="linenos">393</span>        <span class="n">default</span><span class="o">=</span><span class="p">{},</span>
+<span class="linenos">394</span>        <span class="n">metavar</span><span class="o">=</span><span class="s2">"JSON"</span><span class="p">,</span>
+<span class="linenos">395</span>        <span class="n">help</span><span class="o">=</span><span class="s2">"additional standard RHIME options as a JSON object"</span><span class="p">,</span>
+<span class="linenos">396</span>    <span class="p">)</span>
+<span class="linenos">397</span>    <span class="n">args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">parse_args</span><span class="p">(</span><span class="n">argv</span><span class="p">)</span>
+<span class="linenos">398</span>
+<span class="linenos">399</span>    <span class="n">overrides</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">kwargs</span><span class="p">)</span>
+<span class="linenos">400</span>    <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">"start_date"</span><span class="p">,</span> <span class="s2">"end_date"</span><span class="p">,</span> <span class="s2">"output_path"</span><span class="p">,</span> <span class="s2">"output_name"</span><span class="p">,</span> <span class="s2">"draws"</span><span class="p">,</span> <span class="s2">"tune"</span><span class="p">,</span> <span class="s2">"chains"</span><span class="p">):</span>
+<span class="linenos">401</span>        <span class="n">value</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">args</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
+<span class="linenos">402</span>        <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<span class="linenos">403</span>            <span class="n">overrides</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span>
+<span class="linenos">404</span>    <span class="k">return</span> <span class="n">run_custom_rhime</span><span class="p">(</span>
+<span class="linenos">405</span>        <span class="n">config_file</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">config_file</span><span class="p">,</span>
+<span class="linenos">406</span>        <span class="n">project_basis_path</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">project_basis_path</span><span class="p">,</span>
+<span class="linenos">407</span>        <span class="n">max_child_pca_eccentricity</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">max_child_pca_eccentricity</span><span class="p">,</span>
+<span class="linenos">408</span>        <span class="o">**</span><span class="n">overrides</span><span class="p">,</span>
+<span class="linenos">409</span>    <span class="p">)</span>
+<span class="linenos">410</span>
+<span class="linenos">411</span>
+<span class="linenos">412</span><span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">"__main__"</span><span class="p">:</span>
+<span class="linenos">413</span>    <span class="n">main</span><span class="p">()</span>
+</pre></div>
+</div>
+</section>
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="cli.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">Running RHIME from the command line</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="co2_model_family.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">CO₂ model family</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <dialog id="pst-secondary-sidebar-modal"></dialog>
+                <div id="pst-secondary-sidebar" class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#resume-from-cached-or-external-scientific-data">Resume from cached or external scientific data</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#change-the-likelihood-with-a-python-function">Change the likelihood with a Python function</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#editable-likelihood">Editable likelihood</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#optional-project-cli">Optional project CLI</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#use-the-seam-from-a-generated-project">Use the seam from a generated project</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#copy-the-complete-runner">Copy the complete runner</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#compose-a-custom-basis-stage">Compose a custom basis stage</a></li>
+</ul>
+  </nav></div>
+
+  <div class="sidebar-secondary-item">
+
+  <div class="tocsection sourcelink">
+    <a href="../_sources/usage/customising_rhime.rst.txt">
+      <i class="fa-solid fa-file-lines"></i> Show Source
+    </a>
+  </div>
+</div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../_static/scripts/bootstrap.js?digest=18bd87630a240e9c25be"></script>
+<script defer src="../_static/scripts/pydata-sphinx-theme.js?digest=18bd87630a240e9c25be"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 2025, Eric Saboya and Brendan Murphy.
+      <br/>
+    
+  </p>
+</div>
+      
+        <div class="footer-item">
+
+  <p class="sphinx-version">
+    Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 9.1.0.
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  <!-- # L10n: Setting the PST URL as an argument as this does not need to be localized -->
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.23.0.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+  </body>
+</html>
