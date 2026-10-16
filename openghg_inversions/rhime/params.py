@@ -181,8 +181,8 @@ def retained_run_spec(
 ) -> RhimeRunSpec:
     """Compose the sites retained by preparation with the requested dates and choices.
 
-    Multisector and nested execution retain this transitional run envelope.
-    Standard execution passes the separate choices and prepared inputs directly.
+    Nested execution retains this transitional run envelope. Standard and
+    multisector pass separate choices and prepared inputs directly.
 
     Args:
         data: Data choices that produced ``prepared``.

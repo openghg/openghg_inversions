@@ -233,20 +233,19 @@ as a full multisector run. Saved phases use those operations through
 ``rhime.multisector_stages``; see :doc:`staged_workflow` for preparation reuse,
 compatible prior/likelihood changes and graph-free product replay.
 
-``run_rhime_from_prepared_inputs`` is retained for multisector execution with
-``RhimeRunSpec``, including its custom complete-model-builder hook. The standard
-0.7 call using ``prepared_inputs`` plus a one-sector
-``run_spec`` must migrate to ``run_standard(prepared=..., config=...)``; it is not
-accepted by the retained multisector entry point. That entry point and the nested,
-CO2 and CO2/O2 prepared runners accept ``sampler="default"`` (also omission) or a
-configured ``RhimeSampler``. Explicit ``sampler=None`` is rejected. Each invocation
-isolates mutable option containers while borrowing scientific arrays.
+The old ``run_rhime_from_prepared_inputs`` entry point is removed. Standard and
+multisector callers use their ordinary runner with ``prepared`` and ``config``.
+For whole-model changes, compose construction and sampling directly as shown in
+:ref:`rhime-complete-model-composition`. The nested, CO2 and CO2/O2 prepared
+runners retain their separate interfaces; they accept ``sampler="default"``
+(also omission) or a configured ``RhimeSampler``. Explicit ``sampler=None`` is
+rejected. Each invocation isolates mutable option containers while borrowing
+scientific arrays.
 
 The prepared object is trusted canonical input: it must already contain the
 observation, error, sensitivity, and optional boundary-condition variables
 required by the selected model. A multisector run requires sector-split
-configuration (or ``run_spec.split_by_sectors=True`` at the retained compatibility
-boundary) and a source-resolved layout on
+configuration and a source-resolved layout on
 ``prepared.inv_inputs["H"]``. Shared-basis inputs may use a rectangular
 ``source`` dimension. Source-specific, ragged state blocks use one gathered
 state dimension with a ``(source, region_in_source)`` MultiIndex. A scalar
@@ -465,43 +464,33 @@ prepared object:
 
 .. code-block:: python
 
-   from openghg_inversions.rhime import RhimeModelSpec, SectorSpec
-   from openghg_inversions.rhime import (
-       RhimeOutputSpec,
-       RhimeRunSpec,
-       RhimeSampler,
-       run_rhime_from_prepared_inputs,
-   )
+   from openghg_inversions.rhime import RhimeConfig, run_multisector
 
    sources = ["ocean", "FF", "GPP", "TER"]
-   sectors = tuple(
-       SectorSpec(
-           name=source,
-           flux_source=source,
-           x_prior={"pdf": "lognormal", "mean": 1.0, "stdev": 1.0},
-           variable_suffix=source.lower(),
-       )
-       for source in sources
+   config = RhimeConfig.from_params(
+       {
+           "species": "co2",
+           "domain": "EUROPE",
+           "start_date": "2021-01-01",
+           "end_date": "2021-01-05",
+           "sites": list(prepared.sites),
+           "averaging_period": list(prepared.averaging_period),
+           "flux_sources": sources,
+           "sector_priors": {
+               source: {"pdf": "lognormal", "mean": 1.0, "stdev": 1.0}
+               for source in sources
+           },
+           "sigma_freq": "monthly",
+           "use_bc": False,
+           "output_name": "external-inputs",
+           "output_format": "none",
+           "draws": 1000,
+           "tune": 1000,
+           "chains": 4,
+       },
+       multisector=True,
    )
-   run_spec = RhimeRunSpec(
-       start_date="2021-01-01",
-       end_date="2021-01-05",
-       sites=prepared.sites,
-       averaging_period=prepared.averaging_period,
-       model=RhimeModelSpec(
-           species="co2",
-           domain="EUROPE",
-           sectors=sectors,
-           sigma_freq="monthly",
-       ),
-       output=RhimeOutputSpec(output_format="none"),
-       split_by_sectors=True,
-   )
-   result = run_rhime_from_prepared_inputs(
-       prepared_inputs=prepared,
-       run_spec=run_spec,
-       sampler=RhimeSampler(draws=1000, tune=1000, chains=4),
-   )
+   result = run_multisector(prepared=prepared, config=config)
 
 This adapter is an extension boundary for data acquisition and assembly, not a
 plugin interface for alternative RHIME models or likelihood components.
@@ -950,7 +939,7 @@ configuration construction. Prefer ``legacy`` in new configurations.
 the standard runner. To inspect reporting results in memory, call
 ``basic_output(result, country_file=...)`` on the returned ``InversionOutput``.
 The runner calls ``postprocess_standard_outputs`` to compute and write configured
-PARIS or legacy products, then ``save_standard_artifacts`` to export the scientific
+PARIS or legacy products, then ``save_inversion_output`` to export the scientific
 result and trace. PARIS and legacy requests require an ``output_path`` before
 sampling. Export defaults and filename policy remain unchanged. See
 :doc:`staged_workflow` for the distinction between checkpoints, self-contained

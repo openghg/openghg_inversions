@@ -194,7 +194,7 @@ metadata. Compute in-memory sector diagnostics explicitly:
    )
 
 Copied runners call ``postprocess_multisector_outputs(result, output_spec)`` for
-configured products, then ``save_multisector_artifacts(result, output_spec)`` for
+configured products, then ``save_inversion_output(result, output_spec)`` for
 exports. Use ``inv_out``, ``paris``, or ``none`` for multisector runs;
 ``basic`` and legacy HBMCMC output remain single-sector-only. See :doc:`staged_workflow` for
 reusing prepared inputs and saved samples with current product choices.

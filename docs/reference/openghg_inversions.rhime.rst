@@ -27,7 +27,6 @@ openghg\_inversions.rhime
    openghg_inversions.rhime.outputs
    openghg_inversions.rhime.params
    openghg_inversions.rhime.preparation
-   openghg_inversions.rhime.prepared
    openghg_inversions.rhime.requests
    openghg_inversions.rhime.sampling
    openghg_inversions.rhime.specs

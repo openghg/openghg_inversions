@@ -25,8 +25,8 @@ from ._stage_artifacts import (
 from ._stage_checks import _check_draws, _check_stage, prior_predictive_check
 from .builders import RhimeLikelihoodBuilder
 from .outputs import (
-    annotate_sample_trace, make_standard_output, postprocess_standard_outputs,
-    save_standard_artifacts, validate_standard_output_resources,
+    annotate_sample_trace, make_rhime_output, postprocess_standard_outputs,
+    save_inversion_output, validate_standard_output_resources,
 )
 from .sampling import sample_rhime_model
 from .params import DataConfig, resolve_model_options
@@ -285,10 +285,11 @@ def load_samples(sample_manifest: str | Path) -> InversionOutput:
     output_contract = OutputContract.from_dict(record["output_contract"])
     output_contract.validate_trace(posterior)
     model_spec = RhimeModelSpec.from_record(record["model"], trace=posterior, data_config=data_config)
-    inv_out = make_standard_output(
+    inv_out = make_rhime_output(
         prepared=prepared, model_spec=model_spec, posterior=posterior,
         output_contract=output_contract, start_date=data_config.start_date, end_date=data_config.end_date,
         actual_inference=record["actual_inference"], provenance=record["provenance"],
+        split_by_sectors=data_config.split_by_sectors,
     )
     return inv_out
 
@@ -310,7 +311,7 @@ def postprocess(sample_manifest: str | Path, *, output: RhimeOutputSpec) -> Inve
     validate_standard_output_resources(output)
     inv_out = load_samples(sample_manifest)
     postprocess_standard_outputs(inv_out, output)
-    save_standard_artifacts(inv_out, output)
+    save_inversion_output(inv_out, output)
     return inv_out
 
 

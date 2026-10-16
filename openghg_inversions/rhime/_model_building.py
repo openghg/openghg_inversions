@@ -28,11 +28,8 @@ from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.sigma import SigmaAlignment
 
 from .builders import (
-    RhimeModelBuilder,
-    RhimeModelBuilderContext,
     RhimeModelBuildResult,
     RhimeLikelihoodBuilder,
-    validate_model_build_result,
 )
 from .specs import (
     DEFAULT_POLLUTION_EVENT_SIGMA_PRIOR,
@@ -413,31 +410,3 @@ def builtin_model_build_result(
             metadata={"kind": "builtin"},
         ),
     )
-
-
-def validated_custom_model_build(
-    model_builder: RhimeModelBuilder,
-    *,
-    context: RhimeModelBuilderContext,
-) -> RhimeModelBuildResult:
-    """Call a complete-model builder and validate its external graph contract.
-
-    Args:
-        model_builder: User-owned complete-model callable.
-        context: Validated prepared inputs and run settings.
-
-    Returns:
-        Concrete custom model build result.
-
-    Raises:
-        TypeError: If the callable returns the wrong result type.
-        ValueError: If coordinate registration, declared variable roles or
-            requested output capabilities are invalid.
-    """
-    result = model_builder(context)
-    if not isinstance(result, RhimeModelBuildResult):
-        raise TypeError(
-            f"A RHIME model builder must return `RhimeModelBuildResult`; got {type(result).__name__}."
-        )
-    validate_model_build_result(result, context=context)
-    return result

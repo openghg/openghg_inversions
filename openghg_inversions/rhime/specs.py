@@ -490,7 +490,10 @@ class RhimeOutputSpec:
 
 @dataclass(frozen=True)
 class RhimeRunSpec:
-    """Top-level run metadata for a RHIME run.
+    """Run metadata retained by nested and CO2 execution.
+
+    Standard and multisector execution pass model, output and data choices
+    separately and do not construct this envelope.
 
     Args:
         start_date: Inclusive inversion start date.

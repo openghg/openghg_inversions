@@ -15,7 +15,6 @@ from openghg_inversions.rhime import (
     nested,
     outputs,
     preparation,
-    prepared,
     standard,
     validate_output_resources,
 )
@@ -47,14 +46,14 @@ def test_reporting_resource_policy(tmp_path, output_format):
 @pytest.mark.parametrize("country_kind", ["omitted", "missing", "directory"])
 @pytest.mark.parametrize("route", [
     "standard", "multisector", "nested", "copied", "copied_basis",
-    "prepared", "prepared_multi", "prepared_multi_compat", "prepared_nested", "staged", "staged_multi",
-    "output_multi", "output_multi_compat", "output_nested",
+    "prepared", "prepared_multi", "prepared_nested", "staged", "staged_multi",
+    "output_multi", "output_nested",
 ])
 def test_reporting_routes_reject_before_work_or_output_directory(tmp_path, monkeypatch, country_kind, route):
     destination = tmp_path / "outputs"
     country = {"omitted": None, "missing": str(tmp_path / "missing.nc"), "directory": str(tmp_path)}[country_kind]
     params = _params(output_format="paris", country_file=country, output_path=str(destination))
-    is_multi = route in ("multisector", "prepared_multi", "prepared_multi_compat", "staged_multi", "output_multi")
+    is_multi = route in ("multisector", "prepared_multi", "staged_multi", "output_multi")
     if is_multi:
         params["flux_sources"] = ["inventory", "ocean"]
     config = RhimeConfig.from_params(params, multisector=is_multi)
@@ -62,7 +61,7 @@ def test_reporting_routes_reject_before_work_or_output_directory(tmp_path, monke
         standard.RhimeMergedData, "from_options", lambda **kwargs: pytest.fail("acquired before preflight"),
     )
     monkeypatch.setattr(
-        prepared, "materialize_multisector_inputs", lambda *args, **kwargs: pytest.fail("materialized before preflight"),
+        multisector, "materialize_multisector_inputs", lambda *args, **kwargs: pytest.fail("materialized before preflight"),
     )
     monkeypatch.setattr(
         nested, "materialize_pymc_inputs", lambda *args, **kwargs: pytest.fail("materialized before preflight"),
@@ -96,17 +95,13 @@ def test_reporting_routes_reject_before_work_or_output_directory(tmp_path, monke
             copied_runner.run_custom_rhime(**params)
         elif route == "copied_basis":
             custom_basis_runner.run_custom_rhime(**params)
-        elif route in ("prepared", "prepared_multi", "prepared_multi_compat"):
+        elif route in ("prepared", "prepared_multi"):
             inputs = _prepared()
             if is_multi:
                 inputs = replace(inputs, inv_inputs=inputs.inv_inputs.assign(
                     H=inputs.inv_inputs.H.expand_dims(source=["inventory", "ocean"]),
                 ))
-            if route == "prepared_multi_compat":
-                prepared.run_rhime_from_prepared_inputs(
-                    prepared_inputs=inputs, run_spec=config.retained_run_spec(inputs),
-                )
-            elif is_multi:
+            if is_multi:
                 multisector.run_multisector(prepared=inputs, config=config)
             else:
                 standard.run_standard(prepared=inputs, config=config)
@@ -122,8 +117,6 @@ def test_reporting_routes_reject_before_work_or_output_directory(tmp_path, monke
             result = SimpleNamespace(output_spec=config.output)
             if route == "output_nested":
                 nested._write_nested_paris_outputs(SimpleNamespace(rhime_result=result))
-            elif route == "output_multi_compat":
-                outputs.make_multisector_rhime_outputs(result=result, prepared=None)
             else:
                 outputs.postprocess_multisector_outputs(
                     SimpleNamespace(model_metadata={"supported_output_formats": ["paris"]}), config.output,

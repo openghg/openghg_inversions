@@ -173,8 +173,7 @@ def test_coherent_extra_prepared_source_cannot_silently_disappear_from_model_or_
     assert not (tmp_path / "samples").exists()
 
 
-@pytest.mark.parametrize("compatibility_adapter", [False, True])
-def test_model_construction_consumes_supplied_eager_sensitivities_without_replacing_them(tmp_path, compatibility_adapter):
+def test_model_construction_consumes_supplied_eager_sensitivities_without_replacing_them(tmp_path):
     merged, options, _, h, _ = synthetic_inputs(tmp_path)
     manifest = stages.prepare(DataConfig.from_params(options, multisector=True), merged_data=merged,
                               output_dir=tmp_path / "prepared")
@@ -184,12 +183,7 @@ def test_model_construction_consumes_supplied_eager_sensitivities_without_replac
                                      "output_format": "none"}, multisector=True)
     inputs, priors = multisector.materialize_multisector_inputs(prepared, config.model)
     modified = inputs.assign(H=inputs.H * 10)
-    if compatibility_adapter:
-        built = multisector.build_multisector_rhime_model_result(
-            prepared=prepared, model_inputs=modified, run_spec=config.retained_run_spec(prepared),
-        )
-    else:
-        built = multisector.build_multisector_model(modified, config.model, priors=priors)
+    built = multisector.build_multisector_model(modified, config.model, priors=priors)
     for suffix, source in (("biosphere", "supplemental"), ("fossil", "inventory")):
         np.testing.assert_allclose(built.model[f"hx_{suffix}"].get_value(), h[source][:, None] * 10)
     xr.testing.assert_identical(prepared.inv_inputs.H, original)

@@ -189,6 +189,7 @@ def test_custom_runner_uses_supported_stages_for_acquisition(
         assert kwargs["start_date"] == config.data.start_date
         assert kwargs["end_date"] == config.data.end_date
         assert kwargs["actual_inference"] == sampler.describe()
+        assert kwargs["split_by_sectors"] is False
         assert "run_spec" not in kwargs
         assert "sampler" not in kwargs
         calls.append("result")
@@ -211,8 +212,8 @@ def test_custom_runner_uses_supported_stages_for_acquisition(
     monkeypatch.setattr(custom_runner, "build_standard_model", build)
     monkeypatch.setattr(custom_runner, "sample_rhime_model", sample)
     monkeypatch.setattr(custom_runner, "annotate_sample_trace", annotate)
-    monkeypatch.setattr(custom_runner, "make_standard_output", make_result)
-    monkeypatch.setattr(custom_runner, "save_standard_artifacts", write_outputs)
+    monkeypatch.setattr(custom_runner, "make_rhime_output", make_result)
+    monkeypatch.setattr(custom_runner, "save_inversion_output", write_outputs)
 
     result = custom_runner.run_custom_rhime(config_file=config_file, **overrides)
 

@@ -49,17 +49,17 @@ configuration as follows:
   aliases through 0.8 with deprecation warnings. ``RhimeConfig.from_params``
   accepts canonical names only and has no alias translation or warnings.
   Modern output formats and explicit save paths remain.
-* Replace standard ``run_rhime_from_prepared_inputs(prepared_inputs=...,
-  run_spec=...)`` calls, including the 0.7 one-sector ``RhimeRunSpec`` convention,
-  with ``run_standard(prepared=prepared, config=config)``. The ordinary resolved
-  ``RhimeConfig`` supplies model, output, date and sampler choices; supplied
-  prepared inputs skip acquisition/preparation. ``run_rhime_from_prepared_inputs``
-  now serves only the retained multisector compatibility route. Standard custom
-  likelihoods use ``likelihood_builder``; replacing the complete standard graph
-  requires direct PyMC construction and sampling. Standard construction uses
-  ``build_standard_model`` with eager inputs and prior parameters. Call
-  ``materialize_standard_inputs`` explicitly where needed to compute related
-  arrays together. Select acquisition/preparation arguments with
+* Replace ``run_rhime_from_prepared_inputs(prepared_inputs=..., run_spec=...)``
+  calls with ``run_standard(prepared=prepared, config=config)`` or
+  ``run_multisector(prepared=prepared, config=config)``. The old entry point and
+  its multisector result/configuration adapters are removed. The ordinary
+  resolved ``RhimeConfig`` supplies separate data, model, output and sampler
+  choices; supplied prepared inputs skip acquisition/preparation. Custom
+  likelihoods use ``likelihood_builder``. Replacing the complete graph requires
+  direct construction and sampling; see :ref:`rhime-complete-model-composition`.
+  Both recipes expose ``materialize_*_inputs`` and ``build_*_model`` operations
+  so related arrays and enabled priors are computed together before PyMC
+  construction. Select acquisition/preparation arguments with
   ``config.data.select(...)`` and use ``config.model`` / ``config.output`` directly;
   the global ``RhimeConfig.select`` API has been removed.
 * Use invocation-relative paths for Python/CLI calls, INI/JSON resource and
@@ -87,8 +87,12 @@ convenience operation. It is not another CLI phase.
 Move its former ``variable_roles``, ``supported_output_formats`` and ``metadata``
 arguments into an ``OutputContract`` from
 ``openghg_inversions.postprocessing.contracts``. The legacy
-``make_standard_rhime_result`` facade is removed; use ``make_standard_output``
-for the standard scientific result.
+``make_standard_rhime_result`` facade is removed. The former
+``make_standard_output`` and ``make_multisector_output`` constructors are
+replaced by ``make_rhime_output(..., split_by_sectors=...)`` for both recipes.
+Pass ``False`` for standard and ``True`` for multisector scientific results.
+The former ``save_standard_artifacts`` and ``save_multisector_artifacts``
+exporters are replaced by the shared ``save_inversion_output`` function.
 
 Configuration helpers introduced during this development cycle are named
 ``load_params``, ``group_params`` and ``option_groups``; ``read_rhime_ini`` retains
@@ -101,7 +105,7 @@ on the returned ``InversionOutput``. PARIS and legacy outputs retain their file
 writers, invoked through ``postprocess_standard_outputs(result, output_spec)``.
 Call ``validate_standard_output_resources(output_spec)`` before execution;
 standard PARIS and legacy requests require an ``output_path``. The separate
-``save_standard_artifacts(result, output_spec)`` exports inversion outputs and
+``save_inversion_output(result, output_spec)`` exports inversion outputs and
 traces without computing derived products. Copied runners should call the
 postprocessor before the exporter.
 
@@ -231,14 +235,17 @@ records from ``result.model_metadata["sectors"]`` and their scientific roles fro
 ``result.variable_roles``. Compute in-memory sector diagnostics with
 ``postprocessing.make_outputs.make_sector_flux_outputs``. Copied runners call
 ``postprocess_multisector_outputs(result, output_spec)`` for requested products,
-then ``save_multisector_artifacts(result, output_spec)`` for exports.
+then ``save_inversion_output(result, output_spec)`` for exports.
 
-The advanced ``run_rhime_from_prepared_inputs`` boundary remains transitional:
-it retains ``RhimeResult`` for existing ``RhimeRunSpec`` and complete-model-builder
-callers. New ordinary multisector execution and saved replay use
-``run_multisector`` and its ``InversionOutput`` contract. This advanced boundary is
-the remaining result-interface exception; its removal requires migration of those
-custom-builder consumers.
+Standard and multisector execution no longer construct ``RhimeRunSpec`` or
+return ``RhimeResult``. These shared types remain only for the deferred nested
+and cached CO2 recipes until their own consumers migrate. Remove multisector
+calls to ``build_multisector_rhime_model_result``,
+``make_multisector_rhime_result`` and ``make_multisector_rhime_outputs``. Use
+``build_multisector_model``, ``make_rhime_output``, and the explicit
+product/export calls above. For a custom complete model, pass selected eager
+scientific inputs to an ordinary function and sample its returned graph;
+there is no multisector model-builder context or ``model_builder`` hook.
 
 The saved multisector envelope and its complete-configuration identity and
 output-binding gates are removed in 0.8. Replace multisector

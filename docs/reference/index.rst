@@ -30,7 +30,6 @@ runner.
    openghg_inversions.rhime.run_nested
    openghg_inversions.rhime.run_rhime_multisector
    openghg_inversions.rhime.run_rhime_nested
-   openghg_inversions.rhime.run_rhime_from_prepared_inputs
    openghg_inversions.rhime.run_rhime_nested_from_prepared_inputs
    openghg_inversions.rhime.run_rhime_co2
    openghg_inversions.rhime.co2.run_rhime_co2_cached_sigma
@@ -78,6 +77,8 @@ manifest lifetime, compatible model changes and graph-free product replay.
    openghg_inversions.rhime.stages.postprocess
    openghg_inversions.rhime.stages.prior_predictive
    openghg_inversions.rhime.multisector.prepare_multisector
+   openghg_inversions.rhime.multisector.materialize_multisector_inputs
+   openghg_inversions.rhime.multisector.build_multisector_model
    openghg_inversions.rhime.multisector_stages.prepare
    openghg_inversions.rhime.multisector_stages.save_preparation
    openghg_inversions.rhime.multisector_stages.load_preparation
@@ -86,17 +87,18 @@ manifest lifetime, compatible model changes and graph-free product replay.
    openghg_inversions.rhime.multisector_stages.load_samples
    openghg_inversions.rhime.multisector_stages.postprocess
    openghg_inversions.rhime.multisector_stages.prior_predictive
-   openghg_inversions.rhime.outputs.make_multisector_output
+   openghg_inversions.rhime.outputs.make_rhime_output
    openghg_inversions.rhime.outputs.postprocess_multisector_outputs
-   openghg_inversions.rhime.outputs.save_multisector_artifacts
+   openghg_inversions.rhime.outputs.save_inversion_output
 
 Run specifications and results
 ------------------------------
 
 Standard and multisector runners return ``InversionOutput``, including prepared
 execution and graph-free saved replay. ``RhimeResult`` and ``RhimeRunSpec`` remain
-at the advanced multisector complete-model-builder boundary and for nested and
-CO2 recipes. These retained objects describe model, sampling and output choices.
+only for the deferred nested and CO2 recipes. Standard and multisector
+execution pass model choices, inference and output policy to their separate
+owners.
 The sampler's former ``rhime`` imports remain compatible; its implementation is
 owned by ``inference``.
 
@@ -145,7 +147,6 @@ value and its unchanged version-1 schema live in
    openghg_inversions.rhime.standard.materialize_standard_inputs
    openghg_inversions.rhime.standard.prepare_standard
    openghg_inversions.rhime.postprocess_standard_outputs
-   openghg_inversions.rhime.save_standard_artifacts
    openghg_inversions.rhime.annotate_sample_trace
    openghg_inversions.rhime.requests.load_params
    openghg_inversions.rhime.params.retained_run_spec

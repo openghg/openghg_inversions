@@ -157,6 +157,7 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
         assert kwargs["start_date"] == config.data.start_date
         assert kwargs["end_date"] == config.data.end_date
         assert kwargs["actual_inference"] == sampler.describe()
+        assert kwargs["split_by_sectors"] is False
         assert "run_spec" not in kwargs
         assert "sampler" not in kwargs
         calls.append("result")
@@ -177,9 +178,9 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
     monkeypatch.setattr(rhime_runner, "build_standard_model", build)
     monkeypatch.setattr(rhime_runner, "sample_rhime_model", sample)
     monkeypatch.setattr(rhime_runner, "annotate_sample_trace", annotate)
-    monkeypatch.setattr(rhime_runner, "make_standard_output", make_result)
+    monkeypatch.setattr(rhime_runner, "make_rhime_output", make_result)
     monkeypatch.setattr(rhime_runner, "postprocess_standard_outputs", write_outputs)
-    monkeypatch.setattr(rhime_runner, "save_standard_artifacts", lambda *a: calls.append("export"))
+    monkeypatch.setattr(rhime_runner, "save_inversion_output", lambda *a: calls.append("export"))
 
     result = consumer_runner.run(species="ch4", output_format="inv_out")
 

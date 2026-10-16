@@ -28,7 +28,6 @@ from openghg_inversions.models.components import (
 )
 from openghg_inversions.models.coords import registered_model
 from openghg_inversions.models.priors import PriorArgs
-from openghg_inversions.postprocessing.contracts import OutputContract
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.models._flux import (
     _namespace_sector_state_coords,
@@ -56,7 +55,6 @@ from .specs import (
     DEFAULT_OFFSET_PRIOR,
     LikelihoodSettings,
     RhimeModelSpec,
-    RhimeRunSpec,
     SectorSpec,
 )
 
@@ -64,24 +62,18 @@ from ._model_building import (
     ForwardModelTerms,
     add_rhime_likelihood,
     builtin_model_build_result,
-    validated_custom_model_build,
 )
 from .builders import (
     RhimeLikelihoodBuilder,
-    RhimeModelBuilder,
-    RhimeModelBuilderContext,
     RhimeModelBuildResult,
-    callable_metadata,
 )
 
 from .materialization import _materialize_pymc_inputs_and_priors
 from .outputs import (
     annotate_sample_trace,
-    RhimeResult,
-    annotate_likelihood_trace,
-    make_multisector_output,
+    make_rhime_output,
     postprocess_multisector_outputs,
-    save_multisector_artifacts,
+    save_inversion_output,
     validate_multisector_output_resources,
 )
 from .requests import load_params
@@ -94,7 +86,7 @@ from .preparation import (
     filter_observations,
     prepare_observation_errors,
 )
-from .sampling import RhimeSampler, sample_rhime_model
+from .sampling import sample_rhime_model
 
 
 _SectorComponent = tuple[SectorSpec, PreparedLinearSensitivity, PriorArgs, StateActivity]
@@ -628,123 +620,6 @@ def build_multisector_model(
     )
 
 
-def build_multisector_rhime_model_result(
-    *,
-    prepared: RhimePreparedInputs,
-    model_inputs: xr.Dataset,
-    run_spec: RhimeRunSpec,
-    model_builder: RhimeModelBuilder | None = None,
-    likelihood_builder: RhimeLikelihoodBuilder | None = None,
-    likelihood_kwargs: Mapping[str, Any] | None = None,
-) -> RhimeModelBuildResult:
-    """Validate source-specific bases and build the multisector graph result.
-
-    Args:
-        prepared: Retained source-specific prepared-input artifact.
-        model_inputs: Eager canonical arrays for the built-in PyMC graph. Enabled
-            prior parameters in ``run_spec.model`` must also be eager; new
-            callers materialize explicitly and use ``build_multisector_model``.
-        run_spec: Resolved model, sampling, and output specification.
-        model_builder: Optional complete-model builder for advanced prepared-
-            input workflows.
-        likelihood_builder: Optional observation-error and distribution builder
-            used with the built-in graph.
-        likelihood_kwargs: Options expanded only into the custom likelihood.
-
-    Returns:
-        Model plus variable roles, supported outputs, and build metadata.
-
-    Raises:
-        ValueError: If the basis layout is incompatible, both extension points
-            are supplied, or the result conflicts with the run specification.
-    """
-    if run_spec.output.output_format in ("basic", "legacy"):
-        raise ValueError(
-            f"RHIME output_format {run_spec.output.output_format!r} supports only single-sector runs."
-        )
-    if model_builder is not None and likelihood_builder is not None:
-        raise ValueError("Pass either `model_builder` or `likelihood_builder`, not both.")
-    if likelihood_kwargs and likelihood_builder is None:
-        raise ValueError("Non-empty `likelihood_kwargs` require an active `likelihood_builder`.")
-    timing_start = timer_start()
-    _validate_multisector_basis_layout(prepared.basis_functions, run_spec.model, prepared.inv_inputs)
-    if model_builder is not None:
-        builder_context = RhimeModelBuilderContext(
-            prepared_inputs=prepared,
-            run_spec=run_spec,
-            multisector=True,
-        )
-        result = validated_custom_model_build(model_builder, context=builder_context)
-    else:
-        priors = _multisector_prior_parameters(run_spec.model)
-        result = build_multisector_model(
-            model_inputs, run_spec.model, priors=priors,
-            likelihood_builder=likelihood_builder, likelihood_kwargs=likelihood_kwargs,
-        )
-    log_timing("rhime.model_build", timer_seconds(timing_start), multisector=True)
-    return result
-
-
-def make_multisector_rhime_result(
-    *,
-    prepared: RhimePreparedInputs,
-    run_spec: RhimeRunSpec,
-    sampler: RhimeSampler | None,
-    model_build_result: RhimeModelBuildResult | None = None,
-    output_contract: OutputContract | None = None,
-    idata: xr.DataTree,
-    build_and_sample_seconds: float,
-    model_builder: RhimeModelBuilder | None = None,
-    likelihood_builder: RhimeLikelihoodBuilder | None = None,
-    likelihood_kwargs: Mapping[str, Any] | None = None,
-) -> RhimeResult:
-    """Construct a sampled multisector result before output side effects.
-
-    Args:
-        prepared: Retained source-resolved inputs and basis functions.
-        run_spec: Resolved model, output, and run settings.
-        sampler: Live sampler used for the trace, or ``None`` during saved replay.
-        model_build_result: Concrete graph and roles, when retained in memory.
-        output_contract: Durable output information for graph-free reconstruction.
-            Defaults to the live build result's contract when supplied.
-        idata: Sampled posterior and predictive groups.
-        build_and_sample_seconds: Combined graph-build and sampling duration.
-        model_builder: Optional complete-model callable used for provenance.
-        likelihood_builder: Optional likelihood callable used for provenance.
-        likelihood_kwargs: Serializable options owned by the likelihood.
-
-    Returns:
-        Multisector result ready for requested output construction.
-    """
-    result = RhimeResult(
-        run_spec=run_spec,
-        model_spec=run_spec.model,
-        output_spec=run_spec.output,
-        inv_inputs=prepared.inv_inputs,
-        idata=idata,
-        sampler=sampler,
-        model=model_build_result.model if model_build_result is not None else None,
-        basis_functions=prepared.basis_functions,
-        model_build_result=model_build_result,
-        output_contract=output_contract,
-        output_metadata={"build_and_sample_seconds": build_and_sample_seconds},
-    )
-    if model_builder is not None:
-        identity = callable_metadata(model_builder)
-        result.output_metadata["model_builder"] = identity
-    if likelihood_builder is not None:
-        identity = callable_metadata(likelihood_builder)
-        result.output_metadata["likelihood_builder"] = identity
-        annotate_likelihood_trace(
-            result.idata,
-            builder_identity=identity,
-            likelihood_kwargs=likelihood_kwargs,
-        )
-    if likelihood_kwargs is not None:
-        result.output_metadata["likelihood_kwargs"] = likelihood_kwargs
-    return result
-
-
 def prepare_multisector(
     merged_data: RhimeMergedData, *,
     domain: str, start_date: str, flux_sources: tuple[str, ...],
@@ -952,14 +827,15 @@ def run_multisector(
         likelihood_kwargs=likelihood_kwargs,
     )
     # 4. Bind scientific meaning, compute products, then export result and trace.
-    inv_out = make_multisector_output(
+    inv_out = make_rhime_output(
         prepared=prepared, model_spec=config.model, posterior=idata,
         output_contract=model_build_result.output_contract,
         start_date=config.data.start_date, end_date=config.data.end_date,
         actual_inference=sampler.describe(),
+        split_by_sectors=config.data.split_by_sectors,
     )
     postprocess_multisector_outputs(inv_out, config.output)
-    save_multisector_artifacts(inv_out, config.output)
+    save_inversion_output(inv_out, config.output)
     return inv_out
 
 

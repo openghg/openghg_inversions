@@ -90,26 +90,12 @@ def validate_multisector_output_resources(output_spec: RhimeOutputSpec) -> None:
         raise ValueError("`output_path` is required for multisector PARIS products.")
 
 
-def validate_output_filenames(run_spec: RhimeRunSpec) -> None:
-    """Check metadata interpolated into product filenames before writing.
-
-    Args:
-        run_spec: Retained family run metadata and requested output naming.
-
-    Raises:
-        ValueError: If a filename field is empty, a directory or a dot component.
-    """
-    for name, value in (("species", run_spec.model.species), ("domain", run_spec.model.domain),
-                        ("output_name", run_spec.output.output_name), ("start_date", run_spec.start_date)):
-        _validate_filename_component(name, value)
-
-
 @dataclass
 class RhimeResult:
-    """Retained runtime envelope for nested and complete-model-builder consumers.
+    """Runtime envelope retained for nested and CO2 consumers.
 
     Standard and multisector execution return :class:`InversionOutput` directly.
-    This envelope remains for consumers of the prepared-input compatibility API.
+    Those remaining families own its retirement with their execution migration.
 
     Args:
         run_spec: Top-level dates, sites, model, and output settings for the run.
@@ -614,59 +600,6 @@ def postprocess_multisector_outputs(
     return outputs
 
 
-def save_multisector_artifacts(inv_out: InversionOutput, output_spec: RhimeOutputSpec) -> None:
-    """Export the scientific multisector result and trace using current choices.
-
-    Args:
-        inv_out: Scientific output to serialize without rewriting its metadata.
-        output_spec: Requested paths, naming and export choices; ``none`` writes nothing.
-    """
-    save_standard_artifacts(inv_out, output_spec)
-
-
-def make_multisector_rhime_outputs(*, result: RhimeResult, prepared: RhimePreparedInputs) -> None:
-    """Adapt the retained prepared-input compatibility result to multisector products.
-
-    Args:
-        result: Prepared-input compatibility result retaining its existing API.
-        prepared: Borrowed scientific preparation used by that builder.
-    """
-    validate_output_resources(result.output_spec)
-    if result.output_spec.output_format == "none":
-        return
-    inv_out = _make_inversion_output(result=result, prepared=prepared)
-    result.outputs.update(postprocess_multisector_outputs(inv_out, result.output_spec))
-    save_multisector_artifacts(inv_out, result.output_spec)
-    result.inv_out = inv_out
-    result.output_metadata["inversion_output_contract"] = "modern"
-    if result.output_spec.output_format == "paris":
-        result.output_metadata["paris_note"] = (
-            "Multi-sector latest PARIS sector-aware flux and total concentration outputs were generated."
-        )
-
-
-    # Keep receipts only on the retained advanced result, never on the scientific view.
-    output = result.output_spec
-    start = result.run_spec.start_date
-    for key, selected, suffix in (
-        ("trace_path", output.save_trace, "trace"),
-        ("inversion_output_path", output.save_inversion_output, "inversion_output"),
-    ):
-        path = _resolve_output_path(selected, output.output_path, f"{output.output_name}{start}_{suffix}.nc")
-        if path is not None:
-            result.output_metadata[key] = str(path)
-    if output.output_path is not None:
-        result.output_metadata["sector_flux_diagnostics_path"] = str(
-            Path(output.output_path) / f"{output.output_name}{start}_sector_flux_diagnostics.nc"
-        )
-        if output.output_format == "paris":
-            for key, suffix in (("paris_concentration_path", "conc"), ("paris_flux_path", "flux")):
-                result.output_metadata[key] = str(_define_derived_output_filename(
-                    output, species=result.model_spec.species, domain=result.model_spec.domain,
-                    output_name=f"{output.output_name}_{suffix}", start_date=start,
-                ))
-
-
 def annotate_sample_trace(
     built: RhimeModelBuildResult,
     posterior: xr.DataTree,
@@ -690,13 +623,14 @@ def annotate_sample_trace(
         )
 
 
-def make_standard_output(
+def make_rhime_output(
     *, prepared: RhimePreparedInputs, model_spec: RhimeModelSpec, posterior: xr.DataTree,
     output_contract: OutputContract, start_date: str, end_date: str,
+    split_by_sectors: bool,
     actual_inference: Mapping[str, Any] | None = None,
     provenance: Mapping[str, Any] | None = None,
 ) -> InversionOutput:
-    """Bind standard samples to borrowed preparation and scientific meaning.
+    """Bind standard or multisector samples to their borrowed scientific context.
 
     Args:
         prepared: Retained scientific inputs and basis.
@@ -705,6 +639,7 @@ def make_standard_output(
         output_contract: Constructed model roles and supported products.
         start_date: Requested inversion start, independently of retained observations.
         end_date: Requested inversion end.
+        split_by_sectors: Whether preparation retained separate source contributions.
         actual_inference: Description of the inference that ran.
         provenance: Recorded package provenance for replay; omission collects the
             installed package provenance for an in-memory run.
@@ -731,62 +666,14 @@ def make_standard_output(
     return make_inversion_output(
         prepared=prepared, trace=posterior, contract=contract,
         run_metadata={"start_date": start_date, "end_date": end_date, "sites": list(prepared.sites),
-                      "averaging_period": list(prepared.averaging_period), "split_by_sectors": False},
+                      "averaging_period": list(prepared.averaging_period), "split_by_sectors": split_by_sectors},
         model_metadata=_structured_metadata(model_metadata),
         output_metadata={"sampler": dict(actual_inference) if isinstance(actual_inference, Mapping) else actual_inference},
         provenance=installed_ogi_provenance() if provenance is None else dict(provenance),
     )
 
 
-def make_multisector_output(
-    *, prepared: RhimePreparedInputs, model_spec: RhimeModelSpec, posterior: xr.DataTree,
-    output_contract: OutputContract, start_date: str, end_date: str,
-    actual_inference: Mapping[str, Any] | None = None,
-    provenance: Mapping[str, Any] | None = None,
-) -> InversionOutput:
-    """Bind multisector samples to borrowed preparation and scientific meaning.
-
-    Args:
-        prepared: Retained scientific inputs and basis.
-        model_spec: Model choices used for sampling.
-        posterior: Sampler-produced or externally validated trace with prior metadata.
-        output_contract: Constructed model roles and supported products.
-        start_date: Requested inversion start, independently of retained observations.
-        end_date: Requested inversion end.
-        actual_inference: Description of the inference that ran.
-        provenance: Recorded package provenance for replay; omission collects the
-            installed package provenance for an in-memory run.
-
-    Returns:
-        A scientific view borrowing the prepared arrays and trace, without writing files.
-    """
-    priors = trace_prior_records(posterior)
-    model_metadata = model_spec.describe(priors=priors)
-    model_metadata["constructed_priors"] = priors
-    if model_metadata["likelihood"] is not None:
-        model_metadata["likelihood"] = model_metadata["likelihood"]["options"]
-    for name in ("state_activity", "bc_state_activity"):
-        policy = getattr(model_spec, name)
-        model_metadata[name] = None if policy is None else asdict(policy)
-    for sector, record in zip(model_spec.sectors, model_metadata["sectors"], strict=True):
-        record["state_activity"] = None if sector.state_activity is None else asdict(sector.state_activity)
-    metadata = dict(output_contract.metadata)
-    for attr, key in (("rhime_likelihood_builder", "likelihood_builder"),
-                      ("rhime_likelihood_kwargs", "likelihood_kwargs")):
-        if attr in posterior.attrs:
-            metadata[key] = json.loads(posterior.attrs[attr])
-    contract = replace(output_contract, metadata=metadata) if metadata != output_contract.metadata else output_contract
-    return make_inversion_output(
-        prepared=prepared, trace=posterior, contract=contract,
-        run_metadata={"start_date": start_date, "end_date": end_date, "sites": list(prepared.sites),
-                      "averaging_period": list(prepared.averaging_period), "split_by_sectors": True},
-        model_metadata=_structured_metadata(model_metadata),
-        output_metadata={"sampler": dict(actual_inference) if isinstance(actual_inference, Mapping) else actual_inference},
-        provenance=installed_ogi_provenance() if provenance is None else dict(provenance),
-    )
-
-
-def save_standard_artifacts(inv_out: InversionOutput, output_spec: RhimeOutputSpec) -> None:
+def save_inversion_output(inv_out: InversionOutput, output_spec: RhimeOutputSpec) -> None:
     """Export the scientific result and trace without computing derived products.
 
     Args:

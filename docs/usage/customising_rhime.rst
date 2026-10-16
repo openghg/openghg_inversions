@@ -33,10 +33,10 @@ Choose the smallest starting point that fits the change:
 * To start from alternative or cached prepared data, use
   ``run_standard(prepared=prepared, config=config)`` or
   ``run_multisector(prepared=prepared, config=config)``. To replace the complete
-  standard graph, construct and sample a PyMC model directly. The multisector
-  ``run_rhime_from_prepared_inputs`` compatibility boundary retains its complete
-  model-builder hook and ``RhimeResult`` return for existing advanced callers.
-  Ordinary standard and multisector runners return ``InversionOutput``.
+  standard or multisector graph, construct and sample a PyMC model directly;
+  see :ref:`rhime-complete-model-composition` for the explicit multisector
+  materialization, construction, sampling and output operations. Both ordinary
+  runners return ``InversionOutput``.
 
 .. _cached-sigma-co2-recipe:
 .. _run-the-production-cached-sigma-co2-recipe:

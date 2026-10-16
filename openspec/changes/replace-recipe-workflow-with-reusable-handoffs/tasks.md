@@ -309,7 +309,7 @@ pattern, including its result migration, on 16 October. Accordingly,
 return `InversionOutput`; this extends the earlier standard-only result amendment
 and is flagged for PR review. Full and saved routes compose `prepare_multisector`,
 `materialize_multisector_inputs`, `build_multisector_model`, sampling and trace
-annotation, `make_multisector_output`, `postprocess_multisector_outputs` and explicit
+annotation, `make_rhime_output`, `postprocess_multisector_outputs` and explicit
 artifact exports. Acquisition/validation and optional basis exports remain visible
 in the runners; construction consumes the supplied eager Dataset and prior values.
 
@@ -372,15 +372,39 @@ silently excluding its flux from totals. Replay uses original requested dates an
 actual inference descriptions with current output choices, without fresh sampler
 settings or graph recovery.
 
-Concrete residual: `run_rhime_from_prepared_inputs` still supports existing
-`RhimeRunSpec` consumers, including complete-model builders, returning `RhimeResult`.
-Its result/build/output adapters remain for those consumers; nested and other
-families are preserved. The remaining ordinary compatibility consumers include
-`tests/test_prepared_inputs_serialisation.py` and `tests/test_xarray_input_adapter.py`.
-Their migration and final shared-adapter retirement remain tracked by #880;
-this slice does not claim they have disappeared. Ordinary/cached CO2, nested,
-model-input ownership, artifact/storage policy and integrated acceptance remain
-outside the multisector delivery.
+The maintainer's subsequent 16 October correction retires the remaining
+`run_rhime_from_prepared_inputs` route and its multisector build/result/output
+adapters rather than preserving them for test/example consumers. All affected
+ordinary prepared-input callers migrate to `run_multisector(prepared=..., config=...)`
+and explicit scientific composition; the `RhimeRunSpec` complete-builder hook and
+unused callable adapter/protocol are removed. Neither standard nor multisector
+execution constructs `RhimeResult` or `RhimeRunSpec`. Shared envelope types and
+the nested graph-validation context remain because nested and CO2 still
+consume them; their owning slices must migrate those real consumers before
+global deletion. Ordinary CO2 #886 is coordinated separately and already uses
+its concrete scientific output. Nested/cached CO2, model-input ownership,
+artifact/storage policy and integrated acceptance remain outside this delivery.
+
+The maintainer also directed shared output ownership rather than duplicated
+standard/multisector functions. Both recipes and their saved routes now call
+`make_rhime_output(..., split_by_sectors=...)` and `save_inversion_output`;
+family-specific product computation remains explicit. The identical multisector
+constructor and forwarding exporter are deleted, with standard/multisector
+callers, custom/cookiecutter examples, API docs and migration guidance updated
+together. The model-composition delta records removal of the former retained
+multisector complete-builder requirement for review.
+
+Retirement/shared-output local evidence: **313 passed** in `test_rhime.py`;
+**225 passed** across serialization, xarray adapter, reporting preflight,
+multisector scientific parity, standard API and three custom-runner integration
+modules; **193 passed** across standard/multisector handoffs, phase CLI,
+readiness, resource boundaries, tutorials and model-family documentation.
+Shared nested/CO2 preservation adds **72 passed**; public API/configuration
+preservation adds **155 passed**. These are bounded selections, not a claim of
+full-suite completion. All changed Python paths pass Ruff; strict active-change
+validation and diff checks pass. Documentation checks resolve 164 API references
+and parse 28 Python blocks; the revised complete-composition snippet runs against
+real synthetic preparation/sampling (two draws, execution smoke only).
 
 ## 3. Ordinary CO2 reusable-handoff adoption
 

@@ -56,9 +56,9 @@ from .materialization import (
     _materialize_pymc_inputs_and_priors,
 )
 from .outputs import (
-    make_standard_output,
+    make_rhime_output,
     postprocess_standard_outputs,
-    save_standard_artifacts,
+    save_inversion_output,
     annotate_sample_trace,
     validate_standard_output_resources,
 )
@@ -568,14 +568,15 @@ def run_standard(
     output_start = timer_start()
     with (timed("rhime.output.inversion_output_create", output_format=config.output.output_format)
           if config.output.output_format != "none" else nullcontext()):
-        inv_out = make_standard_output(
+        inv_out = make_rhime_output(
             prepared=prepared, model_spec=config.model, posterior=posterior,
             output_contract=built.output_contract, start_date=config.data.start_date,
             end_date=config.data.end_date, actual_inference=sampler.describe(),
             provenance=installed_ogi_provenance(),
+            split_by_sectors=config.data.split_by_sectors,
         )
     postprocess_standard_outputs(inv_out, config.output)
-    save_standard_artifacts(inv_out, config.output)
+    save_inversion_output(inv_out, config.output)
     log_timing(
         "rhime.output_total", timer_seconds(output_start),
         multisector=False, output_format=config.output.output_format,

@@ -38,7 +38,7 @@ data, filters, basis, native flux or baked numerical policy needs new preparatio
 ``load_samples`` decodes the sample manifest to ``InversionOutput``.
 ``postprocess`` uses that reader with current output choices, calls
 ``postprocess_standard_outputs`` to compute and write requested PARIS or legacy
-products, then calls ``save_standard_artifacts`` for optional exports. It loads
+products, then calls ``save_inversion_output`` for optional exports. It loads
 the recorded model meaning, output contract, inference metadata, prepared inputs
 and samples without building a graph or running inference. It returns
 ``InversionOutput`` without a live model or sampler. Missing descriptive metadata stays
@@ -139,7 +139,7 @@ Standard ``output_format="basic"`` returns the scientific view without computing
 an unused summary. For in-memory reporting, call ``basic_output(inv_out,
 country_file=...)`` yourself. PARIS and legacy products require ``output_path``;
 missing destinations fail before sampling in a full run or before loading samples
-in staged postprocessing. ``save_standard_artifacts`` only exports the scientific
+in staged postprocessing. ``save_inversion_output`` only exports the scientific
 result and trace; it does not compute derived products.
 
 Choose saved artifacts by what you need to reuse:
@@ -279,9 +279,9 @@ construction or the saved native flux.
 Saved sampling follows the standard recordable-model limits: explicit
 ``state_activity``, ``bc_state_activity`` and sector activity overrides are not
 encoded in sample records and fail before inference. Full and direct prepared
-execution can still use those policies. Complete-model builders remain at the
-transitional ``RhimeRunSpec`` prepared-input boundary; saved sampling supports
-the ordinary custom-likelihood seam instead.
+execution can still use those policies. Whole-model customization uses direct
+scientific composition; see :ref:`rhime-complete-model-composition`. Saved
+sampling supports the ordinary custom-likelihood seam.
 
 For example, after placing multisector preparation choices in ``sectors.json``:
 
@@ -307,9 +307,9 @@ destination or country file.
 scientific context, retained source flux, output roles and actual inference
 metadata. The result holds no live model or sampler; replay builds no PyMC model
 and runs no inference. It does not replace unknown original metadata with current
-defaults. ``make_multisector_output`` binds samples to scientific context;
+defaults. ``make_rhime_output`` binds samples to scientific context;
 ``postprocess_multisector_outputs(result, output_spec)`` computes and writes
-requested products, then ``save_multisector_artifacts(result, output_spec)``
+requested products, then ``save_inversion_output(result, output_spec)``
 exports the scientific result and trace. Full and saved routes call those same
 operations. Legacy HBMCMC products remain unsupported for multisector.
 
