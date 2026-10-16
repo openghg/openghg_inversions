@@ -29,7 +29,7 @@ updates the same public-compatibility requirement. This order avoids undoing
 the basis-export migration while grouping configuration.
 
 The overlapping alias requirement is aligned with the separate
-[HBMCMC isolation/retirement contract](../../specs/hbmcmc-isolation-retirement/spec.md).
+[HBMCMC isolation/retirement contract](../../../specs/hbmcmc-isolation-retirement/spec.md).
 Full and phase-only routes share runner/frontend alias definitions without importing or
 calling HBMCMC; phase-only adapters still select applicable groups before value
 validation/defaults and do not construct a complete request. Historical selection

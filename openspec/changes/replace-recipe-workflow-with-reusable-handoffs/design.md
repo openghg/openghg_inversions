@@ -18,9 +18,8 @@ merged revisions before implementation.
 Acquisition replay is deferred to #829 and does not block prepared/sample handoffs.
 
 The [configuration capability](../../specs/rhime-configuration/spec.md) records
-the delivered baseline. The separate [configuration change](../group-rhime-configuration-by-owner/specs/rhime-configuration/spec.md)
-owns grouped configuration and independent phase resolution. This handoff change
-consumes those amendments without a duplicate configuration delta. Its three
+grouped configuration and independent phase resolution delivered by merged #866.
+This handoff change consumes that baseline without a duplicate configuration delta. Its three
 execution/handoff deltas remain pending, and completed baseline tasks do not
 establish their implementation.
 

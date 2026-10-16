@@ -16,7 +16,7 @@ acceptance requirements for this implementation.
 
 Standard and multisector configured runs SHALL construct one inspectable,
 complete resolved requested-run configuration before acquisition or scientific
-preparation. It SHALL expose named preparation, model, output and sampling
+preparation. It SHALL expose named data, model, output and sampling
 choices with established configuration-only defaults and aliases resolved. It
 SHALL contain no raw site shorthand, acquired/prepared scientific handoff or
 retained-run description. File-specific parsing and interpretation SHALL belong
@@ -28,19 +28,37 @@ SHALL yield equivalent resolved choices. INI SHALL remain the current file
 frontend without requiring another format or imposing its document structure
 on other frontends.
 
-The public requested configuration SHALL expose acquisition and preparation
-choices directly, without requiring a second preparation-configuration object.
-Existing cohesive site, model, output and sampler values SHALL retain their
-distinct roles; the request SHALL NOT introduce duplicate settings objects for
-those choices.
+The public complete requested configuration SHALL group data, model,
+sampler and output choices. `RhimeConfig.data` SHALL hold one
+`DataConfig` containing the moved acquisition/preparation fields and
+their defaults; the complete configuration SHALL NOT retain a second authoritative
+flat copy. The model, sampler and output groups SHALL reuse `RhimeModelSpec`,
+`RhimeSampler` and `RhimeOutputSpec`, respectively, rather than introduce duplicate
+settings types. Preparation SHALL resolve independently without constructing a
+model, sampler or output policy. Complete configured runs SHALL resolve their
+applicable groups once before scientific execution and SHALL keep requested
+choices distinct from retained scientific facts.
+
+`DataConfig` names the combined acquisition/preparation choices. Grouped input
+mappings SHALL use the key `data`, matching `RhimeConfig.data`; the proposed
+`preparation` field/key SHALL NOT remain as a compatibility alias. Runners SHALL
+explicitly select each operation's named arguments from this record. Scientific
+preparation SHALL receive the acquired handoff and its selected preparation
+arguments. Sharing the record SHALL NOT combine acquisition and preparation
+operations, whose separation is specified by the recipe-execution contract.
+
+The legacy INI frontend SHALL preserve its documented decoding and precedence.
+An adapter SHALL group its flat options into ordinary section mappings without
+requiring new INI syntax or a new file format. Grouping SHALL NOT perform
+scientific execution or force resolution of unrelated groups. Option names and
+defaults SHALL have concrete owners rather than independent duplicate schemas.
 
 #### Scenario: Inspect one complete requested configuration
 
 - **WHEN** a caller resolves a complete request and inspects requested store,
   basis, filter and date options
-- **THEN** those choices are available directly on the returned configuration
-- **AND** accessing them does not require a nested preparation configuration,
-  data acquisition or an execution run description
+- **THEN** those choices are available in the returned configuration's `data` group
+- **AND** accessing them does not require data acquisition or an execution run description
 
 #### Scenario: Construct and execute one resolved request
 
@@ -66,26 +84,52 @@ those choices.
 - **THEN** the returned configuration exposes their resolved canonical values
 - **AND** downstream canonical consumers need no alias or default-resolution pass
 
+#### Scenario: Inspect a grouped complete request
+- **WHEN** a caller resolves a complete supported request
+- **THEN** acquisition/preparation choices are available through `config.data`, with
+  model, sampler and output choices available through their respective groups
+- **AND** each choice and default has one authoritative owner
+
+#### Scenario: Resolve preparation alone
+- **WHEN** a caller supplies a valid `data` mapping without model, sampler or
+  output choices
+- **THEN** preparation resolution succeeds without constructing those other groups
+  or requiring their inputs
+
+#### Scenario: Group a familiar INI file
+- **WHEN** a caller groups a supported existing INI request
+- **THEN** its decoded options and winning values retain their established meaning
+- **AND** the grouped representation is an ordinary mapping suitable for the same
+  group resolvers as a Python request
+- **AND** acquisition/preparation options use the `data` key without changing the
+  existing INI section syntax
+
 ### Requirement: Explicit shallow selection for scientific keyword calls
 
 `DataConfig.select(*names)` SHALL return a new dictionary containing the
-explicitly named data attributes. `RhimeConfig` SHALL expose its `data`, `model`,
-`output` and `sampler` owners explicitly and SHALL NOT provide a global selection
-API that flattens their distinct meanings. Selected values SHALL remain borrowed,
-including
+explicitly named attributes. Selected values SHALL remain borrowed, including
 mutable containers and opaque objects. Selection SHALL NOT copy nested values,
 resolve defaults, inspect consumer signatures, execute scientific work or define
-a serialization schema. An unknown attribute SHALL raise `AttributeError`.
+a serialization schema. An unknown attribute SHALL raise `AttributeError`. Grouping SHALL NOT introduce
+implicit flattened attribute lookup; selection addresses the owning record's
+direct attributes. `RhimeConfig` SHALL expose `data`, `model`, `output` and
+`sampler` explicitly without a global `select` API.
 Scientific stage functions SHALL retain named inputs and remain callable without
 configuration. A private orchestration helper MAY receive resolved configuration
 when composing several stages.
 
 #### Scenario: Forward selected resolved values
 
-- **WHEN** a caller unpacks `config.data.select("filters")` into the observation filter
+- **WHEN** a caller unpacks `config.data.select("filters")` into observation filtering
 - **THEN** the function receives the same resolved value as `filters=config.data.filters`
 - **AND** changing the selection dictionary does not change the configuration
 - **AND** mutable values inside the dictionary retain their existing identity
+
+#### Scenario: Select acquisition and preparation arguments separately
+
+- **WHEN** a runner selects store/site/date arguments and filter/basis/error arguments from `config.data`
+- **THEN** acquisition receives its named selectors and returns the acquired handoff
+- **AND** preparation receives that handoff and its own named arguments, without retrieving data or receiving export destinations
 
 #### Scenario: Selection does not resolve overrides
 
@@ -98,10 +142,25 @@ when composing several stages.
 Supported overrides SHALL be applied before semantic resolution and site-option
 expansion. Resolution SHALL use the effective requested site list and winning
 values, preserve established precedence and rejection rules, and reject malformed
-effective options before acquisition or scientific preparation. A returned
+effective options before acquisition, reload or scientific preparation. A returned
 configuration SHALL already contain the complete equivalent of external
-shorthand; no scientific phase SHALL be responsible for completing the request.
-Date-dependent configuration defaults SHALL use effective overridden dates.
+shorthand for the selected phase; no scientific phase SHALL be responsible for
+completing those selected choices. Known unrelated groups in a shared file SHALL
+remain inactive; unsupported names and explicit wrong-phase overrides SHALL fail.
+The external boundary SHALL report all unsupported and explicit wrong-phase
+keys together before acquisition, preparation or inference. Supported aliases
+SHALL use their runner/frontend alias owner and the same precedence in full and saved
+routes; translating file and override mappings separately SHALL NOT change which
+effective value wins.
+Date-dependent configuration defaults SHALL use effective overridden dates for a
+full request and recorded preparation dates for saved-input sampling.
+
+Configuration owners SHALL validate their choices once during parsing or
+construction, including the sampler's exclusion of inference-data `coords` and
+`dims`. Later operations SHALL trust resolved choices rather than repeat those
+checks because Python objects are mutable or attempt to reproduce all
+model-dependent PyMC validation. Existing sampler settings SHALL remain the
+owner; this change SHALL NOT require a separate sampler options class.
 
 #### Scenario: Override changes the requested site count
 
@@ -119,9 +178,9 @@ Date-dependent configuration defaults SHALL use effective overridden dates.
 
 #### Scenario: Invalid effective options fail early
 
-- **WHEN** effective options include an unknown, unsupported or malformed choice,
+- **WHEN** effective options for the selected phase include an unknown, unsupported or malformed choice,
   including a sequence whose length does not match the effective site count
-- **THEN** resolution fails before retrieval or scientific execution
+- **THEN** resolution fails before retrieval, reload or scientific execution
 - **AND** the error identifies the offending option
 
 #### Scenario: Override changes a date-dependent default
@@ -130,6 +189,16 @@ Date-dependent configuration defaults SHALL use effective overridden dates.
   likelihood derives a configuration default from that date
 - **THEN** resolution derives the default from the winning start date
 - **AND** the returned configuration needs no downstream default-resolution pass
+
+#### Scenario: Canonical file option and deprecated override
+
+- **WHEN** a file supplies canonical `x_prior` and an override supplies deprecated `xprior`
+- **THEN** the canonical spelling wins in both full and saved routes under the existing alias rule
+
+#### Scenario: Several unsuitable overrides
+
+- **WHEN** an invocation supplies several unsupported or explicit wrong-phase override keys
+- **THEN** one error lists all those keys before scientific work
 
 ### Requirement: Complete requested-site options
 
@@ -209,13 +278,18 @@ model/output choices. Requested configuration SHALL remain unchanged and SHALL
 NOT contain a pre-preparation execution run description. Model and output
 specifications SHALL be composed into the retained run description without
 reinterpreting raw options. Independent prepared-input scientific contracts SHALL
-remain supported. In-repository configured orchestration SHALL use the same
-requested configuration rather than a second setup bundle holding a
-pre-preparation run description and a preparation dictionary.
+remain supported. Full configured orchestration SHALL use the same requested configuration rather
+than a second setup bundle holding a pre-preparation run description and a
+preparation dictionary. Saved phases SHALL resolve only their applicable groups
+and use recorded preparation facts. Required run context MAY be retained,
+referenced or supplied by the caller; the applicable inputs together SHALL
+provide the facts the phase needs without requiring each record to stand alone
+or the original full configuration to be unavailable. These phase choices SHALL
+share their owners with complete requests.
 
 #### Scenario: Unified configured orchestration
 
-- **WHEN** ordinary, nested, staged, shim or example consumers resolve supported
+- **WHEN** ordinary, nested, shim or example consumers resolve a complete supported
   standard/multisector requested options
 - **THEN** they use the same complete requested configuration
 - **AND** no distinct setup bundle or pre-preparation execution description is
@@ -301,14 +375,21 @@ New configuration helpers SHALL use `load_params`, `group_params` and
 selection. These migrations supersede prior signature/return preservation
 requirements for those named standard interfaces.
 
+#### Scenario: Migrate the Python entry point without changing the CLI
+
+- **WHEN** a caller imports the removed Python `run_rhime` API in 0.8
+- **THEN** the import error directs the caller to `run_standard`, which returns `InversionOutput`
+- **AND** the retained `run-rhime` CLI command calls `run_standard` directly with unchanged command naming, written files, export defaults and logging
+
 ### Requirement: Compatible public adapters and scientific choices
 
-Except for the explicit standard API/result migration above and the resource-I/O
-migrations removing `prepare_basis(output_path=...)`
-and `country_directory` in 0.8 and replacing scientific BC case/directory inputs
-with resolved basis data, the legacy-only routing and namespace migration owned
-by the [HBMCMC isolation contract](https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/hbmcmc-isolation-retirement/spec.md),
-the removed `prepare_rhime_inputs` convenience function, obsolete
+Except for the explicit standard API/result migration above, the sampler-default
+migration, and the resource-I/O
+migrations removing `prepare_basis(output_path=...)` and `country_directory` in 0.8
+and replacing scientific BC case/directory inputs with resolved basis data,
+the legacy-only routing and namespace migration owned by the
+[HBMCMC isolation contract](https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/hbmcmc-isolation-retirement/spec.md),
+removed `prepare_rhime_inputs` convenience function, obsolete
 modern merged-cache options, former stage adapter, `resolve_rhime_config`,
 transitional old-location imports and revised INI reader contract specified below, supported
 scientific Python and CLI entry points SHALL retain their signatures, shorthand,
@@ -325,9 +406,21 @@ SHALL remain unchanged except for the path and legacy-resource migrations specif
 and the 0.8 historical scientific-quirk and chain-policy removals specified by
 [hbmcmc-isolation-retirement](https://github.com/openghg/openghg_inversions/blob/devel/openspec/specs/hbmcmc-isolation-retirement/spec.md).
 
+Established selector and shared-handoff aliases in the current
+[model-selection capability](https://github.com/openghg/openghg_inversions/blob/7269f50f09dc4b618766cb9d69abe260a564eebc/openspec/specs/rhime-model-selection/spec.md)
+SHALL remain supported for their documented compatibility period. The removed
+transitional imports above do not include those public aliases.
+
 Internal orchestration/setup records and their constructor/helper return shapes
 SHALL NOT be required compatibility contracts. Their in-repository consumers
 SHALL migrate to the unified requested configuration.
+
+Default-selecting live APIs SHALL accept `"default"` or a supplied sampler, with
+omission equivalent to `"default"`. Existing explicit `None` calls SHALL fail with
+guidance to omit the optional argument or pass `"default"`; no compatibility
+adapter SHALL retain `None`-means-default selection. Default settings and scientific
+behavior SHALL otherwise remain unchanged. Result fields SHALL use `None` only
+for absence of a live sampler, as specified by the recipe-execution contract.
 
 Runner/frontend resolution SHALL consume omitted/false `use_tracer` without
 retaining a config field. Canonical configuration SHALL accept only canonical
@@ -355,9 +448,16 @@ and custom-likelihood conflict precedence SHALL remain unchanged.
 - **WHEN** a configured run, direct public preparation call or mapping-based
   retrieval supplies effective `use_tracer=True` after supported overrides,
   including with supplied merged data
-- **THEN** it rejects the option before acquisition or scientific execution
+- **THEN** it rejects the option before acquisition, reload or scientific execution
 - **AND** omitted and false options remain accepted with equivalent resolved
   configuration containing no tracer field
+
+#### Scenario: Migrate an explicit null sampler
+
+- **WHEN** a caller passes `sampler=None` to an existing live entry point
+- **THEN** it fails before inference with guidance to omit the optional argument
+  or pass `"default"`
+- **AND** omitting that argument continues to select the established defaults
 
 ### Requirement: Scientific preparation owns its operations
 
@@ -425,7 +525,10 @@ is introduced by this change.
 
 Standard, multisector, nested and custom runners SHALL combine decoded options
 with winning overrides, extract their own recipe choices, and construct canonical
-configuration once. Shorthand SHALL remain editable until that construction.
+configuration once. A legacy grouping adapter SHALL arrange the decoded flat
+options by their existing owners; complete and phase-only resolution SHALL reuse
+those owners. Phase-only resolution SHALL select its groups before validating
+values or defaults. Shorthand SHALL remain editable until that construction.
 Shared semantic/site-alignment helpers SHALL remain independent of file syntax.
 
 Historical fixedbasis translation SHALL be owned by HBMCMC entry points.
@@ -440,7 +543,8 @@ names: they SHALL NOT import alias definitions, translate aliases, issue alias
 warnings, or provide alias-specific replacement messages. Unsupported names
 SHALL use ordinary unsupported-option validation. Canonical inputs SHALL pass
 without alias warnings. Complete and phase-only frontends SHALL share the runner
-compatibility owner.
+compatibility owner; phase-only routes SHALL select applicable groups before
+value validation/defaults without constructing an unrelated complete request.
 HBMCMC-only resource selectors SHALL be translated by the legacy entry point,
 or rejected with guidance by modern runner boundaries before construction.
 Fixedbasis scientific policy SHALL remain in its separate compatibility adapter.
@@ -482,6 +586,15 @@ modern runners. Its removal belongs to the HBMCMC retirement contract.
 - **WHEN** a caller supplies a deprecated spelling directly to `RhimeConfig.from_params`
 - **THEN** it rejects the unsupported name through ordinary option validation
 - **AND** it neither translates the name nor emits an alias warning
+
+#### Scenario: Phase-only aliases remain independent of HBMCMC
+
+- **WHEN** a saved-phase caller supplies a supported deprecated modern alias
+  for an applicable group alongside unrelated groups in a shared file
+- **THEN** its external boundary uses the runner/frontend alias owner once with the same
+  precedence as a complete request, without importing or calling HBMCMC
+- **AND** it selects applicable groups before validating values or defaults,
+  without constructing an unrelated complete request
 
 #### Scenario: Dictionary compatibility adapter
 
@@ -655,3 +768,88 @@ NOT glob or open candidate resource artifacts.
 - **WHEN** a caller constructs only output configuration from external strings
 - **THEN** its owner converts only its declared filesystem fields using the invocation base
 - **AND** it does not inspect or construct full run configuration or load resources
+
+### Requirement: Phase-only resolution and authoritative model facts
+
+Each phase SHALL select its applicable option groups before applying value
+validation or defaults. Known unrelated options in a shared configuration file
+SHALL NOT be forwarded to that phase or make its resolution depend on their
+values. Unsupported option names and explicitly supplied phase-inapplicable
+arguments SHALL fail at the applicable outer boundary before scientific artifact
+writes. Repeated claims about authoritative prepared facts SHALL be checked
+against the prepared inputs and applicable run context rather than silently
+overwriting their facts.
+
+Saved-input sampling and prior readiness SHALL bind model choices to recorded
+preparation facts, including species, domain, source/layout information and the
+recorded requested date anchor. Callers SHALL NOT have to repeat those facts to
+resolve a model-only request. Complete runs SHALL use the same model resolution
+rules with resolved requested preparation choices, then validate compatibility
+with the retained prepared inputs. Changed model or likelihood choices SHALL be
+accepted only when their required prepared inputs and structure are available;
+they SHALL NOT reinterpret baked preparation choices or reacquire inputs.
+
+For standard and multisector, preparation SHALL own the established `use_bc`
+default (`True`) and `bc_freq` default (`None`). A legacy flat `use_bc` choice SHALL
+route to preparation and the full run's model choice consistently. When resolving
+a model group, omitted `use_bc` SHALL inherit the resolved requested preparation
+choice for a full run or its recorded fact for saved sampling. Explicit model
+`use_bc=False` MAY omit BC terms even when preparation contains BC inputs.
+Explicit model `use_bc=True` SHALL require preparation to provide those inputs;
+it SHALL NOT trigger acquisition or silent fallback. Full requests SHALL reject
+model BC use with preparation BC disabled before acquisition.
+
+`bc_freq` SHALL remain a preparation-owned temporal policy. Sampling SHALL use
+the recorded policy when the key is omitted and SHALL accept a repeated equivalent
+claim; any conflicting claim SHALL fail before model construction, even when
+model BC terms are disabled. An explicit `None` claim SHALL be compared as the
+existing no-frequency policy, not treated as omission. Model binding SHALL NOT
+apply another default to replace saved temporal expansion. The same rules SHALL
+hold for full and independently resolved standard/multisector phases without
+changing CO2's family-specific defaults.
+
+#### Scenario: Resolve disabled BC consistently across phases
+- **WHEN** standard or multisector preparation resolves `use_bc=False` and the
+  model group omits `use_bc`
+- **THEN** both a complete request and independent sampling of that preparation
+  resolve model BC use to false
+- **AND** an empty model group does not apply a conflicting true default
+
+#### Scenario: Resolve default BC consistently across phases
+- **WHEN** standard or multisector preparation omits `use_bc` and the model group
+  also omits it
+- **THEN** preparation resolves the existing true default and both full and saved
+  model resolution inherit true
+- **AND** missing required BC arrays cause an error rather than disabling BC use
+
+#### Scenario: Change BC use without changing preparation
+- **WHEN** a preparation contains BC inputs and a later model explicitly selects
+  `use_bc=False`
+- **THEN** model construction omits BC terms without changing the saved preparation
+- **AND** explicit `use_bc=True` on a preparation with BC disabled fails before
+  inference or artifact writes
+
+#### Scenario: Bind the saved boundary temporal policy
+- **WHEN** preparation baked `bc_freq="3h"` into its numerical inputs
+- **THEN** a later model request omitting `bc_freq` uses that saved temporal policy
+  and a repeated `"3h"` claim is accepted
+- **AND** an explicit different frequency or `None` is rejected before model
+  construction, including when model `use_bc=False`
+
+#### Scenario: Sample with model and sampler choices only
+- **WHEN** a caller supplies a prepared handoff, applicable run context and valid
+  model and sampler groups without acquisition or product configuration
+- **THEN** sampling resolves those groups using authoritative saved facts and does
+  not require unrelated configuration
+
+#### Scenario: Unrelated shared-file value
+- **WHEN** a preparation command reads a shared file containing an invalid sampler
+  value alongside valid preparation choices
+- **THEN** the preparation entry point selects and validates the `data` group without resolving or
+  validating that inactive sampler value
+
+#### Scenario: Conflicting saved-input claim
+- **WHEN** a sampling request repeats a species, domain, source/layout or date
+  claim that conflicts with the preparation facts
+- **THEN** the request fails before model execution or scientific artifact writes
+- **AND** the handoff's facts remain unchanged

@@ -5,7 +5,7 @@ are implementation tasks, all unchecked until their acceptance evidence exists.
 Start with a bounded implementation PR stacked on #841. This planning change
 itself changes no runtime behavior. Follow [design.md](design.md) and the three
 new capability specs and the
-[configuration amendments](../group-rhime-configuration-by-owner/proposal.md) and
+[configuration capability](../../specs/rhime-configuration/spec.md) and
 [resource-I/O prerequisite](../../specs/rhime-resource-io/spec.md).
 Their durable capability specs describe the delivered baselines.
 The four delivery sections below define proposed bounded
@@ -68,7 +68,7 @@ canonical-only configuration and HBMCMC isolation. #863 delivered #840/#841's
 operator/current-flux contracts, #843 supplied invocation-local samplers, #855
 supplied stage-I/O cleanup, and #795 supplied predictive integration. The separate
 configuration change owns the implemented `DataConfig` / `RhimeConfig.data` /
-`data` grouping; its sync/archive remains pending merged delivery.
+`data` grouping; its sync/archive is complete in the 16 October 2026 configuration closeout.
 
 The runnable `examples/standard_handoffs.py` prepares once, samples two Normal
 prior choices, and makes basic and inversion outputs from each saved posterior.
@@ -166,7 +166,7 @@ No multisector/CO2 adoption, final integrated-family gate, or spec promotion is
 claimed by this standard delivery. CI verifies the pushed integration's full
 suite, supported Python versions, typing and documentation.
 
-- [x] 1.1 Consume the separate [configuration change](../group-rhime-configuration-by-owner/tasks.md)
+- [x] 1.1 Consume the separate [configuration delivery](../archive/2026-10-16-group-rhime-configuration-by-owner/tasks.md)
   delivering `RhimeConfig.data: DataConfig` and the grouped `data` key. Record
   its implementation evidence and verify full and phase-only inputs resolve the same applicable choices
   without demanding unrelated sections, touching arrays or mutating caller values.

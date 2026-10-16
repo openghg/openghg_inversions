@@ -266,7 +266,8 @@ requirements for those named standard interfaces.
 
 ### Requirement: Compatible public adapters and scientific choices
 
-Except for the explicit sampler-default migration, the prerequisite #868 resource-I/O
+Except for the explicit standard API/result migration above, the sampler-default
+migration, and the resource-I/O
 migrations removing `prepare_basis(output_path=...)` and `country_directory` in 0.8
 and replacing scientific BC case/directory inputs with resolved basis data,
 the legacy-only routing and namespace migration owned by the
